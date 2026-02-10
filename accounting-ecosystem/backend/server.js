@@ -50,6 +50,7 @@ const { requireModule } = require('./middleware/module-check');
 let authRoutes, companiesRoutes, usersRoutes, employeesRoutes, auditRoutes, customersRoutes;
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
+let auditForensicRoutes;
 
 if (MOCK_MODE) {
   // ── Mock Routes ──
@@ -59,6 +60,14 @@ if (MOCK_MODE) {
   usersRoutes = mockShared.usersRouter;
   employeesRoutes = mockShared.employeesRouter;
   auditRoutes = mockShared.auditRouter;
+
+  // ── Mock Extras (Customers, Receipts, Barcodes, Reports) ──
+  const mockExtras = require('./mock-routes-extras');
+  customersRoutes = mockExtras.customersRouter;
+  receiptsRoutes = mockExtras.receiptsRouter;
+  barcodesRoutes = mockExtras.barcodeRouter;
+  reportsRoutes = mockExtras.reportsRouter;
+  auditForensicRoutes = mockExtras.auditForensicRouter;
 
   if (isModuleEnabled('pos'))     posRoutes = require('./mock-routes-pos');
   if (isModuleEnabled('payroll')) payrollRoutes = require('./mock-routes-payroll');
@@ -206,6 +215,9 @@ app.post('/api/scheduling/time/clock-in', authenticateToken, (req, res) => res.j
 app.post('/api/scheduling/time/clock-out', authenticateToken, (req, res) => res.json({ success: true, clocked_out_at: new Date().toISOString() }));
 app.get('/api/loss-prevention/alerts', authenticateToken, (req, res) => res.json({ alerts: [] }));
 app.get('/api/audit/suspicious-activity', authenticateToken, (req, res) => res.json({ activities: [] }));
+if (auditForensicRoutes) {
+  app.use('/api/audit', authenticateToken, auditForensicRoutes);
+}
 
 // ─── Module Routes (conditionally registered) ───────────────────────────────
 

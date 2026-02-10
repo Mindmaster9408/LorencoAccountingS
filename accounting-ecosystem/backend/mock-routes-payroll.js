@@ -735,7 +735,7 @@ router.post('/run-payroll', requirePermission('PAYROLL.CREATE'), (req, res) => {
     // Simple PAYE calculation (SA 2024/2025 simplified brackets)
     const annual = (emp.basic_salary || 0) * 12;
     let paye = 0;
-    if (annual > 95750) paye = Math.max(0, (annual <= 237100 ? (annual - 95750) * 0.18 : annual <= 370500 ? 25434 + (annual - 237100) * 0.26 : annual <= 512800 ? 60108 + (annual - 370500) * 0.31 : annual <= 673000 ? 104222 + (annual - 512800) * 0.36 : annual <= 857900 ? 161892 + (annual - 673000) * 0.39 : annual <= 1817000 ? 234024 + (annual - 857900) * 0.41 : 627468 + (annual - 1817000) * 0.45)) / 12);
+    if (annual > 95750) paye = Math.max(0, (annual <= 237100 ? (annual - 95750) * 0.18 : annual <= 370500 ? 25434 + (annual - 237100) * 0.26 : annual <= 512800 ? 60108 + (annual - 370500) * 0.31 : annual <= 673000 ? 104222 + (annual - 512800) * 0.36 : annual <= 857900 ? 161892 + (annual - 673000) * 0.39 : annual <= 1817000 ? 234024 + (annual - 857900) * 0.41 : 627468 + (annual - 1817000) * 0.45) / 12);
     const uif_ee = Math.min((emp.basic_salary || 0) * 0.01, 177.12);
     const gross_pay = emp.basic_salary || 0;
     const net_pay = gross_pay - paye - uif_ee;
@@ -780,7 +780,7 @@ router.post('/calculate-payslip/:employeeId', requirePermission('PAYROLL.CREATE'
   const { period_id } = req.body;
   const annual = (emp.basic_salary || 0) * 12;
   let paye = 0;
-  if (annual > 95750) paye = Math.max(0, (annual <= 237100 ? (annual - 95750) * 0.18 : annual <= 370500 ? 25434 + (annual - 237100) * 0.26 : annual <= 512800 ? 60108 + (annual - 370500) * 0.31 : annual <= 673000 ? 104222 + (annual - 512800) * 0.36 : annual <= 857900 ? 161892 + (annual - 673000) * 0.39 : annual <= 1817000 ? 234024 + (annual - 857900) * 0.41 : 627468 + (annual - 1817000) * 0.45)) / 12);
+  if (annual > 95750) paye = Math.max(0, (annual <= 237100 ? (annual - 95750) * 0.18 : annual <= 370500 ? 25434 + (annual - 237100) * 0.26 : annual <= 512800 ? 60108 + (annual - 370500) * 0.31 : annual <= 673000 ? 104222 + (annual - 512800) * 0.36 : annual <= 857900 ? 161892 + (annual - 673000) * 0.39 : annual <= 1817000 ? 234024 + (annual - 857900) * 0.41 : 627468 + (annual - 1817000) * 0.45) / 12);
   const uif_ee = Math.min((emp.basic_salary || 0) * 0.01, 177.12);
   const gross_pay = emp.basic_salary || 0;
   const net_pay = gross_pay - paye - uif_ee;

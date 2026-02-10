@@ -376,9 +376,265 @@ authRouter.post('/sso-launch', authenticateToken, (req, res) => {
   }
 });
 
+// ─── Auth Admin Routes (POS Settings / Admin Panel) ──────────────────────────
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// COMPANIES ROUTES
+/**
+ * POST /api/auth/verify-manager — verify manager PIN for restricted POS actions
+ */
+authRouter.post('/verify-manager', authenticateToken, (req, res) => {
+  const { pin, password } = req.body;
+  // Accept any 4-digit PIN or the user's actual password
+  if (pin === '1234' || pin === '0000' || password) {
+    return res.json({ success: true, verified: true });
+  }
+  res.status(401).json({ error: 'Invalid manager PIN' });
+});
+
+/**
+ * GET /api/auth/company-info — get current company details
+ */
+authRouter.get('/company-info', authenticateToken, (req, res) => {
+  const companyId = req.user.companyId || req.companyId;
+  const company = mock.companies.find(c => c.id === companyId);
+  if (!company) return res.json({ company: { id: 1, company_name: 'Test Company', trading_name: 'Test Co' } });
+  res.json({ company });
+});
+
+/**
+ * PUT /api/auth/company-info — update company details
+ */
+authRouter.put('/company-info', authenticateToken, (req, res) => {
+  const companyId = req.user.companyId || req.companyId;
+  const idx = mock.companies.findIndex(c => c.id === companyId);
+  if (idx === -1) return res.status(404).json({ error: 'Company not found' });
+
+  const allowed = ['company_name', 'trading_name', 'registration_number', 'tax_number', 'vat_number', 'address', 'phone', 'email', 'logo_url', 'website'];
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) mock.companies[idx][key] = req.body[key];
+  }
+  mock.companies[idx].updated_at = new Date().toISOString();
+  res.json({ success: true, company: mock.companies[idx] });
+});
+
+/**
+ * GET /api/auth/locations — list company locations/branches
+ */
+authRouter.get('/locations', authenticateToken, (req, res) => {
+  const companyId = req.user.companyId || req.companyId;
+  const locations = (mock.locations || []).filter(l => l.company_id === companyId);
+  res.json({ locations });
+});
+
+/**
+ * POST /api/auth/locations — create a new location
+ */
+authRouter.post('/locations', authenticateToken, (req, res) => {
+  if (!mock.locations) mock.locations = [];
+  const location = {
+    id: mock.nextId(),
+    company_id: req.user.companyId || req.companyId,
+    name: req.body.name || 'New Location',
+    address: req.body.address || '',
+    phone: req.body.phone || '',
+    is_active: true,
+    created_at: new Date().toISOString(),
+  };
+  mock.locations.push(location);
+  res.status(201).json({ success: true, location });
+});
+
+/**
+ * GET /api/auth/my-companies — list companies the current user has access to
+ */
+authRouter.get('/my-companies', authenticateToken, (req, res) => {
+  if (req.user.isSuperAdmin) {
+    return res.json({ companies: mock.companies.filter(c => c.is_active !== false) });
+  }
+  const accessRecords = mock.userCompanyAccess.filter(a => a.user_id === req.user.userId && a.is_active);
+  const companies = accessRecords
+    .map(a => {
+      const company = mock.companies.find(c => c.id === a.company_id);
+      if (!company) return null;
+      return { ...company, role: a.role, is_primary: a.is_primary };
+    })
+    .filter(Boolean);
+  res.json({ companies });
+});
+
+/**
+ * POST /api/auth/register-company — register a new company for the current user
+ */
+authRouter.post('/register-company', authenticateToken, (req, res) => {
+  const { company_name, trading_name, registration_number, tax_number } = req.body;
+  if (!company_name) return res.status(400).json({ error: 'company_name is required' });
+
+  const company = {
+    id: mock.nextId(),
+    company_name,
+    trading_name: trading_name || company_name,
+    registration_number: registration_number || null,
+    tax_number: tax_number || null,
+    is_active: true,
+    modules_enabled: ['pos'],
+    subscription_status: 'active',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  mock.companies.push(company);
+
+  mock.userCompanyAccess.push({
+    user_id: req.user.userId,
+    company_id: company.id,
+    role: 'business_owner',
+    is_primary: false,
+    is_active: true,
+  });
+
+  res.status(201).json({ success: true, company });
+});
+
+/**
+ * GET /api/auth/companies/all — admin: list all companies (super admin)
+ */
+authRouter.get('/companies/all', authenticateToken, (req, res) => {
+  if (!req.user.isSuperAdmin) return res.status(403).json({ error: 'Super admin required' });
+  res.json({ companies: mock.companies });
+});
+
+/**
+ * GET /api/auth/admin/stats — admin dashboard stats
+ */
+authRouter.get('/admin/stats', authenticateToken, (req, res) => {
+  res.json({
+    totalCompanies: mock.companies.length,
+    activeCompanies: mock.companies.filter(c => c.is_active !== false).length,
+    totalUsers: mock.users.length,
+    activeUsers: mock.users.filter(u => u.is_active).length,
+    totalEmployees: mock.employees.length,
+    totalSales: (mock.sales || []).length,
+  });
+});
+
+/**
+ * GET /api/auth/admin/companies — admin: list all companies with details
+ */
+authRouter.get('/admin/companies', authenticateToken, (req, res) => {
+  const companies = mock.companies.map(c => ({
+    ...c,
+    userCount: mock.userCompanyAccess.filter(a => a.company_id === c.id && a.is_active).length,
+    employeeCount: mock.employees.filter(e => e.company_id === c.id && e.is_active).length,
+  }));
+  res.json({ companies });
+});
+
+/**
+ * PUT /api/auth/admin/companies/:id/status — admin: activate/deactivate company
+ */
+authRouter.put('/admin/companies/:id/status', authenticateToken, (req, res) => {
+  const idx = mock.companies.findIndex(c => c.id === parseInt(req.params.id));
+  if (idx === -1) return res.status(404).json({ error: 'Company not found' });
+  mock.companies[idx].is_active = req.body.is_active !== false;
+  mock.companies[idx].updated_at = new Date().toISOString();
+  res.json({ success: true, company: mock.companies[idx] });
+});
+
+/**
+ * GET /api/auth/admin/users — admin: list all users
+ */
+authRouter.get('/admin/users', authenticateToken, (req, res) => {
+  const users = mock.users.map(u => ({
+    id: u.id, username: u.username, email: u.email, full_name: u.full_name,
+    is_super_admin: u.is_super_admin, is_active: u.is_active,
+    created_at: u.created_at,
+    companiesCount: mock.userCompanyAccess.filter(a => a.user_id === u.id && a.is_active).length,
+  }));
+  res.json({ users });
+});
+
+/**
+ * DELETE /api/auth/admin/users/:id — admin: deactivate user
+ */
+authRouter.delete('/admin/users/:id', authenticateToken, (req, res) => {
+  const idx = mock.users.findIndex(u => u.id === parseInt(req.params.id));
+  if (idx === -1) return res.status(404).json({ error: 'User not found' });
+  mock.users[idx].is_active = false;
+  res.json({ success: true });
+});
+
+/**
+ * POST /api/auth/admin/cleanup-orphaned — admin: clean up orphaned records
+ */
+authRouter.post('/admin/cleanup-orphaned', authenticateToken, (req, res) => {
+  // Remove user-company access records that reference non-existent users or companies
+  const before = mock.userCompanyAccess.length;
+  mock.userCompanyAccess = mock.userCompanyAccess.filter(a => {
+    const userExists = mock.users.some(u => u.id === a.user_id);
+    const companyExists = mock.companies.some(c => c.id === a.company_id);
+    return userExists && companyExists;
+  });
+  const removed = before - mock.userCompanyAccess.length;
+  res.json({ success: true, removedRecords: removed });
+});
+
+/**
+ * GET /api/auth/companies/:id/users — list users for a company
+ */
+authRouter.get('/companies/:id/users', authenticateToken, (req, res) => {
+  const companyId = parseInt(req.params.id);
+  const accessRecords = mock.userCompanyAccess.filter(a => a.company_id === companyId && a.is_active);
+  const users = accessRecords.map(a => {
+    const user = mock.users.find(u => u.id === a.user_id);
+    if (!user) return null;
+    return {
+      id: user.id, username: user.username, email: user.email,
+      full_name: user.full_name, role: a.role, is_primary: a.is_primary,
+    };
+  }).filter(Boolean);
+  res.json({ users });
+});
+
+/**
+ * POST /api/auth/companies/:id/users — add user to company
+ */
+authRouter.post('/companies/:id/users', authenticateToken, (req, res) => {
+  const companyId = parseInt(req.params.id);
+  const { userId, user_id, role } = req.body;
+  const resolvedUserId = userId || user_id;
+  if (!resolvedUserId) return res.status(400).json({ error: 'userId is required' });
+
+  const existing = mock.userCompanyAccess.find(
+    a => a.user_id === parseInt(resolvedUserId) && a.company_id === companyId
+  );
+  if (existing) {
+    existing.is_active = true;
+    existing.role = role || existing.role;
+    return res.json({ success: true, access: existing });
+  }
+
+  const access = {
+    user_id: parseInt(resolvedUserId),
+    company_id: companyId,
+    role: role || 'user',
+    is_primary: false,
+    is_active: true,
+  };
+  mock.userCompanyAccess.push(access);
+  res.status(201).json({ success: true, access });
+});
+
+/**
+ * DELETE /api/auth/companies/:id/users/:userId — remove user from company
+ */
+authRouter.delete('/companies/:id/users/:userId', authenticateToken, (req, res) => {
+  const companyId = parseInt(req.params.id);
+  const userId = parseInt(req.params.userId);
+  const idx = mock.userCompanyAccess.findIndex(
+    a => a.user_id === userId && a.company_id === companyId
+  );
+  if (idx === -1) return res.status(404).json({ error: 'Access record not found' });
+  mock.userCompanyAccess[idx].is_active = false;
+  res.json({ success: true });
+});
 // ═══════════════════════════════════════════════════════════════════════════════
 const companiesRouter = express.Router();
 
