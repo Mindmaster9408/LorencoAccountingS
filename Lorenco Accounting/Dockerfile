@@ -9,8 +9,10 @@ RUN npm install --production
 # Copy source code
 COPY src/ ./src/
 COPY public/ ./public/
-COPY uploads/ ./uploads/
 COPY migrations/ ./migrations/
+
+# Create uploads directory (not in git)
+RUN mkdir -p ./uploads
 
 # Expose port
 EXPOSE 3000
