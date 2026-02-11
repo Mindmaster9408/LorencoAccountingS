@@ -48,7 +48,9 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Super admin path
+    // Super admin path — BYPASSED: super admins now use normal app flow
+    // Code preserved for future admin dashboard use
+    /*
     if (user.is_super_admin) {
       const token = jwt.sign({
         userId: user.id,
@@ -77,18 +79,40 @@ router.post('/login', async (req, res) => {
         }
       });
     }
+    */
 
     // Get user's accessible companies
-    const { data: companies, error: compError } = await supabase
-      .from('user_company_access')
-      .select(`
-        company_id,
-        role,
-        is_primary,
-        companies:company_id (id, company_name, trading_name, modules_enabled)
-      `)
-      .eq('user_id', user.id)
-      .eq('is_active', true);
+    const isSuperAdmin = !!user.is_super_admin;
+    let companies, compError;
+
+    if (isSuperAdmin) {
+      // Super admins get ALL companies
+      const result = await supabase
+        .from('companies')
+        .select('id, company_name, trading_name, modules_enabled')
+        .eq('is_active', true)
+        .order('company_name');
+      companies = result.data ? result.data.map(c => ({
+        companies: c,
+        company_id: c.id,
+        role: 'super_admin',
+        is_primary: true
+      })) : [];
+      compError = result.error;
+    } else {
+      const result = await supabase
+        .from('user_company_access')
+        .select(`
+          company_id,
+          role,
+          is_primary,
+          companies:company_id (id, company_name, trading_name, modules_enabled)
+        `)
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      companies = result.data;
+      compError = result.error;
+    }
 
     if (compError) {
       console.error('Error fetching companies:', compError.message);
@@ -112,6 +136,7 @@ router.post('/login', async (req, res) => {
       username: user.username,
       email: user.email,
       fullName: user.full_name,
+      isSuperAdmin: isSuperAdmin,
       companyId: null,
       role: null,
     };
@@ -140,6 +165,7 @@ router.post('/login', async (req, res) => {
         username: user.username,
         fullName: user.full_name,
         email: user.email,
+        isSuperAdmin: isSuperAdmin,
       },
       companies: companyList,
       selectedCompany,

@@ -79,7 +79,16 @@ router.post('/login', (req, res) => {
     let companiesQuery;
     let companiesParams;
 
-    if (userType === 'accountant' && user.accounting_firm_id) {
+    if (user.is_super_admin === 1) {
+      // Super admins get access to ALL companies (elevated access)
+      companiesQuery = `
+        SELECT c.id, c.company_name, c.trading_name, 'super_admin' as role, 1 as is_primary
+        FROM companies c
+        WHERE c.is_active = 1
+        ORDER BY c.company_name
+      `;
+      companiesParams = [];
+    } else if (userType === 'accountant' && user.accounting_firm_id) {
       // Accountants access companies via their firm
       companiesQuery = `
         SELECT c.id, c.company_name, c.trading_name, 'accountant' as role
@@ -107,10 +116,12 @@ router.post('/login', (req, res) => {
       }
 
       // Create initial token (without company selected)
+      const isSuperAdmin = user.is_super_admin === 1;
       const tokenPayload = {
         userId: user.id,
         username: user.username,
         userType: userType,
+        isSuperAdmin: isSuperAdmin,
         accountingFirmId: user.accounting_firm_id || null,
         companyId: null,
         role: null
@@ -134,6 +145,7 @@ router.post('/login', (req, res) => {
           fullName: user.full_name,
           email: user.email,
           userType: userType,
+          isSuperAdmin: isSuperAdmin,
           accountingFirmId: user.accounting_firm_id
         },
         companies: companies || [],

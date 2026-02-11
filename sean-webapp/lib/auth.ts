@@ -9,10 +9,17 @@ import prisma from "./db";
 // ============================================
 
 // Hardcoded super users (always have access, cannot be removed)
+// Only ruanvlog@lorenco.co.za has coaching access
 const CORE_SUPER_USERS = [
-  "ruanvlog@lorenco.co.za",
-  "antonjvr@lorenco.co.za",
-  "mj@lorenco.co.za",
+  { email: "ruanvlog@lorenco.co.za", hasCoachingAccess: true },
+  { email: "antonjvr@lorenco.co.za", hasCoachingAccess: false },
+  { email: "mj@lorenco.co.za", hasCoachingAccess: false },
+];
+
+// Additional super admin placeholders
+const ADDITIONAL_SUPER_ADMINS = [
+  "user3@lorenco.co.za",
+  "user4@lorenco.co.za",
 ];
 
 // Check if an email is a Super User (ONLY super users can access Sean webapp)
@@ -20,7 +27,12 @@ export async function isSuperUserEmail(email: string): Promise<boolean> {
   const normalizedEmail = email.toLowerCase().trim();
 
   // Core super users always have access
-  if (CORE_SUPER_USERS.includes(normalizedEmail)) {
+  if (CORE_SUPER_USERS.some(u => u.email === normalizedEmail)) {
+    return true;
+  }
+
+  // Additional super admins
+  if (ADDITIONAL_SUPER_ADMINS.includes(normalizedEmail)) {
     return true;
   }
 
@@ -84,8 +96,13 @@ export async function removeAllowedEmail(email: string): Promise<{ success: bool
   const normalizedEmail = email.toLowerCase().trim();
 
   // Don't allow removing core super user emails
-  if (CORE_SUPER_USERS.includes(normalizedEmail)) {
+  if (CORE_SUPER_USERS.some(u => u.email === normalizedEmail)) {
     return { success: false, error: "Cannot remove core super user emails" };
+  }
+
+  // Don't allow removing additional super admins
+  if (ADDITIONAL_SUPER_ADMINS.includes(normalizedEmail)) {
+    return { success: false, error: "Cannot remove super admin emails" };
   }
 
   try {
@@ -113,7 +130,19 @@ export async function listAllowedEmails(): Promise<Array<{
     const result = [];
 
     // Add core super users first (always present, cannot be removed)
-    for (const email of CORE_SUPER_USERS) {
+    for (const user of CORE_SUPER_USERS) {
+      const inDb = dbEmails.find(e => e.email === user.email);
+      result.push({
+        email: user.email,
+        role: "SUPER_USER",
+        addedBy: null,
+        createdAt: inDb?.createdAt || new Date(),
+        isCore: true,
+      });
+    }
+
+    // Add additional super admins
+    for (const email of ADDITIONAL_SUPER_ADMINS) {
       const inDb = dbEmails.find(e => e.email === email);
       result.push({
         email,
@@ -125,8 +154,9 @@ export async function listAllowedEmails(): Promise<Array<{
     }
 
     // Add other DB emails (only SUPER_USER role can access the Sean app)
+    const allSuperAdminEmails = [...CORE_SUPER_USERS.map(u => u.email), ...ADDITIONAL_SUPER_ADMINS];
     for (const dbEmail of dbEmails) {
-      if (!CORE_SUPER_USERS.includes(dbEmail.email)) {
+      if (!allSuperAdminEmails.includes(dbEmail.email)) {
         result.push({
           email: dbEmail.email,
           role: dbEmail.role,
@@ -140,8 +170,8 @@ export async function listAllowedEmails(): Promise<Array<{
     return result;
   } catch (error) {
     // Return core super users if DB not available
-    return CORE_SUPER_USERS.map(email => ({
-      email,
+    return CORE_SUPER_USERS.map(user => ({
+      email: user.email,
       role: "SUPER_USER",
       addedBy: null,
       createdAt: new Date(),
@@ -204,7 +234,12 @@ export async function isUserAdmin(email: string): Promise<boolean> {
   const normalizedEmail = email.toLowerCase().trim();
 
   // Core super users are always admins
-  if (CORE_SUPER_USERS.includes(normalizedEmail)) {
+  if (CORE_SUPER_USERS.some(u => u.email === normalizedEmail)) {
+    return true;
+  }
+
+  // Additional super admins
+  if (ADDITIONAL_SUPER_ADMINS.includes(normalizedEmail)) {
     return true;
   }
 
@@ -215,5 +250,52 @@ export async function isUserAdmin(email: string): Promise<boolean> {
     return allowed?.role === "SUPER_USER" || allowed?.role === "ADMIN";
   } catch {
     return false;
+  }
+}
+
+// Check if user has coaching data access (only ruanvlog@lorenco.co.za)
+export async function hasCoachingAccess(email: string): Promise<boolean> {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Check core super users
+  const coreUser = CORE_SUPER_USERS.find(u => u.email === normalizedEmail);
+  if (coreUser) {
+    return coreUser.hasCoachingAccess;
+  }
+
+  // Additional super admins don't have coaching access
+  if (ADDITIONAL_SUPER_ADMINS.includes(normalizedEmail)) {
+    return false;
+  }
+
+  // Check database
+  try {
+    const allowed = await prisma.allowedEmail.findUnique({
+      where: { email: normalizedEmail },
+    });
+    return allowed?.hasCoachingAccess || false;
+  } catch {
+    return false;
+  }
+}
+
+// Log coaching data access for audit purposes
+export async function logCoachingAccess(
+  userId: string,
+  clientId: string | null,
+  accessType: string,
+  ipAddress?: string
+) {
+  try {
+    await prisma.coachingDataAccess.create({
+      data: {
+        userId,
+        clientId,
+        accessType,
+        ipAddress,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to log coaching access:", error);
   }
 }
