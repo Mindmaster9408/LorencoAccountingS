@@ -26,7 +26,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 // ─── Mock Mode Detection ────────────────────────────────────────────────────
-const MOCK_MODE = process.env.MOCK_MODE === 'true';
+const MOCK_MODE = (process.env.MOCK_MODE || '').toLowerCase() === 'true';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 let supabase, checkConnection, ensureDefaultCompany;

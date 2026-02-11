@@ -17,7 +17,7 @@ const modules = {
   pos: {
     name: 'Checkout Charlie POS',
     key: 'pos',
-    active: process.env.MODULE_POS_ENABLED === 'true',
+    active: (process.env.MODULE_POS_ENABLED || process.env['MODULE_POS-ENABLED'] || '').toLowerCase() === 'true',
     version: '1.0.0',
     description: 'Point of Sale — products, sales, tills, customers, inventory',
     routePrefix: '/api/pos',
@@ -26,7 +26,7 @@ const modules = {
   payroll: {
     name: 'Lorenco Paytime Payroll',
     key: 'payroll',
-    active: process.env.MODULE_PAYROLL_ENABLED === 'true',
+    active: (process.env.MODULE_PAYROLL_ENABLED || '').toLowerCase() === 'true',
     version: '1.0.0',
     description: 'Payroll — pay runs, payslips, tax, attendance, leave',
     routePrefix: '/api/payroll',
@@ -35,7 +35,7 @@ const modules = {
   accounting: {
     name: 'Lorenco Accounting',
     key: 'accounting',
-    active: process.env.MODULE_ACCOUNTING_ENABLED === 'true',
+    active: (process.env.MODULE_ACCOUNTING_ENABLED || '').toLowerCase() === 'true',
     version: '1.0.0',
     description: 'General Ledger, Chart of Accounts, Journals, Bank Reconciliation, Reports',
     routePrefix: '/api/accounting',
@@ -44,7 +44,7 @@ const modules = {
   sean: {
     name: 'SEAN AI Assistant',
     key: 'sean',
-    active: process.env.MODULE_SEAN_ENABLED === 'true',
+    active: (process.env.MODULE_SEAN_ENABLED || '').toLowerCase() === 'true',
     version: '1.0.0',
     description: 'Privacy-first AI accounting assistant — allocations, tax calculations, self-learning codex',
     routePrefix: '/api/sean',
