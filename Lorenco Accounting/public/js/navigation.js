@@ -100,12 +100,11 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage.includes('bank') || currentPage.includes('cash-reconciliation') ? 'active' : ''}">
+      <div class="nav-item ${currentPage.includes('bank') ? 'active' : ''}">
         <a href="bank.html">Banking</a>
         <div class="dropdown">
           <a href="bank.html">Bank Transactions</a>
           <a href="bank-reconciliation.html">Bank Reconciliation</a>
-          <a href="cash-reconciliation.html">Cash Reconciliation (POS)</a>
           <a href="#">Payment Processing</a>
           <a href="#">Bank Rules</a>
           <a href="#">Import Statements</a>

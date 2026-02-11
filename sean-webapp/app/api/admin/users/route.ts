@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     const result = await addAllowedEmail(
       email,
-      role === "ADMIN" ? "ADMIN" : "USER",
+      role === "SUPER_USER" ? "SUPER_USER" : "ADMIN",
       user.email
     );
 

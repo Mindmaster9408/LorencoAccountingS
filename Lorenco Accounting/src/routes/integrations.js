@@ -412,10 +412,7 @@ router.post('/external/transactions', authenticateApiKey, async (req, res) => {
         reference,
         description,
         amount,
-        type, // 'sale', 'pos_sale', 'refund', 'pos_refund', 'payment', 'expense'
-        paymentMethod, // 'cash', 'card', 'account' - for POS transactions
-        customerId, // Customer ID for account sales
-        customerName, // Customer name for display
+        type, // 'sale', 'refund', 'payment', 'expense'
         vatInclusive = true,
         vatRate = 15,
         accountId, // Override default account mapping
@@ -455,23 +452,16 @@ router.post('/external/transactions', authenticateApiKey, async (req, res) => {
       // Determine accounts based on type and config
       let targetAccountId = accountId;
       let bankAccountId = config.defaultBankAccountId;
-      let receivableAccountId = config.receivableAccountId; // For POS sales
       let vatAccountId = config.vatOutputAccountId || config.vatInputAccountId;
-
-      // Check if this is a POS transaction
-      const isPOSTransaction = type === 'pos_sale' || type === 'pos_refund' ||
-        (req.integration.type === 'checkout_charlie' && (type === 'sale' || type === 'refund'));
 
       // Use configured defaults if no account specified
       if (!targetAccountId) {
         switch (type) {
           case 'sale':
-          case 'pos_sale':
             targetAccountId = config.salesAccountId;
             vatAccountId = config.vatOutputAccountId;
             break;
           case 'refund':
-          case 'pos_refund':
             targetAccountId = config.salesAccountId;
             vatAccountId = config.vatOutputAccountId;
             break;
@@ -506,28 +496,14 @@ router.post('/external/transactions', authenticateApiKey, async (req, res) => {
       // Build journal lines based on transaction type
       const journalLines = [];
 
-      // Determine display name for the customer
-      const displayCustomer = customerName || (isPOSTransaction ? 'Checkout Charlie' : req.integration.name);
-
-      if (type === 'sale' || type === 'pos_sale') {
-        if (isPOSTransaction) {
-          // POS Sale: Debit Receivables, Credit Revenue, Credit VAT
-          // Does NOT touch Bank - will be reconciled later via Cash Reconciliation
-          journalLines.push({
-            accountId: receivableAccountId || bankAccountId, // Fall back to bank if receivables not configured
-            debit: parseFloat(amount),
-            credit: 0,
-            description: `${displayCustomer}: ${description}`
-          });
-        } else {
-          // Regular Sale: Debit Bank, Credit Revenue, Credit VAT
-          journalLines.push({
-            accountId: bankAccountId,
-            debit: parseFloat(amount),
-            credit: 0,
-            description: `${req.integration.name}: ${description}`
-          });
-        }
+      if (type === 'sale') {
+        // Sale: Debit Bank, Credit Revenue, Credit VAT
+        journalLines.push({
+          accountId: bankAccountId,
+          debit: parseFloat(amount),
+          credit: 0,
+          description: `${req.integration.name}: ${description}`
+        });
         journalLines.push({
           accountId: targetAccountId,
           debit: 0,
@@ -542,24 +518,14 @@ router.post('/external/transactions', authenticateApiKey, async (req, res) => {
             description: `VAT on ${description}`
           });
         }
-      } else if (type === 'refund' || type === 'pos_refund') {
-        if (isPOSTransaction) {
-          // POS Refund: Credit Receivables, Debit Revenue, Debit VAT
-          journalLines.push({
-            accountId: receivableAccountId || bankAccountId,
-            debit: 0,
-            credit: parseFloat(amount),
-            description: `${displayCustomer} Refund: ${description}`
-          });
-        } else {
-          // Regular Refund: Credit Bank, Debit Revenue, Debit VAT
-          journalLines.push({
-            accountId: bankAccountId,
-            debit: 0,
-            credit: parseFloat(amount),
-            description: `${req.integration.name} Refund: ${description}`
-          });
-        }
+      } else if (type === 'refund') {
+        // Refund: Credit Bank, Debit Revenue, Debit VAT
+        journalLines.push({
+          accountId: bankAccountId,
+          debit: 0,
+          credit: parseFloat(amount),
+          description: `${req.integration.name} Refund: ${description}`
+        });
         journalLines.push({
           accountId: targetAccountId,
           debit: netAmount,
@@ -614,13 +580,12 @@ router.post('/external/transactions', authenticateApiKey, async (req, res) => {
 
       // Create journal entry
       try {
-        const journal = await JournalService.createDraftJournal(client, {
+        const journal = await JournalService.createJournal(client, {
           companyId: req.companyId,
           date,
           reference: reference || `${req.integration.name}-${externalId || Date.now()}`,
           description: `${req.integration.name}: ${description}`,
           sourceType: 'integration',
-          createdByUserId: null, // Integration-created journals have no user
           lines: journalLines,
           metadata: {
             integrationId: req.integration.id,
@@ -633,22 +598,19 @@ router.post('/external/transactions', authenticateApiKey, async (req, res) => {
         // Record the integration transaction
         await client.query(
           `INSERT INTO integration_transactions
-           (company_id, integration_id, external_id, journal_id, type, amount, vat_amount, description, raw_data, status, payment_method, customer_id, customer_name)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+           (company_id, integration_id, external_id, journal_id, type, amount, vat_amount, description, raw_data, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             req.companyId,
             req.integration.id,
             externalId,
             journal.id,
-            isPOSTransaction ? (type === 'refund' || type === 'pos_refund' ? 'pos_refund' : 'pos_sale') : type,
+            type,
             amount,
             vatAmount,
             description,
             JSON.stringify(txn),
-            isPOSTransaction ? 'pending' : 'posted', // POS sales are pending until reconciled
-            paymentMethod || null,
-            customerId || null,
-            displayCustomer
+            'posted'
           ]
         );
 
@@ -657,10 +619,7 @@ router.post('/external/transactions', authenticateApiKey, async (req, res) => {
           success: true,
           journalId: journal.id,
           netAmount,
-          vatAmount,
-          isPOSTransaction,
-          paymentMethod: paymentMethod || null,
-          status: isPOSTransaction ? 'pending' : 'posted'
+          vatAmount
         });
 
       } catch (journalError) {

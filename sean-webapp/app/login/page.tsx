@@ -42,8 +42,11 @@ export default function LoginPage() {
           <h1 className="text-3xl font-bold text-slate-900 mb-2 text-center">
             Sean
           </h1>
-          <p className="text-slate-600 text-center mb-8">
+          <p className="text-slate-600 text-center mb-2">
             AI Codex for Lorenco
+          </p>
+          <p className="text-xs text-red-600 font-semibold text-center mb-6 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            Super Users Only — Other users access Sean through their respective apps
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -80,7 +83,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-xs text-slate-500 text-center mt-4">
-            Authorized users only
+            Super user access only. Regular users interact with Sean through POS, Payroll, and Accounting apps.
           </p>
         </div>
       </div>

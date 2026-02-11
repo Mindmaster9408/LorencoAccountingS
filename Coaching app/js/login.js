@@ -60,13 +60,19 @@ form.addEventListener('submit', async (e) => {
         // Show success message
         showAlert('Login successful! Redirecting...', 'success');
 
-        // Redirect based on role
+        // BYPASSED: Admins now go to main app like everyone else (with extra access)
+        // Admin dashboard code preserved for future use
+        // Previously: admin role -> admin.html, others -> index.html
+        // Now: everyone goes to index.html, admins just have more features
         setTimeout(() => {
+            /* Original admin redirect - bypassed
             if (data.user.role === 'admin') {
                 window.location.href = 'admin.html';
             } else {
                 window.location.href = 'index.html';
             }
+            */
+            window.location.href = 'index.html';
         }, 1000);
 
     } catch (error) {

@@ -187,7 +187,11 @@ const AUTH = {
                 company_id: allCompanyIds[0] || null
             });
             this.setSession(saSession);
-            return { success: true, user: saSession, redirect: 'super-admin-dashboard.html' };
+            // BYPASSED: Super admins now go to normal app flow with elevated access
+            // Admin dashboard code preserved for future use
+            // Previously: redirect: 'super-admin-dashboard.html'
+            var saRedirect = allCompanyIds.length > 1 ? 'company-selection.html' : 'company-dashboard.html';
+            return { success: true, user: saSession, redirect: saRedirect };
         }
 
         // Check Demo User

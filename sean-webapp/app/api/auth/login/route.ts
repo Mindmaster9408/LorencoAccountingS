@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isEmailAllowed, getOrCreateUser, createSession } from "@/lib/auth";
+import { isSuperUserEmail, getOrCreateUser, createSession } from "@/lib/auth";
 import { validateEmail } from "@/lib/validation";
 import prisma from "@/lib/db";
 
@@ -18,9 +18,11 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    if (!isEmailAllowed(normalizedEmail)) {
+    // SUPER USER CHECK: Only super users can access the Sean webapp directly
+    const isSuperUser = await isSuperUserEmail(normalizedEmail);
+    if (!isSuperUser) {
       return NextResponse.json(
-        { error: "Access denied. Your email is not on the allowlist." },
+        { error: "Access denied. The Sean app is restricted to super users only. Use Sean through other apps (POS, Accounting, etc.)." },
         { status: 403 }
       );
     }

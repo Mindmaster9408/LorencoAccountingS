@@ -610,11 +610,16 @@
         window.addEventListener('load', function() {
             if (AUTH.isLoggedIn()) {
                 const session = AUTH.getSession();
+                // BYPASSED: Super admins now go to normal app flow
+                // Admin dashboard code preserved for future use
+                /* Original redirect:
                 if (session.role === 'super_admin') {
                     window.location.href = 'super-admin-dashboard.html';
                 } else {
                     window.location.href = 'company-selection.html';
                 }
+                */
+                window.location.href = 'company-selection.html';
             }
         });
 

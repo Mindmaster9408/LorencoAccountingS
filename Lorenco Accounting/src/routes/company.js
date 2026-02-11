@@ -5,27 +5,17 @@ const { authenticate, authorize } = require('../middleware/auth');
 
 // GET /api/company/list - Get all companies for the user
 router.get('/list', authenticate, async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.user.userId;
 
   try {
-    let result;
-    if (req.user.isGlobalAdmin) {
-      // Super admins see ALL companies
-      result = await db.query(
-        `SELECT c.id, c.name, c.registration_number as "regNumber", c.is_active as "isActive"
-         FROM companies c
-         ORDER BY c.name`
-      );
-    } else {
-      result = await db.query(
-        `SELECT c.id, c.name, c.registration_number as "regNumber", c.is_active as "isActive"
-         FROM companies c
-         INNER JOIN user_companies uc ON c.id = uc.company_id
-         WHERE uc.user_id = $1
-         ORDER BY c.name`,
-        [userId]
-      );
-    }
+    const result = await db.query(
+      `SELECT c.id, c.name, c.registration_number as "regNumber", c.is_active as "isActive"
+       FROM companies c
+       INNER JOIN user_companies uc ON c.id = uc.company_id
+       WHERE uc.user_id = $1
+       ORDER BY c.name`,
+      [userId]
+    );
 
     res.json({ companies: result.rows });
   } catch (err) {
@@ -37,19 +27,17 @@ router.get('/list', authenticate, async (req, res) => {
 // GET /api/company/:id - Get company details
 router.get('/:id', authenticate, async (req, res) => {
   const companyId = req.params.id;
-  const userId = req.user.id;
+  const userId = req.user.userId;
 
   try {
-    // Super admins can access any company; regular users need user_companies link
-    if (!req.user.isGlobalAdmin) {
-      const accessCheck = await db.query(
-        'SELECT 1 FROM user_companies WHERE user_id = $1 AND company_id = $2',
-        [userId, companyId]
-      );
+    // Verify user has access to this company
+    const accessCheck = await db.query(
+      'SELECT 1 FROM user_companies WHERE user_id = $1 AND company_id = $2',
+      [userId, companyId]
+    );
 
-      if (accessCheck.rows.length === 0) {
-        return res.status(403).json({ error: 'Access denied to this company' });
-      }
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied to this company' });
     }
 
     const result = await db.query(
@@ -81,8 +69,8 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // POST /api/company - Create new company
-router.post('/', authenticate, authorize('admin'), async (req, res) => {
-  const userId = req.user.id;
+router.post('/', authenticate, authorize('ADMIN'), async (req, res) => {
+  const userId = req.user.userId;
   const { name, regNumber } = req.body;
 
   if (!name) {
@@ -124,9 +112,9 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
 });
 
 // PUT /api/company/:id - Update company
-router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, res) => {
+router.put('/:id', authenticate, authorize('ADMIN', 'ACCOUNTANT'), async (req, res) => {
   const companyId = req.params.id;
-  const userId = req.user.id;
+  const userId = req.user.userId;
   const data = req.body;
 
   try {
@@ -171,9 +159,9 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
 });
 
 // DELETE /api/company/:id - Deactivate company (soft delete)
-router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
+router.delete('/:id', authenticate, authorize('ADMIN'), async (req, res) => {
   const companyId = req.params.id;
-  const userId = req.user.id;
+  const userId = req.user.userId;
 
   try {
     // Verify user has admin access to this company

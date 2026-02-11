@@ -45,7 +45,11 @@ router.post('/login', (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Check if super admin - give access to admin portal
+    // BYPASSED: Super admins now go through normal app flow with elevated access
+    // The admin dashboard code is preserved for future use
+    // Previously: super admins were redirected to admin portal
+    // Now: they enter the app like any other user, just with more permissions
+    /*
     if (user.is_super_admin === 1) {
       const token = jwt.sign({
         userId: user.id,
@@ -66,6 +70,7 @@ router.post('/login', (req, res) => {
         }
       });
     }
+    */
 
     // Get user's accessible companies
     const userType = user.user_type || 'company_user';

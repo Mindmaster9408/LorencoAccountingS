@@ -3437,7 +3437,9 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    // Check if super admin - redirect to admin portal
+                    // BYPASSED: Super admins now use the app like normal users with extra access
+                    // Admin dashboard code preserved for future use
+                    /*
                     if (result.isSuperAdmin) {
                         token = result.token;
                         localStorage.setItem('token', token);
@@ -3445,6 +3447,11 @@
                         currentUser = result.user;
                         showSuperAdminPortal();
                         return;
+                    }
+                    */
+                    // Store super admin flag but continue normal app flow
+                    if (result.isSuperAdmin) {
+                        localStorage.setItem('isSuperAdmin', 'true');
                     }
 
                     // Check if we need to select a company

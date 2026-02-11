@@ -29,18 +29,13 @@ CREATE TABLE IF NOT EXISTS integration_transactions (
     integration_id INTEGER NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
     external_id VARCHAR(255), -- External system's transaction ID
     journal_id INTEGER REFERENCES journals(id),
-    type VARCHAR(50) NOT NULL, -- 'sale', 'pos_sale', 'refund', 'pos_refund', 'payment', 'expense'
+    type VARCHAR(50) NOT NULL, -- 'sale', 'refund', 'payment', 'expense'
     amount DECIMAL(15, 2) NOT NULL,
     vat_amount DECIMAL(15, 2) DEFAULT 0,
     description TEXT,
     raw_data JSONB, -- Original data from external system
-    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'posted', 'settled', 'failed', 'reversed'
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'posted', 'failed', 'reversed'
     error_message TEXT,
-    payment_method VARCHAR(20), -- 'cash', 'card', 'account' - for POS transactions
-    customer_id VARCHAR(100), -- Customer ID for account sales
-    customer_name VARCHAR(255), -- Customer display name
-    settled_date DATE, -- When the POS transaction was settled to bank
-    settled_journal_id INTEGER REFERENCES journals(id), -- Settlement journal
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -71,8 +66,6 @@ CREATE INDEX idx_integration_transactions_journal_id ON integration_transactions
 CREATE INDEX idx_integration_transactions_type ON integration_transactions(type);
 CREATE INDEX idx_integration_transactions_status ON integration_transactions(status);
 CREATE INDEX idx_integration_transactions_created_at ON integration_transactions(created_at);
-CREATE INDEX idx_integration_transactions_payment_method ON integration_transactions(payment_method);
-CREATE INDEX idx_integration_transactions_customer_id ON integration_transactions(customer_id);
 
 -- Create indexes for integration_webhooks
 CREATE INDEX idx_integration_webhooks_integration_id ON integration_webhooks(integration_id);
@@ -93,12 +86,6 @@ COMMENT ON COLUMN integrations.api_key_hash IS 'SHA256 hash of the API key (key 
 COMMENT ON TABLE integration_transactions IS 'Tracks all transactions received from external integrations';
 COMMENT ON COLUMN integration_transactions.external_id IS 'Unique transaction ID from the external system';
 COMMENT ON COLUMN integration_transactions.raw_data IS 'Original JSON payload received from external system';
-COMMENT ON COLUMN integration_transactions.type IS 'Transaction type: sale, pos_sale, refund, pos_refund, payment, expense';
-COMMENT ON COLUMN integration_transactions.payment_method IS 'For POS transactions: cash, card, or account';
-COMMENT ON COLUMN integration_transactions.customer_id IS 'Customer ID for account sales (optional)';
-COMMENT ON COLUMN integration_transactions.customer_name IS 'Customer display name';
-COMMENT ON COLUMN integration_transactions.settled_date IS 'Date when POS transaction was matched to bank deposit';
-COMMENT ON COLUMN integration_transactions.settled_journal_id IS 'Reference to the settlement journal entry';
 
 COMMENT ON TABLE integration_webhooks IS 'Logs all incoming webhook events from integrations';
 COMMENT ON COLUMN integration_webhooks.payload IS 'Full webhook payload as JSON';

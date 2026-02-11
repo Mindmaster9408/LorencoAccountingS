@@ -12,14 +12,15 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now())
 
-  sessions           Session[]
-  conversations      Conversation[]
-  knowledgeItems     KnowledgeItem[] @relation("submittedBy")
-  approvedItems      KnowledgeItem[] @relation("approvedBy")
-  auditLogs          AuditLog[]
-  bankTransactions   BankTransaction[]
-  allocationRules    AllocationRule[]
-  confirmedAllocations BankTransaction[] @relation("confirmedBy")
+  sessions              Session[]
+  conversations         Conversation[]
+  knowledgeItems        KnowledgeItem[] @relation("submittedBy")
+  approvedItems         KnowledgeItem[] @relation("approvedBy")
+  auditLogs             AuditLog[]
+  bankTransactions      BankTransaction[]
+  allocationRules       AllocationRule[]
+  confirmedAllocations  BankTransaction[] @relation("confirmedBy")
+  coachingDataAccesses  CoachingDataAccess[]
 }
 
 model Session {
@@ -342,14 +343,35 @@ model ClientCategory {
 }
 
 // Allowed emails for login (dynamic allowlist)
+// SUPER_USER = Can access the Sean webapp directly (full control)
+// ADMIN = Administrative access via APIs only (used by other apps)
+// Only SUPER_USERs can log into the Sean webapp UI
 model AllowedEmail {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  role      String   @default("USER") // USER | ADMIN
-  addedBy   String?
-  createdAt DateTime @default(now())
+  id                String   @id @default(cuid())
+  email             String   @unique
+  role              String   @default("SUPER_USER") // SUPER_USER | ADMIN
+  hasCoachingAccess Boolean  @default(false) // Only ruanvlog@lorenco.co.za has true
+  addedBy           String?
+  createdAt         DateTime @default(now())
 
   @@index([email])
+  @@index([hasCoachingAccess])
+}
+
+// Coaching data access audit log
+// Tracks when ruan accesses coaching client data for compliance
+model CoachingDataAccess {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId    String?  // Which coaching client was accessed
+  accessType  String   // VIEW | QUERY | EXPORT
+  accessedAt  DateTime @default(now())
+  ipAddress   String?
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([accessedAt])
 }
 
 // Sean Agent Status and Configuration

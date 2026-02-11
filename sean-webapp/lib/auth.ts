@@ -1,37 +1,50 @@
 import { v4 as uuidv4 } from "uuid";
 import prisma from "./db";
 
-// Fallback hardcoded allowlist (used if DB table doesn't exist yet)
-const FALLBACK_ALLOWED_EMAILS = [
+// ============================================
+// SUPER USER SYSTEM
+// The Sean webapp is ONLY accessible to Super Users.
+// Regular users can only interact with Sean through
+// other apps (POS, Payroll, etc.) via their Sean APIs.
+// ============================================
+
+// Hardcoded super users (always have access, cannot be removed)
+const CORE_SUPER_USERS = [
   "ruanvlog@lorenco.co.za",
   "antonjvr@lorenco.co.za",
   "mj@lorenco.co.za",
 ];
 
-export async function isEmailAllowed(email: string): Promise<boolean> {
+// Check if an email is a Super User (ONLY super users can access Sean webapp)
+export async function isSuperUserEmail(email: string): Promise<boolean> {
   const normalizedEmail = email.toLowerCase().trim();
 
-  // First check fallback list (always allowed)
-  if (FALLBACK_ALLOWED_EMAILS.includes(normalizedEmail)) {
+  // Core super users always have access
+  if (CORE_SUPER_USERS.includes(normalizedEmail)) {
     return true;
   }
 
-  // Then check database
+  // Check database for SUPER_USER role
   try {
     const allowed = await prisma.allowedEmail.findUnique({
       where: { email: normalizedEmail },
     });
-    return !!allowed;
+    return allowed?.role === "SUPER_USER";
   } catch (error) {
-    // Table might not exist yet (before migration)
     console.warn("AllowedEmail table check failed, using fallback:", error);
     return false;
   }
 }
 
+// Legacy compatibility - isEmailAllowed now checks for SUPER_USER only
+// The Sean webapp is exclusively for super users
+export async function isEmailAllowed(email: string): Promise<boolean> {
+  return isSuperUserEmail(email);
+}
+
 export async function addAllowedEmail(
   email: string,
-  role: "USER" | "ADMIN" = "USER",
+  role: "SUPER_USER" | "ADMIN" = "ADMIN",
   addedBy?: string
 ): Promise<{ success: boolean; error?: string }> {
   const normalizedEmail = email.toLowerCase().trim();
@@ -70,9 +83,9 @@ export async function addAllowedEmail(
 export async function removeAllowedEmail(email: string): Promise<{ success: boolean; error?: string }> {
   const normalizedEmail = email.toLowerCase().trim();
 
-  // Don't allow removing fallback emails
-  if (FALLBACK_ALLOWED_EMAILS.includes(normalizedEmail)) {
-    return { success: false, error: "Cannot remove core admin emails" };
+  // Don't allow removing core super user emails
+  if (CORE_SUPER_USERS.includes(normalizedEmail)) {
+    return { success: false, error: "Cannot remove core super user emails" };
   }
 
   try {
@@ -99,21 +112,21 @@ export async function listAllowedEmails(): Promise<Array<{
 
     const result = [];
 
-    // Add fallback emails first (marked as core)
-    for (const email of FALLBACK_ALLOWED_EMAILS) {
+    // Add core super users first (always present, cannot be removed)
+    for (const email of CORE_SUPER_USERS) {
       const inDb = dbEmails.find(e => e.email === email);
       result.push({
         email,
-        role: inDb?.role || "ADMIN",
+        role: "SUPER_USER",
         addedBy: null,
         createdAt: inDb?.createdAt || new Date(),
         isCore: true,
       });
     }
 
-    // Add other DB emails
+    // Add other DB emails (only SUPER_USER role can access the Sean app)
     for (const dbEmail of dbEmails) {
-      if (!FALLBACK_ALLOWED_EMAILS.includes(dbEmail.email)) {
+      if (!CORE_SUPER_USERS.includes(dbEmail.email)) {
         result.push({
           email: dbEmail.email,
           role: dbEmail.role,
@@ -126,10 +139,10 @@ export async function listAllowedEmails(): Promise<Array<{
 
     return result;
   } catch (error) {
-    // Return fallback if DB not available
-    return FALLBACK_ALLOWED_EMAILS.map(email => ({
+    // Return core super users if DB not available
+    return CORE_SUPER_USERS.map(email => ({
       email,
-      role: "ADMIN",
+      role: "SUPER_USER",
       addedBy: null,
       createdAt: new Date(),
       isCore: true,
@@ -186,12 +199,12 @@ export async function getOrCreateUser(email: string) {
   return user;
 }
 
-// Check if user is admin
+// Check if user is admin (Super Users are always admins)
 export async function isUserAdmin(email: string): Promise<boolean> {
   const normalizedEmail = email.toLowerCase().trim();
 
-  // Fallback admins
-  if (FALLBACK_ALLOWED_EMAILS.includes(normalizedEmail)) {
+  // Core super users are always admins
+  if (CORE_SUPER_USERS.includes(normalizedEmail)) {
     return true;
   }
 
@@ -199,7 +212,7 @@ export async function isUserAdmin(email: string): Promise<boolean> {
     const allowed = await prisma.allowedEmail.findUnique({
       where: { email: normalizedEmail },
     });
-    return allowed?.role === "ADMIN";
+    return allowed?.role === "SUPER_USER" || allowed?.role === "ADMIN";
   } catch {
     return false;
   }

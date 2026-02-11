@@ -4,7 +4,7 @@ const db = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // GET /api/employees - Fetch all employees for the company
-router.get('/', authenticate, authorize('admin', 'accountant'), async (req, res) => {
+router.get('/', authenticate, authorize('ADMIN', 'ACCOUNTANT'), async (req, res) => {
   const companyId = req.user.companyId;
 
   try {
@@ -29,7 +29,7 @@ router.get('/', authenticate, authorize('admin', 'accountant'), async (req, res)
 });
 
 // PUT /api/employees - Save/update employees
-router.put('/', authenticate, authorize('admin', 'accountant'), async (req, res) => {
+router.put('/', authenticate, authorize('ADMIN', 'ACCOUNTANT'), async (req, res) => {
   const companyId = req.user.companyId;
   const { employees } = req.body;
 
