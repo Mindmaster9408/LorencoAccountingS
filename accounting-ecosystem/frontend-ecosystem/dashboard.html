@@ -822,12 +822,12 @@
                 <form id="addClientForm" onsubmit="return saveNewClient(event)">
                     <div class="form-row">
                         <div class="form-field">
-                            <label>Full Name *</label>
+                            <label id="acNameLabel">Full Name *</label>
                             <input type="text" id="acName" required placeholder="e.g. John Smith">
                         </div>
                         <div class="form-field">
                             <label>Client Type</label>
-                            <select id="acType">
+                            <select id="acType" onchange="onClientTypeChange()">
                                 <option value="individual">👤 Individual</option>
                                 <option value="business">🏢 Business / Company</option>
                             </select>
@@ -1247,11 +1247,25 @@
         }
 
         // ═══ ADD CLIENT ═══
+        function onClientTypeChange() {
+            const type = document.getElementById('acType').value;
+            const label = document.getElementById('acNameLabel');
+            const input = document.getElementById('acName');
+            if (type === 'business') {
+                label.textContent = 'Company Name *';
+                input.placeholder = 'e.g. Green Valley School';
+            } else {
+                label.textContent = 'Full Name *';
+                input.placeholder = 'e.g. John Smith';
+            }
+        }
+
         function showAddClient() {
             document.getElementById('addClientModal').classList.add('show');
             document.getElementById('acName').focus();
             // Reset form
             document.getElementById('addClientForm').reset();
+            onClientTypeChange();
             document.querySelectorAll('#acApps .app-check').forEach(el => {
                 el.classList.remove('checked');
                 el.querySelector('input').checked = false;
