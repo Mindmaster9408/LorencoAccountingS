@@ -8,9 +8,10 @@
  * Toggle: MOCK_MODE=true in .env
  *
  * Test Credentials:
- *   pos@test.com     / pos123     — POS cashier (store_manager)
- *   payroll@test.com / payroll123 — Payroll admin (payroll_admin)
- *   admin@test.com   / admin123   — Super admin (both modules)
+ *   pos@test.com              / pos123           — POS cashier (store_manager)
+ *   payroll@test.com          / payroll123       — Payroll admin (payroll_admin)
+ *   admin@test.com            / admin123         — Super admin (both modules)
+ *   ruanvlog@lorenco.co.za    / Mindmaster@277477 — Super admin (all modules incl. SEAN)
  *
  * All data resets on server restart (in-memory only).
  * ============================================================================
