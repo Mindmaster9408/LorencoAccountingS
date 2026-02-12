@@ -226,7 +226,7 @@ authRouter.post('/register', async (req, res) => {
         address: practice.address || null,
         company_type: 'accounting_practice',
         is_active: true,
-        modules_enabled: ['accounting', 'payroll', 'pos'],
+        modules_enabled: [],   // No apps active by default — must be activated
         subscription_status: 'active',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -248,7 +248,7 @@ authRouter.post('/register', async (req, res) => {
         address: business.address || null,
         company_type: 'business',
         is_active: true,
-        modules_enabled: ['pos'],
+        modules_enabled: [],   // No apps active by default — must be activated
         subscription_status: 'active',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -266,7 +266,7 @@ authRouter.post('/register', async (req, res) => {
         trading_name: req.body.trading_name || req.body.company_name,
         company_type: 'business',
         is_active: true,
-        modules_enabled: ['pos'],
+        modules_enabled: [],   // No apps active by default — must be activated
         subscription_status: 'active',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -276,6 +276,27 @@ authRouter.post('/register', async (req, res) => {
         user_id: newUser.id, company_id: company.id,
         role: 'business_owner', is_primary: true, is_active: true,
       });
+    }
+
+    // Auto-create an ecoClient entry for the new company/practice
+    if (company) {
+      const clientType = company.company_type === 'accounting_practice' ? 'business' : (company.company_type || 'business');
+      mock.ecoClients.push({
+        id: mock.nextId(),
+        company_id: company.id,
+        name: company.company_name,
+        email: newUser.email,
+        phone: company.phone || null,
+        id_number: null,
+        address: company.address || null,
+        client_type: clientType,
+        apps: [],  // no apps activated yet
+        notes: `Registered via ${isAccountant ? 'accounting practice' : 'business'} signup.`,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      console.log('[REGISTER] Created ecoClient for company:', company.company_name);
     }
 
     // Process additional users

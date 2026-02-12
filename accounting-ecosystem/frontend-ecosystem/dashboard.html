@@ -1061,9 +1061,9 @@
             const container = document.getElementById('companySelector');
 
             if (isSuperAdmin && companies.length === 0) {
-                // Super admin sees all companies
+                // Super admin sees all companies with all modules
                 companies = [
-                    { id: 1, company_name: 'All Companies', trading_name: 'Super Admin', role: 'super_admin', modules_enabled: enabledModules }
+                    { id: 1, company_name: 'All Companies', trading_name: 'Super Admin', role: 'super_admin', modules_enabled: ['pos', 'payroll', 'accounting', 'sean'] }
                 ];
             }
 
@@ -1100,13 +1100,16 @@
         // ── Render Apps ──
         function renderApps() {
             const container = document.getElementById('appsGrid');
-            const companyModules = selectedCompany?.modules_enabled || enabledModules;
+            const companyModules = selectedCompany?.modules_enabled || [];
             let activeCount = 0;
 
             container.innerHTML = APP_DEFS.map(app => {
-                const isEnabled = enabledModules.includes(app.key);
-                const hasAccess = isSuperAdmin || (companyModules && companyModules.includes(app.key));
-                const isActive = isEnabled && hasAccess;
+                // SEAN AI is only visible to super admins
+                if (app.key === 'sean' && !isSuperAdmin) return '';
+
+                // App is active if the company has it in modules_enabled
+                // Super admins can see all apps as active
+                const isActive = isSuperAdmin || companyModules.includes(app.key);
                 if (isActive) activeCount++;
 
                 return `
@@ -1120,7 +1123,7 @@
                         </div>
                         <div class="app-desc">${app.desc}</div>
                         <div class="app-footer">
-                            <span class="app-status ${isActive ? 'active' : 'disabled'}">${isActive ? '● Active' : '○ Disabled'}</span>
+                            <span class="app-status ${isActive ? 'active' : 'disabled'}">${isActive ? '● Active' : '○ Not Activated'}</span>
                             ${isActive ? `<button class="app-btn-launch" onclick="event.stopPropagation(); launchApp('${app.key}')">Launch →</button>` : ''}
                         </div>
                     </div>
