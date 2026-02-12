@@ -167,6 +167,16 @@ const customers = [
   { id: 5, company_id: 1, name: 'Sipho Dlamini',       email: 'sipho.d@outlook.com',    phone: '084 555 0004',   address: '7 Buitenkant St, Gardens',       id_number: '8507125300086', customer_number: 'C-00004',  customer_group: 'retail',    loyalty_points: 100,  loyalty_tier: 'bronze', current_balance: 0,    notes: null,                       is_active: true, created_at: '2024-04-01T00:00:00.000Z', updated_at: '2024-04-01T00:00:00.000Z' },
 ];
 
+// ─── Ecosystem Clients (Cross-App) ──────────────────────────────────────────
+// Central client registry — tracks which apps each client is linked to
+const ecoClients = [
+  { id: 1, company_id: 1, name: 'Thabo Mokwena',       email: 'thabo@email.co.za',     phone: '082 555 0001', id_number: '9001015800081', address: '12 Oak Street, Braamfontein',    client_type: 'individual', apps: ['pos', 'accounting'],                 notes: 'Regular walk-in customer, also on accounting ledger.', is_active: true, created_at: '2024-02-01T00:00:00.000Z', updated_at: '2024-06-01T00:00:00.000Z' },
+  { id: 2, company_id: 1, name: 'Aisha Patel',         email: 'aisha.patel@gmail.com', phone: '073 555 0002', id_number: '8805210300088', address: '45 Longmarket St, CBD',          client_type: 'individual', apps: ['pos', 'accounting', 'sean'],         notes: 'Has account balance, managed by SEAN.',               is_active: true, created_at: '2024-02-15T00:00:00.000Z', updated_at: '2024-06-15T00:00:00.000Z' },
+  { id: 3, company_id: 1, name: 'Green Valley School', email: 'admin@greenvalley.edu', phone: '021 555 0003', id_number: null,            address: '100 Education Drive, Pinelands', client_type: 'business',   apps: ['pos', 'payroll', 'accounting', 'sean'], notes: 'School — 30 day terms, full ecosystem.',               is_active: true, created_at: '2024-03-01T00:00:00.000Z', updated_at: '2024-06-01T00:00:00.000Z' },
+  { id: 4, company_id: 1, name: 'Sipho Dlamini',       email: 'sipho.d@outlook.com',   phone: '084 555 0004', id_number: '8507125300086', address: '7 Buitenkant St, Gardens',       client_type: 'individual', apps: ['pos'],                               notes: null,                                                    is_active: true, created_at: '2024-04-01T00:00:00.000Z', updated_at: '2024-04-01T00:00:00.000Z' },
+  { id: 5, company_id: 2, name: 'Cape Town Catering',  email: 'orders@ctcatering.co.za', phone: '021 444 5566', id_number: null,          address: '22 Strand Street, Cape Town',    client_type: 'business',   apps: ['pos', 'accounting'],                 notes: 'Branch 2 wholesale client.',                            is_active: true, created_at: '2024-05-01T00:00:00.000Z', updated_at: '2024-05-01T00:00:00.000Z' },
+];
+
 // ─── Sales + Items + Payments (POS) ──────────────────────────────────────────
 const sales = [
   {
@@ -615,4 +625,7 @@ module.exports = {
   // Mock audit
   mockAuditLog,
   mockAuditFromReq,
+
+  // Ecosystem clients (cross-app)
+  ecoClients,
 };

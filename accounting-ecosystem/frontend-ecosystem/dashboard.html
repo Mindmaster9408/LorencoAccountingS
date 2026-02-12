@@ -340,6 +340,330 @@
         .btn-client.primary:hover {
             box-shadow: 0 4px 15px var(--accent-glow);
         }
+
+        /* ── Modal Overlay ───────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 12, 41, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 500;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: #1e1b3a;
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            width: 100%;
+            max-width: 580px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.5);
+        }
+        .modal-header {
+            padding: 28px 28px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        .modal-close {
+            width: 36px; height: 36px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .modal-close:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
+        .modal-body { padding: 24px 28px 28px; }
+
+        /* ── Form Fields ─────────────────────────────────────── */
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+        .form-row.full { grid-template-columns: 1fr; }
+        .form-field label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .form-field input, .form-field select, .form-field textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .form-field textarea { resize: vertical; min-height: 60px; }
+
+        /* ── App Checkboxes ──────────────────────────────────── */
+        .app-checkboxes {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+        .app-check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.04);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .app-check:hover { border-color: rgba(255,255,255,0.15); }
+        .app-check.checked { border-color: var(--accent); background: rgba(102,126,234,0.12); }
+        .app-check input { display: none; }
+        .app-check .app-check-icon { font-size: 1.1rem; }
+        .app-check .app-check-label { font-size: 0.85rem; font-weight: 600; }
+
+        /* ── Form Buttons ────────────────────────────────────── */
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        .btn-form {
+            padding: 10px 24px;
+            border-radius: 12px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+        .btn-form.cancel {
+            background: transparent;
+            color: var(--text-muted);
+        }
+        .btn-form.cancel:hover { color: var(--text); }
+        .btn-form.save {
+            background: linear-gradient(135deg, var(--accent), #764ba2);
+            color: white;
+            border: none;
+        }
+        .btn-form.save:hover { box-shadow: 0 4px 15px var(--accent-glow); transform: translateY(-1px); }
+        .btn-form.save:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        /* ── Client Management Panel (View Clients) ──────────── */
+        .clients-panel {
+            display: none;
+            margin-bottom: 40px;
+        }
+        .clients-panel.show { display: block; }
+        .clients-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .clients-panel-header h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .clients-search {
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 0.88rem;
+            width: 260px;
+            max-width: 100%;
+        }
+        .clients-search:focus { outline: none; border-color: var(--accent); }
+        .clients-filter-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .filter-chip {
+            padding: 6px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .filter-chip:hover { border-color: rgba(255,255,255,0.15); color: var(--text); }
+        .filter-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(102,126,234,0.1); }
+
+        /* ── Client Cards ────────────────────────────────────── */
+        .clients-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .client-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 22px;
+            transition: all 0.2s;
+        }
+        .client-card:hover {
+            border-color: rgba(255,255,255,0.15);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+        }
+        .client-card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .client-card-name {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+        .client-card-type {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: rgba(102,126,234,0.15);
+            color: #a3b1f0;
+        }
+        .client-card-type.business {
+            background: rgba(245,158,11,0.15);
+            color: #fbbf24;
+        }
+        .client-card-meta {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .client-card-meta span.icon { font-size: 0.9rem; }
+
+        /* ── App Badges on Client Card ───────────────────────── */
+        .client-apps-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+        .client-apps-row .label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        .app-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .app-badge.pos { background: rgba(59,130,246,0.15); color: #60a5fa; }
+        .app-badge.payroll { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .app-badge.accounting { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .app-badge.sean { background: rgba(139,92,246,0.15); color: #a78bfa; }
+        .btn-add-app {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            background: rgba(102,126,234,0.1);
+            border: 1px dashed rgba(102,126,234,0.3);
+            color: var(--accent);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-add-app:hover {
+            background: rgba(102,126,234,0.2);
+            border-color: var(--accent);
+        }
+
+        .clients-empty {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+        .clients-empty .icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+        /* ── Toast Notification ──────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 14px 24px;
+            background: #10b981;
+            color: white;
+            border-radius: 14px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            z-index: 9999;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: #ef4444; }
+
+        @media (max-width: 768px) {
+            .form-row { grid-template-columns: 1fr; }
+            .clients-grid { grid-template-columns: 1fr; }
+            .clients-panel-header { flex-direction: column; align-items: stretch; }
+            .clients-search { width: 100%; }
+        }
+
         .stat-card {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -454,9 +778,29 @@
                 <button type="button" class="btn-client primary" onclick="showAddClient()">
                     <span>➕</span> Add Client
                 </button>
-                <button type="button" class="btn-client" onclick="showViewClients()">
+                <button type="button" class="btn-client" onclick="toggleViewClients()">
                     <span>👥</span> View Clients
                 </button>
+            </div>
+
+            <!-- View Clients Panel (inline, toggled) -->
+            <div class="clients-panel" id="clientsPanel">
+                <div class="clients-panel-header">
+                    <h3>All Clients</h3>
+                    <input type="text" class="clients-search" id="clientsSearch" placeholder="Search by name, email or phone..." oninput="filterClients()">
+                </div>
+                <div class="clients-filter-bar" id="clientsFilterBar">
+                    <span class="filter-chip active" data-filter="all" onclick="setClientFilter('all', this)">All</span>
+                    <span class="filter-chip" data-filter="pos" onclick="setClientFilter('pos', this)">🛒 POS</span>
+                    <span class="filter-chip" data-filter="payroll" onclick="setClientFilter('payroll', this)">💰 Payroll</span>
+                    <span class="filter-chip" data-filter="accounting" onclick="setClientFilter('accounting', this)">📊 Accounting</span>
+                    <span class="filter-chip" data-filter="sean" onclick="setClientFilter('sean', this)">🤖 SEAN</span>
+                    <span class="filter-chip" data-filter="individual" onclick="setClientFilter('individual', this)">👤 Individual</span>
+                    <span class="filter-chip" data-filter="business" onclick="setClientFilter('business', this)">🏢 Business</span>
+                </div>
+                <div class="clients-grid" id="clientsGrid">
+                    <!-- Filled by JS -->
+                </div>
             </div>
         </div>
 
@@ -466,6 +810,140 @@
             <!-- Filled by JS -->
         </div>
     </div>
+
+    <!-- ═══════ ADD CLIENT MODAL ═══════ -->
+    <div class="modal-overlay" id="addClientModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>➕ Add New Client</h2>
+                <button class="modal-close" onclick="closeAddClient()">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="addClientForm" onsubmit="return saveNewClient(event)">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Full Name *</label>
+                            <input type="text" id="acName" required placeholder="e.g. John Smith">
+                        </div>
+                        <div class="form-field">
+                            <label>Client Type</label>
+                            <select id="acType">
+                                <option value="individual">👤 Individual</option>
+                                <option value="business">🏢 Business / Company</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Email</label>
+                            <input type="email" id="acEmail" placeholder="client@email.co.za">
+                        </div>
+                        <div class="form-field">
+                            <label>Phone</label>
+                            <input type="tel" id="acPhone" placeholder="082 123 4567">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>ID / Reg Number</label>
+                            <input type="text" id="acIdNumber" placeholder="SA ID or Company Reg">
+                        </div>
+                        <div class="form-field">
+                            <label>Company</label>
+                            <select id="acCompany"></select>
+                        </div>
+                    </div>
+                    <div class="form-row full">
+                        <div class="form-field">
+                            <label>Address</label>
+                            <input type="text" id="acAddress" placeholder="Street, City, Code">
+                        </div>
+                    </div>
+                    <div class="form-row full">
+                        <div class="form-field">
+                            <label>Link to Apps</label>
+                            <div class="app-checkboxes" id="acApps">
+                                <label class="app-check" onclick="toggleAppCheck(this)">
+                                    <input type="checkbox" name="apps" value="pos">
+                                    <span class="app-check-icon">🛒</span>
+                                    <span class="app-check-label">POS</span>
+                                </label>
+                                <label class="app-check" onclick="toggleAppCheck(this)">
+                                    <input type="checkbox" name="apps" value="payroll">
+                                    <span class="app-check-icon">💰</span>
+                                    <span class="app-check-label">Payroll</span>
+                                </label>
+                                <label class="app-check" onclick="toggleAppCheck(this)">
+                                    <input type="checkbox" name="apps" value="accounting">
+                                    <span class="app-check-icon">📊</span>
+                                    <span class="app-check-label">Accounting</span>
+                                </label>
+                                <label class="app-check" onclick="toggleAppCheck(this)">
+                                    <input type="checkbox" name="apps" value="sean">
+                                    <span class="app-check-icon">🤖</span>
+                                    <span class="app-check-label">SEAN AI</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row full">
+                        <div class="form-field">
+                            <label>Notes</label>
+                            <textarea id="acNotes" placeholder="Optional notes about this client..."></textarea>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-form cancel" onclick="closeAddClient()">Cancel</button>
+                        <button type="submit" class="btn-form save" id="acSaveBtn">Save Client</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ EDIT APPS MODAL ═══════ -->
+    <div class="modal-overlay" id="editAppsModal">
+        <div class="modal" style="max-width: 440px;">
+            <div class="modal-header">
+                <h2>🔗 Manage App Links</h2>
+                <button class="modal-close" onclick="closeEditApps()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-muted); margin-bottom: 16px; font-size: 0.88rem;">
+                    Select which apps <strong id="editAppsClientName"></strong> should be linked to:
+                </p>
+                <div class="app-checkboxes" id="editAppsCheckboxes">
+                    <label class="app-check" onclick="toggleAppCheck(this)">
+                        <input type="checkbox" name="editApps" value="pos">
+                        <span class="app-check-icon">🛒</span>
+                        <span class="app-check-label">POS</span>
+                    </label>
+                    <label class="app-check" onclick="toggleAppCheck(this)">
+                        <input type="checkbox" name="editApps" value="payroll">
+                        <span class="app-check-icon">💰</span>
+                        <span class="app-check-label">Payroll</span>
+                    </label>
+                    <label class="app-check" onclick="toggleAppCheck(this)">
+                        <input type="checkbox" name="editApps" value="accounting">
+                        <span class="app-check-icon">📊</span>
+                        <span class="app-check-label">Accounting</span>
+                    </label>
+                    <label class="app-check" onclick="toggleAppCheck(this)">
+                        <input type="checkbox" name="editApps" value="sean">
+                        <span class="app-check-icon">🤖</span>
+                        <span class="app-check-label">SEAN AI</span>
+                    </label>
+                </div>
+                <div class="form-actions" style="margin-top: 24px;">
+                    <button type="button" class="btn-form cancel" onclick="closeEditApps()">Cancel</button>
+                    <button type="button" class="btn-form save" onclick="saveEditApps()">Update</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
 
     <!-- Launch overlay -->
     <div class="launch-overlay" id="launchOverlay">
@@ -560,6 +1038,12 @@
             renderCompanies();
             renderApps();
             renderStats();
+
+            // Show client management for super admins & business owners
+            if (isSuperAdmin || (selectedCompany && ['business_owner', 'super_admin', 'store_manager'].includes(selectedCompany.role))) {
+                document.getElementById('clientManagementSection').classList.remove('hidden');
+                populateCompanyDropdown();
+            }
         }
 
         // ── Render User ──
@@ -723,6 +1207,278 @@
             localStorage.removeItem('company');
             localStorage.removeItem('sso_source');
             window.location.href = '/';
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CLIENT MANAGEMENT
+        // ═══════════════════════════════════════════════════════════════════
+
+        let allClients = [];
+        let activeFilter = 'all';
+        let editingClientId = null;
+
+        const APP_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖' };
+        const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI' };
+
+        // ── Toast ──
+        function showToast(msg, isError) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => t.className = 'toast', 3000);
+        }
+
+        // ── Populate company dropdown in Add Client form ──
+        function populateCompanyDropdown() {
+            const sel = document.getElementById('acCompany');
+            if (!sel) return;
+            sel.innerHTML = companies.map(c =>
+                `<option value="${c.id}">${c.trading_name || c.company_name}</option>`
+            ).join('');
+        }
+
+        // ── Toggle app checkbox styling ──
+        function toggleAppCheck(label) {
+            const cb = label.querySelector('input[type="checkbox"]');
+            // Let the click toggle the checkbox naturally, then sync styling
+            setTimeout(() => {
+                label.classList.toggle('checked', cb.checked);
+            }, 0);
+        }
+
+        // ═══ ADD CLIENT ═══
+        function showAddClient() {
+            document.getElementById('addClientModal').classList.add('show');
+            document.getElementById('acName').focus();
+            // Reset form
+            document.getElementById('addClientForm').reset();
+            document.querySelectorAll('#acApps .app-check').forEach(el => {
+                el.classList.remove('checked');
+                el.querySelector('input').checked = false;
+            });
+        }
+        function closeAddClient() {
+            document.getElementById('addClientModal').classList.remove('show');
+        }
+
+        async function saveNewClient(e) {
+            e.preventDefault();
+            const btn = document.getElementById('acSaveBtn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            const selectedApps = [];
+            document.querySelectorAll('#acApps input[name="apps"]:checked').forEach(cb => selectedApps.push(cb.value));
+
+            const payload = {
+                name: document.getElementById('acName').value.trim(),
+                email: document.getElementById('acEmail').value.trim() || null,
+                phone: document.getElementById('acPhone').value.trim() || null,
+                id_number: document.getElementById('acIdNumber').value.trim() || null,
+                address: document.getElementById('acAddress').value.trim() || null,
+                client_type: document.getElementById('acType').value,
+                company_id: parseInt(document.getElementById('acCompany').value),
+                apps: selectedApps,
+                notes: document.getElementById('acNotes').value.trim() || null,
+            };
+
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/eco-clients`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to create client');
+                }
+
+                const newClient = await res.json();
+                closeAddClient();
+                showToast(`✅ ${newClient.name} added to ${selectedApps.length} app(s)`);
+
+                // Refresh clients if panel is open
+                if (document.getElementById('clientsPanel').classList.contains('show')) {
+                    await loadClients();
+                }
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Client';
+            }
+
+            return false;
+        }
+
+        // ═══ VIEW CLIENTS ═══
+        function toggleViewClients() {
+            const panel = document.getElementById('clientsPanel');
+            if (panel.classList.contains('show')) {
+                panel.classList.remove('show');
+            } else {
+                panel.classList.add('show');
+                loadClients();
+            }
+        }
+
+        async function loadClients() {
+            const token = localStorage.getItem('eco_token');
+            try {
+                const companyFilter = selectedCompany && selectedCompany.id ? `?company_id=${selectedCompany.id}` : '';
+                const res = await fetch(`${API_BASE}/api/eco-clients${companyFilter}`, {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (!res.ok) throw new Error('Failed to load clients');
+                const data = await res.json();
+                allClients = data.clients || [];
+                renderClients();
+            } catch (err) {
+                document.getElementById('clientsGrid').innerHTML =
+                    `<div class="clients-empty"><div class="icon">⚠️</div><p>${err.message}</p></div>`;
+            }
+        }
+
+        function renderClients() {
+            const grid = document.getElementById('clientsGrid');
+            const search = (document.getElementById('clientsSearch').value || '').toLowerCase();
+
+            let filtered = [...allClients];
+
+            // Apply search
+            if (search) {
+                filtered = filtered.filter(c =>
+                    (c.name && c.name.toLowerCase().includes(search)) ||
+                    (c.email && c.email.toLowerCase().includes(search)) ||
+                    (c.phone && c.phone.includes(search))
+                );
+            }
+
+            // Apply filter
+            if (activeFilter === 'individual' || activeFilter === 'business') {
+                filtered = filtered.filter(c => c.client_type === activeFilter);
+            } else if (['pos', 'payroll', 'accounting', 'sean'].includes(activeFilter)) {
+                filtered = filtered.filter(c => c.apps && c.apps.includes(activeFilter));
+            }
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `
+                    <div class="clients-empty">
+                        <div class="icon">👥</div>
+                        <p>${search || activeFilter !== 'all' ? 'No clients match your filter.' : 'No clients yet. Click "Add Client" to get started.'}</p>
+                    </div>`;
+                return;
+            }
+
+            grid.innerHTML = filtered.map(c => {
+                const typeCls = c.client_type === 'business' ? ' business' : '';
+                const typeLabel = c.client_type === 'business' ? '🏢 Business' : '👤 Individual';
+
+                const appBadges = (c.apps || []).map(a =>
+                    `<span class="app-badge ${a}">${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}</span>`
+                ).join('');
+
+                return `
+                    <div class="client-card">
+                        <div class="client-card-top">
+                            <div>
+                                <div class="client-card-name">${escHtml(c.name)}</div>
+                                ${c.company_name ? `<div class="client-card-meta"><span class="icon">🏢</span> ${escHtml(c.company_name)}</div>` : ''}
+                            </div>
+                            <span class="client-card-type${typeCls}">${typeLabel}</span>
+                        </div>
+                        ${c.email ? `<div class="client-card-meta"><span class="icon">📧</span> ${escHtml(c.email)}</div>` : ''}
+                        ${c.phone ? `<div class="client-card-meta"><span class="icon">📱</span> ${escHtml(c.phone)}</div>` : ''}
+                        ${c.address ? `<div class="client-card-meta"><span class="icon">📍</span> ${escHtml(c.address)}</div>` : ''}
+                        <div class="client-apps-row">
+                            <span class="label">Linked to:</span>
+                            ${appBadges || '<span style="color:var(--text-muted); font-size:0.8rem;">No apps linked</span>'}
+                            <button type="button" class="btn-add-app" onclick="openEditApps(${c.id})">+ Add</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function escHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function filterClients() {
+            renderClients();
+        }
+
+        function setClientFilter(filter, el) {
+            activeFilter = filter;
+            document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            renderClients();
+        }
+
+        // ═══ EDIT APPS MODAL ═══
+        function openEditApps(clientId) {
+            const client = allClients.find(c => c.id === clientId);
+            if (!client) return;
+
+            editingClientId = clientId;
+            document.getElementById('editAppsClientName').textContent = client.name;
+
+            // Set checkboxes
+            document.querySelectorAll('#editAppsCheckboxes .app-check').forEach(label => {
+                const cb = label.querySelector('input');
+                const isLinked = client.apps && client.apps.includes(cb.value);
+                cb.checked = isLinked;
+                label.classList.toggle('checked', isLinked);
+            });
+
+            document.getElementById('editAppsModal').classList.add('show');
+        }
+
+        function closeEditApps() {
+            document.getElementById('editAppsModal').classList.remove('show');
+            editingClientId = null;
+        }
+
+        async function saveEditApps() {
+            if (!editingClientId) return;
+
+            const selectedApps = [];
+            document.querySelectorAll('#editAppsCheckboxes input[name="editApps"]:checked').forEach(cb => selectedApps.push(cb.value));
+
+            const client = allClients.find(c => c.id === editingClientId);
+            const oldApps = client ? [...(client.apps || [])] : [];
+
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/eco-clients/${editingClientId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ apps: selectedApps }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to update');
+                }
+
+                closeEditApps();
+
+                // Compute what changed
+                const added = selectedApps.filter(a => !oldApps.includes(a));
+                const removed = oldApps.filter(a => !selectedApps.includes(a));
+                let msg = `✅ ${client.name} updated`;
+                if (added.length) msg += ` — added: ${added.map(a => APP_LABELS[a]).join(', ')}`;
+                if (removed.length) msg += ` — removed: ${removed.map(a => APP_LABELS[a]).join(', ')}`;
+
+                showToast(msg);
+                await loadClients();
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            }
         }
 
         // ── Start ──

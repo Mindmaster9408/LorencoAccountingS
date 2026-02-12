@@ -851,6 +851,146 @@ auditRouter.get('/', requirePermission('AUDIT.VIEW'), (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ECOSYSTEM CLIENT ROUTES (Cross-App Client Management)
+// ═══════════════════════════════════════════════════════════════════════════════
+const ecoClientsRouter = express.Router();
+
+// GET /api/eco-clients — list all clients for user's companies (super_admin sees all)
+ecoClientsRouter.get('/', (req, res) => {
+  const { company_id, app, search, client_type } = req.query;
+  let results = [...mock.ecoClients].filter(c => c.is_active);
+
+  // Filter by company (super admins see all unless filtering)
+  if (company_id) {
+    results = results.filter(c => c.company_id === parseInt(company_id));
+  } else if (!req.user.isSuperAdmin) {
+    const userCompanyIds = mock.userCompanyAccess
+      .filter(a => a.user_id === req.user.userId && a.is_active)
+      .map(a => a.company_id);
+    results = results.filter(c => userCompanyIds.includes(c.company_id));
+  }
+
+  // Filter by app
+  if (app) results = results.filter(c => c.apps.includes(app));
+
+  // Filter by client type
+  if (client_type) results = results.filter(c => c.client_type === client_type);
+
+  // Search by name, email, phone
+  if (search) {
+    const s = search.toLowerCase();
+    results = results.filter(c =>
+      (c.name && c.name.toLowerCase().includes(s)) ||
+      (c.email && c.email.toLowerCase().includes(s)) ||
+      (c.phone && c.phone.includes(s))
+    );
+  }
+
+  // Enrich with company name
+  results = results.map(c => {
+    const company = mock.companies.find(co => co.id === c.company_id);
+    return { ...c, company_name: company ? company.trading_name || company.company_name : 'Unknown' };
+  });
+
+  results.sort((a, b) => a.name.localeCompare(b.name));
+  res.json({ clients: results, total: results.length });
+});
+
+// GET /api/eco-clients/:id — single client
+ecoClientsRouter.get('/:id', (req, res) => {
+  const client = mock.ecoClients.find(c => c.id === parseInt(req.params.id));
+  if (!client) return res.status(404).json({ error: 'Client not found' });
+  const company = mock.companies.find(co => co.id === client.company_id);
+  res.json({ ...client, company_name: company ? company.trading_name || company.company_name : 'Unknown' });
+});
+
+// POST /api/eco-clients — create a new ecosystem client
+ecoClientsRouter.post('/', (req, res) => {
+  const { name, email, phone, id_number, address, client_type, apps, company_id, notes } = req.body;
+  if (!name) return res.status(400).json({ error: 'Client name is required' });
+
+  const newClient = {
+    id: mock.nextId(),
+    company_id: company_id || req.companyId || 1,
+    name,
+    email: email || null,
+    phone: phone || null,
+    id_number: id_number || null,
+    address: address || null,
+    client_type: client_type || 'individual',
+    apps: apps || [],
+    notes: notes || null,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  mock.ecoClients.push(newClient);
+
+  // Also create POS customer if linked to POS
+  if (newClient.apps.includes('pos')) {
+    const maxCustId = Math.max(0, ...mock.customers.map(c => c.id));
+    const custNum = `C-${String(maxCustId + 1).padStart(5, '0')}`;
+    mock.customers.push({
+      id: maxCustId + 1,
+      company_id: newClient.company_id,
+      name: newClient.name,
+      email: newClient.email,
+      phone: newClient.phone,
+      address: newClient.address,
+      id_number: newClient.id_number,
+      customer_number: custNum,
+      customer_group: newClient.client_type === 'business' ? 'wholesale' : 'retail',
+      loyalty_points: 0,
+      loyalty_tier: 'bronze',
+      current_balance: 0,
+      notes: newClient.notes,
+      is_active: true,
+      created_at: newClient.created_at,
+      updated_at: newClient.updated_at,
+    });
+  }
+
+  mock.mockAuditFromReq(req, 'CREATE', 'eco_client', newClient.id, { module: 'ecosystem', metadata: { apps: newClient.apps } });
+  res.status(201).json(newClient);
+});
+
+// PUT /api/eco-clients/:id — update client (including adding/removing apps)
+ecoClientsRouter.put('/:id', (req, res) => {
+  const idx = mock.ecoClients.findIndex(c => c.id === parseInt(req.params.id));
+  if (idx === -1) return res.status(404).json({ error: 'Client not found' });
+
+  const allowed = ['name', 'email', 'phone', 'id_number', 'address', 'client_type', 'apps', 'notes', 'is_active'];
+  const old = { ...mock.ecoClients[idx] };
+
+  allowed.forEach(key => {
+    if (req.body[key] !== undefined) {
+      mock.ecoClients[idx][key] = req.body[key];
+    }
+  });
+  mock.ecoClients[idx].updated_at = new Date().toISOString();
+
+  mock.mockAuditFromReq(req, 'UPDATE', 'eco_client', mock.ecoClients[idx].id, {
+    module: 'ecosystem',
+    metadata: { old_apps: old.apps, new_apps: mock.ecoClients[idx].apps }
+  });
+
+  res.json(mock.ecoClients[idx]);
+});
+
+// DELETE /api/eco-clients/:id — soft delete
+ecoClientsRouter.delete('/:id', (req, res) => {
+  const idx = mock.ecoClients.findIndex(c => c.id === parseInt(req.params.id));
+  if (idx === -1) return res.status(404).json({ error: 'Client not found' });
+
+  mock.ecoClients[idx].is_active = false;
+  mock.ecoClients[idx].updated_at = new Date().toISOString();
+  mock.mockAuditFromReq(req, 'DELETE', 'eco_client', mock.ecoClients[idx].id, { module: 'ecosystem' });
+
+  res.json({ success: true, message: 'Client deactivated' });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
 module.exports = {
@@ -859,4 +999,5 @@ module.exports = {
   usersRouter,
   employeesRouter,
   auditRouter,
+  ecoClientsRouter,
 };

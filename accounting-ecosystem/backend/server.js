@@ -51,6 +51,7 @@ let authRoutes, companiesRoutes, usersRoutes, employeesRoutes, auditRoutes, cust
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
 let auditForensicRoutes;
+let ecoClientsRoutes;
 
 if (MOCK_MODE) {
   // ── Mock Routes ──
@@ -60,6 +61,7 @@ if (MOCK_MODE) {
   usersRoutes = mockShared.usersRouter;
   employeesRoutes = mockShared.employeesRouter;
   auditRoutes = mockShared.auditRouter;
+  ecoClientsRoutes = mockShared.ecoClientsRouter;
 
   // ── Mock Extras (Customers, Receipts, Barcodes, Reports) ──
   const mockExtras = require('./mock-routes-extras');
@@ -182,6 +184,9 @@ app.use('/api/companies', authenticateToken, companiesRoutes);
 app.use('/api/users', authenticateToken, usersRoutes);
 app.use('/api/employees', authenticateToken, employeesRoutes);
 app.use('/api/audit', authenticateToken, auditRoutes);
+if (ecoClientsRoutes) {
+  app.use('/api/eco-clients', authenticateToken, ecoClientsRoutes);
+}
 if (customersRoutes) {
   app.use('/api/customers', customersRoutes);
 }
