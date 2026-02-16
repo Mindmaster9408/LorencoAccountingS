@@ -1273,8 +1273,27 @@
             const selectedApps = [];
             document.querySelectorAll('#acApps input[name="apps"]:checked').forEach(cb => selectedApps.push(cb.value));
 
-            if (!selectedCompany || !selectedCompany.id) {
-                showToast('No company selected. Please select a company first.', true);
+            // Resolve company_id: selected company → first company → fetch from API
+            let companyId = selectedCompany?.id;
+            if (!companyId || selectedCompany?.company_name === 'All Companies') {
+                companyId = companies.find(c => c.id && c.company_name !== 'All Companies')?.id;
+            }
+            if (!companyId) {
+                try {
+                    const token = localStorage.getItem('eco_token');
+                    const cRes = await fetch(`${API_BASE}/api/auth/companies`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (cRes.ok) {
+                        const cData = await cRes.json();
+                        if (cData.companies?.length) {
+                            companyId = cData.companies[0].id;
+                        }
+                    }
+                } catch (_) {}
+            }
+            if (!companyId) {
+                showToast('No company found. Please contact your administrator.', true);
                 btn.disabled = false;
                 btn.textContent = 'Save Client';
                 return false;
@@ -1287,7 +1306,7 @@
                 id_number: document.getElementById('acIdNumber').value.trim() || null,
                 address: document.getElementById('acAddress').value.trim() || null,
                 client_type: document.getElementById('acType').value,
-                company_id: selectedCompany.id,
+                company_id: companyId,
                 apps: selectedApps,
                 notes: document.getElementById('acNotes').value.trim() || null,
             };
