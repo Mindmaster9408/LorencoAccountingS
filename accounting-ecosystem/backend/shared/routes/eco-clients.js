@@ -228,9 +228,25 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Client name is required' });
     }
 
-    const resolvedCompanyId = parseInt(company_id) || req.companyId;
+    // Auto-resolve company_id: body → token → user's first company
+    let resolvedCompanyId = parseInt(company_id) || req.companyId || null;
     if (!resolvedCompanyId) {
-      return res.status(400).json({ error: 'Company ID is required. Please select a company.' });
+      // Fallback: get the user's first accessible company
+      const isSuperAdmin = req.user && req.user.isSuperAdmin;
+      if (isSuperAdmin) {
+        const { data: firstCo } = await supabase
+          .from('companies').select('id').eq('is_active', true).order('id').limit(1).single();
+        if (firstCo) resolvedCompanyId = firstCo.id;
+      } else {
+        const { data: access } = await supabase
+          .from('user_company_access').select('company_id')
+          .eq('user_id', req.user.userId).eq('is_active', true)
+          .order('is_primary', { ascending: false }).limit(1).single();
+        if (access) resolvedCompanyId = access.company_id;
+      }
+    }
+    if (!resolvedCompanyId) {
+      return res.status(400).json({ error: 'No company found for your account. Please contact your administrator.' });
     }
 
     const newClient = {
