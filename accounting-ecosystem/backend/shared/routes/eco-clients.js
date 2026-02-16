@@ -3,6 +3,8 @@
  * Ecosystem Client Routes — Supabase
  * ============================================================================
  * CRUD for cross-app ecosystem clients (eco_clients table).
+ * When a client is created with selected apps, this route automatically
+ * syncs the client to the relevant app tables (customers, employees, etc.).
  * All routes are prefixed with /api/eco-clients and require authentication.
  * ============================================================================
  */
@@ -12,6 +14,119 @@ const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
 
 const router = express.Router();
+
+// ─── Cross-App Sync Helper ──────────────────────────────────────────────────
+
+/**
+ * Sync an eco_client to the selected app tables.
+ * Returns { synced: [...], errors: [...] }
+ */
+async function syncToApps(ecoClient) {
+  const synced = [];
+  const errors = [];
+  const apps = ecoClient.apps || [];
+
+  // POS → customers table
+  if (apps.includes('pos')) {
+    try {
+      const customerNumber = `EC-${Date.now().toString(36).toUpperCase()}`;
+      const customerData = {
+        company_id: ecoClient.company_id,
+        name: ecoClient.name,
+        email: ecoClient.email || null,
+        phone: ecoClient.phone || null,
+        contact_number: ecoClient.phone || null,
+        address_line_1: ecoClient.address || null,
+        id_number: ecoClient.id_number || null,
+        customer_number: customerNumber,
+        customer_group: 'retail',
+        loyalty_points: 0,
+        current_balance: 0,
+        is_active: true,
+        eco_client_id: ecoClient.id
+      };
+
+      let { data: customer, error } = await supabase
+        .from('customers')
+        .insert(customerData)
+        .select()
+        .single();
+
+      // If eco_client_id column doesn't exist yet, retry without it
+      if (error && error.message && error.message.includes('eco_client_id')) {
+        delete customerData.eco_client_id;
+        ({ data: customer, error } = await supabase
+          .from('customers')
+          .insert(customerData)
+          .select()
+          .single());
+      }
+
+      if (error) throw error;
+      synced.push({ app: 'pos', table: 'customers', id: customer.id });
+    } catch (err) {
+      console.error('Eco-client sync to POS failed:', err.message);
+      errors.push({ app: 'pos', error: err.message });
+    }
+  }
+
+  // Payroll → employees table
+  if (apps.includes('payroll')) {
+    try {
+      const empCode = `EMP-${Date.now().toString(36).toUpperCase()}`;
+      const nameParts = (ecoClient.name || '').trim().split(/\s+/);
+      const firstName = nameParts[0] || ecoClient.name;
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      const employeeData = {
+        company_id: ecoClient.company_id,
+        full_name: ecoClient.name,
+        first_name: firstName,
+        last_name: lastName,
+        employee_code: empCode,
+        email: ecoClient.email || null,
+        phone: ecoClient.phone || null,
+        id_number: ecoClient.id_number || null,
+        is_active: true,
+        eco_client_id: ecoClient.id
+      };
+
+      let { data: employee, error } = await supabase
+        .from('employees')
+        .insert(employeeData)
+        .select()
+        .single();
+
+      // If eco_client_id column doesn't exist yet, retry without it
+      if (error && error.message && error.message.includes('eco_client_id')) {
+        delete employeeData.eco_client_id;
+        ({ data: employee, error } = await supabase
+          .from('employees')
+          .insert(employeeData)
+          .select()
+          .single());
+      }
+
+      if (error) throw error;
+      synced.push({ app: 'payroll', table: 'employees', id: employee.id });
+    } catch (err) {
+      console.error('Eco-client sync to Payroll failed:', err.message);
+      errors.push({ app: 'payroll', error: err.message });
+    }
+  }
+
+  // Accounting — uses same employees table, no separate client table
+  if (apps.includes('accounting')) {
+    synced.push({ app: 'accounting', note: 'Linked via ecosystem' });
+  }
+
+  // SEAN — AI module, no client table
+  if (apps.includes('sean')) {
+    synced.push({ app: 'sean', note: 'Linked via ecosystem' });
+  }
+
+  return { synced, errors };
+}
 
 /**
  * GET /api/eco-clients
@@ -103,7 +218,7 @@ router.get('/:id', async (req, res) => {
 
 /**
  * POST /api/eco-clients
- * Create a new ecosystem client
+ * Create a new ecosystem client and sync to selected apps
  */
 router.post('/', async (req, res) => {
   try {
@@ -139,12 +254,18 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create client: ' + error.message });
     }
 
+    // Sync to selected apps (POS → customers, Payroll → employees, etc.)
+    const syncResult = await syncToApps(inserted);
+
     await auditFromReq(req, 'CREATE', 'eco_client', inserted.id, {
       module: 'ecosystem',
-      metadata: { apps: inserted.apps }
+      metadata: { apps: inserted.apps, synced: syncResult.synced, syncErrors: syncResult.errors }
     });
 
-    res.status(201).json(inserted);
+    res.status(201).json({
+      ...inserted,
+      sync: syncResult
+    });
   } catch (err) {
     console.error('eco-clients POST / error:', err.message);
     res.status(500).json({ error: 'Server error' });
@@ -190,12 +311,21 @@ router.put('/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update client' });
     }
 
+    // If apps changed, sync newly added apps
+    let syncResult = { synced: [], errors: [] };
+    const oldApps = old.apps || [];
+    const newApps = updated.apps || [];
+    const addedApps = newApps.filter(a => !oldApps.includes(a));
+    if (addedApps.length > 0) {
+      syncResult = await syncToApps({ ...updated, apps: addedApps });
+    }
+
     await auditFromReq(req, 'UPDATE', 'eco_client', clientId, {
       module: 'ecosystem',
-      metadata: { old_apps: old.apps, new_apps: updated.apps }
+      metadata: { old_apps: old.apps, new_apps: updated.apps, synced: syncResult.synced }
     });
 
-    res.json(updated);
+    res.json({ ...updated, sync: syncResult });
   } catch (err) {
     console.error('eco-clients PUT /:id error:', err.message);
     res.status(500).json({ error: 'Server error' });

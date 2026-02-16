@@ -175,6 +175,17 @@ CREATE TABLE IF NOT EXISTS eco_clients (
 );
 CREATE INDEX IF NOT EXISTS idx_eco_clients_company ON eco_clients(company_id, is_active);
 
+-- ─── Add eco_client_id to customers and employees for cross-app linking ─────
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'eco_client_id') THEN
+    ALTER TABLE customers ADD COLUMN eco_client_id BIGINT REFERENCES eco_clients(id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'employees' AND column_name = 'eco_client_id') THEN
+    ALTER TABLE employees ADD COLUMN eco_client_id BIGINT REFERENCES eco_clients(id);
+  END IF;
+END $$;
+
 -- ─── Add inter-company columns to companies table if missing ────────────────
 DO $$
 BEGIN

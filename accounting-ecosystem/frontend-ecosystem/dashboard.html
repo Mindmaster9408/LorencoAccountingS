@@ -1315,71 +1315,19 @@
 
                 const newClient = await res.json();
 
-                // 2. Create client in each selected app
-                for (const app of selectedApps) {
-                    try {
-                        if (app === 'payroll') {
-                            // Example: POST to payroll API (adjust endpoint/payload as needed)
-                            await fetch(`${API_BASE}/api/payroll/clients`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                body: JSON.stringify({
-                                    name: payload.name,
-                                    email: payload.email,
-                                    phone: payload.phone,
-                                    company_id: payload.company_id,
-                                    notes: payload.notes
-                                })
-                            });
-                        } else if (app === 'pos') {
-                            // Example: POST to POS API (adjust endpoint/payload as needed)
-                            await fetch(`${API_BASE}/api/pos/customers`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                body: JSON.stringify({
-                                    name: payload.name,
-                                    contact_person: payload.name,
-                                    contact_number: payload.phone,
-                                    email: payload.email,
-                                    company: payload.company_id,
-                                    address: payload.address
-                                })
-                            });
-                        } else if (app === 'accounting') {
-                            // Example: POST to accounting API (adjust endpoint/payload as needed)
-                            await fetch(`${API_BASE}/api/accounting/clients`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                body: JSON.stringify({
-                                    name: payload.name,
-                                    email: payload.email,
-                                    phone: payload.phone,
-                                    company_id: payload.company_id,
-                                    notes: payload.notes
-                                })
-                            });
-                        } else if (app === 'sean') {
-                            // Example: POST to SEAN AI API (adjust endpoint/payload as needed)
-                            await fetch(`${API_BASE}/api/sean/clients`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                body: JSON.stringify({
-                                    name: payload.name,
-                                    email: payload.email,
-                                    phone: payload.phone,
-                                    company_id: payload.company_id,
-                                    notes: payload.notes
-                                })
-                            });
-                        }
-                    } catch (appErr) {
-                        // Log but don't block the rest
-                        console.error(`Failed to create client in ${app}:`, appErr);
-                    }
-                }
+                // Cross-app sync is handled by the backend automatically
+                // Check sync results and report to user
+                const syncInfo = newClient.sync || { synced: [], errors: [] };
+                const syncedApps = syncInfo.synced.map(s => s.app);
+                const failedApps = syncInfo.errors.map(e => e.app);
 
                 closeAddClient();
-                showToast(`✅ ${newClient.name} added to ${selectedApps.length} app(s)`);
+
+                if (failedApps.length > 0) {
+                    showToast(`${newClient.name} created. Synced to: ${syncedApps.join(', ') || 'none'}. Failed: ${failedApps.join(', ')}`, true);
+                } else {
+                    showToast(`${newClient.name} added to ${selectedApps.length} app(s)` + (syncedApps.length ? ` (synced: ${syncedApps.join(', ')})` : ''));
+                }
 
                 // Refresh clients if panel is open
                 if (document.getElementById('clientsPanel').classList.contains('show')) {
