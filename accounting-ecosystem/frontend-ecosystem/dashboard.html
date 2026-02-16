@@ -848,10 +848,6 @@
                             <label>ID / Reg Number</label>
                             <input type="text" id="acIdNumber" placeholder="SA ID or Company Reg">
                         </div>
-                        <div class="form-field">
-                            <label>Company</label>
-                            <select id="acCompany"></select>
-                        </div>
                     </div>
                     <div class="form-row full">
                         <div class="form-field">
@@ -1042,7 +1038,6 @@
             // Show client management for super admins & business owners
             if (isSuperAdmin || (selectedCompany && ['business_owner', 'super_admin', 'store_manager'].includes(selectedCompany.role))) {
                 document.getElementById('clientManagementSection').classList.remove('hidden');
-                populateCompanyDropdown();
             }
         }
 
@@ -1231,41 +1226,6 @@
             setTimeout(() => t.className = 'toast', 3000);
         }
 
-        // ── Populate company dropdown in Add Client form ──
-        async function populateCompanyDropdown() {
-            const sel = document.getElementById('acCompany');
-            if (!sel) return;
-
-            // If companies array is empty, fetch from API as fallback
-            if (companies.length === 0 || (companies.length === 1 && companies[0].company_name === 'All Companies')) {
-                try {
-                    const token = localStorage.getItem('eco_token');
-                    const res = await fetch(`${API_BASE}/api/auth/companies`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.companies && data.companies.length > 0) {
-                            companies = data.companies;
-                            localStorage.setItem('eco_companies', JSON.stringify(companies));
-                        }
-                    }
-                } catch (e) {
-                    console.error('Failed to fetch companies for dropdown:', e);
-                }
-            }
-
-            sel.innerHTML = '<option value="">-- Select a company --</option>' +
-                companies.filter(c => c.id && c.company_name !== 'All Companies').map(c =>
-                    `<option value="${c.id}">${c.trading_name || c.company_name}</option>`
-                ).join('');
-
-            // Auto-select if only one real company
-            if (sel.options.length === 2) {
-                sel.selectedIndex = 1;
-            }
-        }
-
         // ── Toggle app checkbox styling ──
         function toggleAppCheck(label) {
             const cb = label.querySelector('input[type="checkbox"]');
@@ -1313,9 +1273,8 @@
             const selectedApps = [];
             document.querySelectorAll('#acApps input[name="apps"]:checked').forEach(cb => selectedApps.push(cb.value));
 
-            const companyVal = document.getElementById('acCompany').value;
-            if (!companyVal) {
-                showToast('Please select a company.', true);
+            if (!selectedCompany || !selectedCompany.id) {
+                showToast('No company selected. Please select a company first.', true);
                 btn.disabled = false;
                 btn.textContent = 'Save Client';
                 return false;
@@ -1328,7 +1287,7 @@
                 id_number: document.getElementById('acIdNumber').value.trim() || null,
                 address: document.getElementById('acAddress').value.trim() || null,
                 client_type: document.getElementById('acType').value,
-                company_id: parseInt(companyVal),
+                company_id: selectedCompany.id,
                 apps: selectedApps,
                 notes: document.getElementById('acNotes').value.trim() || null,
             };
