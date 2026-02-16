@@ -1232,12 +1232,38 @@
         }
 
         // ── Populate company dropdown in Add Client form ──
-        function populateCompanyDropdown() {
+        async function populateCompanyDropdown() {
             const sel = document.getElementById('acCompany');
             if (!sel) return;
-            sel.innerHTML = companies.map(c =>
-                `<option value="${c.id}">${c.trading_name || c.company_name}</option>`
-            ).join('');
+
+            // If companies array is empty, fetch from API as fallback
+            if (companies.length === 0 || (companies.length === 1 && companies[0].company_name === 'All Companies')) {
+                try {
+                    const token = localStorage.getItem('eco_token');
+                    const res = await fetch(`${API_BASE}/api/auth/companies`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.companies && data.companies.length > 0) {
+                            companies = data.companies;
+                            localStorage.setItem('eco_companies', JSON.stringify(companies));
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch companies for dropdown:', e);
+                }
+            }
+
+            sel.innerHTML = '<option value="">-- Select a company --</option>' +
+                companies.filter(c => c.id && c.company_name !== 'All Companies').map(c =>
+                    `<option value="${c.id}">${c.trading_name || c.company_name}</option>`
+                ).join('');
+
+            // Auto-select if only one real company
+            if (sel.options.length === 2) {
+                sel.selectedIndex = 1;
+            }
         }
 
         // ── Toggle app checkbox styling ──
@@ -1287,6 +1313,14 @@
             const selectedApps = [];
             document.querySelectorAll('#acApps input[name="apps"]:checked').forEach(cb => selectedApps.push(cb.value));
 
+            const companyVal = document.getElementById('acCompany').value;
+            if (!companyVal) {
+                showToast('Please select a company.', true);
+                btn.disabled = false;
+                btn.textContent = 'Save Client';
+                return false;
+            }
+
             const payload = {
                 name: document.getElementById('acName').value.trim(),
                 email: document.getElementById('acEmail').value.trim() || null,
@@ -1294,7 +1328,7 @@
                 id_number: document.getElementById('acIdNumber').value.trim() || null,
                 address: document.getElementById('acAddress').value.trim() || null,
                 client_type: document.getElementById('acType').value,
-                company_id: parseInt(document.getElementById('acCompany').value),
+                company_id: parseInt(companyVal),
                 apps: selectedApps,
                 notes: document.getElementById('acNotes').value.trim() || null,
             };

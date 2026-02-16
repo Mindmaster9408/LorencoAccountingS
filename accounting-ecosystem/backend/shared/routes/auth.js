@@ -297,18 +297,19 @@ router.post('/select-company', authenticateToken, async (req, res) => {
     const isSuperAdmin = user && user.is_super_admin;
     let role = null;
 
-    if (isSuperAdmin) {
-      // Super admins can access any active company
-      const { data: company, error: compErr } = await supabase
-        .from('companies')
-        .select('id')
-        .eq('id', parsedCompanyId)
-        .eq('is_active', true)
-        .single();
+    // Fetch company details (needed by POS and other frontends)
+    const { data: company, error: compErr } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name, modules_enabled, subscription_status')
+      .eq('id', parsedCompanyId)
+      .eq('is_active', true)
+      .single();
 
-      if (compErr || !company) {
-        return res.status(404).json({ error: 'Company not found or inactive' });
-      }
+    if (compErr || !company) {
+      return res.status(404).json({ error: 'Company not found or inactive' });
+    }
+
+    if (isSuperAdmin) {
       role = 'super_admin';
     } else {
       // Regular users — check user_company_access
@@ -337,7 +338,19 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       isSuperAdmin: isSuperAdmin || false,
     }, JWT_SECRET, { expiresIn: '8h' });
 
-    res.json({ success: true, token, companyId: parsedCompanyId, role });
+    res.json({
+      success: true,
+      token,
+      companyId: parsedCompanyId,
+      role,
+      company: {
+        id: company.id,
+        company_name: company.company_name,
+        trading_name: company.trading_name,
+        modules_enabled: company.modules_enabled,
+        subscription_status: company.subscription_status,
+      }
+    });
   } catch (err) {
     console.error('Select company error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -377,29 +390,56 @@ router.get('/me', authenticateToken, async (req, res) => {
  */
 router.get('/companies', authenticateToken, async (req, res) => {
   try {
-    const { data: companies, error } = await supabase
-      .from('user_company_access')
-      .select(`
-        company_id, role, is_primary,
-        companies:company_id (id, company_name, trading_name, modules_enabled)
-      `)
-      .eq('user_id', req.user.userId)
-      .eq('is_active', true);
+    // Check if user is super admin
+    const isSuperAdmin = req.user.isSuperAdmin;
 
-    if (error) {
-      return res.status(500).json({ error: 'Database error' });
-    }
+    let list;
 
-    const list = (companies || [])
-      .filter(c => c.companies)
-      .map(c => ({
-        id: c.companies.id,
-        company_name: c.companies.company_name,
-        trading_name: c.companies.trading_name,
-        modules_enabled: c.companies.modules_enabled,
-        role: c.role,
-        is_primary: c.is_primary,
+    if (isSuperAdmin) {
+      // Super admins see ALL active companies
+      const { data: allCompanies, error } = await supabase
+        .from('companies')
+        .select('id, company_name, trading_name, modules_enabled')
+        .eq('is_active', true)
+        .order('company_name');
+
+      if (error) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      list = (allCompanies || []).map(c => ({
+        id: c.id,
+        company_name: c.company_name,
+        trading_name: c.trading_name,
+        modules_enabled: c.modules_enabled,
+        role: 'super_admin',
+        is_primary: false,
       }));
+    } else {
+      const { data: companies, error } = await supabase
+        .from('user_company_access')
+        .select(`
+          company_id, role, is_primary,
+          companies:company_id (id, company_name, trading_name, modules_enabled)
+        `)
+        .eq('user_id', req.user.userId)
+        .eq('is_active', true);
+
+      if (error) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      list = (companies || [])
+        .filter(c => c.companies)
+        .map(c => ({
+          id: c.companies.id,
+          company_name: c.companies.company_name,
+          trading_name: c.companies.trading_name,
+          modules_enabled: c.companies.modules_enabled,
+          role: c.role,
+          is_primary: c.is_primary,
+        }));
+    }
 
     res.json({ companies: list });
   } catch (err) {
