@@ -1,0 +1,40 @@
+name: Apply DB Migrations
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  apply-migrations:
+    name: Apply SQL migrations to Supabase
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "SUPABASE_DB_URL secret is not set. Skipping migrations.";
+            exit 0;
+          fi
+
+          echo "Ensuring pgcrypto extension exists..."
+          psql "$SUPABASE_DB_URL" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" || true
+
+          echo "Applying SQL migration files from repository..."
+          set -e
+          for f in accounting-ecosystem/backend/config/migrations/*.sql; do
+            echo "---- Running $f ----"
+            psql "$SUPABASE_DB_URL" -f "$f"
+          done
