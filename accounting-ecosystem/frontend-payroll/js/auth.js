@@ -43,24 +43,30 @@ const AUTH = (function() {
                     localStorage.setItem('token', result.token);
 
                     const user = result.user || {};
+                    const companies = result.companies || [];
+                    const selectedCompany = result.selectedCompany || null;
+
+                    // Store companies list for company-selection page
+                    localStorage.setItem('availableCompanies', JSON.stringify(companies));
+
                     const session = {
                         user_id: user.id,
                         email: user.email || email,
-                        name: user.full_name || user.username,
-                        role: user.role,
-                        is_super_admin: user.is_super_admin || user.role === 'super_admin',
-                        company_id: user.company_id,
-                        company_ids: user.company_ids || []
+                        name: user.fullName || user.full_name || user.username,
+                        role: selectedCompany ? selectedCompany.role : (user.isSuperAdmin ? 'super_admin' : null),
+                        is_super_admin: user.isSuperAdmin || false,
+                        company_id: selectedCompany ? selectedCompany.id : null,
+                        company_ids: companies.map(function(c) { return c.id; })
                     };
 
                     this.setSession(session);
 
                     // Determine redirect
                     let redirect = 'company-selection.html';
-                    if (session.is_super_admin) {
-                        redirect = 'company-selection.html';
-                    } else if (session.company_id) {
+                    if (companies.length === 1 && selectedCompany) {
                         redirect = 'company-dashboard.html';
+                    } else if (companies.length === 0 && !user.isSuperAdmin) {
+                        redirect = 'company-selection.html';
                     }
 
                     return { success: true, user: session, redirect: redirect };
@@ -202,11 +208,41 @@ const AUTH = (function() {
         getCompanies: async function() {
             try {
                 const result = await apiRequest('GET', '/auth/companies');
-                return result.companies || result.data || [];
+                const companies = result.companies || result.data || [];
+                localStorage.setItem('availableCompanies', JSON.stringify(companies));
+                return companies;
             } catch(e) {
-                return [];
+                // Fall back to cached list from login
+                try {
+                    return JSON.parse(localStorage.getItem('availableCompanies')) || [];
+                } catch(e2) { return []; }
             }
         },
+
+        // Synchronous version — reads from localStorage cache (used by company-selection.html)
+        getCompaniesForUser: function() {
+            try {
+                return JSON.parse(localStorage.getItem('availableCompanies')) || [];
+            } catch(e) { return []; }
+        },
+
+        // ─── Create Company via API ──────────────────────────────────────
+
+        createCompany: async function(companyData) {
+            try {
+                const result = await apiRequest('POST', '/companies', {
+                    company_name: companyData.name,
+                    trading_name: companyData.name,
+                    email: companyData.email || null
+                });
+                return { success: true, company: result.company || result };
+            } catch(e) {
+                return { success: false, message: e.message };
+            }
+        },
+
+        addCompanyToUser: function() { /* handled by backend */ },
+        refreshSessionCompanyIds: function() { /* handled by backend */ },
 
         // ─── Get Current User Info from server ───────────────────────────
 

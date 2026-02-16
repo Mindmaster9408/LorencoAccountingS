@@ -285,17 +285,45 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'companyId is required' });
     }
 
-    // Verify user has access to this company
-    const { data: access, error } = await supabase
-      .from('user_company_access')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('company_id', companyId)
-      .eq('is_active', true)
+    const parsedCompanyId = parseInt(companyId, 10);
+
+    // Check if user is super admin
+    const { data: user } = await supabase
+      .from('users')
+      .select('is_super_admin')
+      .eq('id', userId)
       .single();
 
-    if (error || !access) {
-      return res.status(403).json({ error: 'You do not have access to this company' });
+    const isSuperAdmin = user && user.is_super_admin;
+    let role = null;
+
+    if (isSuperAdmin) {
+      // Super admins can access any active company
+      const { data: company, error: compErr } = await supabase
+        .from('companies')
+        .select('id')
+        .eq('id', parsedCompanyId)
+        .eq('is_active', true)
+        .single();
+
+      if (compErr || !company) {
+        return res.status(404).json({ error: 'Company not found or inactive' });
+      }
+      role = 'super_admin';
+    } else {
+      // Regular users — check user_company_access
+      const { data: access, error } = await supabase
+        .from('user_company_access')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('company_id', parsedCompanyId)
+        .eq('is_active', true)
+        .single();
+
+      if (error || !access) {
+        return res.status(403).json({ error: 'You do not have access to this company' });
+      }
+      role = access.role;
     }
 
     // Issue new token with company context
@@ -304,11 +332,12 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       username: req.user.username,
       email: req.user.email,
       fullName: req.user.fullName,
-      companyId: companyId,
-      role: access.role,
+      companyId: parsedCompanyId,
+      role: role,
+      isSuperAdmin: isSuperAdmin || false,
     }, JWT_SECRET, { expiresIn: '8h' });
 
-    res.json({ success: true, token, companyId, role: access.role });
+    res.json({ success: true, token, companyId: parsedCompanyId, role });
   } catch (err) {
     console.error('Select company error:', err);
     res.status(500).json({ error: 'Server error' });

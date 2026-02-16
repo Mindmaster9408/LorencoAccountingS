@@ -228,19 +228,22 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Client name is required' });
     }
 
+    const resolvedCompanyId = parseInt(company_id) || req.companyId;
+    if (!resolvedCompanyId) {
+      return res.status(400).json({ error: 'Company ID is required. Please select a company.' });
+    }
+
     const newClient = {
-      company_id: company_id || req.companyId,
+      company_id: resolvedCompanyId,
       name,
       email: email || null,
       phone: phone || null,
       id_number: id_number || null,
       address: address || null,
       client_type: client_type || 'business',
-      apps: apps || [],
+      apps: Array.isArray(apps) ? apps : [],
       notes: notes || null,
       is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     };
 
     const { data: inserted, error } = await supabase
