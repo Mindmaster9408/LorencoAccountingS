@@ -1,0 +1,443 @@
+/* ============================================================================
+ * POS Dark Theme — Matches Ecosystem Dashboard Look
+ * ============================================================================
+ * Blue accent (#3b82f6) on dark background
+ * Load AFTER inline <style> to override
+ * ============================================================================ */
+
+/* ── CSS Variables ──────────────────────────────────────────────────────────── */
+:root {
+    --bg-dark: #0f0c29;
+    --bg-mid: #302b63;
+    --bg-end: #24243e;
+    --surface: rgba(255,255,255,0.06);
+    --surface-hover: rgba(255,255,255,0.10);
+    --surface-alt: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.12);
+    --text: #fff;
+    --text-secondary: rgba(255,255,255,0.7);
+    --text-muted: rgba(255,255,255,0.5);
+    --accent: #3b82f6;
+    --accent-dark: #2563eb;
+    --accent-light: #60a5fa;
+    --accent-glow: rgba(59,130,246,0.3);
+    --accent-subtle: rgba(59,130,246,0.15);
+}
+
+/* ── Body & Base ────────────────────────────────────────────────────────────── */
+body {
+    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
+    color: var(--text) !important;
+}
+
+/* ── Top Navigation ─────────────────────────────────────────────────────────── */
+.top-nav {
+    background: rgba(0,0,0,0.4) !important;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    box-shadow: none !important;
+}
+.nav-tab:hover { background: rgba(255,255,255,0.08) !important; }
+.nav-tab.active {
+    background: rgba(255,255,255,0.12) !important;
+    color: var(--accent-light) !important;
+    border-color: rgba(255,255,255,0.12) !important;
+}
+.session-badge { background: rgba(255,255,255,0.1) !important; }
+.manage-till-btn {
+    background: rgba(255,255,255,0.1) !important;
+    border-color: rgba(255,255,255,0.2) !important;
+}
+
+/* ── Login Screen ───────────────────────────────────────────────────────────── */
+.login-screen {
+    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
+}
+.login-box {
+    background: rgba(255,255,255,0.08) !important;
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+.login-box h1 { color: var(--accent-light) !important; }
+.login-box label { color: var(--text-secondary) !important; }
+.login-box input {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+
+/* ── Company Selector ───────────────────────────────────────────────────────── */
+.company-selector-screen {
+    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
+}
+.company-selector-box {
+    background: rgba(255,255,255,0.08) !important;
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+.company-selector-box h1 { color: var(--accent-light) !important; }
+.company-selector-box .subtitle { color: var(--text-muted) !important; }
+.company-card {
+    border-color: var(--border-strong) !important;
+    color: var(--text);
+    background: transparent;
+}
+.company-card:hover {
+    border-color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
+}
+.company-card.selected {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: white !important;
+}
+.company-card .role-badge {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+}
+
+/* ── Till Interface ─────────────────────────────────────────────────────────── */
+.products-panel {
+    background: rgba(255,255,255,0.04) !important;
+    border-right-color: var(--border) !important;
+}
+.search-bar {
+    background: rgba(255,255,255,0.04) !important;
+    border-bottom-color: var(--border) !important;
+}
+.barcode-input {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--accent) !important;
+    color: var(--text) !important;
+}
+.barcode-input::placeholder { color: var(--text-muted) !important; }
+.barcode-input:focus {
+    border-color: var(--accent-light) !important;
+    box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+.scan-icon { color: var(--accent-light) !important; }
+
+/* ── Categories ─────────────────────────────────────────────────────────────── */
+.categories {
+    background: rgba(255,255,255,0.03) !important;
+    border-bottom-color: var(--border) !important;
+}
+.category-btn {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.category-btn:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+}
+.category-btn.active {
+    background: var(--accent) !important;
+    color: white !important;
+    border-color: var(--accent) !important;
+}
+
+/* ── Product Tiles ──────────────────────────────────────────────────────────── */
+.product-tile {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text);
+}
+.product-tile:hover {
+    border-color: var(--accent) !important;
+    box-shadow: 0 4px 12px var(--accent-glow) !important;
+}
+.product-name { color: var(--text) !important; }
+.product-price { color: var(--accent-light) !important; }
+.product-stock { color: var(--text-muted) !important; }
+
+/* ── Cart Panel ─────────────────────────────────────────────────────────────── */
+.cart-panel { background: rgba(255,255,255,0.03) !important; }
+.cart-header {
+    background: var(--surface) !important;
+    border-bottom-color: var(--border) !important;
+}
+.cart-header h2 { color: var(--text) !important; }
+.cart-item {
+    background: var(--surface) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+.item-name { color: var(--text) !important; }
+.qty-btn {
+    background: var(--accent) !important;
+}
+.qty-display { color: var(--text) !important; }
+.item-total { color: var(--accent-light) !important; }
+.empty-cart { color: var(--text-muted) !important; }
+
+/* ── Cart Summary & Checkout ────────────────────────────────────────────────── */
+.cart-summary {
+    background: var(--surface) !important;
+    border-top-color: var(--border) !important;
+    color: var(--text);
+}
+.summary-row { color: var(--text-secondary); }
+.summary-row.total {
+    color: var(--accent-light) !important;
+    border-top-color: var(--border) !important;
+}
+.checkout-section {
+    background: var(--surface) !important;
+    border-top-color: var(--border) !important;
+}
+.payment-btn {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.payment-btn:hover { border-color: var(--accent) !important; }
+.payment-btn.selected {
+    background: var(--accent) !important;
+    color: white !important;
+    border-color: var(--accent) !important;
+}
+
+/* ── Split Payment ──────────────────────────────────────────────────────────── */
+.split-payment-section { background: var(--surface-alt) !important; }
+.split-remaining {
+    color: var(--accent-light) !important;
+    background: var(--surface) !important;
+}
+
+/* ── Settings ───────────────────────────────────────────────────────────────── */
+.settings-sidebar {
+    background: var(--surface) !important;
+    border-right-color: var(--border) !important;
+}
+.settings-menu-item { color: var(--text-secondary); }
+.settings-menu-item:hover { background: var(--surface-hover) !important; }
+.settings-menu-item.active {
+    background: var(--accent) !important;
+    color: white !important;
+    border-left-color: var(--accent-dark) !important;
+}
+.settings-content { background: rgba(255,255,255,0.02) !important; }
+
+/* ── Products Management ────────────────────────────────────────────────────── */
+.products-header {
+    background: var(--surface) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+    color: var(--text);
+}
+.products-container {
+    background: var(--surface) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+}
+.customers-container { background: var(--surface) !important; }
+.product-count { color: var(--text-muted) !important; }
+.customer-count { color: var(--text-muted) !important; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────────── */
+.products-table thead,
+.customers-table thead,
+.stock-table th,
+.enterprise-table th {
+    background: rgba(255,255,255,0.06) !important;
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border) !important;
+}
+.products-table th,
+.customers-table th {
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border) !important;
+}
+.products-table td,
+.customers-table td,
+.stock-table td,
+.enterprise-table td {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+}
+.products-table tbody tr:hover,
+.customers-table tbody tr:hover,
+.stock-table tbody tr:hover,
+.enterprise-table tr:hover td {
+    background: var(--surface-hover) !important;
+}
+.stock-table {
+    background: var(--surface) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+/* ── Stock Badges ───────────────────────────────────────────────────────────── */
+.stock-badge.ok { background: rgba(46,125,50,0.2) !important; color: #6ee7b7 !important; }
+.stock-badge.low { background: rgba(230,81,0,0.2) !important; color: #fbbf24 !important; }
+.stock-badge.out { background: rgba(198,40,40,0.2) !important; color: #fca5a5 !important; }
+.low-stock { background: rgba(255,152,0,0.1) !important; }
+.out-of-stock { background: rgba(244,67,54,0.1) !important; }
+
+/* ── Status Badges ──────────────────────────────────────────────────────────── */
+.status-badge.active { background: rgba(46,125,50,0.2) !important; color: #6ee7b7 !important; }
+.status-badge.pending { background: rgba(230,81,0,0.2) !important; color: #fbbf24 !important; }
+.status-badge.closed { background: rgba(255,255,255,0.08) !important; color: var(--text-muted) !important; }
+.status-badge.alert { background: rgba(198,40,40,0.2) !important; color: #fca5a5 !important; }
+
+/* ── Enterprise Layout ──────────────────────────────────────────────────────── */
+.enterprise-layout { background: transparent !important; }
+.enterprise-layout h1 { color: var(--text) !important; }
+.kpi-card {
+    background: var(--surface) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+    border-left-color: var(--accent) !important;
+}
+.kpi-label { color: var(--text-muted) !important; }
+.kpi-value { color: var(--text) !important; }
+.kpi-sub { color: var(--text-secondary) !important; }
+.enterprise-section {
+    background: var(--surface) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+}
+.enterprise-section h3 { color: var(--text) !important; }
+
+/* ── Sale Search ────────────────────────────────────────────────────────────── */
+.sale-search-section {
+    background: var(--surface) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+.sale-result-card {
+    background: var(--surface-alt) !important;
+    border-left-color: var(--accent) !important;
+    color: var(--text);
+}
+.sale-result-card:hover { background: var(--surface-hover) !important; }
+
+/* ── Cash Up ────────────────────────────────────────────────────────────────── */
+.cash-row {
+    background: var(--surface-alt) !important;
+    color: var(--text);
+}
+.cash-row .total { color: var(--text) !important; }
+.cash-row input {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.summary-cards .summary-card {
+    background: var(--surface) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+.summary-card h4 { color: var(--text-muted) !important; }
+.summary-card .value { color: var(--accent-light) !important; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-primary {
+    background: var(--accent) !important;
+}
+.btn-primary:hover { background: var(--accent-dark) !important; }
+.btn-secondary {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border-color: var(--border-strong) !important;
+}
+.btn-secondary:hover { background: var(--surface-hover) !important; }
+.ent-btn-primary { background: var(--accent) !important; }
+.ent-btn-primary:hover { background: var(--accent-dark) !important; }
+
+/* ── Forms ──────────────────────────────────────────────────────────────────── */
+label { color: var(--text-secondary) !important; }
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+input[type="date"],
+input[type="search"],
+select,
+textarea {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+input::placeholder,
+textarea::placeholder { color: var(--text-muted) !important; }
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px var(--accent-glow) !important;
+}
+select option {
+    background: #1e1b3a;
+    color: var(--text);
+}
+.search-box input {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.search-icon { color: var(--text-muted) !important; }
+
+/* ── Modals ─────────────────────────────────────────────────────────────────── */
+.modal-overlay { background: rgba(15,12,41,0.85) !important; }
+.modal {
+    background: #1e1b3a !important;
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+.modal-header {
+    border-bottom-color: var(--border) !important;
+}
+.modal-header h2 { color: var(--text) !important; }
+.close-btn { color: var(--text-muted) !important; }
+.modal-footer { border-top-color: var(--border) !important; }
+.modal-body { color: var(--text); }
+
+/* ── Notifications ──────────────────────────────────────────────────────────── */
+.notification {
+    background: #1e1b3a !important;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.4) !important;
+    color: var(--text);
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────────── */
+.tab-sub-nav { border-bottom-color: var(--border) !important; }
+.sub-tab { color: var(--text-muted) !important; }
+.sub-tab:hover { background: var(--surface-hover) !important; }
+.sub-tab.active {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+.tab-btn { color: var(--text-muted) !important; }
+.tab-btn.active {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
+/* ── Enterprise Toolbar ─────────────────────────────────────────────────────── */
+.enterprise-toolbar input,
+.enterprise-toolbar select {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+
+/* ── Alert Rows ─────────────────────────────────────────────────────────────── */
+.alert-row.warning { background: rgba(255,152,0,0.1) !important; color: #fbbf24; }
+.alert-row.critical { background: rgba(244,67,54,0.1) !important; color: #fca5a5; }
+.alert-row.info { background: rgba(59,130,246,0.1) !important; color: var(--accent-light); }
+
+/* ── Auth Required ──────────────────────────────────────────────────────────── */
+.auth-required {
+    background: rgba(255,152,0,0.1) !important;
+    border-color: rgba(255,152,0,0.3) !important;
+}
+.auth-required h4 { color: #fbbf24 !important; }
+
+/* ── Empty State ────────────────────────────────────────────────────────────── */
+.empty-state { color: var(--text-muted) !important; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }

@@ -1,0 +1,491 @@
+/* ============================================================================
+ * Accounting Dark Theme — Matches Ecosystem Dashboard Look
+ * ============================================================================
+ * Amber/Gold accent (#f59e0b) on dark background
+ * Load AFTER inline <style> to override
+ * ============================================================================ */
+
+/* ── CSS Variables ──────────────────────────────────────────────────────────── */
+:root {
+    --bg-dark: #0f0c29;
+    --bg-mid: #302b63;
+    --bg-end: #24243e;
+    --surface: rgba(255,255,255,0.06);
+    --surface-hover: rgba(255,255,255,0.10);
+    --surface-alt: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.12);
+    --text: #fff;
+    --text-secondary: rgba(255,255,255,0.7);
+    --text-muted: rgba(255,255,255,0.5);
+    --accent: #f59e0b;
+    --accent-dark: #d97706;
+    --accent-light: #fbbf24;
+    --accent-glow: rgba(245,158,11,0.3);
+    --accent-subtle: rgba(245,158,11,0.15);
+}
+
+/* ── Body & Base ────────────────────────────────────────────────────────────── */
+body {
+    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
+    color: var(--text) !important;
+}
+
+/* ── Top Bar ────────────────────────────────────────────────────────────────── */
+.top-bar {
+    background: rgba(0,0,0,0.4) !important;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    box-shadow: none !important;
+}
+.logo-icon {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+    color: white !important;
+}
+.company-selector {
+    background: rgba(255,255,255,0.08) !important;
+}
+.company-selector:hover {
+    background: rgba(255,255,255,0.15) !important;
+}
+.icon-btn {
+    background: rgba(255,255,255,0.08) !important;
+}
+.icon-btn:hover {
+    background: rgba(255,255,255,0.15) !important;
+}
+.user-menu {
+    background: rgba(255,255,255,0.08) !important;
+}
+.user-menu:hover {
+    background: rgba(255,255,255,0.15) !important;
+}
+.user-avatar {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+    color: white !important;
+}
+
+/* ── Navbar / Main Nav (navigation.js injects .main-nav) ────────────────────── */
+.navbar,
+.main-nav {
+    background: rgba(255,255,255,0.04) !important;
+    border-bottom-color: var(--border) !important;
+    box-shadow: none !important;
+}
+.nav-item > a,
+.main-nav .nav-item > a {
+    color: var(--text-secondary) !important;
+}
+.nav-item:hover > a,
+.main-nav .nav-item:hover > a {
+    color: var(--accent-light) !important;
+    background: linear-gradient(to bottom, transparent 0%, rgba(245,158,11,0.1) 100%) !important;
+}
+.nav-item > a.active,
+.nav-item.active > a,
+.main-nav .nav-item > a.active,
+.main-nav .nav-item.active > a {
+    color: var(--accent-light) !important;
+}
+.nav-item > a.active::before,
+.nav-item.active > a::before,
+.main-nav .nav-item.active > a::before {
+    background: linear-gradient(90deg, var(--accent), var(--accent-dark)) !important;
+}
+/* AI nav item keep purple */
+.main-nav .nav-item-ai > a { color: #a78bfa !important; }
+.main-nav .nav-item-ai:hover > a,
+.main-nav .nav-item-ai.active > a { color: #c4b5fd !important; }
+
+/* ── User Dropdown (from navigation.js) ─────────────────────────────────────── */
+.user-dropdown {
+    background: #1e1b3a !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+}
+.user-dropdown a {
+    color: var(--text-secondary) !important;
+}
+.user-dropdown a:hover {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+}
+.user-dropdown hr {
+    border-top-color: var(--border) !important;
+}
+
+/* ── Demo Banner ────────────────────────────────────────────────────────────── */
+.demo-banner {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+}
+
+/* ── Eco Hub Link ───────────────────────────────────────────────────────────── */
+.eco-hub-link {
+    background: rgba(255,255,255,0.1) !important;
+    border-color: rgba(255,255,255,0.2) !important;
+}
+
+/* ── Dropdowns ──────────────────────────────────────────────────────────────── */
+.dropdown {
+    background: #1e1b3a !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+}
+.dropdown a {
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border) !important;
+}
+.dropdown a::before {
+    color: var(--accent) !important;
+}
+.dropdown a:hover {
+    background: linear-gradient(90deg, var(--accent-subtle) 0%, transparent 100%) !important;
+    color: var(--accent-light) !important;
+}
+.dropdown-header {
+    color: var(--text-muted) !important;
+    background: rgba(255,255,255,0.03) !important;
+}
+.dropdown-divider {
+    background: var(--border) !important;
+}
+
+/* ── Main Content ───────────────────────────────────────────────────────────── */
+.main-content {
+    color: var(--text);
+}
+.main-content h1,
+.main-content h2,
+.main-content h3 {
+    color: var(--text) !important;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.card,
+.info-card,
+.stat-card,
+.stats-card,
+.detail-card,
+.section-card,
+.metric-card,
+.summary-card,
+.report-card,
+.chart-card,
+.panel,
+.widget {
+    background: var(--surface) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+    color: var(--text) !important;
+}
+.card h2,
+.card h3,
+.card h4,
+.panel h2,
+.panel h3 {
+    color: var(--text) !important;
+}
+.card-header,
+.panel-header {
+    border-bottom-color: var(--border) !important;
+    color: var(--text) !important;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────────── */
+table {
+    color: var(--text);
+}
+thead,
+thead tr {
+    background: rgba(255,255,255,0.06) !important;
+}
+th {
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border) !important;
+    border-color: var(--border) !important;
+    background: rgba(255,255,255,0.06) !important;
+}
+td {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+    border-color: var(--border) !important;
+}
+tbody tr:hover {
+    background: var(--surface-hover) !important;
+}
+tfoot {
+    background: rgba(255,255,255,0.04) !important;
+}
+tfoot td {
+    border-top-color: var(--border) !important;
+}
+.table-container {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+
+/* ── Forms ──────────────────────────────────────────────────────────────────── */
+label {
+    color: var(--text-secondary) !important;
+}
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+input[type="date"],
+input[type="time"],
+input[type="search"],
+input[type="tel"],
+select,
+textarea {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-muted) !important;
+}
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-glow) !important;
+    outline: none !important;
+}
+select option {
+    background: #1e1b3a;
+    color: var(--text);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+    color: #1a1a2e !important;
+    border: none !important;
+}
+.btn-primary:hover {
+    box-shadow: 0 4px 15px var(--accent-glow) !important;
+}
+.btn-secondary,
+.btn-outline {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border-strong) !important;
+}
+.btn-secondary:hover,
+.btn-outline:hover {
+    background: var(--surface-hover) !important;
+}
+.btn-link {
+    color: var(--accent-light) !important;
+}
+
+/* ── Modals ─────────────────────────────────────────────────────────────────── */
+.modal-overlay,
+.overlay {
+    background: rgba(15,12,41,0.85) !important;
+}
+.modal,
+.modal-content,
+.modal-box {
+    background: #1e1b3a !important;
+    border: 1px solid var(--border);
+    color: var(--text) !important;
+}
+.modal-header {
+    border-bottom-color: var(--border) !important;
+}
+.modal-header h2,
+.modal h2,
+.modal h3 {
+    color: var(--text) !important;
+}
+.modal-footer {
+    border-top-color: var(--border) !important;
+}
+.close-btn,
+.modal-close {
+    color: var(--text-muted) !important;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────────── */
+.tab-buttons,
+.tab-nav,
+.tabs {
+    border-bottom-color: var(--border) !important;
+}
+.tab-btn,
+.tab-item,
+.tab {
+    color: var(--text-muted) !important;
+}
+.tab-btn.active,
+.tab-item.active,
+.tab.active {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
+/* ── Status Badges ──────────────────────────────────────────────────────────── */
+.badge-success,
+.status-paid,
+.status-active {
+    background: rgba(16,185,129,0.2) !important;
+    color: #6ee7b7 !important;
+}
+.badge-warning,
+.status-pending,
+.status-partial {
+    background: rgba(245,158,11,0.2) !important;
+    color: var(--accent-light) !important;
+}
+.badge-danger,
+.status-overdue,
+.status-error {
+    background: rgba(239,68,68,0.2) !important;
+    color: #fca5a5 !important;
+}
+.badge-info {
+    background: rgba(59,130,246,0.2) !important;
+    color: #60a5fa !important;
+}
+
+/* ── Stats / Metrics ────────────────────────────────────────────────────────── */
+.stat-value,
+.metric-value,
+.amount,
+.total-amount {
+    color: var(--accent-light) !important;
+}
+.stat-label,
+.metric-label {
+    color: var(--text-muted) !important;
+}
+
+/* ── Invoice / Document Styles ──────────────────────────────────────────────── */
+.invoice-card,
+.document-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.invoice-header {
+    border-bottom-color: var(--border) !important;
+}
+
+/* ── Bank / Reconciliation ──────────────────────────────────────────────────── */
+.bank-entry,
+.transaction-row,
+.reconciliation-row {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text);
+}
+.bank-entry:hover,
+.transaction-row:hover {
+    background: var(--surface-hover) !important;
+}
+.matched { background: rgba(16,185,129,0.08) !important; }
+.unmatched { background: rgba(239,68,68,0.08) !important; }
+
+/* ── Sidebar ────────────────────────────────────────────────────────────────── */
+.sidebar {
+    background: var(--surface) !important;
+    backdrop-filter: blur(20px);
+    border-color: var(--border) !important;
+}
+.sidebar a {
+    color: var(--text-secondary) !important;
+}
+.sidebar a:hover,
+.sidebar a.active {
+    color: var(--accent-light) !important;
+    background: var(--accent-subtle) !important;
+}
+
+/* ── Filters ────────────────────────────────────────────────────────────────── */
+.filter-bar,
+.toolbar {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.filter-chip {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.filter-chip.active,
+.filter-chip:hover {
+    background: var(--accent-subtle) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+}
+
+/* ── Charts ─────────────────────────────────────────────────────────────────── */
+.chart-container,
+.chart-wrapper {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+
+/* ── Misc ───────────────────────────────────────────────────────────────────── */
+.divider,
+hr {
+    border-color: var(--border) !important;
+}
+.empty-state,
+.no-data,
+.no-results {
+    color: var(--text-muted) !important;
+}
+p {
+    color: var(--text-secondary) !important;
+}
+a {
+    color: var(--accent-light);
+}
+a:hover {
+    color: var(--accent);
+}
+.spinner,
+.loading-spinner {
+    border-color: rgba(255,255,255,0.1) !important;
+    border-top-color: var(--accent) !important;
+}
+.loading { color: var(--text-muted) !important; }
+
+/* ── Notifications / Toasts ─────────────────────────────────────────────────── */
+.notification,
+.toast,
+.alert {
+    background: #1e1b3a !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.4) !important;
+}
+.alert-success {
+    background: rgba(16,185,129,0.15) !important;
+    border-color: rgba(16,185,129,0.3) !important;
+    color: #6ee7b7 !important;
+}
+.alert-warning {
+    background: rgba(245,158,11,0.15) !important;
+    border-color: rgba(245,158,11,0.3) !important;
+    color: var(--accent-light) !important;
+}
+.alert-danger,
+.alert-error {
+    background: rgba(239,68,68,0.15) !important;
+    border-color: rgba(239,68,68,0.3) !important;
+    color: #fca5a5 !important;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }

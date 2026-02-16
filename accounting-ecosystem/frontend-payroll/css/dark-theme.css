@@ -1,0 +1,399 @@
+/* ============================================================================
+ * Payroll Dark Theme — Matches Ecosystem Dashboard Look
+ * ============================================================================
+ * Green accent (#10b981) on dark background
+ * Load AFTER inline <style> to override
+ * ============================================================================ */
+
+/* ── CSS Variables ──────────────────────────────────────────────────────────── */
+:root {
+    --bg-dark: #0f0c29;
+    --bg-mid: #302b63;
+    --bg-end: #24243e;
+    --surface: rgba(255,255,255,0.06);
+    --surface-hover: rgba(255,255,255,0.10);
+    --surface-alt: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.12);
+    --text: #fff;
+    --text-secondary: rgba(255,255,255,0.7);
+    --text-muted: rgba(255,255,255,0.5);
+    --accent: #10b981;
+    --accent-dark: #059669;
+    --accent-light: #6ee7b7;
+    --accent-glow: rgba(16,185,129,0.3);
+    --accent-subtle: rgba(16,185,129,0.15);
+}
+
+/* ── Body & Base ────────────────────────────────────────────────────────────── */
+body {
+    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
+    color: var(--text) !important;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────────── */
+.sidebar {
+    background: rgba(255,255,255,0.06) !important;
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+}
+.sidebar-header {
+    border-bottom-color: var(--border) !important;
+}
+.sidebar-title {
+    color: var(--accent-light) !important;
+}
+.current-company {
+    background: var(--accent-subtle) !important;
+    color: var(--text) !important;
+}
+.sidebar-section-title {
+    color: var(--text-muted) !important;
+}
+.sidebar-link {
+    color: var(--text-secondary) !important;
+}
+.sidebar-link:hover {
+    background: var(--surface-hover) !important;
+    color: var(--accent-light) !important;
+    border-left-color: var(--accent) !important;
+}
+.sidebar-link.active {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+    border-left-color: var(--accent) !important;
+}
+
+/* ── Company Carousel ───────────────────────────────────────────────────────── */
+.company-carousel {
+    border-top-color: var(--border) !important;
+    border-bottom-color: var(--border) !important;
+}
+.carousel-title {
+    color: var(--text-muted) !important;
+}
+.carousel-company {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.carousel-company:hover,
+.carousel-company.active {
+    border-color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
+}
+
+/* ── Content Area ───────────────────────────────────────────────────────────── */
+.content,
+.main-content {
+    color: var(--text);
+}
+.content h1,
+.content h2,
+.content h3,
+.main-content h1,
+.main-content h2,
+.main-content h3 {
+    color: var(--text) !important;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.card,
+.info-card,
+.stat-card,
+.stats-card,
+.detail-card,
+.section-card,
+.dashboard-card,
+.kpi-card,
+.summary-card {
+    background: var(--surface) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+    color: var(--text) !important;
+}
+.card h2,
+.card h3,
+.card h4,
+.info-card h2,
+.info-card h3,
+.stat-card h4,
+.section-card h3 {
+    color: var(--text) !important;
+}
+.card-header {
+    border-bottom-color: var(--border) !important;
+    color: var(--text) !important;
+}
+
+/* ── Auth / Login ───────────────────────────────────────────────────────────── */
+.auth-section {
+    background: rgba(255,255,255,0.08) !important;
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4) !important;
+    color: var(--text);
+}
+.tab-buttons {
+    border-bottom-color: var(--border) !important;
+}
+.tab-btn {
+    color: var(--text-muted) !important;
+}
+.tab-btn.active {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+h1 {
+    color: var(--accent-light) !important;
+}
+
+/* ── Company Selection ──────────────────────────────────────────────────────── */
+.selection-container,
+.company-select-container {
+    background: rgba(255,255,255,0.08) !important;
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+.company-option,
+.company-card {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.company-option:hover,
+.company-card:hover {
+    border-color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
+}
+.company-option.selected,
+.company-card.selected {
+    border-color: var(--accent) !important;
+    background: var(--accent) !important;
+    color: white !important;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────────── */
+table {
+    color: var(--text);
+}
+thead,
+thead tr {
+    background: rgba(255,255,255,0.06) !important;
+}
+th {
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border) !important;
+    background: rgba(255,255,255,0.06) !important;
+}
+td {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+}
+tbody tr:hover {
+    background: var(--surface-hover) !important;
+}
+.table-container,
+.data-table {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+
+/* ── Forms ──────────────────────────────────────────────────────────────────── */
+label {
+    color: var(--text-secondary) !important;
+}
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+input[type="date"],
+input[type="time"],
+input[type="search"],
+input[type="tel"],
+select,
+textarea {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-muted) !important;
+}
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+select option {
+    background: #1e1b3a;
+    color: var(--text);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-primary,
+.btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+    color: white !important;
+    border: none !important;
+}
+.btn-primary:hover,
+.btn:hover {
+    box-shadow: 0 4px 15px var(--accent-glow) !important;
+}
+.btn-secondary,
+.btn-outline {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border-strong) !important;
+}
+.btn-secondary:hover,
+.btn-outline:hover {
+    background: var(--surface-hover) !important;
+}
+
+/* ── Modals ─────────────────────────────────────────────────────────────────── */
+.modal-overlay,
+.overlay {
+    background: rgba(15,12,41,0.85) !important;
+}
+.modal,
+.modal-content,
+.modal-box {
+    background: #1e1b3a !important;
+    border: 1px solid var(--border);
+    color: var(--text) !important;
+}
+.modal-header,
+.modal h2,
+.modal h3 {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+}
+.modal-footer {
+    border-top-color: var(--border) !important;
+}
+.close-btn,
+.modal-close {
+    color: var(--text-muted) !important;
+}
+
+/* ── Status Badges ──────────────────────────────────────────────────────────── */
+.badge,
+.status-badge {
+    font-weight: 600;
+}
+.badge-success,
+.badge.active,
+.status.active {
+    background: rgba(16,185,129,0.2) !important;
+    color: var(--accent-light) !important;
+}
+.badge-warning,
+.badge.pending,
+.status.pending {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.badge-danger,
+.badge.inactive,
+.status.error {
+    background: rgba(239,68,68,0.2) !important;
+    color: #fca5a5 !important;
+}
+
+/* ── Info Section (Login page) ──────────────────────────────────────────────── */
+.info-section h2 {
+    color: var(--text) !important;
+}
+.info-section p {
+    color: var(--text-secondary) !important;
+}
+.feature-list li {
+    color: var(--text-secondary);
+}
+
+/* ── Charts / Stats ─────────────────────────────────────────────────────────── */
+.stat-value,
+.kpi-value,
+.stat-number {
+    color: var(--accent-light) !important;
+}
+.stat-label,
+.kpi-label {
+    color: var(--text-muted) !important;
+}
+
+/* ── Misc ───────────────────────────────────────────────────────────────────── */
+.divider,
+hr {
+    border-color: var(--border) !important;
+}
+.empty-state,
+.no-data {
+    color: var(--text-muted) !important;
+}
+.subtitle,
+.description,
+p {
+    color: var(--text-secondary) !important;
+}
+a {
+    color: var(--accent-light);
+}
+a:hover {
+    color: var(--accent);
+}
+.spinner {
+    border-color: rgba(255,255,255,0.1) !important;
+    border-top-color: var(--accent) !important;
+}
+.loading { color: var(--text-muted) !important; }
+
+/* ── Notifications / Toasts ─────────────────────────────────────────────────── */
+.notification,
+.toast {
+    background: #1e1b3a !important;
+    color: var(--text) !important;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.4) !important;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────────── */
+.nav-tabs,
+.tab-nav {
+    border-bottom-color: var(--border) !important;
+}
+.nav-tab,
+.tab-item {
+    color: var(--text-muted) !important;
+}
+.nav-tab.active,
+.tab-item.active {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
+/* ── Accordion / Collapsible ────────────────────────────────────────────────── */
+.accordion-header {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+}
+.accordion-body {
+    background: var(--surface-alt) !important;
+    border-color: var(--border) !important;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
