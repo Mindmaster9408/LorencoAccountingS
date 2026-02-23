@@ -230,24 +230,39 @@ router.post('/', async (req, res) => {
 
     // Auto-resolve company_id: body → token → user's first company
     let resolvedCompanyId = parseInt(company_id) || req.companyId || null;
+    console.log('[eco-clients] company_id resolve: body=', company_id, 'token=', req.companyId, 'isSuperAdmin=', req.user?.isSuperAdmin, 'userId=', req.user?.userId);
+
     if (!resolvedCompanyId) {
-      // Fallback: get the user's first accessible company
       const isSuperAdmin = req.user && req.user.isSuperAdmin;
       if (isSuperAdmin) {
-        const { data: firstCo } = await supabase
-          .from('companies').select('id').eq('is_active', true).order('id').limit(1).single();
-        if (firstCo) resolvedCompanyId = firstCo.id;
+        // Super admin: get first active company
+        const { data: allCos, error: cosErr } = await supabase
+          .from('companies').select('id').eq('is_active', true).order('id').limit(1);
+        console.log('[eco-clients] super admin company lookup:', allCos, cosErr?.message);
+        if (allCos && allCos.length > 0) resolvedCompanyId = allCos[0].id;
       } else {
-        const { data: access } = await supabase
+        // Regular user: get primary company from access table
+        const { data: accessList, error: accErr } = await supabase
           .from('user_company_access').select('company_id')
           .eq('user_id', req.user.userId).eq('is_active', true)
-          .order('is_primary', { ascending: false }).limit(1).single();
-        if (access) resolvedCompanyId = access.company_id;
+          .order('is_primary', { ascending: false }).limit(1);
+        console.log('[eco-clients] user company lookup:', accessList, accErr?.message);
+        if (accessList && accessList.length > 0) resolvedCompanyId = accessList[0].company_id;
       }
     }
+
+    // Last resort: just get any company from the database
     if (!resolvedCompanyId) {
-      return res.status(400).json({ error: 'No company found for your account. Please contact your administrator.' });
+      const { data: anyCo } = await supabase
+        .from('companies').select('id').limit(1);
+      console.log('[eco-clients] last resort company lookup:', anyCo);
+      if (anyCo && anyCo.length > 0) resolvedCompanyId = anyCo[0].id;
     }
+
+    if (!resolvedCompanyId) {
+      return res.status(400).json({ error: 'No company exists in the system yet. Please create a company first.' });
+    }
+    console.log('[eco-clients] resolved company_id:', resolvedCompanyId);
 
     const newClient = {
       company_id: resolvedCompanyId,

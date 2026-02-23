@@ -1031,7 +1031,7 @@
 
             // Render UI
             renderUser();
-            renderCompanies();
+            await renderCompanies();
             renderApps();
             renderStats();
 
@@ -1052,18 +1052,44 @@
         }
 
         // ── Render Companies ──
-        function renderCompanies() {
+        async function renderCompanies() {
             const container = document.getElementById('companySelector');
 
-            if (isSuperAdmin && companies.length === 0) {
-                // Super admin sees all companies with all modules
-                companies = [
-                    { id: 1, company_name: 'All Companies', trading_name: 'Super Admin', role: 'super_admin', modules_enabled: ['pos', 'payroll', 'accounting', 'sean'] }
-                ];
+            // If no companies in localStorage, fetch from API
+            if (companies.length === 0) {
+                try {
+                    const token = localStorage.getItem('eco_token');
+                    const res = await fetch(`${API_BASE}/api/auth/companies`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.companies && data.companies.length > 0) {
+                            companies = data.companies;
+                            localStorage.setItem('eco_companies', JSON.stringify(companies));
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch companies:', e);
+                }
             }
 
             if (companies.length === 0) {
-                container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem;">No companies assigned. Contact your administrator.</p>';
+                container.innerHTML = `
+                    <div style="text-align:center; padding: 1.5rem;">
+                        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">No companies yet. Create one to get started.</p>
+                        <div id="createCompanyForm" style="max-width: 400px; margin: 0 auto; text-align: left;">
+                            <div class="form-field" style="margin-bottom: 0.75rem;">
+                                <label style="font-size: 0.85rem; margin-bottom: 0.25rem; display: block;">Company Name *</label>
+                                <input type="text" id="newCompanyName" placeholder="e.g. My Business" style="width:100%; padding: 0.5rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
+                            </div>
+                            <div class="form-field" style="margin-bottom: 0.75rem;">
+                                <label style="font-size: 0.85rem; margin-bottom: 0.25rem; display: block;">Trading Name</label>
+                                <input type="text" id="newCompanyTradingName" placeholder="Optional trading name" style="width:100%; padding: 0.5rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
+                            </div>
+                            <button onclick="createCompany()" id="createCompanyBtn" style="width:100%; padding: 0.6rem; border-radius: 8px; border: none; background: var(--accent); color: white; font-weight: 600; cursor: pointer;">Create Company</button>
+                        </div>
+                    </div>`;
                 return;
             }
 
@@ -1081,6 +1107,66 @@
             `).join('');
 
             document.getElementById('statCompanies').textContent = companies.length;
+        }
+
+        async function createCompany() {
+            const name = document.getElementById('newCompanyName').value.trim();
+            if (!name) {
+                showToast('Company name is required.', true);
+                return;
+            }
+            const tradingName = document.getElementById('newCompanyTradingName').value.trim();
+            const btn = document.getElementById('createCompanyBtn');
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/companies`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        company_name: name,
+                        trading_name: tradingName || name,
+                        modules_enabled: ['pos', 'payroll', 'accounting', 'sean']
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to create company');
+
+                showToast(`${data.company.company_name} created successfully!`);
+
+                // Refresh companies and re-render
+                const compRes = await fetch(`${API_BASE}/api/auth/companies`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (compRes.ok) {
+                    const compData = await compRes.json();
+                    companies = compData.companies || [];
+                    localStorage.setItem('eco_companies', JSON.stringify(companies));
+                }
+
+                // Re-select company to update token with companyId
+                if (companies.length > 0) {
+                    const selRes = await fetch(`${API_BASE}/api/auth/select-company`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ companyId: companies[0].id })
+                    });
+                    if (selRes.ok) {
+                        const selData = await selRes.json();
+                        localStorage.setItem('eco_token', selData.token);
+                    }
+                }
+
+                await renderCompanies();
+                renderApps();
+                renderStats();
+            } catch (err) {
+                showToast(err.message, true);
+                btn.disabled = false;
+                btn.textContent = 'Create Company';
+            }
         }
 
         function selectCompany(idx) {

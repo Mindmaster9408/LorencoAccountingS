@@ -76,8 +76,9 @@ router.get('/:id', async (req, res) => {
 /**
  * POST /api/companies
  * Create a new company
+ * Permission: super_admin/business_owner, OR any user creating their first company
  */
-router.post('/', requirePermission('COMPANIES.CREATE'), async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const {
       company_name, trading_name, registration_number, vat_number,
@@ -88,17 +89,37 @@ router.post('/', requirePermission('COMPANIES.CREATE'), async (req, res) => {
       return res.status(400).json({ error: 'company_name is required' });
     }
 
+    // Allow first-company creation for any authenticated user
+    // Otherwise require COMPANIES.CREATE permission
+    const isSuperAdmin = req.user.isSuperAdmin;
+    const userRole = req.user.role;
+    const hasCreatePerm = isSuperAdmin || ['super_admin', 'business_owner'].includes(userRole);
+
+    if (!hasCreatePerm) {
+      // Check if this is their first company — allow it
+      const { data: existingAccess } = await supabase
+        .from('user_company_access')
+        .select('id')
+        .eq('user_id', req.user.userId)
+        .eq('is_active', true)
+        .limit(1);
+
+      if (existingAccess && existingAccess.length > 0) {
+        return res.status(403).json({ error: 'Insufficient permissions to create additional companies' });
+      }
+    }
+
     const { data, error } = await supabase
       .from('companies')
       .insert({
         company_name,
         trading_name: trading_name || company_name,
-        registration_number,
-        vat_number,
-        contact_email,
-        contact_phone,
-        address,
-        modules_enabled: modules_enabled || ['pos'],
+        registration_number: registration_number || null,
+        vat_number: vat_number || null,
+        contact_email: contact_email || null,
+        contact_phone: contact_phone || null,
+        address: address || null,
+        modules_enabled: modules_enabled || ['pos', 'payroll', 'accounting', 'sean'],
         is_active: true,
         subscription_status: 'active'
       })
@@ -107,12 +128,21 @@ router.post('/', requirePermission('COMPANIES.CREATE'), async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
+    // Determine if this should be the user's primary company
+    const { data: existingLinks } = await supabase
+      .from('user_company_access')
+      .select('id')
+      .eq('user_id', req.user.userId)
+      .eq('is_active', true)
+      .limit(1);
+    const isPrimary = !existingLinks || existingLinks.length === 0;
+
     // Link creating user as business_owner
     await supabase.from('user_company_access').insert({
       user_id: req.user.userId,
       company_id: data.id,
-      role: 'business_owner',
-      is_primary: false,
+      role: isSuperAdmin ? 'super_admin' : 'business_owner',
+      is_primary: isPrimary,
       is_active: true
     });
 
@@ -120,6 +150,7 @@ router.post('/', requirePermission('COMPANIES.CREATE'), async (req, res) => {
 
     res.status(201).json({ company: data });
   } catch (err) {
+    console.error('Company creation error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

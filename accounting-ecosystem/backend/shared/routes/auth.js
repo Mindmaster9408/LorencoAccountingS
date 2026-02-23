@@ -130,7 +130,7 @@ router.post('/login', async (req, res) => {
       }))
       .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
 
-    // Build token payload
+    // Build token payload — always auto-select first company so role is never null
     const tokenPayload = {
       userId: user.id,
       username: user.username,
@@ -138,12 +138,12 @@ router.post('/login', async (req, res) => {
       fullName: user.full_name,
       isSuperAdmin: isSuperAdmin,
       companyId: null,
-      role: null,
+      role: isSuperAdmin ? 'super_admin' : null,
     };
 
-    // Auto-select if only one company
     let selectedCompany = null;
-    if (companyList.length === 1) {
+    if (companyList.length >= 1) {
+      // Auto-select first (primary) company so token always has a valid companyId & role
       selectedCompany = companyList[0];
       tokenPayload.companyId = selectedCompany.id;
       tokenPayload.role = selectedCompany.role;
@@ -183,86 +183,176 @@ router.post('/login', async (req, res) => {
  */
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password, full_name, company_name, trading_name } = req.body;
+    const {
+      username, email, password, full_name,
+      company_name, trading_name,          // legacy simple fields
+      account_type, practice, business,    // rich frontend payload
+      users, existing_user_id              // team members + existing user mode
+    } = req.body;
 
-    if (!username || !email || !password || !full_name) {
-      return res.status(400).json({ error: 'Username, email, password, and full name are required' });
+    // Resolve company details from practice/business or legacy fields
+    const companyName = practice?.name || business?.name || company_name;
+    const companyTradingName = practice?.trading_name || business?.trading_name || trading_name || companyName;
+
+    // Determine the owner role based on account type
+    const ownerRole = account_type === 'accountant' ? 'business_owner' : 'business_owner';
+
+    let mainUser;
+
+    if (existing_user_id) {
+      // Existing user mode — look up the user
+      const { data: existingUser, error: euErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', existing_user_id)
+        .single();
+      if (euErr || !existingUser) {
+        return res.status(404).json({ error: 'Existing user not found' });
+      }
+      mainUser = existingUser;
+    } else {
+      // New user mode — validate and create
+      const regEmail = email;
+      const regUsername = username || email;
+      const regPassword = password;
+      const regFullName = full_name;
+
+      if (!regEmail || !regPassword || !regFullName) {
+        return res.status(400).json({ error: 'Email, password, and full name are required' });
+      }
+
+      // Check if user exists
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .or(`username.eq.${regUsername},email.eq.${regEmail}`)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        return res.status(409).json({ error: 'Username or email already registered' });
+      }
+
+      const password_hash = await bcrypt.hash(regPassword, 12);
+
+      const { data: newUser, error: userError } = await supabase
+        .from('users')
+        .insert({ username: regUsername, email: regEmail, password_hash, full_name: regFullName, is_active: true })
+        .select()
+        .single();
+
+      if (userError) {
+        return res.status(500).json({ error: 'Failed to create user: ' + userError.message });
+      }
+      mainUser = newUser;
     }
 
-    // Check if user exists
-    const { data: existing } = await supabase
-      .from('users')
-      .select('id')
-      .or(`username.eq.${username},email.eq.${email}`)
-      .limit(1);
-
-    if (existing && existing.length > 0) {
-      return res.status(409).json({ error: 'Username or email already registered' });
-    }
-
-    // Hash password
-    const password_hash = await bcrypt.hash(password, 12);
-
-    // Create user
-    const { data: newUser, error: userError } = await supabase
-      .from('users')
-      .insert({ username, email, password_hash, full_name, is_active: true })
-      .select()
-      .single();
-
-    if (userError) {
-      return res.status(500).json({ error: 'Failed to create user: ' + userError.message });
-    }
-
-    // If company_name provided, create company and link
+    // Create company if name provided
     let company = null;
-    if (company_name) {
+    if (companyName) {
       const { data: newCompany, error: compError } = await supabase
         .from('companies')
         .insert({
-          company_name,
-          trading_name: trading_name || company_name,
+          company_name: companyName,
+          trading_name: companyTradingName,
           is_active: true,
-          modules_enabled: ['pos'],
+          modules_enabled: ['pos', 'payroll', 'accounting', 'sean'],
           subscription_status: 'active'
         })
         .select()
         .single();
 
-      if (!compError && newCompany) {
-        company = newCompany;
-        // Link user to company as business_owner
-        await supabase.from('user_company_access').insert({
-          user_id: newUser.id,
-          company_id: newCompany.id,
-          role: 'business_owner',
-          is_primary: true,
-          is_active: true
-        });
+      if (compError) {
+        console.error('Company creation error:', compError.message);
+        return res.status(500).json({ error: 'Failed to create company: ' + compError.message });
+      }
+
+      company = newCompany;
+
+      // Link main user to company as owner
+      await supabase.from('user_company_access').insert({
+        user_id: mainUser.id,
+        company_id: company.id,
+        role: ownerRole,
+        is_primary: true,
+        is_active: true
+      });
+
+      // Create team members if provided
+      if (Array.isArray(users) && users.length > 0) {
+        for (const member of users) {
+          // Skip the main user if they appear in the users array
+          if (member.email?.toLowerCase() === mainUser.email?.toLowerCase()) continue;
+          if (!member.email || !member.name) continue;
+
+          try {
+            // Check if team member already exists
+            const { data: existingMember } = await supabase
+              .from('users')
+              .select('id')
+              .eq('email', member.email.toLowerCase())
+              .limit(1);
+
+            let memberId;
+            if (existingMember && existingMember.length > 0) {
+              memberId = existingMember[0].id;
+            } else {
+              // Create the team member with a temp password they can change
+              const memberHash = await bcrypt.hash(member.password || 'Welcome@2026', 12);
+              const { data: newMember, error: memErr } = await supabase
+                .from('users')
+                .insert({
+                  username: member.email.toLowerCase(),
+                  email: member.email.toLowerCase(),
+                  password_hash: memberHash,
+                  full_name: member.name,
+                  is_active: true
+                })
+                .select()
+                .single();
+              if (memErr) {
+                console.error(`Failed to create team member ${member.email}:`, memErr.message);
+                continue;
+              }
+              memberId = newMember.id;
+            }
+
+            // Link team member to company
+            await supabase.from('user_company_access').insert({
+              user_id: memberId,
+              company_id: company.id,
+              role: member.role || 'employee',
+              is_primary: false,
+              is_active: true
+            });
+          } catch (memError) {
+            console.error(`Error processing team member ${member.email}:`, memError);
+          }
+        }
       }
     }
 
     const token = jwt.sign({
-      userId: newUser.id,
-      username: newUser.username,
-      email: newUser.email,
-      fullName: newUser.full_name,
+      userId: mainUser.id,
+      username: mainUser.username,
+      email: mainUser.email,
+      fullName: mainUser.full_name,
       companyId: company?.id || null,
-      role: company ? 'business_owner' : null,
+      role: company ? ownerRole : null,
     }, JWT_SECRET, { expiresIn: '8h' });
 
     res.status(201).json({
       success: true,
       token,
       user: {
-        id: newUser.id,
-        username: newUser.username,
-        email: newUser.email,
-        fullName: newUser.full_name,
+        id: mainUser.id,
+        username: mainUser.username,
+        email: mainUser.email,
+        fullName: mainUser.full_name,
       },
       company: company ? {
         id: company.id,
         company_name: company.company_name,
+        trading_name: company.trading_name,
       } : null,
     });
   } catch (err) {
@@ -486,7 +576,13 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
 
     if (user.is_super_admin) {
       role = 'super_admin';
-      if (!resolvedCompanyId) resolvedCompanyId = req.companyId || 1;
+      // Resolve company: from request → from token → first active company in DB
+      if (!resolvedCompanyId) resolvedCompanyId = req.companyId || null;
+      if (!resolvedCompanyId) {
+        const { data: firstCo } = await supabase
+          .from('companies').select('id').eq('is_active', true).order('id').limit(1);
+        if (firstCo && firstCo.length > 0) resolvedCompanyId = firstCo[0].id;
+      }
     } else if (resolvedCompanyId) {
       const { data: access } = await supabase
         .from('user_company_access')
@@ -514,6 +610,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
       }
     }
 
+    // Fetch and validate the resolved company exists
     let company = null;
     if (resolvedCompanyId) {
       const { data: companyData } = await supabase
@@ -522,6 +619,9 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
         .eq('id', resolvedCompanyId)
         .single();
       company = companyData;
+    }
+    if (!company) {
+      return res.status(400).json({ error: 'No active company found. Please create or join a company first.' });
     }
 
     const appToken = jwt.sign({
