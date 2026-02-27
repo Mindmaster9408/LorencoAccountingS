@@ -440,12 +440,21 @@
         let appFilter    = 'all';
 
         // ── Auth Guard ──────────────────────────────────────────────────────
-        const token        = localStorage.getItem('eco_token');
-        const isSuperAdmin = localStorage.getItem('eco_super_admin') === 'true';
+        const token = localStorage.getItem('eco_token');
 
-        if (!token || !isSuperAdmin) {
-            window.location.href = '/dashboard';
+        // Check eco_super_admin flag; also decode JWT as fallback for existing sessions
+        // that may not have eco_super_admin set in localStorage.
+        function resolveIsSuperAdmin() {
+            if (localStorage.getItem('eco_super_admin') === 'true') return true;
+            if (!token) return false;
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                return !!payload.isSuperAdmin;
+            } catch (e) {
+                return false;
+            }
         }
+        const isSuperAdmin = resolveIsSuperAdmin();
 
         // ── Init ────────────────────────────────────────────────────────────
         async function init() {
@@ -712,6 +721,10 @@
         }
 
         // ── Boot ─────────────────────────────────────────────────────────────
+        // Only boot for verified super admins; redirect everyone else.
+        if (!token || !isSuperAdmin) {
+            window.location.href = '/dashboard';
+        } else {
         init().catch(err => {
             document.getElementById('clientsGrid').innerHTML = `
                 <div class="empty-state">
@@ -719,6 +732,7 @@
                     <p>Failed to load: ${err.message}</p>
                 </div>`;
         });
+        } // end else (isSuperAdmin)
     </script>
 </body>
 </html>
