@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git push:*)",
       "Bash(git add:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(grep -l \"background: white\\\\|background: #fff\\\\|background: #f8f9fa\\\\|background: #ffffff\" /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-pos/*.html)"
     ]
   }
 }

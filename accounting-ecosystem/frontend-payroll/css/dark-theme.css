@@ -87,6 +87,7 @@ body {
 /* ── Content Area ───────────────────────────────────────────────────────────── */
 .content,
 .main-content {
+    background: transparent !important;
     color: var(--text);
 }
 .content h1,
@@ -387,6 +388,97 @@ a:hover {
 .accordion-body {
     background: var(--surface-alt) !important;
     border-color: var(--border) !important;
+}
+
+/* ── Payruns Page ────────────────────────────────────────────────────────────── */
+.payrun-list,
+.payrun-body,
+.payslips-stats {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.sean-item {
+    background: var(--surface-alt) !important;
+    border-left-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.sean-tool-card {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.sean-tool-card:hover {
+    border-color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
+}
+
+/* ── Employee Detail Page ────────────────────────────────────────────────────── */
+/* .header = the white employee profile header bar */
+.header {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+.salary-item {
+    background: var(--surface-alt) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.leave-balance-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.collapsed-content {
+    background: var(--surface-alt) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+/* Tab panels (not tab-btn) in employee-detail */
+.tab {
+    color: var(--text-muted) !important;
+    background: transparent !important;
+}
+.tab.active {
+    background: var(--surface) !important;
+    color: var(--accent-light) !important;
+    border-color: var(--border) !important;
+}
+
+/* ── Attendance Page ─────────────────────────────────────────────────────────── */
+.company-pill {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.company-pill:hover,
+.company-pill.active {
+    background: var(--accent-subtle) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+}
+.att-tab {
+    color: var(--text-muted) !important;
+    background: transparent !important;
+}
+.att-tab.active {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+.att-tab-content {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+}
+
+/* ── Historical Import Page ──────────────────────────────────────────────────── */
+.multi-select {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */

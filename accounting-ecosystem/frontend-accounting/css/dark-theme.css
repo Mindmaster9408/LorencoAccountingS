@@ -579,6 +579,120 @@ a:hover {
     color: #fca5a5 !important;
 }
 
+/* ── Company / Settings / Profile Pages ─────────────────────────────────────── */
+/* company.html, profile.html, settings.html, paye-config.html                  */
+.page-header,
+.company-switcher,
+.settings-section,
+.teach-sean-section,
+.integrations-section,
+.section {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+}
+/* Integration modal */
+.integration-modal-content {
+    background: #1e1b3a !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+}
+/* .container used as page wrapper in paye-config.html and settings.html */
+.container {
+    background: transparent !important;
+    color: var(--text) !important;
+}
+/* Action buttons (customers/suppliers pages) */
+.action-btn {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.action-btn:hover {
+    background: var(--surface-hover) !important;
+    color: var(--accent-light) !important;
+}
+
+/* ── PAYE Reconciliation Page ────────────────────────────────────────────────── */
+.header-section,
+.recon-container {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.row-label,
+.name-col {
+    background: var(--surface-alt) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+}
+
+/* ── Accounts / Cash Reconciliation Pages ────────────────────────────────────── */
+.stat-item {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.recon-section,
+.day-item {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.day-item:hover {
+    background: var(--surface-hover) !important;
+}
+
+/* ── Invoices Page ───────────────────────────────────────────────────────────── */
+.invoice-form-section,
+.line-items-section,
+.totals-section,
+.notes-section,
+.invoice-preview {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+
+/* ── Trial Balance / Reports Pages ──────────────────────────────────────────── */
+.report-section,
+.report-header,
+.report-filters,
+.report-content,
+.trial-balance-container,
+.balance-sheet-section,
+.cashflow-section,
+.analysis-section,
+.vat-section,
+.paye-section {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.report-title,
+.section-title {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+}
+/* Report summary rows */
+.summary-row-total,
+.report-total-row {
+    background: rgba(245,158,11,0.08) !important;
+    color: var(--text) !important;
+    border-top-color: var(--border-strong) !important;
+}
+
+/* ── Contacts / Customer / Supplier Detail ───────────────────────────────────── */
+.contact-detail,
+.customer-detail,
+.supplier-detail,
+.contact-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
