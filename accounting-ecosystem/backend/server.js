@@ -384,21 +384,23 @@ async function start() {
   console.log('║        ACCOUNTING ECOSYSTEM — Starting Server           ║');
   console.log('╚══════════════════════════════════════════════════════════╝\n');
 
-  // 1. Test database connection
+  // 1. Test database connection (retries up to 5 times)
   console.log('🔌 Connecting to Supabase...');
-  const connected = await checkConnection();
+  const connected = await checkConnection(5, 3000);
   if (!connected) {
-    console.error('❌ Cannot reach Supabase. Check your .env credentials.');
-    process.exit(1);
+    console.warn('⚠️  Could not reach Supabase after 5 attempts.');
+    console.warn('   Server will start anyway — DB-dependent routes will fail until connection is restored.');
+    console.warn('   Check your SUPABASE_URL and SUPABASE_SERVICE_KEY in .env\n');
+  } else {
+    console.log('✅ Supabase connection verified\n');
+
+    // 2. Ensure default company exists (Bug Fix #1)
+    await ensureDefaultCompany();
+
+    // 3. Seed master admin if no users exist
+    const { seedMasterAdmin } = require('./config/seed');
+    await seedMasterAdmin(supabase);
   }
-  console.log('✅ Supabase connection verified\n');
-
-  // 2. Ensure default company exists (Bug Fix #1)
-  await ensureDefaultCompany();
-
-  // 3. Seed master admin if no users exist
-  const { seedMasterAdmin } = require('./config/seed');
-  await seedMasterAdmin(supabase);
 
   // 4. Display module status
   console.log('📦 Module Status:');

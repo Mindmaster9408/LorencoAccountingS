@@ -611,6 +611,29 @@
         .app-badge.payroll { background: rgba(16,185,129,0.15); color: #6ee7b7; }
         .app-badge.accounting { background: rgba(245,158,11,0.15); color: #fbbf24; }
         .app-badge.sean { background: rgba(139,92,246,0.15); color: #a78bfa; }
+
+        /* Clickable launch buttons on client cards */
+        .app-launch-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 11px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+        }
+        .app-launch-btn .launch-arrow { font-size: 0.75rem; opacity: 0.7; }
+        .app-launch-btn:hover { transform: translateY(-1px); opacity: 0.85; }
+        .app-launch-btn:hover .launch-arrow { opacity: 1; }
+        .app-launch-btn.pos { background: rgba(59,130,246,0.2); color: #60a5fa; border-color: rgba(59,130,246,0.3); }
+        .app-launch-btn.payroll { background: rgba(16,185,129,0.2); color: #6ee7b7; border-color: rgba(16,185,129,0.3); }
+        .app-launch-btn.accounting { background: rgba(245,158,11,0.2); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
+        .app-launch-btn.sean { background: rgba(139,92,246,0.2); color: #a78bfa; border-color: rgba(139,92,246,0.3); }
         .btn-add-app {
             display: inline-flex;
             align-items: center;
@@ -1280,6 +1303,63 @@
             }
         }
 
+        // ── Launch App from Client Card (scoped to that client's company) ──
+        async function launchClientApp(clientId, companyId, appKey) {
+            const app = APP_DEFS.find(a => a.key === appKey);
+            if (!app) return;
+
+            const overlay = document.getElementById('launchOverlay');
+            const text = document.getElementById('launchText');
+            overlay.classList.add('show');
+
+            // Find client name for display
+            const client = allClients.find(c => c.id === clientId);
+            text.textContent = `Opening ${app.name} for ${client ? client.name : 'client'}...`;
+
+            try {
+                const token = localStorage.getItem('eco_token');
+
+                const res = await fetch(`${API_BASE}/api/auth/sso-launch`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        targetApp: appKey,
+                        companyId: companyId  // <-- use the CLIENT's company, not the user's selected company
+                    })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Launch failed');
+                }
+
+                const data = await res.json();
+
+                // Store app token scoped to this client's company
+                localStorage.setItem('token', data.appToken);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                if (data.company) {
+                    localStorage.setItem('company', JSON.stringify(data.company));
+                    localStorage.setItem('selectedCompanyId', data.company.id);
+                }
+                localStorage.setItem(`${appKey}_token`, data.appToken);
+                localStorage.setItem(`${appKey}_user`, JSON.stringify(data.user));
+                localStorage.setItem('sso_source', 'ecosystem');
+                // Store the eco_client_id so the app can highlight/filter this client
+                localStorage.setItem('eco_client_id', clientId);
+
+                text.textContent = `Opening ${app.name}...`;
+                setTimeout(() => { window.location.href = app.path; }, 500);
+
+            } catch (err) {
+                overlay.classList.remove('show');
+                alert(`Failed to open ${app.name}: ${err.message}`);
+            }
+        }
+
         // ── Logout ──
         function logout() {
             localStorage.removeItem('eco_token');
@@ -1477,8 +1557,12 @@
                 const typeCls = c.client_type === 'business' ? ' business' : '';
                 const typeLabel = c.client_type === 'business' ? '🏢 Business' : '👤 Individual';
 
-                const appBadges = (c.apps || []).map(a =>
-                    `<span class="app-badge ${a}">${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}</span>`
+                // App launch buttons — clicking opens that app scoped to this client's company
+                const appLaunchBtns = (c.apps || []).map(a => `
+                    <button type="button" class="app-launch-btn ${a}" onclick="launchClientApp(${c.id}, ${c.company_id}, '${a}')" title="Open ${APP_LABELS[a] || a} for ${escHtml(c.name)}">
+                        ${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}
+                        <span class="launch-arrow">↗</span>
+                    </button>`
                 ).join('');
 
                 return `
@@ -1494,8 +1578,8 @@
                         ${c.phone ? `<div class="client-card-meta"><span class="icon">📱</span> ${escHtml(c.phone)}</div>` : ''}
                         ${c.address ? `<div class="client-card-meta"><span class="icon">📍</span> ${escHtml(c.address)}</div>` : ''}
                         <div class="client-apps-row">
-                            <span class="label">Linked to:</span>
-                            ${appBadges || '<span style="color:var(--text-muted); font-size:0.8rem;">No apps linked</span>'}
+                            <span class="label">Open in:</span>
+                            ${appLaunchBtns || '<span style="color:var(--text-muted); font-size:0.8rem;">No apps linked</span>'}
                             <button type="button" class="btn-add-app" onclick="openEditApps(${c.id})">+ Add</button>
                         </div>
                     </div>

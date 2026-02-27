@@ -19,8 +19,8 @@ const MASTER_USER = {
 };
 
 const DEFAULT_COMPANY = {
-  company_name: 'Lorenco Accounting Services',
-  trading_name: 'Lorenco',
+  company_name: 'The Infinite Legacy',
+  trading_name: 'The Infinite Legacy',
   is_active: true,
   modules_enabled: ['pos', 'payroll', 'accounting', 'sean'],
   subscription_status: 'active'
@@ -92,13 +92,13 @@ async function seedMasterAdmin(supabase) {
       console.log(`  ✅ Default company created (ID: ${company.id}) — ${DEFAULT_COMPANY.company_name}`);
     }
 
-    // Link user to company as business_owner
+    // Link user to company as super_admin
     const { error: linkError } = await supabase
       .from('user_company_access')
       .insert({
         user_id: user.id,
         company_id: company.id,
-        role: 'business_owner',
+        role: 'super_admin',
         is_primary: true,
         is_active: true
       });

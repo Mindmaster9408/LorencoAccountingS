@@ -4,9 +4,10 @@
 -- Run this in Supabase SQL Editor to create all tables.
 -- Sections:
 --   1. SHARED (companies, users, audit — used by all modules)
---   2. POS Module (products, sales, tills, customers, inventory, etc.)
---   3. PAYROLL Module (periods, transactions, items, attendance, leave)
---   4. ACCOUNTING Module (placeholder - extends from Lorenco Accounting)
+--   2. ECOSYSTEM (eco_clients — cross-app client registry)
+--   3. POS Module (products, sales, tills, customers, inventory, etc.)
+--   4. PAYROLL Module (periods, transactions, items, attendance, leave)
+--   5. ACCOUNTING Module (placeholder - extends from Lorenco Accounting)
 --
 -- RLS policies enforce company isolation. Service-role key bypasses RLS.
 -- =============================================================================
@@ -89,6 +90,7 @@ CREATE TABLE IF NOT EXISTS employees (
   hourly_rate DECIMAL(10,2),
   salary DECIMAL(12,2),
   tax_number VARCHAR(50),
+  eco_client_id INTEGER,  -- linked after eco_clients table is created (FK added in migration 003)
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -122,7 +124,32 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
 
 
 -- =============================================================================
--- 2. POS MODULE — Checkout Charlie
+-- 2. ECOSYSTEM MODULE — Cross-App Client Registry
+-- =============================================================================
+
+-- ─── Eco Clients (universal client/contact shared across all apps) ────────────
+CREATE TABLE IF NOT EXISTS eco_clients (
+  id           SERIAL PRIMARY KEY,
+  company_id   INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  name         VARCHAR(255) NOT NULL,
+  email        VARCHAR(255),
+  phone        VARCHAR(50),
+  id_number    VARCHAR(100),
+  address      TEXT,
+  client_type  VARCHAR(50)  DEFAULT 'business',        -- 'individual' | 'business'
+  apps         TEXT[]       DEFAULT ARRAY[]::TEXT[],   -- e.g. ['pos','payroll']
+  notes        TEXT,
+  is_active    BOOLEAN      DEFAULT true,
+  created_at   TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_eco_clients_company ON eco_clients(company_id);
+CREATE INDEX IF NOT EXISTS idx_eco_clients_email   ON eco_clients(email);
+CREATE INDEX IF NOT EXISTS idx_eco_clients_active  ON eco_clients(is_active);
+
+-- =============================================================================
+-- 3. POS MODULE — Checkout Charlie
 -- =============================================================================
 
 -- ─── Product Categories ──────────────────────────────────────────────────────
@@ -188,12 +215,14 @@ CREATE TABLE IF NOT EXISTS customers (
   current_balance DECIMAL(10,2) DEFAULT 0,
   loyalty_points INTEGER DEFAULT 0,
   notes TEXT,
+  eco_client_id INTEGER REFERENCES eco_clients(id) ON DELETE SET NULL,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_customers_company ON customers(company_id);
+CREATE INDEX IF NOT EXISTS idx_customers_company    ON customers(company_id);
+CREATE INDEX IF NOT EXISTS idx_customers_eco_client ON customers(eco_client_id);
 
 -- ─── Tills ───────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tills (

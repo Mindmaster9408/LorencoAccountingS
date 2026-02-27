@@ -39,16 +39,23 @@ async function dbQuery(table) {
 
 /**
  * Health check — verify Supabase connection is working
+ * Retries up to maxRetries times with a delay between attempts.
  */
-async function checkConnection() {
-  try {
-    const { data, error } = await supabase.from('companies').select('id').limit(1);
-    if (error) throw error;
-    return true;
-  } catch (err) {
-    console.error('❌ Supabase connection test failed:', err.message);
-    return false;
+async function checkConnection(maxRetries = 5, delayMs = 3000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const { data, error } = await supabase.from('companies').select('id').limit(1);
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error(`❌ Supabase connection attempt ${attempt}/${maxRetries} failed: ${err.message}`);
+      if (attempt < maxRetries) {
+        console.log(`   Retrying in ${delayMs / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
   }
+  return false;
 }
 
 /**
@@ -72,10 +79,10 @@ async function ensureDefaultCompany() {
       const { data, error: insertError } = await supabase
         .from('companies')
         .insert({
-          company_name: 'Default Company',
-          trading_name: 'Default',
+          company_name: 'The Infinite Legacy',
+          trading_name: 'The Infinite Legacy',
           is_active: true,
-          modules_enabled: ['pos'],
+          modules_enabled: ['pos', 'payroll', 'accounting', 'sean'],
           subscription_status: 'active'
         })
         .select()
