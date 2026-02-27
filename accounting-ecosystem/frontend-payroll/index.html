@@ -129,12 +129,11 @@
             }
 
             const session = AUTH.getSession();
-            
+
             if (session) {
-                // User is logged in, redirect based on role
-                if (session.role === 'super_admin' || session.is_super_admin) {
-                    window.location.href = 'company-selection.html';
-                } else if (session.company_id) {
+                // If a company is already selected (e.g. via SSO), go straight to the dashboard.
+                // Only show company-selection when no company has been set yet.
+                if (session.company_id) {
                     window.location.href = 'company-dashboard.html';
                 } else {
                     window.location.href = 'company-selection.html';

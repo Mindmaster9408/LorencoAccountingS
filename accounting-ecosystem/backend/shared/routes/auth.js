@@ -377,14 +377,9 @@ router.post('/select-company', authenticateToken, async (req, res) => {
 
     const parsedCompanyId = parseInt(companyId, 10);
 
-    // Check if user is super admin
-    const { data: user } = await supabase
-      .from('users')
-      .select('is_super_admin')
-      .eq('id', userId)
-      .single();
-
-    const isSuperAdmin = user && user.is_super_admin;
+    // Trust isSuperAdmin from the JWT first — avoids an extra DB round-trip
+    // and prevents super admins from being locked out when the DB is slow.
+    const isSuperAdmin = req.user.isSuperAdmin || false;
     let role = null;
 
     // Fetch company details (needed by POS and other frontends)
@@ -425,7 +420,7 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       fullName: req.user.fullName,
       companyId: parsedCompanyId,
       role: role,
-      isSuperAdmin: isSuperAdmin || false,
+      isSuperAdmin: isSuperAdmin,
     }, JWT_SECRET, { expiresIn: '8h' });
 
     res.json({

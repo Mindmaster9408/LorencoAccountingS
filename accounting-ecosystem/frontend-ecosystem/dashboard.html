@@ -1557,9 +1557,11 @@
                 const typeCls = c.client_type === 'business' ? ' business' : '';
                 const typeLabel = c.client_type === 'business' ? '🏢 Business' : '👤 Individual';
 
-                // App launch buttons — clicking opens that app scoped to this client's company
+                // App launch buttons — use client_company_id (client's own isolated company)
+                // Falls back to company_id only if client_company_id not set yet
+                const clientAppCompanyId = c.client_company_id || c.company_id;
                 const appLaunchBtns = (c.apps || []).map(a => `
-                    <button type="button" class="app-launch-btn ${a}" onclick="launchClientApp(${c.id}, ${c.company_id}, '${a}')" title="Open ${APP_LABELS[a] || a} for ${escHtml(c.name)}">
+                    <button type="button" class="app-launch-btn ${a}" onclick="launchClientApp(${c.id}, ${clientAppCompanyId}, '${a}')" title="Open ${APP_LABELS[a] || a} for ${escHtml(c.name)}">
                         ${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}
                         <span class="launch-arrow">↗</span>
                     </button>`

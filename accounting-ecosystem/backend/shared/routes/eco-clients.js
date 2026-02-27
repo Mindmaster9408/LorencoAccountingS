@@ -19,19 +19,22 @@ const router = express.Router();
 
 /**
  * Sync an eco_client to the selected app tables.
+ * Uses client_company_id (the client's own isolated company) when available.
  * Returns { synced: [...], errors: [...] }
  */
 async function syncToApps(ecoClient) {
   const synced = [];
   const errors = [];
   const apps = ecoClient.apps || [];
+  // Data always goes into the client's OWN company — not the managing practice
+  const dataCompanyId = ecoClient.client_company_id || ecoClient.company_id;
 
   // POS → customers table
   if (apps.includes('pos')) {
     try {
       const customerNumber = `EC-${Date.now().toString(36).toUpperCase()}`;
       const customerData = {
-        company_id: ecoClient.company_id,
+        company_id: dataCompanyId,
         name: ecoClient.name,
         email: ecoClient.email || null,
         phone: ecoClient.phone || null,
@@ -79,7 +82,7 @@ async function syncToApps(ecoClient) {
       const lastName = nameParts.slice(1).join(' ') || '';
 
       const employeeData = {
-        company_id: ecoClient.company_id,
+        company_id: dataCompanyId,
         full_name: ecoClient.name,
         first_name: firstName,
         last_name: lastName,
@@ -222,50 +225,70 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
-    const { name, email, phone, id_number, address, client_type, apps, company_id, notes } = req.body;
+    const { name, email, phone, id_number, address, client_type, apps, company_id, client_company_id, notes } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Client name is required' });
     }
 
-    // Auto-resolve company_id: body → token → user's first company
+    // ── Resolve managing company (The Infinite Legacy / logged-in company) ──
     let resolvedCompanyId = parseInt(company_id) || req.companyId || null;
-    console.log('[eco-clients] company_id resolve: body=', company_id, 'token=', req.companyId, 'isSuperAdmin=', req.user?.isSuperAdmin, 'userId=', req.user?.userId);
 
     if (!resolvedCompanyId) {
       const isSuperAdmin = req.user && req.user.isSuperAdmin;
       if (isSuperAdmin) {
-        // Super admin: get first active company
-        const { data: allCos, error: cosErr } = await supabase
+        const { data: allCos } = await supabase
           .from('companies').select('id').eq('is_active', true).order('id').limit(1);
-        console.log('[eco-clients] super admin company lookup:', allCos, cosErr?.message);
         if (allCos && allCos.length > 0) resolvedCompanyId = allCos[0].id;
       } else {
-        // Regular user: get primary company from access table
-        const { data: accessList, error: accErr } = await supabase
+        const { data: accessList } = await supabase
           .from('user_company_access').select('company_id')
           .eq('user_id', req.user.userId).eq('is_active', true)
           .order('is_primary', { ascending: false }).limit(1);
-        console.log('[eco-clients] user company lookup:', accessList, accErr?.message);
         if (accessList && accessList.length > 0) resolvedCompanyId = accessList[0].company_id;
       }
     }
 
-    // Last resort: just get any company from the database
     if (!resolvedCompanyId) {
-      const { data: anyCo } = await supabase
-        .from('companies').select('id').limit(1);
-      console.log('[eco-clients] last resort company lookup:', anyCo);
+      const { data: anyCo } = await supabase.from('companies').select('id').limit(1);
       if (anyCo && anyCo.length > 0) resolvedCompanyId = anyCo[0].id;
     }
 
     if (!resolvedCompanyId) {
       return res.status(400).json({ error: 'No company exists in the system yet. Please create a company first.' });
     }
-    console.log('[eco-clients] resolved company_id:', resolvedCompanyId);
+
+    // ── Resolve or auto-create the client's OWN company for data isolation ──
+    let resolvedClientCompanyId = parseInt(client_company_id) || null;
+
+    if (!resolvedClientCompanyId) {
+      // Auto-create a dedicated company for this client
+      const clientApps = Array.isArray(apps) ? apps : [];
+      const { data: newCo, error: coErr } = await supabase
+        .from('companies')
+        .insert({
+          company_name: name,
+          trading_name: name,
+          is_active: true,
+          modules_enabled: clientApps.length > 0 ? clientApps : ['pos', 'payroll', 'accounting'],
+          subscription_status: 'active'
+        })
+        .select()
+        .single();
+
+      if (coErr) {
+        console.error('[eco-clients] Failed to auto-create client company:', coErr.message);
+        // Fall back to managing company — data won't be isolated but won't fail
+        resolvedClientCompanyId = resolvedCompanyId;
+      } else {
+        resolvedClientCompanyId = newCo.id;
+        console.log(`[eco-clients] Auto-created company "${name}" (id=${newCo.id}) for client`);
+      }
+    }
 
     const newClient = {
       company_id: resolvedCompanyId,
+      client_company_id: resolvedClientCompanyId,
       name,
       email: email || null,
       phone: phone || null,

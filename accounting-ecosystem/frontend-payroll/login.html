@@ -638,10 +638,8 @@
                         localStorage.removeItem('sso_source');
                         console.log('[SSO] Ecosystem bypass — user:', user.fullName, 'company:', session.company_name);
 
-                        // Redirect based on role
-                        if (session.role === 'super_admin' || session.is_super_admin) {
-                            window.location.href = 'company-selection.html';
-                        } else if (session.company_id) {
+                        // Go directly to dashboard if company is set (e.g. via SSO)
+                        if (session.company_id) {
                             window.location.href = 'company-dashboard.html';
                         } else {
                             window.location.href = 'company-selection.html';
@@ -656,9 +654,7 @@
 
             if (AUTH.isAuthenticated()) {
                 const session = AUTH.getSession();
-                if (session.role === 'super_admin' || session.is_super_admin) {
-                    window.location.href = 'company-selection.html';
-                } else if (session.company_id) {
+                if (session.company_id) {
                     window.location.href = 'company-dashboard.html';
                 } else {
                     window.location.href = 'company-selection.html';

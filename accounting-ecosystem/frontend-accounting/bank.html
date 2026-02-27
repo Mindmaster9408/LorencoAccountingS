@@ -1845,25 +1845,9 @@
         let token = localStorage.getItem('token');
         let user = JSON.parse(localStorage.getItem('user') || '{}');
         
-        // Auto-login for demo mode
+        // Redirect to ecosystem login if no token
         if (!token) {
-            console.log('No token found. Creating demo session...');
-            const mockUser = {
-                id: 1,
-                email: 'demo@lorenco.com',
-                firstName: 'Demo',
-                lastName: 'User',
-                role: 'admin',
-                companyId: 1,
-                companyName: 'Business Current Account',
-                companyStatus: 'active'
-            };
-            
-            token = 'demo-token-' + Date.now();
-            localStorage.setItem('token', token);
-            localStorage.setItem('user', JSON.stringify(mockUser));
-            localStorage.setItem('demoMode', 'true');
-            user = mockUser;
+            window.location.href = '/';
         }
         
         // User info display handled by navigation.js

@@ -1216,27 +1216,12 @@
     </div>
     
     <script>
-        // Auto-login for demo mode
         let token = localStorage.getItem('token');
         let user = JSON.parse(localStorage.getItem('user') || '{}');
-        
+
+        // Redirect to ecosystem login if no token
         if (!token) {
-            const mockUser = {
-                id: 1,
-                email: 'demo@lorenco.com',
-                firstName: 'Demo',
-                lastName: 'User',
-                role: 'admin',
-                companyId: 1,
-                companyName: 'Demo Company Ltd',
-                companyStatus: 'active'
-            };
-            
-            token = 'demo-token-' + Date.now();
-            localStorage.setItem('token', token);
-            localStorage.setItem('user', JSON.stringify(mockUser));
-            localStorage.setItem('demoMode', 'true');
-            user = mockUser;
+            window.location.href = '/';
         }
         
         // User info display and logout handled by navigation.js

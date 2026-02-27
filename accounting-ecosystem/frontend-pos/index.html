@@ -3432,15 +3432,25 @@
                         token = ssoToken;
                         currentUser = JSON.parse(ssoUser);
                         const company = ssoCompany ? JSON.parse(ssoCompany) : null;
-                        if (company) {
+                        if (company && company.id) {
                             selectedCompanyId = company.id;
                             currentCompanyId = company.id;
-                            currentCompanyName = company.company_name || company.trading_name;
-                            userRole = company.role || currentUser.role || 'admin';
+                            currentCompanyName = company.company_name || company.trading_name || 'Company';
+                            userRole = company.role || currentUser.role || 'super_admin';
+                        } else {
+                            // Fallback: decode companyId from the JWT itself
+                            try {
+                                const payload = JSON.parse(atob(ssoToken.split('.')[1]));
+                                if (payload.companyId) {
+                                    selectedCompanyId = payload.companyId;
+                                    currentCompanyId = payload.companyId;
+                                    userRole = payload.role || 'super_admin';
+                                }
+                            } catch (_) {}
                         }
                         // Clear SSO flag so refreshes use normal auth
                         localStorage.removeItem('sso_source');
-                        console.log('[SSO] Ecosystem bypass — user:', currentUser.fullName, 'company:', currentCompanyName);
+                        console.log('[SSO] Ecosystem bypass — user:', currentUser.fullName, 'company:', currentCompanyName || currentCompanyId);
                         completeLogin();
                         return; // Skip showing login screen
                     } catch (e) {

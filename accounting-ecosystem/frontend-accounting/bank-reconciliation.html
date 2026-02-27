@@ -824,18 +824,13 @@
         const openingBalance = 28650.50;
         let statementBalance = 50580.50;
         
-        // Auto-login for demo
-        const mockUser = {
-            id: 1,
-            email: 'demo@lorenco.com',
-            firstName: 'Demo',
-            lastName: 'User',
-            companyName: 'Business Current Account'
-        };
-        
-        localStorage.setItem('token', 'demo-token-' + Date.now());
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        
+        let token = localStorage.getItem('token');
+        let user = JSON.parse(localStorage.getItem('user') || '{}');
+
+        // Redirect to ecosystem login if no token
+        if (!token) {
+            window.location.href = '/';
+        }
         // User info display handled by navigation.js
         
         function renderTransactions() {

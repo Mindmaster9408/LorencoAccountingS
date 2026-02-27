@@ -483,30 +483,36 @@
     
     <script>
         const API_URL = '/api/accounting';
-        
-        // Check authentication - Demo Mode
+
+        // ── SSO Pickup from Ecosystem Dashboard ──
+        (function pickupSSO() {
+            const ssoSource = localStorage.getItem('sso_source');
+            if (ssoSource === 'ecosystem') {
+                const ssoToken = localStorage.getItem('token');
+                const ssoUser = localStorage.getItem('user');
+                const ssoCompany = localStorage.getItem('company');
+                if (ssoToken && ssoUser) {
+                    try {
+                        const company = ssoCompany ? JSON.parse(ssoCompany) : null;
+                        if (company) {
+                            localStorage.setItem('selectedCompanyId', company.id);
+                        }
+                        console.log('[SSO] Ecosystem bypass — accounting');
+                    } catch (e) {
+                        console.warn('[SSO] Failed to parse ecosystem data:', e);
+                    }
+                }
+                localStorage.removeItem('sso_source');
+            }
+        })();
+
+        // Check authentication
         let token = localStorage.getItem('token');
         let user = JSON.parse(localStorage.getItem('user') || '{}');
-        
-        // Auto-login for demo mode
+
+        // Redirect to ecosystem login if no token
         if (!token) {
-            console.log('No token found. Creating demo session...');
-            const mockUser = {
-                id: 1,
-                email: 'demo@lorenco.com',
-                firstName: 'Demo',
-                lastName: 'User',
-                role: 'admin',
-                companyId: 1,
-                companyName: 'Demo Company Ltd',
-                companyStatus: 'active'
-            };
-            
-            token = 'demo-token-' + Date.now();
-            localStorage.setItem('token', token);
-            localStorage.setItem('user', JSON.stringify(mockUser));
-            localStorage.setItem('demoMode', 'true');
-            user = mockUser;
+            window.location.href = '/';
         }
         
         // User info display is handled by navigation.js
