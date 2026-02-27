@@ -389,6 +389,104 @@ select option {
 .matched { background: rgba(16,185,129,0.08) !important; }
 .unmatched { background: rgba(239,68,68,0.08) !important; }
 
+/* ── Bank Transactions Page (bank.html) ────────────────────────────────────── */
+/* Fix: dark-theme sets td color=white, but these sections had white backgrounds  */
+/* → white text on white = invisible. Give them dark surfaces instead.           */
+.bank-accounts-section,
+.transactions-section {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3) !important;
+}
+.bank-account-card {
+    background: var(--surface-alt) !important;
+    border-color: var(--border-strong) !important;
+}
+.bank-account-card:hover {
+    border-color: var(--accent) !important;
+    box-shadow: 0 4px 12px var(--accent-glow) !important;
+}
+.bank-account-card.active {
+    background: var(--accent-subtle) !important;
+    border-color: var(--accent) !important;
+}
+.account-name {
+    color: var(--text-secondary) !important;
+}
+.account-number {
+    color: var(--text-muted) !important;
+}
+/* Account balance — replace blue gradient with amber accent */
+.account-balance {
+    background: linear-gradient(135deg, var(--accent-light), var(--accent)) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+/* Filter bar inside bank page */
+.filter-group select,
+.filter-group input {
+    background: rgba(255,255,255,0.08) !important;
+    color: var(--text) !important;
+    border-color: var(--border-strong) !important;
+}
+/* Section header text */
+.section-header h2 {
+    color: var(--text) !important;
+}
+/* Search box inside section header */
+.search-box input {
+    background: rgba(255,255,255,0.06) !important;
+    color: var(--text) !important;
+    border-color: var(--border-strong) !important;
+}
+/* Transaction table — thead already dark from global th rule, ensure tbody bg */
+.transactions-table thead {
+    background: rgba(255,255,255,0.06) !important;
+}
+.transactions-table tbody tr:hover {
+    background: var(--surface-hover) !important;
+}
+.transactions-table.readonly tbody tr {
+    background: rgba(255,255,255,0.02) !important;
+}
+/* Allocation dropdowns inside the table */
+.allocation-select {
+    background: rgba(255,255,255,0.08) !important;
+    color: var(--text) !important;
+    border-color: var(--border-strong) !important;
+}
+.allocation-select:disabled {
+    opacity: 0.4 !important;
+}
+/* Tab buttons */
+.tabs-container {
+    border-bottom-color: var(--border) !important;
+}
+.tab {
+    color: var(--text-muted) !important;
+    background: transparent !important;
+    border-color: transparent !important;
+}
+.tab.active {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+/* Bulk action bar */
+.bulk-actions {
+    background: var(--surface-alt) !important;
+    border-color: var(--border) !important;
+}
+/* AI suggestion rows */
+.ai-suggestion-content {
+    background: rgba(124,58,237,0.1) !important;
+    border-color: rgba(124,58,237,0.25) !important;
+    color: var(--text) !important;
+}
+.ai-suggestion-header {
+    color: #a78bfa !important;
+}
+
 /* ── Sidebar ────────────────────────────────────────────────────────────────── */
 .sidebar {
     background: var(--surface) !important;
