@@ -143,8 +143,15 @@ router.post('/login', async (req, res) => {
 
     let selectedCompany = null;
     if (companyList.length >= 1) {
-      // Auto-select first (primary) company so token always has a valid companyId & role
-      selectedCompany = companyList[0];
+      // Super admins always land on "The Infinite Legacy" as their home company
+      if (isSuperAdmin) {
+        selectedCompany = companyList.find(c =>
+          c.company_name === 'The Infinite Legacy' || c.trading_name === 'The Infinite Legacy'
+        ) || companyList[0];
+      } else {
+        // Regular users: prefer primary company, otherwise first
+        selectedCompany = companyList.find(c => c.is_primary) || companyList[0];
+      }
       tokenPayload.companyId = selectedCompany.id;
       tokenPayload.role = selectedCompany.role;
     }

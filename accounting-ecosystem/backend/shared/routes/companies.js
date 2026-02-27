@@ -56,6 +56,35 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/companies/search?name=xyz
+ * Search active companies by name (any authenticated user).
+ * Used for the "Link Accounting Firm" firm picker in the dashboard.
+ * Returns id, company_name, trading_name only (safe to expose to all users).
+ */
+router.get('/search', async (req, res) => {
+  try {
+    const name = (req.query.name || '').trim();
+    if (!name || name.length < 2) {
+      return res.json({ companies: [] });
+    }
+
+    const { data, error } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name')
+      .eq('is_active', true)
+      .ilike('company_name', `%${name}%`)
+      .order('company_name')
+      .limit(20);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ companies: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * GET /api/companies/:id
  */
 router.get('/:id', async (req, res) => {

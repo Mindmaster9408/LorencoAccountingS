@@ -133,17 +133,26 @@ async function syncToApps(ecoClient) {
 
 /**
  * GET /api/eco-clients
- * List all clients for user's companies (super_admin sees all)
+ * List all clients for user's companies (super_admin sees all).
+ * Also returns clients shared with the user's company via eco_client_firm_access.
+ * Shared clients are flagged with shared_access: true.
  */
 router.get('/', async (req, res) => {
   try {
     const { company_id, app, search, client_type } = req.query;
 
+    // Super admins can pass ?status=all to see inactive clients too (admin control panel)
+    const showAll = req.query.status === 'all' && req.user.isSuperAdmin;
+
+    // ── 1. Fetch directly managed (owned) clients ──────────────────────────────
     let q = supabase
       .from('eco_clients')
       .select('*')
-      .eq('is_active', true)
       .order('name');
+
+    if (!showAll) {
+      q = q.eq('is_active', true);
+    }
 
     if (company_id) {
       q = q.eq('company_id', parseInt(company_id));
@@ -155,14 +164,50 @@ router.get('/', async (req, res) => {
       q = q.eq('client_type', client_type);
     }
 
-    const { data: results, error } = await q;
+    const { data: ownedClients, error } = await q;
 
     if (error) {
       console.error('eco-clients list error:', error.message);
       return res.status(500).json({ error: 'Failed to fetch clients' });
     }
 
-    let filtered = results || [];
+    let results = ownedClients || [];
+
+    // ── 2. Fetch shared clients (via eco_client_firm_access) ───────────────────
+    // Only for non-super-admin users who have a company context.
+    // Super admins already see everything via the owned-clients query.
+    if (!req.user.isSuperAdmin && req.companyId && !company_id) {
+      const { data: sharedAccess } = await supabase
+        .from('eco_client_firm_access')
+        .select('eco_client_id')
+        .eq('firm_company_id', req.companyId)
+        .eq('is_active', true);
+
+      if (sharedAccess && sharedAccess.length > 0) {
+        const ownedIds = new Set(results.map(c => c.id));
+        const newIds = sharedAccess
+          .map(a => a.eco_client_id)
+          .filter(id => !ownedIds.has(id));
+
+        if (newIds.length > 0) {
+          let sharedQ = supabase
+            .from('eco_clients')
+            .select('*')
+            .in('id', newIds)
+            .order('name');
+
+          if (!showAll) sharedQ = sharedQ.eq('is_active', true);
+
+          const { data: sharedClients } = await sharedQ;
+          if (sharedClients) {
+            // Mark shared clients so the UI can badge them differently
+            results = [...results, ...sharedClients.map(c => ({ ...c, shared_access: true }))];
+          }
+        }
+      }
+    }
+
+    let filtered = results;
 
     // Filter by app (apps is a jsonb array)
     if (app) {
@@ -385,6 +430,217 @@ router.put('/:id', async (req, res) => {
     res.json({ ...updated, sync: syncResult });
   } catch (err) {
     console.error('eco-clients PUT /:id error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Firm Access Routes ──────────────────────────────────────────────────────
+
+/**
+ * GET /api/eco-clients/:id/firm-access
+ * List all accounting firms that have been granted visibility of this client.
+ * Includes firm company name for display.
+ */
+router.get('/:id/firm-access', async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+
+    // Verify the client exists
+    const { data: client, error: clientErr } = await supabase
+      .from('eco_clients')
+      .select('id, name, company_id')
+      .eq('id', clientId)
+      .single();
+
+    if (clientErr || !client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Fetch all active firm-access records for this client
+    const { data: rows, error } = await supabase
+      .from('eco_client_firm_access')
+      .select('*')
+      .eq('eco_client_id', clientId)
+      .eq('is_active', true)
+      .order('granted_at');
+
+    if (error) {
+      console.error('eco-clients firm-access GET error:', error.message);
+      return res.status(500).json({ error: 'Failed to fetch firm access' });
+    }
+
+    // Enrich with firm company names
+    const firmIds = (rows || []).map(r => r.firm_company_id);
+    let firmMap = {};
+    if (firmIds.length > 0) {
+      const { data: firms } = await supabase
+        .from('companies')
+        .select('id, company_name, trading_name')
+        .in('id', firmIds);
+      if (firms) {
+        firms.forEach(f => { firmMap[f.id] = f.trading_name || f.company_name; });
+      }
+    }
+
+    const enriched = (rows || []).map(r => ({
+      ...r,
+      firm_name: firmMap[r.firm_company_id] || 'Unknown Firm'
+    }));
+
+    res.json({ client_id: clientId, firm_access: enriched });
+  } catch (err) {
+    console.error('eco-clients firm-access GET /:id error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/eco-clients/:id/firm-access
+ * Grant an accounting firm visibility of this client.
+ * Body: { firm_company_id }
+ * Only the managing company or super admin can grant access.
+ */
+router.post('/:id/firm-access', async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const { firm_company_id } = req.body;
+
+    if (!firm_company_id) {
+      return res.status(400).json({ error: 'firm_company_id is required' });
+    }
+
+    // Verify client exists
+    const { data: client, error: clientErr } = await supabase
+      .from('eco_clients')
+      .select('id, name, company_id')
+      .eq('id', clientId)
+      .single();
+
+    if (clientErr || !client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Only the managing company or super admin can grant access
+    if (!req.user.isSuperAdmin && client.company_id !== req.companyId) {
+      return res.status(403).json({ error: 'Only the managing firm can grant access' });
+    }
+
+    // Cannot grant access to the managing company itself (they already own it)
+    if (parseInt(firm_company_id) === client.company_id) {
+      return res.status(400).json({ error: 'Managing company already has full access' });
+    }
+
+    // Verify the target firm exists and is active
+    const { data: firm, error: firmErr } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name')
+      .eq('id', parseInt(firm_company_id))
+      .eq('is_active', true)
+      .single();
+
+    if (firmErr || !firm) {
+      return res.status(404).json({ error: 'Accounting firm not found or inactive' });
+    }
+
+    // Upsert — if a previous revoked record exists, reactivate it
+    const { data: existing } = await supabase
+      .from('eco_client_firm_access')
+      .select('id, is_active')
+      .eq('eco_client_id', clientId)
+      .eq('firm_company_id', parseInt(firm_company_id))
+      .maybeSingle();
+
+    let result;
+    if (existing) {
+      if (existing.is_active) {
+        return res.status(409).json({ error: `${firm.trading_name || firm.company_name} already has access` });
+      }
+      // Reactivate
+      const { data: updated, error: updErr } = await supabase
+        .from('eco_client_firm_access')
+        .update({ is_active: true, granted_at: new Date().toISOString(), granted_by_company_id: req.companyId })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (updErr) throw updErr;
+      result = updated;
+    } else {
+      const { data: inserted, error: insErr } = await supabase
+        .from('eco_client_firm_access')
+        .insert({
+          eco_client_id: clientId,
+          firm_company_id: parseInt(firm_company_id),
+          granted_by_company_id: req.companyId || null,
+          is_active: true
+        })
+        .select()
+        .single();
+      if (insErr) throw insErr;
+      result = inserted;
+    }
+
+    await auditFromReq(req, 'CREATE', 'eco_client_firm_access', clientId, {
+      module: 'ecosystem',
+      metadata: { firm_company_id, firm_name: firm.trading_name || firm.company_name }
+    });
+
+    res.status(201).json({
+      ...result,
+      firm_name: firm.trading_name || firm.company_name,
+      message: `${firm.trading_name || firm.company_name} can now view "${client.name}"`
+    });
+  } catch (err) {
+    console.error('eco-clients firm-access POST /:id error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * DELETE /api/eco-clients/:id/firm-access/:firmId
+ * Revoke a firm's access to this client (soft delete).
+ * Only the managing company or super admin can revoke.
+ */
+router.delete('/:id/firm-access/:firmId', async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id);
+    const firmId = parseInt(req.params.firmId);
+
+    // Verify client exists
+    const { data: client, error: clientErr } = await supabase
+      .from('eco_clients')
+      .select('id, name, company_id')
+      .eq('id', clientId)
+      .single();
+
+    if (clientErr || !client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Only the managing company or super admin can revoke
+    if (!req.user.isSuperAdmin && client.company_id !== req.companyId) {
+      return res.status(403).json({ error: 'Only the managing firm can revoke access' });
+    }
+
+    const { data: updated, error } = await supabase
+      .from('eco_client_firm_access')
+      .update({ is_active: false })
+      .eq('eco_client_id', clientId)
+      .eq('firm_company_id', firmId)
+      .select()
+      .single();
+
+    if (error || !updated) {
+      return res.status(404).json({ error: 'Firm access record not found' });
+    }
+
+    await auditFromReq(req, 'DELETE', 'eco_client_firm_access', clientId, {
+      module: 'ecosystem',
+      metadata: { firm_company_id: firmId }
+    });
+
+    res.json({ success: true, message: 'Firm access revoked' });
+  } catch (err) {
+    console.error('eco-clients firm-access DELETE /:id/:firmId error:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

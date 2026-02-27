@@ -543,6 +543,14 @@
             transform: translateY(-2px);
             box-shadow: 0 8px 30px rgba(0,0,0,0.2);
         }
+        /* Shared client — subtle accent border to distinguish from owned clients */
+        .client-card.shared {
+            border-color: rgba(102,126,234,0.25);
+            background: rgba(102,126,234,0.04);
+        }
+        .client-card.shared:hover {
+            border-color: rgba(102,126,234,0.45);
+        }
         .client-card-top {
             display: flex;
             justify-content: space-between;
@@ -759,6 +767,7 @@
                 <div class="user-avatar" id="userAvatar"></div>
                 <span class="user-name" id="userName"></span>
             </div>
+            <button id="btnAdminPanel" class="btn-logout" style="display:none; background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.25); color:#fca5a5;" onclick="window.location.href='/admin'">&#9876; Admin Panel</button>
             <button class="btn-logout" onclick="logout()">Sign Out</button>
         </div>
     </div>
@@ -843,6 +852,16 @@
             </div>
             <div class="modal-body">
                 <form id="addClientForm" onsubmit="return saveNewClient(event)">
+                    <!-- Managing Company — only shown to super admins -->
+                    <div class="form-row full" id="acManagingCompanyRow" style="display:none;">
+                        <div class="form-field">
+                            <label>Managing Company *</label>
+                            <select id="acManagingCompany">
+                                <option value="">Select managing company...</option>
+                            </select>
+                            <small style="color:var(--text-muted);font-size:0.78rem;">The company that manages this account (e.g. The Infinite Legacy).</small>
+                        </div>
+                    </div>
                     <div class="form-row">
                         <div class="form-field">
                             <label id="acNameLabel">Full Name *</label>
@@ -961,6 +980,37 @@
         </div>
     </div>
 
+    <!-- ═══════ MANAGE ACCOUNTING FIRMS MODAL ═══════ -->
+    <div class="modal-overlay" id="manageFirmsModal">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2>🏛 Linked Accounting Firms</h2>
+                <button class="modal-close" onclick="closeManageFirms()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-muted);margin-bottom:16px;font-size:0.88rem;">
+                    Accounting firms linked below can view <strong id="mfClientName"></strong> in their ecosystem.
+                    Their app data remains fully isolated — this is read-only visibility.
+                </p>
+
+                <!-- Current linked firms -->
+                <div id="mfFirmsList" style="margin-bottom:20px;"></div>
+
+                <!-- Add new firm -->
+                <div style="border-top:1px solid var(--border);padding-top:16px;">
+                    <div class="form-field">
+                        <label>Link an Accounting Firm</label>
+                        <div style="display:flex;gap:8px;">
+                            <input type="text" id="mfSearch" placeholder="Search firm by name..." oninput="searchFirms()" autocomplete="off"
+                                style="flex:1;padding:10px 14px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:0.9rem;">
+                        </div>
+                        <div id="mfSearchResults" style="margin-top:8px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
@@ -1062,6 +1112,11 @@
             if (isSuperAdmin || (selectedCompany && ['business_owner', 'super_admin', 'store_manager'].includes(selectedCompany.role))) {
                 document.getElementById('clientManagementSection').classList.remove('hidden');
             }
+
+            // Show admin panel button for super admins only
+            if (isSuperAdmin) {
+                document.getElementById('btnAdminPanel').style.display = '';
+            }
         }
 
         // ── Render User ──
@@ -1116,7 +1171,40 @@
                 return;
             }
 
-            // Auto-select first company
+            // For superusers, always prioritise "The Infinite Legacy" as primary
+            if (isSuperAdmin) {
+                const infiniteIdx = companies.findIndex(c =>
+                    c.company_name === 'The Infinite Legacy' || c.trading_name === 'The Infinite Legacy'
+                );
+                if (infiniteIdx > 0) {
+                    const infiniteCo = companies.splice(infiniteIdx, 1)[0];
+                    companies.unshift(infiniteCo);
+                    localStorage.setItem('eco_companies', JSON.stringify(companies));
+                }
+
+                // Refresh the eco_token so its embedded companyId matches Infinite Legacy.
+                // Only refresh if the token's companyId doesn't already match.
+                try {
+                    const currentToken = localStorage.getItem('eco_token');
+                    const payload = JSON.parse(atob(currentToken.split('.')[1]));
+                    if (companies[0] && payload.companyId !== companies[0].id) {
+                        const selRes = await fetch(`${API_BASE}/api/auth/select-company`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentToken}` },
+                            body: JSON.stringify({ companyId: companies[0].id })
+                        });
+                        if (selRes.ok) {
+                            const selData = await selRes.json();
+                            localStorage.setItem('eco_token', selData.token);
+                        }
+                    }
+                } catch (e) {
+                    // Non-fatal — token refresh failed, SSO launches will still pass companyId explicitly
+                    console.warn('Token refresh for Infinite Legacy failed:', e);
+                }
+            }
+
+            // Auto-select first company (Infinite Legacy for superusers)
             selectedCompany = companies[0];
 
             container.innerHTML = companies.map((c, i) => `
@@ -1425,6 +1513,23 @@
                 el.classList.remove('checked');
                 el.querySelector('input').checked = false;
             });
+
+            // Populate managing company dropdown for super admins
+            const managingRow = document.getElementById('acManagingCompanyRow');
+            const managingSelect = document.getElementById('acManagingCompany');
+            if (isSuperAdmin && companies.length > 0) {
+                managingRow.style.display = '';
+                managingSelect.innerHTML = companies.map(c => {
+                    const isInfinite = c.company_name === 'The Infinite Legacy' || c.trading_name === 'The Infinite Legacy';
+                    return `<option value="${c.id}" ${isInfinite ? 'selected' : ''}>${c.trading_name || c.company_name}</option>`;
+                }).join('');
+                // If none selected (no Infinite Legacy), pick the first
+                if (!managingSelect.value && companies.length > 0) {
+                    managingSelect.value = companies[0].id;
+                }
+            } else {
+                managingRow.style.display = 'none';
+            }
         }
         function closeAddClient() {
             document.getElementById('addClientModal').classList.remove('show');
@@ -1439,6 +1544,11 @@
             const selectedApps = [];
             document.querySelectorAll('#acApps input[name="apps"]:checked').forEach(cb => selectedApps.push(cb.value));
 
+            // Resolve managing company: use dropdown for superadmins, fall back to selected company
+            const managingCompanyId = isSuperAdmin
+                ? (parseInt(document.getElementById('acManagingCompany').value) || selectedCompany?.id || null)
+                : (selectedCompany?.id || null);
+
             const payload = {
                 name: document.getElementById('acName').value.trim(),
                 email: document.getElementById('acEmail').value.trim() || null,
@@ -1448,6 +1558,7 @@
                 client_type: document.getElementById('acType').value,
                 apps: selectedApps,
                 notes: document.getElementById('acNotes').value.trim() || null,
+                company_id: managingCompanyId,
             };
 
             try {
@@ -1567,11 +1678,22 @@
                     </button>`
                 ).join('');
 
+                // Shared badge — shown when this client is visible via firm-access link
+                const sharedBadge = c.shared_access
+                    ? `<span style="font-size:0.72rem;padding:2px 8px;background:rgba(102,126,234,0.15);border:1px solid rgba(102,126,234,0.3);border-radius:20px;color:#a5b4fc;margin-left:6px;">Shared</span>`
+                    : '';
+
+                // "Manage Firms" button — only shown to the managing company or super admin
+                const canManageFirms = !c.shared_access && (isSuperAdmin || (selectedCompany && selectedCompany.id === c.company_id));
+                const manageFirmsBtn = canManageFirms
+                    ? `<button type="button" class="btn-add-app" onclick="openManageFirms(${c.id})" title="Link accounting firms to this client" style="background:rgba(102,126,234,0.12);border-color:rgba(102,126,234,0.25);color:#a5b4fc;">🏛 Firms</button>`
+                    : '';
+
                 return `
-                    <div class="client-card">
+                    <div class="client-card${c.shared_access ? ' shared' : ''}">
                         <div class="client-card-top">
                             <div>
-                                <div class="client-card-name">${escHtml(c.name)}</div>
+                                <div class="client-card-name">${escHtml(c.name)}${sharedBadge}</div>
                                 ${c.company_name ? `<div class="client-card-meta"><span class="icon">🏢</span> ${escHtml(c.company_name)}</div>` : ''}
                             </div>
                             <span class="client-card-type${typeCls}">${typeLabel}</span>
@@ -1582,7 +1704,8 @@
                         <div class="client-apps-row">
                             <span class="label">Open in:</span>
                             ${appLaunchBtns || '<span style="color:var(--text-muted); font-size:0.8rem;">No apps linked</span>'}
-                            <button type="button" class="btn-add-app" onclick="openEditApps(${c.id})">+ Add</button>
+                            ${!c.shared_access ? `<button type="button" class="btn-add-app" onclick="openEditApps(${c.id})">+ Add</button>` : ''}
+                            ${manageFirmsBtn}
                         </div>
                     </div>
                 `;
@@ -1663,6 +1786,146 @@
 
                 showToast(msg);
                 await loadClients();
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // MANAGE ACCOUNTING FIRMS (cross-firm client visibility)
+        // ═══════════════════════════════════════════════════════════════════
+
+        let manageFirmsClientId = null;
+        let firmSearchTimeout = null;
+
+        function openManageFirms(clientId) {
+            manageFirmsClientId = clientId;
+            const client = allClients.find(c => c.id === clientId);
+            document.getElementById('mfClientName').textContent = client ? client.name : '';
+            document.getElementById('mfSearch').value = '';
+            document.getElementById('mfSearchResults').innerHTML = '';
+            document.getElementById('manageFirmsModal').classList.add('show');
+            loadFirmAccess(clientId);
+        }
+
+        function closeManageFirms() {
+            document.getElementById('manageFirmsModal').classList.remove('show');
+            manageFirmsClientId = null;
+        }
+
+        async function loadFirmAccess(clientId) {
+            const container = document.getElementById('mfFirmsList');
+            container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">Loading...</div>';
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}/firm-access`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Failed to load firm access');
+                const data = await res.json();
+                const firms = data.firm_access || [];
+
+                if (firms.length === 0) {
+                    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No accounting firms linked yet.</div>';
+                    return;
+                }
+
+                container.innerHTML = `
+                    <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Linked Firms</div>
+                    ${firms.map(f => `
+                        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;">
+                            <div>
+                                <div style="font-weight:600;font-size:0.9rem;">🏛 ${escHtml(f.firm_name)}</div>
+                                <div style="font-size:0.75rem;color:var(--text-muted);">Linked ${new Date(f.granted_at).toLocaleDateString('en-ZA')}</div>
+                            </div>
+                            <button type="button" onclick="revokeFirmAccess(${clientId}, ${f.firm_company_id}, '${escHtml(f.firm_name)}')"
+                                style="padding:5px 12px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;border-radius:8px;cursor:pointer;font-size:0.78rem;font-weight:600;">
+                                Revoke
+                            </button>
+                        </div>
+                    `).join('')}
+                `;
+            } catch (err) {
+                container.innerHTML = `<div style="color:#fca5a5;font-size:0.85rem;">Failed to load: ${err.message}</div>`;
+            }
+        }
+
+        function searchFirms() {
+            clearTimeout(firmSearchTimeout);
+            firmSearchTimeout = setTimeout(async () => {
+                const query = document.getElementById('mfSearch').value.trim();
+                const resultsEl = document.getElementById('mfSearchResults');
+
+                if (query.length < 2) {
+                    resultsEl.innerHTML = '';
+                    return;
+                }
+
+                try {
+                    const token = localStorage.getItem('eco_token');
+                    const res = await fetch(`${API_BASE}/api/companies/search?name=${encodeURIComponent(query)}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) throw new Error('Search failed');
+                    const data = await res.json();
+                    const companies = data.companies || [];
+
+                    if (companies.length === 0) {
+                        resultsEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:6px 0;">No firms found.</div>';
+                        return;
+                    }
+
+                    resultsEl.innerHTML = companies.map(co => {
+                        const name = escHtml(co.trading_name || co.company_name);
+                        return `
+                            <div onclick="grantFirmAccess(${manageFirmsClientId}, ${co.id}, '${name}')"
+                                style="padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;margin-bottom:4px;cursor:pointer;transition:background 0.15s;"
+                                onmouseenter="this.style.background='rgba(255,255,255,0.09)'" onmouseleave="this.style.background='rgba(255,255,255,0.04)'">
+                                <span style="font-size:0.88rem;font-weight:600;">🏛 ${name}</span>
+                                <span style="float:right;font-size:0.78rem;color:var(--accent);">+ Link →</span>
+                            </div>
+                        `;
+                    }).join('');
+                } catch (err) {
+                    resultsEl.innerHTML = `<div style="color:#fca5a5;font-size:0.82rem;">${err.message}</div>`;
+                }
+            }, 300);
+        }
+
+        async function grantFirmAccess(clientId, firmCompanyId, firmName) {
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}/firm-access`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ firm_company_id: firmCompanyId })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to link firm');
+
+                showToast(`✅ ${firmName} can now view this client`);
+                document.getElementById('mfSearch').value = '';
+                document.getElementById('mfSearchResults').innerHTML = '';
+                await loadFirmAccess(clientId);
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            }
+        }
+
+        async function revokeFirmAccess(clientId, firmCompanyId, firmName) {
+            if (!confirm(`Remove ${firmName}'s access to this client?`)) return;
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}/firm-access/${firmCompanyId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.error || 'Failed to revoke');
+                }
+                showToast(`${firmName}'s access revoked`);
+                await loadFirmAccess(clientId);
             } catch (err) {
                 showToast('❌ ' + err.message, true);
             }

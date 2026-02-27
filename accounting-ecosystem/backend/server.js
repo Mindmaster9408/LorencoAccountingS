@@ -258,6 +258,11 @@ app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(ecosystemFrontendPath, 'dashboard.html'));
 });
 
+// Super Admin control panel (superusers only — enforced client-side + token-side)
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(ecosystemFrontendPath, 'admin.html'));
+});
+
 // App frontends
 app.use('/pos', express.static(posFrontendPath));
 app.use('/payroll', express.static(payrollFrontendPath));
@@ -412,6 +417,7 @@ async function start() {
     console.log(`   ─── Ecosystem ───`);
     console.log(`   🌐 Login:      http://localhost:${PORT}/`);
     console.log(`   📊 Dashboard:  http://localhost:${PORT}/dashboard`);
+    console.log(`   🛡️  Admin:      http://localhost:${PORT}/admin`);
     console.log(`   ─── APIs ───`);
     console.log(`   Health check:  http://localhost:${PORT}/api/health`);
     console.log(`   Module status: http://localhost:${PORT}/api/modules`);

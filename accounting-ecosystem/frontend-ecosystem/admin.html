@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Platform Control — Lorenco Ecosystem</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0a0818;
+            --surface: rgba(255,255,255,0.05);
+            --surface-hover: rgba(255,255,255,0.09);
+            --border: rgba(255,255,255,0.08);
+            --text: #fff;
+            --text-muted: rgba(255,255,255,0.45);
+            --accent: #667eea;
+            --accent-glow: rgba(102, 126, 234, 0.25);
+            --danger: #ef4444;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0818 0%, #1a1535 50%, #0f0c29 100%);
+            min-height: 100vh;
+            color: var(--text);
+        }
+
+        /* ── Top Bar ── */
+        .topbar {
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(239, 68, 68, 0.15);
+            padding: 0 28px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 14px; }
+        .topbar-logo {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #ef4444, #b91c1c);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .topbar-title { font-size: 1.1rem; font-weight: 700; }
+        .topbar-subtitle {
+            font-size: 0.72rem;
+            color: #fca5a5;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 3px 8px;
+            background: rgba(239,68,68,0.15);
+            border: 1px solid rgba(239,68,68,0.25);
+            border-radius: 6px;
+        }
+        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .user-badge {
+            display: flex; align-items: center; gap: 8px;
+            padding: 5px 12px 5px 6px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 30px;
+        }
+        .user-avatar {
+            width: 28px; height: 28px;
+            background: linear-gradient(135deg, #ef4444, #b91c1c);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 700;
+        }
+        .user-name { font-size: 0.82rem; font-weight: 600; }
+        .btn-back, .btn-logout {
+            padding: 7px 14px;
+            border-radius: 9px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-muted);
+        }
+        .btn-back:hover { color: var(--text); background: var(--surface-hover); }
+        .btn-logout {
+            background: rgba(239,68,68,0.1);
+            border-color: rgba(239,68,68,0.2);
+            color: #fca5a5;
+        }
+        .btn-logout:hover { background: rgba(239,68,68,0.2); }
+
+        /* ── Main ── */
+        .main { max-width: 1400px; margin: 0 auto; padding: 36px 28px; }
+
+        .page-header { margin-bottom: 32px; }
+        .page-header h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 6px; }
+        .page-header h1 span { color: #fca5a5; }
+        .page-header p { color: var(--text-muted); font-size: 0.9rem; }
+
+        /* ── Stats Grid ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 14px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 18px 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--stat-color, var(--accent));
+        }
+        .stat-card.active::before { --stat-color: #10b981; }
+        .stat-card.inactive::before { --stat-color: #ef4444; }
+        .stat-card.pos::before { --stat-color: #3b82f6; }
+        .stat-card.payroll::before { --stat-color: #10b981; }
+        .stat-card.accounting::before { --stat-color: #f59e0b; }
+        .stat-card.sean::before { --stat-color: #8b5cf6; }
+        .stat-value {
+            font-size: 1.9rem; font-weight: 800;
+            background: linear-gradient(135deg, #fff, rgba(255,255,255,0.7));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            line-height: 1;
+        }
+        .stat-label {
+            font-size: 0.72rem; color: var(--text-muted);
+            margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+
+        /* ── Toolbar ── */
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 24px;
+            padding: 16px 20px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+        }
+        .toolbar-search {
+            flex: 1; min-width: 200px;
+            padding: 9px 14px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 0.88rem;
+        }
+        .toolbar-search:focus { outline: none; border-color: var(--accent); }
+        .filter-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-chip {
+            padding: 6px 14px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            color: var(--text-muted);
+            font-size: 0.76rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .filter-chip:hover { border-color: rgba(255,255,255,0.15); color: var(--text); }
+        .filter-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(102,126,234,0.1); }
+        .filter-chip.active.danger { border-color: var(--danger); color: #fca5a5; background: rgba(239,68,68,0.1); }
+        .filter-chip.active.success { border-color: var(--success); color: #6ee7b7; background: rgba(16,185,129,0.1); }
+        .toolbar-count { margin-left: auto; font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+
+        /* ── Loading ── */
+        .loading-state {
+            text-align: center; padding: 60px;
+            color: var(--text-muted);
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Client Grid ── */
+        .clients-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+            gap: 16px;
+        }
+        .client-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 22px;
+            transition: all 0.25s;
+            position: relative;
+        }
+        .client-card:hover { border-color: rgba(255,255,255,0.12); box-shadow: 0 8px 30px rgba(0,0,0,0.25); }
+        .client-card.inactive { opacity: 0.65; border-color: rgba(239,68,68,0.2); }
+        .client-card.inactive:hover { opacity: 0.85; }
+
+        .card-top {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            margin-bottom: 14px;
+        }
+        .card-identity { display: flex; align-items: center; gap: 12px; }
+        .card-avatar {
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; font-weight: 700; flex-shrink: 0;
+            background: linear-gradient(135deg, rgba(102,126,234,0.3), rgba(118,75,162,0.3));
+            color: #a3b1f0;
+        }
+        .card-avatar.business { background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(217,119,6,0.2)); color: #fbbf24; }
+        .card-name { font-size: 1rem; font-weight: 700; margin-bottom: 2px; }
+        .card-managing { font-size: 0.75rem; color: var(--text-muted); }
+        .card-managing span { color: rgba(255,255,255,0.65); }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.68rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            flex-shrink: 0;
+        }
+        .status-badge.active { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.25); }
+        .status-badge.inactive { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.25); }
+
+        .card-meta {
+            font-size: 0.8rem; color: var(--text-muted);
+            margin-bottom: 3px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .card-meta .icon { font-size: 0.85rem; }
+
+        .card-section-label {
+            font-size: 0.68rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            color: var(--text-muted); margin-bottom: 6px; margin-top: 12px;
+        }
+        .badges-row { display: flex; flex-wrap: wrap; gap: 6px; }
+        .app-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 9px; border-radius: 7px;
+            font-size: 0.68rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.2px;
+        }
+        .app-badge.pos { background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
+        .app-badge.payroll { background: rgba(16,185,129,0.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); }
+        .app-badge.accounting { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+        .app-badge.sean { background: rgba(139,92,246,0.2); color: #a78bfa; border: 1px solid rgba(139,92,246,0.2); }
+        .addon-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 8px; border-radius: 7px;
+            font-size: 0.65rem; font-weight: 600;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-muted);
+        }
+        .no-items { font-size: 0.78rem; color: var(--text-muted); font-style: italic; }
+
+        .card-footer {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 16px; padding-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+        .card-date { font-size: 0.74rem; color: var(--text-muted); }
+
+        .btn-toggle {
+            padding: 7px 18px;
+            border-radius: 9px;
+            font-size: 0.78rem; font-weight: 700;
+            cursor: pointer; transition: all 0.2s;
+            border: none;
+        }
+        .btn-toggle.deactivate {
+            background: rgba(239,68,68,0.12);
+            border: 1px solid rgba(239,68,68,0.25);
+            color: #fca5a5;
+        }
+        .btn-toggle.deactivate:hover { background: rgba(239,68,68,0.22); }
+        .btn-toggle.activate {
+            background: rgba(16,185,129,0.12);
+            border: 1px solid rgba(16,185,129,0.25);
+            color: #6ee7b7;
+        }
+        .btn-toggle.activate:hover { background: rgba(16,185,129,0.22); }
+        .btn-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── Empty / Error ── */
+        .empty-state {
+            text-align: center; padding: 60px;
+            color: var(--text-muted); grid-column: 1/-1;
+        }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed; bottom: 28px; right: 28px;
+            padding: 13px 22px;
+            background: #10b981; color: white;
+            border-radius: 12px; font-weight: 600; font-size: 0.88rem;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            z-index: 9999;
+            transform: translateY(100px); opacity: 0;
+            transition: all 0.3s;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: #ef4444; }
+
+        @media (max-width: 768px) {
+            .main { padding: 20px 14px; }
+            .clients-grid { grid-template-columns: 1fr; }
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .toolbar-count { margin-left: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Bar -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="topbar-logo">&#9876;</div>
+            <span class="topbar-title">Platform Control</span>
+            <span class="topbar-subtitle">Super Admin</span>
+        </div>
+        <div class="topbar-right">
+            <div class="user-badge">
+                <div class="user-avatar" id="userAvatar"></div>
+                <span class="user-name" id="userName"></span>
+            </div>
+            <button class="btn-back" onclick="window.location.href='/dashboard'">&#8592; Dashboard</button>
+            <button class="btn-logout" onclick="logout()">Sign Out</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+
+        <div class="page-header">
+            <h1>Client Control <span>Centre</span></h1>
+            <p>View, manage and control all clients across every company and accounting firm on the platform.</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">—</div>
+                <div class="stat-label">Total Clients</div>
+            </div>
+            <div class="stat-card active">
+                <div class="stat-value" id="statActive">—</div>
+                <div class="stat-label">Active</div>
+            </div>
+            <div class="stat-card inactive">
+                <div class="stat-value" id="statInactive">—</div>
+                <div class="stat-label">Inactive</div>
+            </div>
+            <div class="stat-card pos">
+                <div class="stat-value" id="statPos">—</div>
+                <div class="stat-label">POS</div>
+            </div>
+            <div class="stat-card payroll">
+                <div class="stat-value" id="statPayroll">—</div>
+                <div class="stat-label">Payroll</div>
+            </div>
+            <div class="stat-card accounting">
+                <div class="stat-value" id="statAccounting">—</div>
+                <div class="stat-label">Accounting</div>
+            </div>
+            <div class="stat-card sean">
+                <div class="stat-value" id="statSean">—</div>
+                <div class="stat-label">SEAN AI</div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <input type="text" class="toolbar-search" id="searchInput" placeholder="&#128269; Search by name, email, phone..." oninput="applyFilters()">
+            <div class="filter-group">
+                <span class="filter-chip active" id="fAll" onclick="setStatusFilter('all', this)">All</span>
+                <span class="filter-chip" id="fActive" onclick="setStatusFilter('active', this)">&#9679; Active</span>
+                <span class="filter-chip" id="fInactive" onclick="setStatusFilter('inactive', this)">&#9675; Inactive</span>
+            </div>
+            <div class="filter-group" id="appFilters">
+                <span class="filter-chip" id="faAll" onclick="setAppFilter('all', this)">All Apps</span>
+                <span class="filter-chip" id="faPos" onclick="setAppFilter('pos', this)">&#128722; POS</span>
+                <span class="filter-chip" id="faPayroll" onclick="setAppFilter('payroll', this)">&#128176; Payroll</span>
+                <span class="filter-chip" id="faAccounting" onclick="setAppFilter('accounting', this)">&#128200; Accounting</span>
+                <span class="filter-chip" id="faSean" onclick="setAppFilter('sean', this)">&#129302; SEAN</span>
+            </div>
+            <div class="filter-group" id="companyFilterGroup" style="display:none;">
+                <select id="companyFilter" onchange="applyFilters()" style="padding:6px 12px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:20px; color:var(--text); font-size:0.76rem; cursor:pointer;">
+                    <option value="">All Companies</option>
+                </select>
+            </div>
+            <span class="toolbar-count" id="toolbarCount">Loading...</span>
+        </div>
+
+        <!-- Client Grid -->
+        <div class="clients-grid" id="clientsGrid">
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading all platform clients...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        const APP_ICONS  = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖' };
+        const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI' };
+
+        let allClients   = [];
+        let companyMap   = {}; // id -> company object
+        let statusFilter = 'all';
+        let appFilter    = 'all';
+
+        // ── Auth Guard ──────────────────────────────────────────────────────
+        const token        = localStorage.getItem('eco_token');
+        const isSuperAdmin = localStorage.getItem('eco_super_admin') === 'true';
+
+        if (!token || !isSuperAdmin) {
+            window.location.href = '/dashboard';
+        }
+
+        // ── Init ────────────────────────────────────────────────────────────
+        async function init() {
+            // Render user badge
+            try {
+                const user = JSON.parse(localStorage.getItem('eco_user'));
+                if (user) {
+                    const name = user.fullName || user.username || user.email || 'Admin';
+                    document.getElementById('userAvatar').textContent =
+                        name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                    document.getElementById('userName').textContent = name;
+                }
+            } catch (e) {}
+
+            // Load data in parallel
+            const [clientsRes, companiesRes] = await Promise.all([
+                fetch(`${API_BASE}/api/eco-clients?status=all`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API_BASE}/api/companies`, { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
+
+            // Build company map
+            if (companiesRes.ok) {
+                const cData = await companiesRes.json();
+                (cData.companies || []).forEach(c => { companyMap[c.id] = c; });
+                populateCompanyFilter();
+            }
+
+            // Load clients
+            if (clientsRes.ok) {
+                const data = await clientsRes.json();
+                allClients = data.clients || [];
+            } else {
+                allClients = [];
+            }
+
+            renderStats();
+            applyFilters();
+        }
+
+        // ── Populate Company Filter ──────────────────────────────────────────
+        function populateCompanyFilter() {
+            const sel = document.getElementById('companyFilter');
+            const group = document.getElementById('companyFilterGroup');
+
+            // Collect unique managing companies seen in clients
+            const usedCompanyIds = new Set(allClients.map(c => c.company_id).filter(Boolean));
+            const managingCos = Object.values(companyMap).filter(c => usedCompanyIds.has(c.id));
+
+            if (managingCos.length > 1) {
+                managingCos.sort((a, b) => a.company_name.localeCompare(b.company_name)).forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.trading_name || c.company_name;
+                    sel.appendChild(opt);
+                });
+                group.style.display = '';
+            }
+        }
+
+        // ── Stats ───────────────────────────────────────────────────────────
+        function renderStats() {
+            document.getElementById('statTotal').textContent     = allClients.length;
+            document.getElementById('statActive').textContent    = allClients.filter(c => c.is_active).length;
+            document.getElementById('statInactive').textContent  = allClients.filter(c => !c.is_active).length;
+            document.getElementById('statPos').textContent       = allClients.filter(c => c.apps?.includes('pos')).length;
+            document.getElementById('statPayroll').textContent   = allClients.filter(c => c.apps?.includes('payroll')).length;
+            document.getElementById('statAccounting').textContent = allClients.filter(c => c.apps?.includes('accounting')).length;
+            document.getElementById('statSean').textContent      = allClients.filter(c => c.apps?.includes('sean')).length;
+        }
+
+        // ── Filters ─────────────────────────────────────────────────────────
+        function setStatusFilter(val, el) {
+            statusFilter = val;
+            document.querySelectorAll('#fAll, #fActive, #fInactive').forEach(e => {
+                e.classList.remove('active', 'success', 'danger');
+            });
+            el.classList.add('active');
+            if (val === 'active') el.classList.add('success');
+            if (val === 'inactive') el.classList.add('danger');
+            applyFilters();
+        }
+
+        function setAppFilter(val, el) {
+            appFilter = val;
+            document.querySelectorAll('#faAll, #faPos, #faPayroll, #faAccounting, #faSean').forEach(e => {
+                e.classList.remove('active');
+            });
+            el.classList.add('active');
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const search = (document.getElementById('searchInput').value || '').toLowerCase();
+            const coFilter = document.getElementById('companyFilter').value;
+
+            let filtered = [...allClients];
+
+            // Status
+            if (statusFilter === 'active')   filtered = filtered.filter(c => c.is_active);
+            if (statusFilter === 'inactive') filtered = filtered.filter(c => !c.is_active);
+
+            // App
+            if (appFilter !== 'all') filtered = filtered.filter(c => c.apps?.includes(appFilter));
+
+            // Managing company
+            if (coFilter) filtered = filtered.filter(c => String(c.company_id) === coFilter);
+
+            // Search
+            if (search) {
+                filtered = filtered.filter(c =>
+                    c.name?.toLowerCase().includes(search) ||
+                    c.email?.toLowerCase().includes(search) ||
+                    c.phone?.includes(search) ||
+                    c.id_number?.includes(search)
+                );
+            }
+
+            document.getElementById('toolbarCount').textContent =
+                `${filtered.length} of ${allClients.length} client${allClients.length !== 1 ? 's' : ''}`;
+
+            renderGrid(filtered);
+        }
+
+        // ── Render Grid ──────────────────────────────────────────────────────
+        function renderGrid(clients) {
+            const grid = document.getElementById('clientsGrid');
+
+            if (clients.length === 0) {
+                grid.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">&#128100;</div>
+                        <p>No clients match the current filters.</p>
+                    </div>`;
+                return;
+            }
+
+            grid.innerHTML = clients.map(c => buildCard(c)).join('');
+        }
+
+        function buildCard(c) {
+            const isBusiness    = c.client_type === 'business';
+            const isActive      = !!c.is_active;
+            const managingCo    = companyMap[c.company_id];
+            const clientCo      = companyMap[c.client_company_id];
+            const managingName  = managingCo ? (managingCo.trading_name || managingCo.company_name) : 'Unknown';
+            const addons        = clientCo?.modules_enabled || [];
+
+            // Determine add-ons = client company modules minus what's already in apps (i.e. extra modules)
+            const appSet   = new Set(c.apps || []);
+            const extraAddons = addons.filter(m => !appSet.has(m));
+
+            const appsHtml = (c.apps || []).length > 0
+                ? (c.apps || []).map(a => `<span class="app-badge ${a}">${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}</span>`).join('')
+                : `<span class="no-items">No apps linked</span>`;
+
+            const addonsHtml = addons.length > 0
+                ? addons.map(m => `<span class="addon-badge">${APP_LABELS[m] || m}</span>`).join('')
+                : `<span class="no-items">None</span>`;
+
+            const dateStr = c.created_at
+                ? new Date(c.created_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
+                : '—';
+
+            return `
+                <div class="client-card ${isActive ? '' : 'inactive'}" id="card-${c.id}">
+                    <div class="card-top">
+                        <div class="card-identity">
+                            <div class="card-avatar ${isBusiness ? 'business' : ''}">
+                                ${isBusiness ? '🏢' : '👤'}
+                            </div>
+                            <div>
+                                <div class="card-name">${esc(c.name)}</div>
+                                <div class="card-managing">Managed by: <span>${esc(managingName)}</span></div>
+                            </div>
+                        </div>
+                        <span class="status-badge ${isActive ? 'active' : 'inactive'}">
+                            ${isActive ? '● Active' : '○ Inactive'}
+                        </span>
+                    </div>
+
+                    ${c.email ? `<div class="card-meta"><span class="icon">📧</span>${esc(c.email)}</div>` : ''}
+                    ${c.phone ? `<div class="card-meta"><span class="icon">📱</span>${esc(c.phone)}</div>` : ''}
+                    ${c.id_number ? `<div class="card-meta"><span class="icon">🪪</span>${esc(c.id_number)}</div>` : ''}
+
+                    <div class="card-section-label">Active Apps</div>
+                    <div class="badges-row">${appsHtml}</div>
+
+                    <div class="card-section-label">Add-ons / Modules</div>
+                    <div class="badges-row">${addonsHtml}</div>
+
+                    <div class="card-footer">
+                        <span class="card-date">&#128197; Added ${dateStr}</span>
+                        <button
+                            class="btn-toggle ${isActive ? 'deactivate' : 'activate'}"
+                            id="btn-${c.id}"
+                            onclick="toggleClient(${c.id}, ${isActive})"
+                        >
+                            ${isActive ? '&#9940; Deactivate' : '&#10003; Activate'}
+                        </button>
+                    </div>
+                </div>`;
+        }
+
+        // ── Toggle Activate / Deactivate ─────────────────────────────────────
+        async function toggleClient(clientId, currentlyActive) {
+            const btn = document.getElementById(`btn-${clientId}`);
+            if (!btn) return;
+
+            const newStatus = !currentlyActive;
+            const label     = newStatus ? 'Activating...' : 'Deactivating...';
+            btn.disabled    = true;
+            btn.textContent = label;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ is_active: newStatus })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to update client');
+                }
+
+                // Update local state
+                const idx = allClients.findIndex(c => c.id === clientId);
+                if (idx !== -1) allClients[idx].is_active = newStatus;
+
+                showToast(newStatus
+                    ? `✅ Client activated successfully`
+                    : `🚫 Client deactivated`
+                , !newStatus);
+
+                renderStats();
+                applyFilters();
+
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+                btn.disabled    = false;
+                btn.textContent = currentlyActive ? '⛔ Deactivate' : '✓ Activate';
+            }
+        }
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+        function esc(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function showToast(msg, isError) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className   = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => { t.className = 'toast'; }, 3500);
+        }
+
+        function logout() {
+            ['eco_token','eco_user','eco_companies','eco_super_admin','token','user','company','sso_source']
+                .forEach(k => localStorage.removeItem(k));
+            window.location.href = '/';
+        }
+
+        // ── Boot ─────────────────────────────────────────────────────────────
+        init().catch(err => {
+            document.getElementById('clientsGrid').innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">⚠️</div>
+                    <p>Failed to load: ${err.message}</p>
+                </div>`;
+        });
+    </script>
+</body>
+</html>
