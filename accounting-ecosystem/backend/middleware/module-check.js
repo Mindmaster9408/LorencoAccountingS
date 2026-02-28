@@ -28,7 +28,8 @@ function requireModule(moduleKey) {
     }
 
     // 2. If user is authenticated, also check company-level toggle
-    if (req.companyId) {
+    // Super admins bypass company-level module restrictions
+    if (req.companyId && !req.user?.isSuperAdmin) {
       const hasModule = await companyHasModule(supabase, req.companyId, moduleKey);
       if (!hasModule) {
         return res.status(403).json({
