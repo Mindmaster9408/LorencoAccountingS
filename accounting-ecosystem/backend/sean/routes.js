@@ -162,9 +162,38 @@ router.post('/chat', async (req, res) => {
 
     const decision = await engine.makeDecision(context);
 
+    // Build a human-readable answer string from the decision
+    let answer;
+    const sugg = decision.suggestion;
+    if (typeof sugg === 'string' && sugg) {
+      answer = sugg;
+    } else if (sugg && typeof sugg === 'object') {
+      // Format calculation result objects into readable text
+      const fmt = (n) => typeof n === 'number' ? `R ${n.toFixed(2)}` : n;
+      if (sugg.paye !== undefined) {
+        // PAYE / income tax result
+        answer = `PAYE: ${fmt(sugg.paye)}\nAnnual Tax: ${fmt(sugg.annualTax)}\nMonthly Tax: ${fmt(sugg.monthlyTax ?? sugg.paye)}\nUIF: ${fmt(sugg.uif ?? sugg.employeeUIF)}\nNet Pay: ${fmt(sugg.netPay ?? sugg.monthlyNet)}`;
+      } else if (sugg.vat !== undefined && sugg.including !== undefined) {
+        // VAT result
+        answer = `Excl. VAT: ${fmt(sugg.excluding)}\nVAT (15%): ${fmt(sugg.vat)}\nIncl. VAT: ${fmt(sugg.including)}`;
+      } else if (sugg.vatBack !== undefined) {
+        // VAT back-calculation
+        answer = `Incl. VAT: ${fmt(sugg.including)}\nVAT portion: ${fmt(sugg.vatBack ?? sugg.vat)}\nExcl. VAT: ${fmt(sugg.excluding)}`;
+      } else {
+        // Generic object — render as key: value lines
+        answer = Object.entries(sugg)
+          .filter(([, v]) => v !== null && v !== undefined)
+          .map(([k, v]) => `${k.replace(/_/g,' ')}: ${typeof v === 'number' ? fmt(v) : v}`)
+          .join('\n');
+      }
+    } else {
+      answer = decision.reasoning || 'I\'m not sure about that. Can you teach me?';
+    }
+
     res.json({
       intent,
-      answer: decision.suggestion || decision.reasoning || 'I\'m not sure about that. Can you teach me?',
+      answer,
+      rawResult: typeof sugg === 'object' ? sugg : null,
       confidence: decision.confidence,
       method: decision.method,
       citations: decision.citations || [],

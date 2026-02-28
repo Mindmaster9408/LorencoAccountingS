@@ -601,10 +601,32 @@ async function sendChat() {
     try {
         const data = await api('/sean/chat', { method: 'POST', body: JSON.stringify({ message: msg }) });
         document.getElementById('typing').remove();
-        const answer = data.answer || data.suggestion || 'I\'m not sure about that.';
+
+        // answer is now always a string from the backend; but guard anyway
+        let rawAnswer = data.answer;
+        if (typeof rawAnswer === 'object' && rawAnswer !== null) {
+            rawAnswer = Object.entries(rawAnswer)
+                .map(([k, v]) => `${k.replace(/_/g,' ')}: ${typeof v === 'number' ? 'R ' + v.toFixed(2) : v}`)
+                .join('\n');
+        }
+        const answer = (typeof rawAnswer === 'string' && rawAnswer) ? rawAnswer : 'I\'m not sure about that.';
+
+        // Render multi-line answers with line breaks
+        const answerHtml = escHtml(answer).replace(/\n/g, '<br>');
+
+        // If backend sent a rawResult object, render a tidy table
+        let tableHtml = '';
+        if (data.rawResult && typeof data.rawResult === 'object') {
+            const rows = Object.entries(data.rawResult)
+                .filter(([, v]) => typeof v === 'number' && v !== null)
+                .map(([k, v]) => `<tr><td style="padding:3px 10px 3px 0;color:var(--text-muted);font-size:0.8rem;">${k.replace(/_/g,' ')}</td><td style="padding:3px 0;font-weight:700;font-size:0.85rem;">R ${v.toFixed(2)}</td></tr>`)
+                .join('');
+            if (rows) tableHtml = `<table style="margin-top:10px;border-collapse:collapse;">${rows}</table>`;
+        }
+
         const methodHtml = data.method ? `<div class="method"><span>${data.intent || ''}</span><span>${data.method || ''}</span><span>${data.confidence || 0}%</span></div>` : '';
         const citHtml = data.citations?.length ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">📎 ${data.citations.join(', ')}</div>` : '';
-        container.innerHTML += `<div class="msg msg-sean">${escHtml(answer)}${citHtml}${methodHtml}</div>`;
+        container.innerHTML += `<div class="msg msg-sean">${answerHtml}${tableHtml}${citHtml}${methodHtml}</div>`;
     } catch (err) {
         document.getElementById('typing')?.remove();
         container.innerHTML += `<div class="msg msg-sean" style="border-left:3px solid var(--danger);">Error: ${escHtml(err.message)}</div>`;
