@@ -1451,6 +1451,10 @@
                 const isActive = isSuperAdmin || companyModules.includes(app.key);
                 if (isActive) activeCount++;
 
+                const installBtn = (app.key === 'payroll' && isActive)
+                    ? `<button class="app-btn-launch" onclick="event.stopPropagation(); installPaytime()" id="paytimeInstallBtn" style="display:none;background:linear-gradient(135deg,#10b981,#059669);margin-top:6px;width:100%;">&#128229; Install Desktop</button>`
+                    : '';
+
                 return `
                     <div class="app-card ${app.cssClass} ${isActive ? '' : 'disabled'}" onclick="${isActive ? `launchApp('${app.key}')` : ''}">
                         <div class="app-card-header">
@@ -1461,9 +1465,12 @@
                             </div>
                         </div>
                         <div class="app-desc">${app.desc}</div>
-                        <div class="app-footer">
-                            <span class="app-status ${isActive ? 'active' : 'disabled'}">${isActive ? '● Active' : '○ Not Activated'}</span>
-                            ${isActive ? `<button class="app-btn-launch" onclick="event.stopPropagation(); launchApp('${app.key}')">Launch →</button>` : ''}
+                        <div class="app-footer" style="flex-direction:column;align-items:stretch;gap:6px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <span class="app-status ${isActive ? 'active' : 'disabled'}">${isActive ? '● Active' : '○ Not Activated'}</span>
+                                ${isActive ? `<button class="app-btn-launch" onclick="event.stopPropagation(); launchApp('${app.key}')">Launch →</button>` : ''}
+                            </div>
+                            ${installBtn}
                         </div>
                     </div>
                 `;
@@ -2310,6 +2317,35 @@
             } catch (err) {
                 showToast(err.message, true);
             }
+        }
+
+        // ── Paytime PWA Install ──
+        let _paytimeInstallPrompt = null;
+        window.addEventListener('beforeinstallprompt', e => {
+            e.preventDefault();
+            _paytimeInstallPrompt = e;
+            // Show the install button on the Paytime card if it's rendered
+            const btn = document.getElementById('paytimeInstallBtn');
+            if (btn) btn.style.display = '';
+        });
+        window.addEventListener('appinstalled', () => {
+            _paytimeInstallPrompt = null;
+            const btn = document.getElementById('paytimeInstallBtn');
+            if (btn) btn.style.display = 'none';
+            showToast('Lorenco Paytime installed as a desktop app!');
+        });
+        async function installPaytime() {
+            if (!_paytimeInstallPrompt) {
+                // Fallback: open payroll in new tab where the install bar will appear
+                window.open('/payroll/', '_blank');
+                return;
+            }
+            _paytimeInstallPrompt.prompt();
+            const { outcome } = await _paytimeInstallPrompt.userChoice;
+            if (outcome === 'accepted') {
+                showToast('Lorenco Paytime installing...');
+            }
+            _paytimeInstallPrompt = null;
         }
 
         // ── Start ──

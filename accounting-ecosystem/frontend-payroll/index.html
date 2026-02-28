@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lorenco Paytime</title>
+    <link rel="manifest" href="/payroll/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Lorenco Paytime">
     <style>
         * {
             margin: 0;
@@ -143,6 +148,29 @@
                 window.location.href = 'login.html';
             }
         });
+    </script>
+
+    <!-- ── PWA Service Worker Registration ── -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/payroll/service-worker.js', { scope: '/payroll/' })
+                    .then(reg => {
+                        console.log('[Paytime] Service worker registered, scope:', reg.scope);
+                        // Listen for sync-done messages
+                        navigator.serviceWorker.addEventListener('message', e => {
+                            if (e.data?.type === 'PAYTIME_SYNC_DONE') {
+                                console.log(`[Paytime] ${e.data.synced} offline changes synced`);
+                            }
+                        });
+                        // Request background sync when online
+                        window.addEventListener('online', () => {
+                            if (reg.sync) reg.sync.register('paytime-sync').catch(() => {});
+                        });
+                    })
+                    .catch(err => console.warn('[Paytime] Service worker registration failed:', err));
+            });
+        }
     </script>
 </body>
 </html>

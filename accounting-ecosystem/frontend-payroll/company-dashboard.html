@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Company Dashboard - Lorenco Paytime</title>
+    <link rel="manifest" href="/payroll/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Lorenco Paytime">
     <style>
         * {
             margin: 0;
@@ -901,5 +906,95 @@
         <a href="reports.html" class="mobile-nav-item"><span class="mobile-nav-icon">&#128203;</span><span class="mobile-nav-label">Reports</span></a>
     </nav>
     <script src="js/mobile-utils.js"></script>
+
+    <!-- ── PWA: Service Worker + Offline/Install Banner ── -->
+    <script>
+    (function() {
+        // ── Service Worker registration ──
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/payroll/service-worker.js', { scope: '/payroll/' })
+                .then(reg => {
+                    // Trigger background sync when coming back online
+                    window.addEventListener('online', () => {
+                        if (reg.sync) reg.sync.register('paytime-sync').catch(() => {});
+                        showSyncBanner();
+                    });
+                    // Listen for sync-complete messages
+                    navigator.serviceWorker.addEventListener('message', e => {
+                        if (e.data?.type === 'PAYTIME_SYNC_DONE' && e.data.synced > 0) {
+                            showToastPWA(`✅ ${e.data.synced} offline change${e.data.synced > 1 ? 's' : ''} synced successfully`);
+                        }
+                    });
+                }).catch(() => {});
+        }
+
+        // ── Offline / Online banners ──
+        function showSyncBanner() {
+            showToastPWA('🌐 Back online — syncing your offline changes...');
+        }
+
+        window.addEventListener('offline', () => showToastPWA('📴 You are offline. Changes will sync when internet returns.', true));
+
+        function showToastPWA(msg, isWarning) {
+            let t = document.getElementById('pwaBanner');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'pwaBanner';
+                t.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:12px;font-size:0.9rem;font-weight:600;color:#fff;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.3);transition:opacity 0.4s;max-width:90vw;text-align:center;';
+                document.body.appendChild(t);
+            }
+            t.style.background = isWarning ? '#f59e0b' : '#10b981';
+            t.style.opacity = '1';
+            t.textContent = msg;
+            clearTimeout(t._timer);
+            t._timer = setTimeout(() => { t.style.opacity = '0'; }, 4000);
+        }
+
+        // ── Install prompt ──
+        let deferredInstallPrompt = null;
+        window.addEventListener('beforeinstallprompt', e => {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+            showInstallBar();
+        });
+
+        function showInstallBar() {
+            if (document.getElementById('pwaInstallBar')) return;
+            const bar = document.createElement('div');
+            bar.id = 'pwaInstallBar';
+            bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;z-index:99998;box-shadow:0 -4px 20px rgba(0,0,0,0.2);gap:12px;';
+            bar.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span style="font-size:1.6rem;">💼</span>
+                    <div>
+                        <div style="font-weight:700;font-size:0.95rem;">Install Lorenco Paytime</div>
+                        <div style="font-size:0.78rem;opacity:0.85;">Works offline — syncs automatically when internet returns</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;flex-shrink:0;">
+                    <button onclick="document.getElementById('pwaInstallBar').remove()" style="padding:8px 14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:8px;cursor:pointer;font-size:0.82rem;">Later</button>
+                    <button onclick="installPWA()" id="pwaInstallBtn" style="padding:8px 18px;background:#fff;color:#667eea;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82rem;">Install App ↓</button>
+                </div>
+            `;
+            document.body.appendChild(bar);
+        }
+
+        window.installPWA = async function() {
+            if (!deferredInstallPrompt) return;
+            deferredInstallPrompt.prompt();
+            const { outcome } = await deferredInstallPrompt.userChoice;
+            if (outcome === 'accepted') {
+                document.getElementById('pwaInstallBar')?.remove();
+                showToastPWA('✅ Lorenco Paytime installed as a desktop app!');
+            }
+            deferredInstallPrompt = null;
+        };
+
+        window.addEventListener('appinstalled', () => {
+            document.getElementById('pwaInstallBar')?.remove();
+            showToastPWA('✅ Lorenco Paytime installed successfully!');
+        });
+    })();
+    </script>
 </body>
 </html>
