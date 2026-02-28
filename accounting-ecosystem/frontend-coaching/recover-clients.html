@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recover Clients - Data Recovery Tool</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        h1 {
+            color: #1f2937;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 2px solid #e2e8f0;
+        }
+        .btn {
+            padding: 12px 24px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+        .btn-danger {
+            background: #ef4444;
+        }
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        .btn-success {
+            background: #10b981;
+        }
+        .btn-success:hover {
+            background: #059669;
+        }
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+        .key-item {
+            padding: 8px;
+            background: #f1f5f9;
+            margin: 4px 0;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .client-item {
+            padding: 12px;
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            margin: 8px 0;
+        }
+        .warning {
+            background: #fef3c7;
+            border: 2px solid #fbbf24;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Client Data Recovery Tool</h1>
+
+    <div class="warning">
+        <strong>⚠️ Important:</strong> This tool will help you find and recover your client data from localStorage.
+    </div>
+
+    <div class="section">
+        <h2>Step 1: Current Storage Keys</h2>
+        <button class="btn" onclick="showAllKeys()">Show All Storage Keys</button>
+        <div id="keys-output"></div>
+    </div>
+
+    <div class="section">
+        <h2>Step 2: View Data in Each Storage Key</h2>
+        <button class="btn" onclick="viewOldStore()">View Old Store (coaching_app_store)</button>
+        <button class="btn" onclick="viewAdminStore()">View Admin Store</button>
+        <div id="data-output"></div>
+    </div>
+
+    <div class="section">
+        <h2>Step 3: Migrate Clients to Admin User</h2>
+        <p>This will copy clients from the old storage to the admin user's storage.</p>
+        <button class="btn btn-success" onclick="migrateToAdmin()">Migrate Clients to Admin</button>
+        <div id="migrate-output"></div>
+    </div>
+
+    <div class="section">
+        <h2>Step 4: View Current User Info</h2>
+        <button class="btn" onclick="showUserInfo()">Show User Info</button>
+        <div id="user-output"></div>
+    </div>
+
+    <div class="section">
+        <h2>Emergency: Export All Data</h2>
+        <button class="btn btn-success" onclick="exportAllData()">Export All Data as JSON</button>
+        <div id="export-output"></div>
+    </div>
+
+    <script>
+        function showAllKeys() {
+            const keys = Object.keys(localStorage).filter(k => k.includes('coaching'));
+            const output = document.getElementById('keys-output');
+
+            output.innerHTML = '<h3>Found ' + keys.length + ' coaching-related keys:</h3>';
+
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                const size = new Blob([value]).size;
+
+                output.innerHTML += `
+                    <div class="key-item">
+                        <span><strong>${key}</strong> (${size} bytes)</span>
+                        <button class="btn" onclick="viewKey('${key}')">View</button>
+                    </div>
+                `;
+            });
+        }
+
+        function viewKey(key) {
+            const value = localStorage.getItem(key);
+            const output = document.getElementById('data-output');
+
+            try {
+                const parsed = JSON.parse(value);
+                output.innerHTML = `
+                    <h3>Contents of: ${key}</h3>
+                    <pre>${JSON.stringify(parsed, null, 2)}</pre>
+                `;
+            } catch(e) {
+                output.innerHTML = `
+                    <h3>Contents of: ${key}</h3>
+                    <pre>${value}</pre>
+                `;
+            }
+        }
+
+        function viewOldStore() {
+            const data = localStorage.getItem('coaching_app_store');
+            const output = document.getElementById('data-output');
+
+            if (!data) {
+                output.innerHTML = '<p style="color: #ef4444;">No data found in old storage key "coaching_app_store"</p>';
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(data);
+                const clientCount = parsed.clients ? parsed.clients.length : 0;
+
+                output.innerHTML = `
+                    <h3>Old Store (coaching_app_store)</h3>
+                    <p><strong>Clients found: ${clientCount}</strong></p>
+                    <pre>${JSON.stringify(parsed, null, 2)}</pre>
+                `;
+            } catch(e) {
+                output.innerHTML = '<p style="color: #ef4444;">Error parsing old store data</p>';
+            }
+        }
+
+        function viewAdminStore() {
+            const data = localStorage.getItem('coaching_app_store_ruanvlog@lorenco.co.za');
+            const output = document.getElementById('data-output');
+
+            if (!data) {
+                output.innerHTML = '<p style="color: #fbbf24;">No data found in admin storage key. This is normal if you haven\'t created clients yet under the admin account.</p>';
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(data);
+                const clientCount = parsed.clients ? parsed.clients.length : 0;
+
+                output.innerHTML = `
+                    <h3>Admin Store (coaching_app_store_ruanvlog@lorenco.co.za)</h3>
+                    <p><strong>Clients found: ${clientCount}</strong></p>
+                    <pre>${JSON.stringify(parsed, null, 2)}</pre>
+                `;
+            } catch(e) {
+                output.innerHTML = '<p style="color: #ef4444;">Error parsing admin store data</p>';
+            }
+        }
+
+        function migrateToAdmin() {
+            const output = document.getElementById('migrate-output');
+
+            // Get old store data
+            const oldData = localStorage.getItem('coaching_app_store');
+            if (!oldData) {
+                output.innerHTML = '<p style="color: #ef4444;">No old store data found to migrate.</p>';
+                return;
+            }
+
+            try {
+                const oldStore = JSON.parse(oldData);
+                const oldClients = oldStore.clients || [];
+
+                if (oldClients.length === 0) {
+                    output.innerHTML = '<p style="color: #fbbf24;">No clients found in old store.</p>';
+                    return;
+                }
+
+                // Get or create admin store
+                const adminKey = 'coaching_app_store_ruanvlog@lorenco.co.za';
+                let adminStore = {};
+
+                const existingAdminData = localStorage.getItem(adminKey);
+                if (existingAdminData) {
+                    adminStore = JSON.parse(existingAdminData);
+                }
+
+                // Ensure structure
+                if (!adminStore.clients) adminStore.clients = [];
+                if (!adminStore.training) adminStore.training = { uploads: [], prompts: [] };
+
+                // Copy clients (avoid duplicates by checking IDs)
+                let addedCount = 0;
+                oldClients.forEach(client => {
+                    const exists = adminStore.clients.find(c => c.id === client.id);
+                    if (!exists) {
+                        adminStore.clients.push(client);
+                        addedCount++;
+                    }
+                });
+
+                // Save back to admin store
+                localStorage.setItem(adminKey, JSON.stringify(adminStore));
+
+                output.innerHTML = `
+                    <div class="client-item">
+                        <h3>✅ Migration Successful!</h3>
+                        <p><strong>Clients migrated: ${addedCount}</strong></p>
+                        <p>Total clients in admin store: ${adminStore.clients.length}</p>
+                        <p style="margin-top: 12px; color: #059669;">
+                            You can now close this page and refresh your coaching app. Your clients should appear!
+                        </p>
+                    </div>
+                `;
+            } catch(e) {
+                output.innerHTML = `<p style="color: #ef4444;">Error during migration: ${e.message}</p>`;
+            }
+        }
+
+        function showUserInfo() {
+            const output = document.getElementById('user-output');
+            const currentUser = localStorage.getItem('coaching_app_current_user');
+            const adminMode = localStorage.getItem('coaching_app_admin_mode');
+
+            output.innerHTML = `
+                <h3>Current User Information</h3>
+                <p><strong>Current User:</strong> ${currentUser || 'None'}</p>
+                <p><strong>Admin Mode:</strong> ${adminMode || 'Not set'}</p>
+            `;
+        }
+
+        function exportAllData() {
+            const output = document.getElementById('export-output');
+            const allData = {};
+
+            Object.keys(localStorage).filter(k => k.includes('coaching')).forEach(key => {
+                try {
+                    allData[key] = JSON.parse(localStorage.getItem(key));
+                } catch(e) {
+                    allData[key] = localStorage.getItem(key);
+                }
+            });
+
+            const json = JSON.stringify(allData, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            output.innerHTML = `
+                <h3>Export Ready</h3>
+                <a href="${url}" download="coaching-app-backup-${Date.now()}.json" class="btn btn-success">
+                    Download Backup JSON
+                </a>
+                <pre>${json}</pre>
+            `;
+        }
+
+        // Auto-run on load
+        window.onload = function() {
+            showAllKeys();
+            showUserInfo();
+        };
+    </script>
+</body>
+</html>

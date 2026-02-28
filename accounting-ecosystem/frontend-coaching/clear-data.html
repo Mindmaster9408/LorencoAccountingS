@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear App Data</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            text-align: center;
+        }
+        h1 {
+            color: #1f2937;
+            margin: 0 0 16px 0;
+        }
+        p {
+            color: #64748b;
+            line-height: 1.6;
+            margin: 0 0 24px 0;
+        }
+        button {
+            padding: 12px 32px;
+            background: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 8px;
+        }
+        button:hover {
+            background: #b91c1c;
+        }
+        .success {
+            color: #22c55e;
+            font-weight: 600;
+            margin-top: 16px;
+            display: none;
+        }
+        .info {
+            background: #eff6ff;
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+            margin: 24px 0;
+            text-align: left;
+        }
+        .info h3 {
+            margin: 0 0 8px 0;
+            color: #1f2937;
+        }
+        .info ul {
+            margin: 8px 0;
+            padding-left: 20px;
+            color: #475569;
+        }
+        a {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 12px 32px;
+            background: #3b82f6;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+        a:hover {
+            background: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 App Data Manager</h1>
+        <p>Use this page to clear all app data and start fresh with the login screen.</p>
+
+        <div class="info">
+            <h3>Current Storage Data:</h3>
+            <ul id="storage-list"></ul>
+        </div>
+
+        <button onclick="clearAllData()">Clear All Data</button>
+        <button onclick="viewData()">View All Data</button>
+
+        <div class="success" id="success-msg">✅ All data cleared! Redirecting to login...</div>
+
+        <br>
+        <a href="index.html">← Back to App</a>
+    </div>
+
+    <script>
+        function displayStorageInfo() {
+            const list = document.getElementById('storage-list');
+            const items = [];
+
+            for (let key in localStorage) {
+                if (localStorage.hasOwnProperty(key)) {
+                    items.push(`<li><strong>${key}</strong>: ${localStorage[key].substring(0, 50)}...</li>`);
+                }
+            }
+
+            if (items.length === 0) {
+                list.innerHTML = '<li>No data stored</li>';
+            } else {
+                list.innerHTML = items.join('');
+            }
+        }
+
+        function clearAllData() {
+            if (confirm('Are you sure you want to clear ALL data? This cannot be undone!')) {
+                localStorage.clear();
+                document.getElementById('success-msg').style.display = 'block';
+
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 2000);
+            }
+        }
+
+        function viewData() {
+            const data = {};
+            for (let key in localStorage) {
+                if (localStorage.hasOwnProperty(key)) {
+                    try {
+                        data[key] = JSON.parse(localStorage[key]);
+                    } catch (e) {
+                        data[key] = localStorage[key];
+                    }
+                }
+            }
+            console.log('All localStorage data:', data);
+            alert('Data logged to console (F12 → Console tab)');
+        }
+
+        // Display info on load
+        displayStorageInfo();
+    </script>
+</body>
+</html>

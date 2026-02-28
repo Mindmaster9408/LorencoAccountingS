@@ -1,0 +1,393 @@
+/* Journey Tracker Styles */
+
+.journey-tracker {
+    padding: 20px;
+}
+
+.journey-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.journey-header h2 {
+    margin: 0 0 8px 0;
+    color: #1f2937;
+    font-size: 28px;
+}
+
+.journey-subtitle {
+    color: #64748b;
+    margin: 0;
+    font-size: 16px;
+}
+
+.journey-overall-progress {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+}
+
+.progress-circle {
+    position: relative;
+}
+
+.progress-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stat-item {
+    display: flex;
+    gap: 8px;
+}
+
+.stat-label {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.stat-value {
+    color: #1f2937;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+/* Journey Phases */
+
+.journey-phases {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.journey-phase {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 24px;
+    transition: all 0.3s ease;
+}
+
+.journey-phase.active {
+    border-color: #10b981;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+}
+
+.phase-header {
+    margin-bottom: 24px;
+}
+
+.phase-header h3 {
+    margin: 0 0 12px 0;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.phase-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.phase-progress-fill {
+    height: 100%;
+    transition: width 0.5s ease;
+    border-radius: 4px;
+}
+
+.phase-progress-text {
+    font-size: 14px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.phase-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+/* Journey Steps */
+
+.journey-step {
+    position: relative;
+}
+
+.step-card {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    transition: all 0.3s ease;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.journey-step.completed .step-card {
+    background: #f0fdf4;
+    border-color: #10b981;
+}
+
+.journey-step.current .step-card {
+    background: #fffbeb;
+    border-color: #f59e0b;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+.journey-step.locked .step-card {
+    opacity: 0.5;
+    background: #f8fafc;
+}
+
+.step-status-icon {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 20px;
+}
+
+.journey-step.completed .step-status-icon {
+    color: #10b981;
+}
+
+.journey-step.current .step-status-icon {
+    color: #f59e0b;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.step-icon {
+    font-size: 48px;
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+.step-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.step-number {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.step-title {
+    margin: 0 0 8px 0;
+    color: #1f2937;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.step-description {
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 16px 0;
+    flex: 1;
+}
+
+.step-completed-date {
+    font-size: 12px;
+    color: #10b981;
+    background: #dcfce7;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+.step-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+    flex-wrap: wrap;
+}
+
+.step-actions button {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    min-width: 100px;
+}
+
+.btn-open-exercise {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    flex: 1 1 100%;
+    font-size: 15px;
+    padding: 12px 20px;
+}
+
+.btn-open-exercise:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #63408a 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-step-complete {
+    background: #10b981;
+    color: white;
+}
+
+.btn-step-complete:hover {
+    background: #059669;
+    transform: translateY(-1px);
+}
+
+.btn-step-uncomplete {
+    background: #f3f4f6;
+    color: #6b7280;
+    border: 1px solid #d1d5db !important;
+}
+
+.btn-step-uncomplete:hover {
+    background: #e5e7eb;
+}
+
+.btn-step-details {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-step-details:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+}
+
+/* Step Details Panel */
+
+.step-details-panel {
+    margin-top: 16px;
+    padding: 20px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+}
+
+.step-why-matters {
+    margin-bottom: 20px;
+}
+
+.step-why-matters h5 {
+    margin: 0 0 12px 0;
+    color: #1f2937;
+    font-size: 16px;
+}
+
+.step-why-matters ul {
+    margin: 0;
+    padding-left: 24px;
+}
+
+.step-why-matters li {
+    color: #475569;
+    line-height: 1.6;
+    margin: 6px 0;
+}
+
+.step-notes-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.step-notes-section label {
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 14px;
+}
+
+.step-notes-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.2s ease;
+}
+
+.step-notes-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.btn-save-notes {
+    align-self: flex-start;
+    padding: 10px 20px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-save-notes:hover {
+    background: #2563eb;
+}
+
+/* Responsive */
+
+@media (max-width: 1200px) {
+    .phase-steps {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .journey-header {
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .journey-overall-progress {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .progress-stats {
+        width: 100%;
+    }
+
+    .phase-steps {
+        grid-template-columns: 1fr;
+    }
+
+    .step-actions {
+        flex-direction: column;
+    }
+}

@@ -40,7 +40,7 @@ const auditRoutes = require('./shared/routes/audit');
 const customersRoutes = require('./shared/routes/customers');
 const ecoClientsRoutes = require('./shared/routes/eco-clients');
 
-let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes;
+let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
 
 if (isModuleEnabled('pos')) {
@@ -53,6 +53,15 @@ if (isModuleEnabled('payroll'))    payrollRoutes = require('./modules/payroll');
 if (isModuleEnabled('accounting')) accountingRoutes = require('./modules/accounting');
 if (isModuleEnabled('sean'))       seanRoutes = require('./sean/routes');
 if (isModuleEnabled('sean'))       interCompanyRoutes = require('./inter-company/routes');
+
+// Coaching module — always loaded if COACHING_DATABASE_URL is set
+if (process.env.COACHING_DATABASE_URL || process.env.DATABASE_URL) {
+  try {
+    coachingRoutes = require('./modules/coaching');
+  } catch (err) {
+    console.warn('  ⚠️  Coaching module failed to load:', err.message);
+  }
+}
 
 // ─── Express App ─────────────────────────────────────────────────────────────
 const app = express();
@@ -243,6 +252,13 @@ if (interCompanyRoutes) {
   console.log('  ⬜ Inter-Company Invoice Sync — disabled');
 }
 
+if (coachingRoutes) {
+  app.use('/api/coaching', coachingRoutes);
+  console.log('  ✅ Coaching module — ACTIVE');
+} else {
+  console.log('  ⬜ Coaching module — disabled (set COACHING_DATABASE_URL to enable)');
+}
+
 // ─── Static File Serving (optional — for serving frontends) ──────────────────
 
 // Ecosystem frontend (main login + dashboard) — served at root
@@ -251,6 +267,7 @@ const posFrontendPath = path.join(__dirname, '..', 'frontend-pos');
 const payrollFrontendPath = path.join(__dirname, '..', 'frontend-payroll');
 const seanFrontendPath = path.join(__dirname, '..', 'frontend-sean');
 const accountingFrontendPath = path.join(__dirname, '..', 'frontend-accounting');
+const coachingFrontendPath = path.join(__dirname, '..', 'frontend-coaching');
 
 // Ecosystem dashboard route
 app.use('/dashboard', express.static(ecosystemFrontendPath));
@@ -273,6 +290,24 @@ app.use('/pos', express.static(posFrontendPath));
 app.use('/payroll', express.static(payrollFrontendPath));
 app.use('/sean', express.static(seanFrontendPath));
 app.use('/accounting', express.static(accountingFrontendPath));
+app.use('/coaching', express.static(coachingFrontendPath));
+
+// Coaching: multi-page app (has login.html, index.html, admin.html, etc.)
+app.get('/coaching', (req, res) => {
+  res.sendFile(path.join(coachingFrontendPath, 'login.html'));
+});
+app.get('/coaching/*', (req, res) => {
+  const fs = require('fs');
+  const requestedFile = req.path.replace('/coaching/', '');
+  const filePath = path.join(coachingFrontendPath, requestedFile);
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    return res.sendFile(filePath);
+  }
+  if (fs.existsSync(filePath + '.html')) {
+    return res.sendFile(filePath + '.html');
+  }
+  res.sendFile(path.join(coachingFrontendPath, 'index.html'));
+});
 
 // SPA fallback for frontend routes
 app.get('/pos/*', (req, res) => {
@@ -407,9 +442,10 @@ async function start() {
     // 2. Ensure default company exists (Bug Fix #1)
     await ensureDefaultCompany();
 
-    // 3. Seed master admin if no users exist
-    const { seedMasterAdmin } = require('./config/seed');
+    // 3. Seed master admin if no users exist; always ensure additional users exist
+    const { seedMasterAdmin, seedAdditionalUsers } = require('./config/seed');
     await seedMasterAdmin(supabase);
+    await seedAdditionalUsers(supabase);
   }
 
   // 4. Display module status
@@ -443,6 +479,9 @@ async function start() {
     }
     if (accountingRoutes) {
       console.log(`   Accounting frontend: http://localhost:${PORT}/accounting`);
+    }
+    if (coachingRoutes) {
+      console.log(`   Coaching frontend: http://localhost:${PORT}/coaching`);
     }
     console.log(`\n   Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`   Database:    Supabase`);

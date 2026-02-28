@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Panel - Coaching App</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+        .admin-container {
+            padding: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .admin-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .btn-logout {
+            padding: 10px 20px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-logout:hover {
+            background: #dc2626;
+        }
+
+        .admin-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .stat-card .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .section {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: #1e293b;
+        }
+
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .users-table th {
+            background: #f8fafc;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #475569;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .users-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .users-table tr:hover {
+            background: #f8fafc;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-admin {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-coach {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-active {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .btn-toggle {
+            padding: 6px 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .btn-toggle.active {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .btn-toggle.inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 12px;
+        }
+
+        .module-card {
+            padding: 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .module-card.enabled {
+            border-color: #10b981;
+            background: #f0fdf4;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #10b981;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.2s;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: #1e293b;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #334155;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #334155;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e1;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="admin-header">
+            <div>
+                <h1 class="admin-title">Admin Panel</h1>
+                <p style="color: #64748b; margin: 4px 0 0 0;">Manage users, modules, and system settings</p>
+            </div>
+            <button id="btn-logout" class="btn-logout">Logout</button>
+        </div>
+
+        <div id="stats" class="admin-grid">
+            <div class="stat-card">
+                <h3>Total Users</h3>
+                <p class="stat-value" id="stat-users">-</p>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <h3>Active Coaches</h3>
+                <p class="stat-value" id="stat-coaches">-</p>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                <h3>Total Clients</h3>
+                <p class="stat-value" id="stat-clients">-</p>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                <h3>Total Sessions</h3>
+                <p class="stat-value" id="stat-sessions">-</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 class="section-title" style="margin: 0;">Users Management</h2>
+                <button id="btn-add-coach" class="btn-primary" style="padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">+ Add Coach</button>
+            </div>
+            <div id="users-container">
+                <div class="loading">Loading users...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">Program Modules</h2>
+            <p style="color: #64748b; margin-bottom: 16px;">Select a coach to manage their module access</p>
+
+            <select id="coach-select" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 16px;">
+                <option value="">Select a coach...</option>
+            </select>
+
+            <div id="modules-container">
+                <p style="color: #64748b;">Select a coach to view and manage their modules</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Coach Modal -->
+    <div id="add-coach-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="modal-header">Add New Coach</h2>
+            <form id="add-coach-form">
+                <div class="form-group">
+                    <label class="form-label">First Name</label>
+                    <input type="text" id="coach-firstname" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Last Name</label>
+                    <input type="text" id="coach-lastname" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="coach-email" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" id="coach-password" class="form-input" required minlength="8">
+                    <small style="color: #64748b;">Minimum 8 characters</small>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-secondary" id="cancel-coach">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Coach</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { api, logout, getCurrentUser } from './js/api.js';
+
+        // Check if user is admin
+        const user = getCurrentUser();
+        if (!user || user.role !== 'admin') {
+            alert('Access denied. Admin only.');
+            window.location.href = 'login.html';
+        }
+
+        // Wait for DOM to be ready
+        document.addEventListener('DOMContentLoaded', initAdmin);
+
+        function initAdmin() {
+            console.log('Admin panel initializing...');
+
+            // Logout
+            document.getElementById('btn-logout').addEventListener('click', logout);
+
+            // Add Coach Modal
+            const modal = document.getElementById('add-coach-modal');
+            const btnAddCoach = document.getElementById('btn-add-coach');
+            const btnCancel = document.getElementById('cancel-coach');
+            const addCoachForm = document.getElementById('add-coach-form');
+
+            console.log('Modal elements:', { modal, btnAddCoach, btnCancel, addCoachForm });
+
+        btnAddCoach.addEventListener('click', () => {
+            modal.classList.add('show');
+        });
+
+        btnCancel.addEventListener('click', () => {
+            modal.classList.remove('show');
+            addCoachForm.reset();
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('show');
+                addCoachForm.reset();
+            }
+        });
+
+        addCoachForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const coachData = {
+                firstName: document.getElementById('coach-firstname').value,
+                lastName: document.getElementById('coach-lastname').value,
+                email: document.getElementById('coach-email').value,
+                password: document.getElementById('coach-password').value,
+                role: 'coach'
+            };
+
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                    },
+                    body: JSON.stringify(coachData)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to create coach');
+                }
+
+                alert(`Coach created successfully!\n\nEmail: ${coachData.email}\nPassword: ${coachData.password}\n\nPlease save these credentials.`);
+                modal.classList.remove('show');
+                addCoachForm.reset();
+                loadUsers();
+                loadStats();
+                loadCoaches();
+            } catch (error) {
+                alert('Error creating coach: ' + error.message);
+            }
+        });
+
+        // Load data
+        loadStats();
+        loadUsers();
+        loadCoaches();
+
+        async function loadStats() {
+            try {
+                const data = await api.getStats();
+
+                const totalUsers = data.stats.users.reduce((sum, u) => sum + parseInt(u.count), 0);
+                const coaches = data.stats.users.find(u => u.role === 'coach')?.count || 0;
+                const totalClients = data.stats.clients.reduce((sum, c) => sum + parseInt(c.count), 0);
+
+                document.getElementById('stat-users').textContent = totalUsers;
+                document.getElementById('stat-coaches').textContent = coaches;
+                document.getElementById('stat-clients').textContent = totalClients;
+                document.getElementById('stat-sessions').textContent = data.stats.totalSessions || 0;
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const data = await api.getUsers();
+                const container = document.getElementById('users-container');
+
+                const html = `
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Last Login</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.users.map(user => `
+                                <tr>
+                                    <td>${user.first_name} ${user.last_name}</td>
+                                    <td>${user.email}</td>
+                                    <td><span class="badge badge-${user.role}">${user.role}</span></td>
+                                    <td>${user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}</td>
+                                    <td><span class="badge badge-${user.is_active ? 'active' : 'inactive'}">${user.is_active ? 'Active' : 'Inactive'}</span></td>
+                                    <td>
+                                        <button class="btn-toggle ${user.is_active ? 'active' : 'inactive'}"
+                                                onclick="toggleUserStatus(${user.id}, ${!user.is_active})">
+                                            ${user.is_active ? 'Deactivate' : 'Activate'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Failed to load users:', error);
+                document.getElementById('users-container').innerHTML = '<p style="color: #ef4444;">Failed to load users</p>';
+            }
+        }
+
+        async function loadCoaches() {
+            try {
+                const data = await api.getUsers();
+                const coaches = data.users.filter(u => u.role === 'coach');
+
+                const select = document.getElementById('coach-select');
+                coaches.forEach(coach => {
+                    const option = document.createElement('option');
+                    option.value = coach.id;
+                    option.textContent = `${coach.first_name} ${coach.last_name} (${coach.email})`;
+                    select.appendChild(option);
+                });
+
+                select.addEventListener('change', (e) => {
+                    if (e.target.value) {
+                        loadCoachModules(e.target.value);
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to load coaches:', error);
+            }
+        }
+
+        async function loadCoachModules(coachId) {
+            try {
+                const data = await api.getCoachModules(coachId);
+                const container = document.getElementById('modules-container');
+
+                const html = `
+                    <div class="modules-grid">
+                        ${data.modules.map(module => `
+                            <div class="module-card ${module.is_enabled ? 'enabled' : ''}">
+                                <div>
+                                    <div style="font-weight: 600;">${module.module_name}</div>
+                                    <div style="font-size: 12px; color: #64748b; margin-top: 4px;">${module.description || ''}</div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox"
+                                           ${module.is_enabled ? 'checked' : ''}
+                                           onchange="toggleModule(${coachId}, ${module.id}, this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Failed to load modules:', error);
+            }
+        }
+
+        window.toggleUserStatus = async function(userId, isActive) {
+            try {
+                await api.toggleUserStatus(userId, isActive);
+                alert(`User ${isActive ? 'activated' : 'deactivated'} successfully`);
+                loadUsers();
+                loadStats();
+            } catch (error) {
+                alert('Failed to update user status: ' + error.message);
+            }
+        };
+
+        window.toggleModule = async function(coachId, moduleId, isEnabled) {
+            try {
+                await api.toggleModuleAccess(coachId, moduleId, isEnabled);
+                loadCoachModules(coachId);
+            } catch (error) {
+                alert('Failed to update module: ' + error.message);
+            }
+        };
+        } // End of initAdmin function
+    </script>
+</body>
+</html>

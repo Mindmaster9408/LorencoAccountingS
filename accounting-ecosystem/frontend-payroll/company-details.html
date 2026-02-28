@@ -415,7 +415,7 @@
         let companyData = {};
 
         window.addEventListener('load', function() {
-            if (!AUTH.isLoggedIn()) { window.location.href = 'login.html'; return; }
+            if (!AUTH.isAuthenticated()) { window.location.href = 'login.html'; return; }
             const session = AUTH.getSession();
             currentCompanyId = session.company_id;
             loadCompaniesCarousel();
@@ -471,32 +471,47 @@
         // ========== COMPANY DETAILS ==========
         function getStorageKey() { return 'company_details_' + currentCompanyId; }
 
-        function loadCompanyDetails() {
-            // Merge AUTH company data with localStorage extended data
-            const authCompany = AUTH.getCompanyById(currentCompanyId) || {};
+        async function loadCompanyDetails() {
+            // 1. Fetch basic company info from backend API (authoritative source)
+            let apiCompany = {};
+            try {
+                const token = localStorage.getItem('token');
+                const res = await fetch('/api/companies/' + currentCompanyId, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    apiCompany = data.company || {};
+                }
+            } catch(e) { console.warn('Could not load company from API:', e); }
+
+            // 2. Merge with extended payroll details stored locally
             const stored = localStorage.getItem(getStorageKey());
             const extra = stored ? JSON.parse(stored) : {};
 
+            // Parse address from API if it's a JSON object
+            const apiAddr = (typeof apiCompany.address === 'object' && apiCompany.address) ? apiCompany.address : {};
+
             companyData = {
-                name: extra.name || authCompany.name || '',
-                trading_name: extra.trading_name || '',
-                reg_number: extra.reg_number || '',
+                name: extra.name || apiCompany.company_name || '',
+                trading_name: extra.trading_name || apiCompany.trading_name || '',
+                reg_number: extra.reg_number || apiCompany.registration_number || '',
                 nature: extra.nature || '',
                 year_end: extra.year_end || '',
                 paye_ref: extra.paye_ref || '',
                 uif_ref: extra.uif_ref || '',
                 sdl_ref: extra.sdl_ref || '',
                 coid_ref: extra.coid_ref || '',
-                tax_number: extra.tax_number || '',
-                email: extra.email || authCompany.email || '',
-                phone: extra.phone || '',
+                tax_number: extra.tax_number || apiCompany.vat_number || '',
+                email: extra.email || apiCompany.contact_email || '',
+                phone: extra.phone || apiCompany.contact_phone || '',
                 website: extra.website || '',
                 contact_person: extra.contact_person || '',
-                street: extra.street || '',
-                suburb: extra.suburb || '',
-                city: extra.city || '',
-                province: extra.province || '',
-                postal_code: extra.postal_code || '',
+                street: extra.street || apiAddr.street || '',
+                suburb: extra.suburb || apiAddr.suburb || '',
+                city: extra.city || apiAddr.city || '',
+                province: extra.province || apiAddr.province || '',
+                postal_code: extra.postal_code || apiAddr.postal_code || '',
                 bank_name: extra.bank_name || '',
                 bank_holder: extra.bank_holder || '',
                 bank_account: extra.bank_account || '',
@@ -505,7 +520,7 @@
                 pay_frequencies: extra.pay_frequencies || [],
                 pay_day: extra.pay_day || '',
                 work_hours: extra.work_hours || '',
-                created_date: authCompany.created_date || '',
+                created_date: apiCompany.created_at ? new Date(apiCompany.created_at).toLocaleDateString() : '',
                 // Branding & Export
                 company_name: extra.company_name || extra.name || authCompany.name || '',
                 address_line1: extra.address_line1 || '',
@@ -730,20 +745,15 @@
             localStorage.setItem(getStorageKey(), JSON.stringify(companyData));
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Updated company details for ' + (companyData.name || 'Unknown'));
 
-            // Also update the company name in AUTH system if changed
-            const authCompany = AUTH.getCompanyById(currentCompanyId);
-            if (authCompany && companyData.name) {
-                authCompany.name = companyData.name;
-                authCompany.email = companyData.email || authCompany.email;
-                // Update in registered companies localStorage
-                const regCompanies = AUTH.getRegisteredCompanies();
-                const regIdx = regCompanies.findIndex(c => c.id === currentCompanyId);
-                if (regIdx !== -1) {
-                    regCompanies[regIdx].name = companyData.name;
-                    regCompanies[regIdx].email = companyData.email || regCompanies[regIdx].email;
-                    localStorage.setItem('registered_companies', JSON.stringify(regCompanies));
+            // Update company name in available companies cache
+            try {
+                const cached = JSON.parse(localStorage.getItem('availableCompanies') || '[]');
+                const idx = cached.findIndex(c => c.id == currentCompanyId);
+                if (idx !== -1) {
+                    cached[idx].name = companyData.name || cached[idx].name;
+                    localStorage.setItem('availableCompanies', JSON.stringify(cached));
                 }
-            }
+            } catch(e) {}
 
             renderDetails();
             closeModal();

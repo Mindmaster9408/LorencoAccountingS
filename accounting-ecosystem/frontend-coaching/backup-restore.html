@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backup & Restore - Coaching App</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        h1 {
+            color: #1f2937;
+        }
+        .warning {
+            background: #fef3c7;
+            border: 2px solid #fbbf24;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        .section {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 2px solid #e2e8f0;
+        }
+        .section h2 {
+            margin: 0 0 16px 0;
+            color: #1f2937;
+        }
+        .btn {
+            padding: 12px 24px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+        .btn-success {
+            background: #10b981;
+        }
+        .btn-success:hover {
+            background: #059669;
+        }
+        .btn-danger {
+            background: #ef4444;
+        }
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        .success {
+            background: #d1fae5;
+            border: 2px solid #10b981;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+            color: #065f46;
+        }
+        .error {
+            background: #fee2e2;
+            border: 2px solid #ef4444;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+            color: #991b1b;
+        }
+        .backup-item {
+            background: #f1f5f9;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .file-input {
+            margin: 16px 0;
+        }
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 13px;
+            max-height: 400px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 16px 0;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+        }
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>💾 Backup & Restore System</h1>
+
+    <div class="warning">
+        <strong>⚠️ Important:</strong> Always download a backup file before making major changes. Store these files safely on your computer or cloud storage.
+    </div>
+
+    <!-- Current Status -->
+    <div class="section">
+        <h2>📊 Current Status</h2>
+        <div class="stats" id="stats-grid">
+            <!-- Stats will be inserted here -->
+        </div>
+    </div>
+
+    <!-- Download Backup -->
+    <div class="section">
+        <h2>⬇️ Download Backup</h2>
+        <p>Download all your client data as a JSON file. Save this file safely!</p>
+        <button class="btn btn-success" onclick="downloadBackup()">
+            📥 Download Full Backup Now
+        </button>
+        <div id="download-output"></div>
+    </div>
+
+    <!-- Restore from File -->
+    <div class="section">
+        <h2>⬆️ Restore from Backup File</h2>
+        <p>Upload a previously downloaded backup file to restore your data.</p>
+        <div class="file-input">
+            <input type="file" id="backup-file" accept=".json" />
+        </div>
+        <button class="btn btn-success" onclick="restoreFromFile()">
+            📤 Restore from File
+        </button>
+        <div id="restore-output"></div>
+    </div>
+
+    <!-- Auto Backup History -->
+    <div class="section">
+        <h2>🔄 Auto-Backup History</h2>
+        <p>The app automatically creates backups in localStorage. View and restore from recent auto-backups:</p>
+        <button class="btn" onclick="loadBackupHistory()">
+            🔍 Show Auto-Backup History
+        </button>
+        <div id="history-output"></div>
+    </div>
+
+    <!-- Export Current Data -->
+    <div class="section">
+        <h2>📋 View Current Data</h2>
+        <button class="btn" onclick="viewCurrentData()">
+            👁️ View Current Data
+        </button>
+        <div id="current-data-output"></div>
+    </div>
+
+    <script>
+        // Get storage key
+        function getStorageKey() {
+            const currentUser = localStorage.getItem('coaching_app_current_user');
+            if (currentUser) {
+                return `coaching_app_store_${currentUser}`;
+            }
+            return 'coaching_app_store';
+        }
+
+        // Load stats
+        function loadStats() {
+            const storageKey = getStorageKey();
+            const data = localStorage.getItem(storageKey);
+
+            let clientCount = 0;
+            let backupCount = 0;
+            let lastBackup = 'Never';
+
+            if (data) {
+                try {
+                    const parsed = JSON.parse(data);
+                    clientCount = parsed.clients ? parsed.clients.length : 0;
+                } catch(e) {}
+            }
+
+            // Check for auto-backups
+            const backupKey = `${storageKey}_auto_backup`;
+            const autoBackup = localStorage.getItem(backupKey);
+            if (autoBackup) {
+                try {
+                    const backup = JSON.parse(autoBackup);
+                    lastBackup = new Date(backup.timestamp).toLocaleString();
+                    backupCount = 1;
+                } catch(e) {}
+            }
+
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${clientCount}</div>
+                    <div class="stat-label">Total Clients</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <div class="stat-value">${backupCount}</div>
+                    <div class="stat-label">Auto-Backups</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    <div class="stat-value" style="font-size: 14px;">${lastBackup}</div>
+                    <div class="stat-label">Last Backup</div>
+                </div>
+            `;
+        }
+
+        // Download backup
+        function downloadBackup() {
+            const output = document.getElementById('download-output');
+            const storageKey = getStorageKey();
+            const data = localStorage.getItem(storageKey);
+
+            if (!data) {
+                output.innerHTML = '<div class="error">No data found to backup.</div>';
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(data);
+                const backupData = {
+                    timestamp: new Date().toISOString(),
+                    storageKey: storageKey,
+                    clientCount: parsed.clients ? parsed.clients.length : 0,
+                    data: parsed
+                };
+
+                const json = JSON.stringify(backupData, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+
+                const filename = `coaching-backup-${new Date().toISOString().slice(0,10)}-${Date.now()}.json`;
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+
+                output.innerHTML = `
+                    <div class="success">
+                        <strong>✅ Backup Downloaded!</strong>
+                        <p>File: ${filename}</p>
+                        <p>Clients: ${backupData.clientCount}</p>
+                        <p style="margin-top: 12px; color: #059669;">
+                            Keep this file safe! You can restore from it at any time.
+                        </p>
+                    </div>
+                `;
+            } catch(e) {
+                output.innerHTML = `<div class="error">Error creating backup: ${e.message}</div>`;
+            }
+        }
+
+        // Restore from file
+        function restoreFromFile() {
+            const output = document.getElementById('restore-output');
+            const fileInput = document.getElementById('backup-file');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                output.innerHTML = '<div class="error">Please select a backup file first.</div>';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const backupData = JSON.parse(e.target.result);
+
+                    if (!backupData.data || !backupData.data.clients) {
+                        output.innerHTML = '<div class="error">Invalid backup file format.</div>';
+                        return;
+                    }
+
+                    // Restore to current user's storage
+                    const storageKey = getStorageKey();
+                    localStorage.setItem(storageKey, JSON.stringify(backupData.data));
+
+                    output.innerHTML = `
+                        <div class="success">
+                            <strong>✅ Restore Successful!</strong>
+                            <p>Restored ${backupData.clientCount} clients</p>
+                            <p>From backup: ${new Date(backupData.timestamp).toLocaleString()}</p>
+                            <p style="margin-top: 12px; color: #059669;">
+                                You can now close this page and refresh your coaching app!
+                            </p>
+                        </div>
+                    `;
+
+                    // Reload stats
+                    loadStats();
+                } catch(e) {
+                    output.innerHTML = `<div class="error">Error restoring backup: ${e.message}</div>`;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Load backup history
+        function loadBackupHistory() {
+            const output = document.getElementById('history-output');
+            const storageKey = getStorageKey();
+            const backupHistoryKey = `${storageKey}_backup_history`;
+
+            try {
+                const history = JSON.parse(localStorage.getItem(backupHistoryKey) || '[]');
+
+                if (history.length === 0) {
+                    output.innerHTML = '<p style="color: #6b7280;">No auto-backup history found.</p>';
+                    return;
+                }
+
+                let html = '<h3>Recent Auto-Backups:</h3>';
+                history.forEach((backup, i) => {
+                    html += `
+                        <div class="backup-item">
+                            <div>
+                                <strong>${new Date(backup.timestamp).toLocaleString()}</strong><br>
+                                <span style="color: #6b7280;">Clients: ${backup.clientCount}</span>
+                            </div>
+                            <button class="btn" onclick="restoreAutoBackup('${backup.key}')">
+                                Restore This
+                            </button>
+                        </div>
+                    `;
+                });
+
+                output.innerHTML = html;
+            } catch(e) {
+                output.innerHTML = `<div class="error">Error loading backup history: ${e.message}</div>`;
+            }
+        }
+
+        // Restore from auto-backup
+        window.restoreAutoBackup = function(backupKey) {
+            const output = document.getElementById('history-output');
+
+            try {
+                const backupData = JSON.parse(localStorage.getItem(backupKey));
+
+                if (!backupData || !backupData.data) {
+                    output.innerHTML = '<div class="error">Backup data not found.</div>';
+                    return;
+                }
+
+                const storageKey = getStorageKey();
+                localStorage.setItem(storageKey, JSON.stringify(backupData.data));
+
+                output.innerHTML = `
+                    <div class="success">
+                        <strong>✅ Restored from Auto-Backup!</strong>
+                        <p>Clients restored: ${backupData.clientCount}</p>
+                        <p>From: ${new Date(backupData.timestamp).toLocaleString()}</p>
+                        <p style="margin-top: 12px; color: #059669;">
+                            Refresh your coaching app to see the restored data!
+                        </p>
+                    </div>
+                `;
+
+                loadStats();
+            } catch(e) {
+                output.innerHTML = `<div class="error">Error restoring: ${e.message}</div>`;
+            }
+        };
+
+        // View current data
+        function viewCurrentData() {
+            const output = document.getElementById('current-data-output');
+            const storageKey = getStorageKey();
+            const data = localStorage.getItem(storageKey);
+
+            if (!data) {
+                output.innerHTML = '<p style="color: #6b7280;">No data found.</p>';
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(data);
+                output.innerHTML = `<pre>${JSON.stringify(parsed, null, 2)}</pre>`;
+            } catch(e) {
+                output.innerHTML = `<div class="error">Error parsing data: ${e.message}</div>`;
+            }
+        }
+
+        // Load stats on page load
+        window.onload = function() {
+            loadStats();
+        };
+    </script>
+</body>
+</html>

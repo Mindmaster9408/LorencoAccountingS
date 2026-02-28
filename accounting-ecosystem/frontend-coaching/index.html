@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coaching App — Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="css/basis-assessment.css" />
+    <link rel="stylesheet" href="css/reports.css" />
+    <link rel="stylesheet" href="css/login.css" />
+    <link rel="stylesheet" href="css/admin-panel.css" />
+    <link rel="stylesheet" href="css/leads.css" />
+    <link rel="stylesheet" href="css/journey.css" />
+    <link rel="stylesheet" href="css/journey-exercises.css" />
+</head>
+<body class="body-bg">
+    <div class="app">
+        <aside class="sidebar">
+            <div class="brand" id="sidebar-brand">
+                <span id="sidebar-brand-text">Coaching App</span>
+            </div>
+            <nav>
+                <ul>
+                    <li data-route="dashboard" class="active">Dashboard</li>
+                    <li data-route="leads">Leads</li>
+                    <li data-route="training">Training My App</li>
+                    <li data-route="reports">Reports</li>
+                    <li data-route="settings">⚙️ Settings</li>
+                </ul>
+            </nav>
+            <div class="sidebar-footer">
+                <div id="backup-indicator" style="padding: 8px; text-align: center; color: #6b7280; font-size: 12px; margin-bottom: 8px;">
+                    ● Auto-backup enabled
+                </div>
+                <a href="backup-restore.html" class="backup-btn" title="Download backups and restore your data" style="margin-bottom: 8px;">
+                    💾 Backup & Restore
+                </a>
+                <a href="backup-manager.html" class="backup-btn" title="Manage backups and protect your data">
+                    🛡️ Backup Manager
+                </a>
+                <button id="logout-btn" class="logout-btn" title="Clear all data and reset app">🚪 Logout</button>
+                <div class="privacy-text">Privacy: data isolated • Auto-archive configurable</div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="main-header">
+                <h1 id="page-title">Dashboard</h1>
+                <div class="header-actions">
+                    <button id="seed-sample">Add Sample Client</button>
+                </div>
+            </header>
+
+            <section id="dashboard" class="view">
+                <header class="control-header">
+                    <div class="control-brand" id="control-brand">
+                        <div>
+                            <h2 id="control-tower-title">Control Tower</h2>
+                            <div class="control-sub">Co-Pilot Coaching Command Center</div>
+                        </div>
+                    </div>
+                    <div class="control-actions">
+                        <button id="new-pilot" class="btn-primary">+ New Pilot</button>
+                    </div>
+                </header>
+
+                <div class="control-stats">
+                    <div class="stat"> <div class="stat-num" id="stat-active">0</div><div class="stat-label">Active Pilots</div></div>
+                    <div class="stat"> <div class="stat-num" id="stat-completed">0</div><div class="stat-label">Completed</div></div>
+                    <div class="stat"> <div class="stat-num" id="stat-avg">0%</div><div class="stat-label">Avg Progress</div></div>
+                    <div class="stat"> <div class="stat-num" id="stat-steps">17</div><div class="stat-label">Journey Steps</div></div>
+                </div>
+
+                <div class="control-search">
+                    <input id="search-pilots" placeholder="Search pilots..." />
+                    <div class="tabs"><button class="tab active" data-filter="active">Active Pilots</button><button class="tab" data-filter="past">Past Clients</button></div>
+                </div>
+
+                <div id="clients-cards" class="clients-cards"></div>
+            </section>
+
+            <section id="clients" class="view hidden">
+                <div class="clients-list">
+                    <div id="client-sidebar-info" class="client-sidebar-info">
+                        <p>Select a client to view details.</p>
+                    </div>
+                    <div id="client-detail" class="client-detail">
+                        <p>Client details will appear here.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="training" class="view hidden">
+                <h2>Training My App</h2>
+                <div class="training-grid">
+                    <div class="training-card">
+                        <h3>Neuro Coach Part</h3>
+                        <input type="file" id="upload-neuro" multiple />
+                        <select id="neuro-tag"><option value="neuro_coach">neuro_coach</option></select>
+                        <button id="neuro-upload-btn">Upload & Tag</button>
+                    </div>
+
+                    <div class="training-card">
+                        <h3>BASIS Report Side</h3>
+                        <input type="file" id="upload-basis" multiple />
+                        <select id="basis-tag"><option value="basis_report">basis_report</option></select>
+                        <button id="basis-upload-btn">Upload & Tag</button>
+                    </div>
+
+                    <div class="training-card full">
+                        <h3>Prompt Insertion</h3>
+                        <textarea id="prompt-text" placeholder="Paste custom prompt or instruction here"></textarea>
+                        <button id="learn-prompt-btn">Teach AI</button>
+                    </div>
+                </div>
+
+                <div id="training-log" class="training-log"></div>
+            </section>
+
+            <section id="leads" class="view hidden">
+                <div class="leads-header">
+                    <div>
+                        <h2 style="margin: 0;">Leads Management</h2>
+                        <p style="color: #64748b; margin: 8px 0 0 0;">People who completed the public BASIS assessment</p>
+                    </div>
+                    <div class="leads-actions">
+                        <button id="copy-public-link" class="btn-secondary">📋 Copy Public Link</button>
+                    </div>
+                </div>
+
+                <div class="leads-stats" id="leads-stats">
+                    <div class="stat">
+                        <div class="stat-num" id="total-leads">0</div>
+                        <div class="stat-label">Total Leads</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-num" id="interested-leads">0</div>
+                        <div class="stat-label">Want Coaching</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-num" id="contacted-leads">0</div>
+                        <div class="stat-label">Contacted</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-num" id="converted-leads">0</div>
+                        <div class="stat-label">Converted to Clients</div>
+                    </div>
+                </div>
+
+                <div class="leads-filters">
+                    <div class="tabs">
+                        <button class="tab active" data-filter="all">All Leads</button>
+                        <button class="tab" data-filter="interested">Want Coaching</button>
+                        <button class="tab" data-filter="not-contacted">Need Follow-up</button>
+                        <button class="tab" data-filter="contacted">Contacted</button>
+                    </div>
+                </div>
+
+                <div id="leads-list" class="leads-list"></div>
+            </section>
+
+            <section id="reports" class="view hidden">
+                <h2>Reports</h2>
+                <p>Reports placeholder — coaching-only reports (no accounting).</p>
+            </section>
+
+            <section id="settings" class="view hidden"></section>
+        </main>
+    </div>
+
+    <link rel="stylesheet" href="css/settings.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script type="module" src="js/app.js?v=5"></script>
+</body>
+</html>

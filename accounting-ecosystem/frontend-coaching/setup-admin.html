@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Admin Account</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        .section {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 2px solid #e2e8f0;
+        }
+        .btn {
+            padding: 14px 28px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+        .btn-success {
+            background: #10b981;
+        }
+        .btn-success:hover {
+            background: #059669;
+        }
+        .success {
+            background: #f0fdf4;
+            border: 2px solid #86efac;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+            color: #166534;
+        }
+        h1 {
+            color: #1f2937;
+        }
+        h2 {
+            color: #374151;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 Setup Admin Account</h1>
+
+    <div class="section">
+        <h2>Step 1: Setup Admin Storage</h2>
+        <p>This will create the storage structure for the admin user and disable admin mode so you can use the coaching app.</p>
+        <button class="btn btn-success" onclick="setupAdmin()">Setup Admin & Add Sample Clients</button>
+        <div id="setup-output"></div>
+    </div>
+
+    <div class="section">
+        <h2>Step 2: Open Coaching App</h2>
+        <p>After setup, click below to open the coaching app:</p>
+        <a href="index.html" class="btn">Open Coaching App</a>
+    </div>
+
+    <script>
+        function setupAdmin() {
+            const output = document.getElementById('setup-output');
+
+            try {
+                // Create admin storage with sample clients
+                const adminKey = 'coaching_app_store_ruanvlog@lorenco.co.za';
+
+                const adminStore = {
+                    clients: [
+                        {
+                            id: 'c_' + Date.now() + '_1',
+                            name: 'Sarah Johnson',
+                            firstName: 'Sarah',
+                            surname: 'Johnson',
+                            email: 'sarah.johnson@email.com',
+                            phone: '+27 82 123 4567',
+                            company: 'Tech Innovations',
+                            preferred_lang: 'English',
+                            status: 'Active - Discovery Phase',
+                            last_session: new Date().toISOString().slice(0, 10),
+                            dream: 'Become a confident leader and grow the business to 50+ employees',
+                            stress: ['Time management', 'Delegation challenges', 'Work-life balance'],
+                            notes: 'Energetic and driven entrepreneur. Strong technical skills but needs help with leadership.',
+                            gauges: {
+                                fuel: 65,
+                                horizon: 70,
+                                thrust: 75,
+                                engine: 60,
+                                compass: 55,
+                                weight: 50,
+                                positive: 80,
+                                negative: 30,
+                                nav: 65
+                            },
+                            journeyProgress: {
+                                currentStep: 1,
+                                completedSteps: [],
+                                stepNotes: {},
+                                stepCompletionDates: {}
+                            }
+                        },
+                        {
+                            id: 'c_' + Date.now() + '_2',
+                            name: 'Pieter van der Merwe',
+                            firstName: 'Pieter',
+                            surname: 'van der Merwe',
+                            email: 'pieter.vdm@email.com',
+                            phone: '+27 83 987 6543',
+                            company: 'Van der Merwe Boerdery',
+                            preferred_lang: 'Afrikaans',
+                            status: 'Active - Transformation Phase',
+                            last_session: new Date().toISOString().slice(0, 10),
+                            dream: 'Suksesvol oorgee van plaas aan volgende generasie',
+                            stress: ['Generasie gaping', 'Finansiële beplanning', 'Veranderingsbestuur'],
+                            notes: 'Ervare boer met 30+ jaar ondervinding. Worstel met loslaat en vertrou.',
+                            gauges: {
+                                fuel: 55,
+                                horizon: 65,
+                                thrust: 60,
+                                engine: 70,
+                                compass: 75,
+                                weight: 45,
+                                positive: 70,
+                                negative: 40,
+                                nav: 60
+                            },
+                            basisAnswers: {
+                                b: { 0: 8, 1: 7, 2: 6, 3: 9, 4: 8, 5: 7, 6: 8, 7: 9, 8: 7, 9: 8 },
+                                a: { 0: 5, 1: 6, 2: 5, 3: 4, 4: 6, 5: 5, 6: 4, 7: 5, 8: 6, 9: 5 },
+                                s: { 0: 7, 1: 8, 2: 7, 3: 8, 4: 7, 5: 6, 6: 7, 7: 8, 8: 7, 9: 7 },
+                                i: { 0: 4, 1: 5, 2: 4, 3: 3, 4: 4, 5: 5, 6: 4, 7: 3, 8: 4, 9: 5 },
+                                ss: { 0: 6, 1: 7, 2: 6, 3: 7, 4: 6, 5: 7, 6: 6, 7: 7, 8: 6, 9: 7 }
+                            },
+                            basisResults: {
+                                scores: { b: 77, a: 51, s: 73, i: 41, ss: 65 },
+                                basisOrder: ['B', 'S', 'SS', 'A', 'I']
+                            },
+                            journeyProgress: {
+                                currentStep: 6,
+                                completedSteps: [1, 2, 3, 4, 5],
+                                stepNotes: {
+                                    1: 'Completed 4 quadrants exercise. Identified work-life imbalance.',
+                                    2: 'Gap between current farm management and desired succession plan is clear.',
+                                    3: 'Flight plan created: 18-month succession timeline with quarterly milestones.',
+                                    4: 'Deep dive revealed fear of losing identity without farm work.',
+                                    5: 'BASIS assessment completed. Strong Builder and Stabilizer traits.'
+                                },
+                                stepCompletionDates: {
+                                    1: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+                                    2: new Date(Date.now() - 38 * 24 * 60 * 60 * 1000).toISOString(),
+                                    3: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+                                    4: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString(),
+                                    5: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+                                }
+                            }
+                        },
+                        {
+                            id: 'c_' + Date.now() + '_3',
+                            name: 'Michelle Naidoo',
+                            firstName: 'Michelle',
+                            surname: 'Naidoo',
+                            email: 'michelle.naidoo@email.com',
+                            phone: '+27 84 555 7890',
+                            company: 'Naidoo & Associates',
+                            preferred_lang: 'English',
+                            status: 'Active - Mastery Phase',
+                            last_session: new Date().toISOString().slice(0, 10),
+                            dream: 'Build a coaching practice that impacts 1000+ professionals',
+                            stress: ['Scaling the business', 'Marketing', 'Finding the right team'],
+                            notes: 'Certified coach with 5 years experience. Ready to scale up significantly.',
+                            gauges: {
+                                fuel: 85,
+                                horizon: 90,
+                                thrust: 88,
+                                engine: 82,
+                                compass: 90,
+                                weight: 70,
+                                positive: 92,
+                                negative: 15,
+                                nav: 85
+                            },
+                            journeyProgress: {
+                                currentStep: 13,
+                                completedSteps: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+                                stepNotes: {
+                                    1: 'Clear vision across all 4 quadrants of life.',
+                                    11: 'Dream-spot identified: intersection of coaching expertise, business growth, and social impact.',
+                                    12: 'Core values: Excellence, Integrity, Growth, Impact. Limiting belief transformed: "I can build something bigger than myself."'
+                                },
+                                stepCompletionDates: {
+                                    1: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString(),
+                                    2: new Date(Date.now() - 112 * 24 * 60 * 60 * 1000).toISOString(),
+                                    3: new Date(Date.now() - 105 * 24 * 60 * 60 * 1000).toISOString(),
+                                    4: new Date(Date.now() - 98 * 24 * 60 * 60 * 1000).toISOString(),
+                                    5: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+                                    6: new Date(Date.now() - 80 * 24 * 60 * 60 * 1000).toISOString(),
+                                    7: new Date(Date.now() - 72 * 24 * 60 * 60 * 1000).toISOString(),
+                                    8: new Date(Date.now() - 63 * 24 * 60 * 60 * 1000).toISOString(),
+                                    9: new Date(Date.now() - 56 * 24 * 60 * 60 * 1000).toISOString(),
+                                    10: new Date(Date.now() - 49 * 24 * 60 * 60 * 1000).toISOString(),
+                                    11: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+                                    12: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString()
+                                }
+                            }
+                        }
+                    ],
+                    training: {
+                        uploads: [],
+                        prompts: []
+                    }
+                };
+
+                // Save admin store
+                localStorage.setItem(adminKey, JSON.stringify(adminStore));
+
+                // Set current user to admin
+                localStorage.setItem('coaching_app_current_user', 'ruanvlog@lorenco.co.za');
+
+                // Disable admin mode so the coaching app shows
+                localStorage.setItem('coaching_app_admin_mode', 'false');
+
+                output.innerHTML = `
+                    <div class="success">
+                        <h3>✅ Setup Complete!</h3>
+                        <p><strong>3 sample clients created:</strong></p>
+                        <ul>
+                            <li><strong>Sarah Johnson</strong> (English) - Just starting, Step 1</li>
+                            <li><strong>Pieter van der Merwe</strong> (Afrikaans) - Mid-journey, Step 6, with BASIS results</li>
+                            <li><strong>Michelle Naidoo</strong> (English) - Advanced, Step 13</li>
+                        </ul>
+                        <p style="margin-top: 16px;"><strong>Next step:</strong> Click "Open Coaching App" below to see your dashboard!</p>
+                    </div>
+                `;
+
+            } catch(e) {
+                output.innerHTML = `<p style="color: #ef4444;">Error: ${e.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

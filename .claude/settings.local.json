@@ -4,7 +4,9 @@
       "Bash(git push:*)",
       "Bash(git add:*)",
       "Bash(python3:*)",
-      "Bash(grep -l \"background: white\\\\|background: #fff\\\\|background: #f8f9fa\\\\|background: #ffffff\" /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-pos/*.html)"
+      "Bash(grep -l \"background: white\\\\|background: #fff\\\\|background: #f8f9fa\\\\|background: #ffffff\" /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-pos/*.html)",
+      "Bash(grep -r \"offline\\\\|cache\\\\|download\" /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-payroll/*.html)",
+      "Bash(wc -l /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-payroll/js/*.js)"
     ]
   }
 }

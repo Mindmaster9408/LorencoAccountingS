@@ -118,4 +118,91 @@ async function seedMasterAdmin(supabase) {
   }
 }
 
-module.exports = { seedMasterAdmin };
+/**
+ * Ensure additional practice users exist.
+ * Safe to call on every startup — skips if user already exists.
+ */
+async function seedAdditionalUsers(supabase) {
+  const additionalUsers = [
+    {
+      username: 'mj@lorenco.co.za',
+      email: 'mj@lorenco.co.za',
+      full_name: 'MJ van Loggerenberg',
+      password: 'mJmR@9423$',
+      role: 'business_owner',
+      is_super_admin: false
+    }
+  ];
+
+  for (const u of additionalUsers) {
+    try {
+      // Check if user already exists
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', u.username)
+        .maybeSingle();
+
+      if (existing) {
+        console.log(`  ✅ User ${u.email} already exists — skipping`);
+        continue;
+      }
+
+      // Hash password
+      const password_hash = await bcrypt.hash(u.password, 12);
+
+      // Create user
+      const { data: newUser, error: userError } = await supabase
+        .from('users')
+        .insert({
+          username: u.username,
+          email: u.email,
+          full_name: u.full_name,
+          password_hash,
+          role: u.role,
+          is_super_admin: u.is_super_admin,
+          is_active: true
+        })
+        .select()
+        .single();
+
+      if (userError) {
+        console.error(`  ❌ Seed: Failed to create ${u.email}:`, userError.message);
+        continue;
+      }
+
+      console.log(`  ✅ User created: ${u.email} (${u.role})`);
+
+      // Link user to The Infinite Legacy company
+      const { data: company } = await supabase
+        .from('companies')
+        .select('id')
+        .ilike('company_name', '%Infinite Legacy%')
+        .maybeSingle();
+
+      if (company) {
+        const { error: linkError } = await supabase
+          .from('user_company_access')
+          .insert({
+            user_id: newUser.id,
+            company_id: company.id,
+            role: u.role,
+            is_primary: true,
+            is_active: true
+          });
+
+        if (!linkError) {
+          console.log(`  ✅ ${u.email} linked to The Infinite Legacy as ${u.role}`);
+        } else {
+          console.error(`  ❌ Failed to link ${u.email} to company:`, linkError.message);
+        }
+      } else {
+        console.warn(`  ⚠️  The Infinite Legacy company not found — ${u.email} created but not linked to a company`);
+      }
+    } catch (err) {
+      console.error(`  ❌ Error seeding user ${u.email}:`, err.message);
+    }
+  }
+}
+
+module.exports = { seedMasterAdmin, seedAdditionalUsers };

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restore Demo Clients</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        h1 {
+            color: #1f2937;
+        }
+        .section {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 2px solid #e2e8f0;
+        }
+        .btn {
+            padding: 14px 28px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+        .btn-success {
+            background: #10b981;
+        }
+        .btn-success:hover {
+            background: #059669;
+        }
+        .success {
+            background: #d1fae5;
+            border: 2px solid #10b981;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+            color: #065f46;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔄 Restore Demo Clients</h1>
+
+    <div class="section">
+        <h2>Restore Demo Clients for Testing</h2>
+        <p>This will create 3 demo clients with some exercise data so you can test the coaching app and the new Ecochart feature.</p>
+
+        <button class="btn btn-success" onclick="restoreDemoClients()">
+            Create Demo Clients
+        </button>
+
+        <div id="output"></div>
+    </div>
+
+    <script>
+        function restoreDemoClients() {
+            const output = document.getElementById('output');
+
+            // Create demo clients
+            const demoClients = [
+                {
+                    id: 'client_' + Date.now() + '_1',
+                    name: 'John Smith',
+                    email: 'john.smith@example.com',
+                    phone: '+27 82 123 4567',
+                    language: 'english',
+                    dateJoined: new Date().toISOString(),
+                    status: 'active',
+                    dream: 'Build a successful coaching business',
+                    exerciseData: {
+                        fourQuadrant: {
+                            painsAndFrustrations: 'Struggling to find clients',
+                            goalsAndDesires: 'Help 100 people transform their lives',
+                            fearsAndImplications: 'Fear of failure',
+                            dreamsAndAspirations: 'Build a successful coaching business that impacts thousands',
+                            dreamSummary: 'Build a successful coaching business',
+                            our1Percent: 'Daily client outreach',
+                            evaluations: {
+                                experience: 'Very insightful',
+                                insights: 'Clarity on my fears',
+                                stoodOut: 'The dream became clear',
+                                future23Years: 'Running a 7-figure coaching practice',
+                                next24Hours: 'Reach out to 5 potential clients'
+                            },
+                            sessionNotes: 'Great first session'
+                        }
+                    },
+                    journeyProgress: {
+                        currentStep: 5,
+                        completedSteps: [1, 2, 3, 4],
+                        stepNotes: {},
+                        stepCompletionDates: {
+                            1: new Date(Date.now() - 86400000 * 3).toISOString(),
+                            2: new Date(Date.now() - 86400000 * 2).toISOString(),
+                            3: new Date(Date.now() - 86400000 * 1).toISOString(),
+                            4: new Date().toISOString()
+                        }
+                    }
+                },
+                {
+                    id: 'client_' + Date.now() + '_2',
+                    name: 'Sarah Johnson',
+                    email: 'sarah.j@example.com',
+                    phone: '+27 83 987 6543',
+                    language: 'afrikaans',
+                    dateJoined: new Date(Date.now() - 86400000 * 7).toISOString(),
+                    status: 'active',
+                    dream: 'Become a published author',
+                    exerciseData: {
+                        fourQuadrant: {
+                            painsAndFrustrations: 'Writer\'s block',
+                            goalsAndDesires: 'Finish my book',
+                            fearsAndImplications: 'Not being good enough',
+                            dreamsAndAspirations: 'Become a published author and inspire others',
+                            dreamSummary: 'Become a published author',
+                            our1Percent: 'Write 500 words daily',
+                            evaluations: {
+                                experience: 'Eye-opening',
+                                insights: 'I can do this!',
+                                stoudOut: 'My dream is achievable',
+                                future23Years: 'Best-selling author',
+                                next24Hours: 'Write the first chapter'
+                            },
+                            sessionNotes: 'Client is very motivated'
+                        }
+                    },
+                    journeyProgress: {
+                        currentStep: 3,
+                        completedSteps: [1, 2],
+                        stepNotes: {},
+                        stepCompletionDates: {
+                            1: new Date(Date.now() - 86400000 * 6).toISOString(),
+                            2: new Date(Date.now() - 86400000 * 4).toISOString()
+                        }
+                    }
+                },
+                {
+                    id: 'client_' + Date.now() + '_3',
+                    name: 'Michael Chen',
+                    email: 'michael.chen@example.com',
+                    phone: '+27 84 555 1234',
+                    language: 'english',
+                    dateJoined: new Date(Date.now() - 86400000 * 14).toISOString(),
+                    status: 'active',
+                    dream: 'Start a tech company',
+                    exerciseData: {
+                        fourQuadrant: {
+                            painsAndFrustrations: 'Lack of funding',
+                            goalsAndDesires: 'Launch my startup',
+                            fearsAndImplications: 'Financial risk',
+                            dreamsAndAspirations: 'Start a tech company that solves real problems',
+                            dreamSummary: 'Start a tech company',
+                            our1Percent: 'Network with one investor per week',
+                            evaluations: {
+                                experience: 'Challenging but valuable',
+                                insights: 'Need to focus on MVP first',
+                                stoodOut: 'The importance of the 1%',
+                                future23Years: 'Successful tech entrepreneur',
+                                next24Hours: 'Create pitch deck'
+                            },
+                            sessionNotes: 'Very analytical thinker'
+                        }
+                    },
+                    journeyProgress: {
+                        currentStep: 1,
+                        completedSteps: [],
+                        stepNotes: {},
+                        stepCompletionDates: {}
+                    }
+                }
+            ];
+
+            // Get admin store key
+            const adminKey = 'coaching_app_store_ruanvlog@lorenco.co.za';
+
+            // Create store structure
+            const store = {
+                clients: demoClients,
+                training: {
+                    uploads: [],
+                    prompts: []
+                }
+            };
+
+            // Save to localStorage
+            localStorage.setItem(adminKey, JSON.stringify(store));
+
+            // Also ensure current user is set
+            localStorage.setItem('coaching_app_current_user', 'ruanvlog@lorenco.co.za');
+            localStorage.setItem('coaching_app_admin_mode', 'true');
+
+            output.innerHTML = `
+                <div class="success">
+                    <h3>✅ Demo Clients Created Successfully!</h3>
+                    <p><strong>Created 3 demo clients:</strong></p>
+                    <ul>
+                        <li>John Smith - On Step 5 (Ecochart) - Ready to test!</li>
+                        <li>Sarah Johnson - On Step 3 (Flight Plan)</li>
+                        <li>Michael Chen - Just started (Step 1)</li>
+                    </ul>
+                    <p style="margin-top: 16px; font-weight: 600;">
+                        You can now close this page and refresh your coaching app. The demo clients will appear!
+                    </p>
+                    <p style="margin-top: 12px; color: #059669;">
+                        Click on John Smith and open Step 5 to test the new Ecochart exercise we just built!
+                    </p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

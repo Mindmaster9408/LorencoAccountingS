@@ -1,0 +1,285 @@
+/* Leads Management Styles */
+
+.leads-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.leads-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.leads-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-bottom: 32px;
+}
+
+.leads-filters {
+    margin-bottom: 24px;
+}
+
+.leads-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.lead-card {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 24px;
+    transition: all 0.2s ease;
+}
+
+.lead-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.lead-card.interested {
+    border-left: 4px solid #10b981;
+    background: #f0fdf4;
+}
+
+.lead-card.contacted {
+    opacity: 0.7;
+}
+
+.lead-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.lead-info {
+    flex: 1;
+}
+
+.lead-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 8px;
+}
+
+.lead-company {
+    font-size: 14px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.lead-contact {
+    display: flex;
+    gap: 16px;
+    font-size: 14px;
+    color: #64748b;
+}
+
+.lead-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.lead-badge {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.lead-badge.interested {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.lead-badge.contacted {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.lead-badge.converted {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.lead-basis {
+    margin: 16px 0;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+
+.lead-basis-code {
+    font-family: monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #667eea;
+    letter-spacing: 2px;
+}
+
+.lead-goals {
+    margin: 12px 0;
+    padding: 12px;
+    background: #fffbeb;
+    border-left: 3px solid #fbbf24;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #78350f;
+    line-height: 1.6;
+}
+
+.lead-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.lead-actions button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-contact {
+    background: #10b981;
+    color: white;
+    border: none;
+}
+
+.btn-contact:hover {
+    background: #059669;
+}
+
+.btn-convert {
+    background: #3b82f6;
+    color: white;
+    border: none;
+}
+
+.btn-convert:hover {
+    background: #2563eb;
+}
+
+.btn-view-report {
+    background: #f3f4f6;
+    color: #1f2937;
+    border: 1px solid #d1d5db;
+}
+
+.btn-view-report:hover {
+    background: #e5e7eb;
+}
+
+.btn-delete {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    margin-left: auto;
+}
+
+.btn-delete:hover {
+    background: #fee2e2;
+}
+
+.lead-timestamp {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-top: 12px;
+}
+
+.empty-leads {
+    text-align: center;
+    padding: 64px 20px;
+    color: #64748b;
+}
+
+.empty-leads-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.empty-leads h3 {
+    font-size: 20px;
+    color: #1f2937;
+    margin: 0 0 8px 0;
+}
+
+.empty-leads p {
+    margin: 0 0 24px 0;
+}
+
+.public-link-box {
+    background: #f0f9ff;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.public-link-box h4 {
+    margin: 0 0 12px 0;
+    color: #1f2937;
+}
+
+.link-input-group {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.link-input-group input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #bae6fd;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 14px;
+    background: white;
+}
+
+@media (max-width: 1024px) {
+    .leads-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .leads-header {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .leads-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .lead-card-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .lead-actions {
+        flex-wrap: wrap;
+    }
+
+    .lead-contact {
+        flex-direction: column;
+        gap: 4px;
+    }
+}
