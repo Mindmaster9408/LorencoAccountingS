@@ -1490,6 +1490,13 @@
             overlay.classList.add('show');
             text.textContent = `Launching ${app.name}...`;
 
+            // Coaching has no SSO token requirement — navigate directly
+            if (appKey === 'coaching') {
+                text.textContent = `Opening ${app.name}...`;
+                setTimeout(() => { window.location.href = app.path; }, 400);
+                return;
+            }
+
             try {
                 const token = localStorage.getItem('eco_token');
 
