@@ -1,6 +1,6 @@
 // Client management and individual client view
 import { $, escapeHtml } from './config.js';
-import { readStore, writeStore, ensureStore, saveClient, createNewClient } from './storage.js';
+import { readStore, saveClient, createNewClient } from './storage.js';
 import { renderCockpit, saveGauges } from './gauges.js';
 import { renderDashboard } from './dashboard.js';
 import { renderBASISAssessment } from './basis-ui.js?v=2';
@@ -194,10 +194,10 @@ export async function openClient(clientId, options = {}) {
     // Setup destination save
     const saveDestBtn = $('#save-destination');
     if(saveDestBtn) {
-        saveDestBtn.addEventListener('click', () => {
+        saveDestBtn.addEventListener('click', async () => {
             client.dream = $('#dest-dream').value;
             client.stress = $('#dest-stress').value.split('\n').map(s => s.trim()).filter(Boolean);
-            saveClient(client);
+            await saveClient(client);
             alert('Destination saved!');
         });
     }
@@ -280,27 +280,27 @@ function setupTabSwitching(header, client) {
     }
 }
 
-export function createNewPilot() {
+export async function createNewPilot() {
     const name = prompt('Enter pilot name:');
     if(!name) return;
-    
+
     const client = createNewClient(name);
-    saveClient(client);
-    renderDashboard();
-    
-    // Open the new client
+    await saveClient(client);
+    await renderDashboard();
+
+    // Open the new client after save (now has a real ID from backend)
     setTimeout(() => openClient(client.id), 100);
 }
 
-export function addSampleClient() {
-    const store = ensureStore();
+export async function addSampleClient() {
     const client = createNewClient('Lia van der Merwe');
     client.preferred_lang = 'Afrikaans';
     client.status = 'Active - Step 1';
     client.summary = 'Dream: Freelance success; Stress: Time management';
-    client.progress = {completed: 3, total: 15};
-    saveClient(client);
-    renderDashboard();
+    client.progress_completed = 3;
+    client.progress_total = 15;
+    await saveClient(client);
+    await renderDashboard();
     alert('Sample client added!');
 }
 

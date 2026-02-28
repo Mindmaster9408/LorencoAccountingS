@@ -37,8 +37,8 @@ class AuditLogger {
   }) {
     try {
       await db.query(
-        `INSERT INTO audit_log 
-         (company_id, actor_type, actor_id, action_type, entity_type, entity_id, 
+        `INSERT INTO accounting_audit_log
+         (company_id, actor_type, actor_id, action_type, entity_type, entity_id,
           before_json, after_json, reason, metadata, ip_address, user_agent)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [

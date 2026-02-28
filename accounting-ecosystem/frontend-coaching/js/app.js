@@ -1,41 +1,27 @@
 // Main application initialization
 import { $ } from './config.js';
-import { ensureStore, readStore } from './storage.js';
 import { renderDashboard, setupDashboardListeners } from './dashboard.js';
 import { renderReports } from './reports.js';
 import { renderLeads, setupLeadsListeners } from './leads.js';
 import { renderSettings } from './settings.js';
-import { isLoggedIn, getCurrentUser, isAdmin, getAdminMode } from './auth.js';
-import { showLoginScreen, showUserInfo } from './login-ui.js';
-import { renderAdminPanel } from './admin-panel.js';
-import { startAutoBackup } from './backup.js';
+import { isAuthenticated, getCurrentUser, logout } from './api.js';
 
 // Initialize the app
 function init() {
     console.log('Coaching App initializing...');
 
-    // Check if user is logged in
-    if (!isLoggedIn()) {
-        console.log('No user logged in, showing login screen');
-        showLoginScreen();
+    // Check if user is authenticated via backend API
+    if (!isAuthenticated()) {
+        console.log('Not authenticated — redirecting to login');
+        window.location.href = '/coaching/login.html';
         return;
     }
 
     const currentUser = getCurrentUser();
-    console.log('User logged in:', currentUser?.fullName);
-
-    // Check if admin and in admin mode
-    if (isAdmin(currentUser) && getAdminMode()) {
-        console.log('Loading admin panel...');
-        renderAdminPanel();
-        return;
-    }
+    console.log('User logged in:', currentUser?.email);
 
     // Regular coaching app
     console.log('Loading coaching app...');
-
-    // Ensure localStorage is set up
-    ensureStore();
 
     // Add user info to sidebar
     addUserInfoToSidebar();
@@ -58,9 +44,6 @@ function init() {
     // Render initial view
     switchRoute('dashboard');
 
-    // Start automatic backup system
-    startAutoBackup();
-
     console.log('Coaching App ready!');
 }
 
@@ -69,10 +52,16 @@ function addUserInfoToSidebar() {
     const brand = sidebar?.querySelector('.brand');
 
     if (brand) {
-        const userInfoHtml = showUserInfo();
-        const userInfoDiv = document.createElement('div');
-        userInfoDiv.innerHTML = userInfoHtml;
-        brand.insertAdjacentElement('afterend', userInfoDiv.firstElementChild);
+        const user = getCurrentUser();
+        const displayName = user ? (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email) : '';
+        const initial = displayName.charAt(0).toUpperCase();
+        const html = `<div class="current-user-info" style="padding:8px 16px;display:flex;align-items:center;gap:8px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="width:28px;height:28px;border-radius:50%;background:#667eea;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:12px;">${initial}</div>
+            <span style="color:rgba(255,255,255,0.85);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${displayName}</span>
+        </div>`;
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        brand.insertAdjacentElement('afterend', div.firstElementChild);
     }
 }
 
@@ -140,8 +129,8 @@ function toggleSidebarClients() {
 }
 
 function renderSidebarClients() {
-    import('./storage.js').then(storageModule => {
-        const store = storageModule.readStore();
+    import('./storage.js').then(async storageModule => {
+        const store = await storageModule.readStore();
         const list = document.getElementById('sidebar-clients-list');
         if(!list) return;
         
@@ -189,35 +178,27 @@ function setupLogout() {
         return;
     }
 
-    console.log('Logout button found, attaching listener');
+    logoutBtn.addEventListener('click', async () => {
+        const currentUser = getCurrentUser();
+        const displayName = currentUser
+            ? (currentUser.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : currentUser.email)
+            : 'your profile';
 
-    logoutBtn.addEventListener('click', () => {
-        console.log('Logout button clicked');
+        const confirmLogout = confirm(
+            `Logout from ${displayName}?\n\n` +
+            `Your client data is saved on the server and will be available when you log back in.`
+        );
 
-        import('./auth.js').then(authModule => {
-            const currentUser = authModule.getCurrentUser();
-
-            const confirmLogout = confirm(
-                `Logout from ${currentUser.fullName}'s profile?\n\n` +
-                `Your client data will be saved and available when you log back in.\n\n` +
-                `You will return to the user selection screen.`
-            );
-
-            if (confirmLogout) {
-                // Logout (removes current user, but keeps all data)
-                authModule.logout();
-
-                // Reload the page to show login screen
-                window.location.reload();
-            }
-        });
+        if (confirmLogout) {
+            await logout();
+        }
     });
 }
 
 // Update company branding (logo and name) in sidebar and dashboard
 function updateCompanyBranding() {
-    const store = readStore();
-    const settings = store.appSettings || {};
+    const settingsStr = localStorage.getItem('coaching_app_settings');
+    const settings = settingsStr ? JSON.parse(settingsStr) : {};
     const company = settings.company || {};
 
     // Update sidebar brand

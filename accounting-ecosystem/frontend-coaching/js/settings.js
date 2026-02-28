@@ -1,45 +1,48 @@
 // Settings Module - Company details, report templates, and app configuration
 import { $, escapeHtml } from './config.js';
-import { readStore, writeStore } from './storage.js';
+
+const SETTINGS_KEY = 'coaching_app_settings';
+
+function loadSettings() {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : null;
+}
+
+function saveSettings(settings) {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
 
 let currentSettings = null;
 
-export async function renderSettings() {
+export function renderSettings() {
     const view = $('#settings');
     if (!view) return;
 
-    const store = await readStore();
-
-    // Initialize settings if not exists
-    if (!store.appSettings) {
-        store.appSettings = {
-            company: {
-                name: 'The Neuro-Coach Method',
-                logo: '',
-                primaryColor: '#3b82f6',
-                secondaryColor: '#8b5cf6',
-                accentColor: '#ec4899'
+    // Load settings from localStorage (or use defaults)
+    currentSettings = loadSettings() || {
+        company: {
+            name: 'The Neuro-Coach Method',
+            logo: '',
+            primaryColor: '#3b82f6',
+            secondaryColor: '#8b5cf6',
+            accentColor: '#ec4899'
+        },
+        reportTemplates: {
+            basisReport: {
+                headerText: 'BASIS Assessment Report',
+                footerText: '© {year} {companyName}. All rights reserved.',
+                includeCoachName: true,
+                includeDate: true,
+                includePageNumbers: true
             },
-            reportTemplates: {
-                basisReport: {
-                    headerText: 'BASIS Assessment Report',
-                    footerText: '© {year} {companyName}. All rights reserved.',
-                    includeCoachName: true,
-                    includeDate: true,
-                    includePageNumbers: true
-                },
-                progressReport: {
-                    headerText: 'Progress Report',
-                    footerText: '© {year} {companyName}. Confidential.',
-                    includeCoachName: true,
-                    includeDate: true
-                }
+            progressReport: {
+                headerText: 'Progress Report',
+                footerText: '© {year} {companyName}. Confidential.',
+                includeCoachName: true,
+                includeDate: true
             }
-        };
-        await writeStore(store);
-    }
-
-    currentSettings = store.appSettings;
+        }
+    };
 
     view.innerHTML = `
         <div class="settings-container">
@@ -476,25 +479,19 @@ function processLogoFile(file) {
     reader.readAsDataURL(file);
 }
 
-window.removeCompanyLogo = async function() {
+window.removeCompanyLogo = function() {
     if (!confirm('Remove company logo?')) return;
 
     currentSettings.company.logo = '';
-
-    const store = await readStore();
-    store.appSettings.company.logo = '';
-    await writeStore(store);
+    saveSettings(currentSettings);
 
     // Re-render to show placeholder
     renderSettings();
     alert('Logo removed.');
 };
 
-window.saveAllSettings = async function() {
-    const store = await readStore();
-
-    // Collect all settings
-    store.appSettings = {
+window.saveAllSettings = function() {
+    currentSettings = {
         company: {
             name: $('#company-name')?.value || 'The Neuro-Coach Method',
             logo: currentSettings.company.logo,
@@ -519,7 +516,7 @@ window.saveAllSettings = async function() {
         }
     };
 
-    await writeStore(store);
+    saveSettings(currentSettings);
 
     // Update branding in main app
     if (window.updateCompanyBranding) {
@@ -567,9 +564,8 @@ window.resetToDefaults = function() {
 
 // ===== REPORT TEMPLATE MANAGEMENT =====
 
-window.previewReportTemplate = async function(templateType) {
-    const store = await readStore();
-    const settings = store.appSettings || currentSettings;
+window.previewReportTemplate = function(templateType) {
+    const settings = currentSettings;
 
     // Check if custom template exists
     const customTemplate = settings.reportTemplates[templateType === 'basis' ? 'basisReport' : 'progressReport'].customTemplate;
@@ -588,9 +584,8 @@ window.previewReportTemplate = async function(templateType) {
     }
 };
 
-window.downloadReportTemplate = async function(templateType) {
-    const store = await readStore();
-    const settings = store.appSettings || currentSettings;
+window.downloadReportTemplate = function(templateType) {
+    const settings = currentSettings;
 
     // Check if custom template exists, otherwise generate default
     let template;
@@ -616,7 +611,7 @@ window.downloadReportTemplate = async function(templateType) {
     alert(`✓ Template downloaded as ${templateType}-report-template.html\n\nYou can now edit this HTML file and upload it back.`);
 };
 
-window.uploadReportTemplate = async function(event, templateType) {
+window.uploadReportTemplate = function(event, templateType) {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -626,7 +621,7 @@ window.uploadReportTemplate = async function(event, templateType) {
     }
 
     const reader = new FileReader();
-    reader.onload = async function(e) {
+    reader.onload = function(e) {
         const templateContent = e.target.result;
 
         // Validate it's HTML
@@ -635,14 +630,10 @@ window.uploadReportTemplate = async function(event, templateType) {
             return;
         }
 
-        const store = await readStore();
-
         // Save custom template
         const reportKey = templateType === 'basis' ? 'basisReport' : 'progressReport';
-        store.appSettings.reportTemplates[reportKey].customTemplate = templateContent;
-
-        await writeStore(store);
-        currentSettings = store.appSettings;
+        currentSettings.reportTemplates[reportKey].customTemplate = templateContent;
+        saveSettings(currentSettings);
 
         alert(`✓ Custom ${templateType} template uploaded successfully!\n\nYour custom template will now be used for all ${templateType} reports.`);
     };

@@ -446,6 +446,18 @@ async function start() {
     const { seedMasterAdmin, seedAdditionalUsers } = require('./config/seed');
     await seedMasterAdmin(supabase);
     await seedAdditionalUsers(supabase);
+
+    // 4. Auto-migrate accounting tables (runs on every startup, safe — uses IF NOT EXISTS)
+    if (accountingRoutes) {
+      try {
+        const { ensureAccountingSchema } = require('./config/accounting-schema');
+        const accountingDb = require('./modules/accounting/config/database');
+        await ensureAccountingSchema(accountingDb.pool);
+      } catch (migErr) {
+        console.warn('  ⚠️  Accounting schema migration skipped:', migErr.message);
+        console.warn('     Set ACCOUNTING_DATABASE_URL (Supabase direct connection) to enable auto-migration.');
+      }
+    }
   }
 
   // 4. Display module status
