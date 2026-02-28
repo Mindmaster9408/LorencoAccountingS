@@ -294,11 +294,13 @@
         .app-card.payroll { --app-color: #10b981; --app-color-dark: #059669; }
         .app-card.accounting { --app-color: #f59e0b; --app-color-dark: #d97706; }
         .app-card.sean  { --app-color: #8b5cf6; --app-color-dark: #7c3aed; }
+        .app-card.coaching { --app-color: #f97316; --app-color-dark: #ea580c; }
 
         .app-card.pos .app-icon   { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
         .app-card.payroll .app-icon { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
         .app-card.accounting .app-icon { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
         .app-card.sean .app-icon  { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+        .app-card.coaching .app-icon { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
 
         /* ── Quick Stats ─────────────────────────────────────── */
         .stats-row {
@@ -761,7 +763,7 @@
         <div class="topbar-left">
             <div class="topbar-logo">&#9670;</div>
             <span class="topbar-title">Lorenco Ecosystem</span>
-            <span id="practiceNameBadge" style="
+            <span id="practiceNameBadge" onclick="openPracticeModal()" style="
                 display: none;
                 padding: 3px 12px;
                 background: rgba(102,126,234,0.15);
@@ -771,7 +773,11 @@
                 font-weight: 600;
                 color: #a5b4fc;
                 letter-spacing: 0.3px;
-            "></span>
+                cursor: pointer;
+                transition: background 0.2s, border-color 0.2s;
+            " onmouseenter="this.style.background='rgba(102,126,234,0.28)';this.style.borderColor='rgba(102,126,234,0.6)'"
+               onmouseleave="this.style.background='rgba(102,126,234,0.15)';this.style.borderColor='rgba(102,126,234,0.3)'"
+               title="Click to manage practice settings"></span>
         </div>
         <div class="topbar-right">
             <div class="user-badge" id="userBadge">
@@ -1047,6 +1053,118 @@
         <div class="launch-text" id="launchText">Launching app...</div>
     </div>
 
+    <!-- ═══════ PRACTICE SETTINGS MODAL ═══════ -->
+    <div class="modal-overlay" id="practiceModal">
+        <div class="modal" style="max-width: 640px;">
+            <div class="modal-header">
+                <h2>&#9670; Practice Settings</h2>
+                <button class="modal-close" onclick="closePracticeModal()">&#10005;</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- Tabs -->
+                <div style="display:flex;gap:4px;margin-bottom:24px;background:rgba(255,255,255,0.04);border-radius:12px;padding:4px;">
+                    <button id="tabBtnDetails" onclick="switchPracticeTab('details'); loadPracticeDetails();" style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);">&#9998; Details</button>
+                    <button id="tabBtnUsers"   onclick="switchPracticeTab('users')"   style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;">&#128100; Team / Users</button>
+                </div>
+
+                <!-- ── Details Tab ── -->
+                <div id="tabDetails">
+                    <form id="practiceDetailsForm" onsubmit="return savePracticeDetails(event)">
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>Company Name *</label>
+                                <input type="text" id="pdCompanyName" required placeholder="Legal company name">
+                            </div>
+                            <div class="form-field">
+                                <label>Trading Name</label>
+                                <input type="text" id="pdTradingName" placeholder="Name shown to clients">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>Registration Number</label>
+                                <input type="text" id="pdRegNumber" placeholder="e.g. 2021/123456/07">
+                            </div>
+                            <div class="form-field">
+                                <label>VAT Number</label>
+                                <input type="text" id="pdVatNumber" placeholder="e.g. 4580123456">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>Contact Email</label>
+                                <input type="email" id="pdEmail" placeholder="practice@email.co.za">
+                            </div>
+                            <div class="form-field">
+                                <label>Contact Phone</label>
+                                <input type="tel" id="pdPhone" placeholder="012 345 6789">
+                            </div>
+                        </div>
+                        <div class="form-row full">
+                            <div class="form-field">
+                                <label>Address</label>
+                                <input type="text" id="pdAddress" placeholder="Street, City, Postal Code">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn-form cancel" onclick="closePracticeModal()">Cancel</button>
+                            <button type="submit" class="btn-form save" id="pdSaveBtn">Save Practice Details</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- ── Users Tab ── -->
+                <div id="tabUsers" style="display:none;">
+
+                    <!-- Current users list -->
+                    <div id="practiceUsersList" style="margin-bottom:24px;">
+                        <div style="color:var(--text-muted);font-size:0.85rem;">Loading users...</div>
+                    </div>
+
+                    <!-- Add user section -->
+                    <div style="border-top:1px solid var(--border);padding-top:20px;">
+                        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:16px;">Add New User</div>
+                        <form id="addUserForm" onsubmit="return addPracticeUser(event)">
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label>Full Name *</label>
+                                    <input type="text" id="auFullName" required placeholder="e.g. Jane Doe">
+                                </div>
+                                <div class="form-field">
+                                    <label>Email *</label>
+                                    <input type="email" id="auEmail" required placeholder="jane@practice.co.za">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label>Password *</label>
+                                    <input type="password" id="auPassword" required placeholder="Min 6 characters" minlength="6">
+                                </div>
+                                <div class="form-field">
+                                    <label>Role *</label>
+                                    <select id="auRole" required>
+                                        <option value="business_owner">Business Owner</option>
+                                        <option value="accountant">Accountant</option>
+                                        <option value="store_manager">Store Manager</option>
+                                        <option value="payroll_admin">Payroll Admin</option>
+                                        <option value="assistant_manager">Assistant Manager</option>
+                                        <option value="cashier" selected>Cashier</option>
+                                        <option value="trainee">Trainee</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn-form save" id="auSaveBtn">Add User to Practice</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = window.location.origin;
 
@@ -1087,6 +1205,15 @@
                 desc: 'Privacy-first AI — auto cash book allocation, bank imports, self-learning codex.',
                 path: '/sean',
                 cssClass: 'sean',
+            },
+            {
+                key: 'coaching',
+                name: 'Coaching',
+                subtitle: 'Business Coaching',
+                icon: '&#127775;',
+                desc: 'Personal business coaching portal — sessions, goals, progress tracking and resources.',
+                path: '/coaching',
+                cssClass: 'coaching',
             }
         ];
 
@@ -1194,9 +1321,12 @@
 
             // For superusers, always prioritise "The Infinite Legacy" as primary
             if (isSuperAdmin) {
-                const infiniteIdx = companies.findIndex(c =>
-                    c.company_name === 'The Infinite Legacy' || c.trading_name === 'The Infinite Legacy'
-                );
+                const isInfinite = c => {
+                    const n = (c.company_name || '').toLowerCase();
+                    const t = (c.trading_name || '').toLowerCase();
+                    return n.includes('infinite legacy') || t.includes('infinite legacy');
+                };
+                const infiniteIdx = companies.findIndex(isInfinite);
                 if (infiniteIdx > 0) {
                     const infiniteCo = companies.splice(infiniteIdx, 1)[0];
                     companies.unshift(infiniteCo);
@@ -1230,7 +1360,9 @@
             // Show practice name in topbar
             const badge = document.getElementById('practiceNameBadge');
             if (selectedCompany) {
-                badge.textContent = selectedCompany.trading_name || selectedCompany.company_name;
+                const tradingOk = selectedCompany.trading_name &&
+                    selectedCompany.trading_name.toLowerCase() !== 'default';
+                badge.textContent = (tradingOk ? selectedCompany.trading_name : selectedCompany.company_name) + ' ✏';
                 badge.style.display = '';
             }
         }
@@ -1310,6 +1442,9 @@
             container.innerHTML = APP_DEFS.map(app => {
                 // SEAN AI is only visible to super admins
                 if (app.key === 'sean' && !isSuperAdmin) return '';
+
+                // Coaching is only visible to super admins or Ruan specifically
+                if (app.key === 'coaching' && !isSuperAdmin && currentUser?.email !== 'ruanvlog@lorenco.co.za') return '';
 
                 // App is active if the company has it in modules_enabled
                 // Super admins can see all apps as active
@@ -1532,8 +1667,9 @@
             if (isSuperAdmin && companies.length > 0) {
                 managingRow.style.display = '';
                 managingSelect.innerHTML = companies.map(c => {
-                    const isInfinite = c.company_name === 'The Infinite Legacy' || c.trading_name === 'The Infinite Legacy';
-                    return `<option value="${c.id}" ${isInfinite ? 'selected' : ''}>${c.trading_name || c.company_name}</option>`;
+                    const isInfinite = (c.company_name || '').toLowerCase().includes('infinite legacy') ||
+                        (c.trading_name || '').toLowerCase().includes('infinite legacy');
+                    return `<option value="${c.id}" ${isInfinite ? 'selected' : ''}>${c.company_name}</option>`;
                 }).join('');
                 // If none selected (no Infinite Legacy), pick the first
                 if (!managingSelect.value && companies.length > 0) {
@@ -1942,6 +2078,230 @@
                 await loadFirmAccess(clientId);
             } catch (err) {
                 showToast('❌ ' + err.message, true);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PRACTICE SETTINGS MODAL
+        // ═══════════════════════════════════════════════════════════════════
+
+        function openPracticeModal(tab) {
+            document.getElementById('practiceModal').classList.add('show');
+            const startTab = tab || 'users';
+            switchPracticeTab(startTab);
+            if (startTab === 'details' || !tab) loadPracticeDetails();
+        }
+
+        function closePracticeModal() {
+            document.getElementById('practiceModal').classList.remove('show');
+        }
+
+        function switchPracticeTab(tab) {
+            document.getElementById('tabDetails').style.display = tab === 'details' ? '' : 'none';
+            document.getElementById('tabUsers').style.display   = tab === 'users'   ? '' : 'none';
+
+            const detailBtn = document.getElementById('tabBtnDetails');
+            const usersBtn  = document.getElementById('tabBtnUsers');
+            const baseStyle = 'flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;';
+            detailBtn.style.cssText = baseStyle + (tab === 'details' ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
+            usersBtn.style.cssText  = baseStyle + (tab === 'users'   ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
+
+            if (tab === 'users') loadPracticeUsers();
+        }
+
+        // ── Load & save practice details ──
+        async function loadPracticeDetails() {
+            if (!selectedCompany) return;
+            const token = localStorage.getItem('eco_token');
+            try {
+                const res = await fetch(`${API_BASE}/api/companies/${selectedCompany.id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const { company } = await res.json();
+                document.getElementById('pdCompanyName').value = company.company_name || '';
+                document.getElementById('pdTradingName').value = company.trading_name || '';
+                document.getElementById('pdRegNumber').value   = company.registration_number || '';
+                document.getElementById('pdVatNumber').value   = company.vat_number || '';
+                document.getElementById('pdEmail').value       = company.contact_email || '';
+                document.getElementById('pdPhone').value       = company.contact_phone || '';
+                document.getElementById('pdAddress').value     = company.address || '';
+            } catch (e) {
+                console.error('Failed to load practice details:', e);
+            }
+        }
+
+        async function savePracticeDetails(e) {
+            e.preventDefault();
+            const token = localStorage.getItem('eco_token');
+            const btn = document.getElementById('pdSaveBtn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            const payload = {
+                company_name:        document.getElementById('pdCompanyName').value.trim(),
+                trading_name:        document.getElementById('pdTradingName').value.trim() || null,
+                registration_number: document.getElementById('pdRegNumber').value.trim() || null,
+                vat_number:          document.getElementById('pdVatNumber').value.trim() || null,
+                contact_email:       document.getElementById('pdEmail').value.trim() || null,
+                contact_phone:       document.getElementById('pdPhone').value.trim() || null,
+                address:             document.getElementById('pdAddress').value.trim() || null,
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/api/companies/${selectedCompany.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to save');
+
+                // Update topbar badge + local state
+                const tradingOk = data.company.trading_name &&
+                    data.company.trading_name.toLowerCase() !== 'default';
+                const displayName = (tradingOk ? data.company.trading_name : data.company.company_name) + ' ✏';
+                document.getElementById('practiceNameBadge').textContent = displayName;
+                selectedCompany.company_name = data.company.company_name;
+                selectedCompany.trading_name = data.company.trading_name;
+                // Update localStorage
+                companies = companies.map(c => c.id === selectedCompany.id ? { ...c, ...data.company } : c);
+                localStorage.setItem('eco_companies', JSON.stringify(companies));
+
+                showToast('Practice details saved');
+                closePracticeModal();
+            } catch (err) {
+                showToast(err.message, true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Practice Details';
+            }
+            return false;
+        }
+
+        // ── Load practice users ──
+        async function loadPracticeUsers() {
+            const container = document.getElementById('practiceUsersList');
+            container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">Loading users...</div>';
+            const token = localStorage.getItem('eco_token');
+            try {
+                const res = await fetch(`${API_BASE}/api/users`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Failed to load users');
+                const { users } = await res.json();
+
+                if (!users || users.length === 0) {
+                    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No users found for this practice.</div>';
+                    return;
+                }
+
+                const ROLE_COLORS = {
+                    super_admin: '#fca5a5', business_owner: '#a78bfa', accountant: '#60a5fa',
+                    store_manager: '#34d399', payroll_admin: '#6ee7b7', assistant_manager: '#fbbf24',
+                    cashier: '#94a3b8', trainee: '#64748b'
+                };
+
+                container.innerHTML = `
+                    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:12px;">${users.length} User${users.length !== 1 ? 's' : ''} in this Practice</div>
+                    ${users.map(u => {
+                        const roleColor = ROLE_COLORS[u.role] || '#94a3b8';
+                        const initials = (u.full_name || u.username || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+                        const isSelf = u.id === (JSON.parse(localStorage.getItem('eco_user') || '{}').id);
+                        return `
+                        <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;">
+                            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">${initials}</div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:700;font-size:0.9rem;">${escHtml(u.full_name || u.username)}${isSelf ? ' <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">(you)</span>' : ''}</div>
+                                <div style="font-size:0.78rem;color:var(--text-muted);margin-top:1px;">${escHtml(u.email || '')}</div>
+                            </div>
+                            <span style="padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;background:rgba(255,255,255,0.06);color:${roleColor};">${(u.role || 'user').replace(/_/g,' ')}</span>
+                            ${!isSelf && (isSuperAdmin || selectedCompany?.role === 'business_owner') ? `
+                            <button type="button" onclick="changeUserRole(${u.id}, '${escHtml(u.full_name || u.username)}')" style="padding:5px 10px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Role</button>
+                            <button type="button" onclick="removePracticeUser(${u.id}, '${escHtml(u.full_name || u.username)}')" style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fca5a5;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Remove</button>
+                            ` : ''}
+                        </div>`;
+                    }).join('')}
+                `;
+            } catch (err) {
+                container.innerHTML = `<div style="color:#fca5a5;font-size:0.85rem;">${err.message}</div>`;
+            }
+        }
+
+        // ── Add user to practice ──
+        async function addPracticeUser(e) {
+            e.preventDefault();
+            const token = localStorage.getItem('eco_token');
+            const btn = document.getElementById('auSaveBtn');
+            btn.disabled = true;
+            btn.textContent = 'Adding...';
+
+            const fullName = document.getElementById('auFullName').value.trim();
+            const email    = document.getElementById('auEmail').value.trim().toLowerCase();
+            const password = document.getElementById('auPassword').value;
+            const role     = document.getElementById('auRole').value;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/users`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ username: email, email, password, full_name: fullName, role })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to add user');
+
+                showToast(`${fullName} added to practice`);
+                document.getElementById('addUserForm').reset();
+                await loadPracticeUsers();
+            } catch (err) {
+                showToast(err.message, true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Add User to Practice';
+            }
+            return false;
+        }
+
+        // ── Remove user from practice ──
+        async function removePracticeUser(userId, name) {
+            if (!confirm(`Remove ${name} from this practice? Their account will not be deleted.`)) return;
+            const token = localStorage.getItem('eco_token');
+            try {
+                const res = await fetch(`${API_BASE}/api/users/${userId}/company-access`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to remove user');
+                showToast(`${name} removed from practice`);
+                await loadPracticeUsers();
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        }
+
+        // ── Change user role ──
+        async function changeUserRole(userId, name) {
+            const newRole = prompt(`Change role for ${name}:\n\nbusiness_owner, accountant, store_manager, payroll_admin, assistant_manager, cashier, trainee`);
+            if (!newRole) return;
+            const validRoles = ['business_owner','accountant','store_manager','payroll_admin','assistant_manager','cashier','trainee'];
+            if (!validRoles.includes(newRole.trim())) {
+                showToast('Invalid role. Please enter one of the listed roles.', true);
+                return;
+            }
+            const token = localStorage.getItem('eco_token');
+            try {
+                const res = await fetch(`${API_BASE}/api/users/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ role: newRole.trim() })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to update role');
+                showToast(`${name}'s role updated to ${newRole.trim()}`);
+                await loadPracticeUsers();
+            } catch (err) {
+                showToast(err.message, true);
             }
         }
 

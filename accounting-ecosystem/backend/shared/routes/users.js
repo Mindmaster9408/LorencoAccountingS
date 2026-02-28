@@ -302,6 +302,39 @@ router.put('/:id/password', async (req, res) => {
 });
 
 /**
+ * DELETE /api/users/:id/company-access
+ * Remove a user from the CURRENT company only (revokes access without disabling their global account).
+ * Requires USERS.DELETE permission.
+ */
+router.delete('/:id/company-access', requirePermission('USERS.DELETE'), async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const companyId = req.companyId;
+
+    // Prevent removing yourself
+    if (parseInt(userId) === req.user.userId) {
+      return res.status(400).json({ error: 'You cannot remove yourself from the practice' });
+    }
+
+    const { error } = await supabase
+      .from('user_company_access')
+      .update({ is_active: false })
+      .eq('user_id', userId)
+      .eq('company_id', companyId);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'DELETE', 'user_company_access', userId, {
+      metadata: { removed_from_company: companyId }
+    });
+
+    res.json({ success: true, message: 'User removed from practice' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * DELETE /api/users/:id (soft delete)
  */
 router.delete('/:id', requirePermission('USERS.DELETE'), async (req, res) => {
