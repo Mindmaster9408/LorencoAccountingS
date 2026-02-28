@@ -263,6 +263,11 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(ecosystemFrontendPath, 'admin.html'));
 });
 
+// Client detail / edit page
+app.get('/client/:id', (req, res) => {
+  res.sendFile(path.join(ecosystemFrontendPath, 'client-detail.html'));
+});
+
 // App frontends
 app.use('/pos', express.static(posFrontendPath));
 app.use('/payroll', express.static(payrollFrontendPath));

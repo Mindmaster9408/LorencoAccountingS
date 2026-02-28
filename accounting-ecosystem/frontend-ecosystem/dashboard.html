@@ -761,6 +761,17 @@
         <div class="topbar-left">
             <div class="topbar-logo">&#9670;</div>
             <span class="topbar-title">Lorenco Ecosystem</span>
+            <span id="practiceNameBadge" style="
+                display: none;
+                padding: 3px 12px;
+                background: rgba(102,126,234,0.15);
+                border: 1px solid rgba(102,126,234,0.3);
+                border-radius: 20px;
+                font-size: 0.78rem;
+                font-weight: 600;
+                color: #a5b4fc;
+                letter-spacing: 0.3px;
+            "></span>
         </div>
         <div class="topbar-right">
             <div class="user-badge" id="userBadge">
@@ -778,13 +789,7 @@
         <!-- Welcome -->
         <div class="welcome">
             <h1>Welcome back, <span id="welcomeName"></span></h1>
-            <p>Select a company and launch an app to get started.</p>
-        </div>
-
-        <!-- Company Selector -->
-        <div class="section-label">Your Companies</div>
-        <div class="company-selector" id="companySelector">
-            <!-- Filled by JS -->
+            <p>Launch an app or manage your clients below.</p>
         </div>
 
         <!-- Quick Stats -->
@@ -1164,10 +1169,8 @@
             document.getElementById('welcomeName').textContent = name.split(' ')[0];
         }
 
-        // ── Render Companies ──
+        // ── Render Companies (hidden — auto-selects company for token/SSO, no UI rendered) ──
         async function renderCompanies() {
-            const container = document.getElementById('companySelector');
-
             // If no companies in localStorage, fetch from API
             if (companies.length === 0) {
                 try {
@@ -1187,24 +1190,7 @@
                 }
             }
 
-            if (companies.length === 0) {
-                container.innerHTML = `
-                    <div style="text-align:center; padding: 1.5rem;">
-                        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">No companies yet. Create one to get started.</p>
-                        <div id="createCompanyForm" style="max-width: 400px; margin: 0 auto; text-align: left;">
-                            <div class="form-field" style="margin-bottom: 0.75rem;">
-                                <label style="font-size: 0.85rem; margin-bottom: 0.25rem; display: block;">Company Name *</label>
-                                <input type="text" id="newCompanyName" placeholder="e.g. My Business" style="width:100%; padding: 0.5rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
-                            </div>
-                            <div class="form-field" style="margin-bottom: 0.75rem;">
-                                <label style="font-size: 0.85rem; margin-bottom: 0.25rem; display: block;">Trading Name</label>
-                                <input type="text" id="newCompanyTradingName" placeholder="Optional trading name" style="width:100%; padding: 0.5rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
-                            </div>
-                            <button onclick="createCompany()" id="createCompanyBtn" style="width:100%; padding: 0.6rem; border-radius: 8px; border: none; background: var(--accent); color: white; font-weight: 600; cursor: pointer;">Create Company</button>
-                        </div>
-                    </div>`;
-                return;
-            }
+            if (companies.length === 0) return;
 
             // For superusers, always prioritise "The Infinite Legacy" as primary
             if (isSuperAdmin) {
@@ -1218,7 +1204,6 @@
                 }
 
                 // Refresh the eco_token so its embedded companyId matches Infinite Legacy.
-                // Only refresh if the token's companyId doesn't already match.
                 try {
                     const currentToken = localStorage.getItem('eco_token');
                     const payload = JSON.parse(atob(currentToken.split('.')[1]));
@@ -1234,25 +1219,20 @@
                         }
                     }
                 } catch (e) {
-                    // Non-fatal — token refresh failed, SSO launches will still pass companyId explicitly
                     console.warn('Token refresh for Infinite Legacy failed:', e);
                 }
             }
 
             // Auto-select first company (Infinite Legacy for superusers)
             selectedCompany = companies[0];
-
-            container.innerHTML = companies.map((c, i) => `
-                <div class="company-chip ${i === 0 ? 'active' : ''}" onclick="selectCompany(${i})" data-idx="${i}">
-                    <div class="company-icon">&#127970;</div>
-                    <div class="company-info">
-                        <span class="company-name">${c.trading_name || c.company_name}</span>
-                        <span class="company-role">${c.role || 'user'}</span>
-                    </div>
-                </div>
-            `).join('');
-
             document.getElementById('statCompanies').textContent = companies.length;
+
+            // Show practice name in topbar
+            const badge = document.getElementById('practiceNameBadge');
+            if (selectedCompany) {
+                badge.textContent = selectedCompany.trading_name || selectedCompany.company_name;
+                badge.style.display = '';
+            }
         }
 
         async function createCompany() {
@@ -1317,9 +1297,6 @@
 
         function selectCompany(idx) {
             selectedCompany = companies[idx];
-            document.querySelectorAll('.company-chip').forEach((el, i) => {
-                el.classList.toggle('active', i === idx);
-            });
             document.getElementById('statRole').textContent = (selectedCompany.role || 'user').replace('_', ' ');
             renderApps();
         }
@@ -1728,7 +1705,9 @@
                     <div class="client-card${c.shared_access ? ' shared' : ''}">
                         <div class="client-card-top">
                             <div>
-                                <div class="client-card-name">${escHtml(c.name)}${sharedBadge}</div>
+                                <div class="client-card-name">
+                                    <button type="button" onclick="window.location.href='/client/${c.id}'" style="background:none;border:none;color:inherit;font:inherit;font-weight:700;cursor:pointer;padding:0;text-align:left;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.2);text-underline-offset:3px;" onmouseenter="this.style.textDecorationColor='var(--accent)'" onmouseleave="this.style.textDecorationColor='rgba(255,255,255,0.2)'">${escHtml(c.name)}</button>${sharedBadge}
+                                </div>
                                 ${c.company_name ? `<div class="client-card-meta"><span class="icon">🏢</span> ${escHtml(c.company_name)}</div>` : ''}
                             </div>
                             <span class="client-card-type${typeCls}">${typeLabel}</span>

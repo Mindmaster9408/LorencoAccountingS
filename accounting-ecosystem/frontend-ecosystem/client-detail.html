@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Client Details — Lorenco Ecosystem</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f0c29;
+            --surface: rgba(255,255,255,0.06);
+            --surface-hover: rgba(255,255,255,0.1);
+            --border: rgba(255,255,255,0.08);
+            --text: #fff;
+            --text-muted: rgba(255,255,255,0.5);
+            --accent: #667eea;
+            --accent-glow: rgba(102, 126, 234, 0.3);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            color: var(--text);
+        }
+
+        /* ── Top Bar ─────────────────────────────────────────── */
+        .topbar {
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            padding: 0 28px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 14px; }
+        .topbar-logo {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+            transform: rotate(-5deg);
+        }
+        .topbar-title { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.3px; }
+        .btn-back {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-back:hover { background: var(--surface-hover); color: var(--text); }
+
+        /* ── Main ────────────────────────────────────────────── */
+        .main {
+            max-width: 780px;
+            margin: 0 auto;
+            padding: 40px 28px;
+        }
+
+        .page-header { margin-bottom: 32px; }
+        .page-header h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 4px; }
+        .page-header h1 span { color: var(--accent); }
+        .page-header p { color: var(--text-muted); font-size: 0.9rem; }
+
+        /* ── Card ────────────────────────────────────────────── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 20px;
+        }
+        .card-title {
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        /* ── Form ────────────────────────────────────────────── */
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .form-row.full { grid-template-columns: 1fr; }
+
+        .form-field label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .form-field input,
+        .form-field select,
+        .form-field textarea {
+            width: 100%;
+            padding: 11px 14px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        .form-field input:focus,
+        .form-field select:focus,
+        .form-field textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .form-field textarea { resize: vertical; min-height: 80px; }
+
+        /* ── App Checkboxes ──────────────────────────────────── */
+        .app-checkboxes {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+        .app-check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 16px;
+            background: rgba(255,255,255,0.04);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .app-check:hover { border-color: rgba(255,255,255,0.15); }
+        .app-check.checked { border-color: var(--accent); background: rgba(102,126,234,0.12); }
+        .app-check input { display: none; }
+        .app-check .app-check-icon { font-size: 1.1rem; }
+        .app-check .app-check-label { font-size: 0.85rem; font-weight: 600; }
+
+        /* ── Actions ─────────────────────────────────────────── */
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-top: 28px;
+        }
+        .btn-save {
+            padding: 12px 32px;
+            background: linear-gradient(135deg, var(--accent), #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-save:hover { box-shadow: 0 4px 20px var(--accent-glow); transform: translateY(-1px); }
+        .btn-save:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-cancel {
+            padding: 12px 24px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-cancel:hover { color: var(--text); background: var(--surface-hover); }
+
+        /* ── Sync Status ─────────────────────────────────────── */
+        .sync-status {
+            display: none;
+            margin-top: 20px;
+            padding: 16px 20px;
+            border-radius: 12px;
+            font-size: 0.88rem;
+            line-height: 1.6;
+        }
+        .sync-status.success { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25); color: #6ee7b7; }
+        .sync-status.error   { background: rgba(239,68,68,0.12);  border: 1px solid rgba(239,68,68,0.25);  color: #fca5a5; }
+        .sync-status.show    { display: block; }
+
+        /* ── Sync pills on load ───────────────────────────────── */
+        .sync-badges {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+        .sync-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .sync-badge.pos        { background: rgba(59,130,246,0.15); color: #60a5fa; }
+        .sync-badge.payroll    { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .sync-badge.accounting { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .sync-badge.sean       { background: rgba(139,92,246,0.15); color: #a78bfa; }
+
+        /* ── Toast ───────────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 14px 24px;
+            background: #10b981;
+            color: white;
+            border-radius: 14px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            z-index: 9999;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: #ef4444; }
+
+        /* ── Loading skeleton ────────────────────────────────── */
+        .skeleton {
+            background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 8px;
+            height: 42px;
+        }
+        @keyframes shimmer { to { background-position: -200% 0; } }
+
+        @media (max-width: 768px) {
+            .main { padding: 24px 16px; }
+            .form-row { grid-template-columns: 1fr; }
+            .topbar { padding: 0 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Bar -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="topbar-logo">&#9670;</div>
+            <span class="topbar-title">Lorenco Ecosystem</span>
+        </div>
+        <a href="/dashboard" class="btn-back">&#8592; Back to Dashboard</a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+
+        <div class="page-header">
+            <h1>Client: <span id="pageClientName">Loading...</span></h1>
+            <p id="pageSubtitle">Edit client details below. Changes sync to all linked apps.</p>
+        </div>
+
+        <!-- Details Card -->
+        <div class="card">
+            <div class="card-title">Client Details</div>
+            <form id="clientForm" onsubmit="return saveClient(event)">
+
+                <div class="form-row">
+                    <div class="form-field">
+                        <label id="nameLabel">Full Name *</label>
+                        <input type="text" id="fName" required placeholder="e.g. John Smith">
+                    </div>
+                    <div class="form-field">
+                        <label>Client Type</label>
+                        <select id="fType" onchange="onTypeChange()">
+                            <option value="individual">👤 Individual</option>
+                            <option value="business">🏢 Business / Company</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-field">
+                        <label>Email</label>
+                        <input type="email" id="fEmail" placeholder="client@email.co.za">
+                    </div>
+                    <div class="form-field">
+                        <label>Phone</label>
+                        <input type="tel" id="fPhone" placeholder="082 123 4567">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-field">
+                        <label>ID / Reg Number</label>
+                        <input type="text" id="fIdNumber" placeholder="SA ID or Company Reg">
+                    </div>
+                </div>
+
+                <div class="form-row full">
+                    <div class="form-field">
+                        <label>Address</label>
+                        <input type="text" id="fAddress" placeholder="Street, City, Code">
+                    </div>
+                </div>
+
+                <div class="form-row full">
+                    <div class="form-field">
+                        <label>Linked Apps</label>
+                        <div class="app-checkboxes" id="fApps">
+                            <label class="app-check" onclick="toggleAppCheck(this)">
+                                <input type="checkbox" name="apps" value="pos">
+                                <span class="app-check-icon">🛒</span>
+                                <span class="app-check-label">POS</span>
+                            </label>
+                            <label class="app-check" onclick="toggleAppCheck(this)">
+                                <input type="checkbox" name="apps" value="payroll">
+                                <span class="app-check-icon">💰</span>
+                                <span class="app-check-label">Payroll</span>
+                            </label>
+                            <label class="app-check" onclick="toggleAppCheck(this)">
+                                <input type="checkbox" name="apps" value="accounting">
+                                <span class="app-check-icon">📊</span>
+                                <span class="app-check-label">Accounting</span>
+                            </label>
+                            <label class="app-check" onclick="toggleAppCheck(this)">
+                                <input type="checkbox" name="apps" value="sean">
+                                <span class="app-check-icon">🤖</span>
+                                <span class="app-check-label">SEAN AI</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row full">
+                    <div class="form-field">
+                        <label>Notes</label>
+                        <textarea id="fNotes" placeholder="Optional notes..."></textarea>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn-save" id="saveBtn">Save &amp; Sync</button>
+                    <button type="button" class="btn-cancel" onclick="window.location.href='/dashboard'">Cancel</button>
+                    <span id="savingLabel" style="color:var(--text-muted);font-size:0.85rem;display:none;">Saving & syncing to apps...</span>
+                </div>
+            </form>
+
+            <!-- Sync result -->
+            <div class="sync-status" id="syncStatus"></div>
+        </div>
+
+        <!-- App Sync Info Card -->
+        <div class="card" id="syncInfoCard" style="display:none;">
+            <div class="card-title">Linked Apps — Sync Status</div>
+            <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:14px;">
+                This client's details are synced to the following apps. Saving here updates all of them.
+            </p>
+            <div class="sync-badges" id="syncBadges"></div>
+        </div>
+
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const clientId = parseInt(window.location.pathname.split('/').pop());
+
+        let originalData = null;
+
+        // ── Toast ──
+        function showToast(msg, isError) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => t.className = 'toast', 3500);
+        }
+
+        // ── Toggle app checkbox ──
+        function toggleAppCheck(label) {
+            const cb = label.querySelector('input[type="checkbox"]');
+            setTimeout(() => {
+                label.classList.toggle('checked', cb.checked);
+            }, 0);
+        }
+
+        // ── Type change ──
+        function onTypeChange() {
+            const type = document.getElementById('fType').value;
+            document.getElementById('nameLabel').textContent =
+                type === 'business' ? 'Company Name *' : 'Full Name *';
+        }
+
+        // ── Load client ──
+        async function loadClient() {
+            if (!clientId || isNaN(clientId)) {
+                document.getElementById('pageClientName').textContent = 'Not Found';
+                return;
+            }
+
+            const token = localStorage.getItem('eco_token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (res.status === 401) { window.location.href = '/'; return; }
+                if (!res.ok) throw new Error('Client not found');
+
+                const c = await res.json();
+                originalData = c;
+
+                // Populate header
+                document.getElementById('pageClientName').textContent = c.name;
+                document.title = `${c.name} — Lorenco Ecosystem`;
+                document.getElementById('pageSubtitle').textContent =
+                    `Managed by ${c.company_name || 'Unknown Practice'} · Edit details below, changes sync to all linked apps.`;
+
+                // Populate form
+                document.getElementById('fName').value = c.name || '';
+                document.getElementById('fType').value = c.client_type || 'individual';
+                document.getElementById('fEmail').value = c.email || '';
+                document.getElementById('fPhone').value = c.phone || '';
+                document.getElementById('fIdNumber').value = c.id_number || '';
+                document.getElementById('fAddress').value = c.address || '';
+                document.getElementById('fNotes').value = c.notes || '';
+                onTypeChange();
+
+                // Set app checkboxes
+                const apps = c.apps || [];
+                document.querySelectorAll('#fApps .app-check').forEach(label => {
+                    const cb = label.querySelector('input');
+                    cb.checked = apps.includes(cb.value);
+                    label.classList.toggle('checked', apps.includes(cb.value));
+                });
+
+                // Show sync info card
+                if (apps.length > 0) {
+                    const APP_ICONS  = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖' };
+                    const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI' };
+                    document.getElementById('syncBadges').innerHTML = apps.map(a =>
+                        `<span class="sync-badge ${a}">${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}</span>`
+                    ).join('');
+                    document.getElementById('syncInfoCard').style.display = '';
+                }
+
+            } catch (err) {
+                document.getElementById('pageClientName').textContent = 'Error';
+                showToast(err.message, true);
+            }
+        }
+
+        // ── Save client ──
+        async function saveClient(e) {
+            e.preventDefault();
+
+            const token = localStorage.getItem('eco_token');
+            const btn   = document.getElementById('saveBtn');
+            const label = document.getElementById('savingLabel');
+            const statusEl = document.getElementById('syncStatus');
+
+            btn.disabled = true;
+            label.style.display = '';
+            statusEl.className = 'sync-status';
+
+            const selectedApps = [];
+            document.querySelectorAll('#fApps input[name="apps"]:checked').forEach(cb => selectedApps.push(cb.value));
+
+            const payload = {
+                name:        document.getElementById('fName').value.trim(),
+                email:       document.getElementById('fEmail').value.trim() || null,
+                phone:       document.getElementById('fPhone').value.trim() || null,
+                id_number:   document.getElementById('fIdNumber').value.trim() || null,
+                address:     document.getElementById('fAddress').value.trim() || null,
+                client_type: document.getElementById('fType').value,
+                apps:        selectedApps,
+                notes:       document.getElementById('fNotes').value.trim() || null,
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to save');
+
+                // Update header
+                document.getElementById('pageClientName').textContent = data.name;
+                document.title = `${data.name} — Lorenco Ecosystem`;
+                originalData = data;
+
+                // Build sync result message
+                const sync = data.sync || { synced: [], errors: [], updated: [] };
+                const updatedApps  = sync.updated  || [];
+                const newlySynced  = sync.synced   || [];
+                const failedApps   = sync.errors   || [];
+
+                let msg = `✅ ${data.name} saved.`;
+                if (updatedApps.length)  msg += `\nUpdated in: ${updatedApps.join(', ')}.`;
+                if (newlySynced.length)  msg += `\nNewly linked to: ${newlySynced.map(s => s.app).join(', ')}.`;
+                if (failedApps.length)   msg += `\n⚠️ Failed to sync: ${failedApps.map(e => e.app).join(', ')}.`;
+
+                statusEl.textContent = msg;
+                statusEl.className = `sync-status show ${failedApps.length ? 'error' : 'success'}`;
+
+                showToast('Saved & synced successfully');
+
+                // Refresh sync badges
+                if (selectedApps.length > 0) {
+                    const APP_ICONS  = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖' };
+                    const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI' };
+                    document.getElementById('syncBadges').innerHTML = selectedApps.map(a =>
+                        `<span class="sync-badge ${a}">${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}</span>`
+                    ).join('');
+                    document.getElementById('syncInfoCard').style.display = '';
+                } else {
+                    document.getElementById('syncInfoCard').style.display = 'none';
+                }
+
+            } catch (err) {
+                statusEl.textContent = '❌ ' + err.message;
+                statusEl.className = 'sync-status show error';
+                showToast(err.message, true);
+            } finally {
+                btn.disabled = false;
+                label.style.display = 'none';
+            }
+
+            return false;
+        }
+
+        loadClient();
+    </script>
+</body>
+</html>

@@ -132,6 +132,73 @@ async function syncToApps(ecoClient) {
 }
 
 /**
+ * Push field-level updates to already-linked app records.
+ * Called on PUT when name/email/phone/address/id_number changes.
+ * Returns { updated: ['pos', 'payroll', ...], errors: [...] }
+ */
+async function syncUpdateToApps(ecoClient, changedFields) {
+  const updated = [];
+  const errors  = [];
+  const apps = ecoClient.apps || [];
+
+  const coreFields = ['name', 'email', 'phone', 'address', 'id_number'];
+  const hasCoreChange = coreFields.some(f => changedFields.includes(f));
+  if (!hasCoreChange) return { updated, errors };
+
+  // POS → customers
+  if (apps.includes('pos')) {
+    try {
+      const patch = {};
+      if (changedFields.includes('name'))     patch.name = ecoClient.name;
+      if (changedFields.includes('email'))    { patch.email = ecoClient.email || null; }
+      if (changedFields.includes('phone'))    { patch.phone = ecoClient.phone || null; patch.contact_number = ecoClient.phone || null; }
+      if (changedFields.includes('address'))  patch.address_line_1 = ecoClient.address || null;
+      if (changedFields.includes('id_number')) patch.id_number = ecoClient.id_number || null;
+
+      const { error } = await supabase
+        .from('customers')
+        .update(patch)
+        .eq('eco_client_id', ecoClient.id);
+
+      if (error) throw error;
+      updated.push('POS');
+    } catch (err) {
+      console.error('syncUpdate → POS failed:', err.message);
+      errors.push({ app: 'pos', error: err.message });
+    }
+  }
+
+  // Payroll → employees
+  if (apps.includes('payroll')) {
+    try {
+      const patch = {};
+      if (changedFields.includes('name')) {
+        patch.full_name = ecoClient.name;
+        const parts = (ecoClient.name || '').trim().split(/\s+/);
+        patch.first_name = parts[0] || ecoClient.name;
+        patch.last_name  = parts.slice(1).join(' ') || '';
+      }
+      if (changedFields.includes('email'))    { patch.email = ecoClient.email || null; }
+      if (changedFields.includes('phone'))    patch.phone = ecoClient.phone || null;
+      if (changedFields.includes('id_number')) patch.id_number = ecoClient.id_number || null;
+
+      const { error } = await supabase
+        .from('employees')
+        .update(patch)
+        .eq('eco_client_id', ecoClient.id);
+
+      if (error) throw error;
+      updated.push('Payroll');
+    } catch (err) {
+      console.error('syncUpdate → Payroll failed:', err.message);
+      errors.push({ app: 'payroll', error: err.message });
+    }
+  }
+
+  return { updated, errors };
+}
+
+/**
  * GET /api/eco-clients
  * List all clients for user's companies (super_admin sees all).
  * Also returns clients shared with the user's company via eco_client_firm_access.
@@ -395,9 +462,13 @@ router.put('/:id', async (req, res) => {
 
     const allowed = ['name', 'email', 'phone', 'id_number', 'address', 'client_type', 'apps', 'notes', 'is_active'];
     const updates = { updated_at: new Date().toISOString() };
+    const changedFields = [];
     allowed.forEach(key => {
       if (req.body[key] !== undefined) {
         updates[key] = req.body[key];
+        if (JSON.stringify(old[key]) !== JSON.stringify(req.body[key])) {
+          changedFields.push(key);
+        }
       }
     });
 
@@ -413,18 +484,27 @@ router.put('/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update client' });
     }
 
-    // If apps changed, sync newly added apps
-    let syncResult = { synced: [], errors: [] };
-    const oldApps = old.apps || [];
-    const newApps = updated.apps || [];
+    // 1. Sync newly-added apps (create new records in POS/Payroll)
+    let newRecordSync = { synced: [], errors: [] };
+    const oldApps  = old.apps || [];
+    const newApps  = updated.apps || [];
     const addedApps = newApps.filter(a => !oldApps.includes(a));
     if (addedApps.length > 0) {
-      syncResult = await syncToApps({ ...updated, apps: addedApps });
+      newRecordSync = await syncToApps({ ...updated, apps: addedApps });
     }
+
+    // 2. Push field-level updates to already-linked app records
+    const fieldSync = await syncUpdateToApps(updated, changedFields);
+
+    const syncResult = {
+      synced:  newRecordSync.synced,
+      updated: fieldSync.updated,
+      errors:  [...newRecordSync.errors, ...fieldSync.errors],
+    };
 
     await auditFromReq(req, 'UPDATE', 'eco_client', clientId, {
       module: 'ecosystem',
-      metadata: { old_apps: old.apps, new_apps: updated.apps, synced: syncResult.synced }
+      metadata: { old_apps: old.apps, new_apps: updated.apps, changedFields, synced: syncResult.synced, updated: syncResult.updated }
     });
 
     res.json({ ...updated, sync: syncResult });
