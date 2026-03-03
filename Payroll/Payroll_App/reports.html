@@ -419,6 +419,23 @@
             // Include historical periods
             const histPeriods = PayrollEngine.getHistoricalPeriods(currentCompanyId);
             histPeriods.forEach(p => periods.add(p));
+            // Include archived payslip periods (for 11-year retention access)
+            if (typeof DataAccess !== 'undefined') {
+                var archivedPeriods = DataAccess.getArchivedPeriods(currentCompanyId);
+                archivedPeriods.forEach(function(p) { periods.add(p); });
+            }
+            // Include any periods with payslip statuses in localStorage
+            var prefix = 'emp_payslip_status_' + currentCompanyId + '_';
+            for (var i = 0; i < localStorage.length; i++) {
+                var key = localStorage.key(i);
+                if (key && key.indexOf(prefix) === 0) {
+                    var parts = key.replace(prefix, '').split('_');
+                    var period = parts[parts.length - 1];
+                    if (/^\d{4}-\d{2}$/.test(period)) {
+                        periods.add(period);
+                    }
+                }
+            }
             return Array.from(periods).sort().reverse();
         }
 

@@ -266,10 +266,10 @@
             isActive: emp.is_active !== undefined ? emp.is_active : (emp.isActive !== undefined ? emp.isActive : true)
           })).filter(e => e.isActive !== false);
         } catch (e) {
-          useDemoEmployees();
+          employees = [];
         }
       } else {
-        useDemoEmployees();
+        employees = [];
       }
 
       // Load saved recon data from localStorage
@@ -303,17 +303,6 @@
       });
 
       updateStatus();
-    }
-
-    function useDemoEmployees() {
-      employees = [
-        { id: 1, employeeCode: 'EMP001', firstName: 'John', lastName: 'Smith', isActive: true },
-        { id: 2, employeeCode: 'EMP002', firstName: 'Sarah', lastName: 'Johnson', isActive: true },
-        { id: 3, employeeCode: 'EMP003', firstName: 'Michael', lastName: 'Williams', isActive: true },
-        { id: 4, employeeCode: 'EMP004', firstName: 'Emma', lastName: 'Brown', isActive: true },
-        { id: 5, employeeCode: 'EMP005', firstName: 'David', lastName: 'Jones', isActive: true }
-      ];
-      initializeReconData();
     }
 
     function initializeReconData() {

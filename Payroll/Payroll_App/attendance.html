@@ -383,6 +383,10 @@
             }
 
             const session = AUTH.getSession();
+            if (!session || !session.company_id) {
+                window.location.href = 'company-selection.html';
+                return;
+            }
             currentCompanyId = session.company_id;
 
             // Set user info

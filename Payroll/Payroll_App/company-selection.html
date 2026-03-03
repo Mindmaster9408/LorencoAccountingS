@@ -274,10 +274,8 @@
                 return;
             }
 
-            if (session.role === 'super_admin') {
-                window.location.href = 'super-admin-dashboard.html';
-                return;
-            }
+            // Super admins can use company-selection to pick a company
+            // (no redirect to super-admin-dashboard)
 
             // Set user info
             document.getElementById('user-name').textContent = session.email;
@@ -330,7 +328,7 @@
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Employees:</span>
-                            <span class="detail-value">${company.employees}</span>
+                            <span class="detail-value">${(function(){ try { return JSON.parse(localStorage.getItem('employees_' + company.id) || '[]').length; } catch(e) { return 0; } })()}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Subscription:</span>

@@ -827,15 +827,56 @@
         function initPeriodSelect() {
             const select = document.getElementById('payPeriod');
             const now = new Date();
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+            // Collect all periods: recent 12 months + historical + archived
+            var allPeriods = {};
+
+            // Add recent 12 months
             for (let i = 0; i < 12; i++) {
                 const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
                 const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                allPeriods[val] = true;
+            }
+
+            // Add historical periods
+            if (typeof PayrollEngine !== 'undefined') {
+                var histPeriods = PayrollEngine.getHistoricalPeriods(currentCompanyId);
+                histPeriods.forEach(function(p) { allPeriods[p] = true; });
+            }
+
+            // Add archived payslip periods for this employee
+            if (typeof DataAccess !== 'undefined') {
+                var archiveIndex = DataAccess.getArchiveIndex(currentCompanyId);
+                archiveIndex.filter(function(i) { return i.empId === currentEmpId; }).forEach(function(entry) {
+                    allPeriods[entry.period] = true;
+                });
+            }
+
+            // Add any periods where this employee has a payslip status
+            for (var i = 0; i < localStorage.length; i++) {
+                var key = localStorage.key(i);
+                var prefix = 'emp_payslip_status_' + currentCompanyId + '_' + currentEmpId + '_';
+                if (key && key.indexOf(prefix) === 0) {
+                    var period = key.replace(prefix, '');
+                    if (/^\d{4}-\d{2}$/.test(period)) {
+                        allPeriods[period] = true;
+                    }
+                }
+            }
+
+            // Sort descending (newest first)
+            var sortedPeriods = Object.keys(allPeriods).sort().reverse();
+
+            sortedPeriods.forEach(function(val) {
+                const parts = val.split('-');
+                const monthIdx = parseInt(parts[1]) - 1;
                 const opt = document.createElement('option');
                 opt.value = val;
-                opt.textContent = months[d.getMonth()] + ' ' + d.getFullYear();
+                opt.textContent = months[monthIdx] + ' ' + parts[0];
                 select.appendChild(opt);
-            }
+            });
+
             currentPeriod = select.value;
         }
 
@@ -869,14 +910,20 @@
 
             content.classList.remove('locked-overlay');
 
+            // Finalized payslip action buttons (always accessible, outside overlay)
+            var viewBtns = '<div style="display:flex; gap:10px; margin-top:10px;">' +
+                '<button class="btn" style="flex:1;" onclick="calculatePayslip(); previewPayslip();">👁 View Payslip</button>' +
+                '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip(); downloadPayslipPDF();">📄 Download PDF</button>' +
+                '</div>';
+
             if (lockedRun && psStatus.status === 'finalized') {
                 // Pay run exists AND payslip finalized = fully locked
-                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>';
+                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
                 content.classList.add('locked-overlay');
             } else if (psStatus.status === 'finalized') {
                 // Finalized but no pay run yet = can unfinalize freely
-                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + new Date(psStatus.finalized_date).toLocaleDateString() + ' by ' + (psStatus.finalized_by || 'System') + '</div>';
+                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + new Date(psStatus.finalized_date).toLocaleDateString() + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" data-permission="UNFINALIZE_PAYSLIP" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
                 content.classList.add('locked-overlay');
             } else {
@@ -895,6 +942,43 @@
             if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '? It will be locked for editing.')) return;
             const status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
             localStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
+
+            // === Archive payslip for 11-year retention ===
+            try {
+                var payrollData = JSON.parse(localStorage.getItem(getPayrollKey()) || '{"basic_salary":0,"regular_inputs":[]}');
+                var currentInputs = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
+                var overtime = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
+                var shortTime = JSON.parse(localStorage.getItem(getShortTimeKey()) || '[]');
+                var multiRate = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
+                var calcResult = PayrollEngine.calculateEmployeePeriod(currentCompanyId, currentEmpId, currentPeriod, payrollData);
+                var archiveData = {
+                    employee: currentEmployee ? {
+                        id: currentEmployee.id,
+                        employee_number: currentEmployee.employee_number,
+                        first_name: currentEmployee.first_name,
+                        last_name: currentEmployee.last_name,
+                        id_number: currentEmployee.id_number,
+                        department: currentEmployee.department,
+                        position: currentEmployee.position,
+                        payment_method: currentEmployee.payment_method
+                    } : null,
+                    payroll: payrollData,
+                    current_inputs: currentInputs,
+                    overtime: overtime,
+                    short_time: shortTime,
+                    multi_rate: multiRate,
+                    calculation: calcResult,
+                    finalized_by: session.name || session.email,
+                    finalized_date: status.finalized_date,
+                    period: currentPeriod
+                };
+                if (typeof DataAccess !== 'undefined') {
+                    DataAccess.archivePayslip(currentCompanyId, currentEmpId, currentPeriod, archiveData);
+                }
+            } catch(e) {
+                console.warn('Payslip archive failed (non-critical):', e);
+            }
+
             AuditTrail.logFinalize(currentCompanyId, 'payslip', 'Finalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
             updatePayslipUI();
         }

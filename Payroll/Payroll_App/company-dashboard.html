@@ -707,9 +707,12 @@
             if (stored) {
                 try {
                     employees = JSON.parse(stored);
+                    if (!Array.isArray(employees)) employees = [];
                 } catch (e) {
                     employees = [];
                 }
+            } else {
+                employees = [];
             }
         }
 

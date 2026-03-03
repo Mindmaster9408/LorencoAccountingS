@@ -180,11 +180,17 @@ const AUTH = {
             return sa.email && sa.email.toLowerCase() === email.toLowerCase() && sa.password === password;
         });
         if (matchedSuperAdmin) {
-            // Super admins get access to ALL companies
-            var allCompanyIds = this.COMPANIES.map(function(c) { return c.id; });
+            // Super admins get access to ALL companies (hardcoded + registered)
+            var allCompanies = this.getAllCompaniesWithRegistered();
+            var allCompanyIds = allCompanies.map(function(c) { return c.id; });
+            // Restore last-used company_id from previous session if available
+            var lastSession = this.getSession();
+            var defaultCompanyId = (lastSession && lastSession.company_id && allCompanyIds.indexOf(lastSession.company_id) >= 0)
+                ? lastSession.company_id
+                : (allCompanyIds[0] || null);
             var saSession = Object.assign({}, matchedSuperAdmin, {
                 company_ids: allCompanyIds,
-                company_id: allCompanyIds[0] || null
+                company_id: defaultCompanyId
             });
             this.setSession(saSession);
             // BYPASSED: Super admins now go to normal app flow with elevated access
@@ -382,9 +388,9 @@ const AUTH = {
     getCompaniesForUser: function(user) {
         if (!user) return [];
 
-        // Super Admin sees all companies
+        // Super Admin sees all companies (hardcoded + registered)
         if (user.role === 'super_admin') {
-            return this.COMPANIES.filter(c => c.active);
+            return this.getAllCompaniesWithRegistered().filter(function(c) { return c.active; });
         }
 
         // Get all company IDs for this user (backward compat: fall back to company_id)
