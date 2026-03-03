@@ -17,10 +17,29 @@ const authenticateToken = async (req, res, next) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    const result = await query(
+    // First try to find user in coaching_users by decoded userId
+    let result = await query(
       'SELECT id, email, first_name, last_name, role, is_active FROM coaching_users WHERE id = $1',
       [decoded.userId]
     );
+
+    // If not found and this is an SSO token from the ecosystem, fall back to
+    // matching by email or auto-mapping to the coaching admin user
+    if (result.rows.length === 0 && decoded.ssoSource === 'ecosystem') {
+      // Try matching by email first
+      if (decoded.email) {
+        result = await query(
+          'SELECT id, email, first_name, last_name, role, is_active FROM coaching_users WHERE email = $1',
+          [decoded.email]
+        );
+      }
+      // If still not found, use the first admin user (coaching has a single admin)
+      if (result.rows.length === 0) {
+        result = await query(
+          "SELECT id, email, first_name, last_name, role, is_active FROM coaching_users WHERE role = 'admin' ORDER BY id ASC LIMIT 1"
+        );
+      }
+    }
 
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'User not found' });

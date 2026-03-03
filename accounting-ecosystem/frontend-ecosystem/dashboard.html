@@ -1497,8 +1497,31 @@
             overlay.classList.add('show');
             text.textContent = `Launching ${app.name}...`;
 
-            // Coaching has no SSO token requirement — navigate directly
+            // Coaching — use SSO like all other apps (bypass login screen)
             if (appKey === 'coaching') {
+                try {
+                    const token = localStorage.getItem('eco_token');
+                    const res = await fetch(`${API_BASE}/api/auth/sso-launch`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            targetApp: 'coaching',
+                            companyId: selectedCompany?.id || null
+                        })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        // Store under coaching-specific keys
+                        localStorage.setItem('auth_token', data.appToken);
+                        localStorage.setItem('user', JSON.stringify(data.user));
+                        localStorage.setItem('sso_source', 'ecosystem');
+                    }
+                } catch (e) {
+                    console.warn('Coaching SSO failed, will try direct:', e.message);
+                }
                 text.textContent = `Opening ${app.name}...`;
                 setTimeout(() => { window.location.href = app.path; }, 400);
                 return;

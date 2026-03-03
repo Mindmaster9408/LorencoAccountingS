@@ -481,6 +481,862 @@ a:hover {
     color: var(--text) !important;
 }
 
+/* ── Global Missing Overrides ────────────────────────────────────────────────── */
+/* Page headers with light borders */
+.page-header {
+    border-bottom-color: var(--border) !important;
+}
+
+/* Buttons: Logout, Switch, Cancel — light backgrounds */
+.btn-logout {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border-strong) !important;
+}
+.btn-logout:hover {
+    background: var(--surface-hover) !important;
+}
+.btn-switch:not(.btn-sidebar) {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+.btn-switch:not(.btn-sidebar):hover {
+    background: var(--surface-hover) !important;
+}
+
+/* Success & Error messages — used on many pages */
+.success-msg {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+    border-color: rgba(16,185,129,0.3) !important;
+}
+.error-msg {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+    border-color: rgba(239,68,68,0.3) !important;
+}
+
+/* Search inputs */
+.search-box,
+.search-bar {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.search-box:focus,
+.search-bar:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+
+/* Empty states */
+.empty-message {
+    color: var(--text-muted) !important;
+}
+
+/* User info labels */
+.user-info strong {
+    color: var(--text) !important;
+}
+
+/* ── Payroll Items — category sections, item cards ──────────────────────────── */
+.category-section {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.category-header {
+    border-bottom-color: var(--border) !important;
+}
+.category-title h2 {
+    color: var(--text) !important;
+}
+.category-title p {
+    color: var(--text-secondary) !important;
+}
+.item-card {
+    background: var(--surface-alt) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.item-card:hover {
+    border-color: var(--accent) !important;
+}
+.item-name {
+    color: var(--text) !important;
+}
+.item-code {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+}
+.item-detail-label {
+    color: var(--text-muted) !important;
+}
+.item-detail-value {
+    color: var(--text) !important;
+}
+.irp5-code {
+    background: rgba(255,193,7,0.2) !important;
+    color: #fbbf24 !important;
+}
+.badge-no-uif {
+    background: var(--surface) !important;
+    color: var(--text-muted) !important;
+}
+
+/* ── Employee Management — table, modals, form labels ───────────────────────── */
+.form-group label {
+    color: var(--text-secondary) !important;
+}
+.employee-table tr:hover {
+    background: var(--surface-hover) !important;
+}
+
+/* ── Payruns — tabs, employee cards, breakdowns, SEAN panel ─────────────────── */
+.top-tab {
+    color: var(--text-muted) !important;
+}
+.top-tab.active {
+    color: var(--accent-light) !important;
+}
+.top-tab.active::after {
+    background: var(--accent) !important;
+}
+.employee-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.emp-name {
+    color: var(--text) !important;
+}
+.emp-detail-label {
+    color: var(--text-muted) !important;
+}
+.emp-detail-value {
+    color: var(--text-secondary) !important;
+}
+.badge-eft {
+    background: rgba(25,118,210,0.2) !important;
+    color: #64b5f6 !important;
+}
+.badge-cash {
+    background: rgba(56,142,60,0.2) !important;
+    color: #81c784 !important;
+}
+.badge-cheque {
+    background: rgba(245,124,0,0.2) !important;
+    color: #ffb74d !important;
+}
+.badge-finalized {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.badge-draft {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.payrun-header {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+.payrun-header:hover {
+    background: var(--surface-hover) !important;
+}
+.payrun-title {
+    color: var(--text) !important;
+}
+.payrun-subtitle {
+    color: var(--text-secondary) !important;
+}
+.stat-divider {
+    background: var(--border) !important;
+}
+.breakdown-header {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+.breakdown-header:hover {
+    background: var(--surface-hover) !important;
+}
+.breakdown-title {
+    color: var(--text-secondary) !important;
+}
+.breakdown-total {
+    color: var(--text) !important;
+}
+.breakdown-content {
+    background: var(--surface-alt) !important;
+    color: var(--text) !important;
+}
+.breakdown-table .label {
+    color: var(--text-secondary) !important;
+}
+.breakdown-table .value {
+    color: var(--text) !important;
+}
+.action-link:hover {
+    background: var(--accent-subtle) !important;
+}
+.show-more-btn {
+    background: var(--surface) !important;
+    color: var(--accent-light) !important;
+}
+.show-more-btn:hover {
+    background: var(--surface-hover) !important;
+}
+.historical-group-title {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+}
+.frequency-tag {
+    color: var(--accent-light) !important;
+    background: var(--accent-subtle) !important;
+}
+.return-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.return-card-title {
+    color: var(--text) !important;
+}
+.return-card-desc {
+    color: var(--text-muted) !important;
+}
+.return-card-amount {
+    color: var(--text) !important;
+}
+.return-status-pending {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.return-status-submitted {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.preview-table tr.total-row {
+    background: var(--accent-subtle) !important;
+    color: var(--text) !important;
+}
+.preview-header-info {
+    background: var(--surface) !important;
+}
+.preview-info-label {
+    color: var(--text-muted) !important;
+}
+.preview-info-value {
+    color: var(--text) !important;
+}
+.sean-panel {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.sean-panel h3 {
+    color: var(--accent-light) !important;
+}
+.sean-stat.green {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.sean-stat.red {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+.sean-stat.orange,
+.sean-stat.yellow {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.sean-stat.blue {
+    background: rgba(59,130,246,0.2) !important;
+    color: #93c5fd !important;
+}
+.sean-stat.purple {
+    background: rgba(139,92,246,0.2) !important;
+    color: #c4b5fd !important;
+}
+.sean-alert.success {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.sean-alert.error {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+.sean-item-header {
+    color: var(--text) !important;
+}
+.sean-item-body {
+    color: var(--text-secondary) !important;
+}
+.emp-chip {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+.sean-table th {
+    background: var(--surface) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--border) !important;
+}
+.sean-table td {
+    border-bottom-color: var(--border) !important;
+}
+.confidence-bar {
+    background: var(--surface) !important;
+}
+.sean-tool-title {
+    color: var(--text) !important;
+}
+.sean-tool-desc {
+    color: var(--text-muted) !important;
+}
+.summary-table th {
+    color: var(--text) !important;
+}
+.summary-totals {
+    background: var(--accent-subtle) !important;
+}
+.summary-totals h4 {
+    color: var(--accent-light) !important;
+}
+.total-row-item.net {
+    color: var(--accent-light) !important;
+    border-top-color: var(--accent) !important;
+}
+.returns-section {
+    border-top-color: var(--border) !important;
+}
+.returns-title {
+    color: var(--text-muted) !important;
+}
+
+/* ── Reports Page ───────────────────────────────────────────────────────────── */
+.report-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.report-card:hover {
+    border-color: var(--accent) !important;
+}
+.report-card-title {
+    color: var(--text) !important;
+}
+.report-card-desc {
+    color: var(--text-muted) !important;
+}
+.report-card-secure {
+    background: rgba(239,68,68,0.1) !important;
+}
+.btn-back {
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+    background: transparent !important;
+}
+.btn-back:hover {
+    background: var(--accent) !important;
+    color: white !important;
+}
+.filter-panel {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.filter-title {
+    color: var(--text-muted) !important;
+}
+.export-bar .label {
+    color: var(--text-secondary) !important;
+}
+.results-table .total-row {
+    background: var(--accent-subtle) !important;
+    border-top-color: var(--accent) !important;
+    color: var(--text) !important;
+}
+.dept-card {
+    background: var(--surface) !important;
+    border-left-color: var(--accent) !important;
+}
+.dept-card-title {
+    color: var(--text) !important;
+}
+.dept-card-stat {
+    color: var(--text-secondary) !important;
+}
+
+/* ── Company Details Page ───────────────────────────────────────────────────── */
+.detail-section {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.detail-section-title {
+    color: var(--accent-light) !important;
+}
+.detail-label {
+    color: var(--text-muted) !important;
+}
+.detail-value {
+    color: var(--text) !important;
+}
+.detail-value.empty {
+    color: var(--text-muted) !important;
+}
+.form-section-title {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--border) !important;
+}
+
+/* ── Attendance Page ────────────────────────────────────────────────────────── */
+.calendar-day {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.calendar-day.weekend {
+    background: rgba(239,68,68,0.06) !important;
+}
+.calendar-day.today {
+    border-color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
+}
+.day-number {
+    color: var(--text) !important;
+}
+.calendar-day-header {
+    color: var(--text-muted) !important;
+}
+.day-indicator.present {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.day-indicator.absent {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+.import-zone {
+    border-color: var(--border-strong) !important;
+    background: var(--surface-alt) !important;
+    color: var(--text) !important;
+}
+.import-zone:hover,
+.import-zone.drag-over,
+.import-zone.dragover {
+    border-color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
+}
+.day-entry-card {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+.entry-times {
+    color: var(--text-secondary) !important;
+}
+.entry-notes {
+    color: var(--text-muted) !important;
+}
+.modal-header h3 {
+    color: var(--text) !important;
+}
+
+/* ── Historical Import Page ─────────────────────────────────────────────────── */
+.import-zone-title {
+    color: var(--text) !important;
+}
+.import-zone-sub {
+    color: var(--text-muted) !important;
+}
+.warning-banner {
+    background: rgba(245,158,11,0.15) !important;
+    border-color: rgba(245,158,11,0.3) !important;
+    color: #fbbf24 !important;
+}
+.progress-text {
+    color: var(--text) !important;
+}
+.confidence-high {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.confidence-medium {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.confidence-low {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+.grid-input,
+.pdf-input {
+    border-color: var(--border-strong) !important;
+    background: rgba(255,255,255,0.06) !important;
+    color: var(--text) !important;
+}
+.grid-input:focus,
+.pdf-input:focus {
+    border-color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
+}
+.grid-input.has-value {
+    background: rgba(16,185,129,0.08) !important;
+}
+.multi-select-item:hover {
+    background: var(--accent-subtle) !important;
+}
+.multi-select-item label {
+    color: var(--text) !important;
+}
+.import-log h3 {
+    color: var(--accent-light) !important;
+}
+
+/* ── Employee Detail Page ───────────────────────────────────────────────────── */
+.info-item {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.info-label {
+    color: var(--text-muted) !important;
+}
+.info-value {
+    color: var(--text) !important;
+}
+.section {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.section-title {
+    color: var(--accent-light) !important;
+}
+.salary-label {
+    color: var(--text-secondary) !important;
+}
+.salary-value {
+    color: var(--text) !important;
+}
+.total-row {
+    background: var(--accent-subtle) !important;
+}
+.leave-balance-type {
+    color: var(--text-muted) !important;
+}
+.leave-balance-number {
+    color: var(--text) !important;
+}
+.leave-balance-total {
+    color: var(--text-muted) !important;
+}
+.leave-approved {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.leave-pending {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.leave-rejected {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+.note-item {
+    background: rgba(251,191,36,0.1) !important;
+    border-left-color: #fbbf24 !important;
+}
+.note-meta {
+    color: var(--text-muted) !important;
+}
+.note-text {
+    color: var(--text) !important;
+}
+.payslip-status-bar.draft {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.payslip-status-bar.finalized {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.payslip-status-bar.locked {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+
+/* ── Company Selection Page ─────────────────────────────────────────────────── */
+.company-name {
+    color: var(--text) !important;
+}
+.company-details {
+    border-top-color: var(--border) !important;
+}
+
+/* ── Login Page ─────────────────────────────────────────────────────────────── */
+.error-message {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+.success-message {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.demo-info {
+    background: var(--surface) !important;
+    border-left-color: var(--accent) !important;
+}
+.demo-info p {
+    color: var(--text-secondary) !important;
+}
+.demo-info strong {
+    color: var(--accent-light) !important;
+}
+.switch-tab {
+    color: var(--text-muted) !important;
+}
+.step-dot {
+    background: var(--surface) !important;
+}
+.step-dot.active {
+    background: var(--accent) !important;
+}
+.step-line {
+    background: var(--surface) !important;
+}
+.step-line.active {
+    background: var(--accent) !important;
+}
+
+/* ── Index / Landing Page ───────────────────────────────────────────────────── */
+.container {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.version {
+    color: var(--text-muted) !important;
+}
+
+/* ── Super Admin Dashboard ──────────────────────────────────────────────────── */
+.companies-section {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.companies-section h2 {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+.status-active {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.status-suspended,
+.status-inactive {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+.btn-suspend {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.btn-modal-cancel {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+
+/* ── Users Page ─────────────────────────────────────────────────────────────── */
+.user-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.user-card:hover {
+    border-color: var(--accent) !important;
+}
+.user-name {
+    color: var(--text) !important;
+}
+.user-email {
+    color: var(--accent-light) !important;
+}
+.user-detail-label {
+    color: var(--text-muted) !important;
+}
+.user-detail-value {
+    color: var(--text-secondary) !important;
+}
+.role-business_owner {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.role-manager {
+    background: rgba(59,130,246,0.2) !important;
+    color: #93c5fd !important;
+}
+.role-admin {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+.role-accountant {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.user-actions {
+    border-top-color: var(--border) !important;
+}
+.password-hint {
+    color: var(--text-muted) !important;
+}
+.btn-warning {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
+.access-denied h2 {
+    color: #fca5a5 !important;
+}
+
+/* ── Inline style overrides (for elements with style="" in HTML) ─────────────── */
+/* Override inline background:white / background:#fff on modal content divs */
+#addCompanyModal > div,
+#addCompanyModal > div > div,
+#switchCompanyModal > div,
+#switchCompanyModal > div > div,
+[id*="CompanyModal"] > div,
+[id*="CompanyModal"] > div:first-child,
+[id*="Modal"] > div[style*="background: white"],
+[id*="Modal"] > div[style*="background:white"],
+[id*="modal"] > div[style*="background: white"],
+[id*="modal"] > div[style*="background:white"] {
+    background: #1e1b3a !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+}
+
+/* Override inline color:#667eea on headings & company name labels */
+#addCompanyModal h2,
+#addCompanyModal h3,
+#switchCompanyModal h3,
+[id*="CompanyModal"] h2,
+[id*="CompanyModal"] h3,
+#modalTitle,
+#company-name-header,
+#emp-company-name-header,
+h2[style*="color: #667eea"],
+h2[style*="color:#667eea"],
+h3[style*="color: #667eea"],
+h3[style*="color:#667eea"],
+h4[style*="color: #667eea"],
+h4[style*="color:#667eea"],
+p[style*="color: #667eea"],
+p[style*="color:#667eea"] {
+    color: var(--accent-light) !important;
+}
+
+/* Override inline color:#333 on labels & headings */
+#addCompanyModal label,
+[id*="CompanyModal"] label,
+label[style*="color: #333"],
+label[style*="color:#333"],
+h4[style*="color:#333"],
+h4[style*="color: #333"],
+p[style*="color:#333"],
+p[style*="color: #333"],
+div[style*="color: #333"],
+div[style*="color:#333"] {
+    color: var(--text) !important;
+}
+
+/* Override inline color:#555 on modal labels */
+label[style*="color: #555"],
+label[style*="color:#555"],
+div[style*="color: #555"],
+div[style*="color:#555"] {
+    color: var(--text-secondary) !important;
+}
+
+/* Override inline color:#999 on muted text & close buttons */
+span[style*="color:#999"],
+span[style*="color: #999"],
+p[style*="color:#999"],
+p[style*="color: #999"],
+td[style*="color: #999"],
+td[style*="color:#999"],
+div[style*="color: #999"],
+div[style*="color:#999"] {
+    color: var(--text-muted) !important;
+}
+
+/* Override inline color:#888 on muted text */
+span[style*="color:#888"],
+span[style*="color: #888"],
+p[style*="color:#888"],
+p[style*="color: #888"],
+div[style*="color:#888"],
+div[style*="color: #888"] {
+    color: var(--text-muted) !important;
+}
+
+/* Override inline inputs inside modals */
+#addCompanyModal input,
+[id*="CompanyModal"] input,
+[id*="Modal"] input[style],
+[id*="modal"] input[style] {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+
+/* Override inline background:#f8f9fa, #f0f4ff, #fafbff on containers */
+div[style*="background: #f8f9fa"],
+div[style*="background:#f8f9fa"],
+div[style*="background: #f0f4ff"],
+div[style*="background:#f0f4ff"],
+div[style*="background: white"],
+div[style*="background:white"],
+div[style*="background: #fff"],
+div[style*="background:#fff"] {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+
+/* Override inline buttons with background:#eee */
+button[style*="background:#eee"],
+button[style*="background: #eee"],
+a[style*="background: #eee"],
+a[style*="background:#eee"] {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border-color: var(--border-strong) !important;
+}
+
+/* Override inline error divs with light backgrounds */
+div[style*="background:#fee"],
+div[style*="background: #fee"] {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+
+/* Success/error inline styles in modals */
+div[style*="background:#d4edda"],
+div[style*="background: #d4edda"] {
+    background: rgba(16,185,129,0.15) !important;
+    color: var(--accent-light) !important;
+}
+div[style*="background:#f8d7da"],
+div[style*="background: #f8d7da"] {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+}
+
+/* Employee quick-nav bar in employee-detail */
+div[style*="background: white"][style*="border-radius: 10px"] {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+/* Cancel buttons in modals */
+button[style*="background:#999"],
+button[style*="background: #999"] {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

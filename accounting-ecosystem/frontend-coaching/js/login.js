@@ -1,8 +1,10 @@
 // Login page functionality
 import { API_BASE_URL, setAuthToken, getAuthToken } from './api.js';
 
-// Check if already logged in
+// Check if already logged in (either via SSO from ecosystem or existing session)
+const ssoSource = localStorage.getItem('sso_source');
 if (getAuthToken()) {
+    // If coming from ecosystem SSO or already have a valid token, skip login
     window.location.href = 'index.html';
 }
 

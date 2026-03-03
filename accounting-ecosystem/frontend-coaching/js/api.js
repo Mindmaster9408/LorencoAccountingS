@@ -50,10 +50,16 @@ export async function apiRequest(endpoint, options = {}) {
     try {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
-        // Handle 401 (unauthorized) - redirect to login
+        // Handle 401 (unauthorized) - redirect to login or back to ecosystem
         if (response.status === 401) {
             clearAuthToken();
-            window.location.href = '/coaching/login.html';
+            const ssoSource = localStorage.getItem('sso_source');
+            if (ssoSource === 'ecosystem') {
+                localStorage.removeItem('sso_source');
+                window.location.href = '/';
+            } else {
+                window.location.href = '/coaching/login.html';
+            }
             throw new Error('Session expired. Please login again.');
         }
 
@@ -78,8 +84,14 @@ export async function logout() {
     } catch (error) {
         console.error('Logout error:', error);
     } finally {
+        const ssoSource = localStorage.getItem('sso_source');
         clearAuthToken();
-        window.location.href = '/coaching/login.html';
+        if (ssoSource === 'ecosystem') {
+            localStorage.removeItem('sso_source');
+            window.location.href = '/';
+        } else {
+            window.location.href = '/coaching/login.html';
+        }
     }
 }
 
