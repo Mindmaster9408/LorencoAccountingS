@@ -938,19 +938,20 @@
             if (!Permissions.require('FINALIZE_PAYSLIP')) return;
             // Auto-calculate before finalizing
             calculatePayslip();
-            const session = AUTH.getSession();
-            if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '? It will be locked for editing.')) return;
-            const status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
+            var session = AUTH.getSession();
+            if (!session) { alert('Session expired. Please log in again.'); window.location.href = 'login.html'; return; }
+            if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '?\nIt will be locked for editing and a PDF payslip will be downloaded.')) return;
+            var status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
             localStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
 
             // === Archive payslip for 11-year retention ===
             try {
-                var payrollData = JSON.parse(localStorage.getItem(getPayrollKey()) || '{"basic_salary":0,"regular_inputs":[]}');
-                var currentInputs = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
-                var overtime = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
-                var shortTime = JSON.parse(localStorage.getItem(getShortTimeKey()) || '[]');
-                var multiRate = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
-                var calcResult = PayrollEngine.calculateEmployeePeriod(currentCompanyId, currentEmpId, currentPeriod, payrollData);
+                var archivePayroll = JSON.parse(localStorage.getItem(getPayrollKey()) || '{"basic_salary":0,"regular_inputs":[]}');
+                var archiveCurrentInputs = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
+                var archiveOvertime = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
+                var archiveShortTime = JSON.parse(localStorage.getItem(getShortTimeKey()) || '[]');
+                var archiveMultiRate = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
+                var calcResult = PayrollEngine.calculateEmployeePeriod(currentCompanyId, currentEmpId, currentPeriod, archivePayroll);
                 var archiveData = {
                     employee: currentEmployee ? {
                         id: currentEmployee.id,
@@ -962,11 +963,11 @@
                         position: currentEmployee.position,
                         payment_method: currentEmployee.payment_method
                     } : null,
-                    payroll: payrollData,
-                    current_inputs: currentInputs,
-                    overtime: overtime,
-                    short_time: shortTime,
-                    multi_rate: multiRate,
+                    payroll: archivePayroll,
+                    current_inputs: archiveCurrentInputs,
+                    overtime: archiveOvertime,
+                    short_time: archiveShortTime,
+                    multi_rate: archiveMultiRate,
                     calculation: calcResult,
                     finalized_by: session.name || session.email,
                     finalized_date: status.finalized_date,
@@ -981,6 +982,14 @@
 
             AuditTrail.logFinalize(currentCompanyId, 'payslip', 'Finalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
             updatePayslipUI();
+
+            // Auto-download PDF payslip after finalization
+            try {
+                downloadPayslipPDF();
+            } catch(e) {
+                console.error('PDF generation failed:', e);
+                alert('Payslip finalized successfully but PDF download failed. You can download it manually using the "Download PDF" button.');
+            }
         }
 
         function unfinalizePayslip() {
