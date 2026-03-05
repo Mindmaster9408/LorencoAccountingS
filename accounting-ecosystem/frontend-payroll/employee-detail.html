@@ -493,35 +493,67 @@
 
     <!-- Add Regular Input -->
     <div id="addRegularModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header"><h3>Add Regular Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addRegularModal')">Close</button></div>
-            <div class="form-group"><label>Payroll Item</label><select id="regularItemSelect" onchange="onRegularItemSelect()"></select></div>
-            <div id="regularCustomFields">
-                <div class="form-group"><label>Type</label><select id="regularInputType"><option value="allowance">Allowance</option><option value="income">Income</option><option value="benefit">Benefit</option><option value="deduction">Deduction</option><option value="other">Other</option></select></div>
-                <div class="form-group"><label>Description</label><input type="text" id="regularInputDesc" placeholder="e.g. Housing Allowance"></div>
-                <div class="form-group"><label>Amount (per month)</label><input type="number" id="regularInputAmount" step="0.01" min="0"></div>
+        <div class="modal-content" style="max-width:500px;">
+            <div class="modal-header"><h3>📅 Add Regular Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addRegularModal')">✕ Close</button></div>
+            <p style="font-size:0.82rem; color:#888; margin:0 0 10px;">Appears <strong>every month</strong> for this employee. Select from the list or enter a custom item.</p>
+            <div id="regularItemsList" style="max-height:260px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:8px; margin-bottom:12px; background:#fff;"></div>
+            <div id="regularAmountPane" style="display:none; background:#f0f4ff; border:2px solid #667eea; border-radius:8px; padding:14px; margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span id="regularPaneName" style="font-weight:700; font-size:0.95rem; color:#333;"></span>
+                    <span id="regularPaneBadge" style="font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700;"></span>
+                </div>
+                <div id="regularCustomRow" style="display:none; margin-bottom:10px;">
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select id="regularInputType" style="flex:0 0 130px; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem;">
+                            <option value="allowance">Allowance</option>
+                            <option value="income">Income</option>
+                            <option value="benefit">Benefit</option>
+                            <option value="deduction">Deduction</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <input type="text" id="regularInputDesc" placeholder="e.g. Housing Allowance" style="flex:1; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box;">
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-weight:600; font-size:0.9rem; white-space:nowrap; color:#555;">R per month:</span>
+                    <input type="number" id="regularInputAmount" step="0.01" min="0" placeholder="0.00" style="flex:1; padding:10px; border:2px solid #667eea; border-radius:6px; font-size:1.1rem; text-align:right; box-sizing:border-box;">
+                </div>
             </div>
-            <div id="regularItemInfo" style="display:none; background:#f0f4ff; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.85rem;">
-                <span id="regularItemBadges"></span>
-            </div>
-            <button class="btn btn-success" style="width:100%;" onclick="saveRegularInput()">Save</button>
+            <button id="regularSaveBtn" class="btn btn-success" style="width:100%; padding:13px; font-size:1rem; display:none;" onclick="saveRegularInput()">✓ Add to Monthly Payslip</button>
         </div>
     </div>
 
     <!-- Add Current Input -->
     <div id="addCurrentModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header"><h3>Add Current Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addCurrentModal')">Close</button></div>
-            <div class="form-group"><label>Payroll Item</label><select id="currentItemSelect" onchange="onCurrentItemSelect()"></select></div>
-            <div id="currentCustomFields">
-                <div class="form-group"><label>Type</label><select id="currentInputType"><option value="bonus">Bonus / Annual Payment</option><option value="commission">Commission</option><option value="income">Income</option><option value="allowance">Allowance</option><option value="benefit">Benefit</option><option value="deduction">Deduction</option><option value="other">Other</option></select></div>
-                <div class="form-group"><label>Description</label><input type="text" id="currentInputDesc"></div>
-                <div class="form-group"><label>Amount</label><input type="number" id="currentInputAmount" step="0.01" min="0"></div>
+        <div class="modal-content" style="max-width:500px;">
+            <div class="modal-header"><h3>📊 Add Once-Off Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addCurrentModal')">✕ Close</button></div>
+            <p style="font-size:0.82rem; color:#888; margin:0 0 10px;"><strong>This month only</strong> — will not carry over to next month. Select from the list or enter a custom item.</p>
+            <div id="currentItemsList" style="max-height:260px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:8px; margin-bottom:12px; background:#fff;"></div>
+            <div id="currentAmountPane" style="display:none; background:#f0fff4; border:2px solid #28a745; border-radius:8px; padding:14px; margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span id="currentPaneName" style="font-weight:700; font-size:0.95rem; color:#333;"></span>
+                    <span id="currentPaneBadge" style="font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700;"></span>
+                </div>
+                <div id="currentCustomRow" style="display:none; margin-bottom:10px;">
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select id="currentInputType" style="flex:0 0 130px; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem;">
+                            <option value="bonus">Bonus</option>
+                            <option value="commission">Commission</option>
+                            <option value="income">Income</option>
+                            <option value="allowance">Allowance</option>
+                            <option value="benefit">Benefit</option>
+                            <option value="deduction">Deduction</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <input type="text" id="currentInputDesc" placeholder="e.g. Project Bonus" style="flex:1; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box;">
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-weight:600; font-size:0.9rem; white-space:nowrap; color:#555;">R amount:</span>
+                    <input type="number" id="currentInputAmount" step="0.01" min="0" placeholder="0.00" style="flex:1; padding:10px; border:2px solid #28a745; border-radius:6px; font-size:1.1rem; text-align:right; box-sizing:border-box;">
+                </div>
             </div>
-            <div id="currentItemInfo" style="display:none; background:#f0f4ff; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.85rem;">
-                <span id="currentItemBadges"></span>
-            </div>
-            <button class="btn btn-success" style="width:100%;" onclick="saveCurrentInput()">Save</button>
+            <button id="currentSaveBtn" class="btn btn-success" style="width:100%; padding:13px; font-size:1rem; display:none;" onclick="saveCurrentInput()">✓ Add to This Month's Payslip</button>
         </div>
     </div>
 
@@ -1070,79 +1102,75 @@
             { category: 'Other',     type: 'other',      name: 'Termination Lump Sums' }
         ];
 
-        function buildItemSelect(selectEl, items) {
-            var categories = {};
+        function buildItemList(containerEl, items, selectFn, customFn) {
+            var html = '';
+            var lastCat = '';
             items.forEach(function(item) {
-                if (!categories[item.category]) categories[item.category] = [];
-                categories[item.category].push(item);
+                if (item.category !== lastCat) {
+                    html += '<div style="padding:5px 14px; background:#f8f9fa; font-size:10px; font-weight:800; text-transform:uppercase; color:#aaa; letter-spacing:1px; border-top:' + (lastCat ? '1px' : '0') + ' solid #eee;">' + item.category + '</div>';
+                    lastCat = item.category;
+                }
+                var col = item.type === 'deduction' ? '#dc3545' : '#28a745';
+                html += '<div class="payroll-list-row" onclick="' + selectFn + '(this,\'' + item.type + '\',\'' + item.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="padding:9px 14px; border-bottom:1px solid #f5f5f5; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background=\'#f0f4ff\'" onmouseout="if(!this.classList.contains(\'selected-row\'))this.style.background=\'\'">'
+                    + '<span style="font-size:0.88rem;">' + item.name + '</span>'
+                    + '<span style="font-size:10px; padding:2px 8px; border-radius:10px; background:' + col + '22; color:' + col + '; font-weight:700; white-space:nowrap; margin-left:8px;">' + item.type + '</span>'
+                    + '</div>';
             });
-            var html = '<option value="__custom__">-- Custom Item (type below) --</option>';
-            Object.keys(categories).forEach(function(cat) {
-                html += '<optgroup label="' + cat + '">';
-                categories[cat].forEach(function(item) {
-                    html += '<option value="' + item.type + '|' + item.name + '">' + item.name + '</option>';
-                });
-                html += '</optgroup>';
-            });
-            selectEl.innerHTML = html;
+            html += '<div onclick="' + customFn + '()" onmouseover="this.style.background=\'#fff8e1\'" onmouseout="this.style.background=\'\'" style="padding:10px 14px; cursor:pointer; color:#667eea; font-weight:600; font-size:0.88rem; text-align:center; border-top:2px dashed #e0e0e0;">✏️ Custom Item...</div>';
+            containerEl.innerHTML = html;
         }
 
         // ========== REGULAR INPUTS ==========
         function openAddRegularInput() {
-            document.getElementById('regularInputDesc').value = '';
+            var listEl = document.getElementById('regularItemsList');
+            buildItemList(listEl, REGULAR_ITEMS, 'selectRegularItem', 'selectRegularCustom');
+            document.getElementById('regularAmountPane').style.display = 'none';
+            document.getElementById('regularSaveBtn').style.display = 'none';
             document.getElementById('regularInputAmount').value = '';
-            var select = document.getElementById('regularItemSelect');
-            buildItemSelect(select, REGULAR_ITEMS);
-            select.value = '__custom__';
-            document.getElementById('regularCustomFields').style.display = '';
-            document.getElementById('regularItemInfo').style.display = 'none';
             document.getElementById('addRegularModal').classList.add('show');
         }
-        function onRegularItemSelect() {
-            var val = document.getElementById('regularItemSelect').value;
-            var customFields = document.getElementById('regularCustomFields');
-            var infoDiv = document.getElementById('regularItemInfo');
-            if (!val || val === '__custom__') {
-                document.getElementById('regularInputDesc').value = '';
-                customFields.style.display = '';
-                infoDiv.style.display = 'none';
-                return;
-            }
-            var parts = val.split('|');
-            var type = parts[0];
-            var name = parts.slice(1).join('|');
-            var typeSelect = document.getElementById('regularInputType');
-            if (typeSelect.querySelector('option[value="' + type + '"]')) typeSelect.value = type;
+        function selectRegularItem(el, type, name) {
+            document.querySelectorAll('#regularItemsList .payroll-list-row').forEach(function(r) { r.classList.remove('selected-row'); r.style.background = ''; r.style.fontWeight = ''; });
+            el.classList.add('selected-row'); el.style.background = '#e8edff'; el.style.fontWeight = '600';
             document.getElementById('regularInputDesc').value = name;
-            document.getElementById('regularInputAmount').focus();
-            customFields.style.display = '';
-            infoDiv.style.display = 'none';
+            document.getElementById('regularInputType').value = type;
+            var col = type === 'deduction' ? '#dc3545' : '#28a745';
+            document.getElementById('regularPaneName').textContent = name;
+            document.getElementById('regularPaneBadge').textContent = type;
+            document.getElementById('regularPaneBadge').style.cssText = 'font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; background:' + col + '22; color:' + col + ';';
+            document.getElementById('regularCustomRow').style.display = 'none';
+            document.getElementById('regularAmountPane').style.display = '';
+            document.getElementById('regularSaveBtn').style.display = '';
+            document.getElementById('regularSaveBtn').textContent = '✓ Add "' + name + '" to Monthly Payslip';
+            setTimeout(function() { document.getElementById('regularInputAmount').focus(); }, 50);
+        }
+        function selectRegularCustom() {
+            document.querySelectorAll('#regularItemsList .payroll-list-row').forEach(function(r) { r.classList.remove('selected-row'); r.style.background = ''; });
+            document.getElementById('regularInputDesc').value = '';
+            document.getElementById('regularInputType').value = 'allowance';
+            document.getElementById('regularPaneName').textContent = 'Custom Item';
+            document.getElementById('regularPaneBadge').textContent = '';
+            document.getElementById('regularCustomRow').style.display = '';
+            document.getElementById('regularAmountPane').style.display = '';
+            document.getElementById('regularSaveBtn').style.display = '';
+            document.getElementById('regularSaveBtn').textContent = '✓ Add Custom Item to Monthly Payslip';
+            setTimeout(function() { document.getElementById('regularInputDesc').focus(); }, 50);
         }
         function saveRegularInput() {
-            const desc = document.getElementById('regularInputDesc').value.trim();
-            const amount = parseFloat(document.getElementById('regularInputAmount').value);
-            if (!desc || !amount) { alert('Please fill in all fields'); return; }
+            var desc = document.getElementById('regularInputDesc').value.trim();
+            var type = document.getElementById('regularInputType').value;
+            var amount = parseFloat(document.getElementById('regularInputAmount').value);
+            if (!desc) { alert('Please select an item or enter a description'); return; }
+            if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
             var input = {
                 id: 'ri-' + Math.random().toString(36).substr(2, 9),
-                type: document.getElementById('regularInputType').value,
+                type: type,
                 description: desc,
                 amount: amount
             };
-            // Enrich with payroll item metadata if selected
-            var selectedId = document.getElementById('regularItemSelect').value;
-            if (selectedId && selectedId !== '__custom__' && selectedId !== '') {
-                var item = PayrollItemsHelper.getById(currentCompanyId, selectedId);
-                if (item) {
-                    input.payroll_item_id = item.id;
-                    input.item_code = item.item_code;
-                    input.irp5_code = item.irp5_code || null;
-                    input.is_taxable = item.is_taxable !== false;
-                    input.affects_uif = item.affects_uif !== false;
-                }
-            }
             payrollData.regular_inputs.push(input);
             savePayrollData(); renderPayroll(); closeModal('addRegularModal');
-            AuditTrail.logCreate(currentCompanyId, 'regular_input', 'Added regular input "' + desc + '" (' + input.type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+            AuditTrail.logCreate(currentCompanyId, 'regular_input', 'Added regular input "' + desc + '" (' + type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
         function deleteRegularInput(id) {
             if (!confirm('Delete this regular input?')) return;
@@ -1154,61 +1182,56 @@
 
         // ========== CURRENT INPUTS ==========
         function openAddCurrentInput() {
-            document.getElementById('currentInputDesc').value = '';
+            var listEl = document.getElementById('currentItemsList');
+            buildItemList(listEl, ONCE_OFF_ITEMS, 'selectCurrentItem', 'selectCurrentCustom');
+            document.getElementById('currentAmountPane').style.display = 'none';
+            document.getElementById('currentSaveBtn').style.display = 'none';
             document.getElementById('currentInputAmount').value = '';
-            var select = document.getElementById('currentItemSelect');
-            buildItemSelect(select, ONCE_OFF_ITEMS);
-            select.value = '__custom__';
-            document.getElementById('currentCustomFields').style.display = '';
-            document.getElementById('currentItemInfo').style.display = 'none';
             document.getElementById('addCurrentModal').classList.add('show');
         }
-        function onCurrentItemSelect() {
-            var val = document.getElementById('currentItemSelect').value;
-            var customFields = document.getElementById('currentCustomFields');
-            var infoDiv = document.getElementById('currentItemInfo');
-            if (!val || val === '__custom__') {
-                document.getElementById('currentInputDesc').value = '';
-                customFields.style.display = '';
-                infoDiv.style.display = 'none';
-                return;
-            }
-            var parts = val.split('|');
-            var type = parts[0];
-            var name = parts.slice(1).join('|');
-            var typeSelect = document.getElementById('currentInputType');
-            if (typeSelect.querySelector('option[value="' + type + '"]')) typeSelect.value = type;
+        function selectCurrentItem(el, type, name) {
+            document.querySelectorAll('#currentItemsList .payroll-list-row').forEach(function(r) { r.classList.remove('selected-row'); r.style.background = ''; r.style.fontWeight = ''; });
+            el.classList.add('selected-row'); el.style.background = '#e8fff0'; el.style.fontWeight = '600';
             document.getElementById('currentInputDesc').value = name;
-            document.getElementById('currentInputAmount').focus();
-            customFields.style.display = '';
-            infoDiv.style.display = 'none';
+            document.getElementById('currentInputType').value = type;
+            var col = type === 'deduction' ? '#dc3545' : '#28a745';
+            document.getElementById('currentPaneName').textContent = name;
+            document.getElementById('currentPaneBadge').textContent = type;
+            document.getElementById('currentPaneBadge').style.cssText = 'font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; background:' + col + '22; color:' + col + ';';
+            document.getElementById('currentCustomRow').style.display = 'none';
+            document.getElementById('currentAmountPane').style.display = '';
+            document.getElementById('currentSaveBtn').style.display = '';
+            document.getElementById('currentSaveBtn').textContent = '✓ Add "' + name + '" to This Month';
+            setTimeout(function() { document.getElementById('currentInputAmount').focus(); }, 50);
+        }
+        function selectCurrentCustom() {
+            document.querySelectorAll('#currentItemsList .payroll-list-row').forEach(function(r) { r.classList.remove('selected-row'); r.style.background = ''; });
+            document.getElementById('currentInputDesc').value = '';
+            document.getElementById('currentInputType').value = 'bonus';
+            document.getElementById('currentPaneName').textContent = 'Custom Item';
+            document.getElementById('currentPaneBadge').textContent = '';
+            document.getElementById('currentCustomRow').style.display = '';
+            document.getElementById('currentAmountPane').style.display = '';
+            document.getElementById('currentSaveBtn').style.display = '';
+            document.getElementById('currentSaveBtn').textContent = '✓ Add Custom Item to This Month';
+            setTimeout(function() { document.getElementById('currentInputDesc').focus(); }, 50);
         }
         function saveCurrentInput() {
-            const desc = document.getElementById('currentInputDesc').value.trim();
-            const amount = parseFloat(document.getElementById('currentInputAmount').value);
-            if (!desc || !amount) { alert('Please fill in all fields'); return; }
+            var desc = document.getElementById('currentInputDesc').value.trim();
+            var type = document.getElementById('currentInputType').value;
+            var amount = parseFloat(document.getElementById('currentInputAmount').value);
+            if (!desc) { alert('Please select an item or enter a description'); return; }
+            if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
             var input = {
                 id: 'ci-' + Math.random().toString(36).substr(2, 9),
-                type: document.getElementById('currentInputType').value,
+                type: type,
                 description: desc,
                 amount: amount
             };
-            // Enrich with payroll item metadata if selected
-            var selectedId = document.getElementById('currentItemSelect').value;
-            if (selectedId && selectedId !== '__custom__' && selectedId !== '') {
-                var item = PayrollItemsHelper.getById(currentCompanyId, selectedId);
-                if (item) {
-                    input.payroll_item_id = item.id;
-                    input.item_code = item.item_code;
-                    input.irp5_code = item.irp5_code || null;
-                    input.is_taxable = item.is_taxable !== false;
-                    input.affects_uif = item.affects_uif !== false;
-                }
-            }
             const items = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
             items.push(input);
             localStorage.setItem(getCurrentKey(), JSON.stringify(items)); renderPayroll(); closeModal('addCurrentModal');
-            AuditTrail.logCreate(currentCompanyId, 'current_input', 'Added current input "' + desc + '" (' + input.type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + currentPeriod);
+            AuditTrail.logCreate(currentCompanyId, 'current_input', 'Added current input "' + desc + '" (' + type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + currentPeriod);
         }
         function deleteCurrentInput(id) {
             if (!confirm('Delete this current input?')) return;
