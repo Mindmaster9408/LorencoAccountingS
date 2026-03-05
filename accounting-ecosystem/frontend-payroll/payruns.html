@@ -353,6 +353,7 @@
                 <a href="company-dashboard.html" class="sidebar-link">📊 Dashboard</a>
                 <a href="employee-management.html" class="sidebar-link">👥 Employees</a>
                 <a href="payruns.html" class="sidebar-link active">💵 Pay Runs</a>
+                <a href="payruns.html" class="sidebar-link active">📄 Payslips</a>
                 <a href="payroll-items.html" class="sidebar-link">📋 Payroll Items</a>
                 <a href="attendance.html" class="sidebar-link">&#x23F0; Attendance</a>
                 <a href="reports.html" class="sidebar-link">📊 Reports</a>
@@ -2206,7 +2207,7 @@
             document.getElementById('addCompanyModal').style.display = 'none';
         }
 
-        function submitAddCompany() {
+        async function submitAddCompany() {
             var name = document.getElementById('newCompanyName').value.trim();
             var email = document.getElementById('newCompanyEmail').value.trim();
             var errorDiv = document.getElementById('addCompanyError');
@@ -2217,20 +2218,21 @@
                 return;
             }
 
-            var session = AUTH.getSession();
-            var result = AUTH.createCompany({ name: name, email: email });
+            var submitBtn = document.querySelector('#addCompanyModal button[onclick="submitAddCompany()"]');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Creating...'; }
+
+            var result = await AUTH.createCompany({ name: name, email: email });
             if (!result.success) {
-                errorDiv.textContent = 'Failed to create company';
+                errorDiv.textContent = result.message || 'Failed to create company';
                 errorDiv.style.display = 'block';
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Company'; }
                 return;
             }
 
-            AUTH.addCompanyToUser(session.user_id, result.company.id);
-            AUTH.refreshSessionCompanyIds(result.company.id);
-
-            // Switch to the new company
-            session = AUTH.getSession();
-            session.company_id = result.company.id;
+            // Refresh the companies list from server then switch to new company
+            await AUTH.getCompanies();
+            var session = AUTH.getSession();
+            session.company_id = result.company.id || result.company.company_id;
             localStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();

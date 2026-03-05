@@ -1345,3 +1345,135 @@ button[style*="background: #999"] {
     border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* ── Additional overrides: purple #667eea accents → green accent ─────────────── */
+/* Company badge in payruns sidebar */
+.company-badge {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+    color: white !important;
+}
+
+/* Employee tab: number, action links, expand icon */
+.emp-number {
+    color: var(--accent-light) !important;
+}
+.action-link {
+    color: var(--accent-light) !important;
+}
+.expand-icon {
+    color: var(--accent-light) !important;
+}
+.show-more-link {
+    color: var(--accent-light) !important;
+}
+.frequency-badge {
+    color: var(--accent-light) !important;
+    background: var(--accent-subtle) !important;
+}
+
+/* Card headings with purple border-bottom */
+.card h3,
+.card h4 {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
+/* Salary item hover */
+.salary-item:hover {
+    background: var(--surface-hover) !important;
+    color: var(--text) !important;
+}
+.salary-item.editable {
+    border-left-color: var(--accent) !important;
+}
+
+/* Collapsible hover */
+.collapsible:hover {
+    background: var(--surface-hover) !important;
+    color: var(--text) !important;
+}
+
+/* Company Selection: select-btn */
+.select-btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+    color: white !important;
+}
+
+/* Payruns: finalize/unfinalize buttons */
+.btn-finalize {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+    color: white !important;
+    border: none !important;
+    padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;
+}
+.btn-finalize:hover {
+    box-shadow: 0 4px 15px var(--accent-glow) !important;
+}
+.btn-unfinalize {
+    background: var(--surface) !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border-strong) !important;
+    padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;
+}
+.btn-unfinalize:hover {
+    background: var(--surface-hover) !important;
+}
+
+/* Summary section h4 headings */
+.summary-section h4 {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--border) !important;
+}
+
+/* Locked overlay for payslip */
+.locked-overlay::after {
+    background: rgba(15,12,41,0.55) !important;
+}
+
+/* Top tab active underline → green */
+.top-tab.active {
+    color: var(--accent-light) !important;
+}
+.top-tab.active::after {
+    background: var(--accent) !important;
+}
+.top-tab:hover {
+    color: var(--accent-light) !important;
+}
+
+/* Employee card hover border */
+.employee-card:hover {
+    border-color: var(--accent) !important;
+    box-shadow: 0 8px 25px rgba(16,185,129,0.15) !important;
+}
+
+/* Strong colored text — purple to green */
+strong[style*="color: #667eea"],
+strong[style*="color:#667eea"],
+span[style*="color: #667eea"],
+span[style*="color:#667eea"],
+b[style*="color: #667eea"],
+b[style*="color:#667eea"] {
+    color: var(--accent-light) !important;
+}
+
+/* Preview table header in payruns */
+.preview-table thead th,
+.preview-table .total-row td {
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+}
+
+/* Search bar focus ring → green */
+.search-bar:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+
+/* Page-header company name for pages without dedicated ID */
+.company-name-badge {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+    border-color: var(--accent) !important;
+}
+

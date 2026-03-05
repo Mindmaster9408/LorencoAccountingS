@@ -295,6 +295,29 @@ const AUTH = (function() {
                 return false;
             }
             return true;
+        },
+
+        // ─── isLoggedIn — alias for isAuthenticated (used by payruns.html etc.) ──
+        isLoggedIn: function() {
+            return this.isAuthenticated();
+        },
+
+        // ─── getCompanyById — look up a company from the cached list ────────────
+        getCompanyById: function(companyId) {
+            try {
+                const companies = JSON.parse(localStorage.getItem('availableCompanies')) || [];
+                const c = companies.find(function(co) {
+                    return String(co.id || co.company_id) === String(companyId);
+                });
+                if (!c) return null;
+                // Normalise the .name field regardless of what the backend called it
+                if (!c.name) {
+                    c.name = c.company_name || c.trading_name || c.companyName || 'Unknown Company';
+                }
+                return c;
+            } catch(e) {
+                return null;
+            }
         }
     };
 })();
