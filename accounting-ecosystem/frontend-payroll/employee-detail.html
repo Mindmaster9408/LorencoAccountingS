@@ -240,6 +240,7 @@
                 </div>
             </div>
             <div class="sidebar-actions">
+                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='../frontend-ecosystem/dashboard.html'">🏠 Return to Ecosystem</button>
                 <button class="btn-sidebar btn-switch" onclick="window.location.href='company-selection.html'">← Return to Dashboard</button>
                 <button class="btn-sidebar btn-logout" onclick="handleLogout()">🚪 Logout</button>
             </div>
@@ -496,7 +497,7 @@
             <div class="modal-header"><h3>Add Regular Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addRegularModal')">Close</button></div>
             <div class="form-group"><label>Payroll Item</label><select id="regularItemSelect" onchange="onRegularItemSelect()"></select></div>
             <div id="regularCustomFields">
-                <div class="form-group"><label>Type</label><select id="regularInputType"><option value="allowance">Allowance</option><option value="deduction">Deduction</option></select></div>
+                <div class="form-group"><label>Type</label><select id="regularInputType"><option value="allowance">Allowance</option><option value="income">Income</option><option value="benefit">Benefit</option><option value="deduction">Deduction</option><option value="other">Other</option></select></div>
                 <div class="form-group"><label>Description</label><input type="text" id="regularInputDesc" placeholder="e.g. Housing Allowance"></div>
                 <div class="form-group"><label>Amount (per month)</label><input type="number" id="regularInputAmount" step="0.01" min="0"></div>
             </div>
@@ -513,7 +514,7 @@
             <div class="modal-header"><h3>Add Current Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addCurrentModal')">Close</button></div>
             <div class="form-group"><label>Payroll Item</label><select id="currentItemSelect" onchange="onCurrentItemSelect()"></select></div>
             <div id="currentCustomFields">
-                <div class="form-group"><label>Type</label><select id="currentInputType"><option value="bonus">Bonus</option><option value="commission">Commission</option><option value="allowance">Allowance</option><option value="deduction">Deduction</option><option value="other">Other</option></select></div>
+                <div class="form-group"><label>Type</label><select id="currentInputType"><option value="bonus">Bonus / Annual Payment</option><option value="commission">Commission</option><option value="income">Income</option><option value="allowance">Allowance</option><option value="benefit">Benefit</option><option value="deduction">Deduction</option><option value="other">Other</option></select></div>
                 <div class="form-group"><label>Description</label><input type="text" id="currentInputDesc"></div>
                 <div class="form-group"><label>Amount</label><input type="number" id="currentInputAmount" step="0.01" min="0"></div>
             </div>
@@ -1012,13 +1013,86 @@
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + payrollData.basic_salary.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
 
+        // ========== PREDEFINED PAYROLL ITEMS ==========
+        var REGULAR_ITEMS = [
+            { category: 'Income',    type: 'income',    name: '13th Cheque' },
+            { category: 'Income',    type: 'income',    name: 'Commission' },
+            { category: 'Income',    type: 'income',    name: 'Loss of Income Policy Payout' },
+            { category: 'Allowance', type: 'allowance', name: 'Travel Allowance' },
+            { category: 'Benefit',   type: 'benefit',   name: 'Accommodation Benefit' },
+            { category: 'Benefit',   type: 'benefit',   name: 'Bursaries and Scholarships (Regular)' },
+            { category: 'Benefit',   type: 'benefit',   name: 'Company Car' },
+            { category: 'Benefit',   type: 'benefit',   name: 'Company Car Under Operating Lease' },
+            { category: 'Deduction', type: 'deduction', name: 'Correction of Fringe Benefit' },
+            { category: 'Deduction', type: 'deduction', name: 'Garnishee' },
+            { category: 'Deduction', type: 'deduction', name: 'Income Protection' },
+            { category: 'Deduction', type: 'deduction', name: 'Maintenance Order' },
+            { category: 'Deduction', type: 'deduction', name: 'Medical Aid' },
+            { category: 'Deduction', type: 'deduction', name: 'Pension Fund' },
+            { category: 'Deduction', type: 'deduction', name: 'Provident Fund' },
+            { category: 'Deduction', type: 'deduction', name: 'Provision for Tax on Annual Bonus' },
+            { category: 'Deduction', type: 'deduction', name: 'Retirement Annuity Fund' },
+            { category: 'Deduction', type: 'deduction', name: 'Union Membership Fee' },
+            { category: 'Deduction', type: 'deduction', name: 'Voluntary Tax Over-Deduction' },
+            { category: 'Other',     type: 'other',     name: 'Employer Loan' },
+            { category: 'Other',     type: 'other',     name: 'Foreign Service Income' },
+            { category: 'Other',     type: 'other',     name: 'Savings' },
+            { category: 'Other',     type: 'other',     name: 'Tax Directive' }
+        ];
+        var ONCE_OFF_ITEMS = [
+            { category: 'Income',    type: 'bonus',      name: 'Annual Bonus' },
+            { category: 'Income',    type: 'income',     name: 'Annual Payment' },
+            { category: 'Income',    type: 'income',     name: 'Arbitration Award' },
+            { category: 'Income',    type: 'income',     name: 'Dividends Subject to Income Tax' },
+            { category: 'Income',    type: 'income',     name: 'Extra Pay' },
+            { category: 'Income',    type: 'income',     name: 'Leave Paid Out' },
+            { category: 'Income',    type: 'commission', name: 'Once-Off Commission' },
+            { category: 'Income',    type: 'income',     name: 'Restraint of Trade' },
+            { category: 'Allowance', type: 'allowance',  name: 'Broad Based Employee Share Plan' },
+            { category: 'Allowance', type: 'allowance',  name: 'Computer Allowance' },
+            { category: 'Allowance', type: 'allowance',  name: 'Expense Claim' },
+            { category: 'Allowance', type: 'allowance',  name: 'Gain on Vesting of Equity Instruments' },
+            { category: 'Allowance', type: 'allowance',  name: 'Phone Allowance' },
+            { category: 'Allowance', type: 'allowance',  name: 'Relocation Allowance' },
+            { category: 'Allowance', type: 'allowance',  name: 'Subsistence Allowance International' },
+            { category: 'Allowance', type: 'allowance',  name: 'Subsistence Allowance Local' },
+            { category: 'Allowance', type: 'allowance',  name: 'Tool Allowance' },
+            { category: 'Allowance', type: 'allowance',  name: 'Uniform Allowance' },
+            { category: 'Benefit',   type: 'benefit',    name: 'Bursaries and Scholarships' },
+            { category: 'Benefit',   type: 'benefit',    name: "Employee's Debt Benefit" },
+            { category: 'Benefit',   type: 'benefit',    name: 'Medical Costs (Other than medical scheme)' },
+            { category: 'Deduction', type: 'deduction',  name: 'Donations' },
+            { category: 'Deduction', type: 'deduction',  name: 'Repayment Of Advance' },
+            { category: 'Deduction', type: 'deduction',  name: 'Staff Purchases' },
+            { category: 'Other',     type: 'other',      name: 'COVID-19 Disaster Relief' },
+            { category: 'Other',     type: 'other',      name: 'Long Service Award' },
+            { category: 'Other',     type: 'other',      name: 'TERS Payout' },
+            { category: 'Other',     type: 'other',      name: 'Termination Lump Sums' }
+        ];
+
+        function buildItemSelect(selectEl, items) {
+            var categories = {};
+            items.forEach(function(item) {
+                if (!categories[item.category]) categories[item.category] = [];
+                categories[item.category].push(item);
+            });
+            var html = '<option value="__custom__">-- Custom Item (type below) --</option>';
+            Object.keys(categories).forEach(function(cat) {
+                html += '<optgroup label="' + cat + '">';
+                categories[cat].forEach(function(item) {
+                    html += '<option value="' + item.type + '|' + item.name + '">' + item.name + '</option>';
+                });
+                html += '</optgroup>';
+            });
+            selectEl.innerHTML = html;
+        }
+
         // ========== REGULAR INPUTS ==========
         function openAddRegularInput() {
             document.getElementById('regularInputDesc').value = '';
             document.getElementById('regularInputAmount').value = '';
-            // Populate payroll item selector
             var select = document.getElementById('regularItemSelect');
-            select.innerHTML = PayrollItemsHelper.renderSelectOptions(currentCompanyId, ['allowance', 'deduction', 'income']);
+            buildItemSelect(select, REGULAR_ITEMS);
             select.value = '__custom__';
             document.getElementById('regularCustomFields').style.display = '';
             document.getElementById('regularItemInfo').style.display = 'none';
@@ -1029,25 +1103,20 @@
             var customFields = document.getElementById('regularCustomFields');
             var infoDiv = document.getElementById('regularItemInfo');
             if (!val || val === '__custom__') {
+                document.getElementById('regularInputDesc').value = '';
                 customFields.style.display = '';
                 infoDiv.style.display = 'none';
                 return;
             }
-            var item = PayrollItemsHelper.getById(currentCompanyId, val);
-            if (!item) return;
-            // Auto-fill form fields from master item
-            document.getElementById('regularInputType').value = PayrollItemsHelper.mapItemTypeToInputType(item.item_type);
-            document.getElementById('regularInputDesc').value = item.item_name;
-            var amt = PayrollItemsHelper.calculateAmount(item, payrollData.basic_salary);
-            document.getElementById('regularInputAmount').value = amt > 0 ? amt.toFixed(2) : (item.default_amount || '');
+            var parts = val.split('|');
+            var type = parts[0];
+            var name = parts.slice(1).join('|');
+            var typeSelect = document.getElementById('regularInputType');
+            if (typeSelect.querySelector('option[value="' + type + '"]')) typeSelect.value = type;
+            document.getElementById('regularInputDesc').value = name;
+            document.getElementById('regularInputAmount').focus();
             customFields.style.display = '';
-            // Show info badges
-            var badges = (item.irp5_code ? '<strong>IRP5: ' + item.irp5_code + '</strong> | ' : '') +
-                (item.is_taxable ? 'Taxable' : 'Non-Taxable') + ' | ' +
-                (item.affects_uif ? 'Affects UIF' : 'No UIF') + ' | ' +
-                'Code: ' + item.item_code;
-            document.getElementById('regularItemBadges').innerHTML = badges;
-            infoDiv.style.display = '';
+            infoDiv.style.display = 'none';
         }
         function saveRegularInput() {
             const desc = document.getElementById('regularInputDesc').value.trim();
@@ -1087,9 +1156,8 @@
         function openAddCurrentInput() {
             document.getElementById('currentInputDesc').value = '';
             document.getElementById('currentInputAmount').value = '';
-            // Populate payroll item selector
             var select = document.getElementById('currentItemSelect');
-            select.innerHTML = PayrollItemsHelper.renderSelectOptions(currentCompanyId, ['income', 'allowance', 'deduction']);
+            buildItemSelect(select, ONCE_OFF_ITEMS);
             select.value = '__custom__';
             document.getElementById('currentCustomFields').style.display = '';
             document.getElementById('currentItemInfo').style.display = 'none';
@@ -1100,26 +1168,20 @@
             var customFields = document.getElementById('currentCustomFields');
             var infoDiv = document.getElementById('currentItemInfo');
             if (!val || val === '__custom__') {
+                document.getElementById('currentInputDesc').value = '';
                 customFields.style.display = '';
                 infoDiv.style.display = 'none';
                 return;
             }
-            var item = PayrollItemsHelper.getById(currentCompanyId, val);
-            if (!item) return;
-            // Auto-fill form fields
-            var mappedType = PayrollItemsHelper.mapItemTypeToInputType(item.item_type);
-            document.getElementById('currentInputType').value = mappedType;
-            document.getElementById('currentInputDesc').value = item.item_name;
-            var amt = PayrollItemsHelper.calculateAmount(item, payrollData.basic_salary);
-            document.getElementById('currentInputAmount').value = amt > 0 ? amt.toFixed(2) : (item.default_amount || '');
+            var parts = val.split('|');
+            var type = parts[0];
+            var name = parts.slice(1).join('|');
+            var typeSelect = document.getElementById('currentInputType');
+            if (typeSelect.querySelector('option[value="' + type + '"]')) typeSelect.value = type;
+            document.getElementById('currentInputDesc').value = name;
+            document.getElementById('currentInputAmount').focus();
             customFields.style.display = '';
-            // Show info badges
-            var badges = (item.irp5_code ? '<strong>IRP5: ' + item.irp5_code + '</strong> | ' : '') +
-                (item.is_taxable ? 'Taxable' : 'Non-Taxable') + ' | ' +
-                (item.affects_uif ? 'Affects UIF' : 'No UIF') + ' | ' +
-                'Code: ' + item.item_code;
-            document.getElementById('currentItemBadges').innerHTML = badges;
-            infoDiv.style.display = '';
+            infoDiv.style.display = 'none';
         }
         function saveCurrentInput() {
             const desc = document.getElementById('currentInputDesc').value.trim();
