@@ -1102,6 +1102,10 @@
             { category: 'Other',     type: 'other',      name: 'Termination Lump Sums' }
         ];
 
+        function getHiddenPayrollItems() {
+            try { return JSON.parse(localStorage.getItem('hidden_payroll_items_' + currentCompanyId) || '[]'); } catch(e) { return []; }
+        }
+
         function buildItemList(containerEl, items, selectFn, customFn) {
             var html = '';
             var lastCat = '';
@@ -1123,7 +1127,9 @@
         // ========== REGULAR INPUTS ==========
         function openAddRegularInput() {
             var listEl = document.getElementById('regularItemsList');
-            buildItemList(listEl, REGULAR_ITEMS, 'selectRegularItem', 'selectRegularCustom');
+            var hidden = getHiddenPayrollItems();
+            var visible = REGULAR_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
+            buildItemList(listEl, visible, 'selectRegularItem', 'selectRegularCustom');
             document.getElementById('regularAmountPane').style.display = 'none';
             document.getElementById('regularSaveBtn').style.display = 'none';
             document.getElementById('regularInputAmount').value = '';
@@ -1183,7 +1189,9 @@
         // ========== CURRENT INPUTS ==========
         function openAddCurrentInput() {
             var listEl = document.getElementById('currentItemsList');
-            buildItemList(listEl, ONCE_OFF_ITEMS, 'selectCurrentItem', 'selectCurrentCustom');
+            var hidden = getHiddenPayrollItems();
+            var visible = ONCE_OFF_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
+            buildItemList(listEl, visible, 'selectCurrentItem', 'selectCurrentCustom');
             document.getElementById('currentAmountPane').style.display = 'none';
             document.getElementById('currentSaveBtn').style.display = 'none';
             document.getElementById('currentInputAmount').value = '';

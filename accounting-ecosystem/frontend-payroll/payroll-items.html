@@ -522,6 +522,21 @@
 
             <div id="modalSuccess" class="success-msg"></div>
 
+            <!-- STANDARD ITEMS SECTION -->
+            <div class="category-section">
+                <div class="category-header">
+                    <div class="category-title">
+                        <div class="category-icon">⭐</div>
+                        <div>
+                            <h2>Standard Payroll Items</h2>
+                            <p>Pre-built SA payroll items. Click Remove to hide from Add menus. Restore to bring back.</p>
+                        </div>
+                    </div>
+                    <button id="toggleHiddenBtn" class="btn" style="background:#6c757d; color:white; white-space:nowrap;" onclick="toggleHiddenStandardItems()">Show Removed</button>
+                </div>
+                <div id="standardItemsList" style="padding:10px 0;"></div>
+            </div>
+
             <!-- INCOME SECTION -->
             <div class="category-section">
                 <div class="category-header">
@@ -738,6 +753,121 @@
             }
         }
 
+        // ========== STANDARD PREDEFINED ITEMS ==========
+        var STANDARD_REGULAR_ITEMS = [
+            { type: 'income',    name: '13th Cheque' },
+            { type: 'income',    name: 'Commission' },
+            { type: 'income',    name: 'Loss of Income Policy Payout' },
+            { type: 'allowance', name: 'Travel Allowance' },
+            { type: 'benefit',   name: 'Accommodation Benefit' },
+            { type: 'benefit',   name: 'Bursaries and Scholarships (Regular)' },
+            { type: 'benefit',   name: 'Company Car' },
+            { type: 'benefit',   name: 'Company Car Under Operating Lease' },
+            { type: 'deduction', name: 'Correction of Fringe Benefit' },
+            { type: 'deduction', name: 'Garnishee' },
+            { type: 'deduction', name: 'Income Protection' },
+            { type: 'deduction', name: 'Maintenance Order' },
+            { type: 'deduction', name: 'Medical Aid' },
+            { type: 'deduction', name: 'Pension Fund' },
+            { type: 'deduction', name: 'Provident Fund' },
+            { type: 'deduction', name: 'Provision for Tax on Annual Bonus' },
+            { type: 'deduction', name: 'Retirement Annuity Fund' },
+            { type: 'deduction', name: 'Union Membership Fee' },
+            { type: 'deduction', name: 'Voluntary Tax Over-Deduction' },
+            { type: 'other',     name: 'Employer Loan' },
+            { type: 'other',     name: 'Foreign Service Income' },
+            { type: 'other',     name: 'Savings' },
+            { type: 'other',     name: 'Tax Directive' }
+        ];
+        var STANDARD_ONCE_OFF_ITEMS = [
+            { type: 'bonus',      name: 'Annual Bonus' },
+            { type: 'income',     name: 'Annual Payment' },
+            { type: 'income',     name: 'Arbitration Award' },
+            { type: 'income',     name: 'Dividends Subject to Income Tax' },
+            { type: 'income',     name: 'Extra Pay' },
+            { type: 'income',     name: 'Leave Paid Out' },
+            { type: 'commission', name: 'Once-Off Commission' },
+            { type: 'income',     name: 'Restraint of Trade' },
+            { type: 'allowance',  name: 'Broad Based Employee Share Plan' },
+            { type: 'allowance',  name: 'Computer Allowance' },
+            { type: 'allowance',  name: 'Expense Claim' },
+            { type: 'allowance',  name: 'Gain on Vesting of Equity Instruments' },
+            { type: 'allowance',  name: 'Phone Allowance' },
+            { type: 'allowance',  name: 'Relocation Allowance' },
+            { type: 'allowance',  name: 'Subsistence Allowance International' },
+            { type: 'allowance',  name: 'Subsistence Allowance Local' },
+            { type: 'allowance',  name: 'Tool Allowance' },
+            { type: 'allowance',  name: 'Uniform Allowance' },
+            { type: 'benefit',    name: 'Bursaries and Scholarships' },
+            { type: 'benefit',    name: "Employee's Debt Benefit" },
+            { type: 'benefit',    name: 'Medical Costs (Other than medical scheme)' },
+            { type: 'deduction',  name: 'Donations' },
+            { type: 'deduction',  name: 'Repayment Of Advance' },
+            { type: 'deduction',  name: 'Staff Purchases' },
+            { type: 'other',      name: 'COVID-19 Disaster Relief' },
+            { type: 'other',      name: 'Long Service Award' },
+            { type: 'other',      name: 'TERS Payout' },
+            { type: 'other',      name: 'Termination Lump Sums' }
+        ];
+
+        function getHiddenItemsKey() { return 'hidden_payroll_items_' + currentCompanyId; }
+        function getHiddenItems() {
+            try { return JSON.parse(localStorage.getItem(getHiddenItemsKey()) || '[]'); } catch(e) { return []; }
+        }
+        function saveHiddenItems(list) { localStorage.setItem(getHiddenItemsKey(), JSON.stringify(list)); }
+
+        var showingHidden = false;
+        function toggleHiddenStandardItems() {
+            showingHidden = !showingHidden;
+            var btn = document.getElementById('toggleHiddenBtn');
+            if (btn) btn.textContent = showingHidden ? 'Show Active' : 'Show Removed';
+            renderStandardItems();
+        }
+        function hideStandardItem(name) {
+            var hidden = getHiddenItems();
+            if (!hidden.includes(name)) { hidden.push(name); saveHiddenItems(hidden); }
+            renderStandardItems();
+        }
+        function restoreStandardItem(name) {
+            saveHiddenItems(getHiddenItems().filter(function(n) { return n !== name; }));
+            renderStandardItems();
+        }
+        function renderStandardItems() {
+            var container = document.getElementById('standardItemsList');
+            if (!container) return;
+            var hidden = getHiddenItems();
+            function renderList(items, label, color) {
+                var toShow = items.filter(function(i) { return showingHidden ? hidden.includes(i.name) : !hidden.includes(i.name); });
+                var html = '<div style="margin-bottom:18px;">';
+                html += '<div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:' + color + '; margin-bottom:8px;">' + label + '</div>';
+                if (toShow.length === 0) {
+                    html += '<div style="color:#bbb; font-size:0.82rem; padding:6px 0;">' + (showingHidden ? 'No removed items' : 'All items removed — click Show Removed to restore') + '</div>';
+                } else {
+                    toShow.forEach(function(item) {
+                        var col = item.type === 'deduction' ? '#dc3545' : '#28a745';
+                        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border:1px solid #eee; border-radius:6px; margin-bottom:5px; background:#fff;">'
+                            + '<div style="display:flex; align-items:center; gap:8px;">'
+                            + '<span style="font-size:0.87rem; color:#333;">' + item.name + '</span>'
+                            + '<span style="font-size:10px; padding:1px 7px; border-radius:10px; background:' + col + '18; color:' + col + '; border:1px solid ' + col + '44; font-weight:600;">' + item.type + '</span>'
+                            + '</div>';
+                        if (showingHidden) {
+                            html += '<button onclick="restoreStandardItem(\'' + item.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\')" style="padding:3px 10px; border:none; border-radius:4px; background:#28a745; color:white; font-size:11px; cursor:pointer; white-space:nowrap;">↩ Restore</button>';
+                        } else {
+                            html += '<button onclick="hideStandardItem(\'' + item.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\')" style="padding:3px 10px; border:none; border-radius:4px; background:#dc3545; color:white; font-size:11px; cursor:pointer; white-space:nowrap;">× Remove</button>';
+                        }
+                        html += '</div>';
+                    });
+                }
+                html += '</div>';
+                return html;
+            }
+            var html = '<div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; padding:0 5px;">';
+            html += renderList(STANDARD_REGULAR_ITEMS, '📅 Regular — appears every month', '#667eea');
+            html += renderList(STANDARD_ONCE_OFF_ITEMS, '📊 Once-Off — this month only', '#28a745');
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
         // ========== PAYROLL ITEMS CRUD (localStorage) ==========
 
         function getStorageKey() {
@@ -756,6 +886,7 @@
                 currentItems = [];
             }
             displayItemsByCategory();
+            renderStandardItems();
         }
 
         function saveItemsToStorage() {
