@@ -390,6 +390,13 @@
 
             <!-- PAYSLIPS TAB -->
             <div id="payslips-view" class="tab-view active">
+                <div style="background:linear-gradient(135deg,#667eea,#764ba2); color:white; border-radius:10px; padding:14px 18px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
+                    <span style="font-size:1.6rem;">👇</span>
+                    <div>
+                        <div style="font-weight:700; font-size:0.95rem;">Click on an employee to open their payslip</div>
+                        <div style="font-size:0.82rem; opacity:0.9; margin-top:2px;">Add salary, allowances, deductions &amp; once-off items — then calculate and finalise the payslip.</div>
+                    </div>
+                </div>
                 <input type="text" class="search-bar" placeholder="Search employees by name, number, or department..." oninput="filterEmployees(this.value)">
                 <div class="employee-grid" id="employee-grid"></div>
             </div>
