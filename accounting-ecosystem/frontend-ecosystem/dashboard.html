@@ -85,7 +85,11 @@
         .user-name {
             font-size: 0.85rem;
             font-weight: 600;
+            cursor: pointer;
+            transition: color 0.2s;
         }
+        .user-name:hover { color: #a5b4fc; }
+        .user-badge { cursor: pointer; }
         .btn-logout {
             padding: 8px 16px;
             background: rgba(239, 68, 68, 0.15);
@@ -780,7 +784,7 @@
                title="Click to manage practice settings"></span>
         </div>
         <div class="topbar-right">
-            <div class="user-badge" id="userBadge">
+            <div class="user-badge" id="userBadge" onclick="openProfileModal()" title="Edit your profile">
                 <div class="user-avatar" id="userAvatar"></div>
                 <span class="user-name" id="userName"></span>
             </div>
@@ -1053,6 +1057,49 @@
         <div class="launch-text" id="launchText">Launching app...</div>
     </div>
 
+    <!-- ═══════ PROFILE MODAL ═══════ -->
+    <div class="modal-overlay" id="profileModal">
+        <div class="modal" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2>&#128100; My Profile</h2>
+                <button class="modal-close" onclick="closeProfileModal()">&#10005;</button>
+            </div>
+            <div class="modal-body">
+                <form id="profileForm" onsubmit="return saveProfile(event)">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Full Name *</label>
+                            <input type="text" id="profFullName" required placeholder="Your full name">
+                        </div>
+                        <div class="form-field">
+                            <label>Email *</label>
+                            <input type="email" id="profEmail" required placeholder="your@email.co.za">
+                        </div>
+                    </div>
+
+                    <div style="border-top:1px solid var(--border);margin:20px 0;padding-top:20px;">
+                        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:16px;">Change Password <span style="font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></div>
+                        <div class="form-row">
+                            <div class="form-field">
+                                <label>Current Password</label>
+                                <input type="password" id="profCurrentPwd" placeholder="Enter current password">
+                            </div>
+                            <div class="form-field">
+                                <label>New Password</label>
+                                <input type="password" id="profNewPwd" placeholder="Min 6 characters" minlength="6">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-form cancel" onclick="closeProfileModal()">Cancel</button>
+                        <button type="submit" class="btn-form save" id="profSaveBtn">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══════ PRACTICE SETTINGS MODAL ═══════ -->
     <div class="modal-overlay" id="practiceModal">
         <div class="modal" style="max-width: 640px;">
@@ -1066,6 +1113,7 @@
                 <div style="display:flex;gap:4px;margin-bottom:24px;background:rgba(255,255,255,0.04);border-radius:12px;padding:4px;">
                     <button id="tabBtnDetails" onclick="switchPracticeTab('details'); loadPracticeDetails();" style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);">&#9998; Details</button>
                     <button id="tabBtnUsers"   onclick="switchPracticeTab('users')"   style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;">&#128100; Team / Users</button>
+                    <button id="tabBtnDemos"   onclick="switchPracticeTab('demos')"   style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);">&#127918; App Demos</button>
                 </div>
 
                 <!-- ── Details Tab ── -->
@@ -1159,6 +1207,15 @@
                             </div>
                         </form>
                     </div>
+                </div>
+
+                <!-- ── Demos Tab ── -->
+                <div id="tabDemos" style="display:none;">
+                    <div style="background:linear-gradient(135deg,rgba(102,126,234,0.15),rgba(118,75,162,0.10));border:1px solid rgba(102,126,234,0.3);border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:12px;">
+                        <span style="font-size:1.4rem;">&#9432;</span>
+                        <div style="font-size:0.85rem;color:rgba(255,255,255,0.8);line-height:1.5;">Each app demo is available for <strong style="color:#a78bfa;">14 days</strong> from activation. Activate additional apps below to explore the full ecosystem.</div>
+                    </div>
+                    <div id="demosGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;"></div>
                 </div>
 
             </div>
@@ -2119,6 +2176,80 @@
         }
 
         // ═══════════════════════════════════════════════════════════════════
+        // PROFILE MODAL
+        // ═══════════════════════════════════════════════════════════════════
+
+        function openProfileModal() {
+            document.getElementById('profFullName').value = currentUser.fullName || currentUser.full_name || '';
+            document.getElementById('profEmail').value = currentUser.email || '';
+            document.getElementById('profCurrentPwd').value = '';
+            document.getElementById('profNewPwd').value = '';
+            document.getElementById('profileModal').classList.add('show');
+        }
+
+        function closeProfileModal() {
+            document.getElementById('profileModal').classList.remove('show');
+        }
+
+        async function saveProfile(e) {
+            e.preventDefault();
+            const btn = document.getElementById('profSaveBtn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            const payload = {
+                full_name: document.getElementById('profFullName').value.trim(),
+                email: document.getElementById('profEmail').value.trim()
+            };
+
+            const curPwd = document.getElementById('profCurrentPwd').value;
+            const newPwd = document.getElementById('profNewPwd').value;
+            if (newPwd) {
+                if (!curPwd) {
+                    showToast('Please enter your current password to change it', true);
+                    btn.disabled = false;
+                    btn.textContent = 'Save Changes';
+                    return false;
+                }
+                if (newPwd.length < 6) {
+                    showToast('New password must be at least 6 characters', true);
+                    btn.disabled = false;
+                    btn.textContent = 'Save Changes';
+                    return false;
+                }
+                payload.current_password = curPwd;
+                payload.new_password = newPwd;
+            }
+
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/users/me`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to update profile');
+
+                // Update local state
+                currentUser.fullName = data.user.fullName;
+                currentUser.full_name = data.user.fullName;
+                currentUser.email = data.user.email;
+                localStorage.setItem('eco_user', JSON.stringify(currentUser));
+                renderUser();
+
+                showToast('\u2705 Profile updated successfully');
+                closeProfileModal();
+            } catch (err) {
+                showToast('\u274c ' + err.message, true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Changes';
+            }
+            return false;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
         // PRACTICE SETTINGS MODAL
         // ═══════════════════════════════════════════════════════════════════
 
@@ -2136,14 +2267,74 @@
         function switchPracticeTab(tab) {
             document.getElementById('tabDetails').style.display = tab === 'details' ? '' : 'none';
             document.getElementById('tabUsers').style.display   = tab === 'users'   ? '' : 'none';
+            document.getElementById('tabDemos').style.display   = tab === 'demos'   ? '' : 'none';
 
             const detailBtn = document.getElementById('tabBtnDetails');
             const usersBtn  = document.getElementById('tabBtnUsers');
+            const demosBtn  = document.getElementById('tabBtnDemos');
             const baseStyle = 'flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;';
             detailBtn.style.cssText = baseStyle + (tab === 'details' ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
             usersBtn.style.cssText  = baseStyle + (tab === 'users'   ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
+            demosBtn.style.cssText  = baseStyle + (tab === 'demos'   ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
 
             if (tab === 'users') loadPracticeUsers();
+            if (tab === 'demos') renderDemosTab();
+        }
+
+        // ── Demo Management ──
+        const DEMO_APPS = [
+            { key: 'pos',        name: 'Checkout Charlie', subtitle: 'Point of Sale',      icon: '&#128722;', color: '#667eea' },
+            { key: 'payroll',    name: 'Lorenco Paytime',  subtitle: 'Payroll Management',  icon: '&#128176;', color: '#f093fb' },
+            { key: 'accounting', name: 'Lorenco Accounting', subtitle: 'General Ledger',    icon: '&#128200;', color: '#4facfe' },
+            { key: 'sean',       name: 'SEAN AI',          subtitle: 'Smart Assistant',     icon: '&#129302;', color: '#43e97b' }
+        ];
+
+        function getDemos() {
+            try { return JSON.parse(localStorage.getItem('eco_demos') || '{}'); } catch { return {}; }
+        }
+
+        function renderDemosTab() {
+            const demos = getDemos();
+            const grid = document.getElementById('demosGrid');
+            const now = new Date();
+            grid.innerHTML = DEMO_APPS.map(app => {
+                const demo = demos[app.key];
+                let statusHtml, actionHtml;
+                if (demo) {
+                    const expires = new Date(demo.expiresAt);
+                    const daysLeft = Math.max(0, Math.ceil((expires - now) / 86400000));
+                    if (daysLeft > 0) {
+                        statusHtml = `<div style="display:flex;align-items:center;gap:6px;margin-top:10px;"><span style="width:8px;height:8px;border-radius:50%;background:#43e97b;display:inline-block;"></span><span style="font-size:0.78rem;color:#43e97b;font-weight:600;">${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining</span></div>`;
+                        actionHtml = `<div style="margin-top:12px;padding:8px;border-radius:8px;background:rgba(67,233,123,0.1);text-align:center;font-size:0.75rem;color:rgba(255,255,255,0.5);font-weight:600;">ACTIVE</div>`;
+                    } else {
+                        statusHtml = `<div style="display:flex;align-items:center;gap:6px;margin-top:10px;"><span style="width:8px;height:8px;border-radius:50%;background:#f56565;display:inline-block;"></span><span style="font-size:0.78rem;color:#f56565;font-weight:600;">Expired</span></div>`;
+                        actionHtml = `<div style="margin-top:12px;padding:8px;border-radius:8px;background:rgba(245,101,101,0.1);text-align:center;font-size:0.75rem;color:rgba(255,255,255,0.4);font-weight:600;">DEMO ENDED</div>`;
+                    }
+                } else {
+                    statusHtml = `<div style="display:flex;align-items:center;gap:6px;margin-top:10px;"><span style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.25);display:inline-block;"></span><span style="font-size:0.78rem;color:rgba(255,255,255,0.4);font-weight:600;">Not activated</span></div>`;
+                    actionHtml = `<button onclick="activateDemo('${app.key}')" style="margin-top:12px;width:100%;padding:8px;border:none;border-radius:8px;background:linear-gradient(135deg,${app.color},${app.color}cc);color:#fff;font-size:0.8rem;font-weight:700;cursor:pointer;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">Activate 14-Day Demo</button>`;
+                }
+                return `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:20px;display:flex;flex-direction:column;">
+                    <div style="font-size:1.8rem;margin-bottom:8px;">${app.icon}</div>
+                    <div style="font-weight:700;font-size:0.95rem;color:#fff;">${app.name}</div>
+                    <div style="font-size:0.75rem;color:rgba(255,255,255,0.45);margin-top:2px;">${app.subtitle}</div>
+                    ${statusHtml}
+                    <div style="flex:1;"></div>
+                    ${actionHtml}
+                </div>`;
+            }).join('');
+        }
+
+        function activateDemo(appKey) {
+            const demos = getDemos();
+            if (demos[appKey]) return;
+            const now = new Date();
+            demos[appKey] = {
+                activatedAt: now.toISOString(),
+                expiresAt: new Date(now.getTime() + 14 * 86400000).toISOString()
+            };
+            localStorage.setItem('eco_demos', JSON.stringify(demos));
+            renderDemosTab();
         }
 
         // ── Load & save practice details ──

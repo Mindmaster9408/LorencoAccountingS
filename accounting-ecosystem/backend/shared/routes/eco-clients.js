@@ -299,6 +299,35 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/eco-clients/employee-counts
+ * Returns { [client_company_id]: activeCount } for payroll invoicing
+ */
+router.get('/employee-counts', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('employees')
+      .select('company_id, is_active');
+
+    if (error) {
+      console.error('employee-counts error:', error.message);
+      return res.status(500).json({ error: 'Failed to fetch employee counts' });
+    }
+
+    const counts = {};
+    (data || []).forEach(e => {
+      if (e.is_active) {
+        counts[e.company_id] = (counts[e.company_id] || 0) + 1;
+      }
+    });
+
+    res.json({ counts });
+  } catch (err) {
+    console.error('employee-counts error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * GET /api/eco-clients/:id
  * Get a single client
  */

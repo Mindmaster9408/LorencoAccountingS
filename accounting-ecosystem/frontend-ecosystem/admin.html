@@ -277,6 +277,42 @@
         }
         .no-items { font-size: 0.78rem; color: var(--text-muted); font-style: italic; }
 
+        /* ── Per-App Row ── */
+        .app-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px; border-radius: 9px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            margin-bottom: 6px;
+        }
+        .app-row .app-info {
+            display: flex; align-items: center; gap: 8px;
+        }
+        .app-row .app-icon { font-size: 1.1rem; }
+        .app-row .app-name { font-size: 0.78rem; font-weight: 700; color: #fff; }
+        .app-row .app-sub { font-size: 0.65rem; color: var(--text-muted); }
+        .app-row .app-emp-count {
+            font-size: 0.65rem; color: #6ee7b7;
+            background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.2);
+            padding: 2px 8px; border-radius: 6px; margin-left: 8px; font-weight: 600;
+        }
+        .app-toggle {
+            position: relative; width: 38px; height: 20px; cursor: pointer;
+        }
+        .app-toggle input { opacity: 0; width: 0; height: 0; }
+        .app-toggle .slider {
+            position: absolute; inset: 0; border-radius: 20px;
+            background: rgba(255,255,255,0.12); transition: all 0.25s;
+        }
+        .app-toggle .slider::before {
+            content: ''; position: absolute; width: 16px; height: 16px;
+            border-radius: 50%; background: #fff; left: 2px; top: 2px;
+            transition: transform 0.25s;
+        }
+        .app-toggle input:checked + .slider { background: #667eea; }
+        .app-toggle input:checked + .slider::before { transform: translateX(18px); }
+        .app-toggle input:disabled { cursor: not-allowed; }
+
         .card-footer {
             display: flex; justify-content: space-between; align-items: center;
             margin-top: 16px; padding-top: 14px;
@@ -436,6 +472,7 @@
 
         let allClients   = [];
         let companyMap   = {}; // id -> company object
+        let employeeCounts = {}; // company_id -> active employee count
         let statusFilter = 'all';
         let appFilter    = 'all';
 
@@ -470,9 +507,10 @@
             } catch (e) {}
 
             // Load data in parallel
-            const [clientsRes, companiesRes] = await Promise.all([
+            const [clientsRes, companiesRes, empRes] = await Promise.all([
                 fetch(`${API_BASE}/api/eco-clients?status=all`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_BASE}/api/companies`, { headers: { 'Authorization': `Bearer ${token}` } })
+                fetch(`${API_BASE}/api/companies`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API_BASE}/api/eco-clients/employee-counts`, { headers: { 'Authorization': `Bearer ${token}` } }).catch(() => null)
             ]);
 
             // Build company map
@@ -480,6 +518,12 @@
                 const cData = await companiesRes.json();
                 (cData.companies || []).forEach(c => { companyMap[c.id] = c; });
                 populateCompanyFilter();
+            }
+
+            // Load employee counts
+            if (empRes && empRes.ok) {
+                const empData = await empRes.json();
+                employeeCounts = empData.counts || {};
             }
 
             // Load clients
@@ -594,25 +638,42 @@
             grid.innerHTML = clients.map(c => buildCard(c)).join('');
         }
 
+        const ALL_APPS = [
+            { key: 'pos',        label: 'Checkout Charlie',   sub: 'Point of Sale',     icon: '🛒' },
+            { key: 'payroll',    label: 'Lorenco Paytime',    sub: 'Payroll',            icon: '💰' },
+            { key: 'accounting', label: 'Lorenco Accounting', sub: 'General Ledger',     icon: '📊' }
+        ];
+
         function buildCard(c) {
             const isBusiness    = c.client_type === 'business';
             const isActive      = !!c.is_active;
             const managingCo    = companyMap[c.company_id];
-            const clientCo      = companyMap[c.client_company_id];
             const managingName  = managingCo ? (managingCo.trading_name || managingCo.company_name) : 'Unknown';
-            const addons        = clientCo?.modules_enabled || [];
+            const activeApps    = new Set(c.apps || []);
 
-            // Determine add-ons = client company modules minus what's already in apps (i.e. extra modules)
-            const appSet   = new Set(c.apps || []);
-            const extraAddons = addons.filter(m => !appSet.has(m));
+            const empCount = c.client_company_id ? (employeeCounts[c.client_company_id] || 0) : 0;
 
-            const appsHtml = (c.apps || []).length > 0
-                ? (c.apps || []).map(a => `<span class="app-badge ${a}">${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}</span>`).join('')
-                : `<span class="no-items">No apps linked</span>`;
-
-            const addonsHtml = addons.length > 0
-                ? addons.map(m => `<span class="addon-badge">${APP_LABELS[m] || m}</span>`).join('')
-                : `<span class="no-items">None</span>`;
+            const appsHtml = ALL_APPS.map(app => {
+                const on = activeApps.has(app.key);
+                const empBadge = (app.key === 'payroll' && on && empCount > 0)
+                    ? `<span class="app-emp-count">👥 ${empCount} employee${empCount !== 1 ? 's' : ''}</span>`
+                    : '';
+                return `
+                    <div class="app-row">
+                        <div class="app-info">
+                            <span class="app-icon">${app.icon}</span>
+                            <div>
+                                <div class="app-name">${app.label}${empBadge}</div>
+                                <div class="app-sub">${app.sub}</div>
+                            </div>
+                        </div>
+                        <label class="app-toggle">
+                            <input type="checkbox" ${on ? 'checked' : ''}
+                                onchange="toggleApp(${c.id}, '${app.key}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>`;
+            }).join('');
 
             const dateStr = c.created_at
                 ? new Date(c.created_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -639,11 +700,8 @@
                     ${c.phone ? `<div class="card-meta"><span class="icon">📱</span>${esc(c.phone)}</div>` : ''}
                     ${c.id_number ? `<div class="card-meta"><span class="icon">🪪</span>${esc(c.id_number)}</div>` : ''}
 
-                    <div class="card-section-label">Active Apps</div>
-                    <div class="badges-row">${appsHtml}</div>
-
-                    <div class="card-section-label">Add-ons / Modules</div>
-                    <div class="badges-row">${addonsHtml}</div>
+                    <div class="card-section-label">Apps</div>
+                    <div>${appsHtml}</div>
 
                     <div class="card-footer">
                         <span class="card-date">&#128197; Added ${dateStr}</span>
@@ -696,6 +754,40 @@
                 showToast('❌ ' + err.message, true);
                 btn.disabled    = false;
                 btn.textContent = currentlyActive ? '⛔ Deactivate' : '✓ Activate';
+            }
+        }
+
+        // ── Toggle individual app for a client ──────────────────────────────
+        async function toggleApp(clientId, appKey, enable) {
+            const client = allClients.find(c => c.id === clientId);
+            if (!client) return;
+
+            const currentApps = new Set(client.apps || []);
+            if (enable) currentApps.add(appKey);
+            else currentApps.delete(appKey);
+
+            const newApps = [...currentApps];
+
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ apps: newApps })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to update apps');
+                }
+
+                // Update local state
+                client.apps = newApps;
+                showToast(`${enable ? '✅' : '🚫'} ${APP_LABELS[appKey] || appKey} ${enable ? 'activated' : 'deactivated'} for ${client.name}`);
+                renderStats();
+                applyFilters();
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+                applyFilters(); // re-render to reset toggle
             }
         }
 

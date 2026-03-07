@@ -308,7 +308,7 @@
             height: 100%;
             background: rgba(0,0,0,0.5);
             z-index: 1000;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             overflow-y: auto;
         }
@@ -323,8 +323,10 @@
             width: 90%;
             border-radius: 15px;
             padding: 30px;
-            margin: 50px auto;
+            margin: 30px auto;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-height: calc(100vh - 60px);
+            overflow-y: auto;
         }
 
         .modal-header {
@@ -511,7 +513,7 @@
             </div>
 
             <div class="sidebar-actions">
-                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='../frontend-ecosystem/dashboard.html'">🏠 Return to Ecosystem</button>
+                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='/dashboard/dashboard.html'">🏠 Return to Ecosystem</button>
                 <button class="btn-sidebar btn-switch" onclick="goToDashboard()">← Return to Dashboard</button>
                 <button class="btn-sidebar btn-logout" onclick="handleLogout()">🚪 Logout</button>
             </div>

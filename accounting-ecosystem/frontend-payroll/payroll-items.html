@@ -505,7 +505,7 @@
             </div>
 
             <div class="sidebar-actions">
-                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='../frontend-ecosystem/dashboard.html'">🏠 Return to Ecosystem</button>
+                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='/dashboard/dashboard.html'">🏠 Return to Ecosystem</button>
                 <button class="btn-sidebar btn-switch" onclick="window.location.href='company-selection.html'">← Return to Dashboard</button>
                 <button class="btn-sidebar btn-logout" onclick="handleLogout()">🚪 Logout</button>
             </div>
@@ -845,9 +845,9 @@
                 } else {
                     toShow.forEach(function(item) {
                         var col = item.type === 'deduction' ? '#dc3545' : '#28a745';
-                        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border:1px solid #eee; border-radius:6px; margin-bottom:5px; background:#fff;">'
+                        html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border:1px solid rgba(255,255,255,0.1); border-radius:6px; margin-bottom:5px; background:rgba(255,255,255,0.05);">'
                             + '<div style="display:flex; align-items:center; gap:8px;">'
-                            + '<span style="font-size:0.87rem; color:#333;">' + item.name + '</span>'
+                            + '<span style="font-size:0.87rem; color:#e2e8f0;">' + item.name + '</span>'
                             + '<span style="font-size:10px; padding:1px 7px; border-radius:10px; background:' + col + '18; color:' + col + '; border:1px solid ' + col + '44; font-weight:600;">' + item.type + '</span>'
                             + '</div>';
                         if (showingHidden) {

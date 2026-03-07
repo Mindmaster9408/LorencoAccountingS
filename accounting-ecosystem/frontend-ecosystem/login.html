@@ -276,6 +276,10 @@
         .app-link.pos .icon { background: rgba(59, 130, 246, 0.2); }
         .app-link.payroll .icon { background: rgba(16, 185, 129, 0.2); }
         .app-link.accounting .icon { background: rgba(245, 158, 11, 0.2); }
+        .app-link.accounting {
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+        }
 
         /* ── Register Button ─────────────────────────────────── */
         .btn-register {
@@ -362,6 +366,69 @@
         }
         .reg-step.active { background: linear-gradient(135deg, #667eea, #764ba2); }
         .reg-step.done { background: #10b981; }
+
+        /* ── Demo App Selection Cards ─────────────────────────── */
+        .demo-notice {
+            background: rgba(245,158,11,0.1);
+            border: 1px solid rgba(245,158,11,0.25);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            font-size: 0.82rem;
+            color: #fbbf24;
+            line-height: 1.5;
+        }
+        .demo-notice strong { color: #f59e0b; }
+        .demo-apps-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .demo-app-card {
+            padding: 16px 14px;
+            background: rgba(255,255,255,0.04);
+            border: 2px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.25s;
+            text-align: center;
+        }
+        .demo-app-card:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.15);
+            transform: translateY(-2px);
+        }
+        .demo-app-card.selected {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.15);
+        }
+        .demo-app-card .demo-icon {
+            font-size: 1.8rem;
+            margin-bottom: 6px;
+        }
+        .demo-app-card .demo-name {
+            color: white;
+            font-weight: 700;
+            font-size: 0.88rem;
+            margin-bottom: 2px;
+        }
+        .demo-app-card .demo-desc {
+            color: rgba(255,255,255,0.45);
+            font-size: 0.72rem;
+            line-height: 1.3;
+        }
+        .demo-app-card .demo-check {
+            display: none;
+            margin-top: 6px;
+            font-size: 0.75rem;
+            color: #10b981;
+            font-weight: 700;
+        }
+        .demo-app-card.selected .demo-check {
+            display: block;
+        }
 
         /* ── Type Selector ───────────────────────────────────── */
         .type-cards {
@@ -747,6 +814,7 @@
                     <div class="reg-step" data-step="2"></div>
                     <div class="reg-step" data-step="3"></div>
                     <div class="reg-step" data-step="4"></div>
+                    <div class="reg-step" data-step="5"></div>
                 </div>
 
                 <!-- STEP 1: Choose Account Type -->
@@ -927,9 +995,47 @@
                     </div>
                 </div>
 
-                <!-- STEP 4: Add Users -->
+                <!-- STEP 4: Select Demo Apps -->
                 <div class="step-panel" id="step4">
-                    <p style="color:rgba(255,255,255,0.5); margin-bottom:6px; font-size:0.9rem;" id="step4Subtitle">
+                    <div class="demo-notice">
+                        <strong>⏱ 14-Day Free Demo</strong> — Each app below comes with a 14-day free demo. Select the apps you want to try. You can activate more demos later in Practice Settings.
+                    </div>
+                    <div class="demo-apps-grid" id="demoAppsGrid">
+                        <div class="demo-app-card" onclick="toggleDemoApp(this, 'pos')">
+                            <div class="demo-icon">🛒</div>
+                            <div class="demo-name">Checkout Charlie</div>
+                            <div class="demo-desc">Point of Sale</div>
+                            <div class="demo-check">✓ Selected</div>
+                        </div>
+                        <div class="demo-app-card" onclick="toggleDemoApp(this, 'payroll')">
+                            <div class="demo-icon">💰</div>
+                            <div class="demo-name">Lorenco Paytime</div>
+                            <div class="demo-desc">Payroll Management</div>
+                            <div class="demo-check">✓ Selected</div>
+                        </div>
+                        <div class="demo-app-card" onclick="toggleDemoApp(this, 'accounting')">
+                            <div class="demo-icon">📈</div>
+                            <div class="demo-name">Lorenco Accounting</div>
+                            <div class="demo-desc">General Ledger</div>
+                            <div class="demo-check">✓ Selected</div>
+                        </div>
+                        <div class="demo-app-card" onclick="toggleDemoApp(this, 'sean')">
+                            <div class="demo-icon">🤖</div>
+                            <div class="demo-name">SEAN AI</div>
+                            <div class="demo-desc">Smart Assistant</div>
+                            <div class="demo-check">✓ Selected</div>
+                        </div>
+                    </div>
+                    <p style="color:rgba(255,255,255,0.35); font-size:0.75rem; text-align:center; margin-bottom:16px;">You can skip this step and activate demos later from your dashboard.</p>
+                    <div class="reg-actions">
+                        <button type="button" class="btn-reg back" onclick="goToStep(3)">← Back</button>
+                        <button type="button" class="btn-reg next" onclick="goToStep(5)">Continue →</button>
+                    </div>
+                </div>
+
+                <!-- STEP 5: Add Users -->
+                <div class="step-panel" id="step5">
+                    <p style="color:rgba(255,255,255,0.5); margin-bottom:6px; font-size:0.9rem;" id="step5Subtitle">
                         Add team members to your practice (you can also do this later).
                     </p>
 
@@ -954,15 +1060,15 @@
                     </div>
 
                     <div class="reg-actions">
-                        <button type="button" class="btn-reg back" onclick="goToStep(3)">← Back</button>
+                        <button type="button" class="btn-reg back" onclick="goToStep(4)">← Back</button>
                         <button type="button" class="btn-reg next" id="regSubmitBtn" onclick="submitRegistration()">
                             Complete Registration
                         </button>
                     </div>
                 </div>
 
-                <!-- STEP 5: Success -->
-                <div class="step-panel" id="step5">
+                <!-- STEP 6: Success -->
+                <div class="step-panel" id="step6">
                     <div class="reg-success">
                         <div class="icon">🎉</div>
                         <h3>Registration Complete!</h3>
@@ -1129,9 +1235,9 @@
                 document.getElementById('step3Accountant').style.display = regState.accountType === 'accountant' ? 'block' : 'none';
                 document.getElementById('step3Business').style.display   = regState.accountType === 'business'   ? 'block' : 'none';
             }
-            if (n === 4) {
+            if (n === 5) {
                 populateRoleDropdown();
-                document.getElementById('step4Subtitle').textContent =
+                document.getElementById('step5Subtitle').textContent =
                     regState.accountType === 'accountant'
                         ? 'Add team members to your practice (you can also do this later).'
                         : 'Add team members to your business (you can also do this later).';
@@ -1200,7 +1306,18 @@
             goToStep(4);
         }
 
-        /* ── role dropdown ── */
+        /* ── Demo App Selection ── */
+        let selectedDemos = new Set();
+
+        function toggleDemoApp(card, appKey) {
+            card.classList.toggle('selected');
+            if (selectedDemos.has(appKey)) {
+                selectedDemos.delete(appKey);
+            } else {
+                selectedDemos.add(appKey);
+            }
+        }
+
         function populateRoleDropdown() {
             const sel = document.getElementById('newUserRole');
             sel.innerHTML = '<option value="">-- Select Role --</option>';
@@ -1363,9 +1480,23 @@
                 const entityName = regState.accountType === 'accountant'
                     ? payload.practice.name
                     : payload.business.name;
+
+                // Save selected demos with activation timestamp
+                if (selectedDemos.size > 0) {
+                    const now = new Date().toISOString();
+                    const demos = {};
+                    selectedDemos.forEach(app => {
+                        demos[app] = { activatedAt: now, expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() };
+                    });
+                    localStorage.setItem('eco_demos', JSON.stringify(demos));
+                }
+
+                const demoText = selectedDemos.size > 0
+                    ? ` Your ${selectedDemos.size} demo app(s) are now active for 14 days.`
+                    : '';
                 document.getElementById('regSuccessMsg').textContent =
-                    `Your ${regState.accountType === 'accountant' ? 'practice' : 'business'} "${entityName}" has been created. You can now sign in with your credentials.`;
-                goToStep(5);
+                    `Your ${regState.accountType === 'accountant' ? 'practice' : 'business'} "${entityName}" has been created.${demoText} You can now sign in.`;
+                goToStep(6);
 
             } catch (err) {
                 toast(err.message, 'error');

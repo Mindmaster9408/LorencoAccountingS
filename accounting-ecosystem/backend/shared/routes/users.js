@@ -51,6 +51,53 @@ router.get('/', requirePermission('USERS.VIEW'), async (req, res) => {
 });
 
 /**
+ * PUT /api/users/me
+ * Self-update — users can always edit their own profile (name, email, password)
+ */
+router.put('/me', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { full_name, email, current_password, new_password } = req.body;
+
+    const updates = { updated_at: new Date().toISOString() };
+    if (full_name !== undefined) updates.full_name = full_name;
+    if (email !== undefined) updates.email = email;
+
+    // Password change requires current password verification
+    if (new_password) {
+      if (!current_password) {
+        return res.status(400).json({ error: 'Current password is required to set a new password' });
+      }
+      const { data: user } = await supabase
+        .from('users')
+        .select('password_hash')
+        .eq('id', userId)
+        .single();
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const valid = await bcrypt.compare(current_password, user.password_hash);
+      if (!valid) return res.status(403).json({ error: 'Current password is incorrect' });
+
+      updates.password_hash = await bcrypt.hash(new_password, 10);
+    }
+
+    const { data: updated, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', userId)
+      .select('id, username, email, full_name')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ user: { id: updated.id, username: updated.username, fullName: updated.full_name, email: updated.email } });
+  } catch (err) {
+    console.error('PUT /api/users/me error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * GET /api/users/roles
  * Get available roles for user assignment
  */

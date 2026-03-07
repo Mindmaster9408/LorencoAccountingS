@@ -683,6 +683,82 @@
         .info-message strong {
             color: #0066cc;
         }
+
+        .add-txn-row {
+            display: grid;
+            grid-template-columns: 130px 1fr 150px 140px 140px auto;
+            gap: 8px;
+            align-items: center;
+            padding: 12px;
+            background: #f0f8ff;
+            border: 2px dashed #0066cc;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .add-txn-row input {
+            padding: 8px 10px;
+            border: 1px solid #e8eaed;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        .add-txn-row input:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0,102,204,0.15);
+        }
+
+        .btn-add {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #34a853 0%, #2d8f47 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-add:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(52,168,83,0.3);
+        }
+
+        .btn-delete {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #ea4335 0%, #d32f2f 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-delete:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(234,67,53,0.3);
+        }
+
+        .btn-delete:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .transactions-table tbody tr.selected {
+            background: #e6f3ff;
+        }
+
+        .transactions-table tbody tr.selected:hover {
+            background: #d6ecff;
+        }
     </style>
 </head>
 <body>
@@ -736,9 +812,19 @@
                 <div class="section-header">
                     <h3>Transactions to Reconcile</h3>
                     <div style="display: flex; gap: 10px;">
+                        <button class="btn-delete" id="deleteBtn" onclick="deleteSelected()" disabled>🗑 Delete Selected (<span id="selectedCount">0</span>)</button>
                         <button class="btn-secondary" onclick="selectAll()">Select All</button>
                         <button class="btn-secondary" onclick="clearAll()">Clear All</button>
                     </div>
+                </div>
+
+                <div class="add-txn-row">
+                    <input type="date" id="addDate" value="">
+                    <input type="text" id="addDescription" placeholder="Description">
+                    <input type="text" id="addReference" placeholder="Reference">
+                    <input type="number" id="addMoneyIn" placeholder="Money In" step="0.01" min="0">
+                    <input type="number" id="addMoneyOut" placeholder="Money Out" step="0.01" min="0">
+                    <button class="btn-add" onclick="addManualTransaction()">+ Add</button>
                 </div>
                 
                 <div class="filter-row">
@@ -750,6 +836,7 @@
                 <table class="transactions-table">
                     <thead>
                         <tr>
+                            <th style="width: 40px;"><input type="checkbox" class="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)"></th>
                             <th style="width: 40px;">✓</th>
                             <th>Date</th>
                             <th>Description</th>
@@ -822,6 +909,8 @@
         let currentFilter = 'all';
         const openingBalance = 28650.50;
         let statementBalance = 50580.50;
+        let selectedIds = new Set();
+        let nextId = 9;
         
         // Auto-login for demo
         const mockUser = {
@@ -864,7 +953,10 @@
                     ? '<span class="status-badge status-reconciled">Reconciled</span>'
                     : '<span class="status-badge status-unreconciled">Unreconciled</span>';
                 
+                row.className = (txn.reconciled ? 'reconciled' : '') + (selectedIds.has(txn.id) ? ' selected' : '');
+
                 row.innerHTML = `
+                    <td><input type="checkbox" class="checkbox" ${selectedIds.has(txn.id) ? 'checked' : ''} onchange="toggleSelect(${txn.id}, this.checked)"></td>
                     <td><input type="checkbox" class="checkbox" ${txn.reconciled ? 'checked' : ''} onchange="toggleReconcile(${txn.id}, this.checked)"></td>
                     <td>${txn.date}</td>
                     <td>${txn.description}</td>
@@ -956,6 +1048,77 @@
             renderTransactions();
         }
         
+        function toggleSelect(id, checked) {
+            if (checked) {
+                selectedIds.add(id);
+            } else {
+                selectedIds.delete(id);
+            }
+            updateDeleteButton();
+            renderTransactions();
+        }
+
+        function toggleSelectAll(checked) {
+            let visibleTransactions = transactions;
+            if (currentFilter === 'unreconciled') visibleTransactions = transactions.filter(t => !t.reconciled);
+            else if (currentFilter === 'reconciled') visibleTransactions = transactions.filter(t => t.reconciled);
+
+            visibleTransactions.forEach(t => {
+                if (checked) selectedIds.add(t.id);
+                else selectedIds.delete(t.id);
+            });
+            updateDeleteButton();
+            renderTransactions();
+        }
+
+        function updateDeleteButton() {
+            const btn = document.getElementById('deleteBtn');
+            const countSpan = document.getElementById('selectedCount');
+            countSpan.textContent = selectedIds.size;
+            btn.disabled = selectedIds.size === 0;
+        }
+
+        function deleteSelected() {
+            if (selectedIds.size === 0) return;
+            if (!confirm('Delete ' + selectedIds.size + ' selected transaction(s)?\n\nThis cannot be undone.')) return;
+            transactions = transactions.filter(t => !selectedIds.has(t.id));
+            selectedIds.clear();
+            updateDeleteButton();
+            document.getElementById('selectAllCheckbox').checked = false;
+            renderTransactions();
+        }
+
+        function addManualTransaction() {
+            const date = document.getElementById('addDate').value;
+            const description = document.getElementById('addDescription').value.trim();
+            const reference = document.getElementById('addReference').value.trim();
+            const moneyIn = parseFloat(document.getElementById('addMoneyIn').value) || 0;
+            const moneyOut = parseFloat(document.getElementById('addMoneyOut').value) || 0;
+
+            if (!date) { alert('Please enter a date.'); return; }
+            if (!description) { alert('Please enter a description.'); return; }
+            if (moneyIn === 0 && moneyOut === 0) { alert('Please enter a Money In or Money Out amount.'); return; }
+
+            transactions.unshift({
+                id: nextId++,
+                date: date,
+                description: description,
+                reference: reference,
+                moneyIn: moneyIn,
+                moneyOut: moneyOut,
+                reconciled: false
+            });
+
+            // Clear inputs
+            document.getElementById('addDate').value = '';
+            document.getElementById('addDescription').value = '';
+            document.getElementById('addReference').value = '';
+            document.getElementById('addMoneyIn').value = '';
+            document.getElementById('addMoneyOut').value = '';
+
+            renderTransactions();
+        }
+
         function switchAccount(select) {
             alert('Switching to: ' + select.options[select.selectedIndex].text);
         }
@@ -980,6 +1143,7 @@
         }
         
         // Initialize
+        document.getElementById('addDate').value = new Date().toISOString().split('T')[0];
         renderTransactions();
     </script>
 </body>
