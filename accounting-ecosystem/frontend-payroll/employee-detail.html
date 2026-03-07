@@ -931,6 +931,7 @@
             // Save frozen snapshot so salary changes don't affect this period
             var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
             localStorage.setItem(histKey, JSON.stringify({
+                basic_salary: payrollData.basic_salary || 0,
                 gross: calc.gross, paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
                 deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
                 net: calc.net, source: 'finalized',
@@ -1001,7 +1002,12 @@
         }
 
         function renderPayroll() {
-            document.getElementById('basicSalary').textContent = formatMoney(payrollData.basic_salary || 0);
+            // Show frozen basic salary for finalized periods
+            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+            var frozen = localStorage.getItem(histKey);
+            var displaySalary = payrollData.basic_salary || 0;
+            if (frozen) { try { var snap = JSON.parse(frozen); if (snap.basic_salary !== undefined) displaySalary = snap.basic_salary; } catch(e) {} }
+            document.getElementById('basicSalary').textContent = formatMoney(displaySalary);
 
             // Regular inputs
             const riList = document.getElementById('regularInputsList');
@@ -1303,6 +1309,27 @@
 
         // ========== CALCULATE PAYSLIP ==========
         async function calculatePayslip() {
+            // If this period is finalized, use the frozen snapshot instead of recalculating
+            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+            var frozen = localStorage.getItem(histKey);
+            if (frozen) {
+                try {
+                    var snap = JSON.parse(frozen);
+                    var frozenDeductions = (snap.deductions || []).reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0);
+                    var calc = { gross: snap.gross || 0, paye: snap.paye || 0, uif: snap.uif || 0, sdl: snap.sdl || 0, deductions: frozenDeductions, net: snap.net || 0, medicalCredit: 0, negativeNetPay: false };
+                    document.getElementById('totalGross').textContent = formatMoney(calc.gross);
+                    document.getElementById('totalPAYE').textContent = formatMoney(calc.paye);
+                    document.getElementById('totalUIF').textContent = formatMoney(calc.uif);
+                    document.getElementById('totalDeductions').textContent = formatMoney(calc.deductions);
+                    document.getElementById('totalNet').textContent = formatMoney(calc.net);
+                    document.getElementById('medicalCreditRow').style.display = 'none';
+                    document.getElementById('totalNet').style.color = '#28a745';
+                    document.getElementById('negativeNetWarning').style.display = 'none';
+                    document.getElementById('payslipActions').style.display = 'flex';
+                    return calc;
+                } catch(e) { /* fall through to live calculation */ }
+            }
+
             var currentInputs = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
             var overtime = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
             var multiRate = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
