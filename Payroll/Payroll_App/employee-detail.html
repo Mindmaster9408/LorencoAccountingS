@@ -937,13 +937,21 @@
 
         function finalizePayslip() {
             if (!Permissions.require('FINALIZE_PAYSLIP')) return;
-            // Auto-calculate before finalizing
-            calculatePayslip();
+            // Auto-calculate before finalizing and capture result to freeze values
+            var calc = calculatePayslip();
             var session = AUTH.getSession();
             if (!session) { alert('Session expired. Please log in again.'); window.location.href = 'login.html'; return; }
             if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '?\nIt will be locked for editing and a PDF payslip will be downloaded.')) return;
             var status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
             localStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
+            // Save frozen snapshot so salary changes don't affect this period
+            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+            localStorage.setItem(histKey, JSON.stringify({
+                gross: calc.gross, paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
+                deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
+                net: calc.net, source: 'finalized',
+                finalized_date: status.finalized_date, finalized_by: status.finalized_by
+            }));
 
             // === Archive payslip for 11-year retention ===
             try {
@@ -997,6 +1005,8 @@
             if (!Permissions.require('UNFINALIZE_PAYSLIP')) return;
             if (!confirm('Unfinalize this payslip? It will be editable again.')) return;
             localStorage.removeItem(getPayslipStatusKey());
+            // Remove the frozen snapshot so values recalculate live
+            localStorage.removeItem('emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod);
             AuditTrail.logUnfinalize(currentCompanyId, 'payslip', 'Unfinalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
             updatePayslipUI();
         }
@@ -1349,6 +1359,7 @@
 
             // Show payslip action buttons
             document.getElementById('payslipActions').style.display = 'flex';
+            return calc;
         }
 
         // ========== PAYSLIP PREVIEW & PDF EXPORT ==========
