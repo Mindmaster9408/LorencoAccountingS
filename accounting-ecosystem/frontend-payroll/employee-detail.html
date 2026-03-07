@@ -920,10 +920,10 @@
             Permissions.enforceUI();
         }
 
-        function finalizePayslip() {
+        async function finalizePayslip() {
             if (!Permissions.require('FINALIZE_PAYSLIP')) return;
             // Auto-calculate before finalizing
-            calculatePayslip();
+            await calculatePayslip();
             const session = AUTH.getSession();
             if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '? It will be locked for editing.')) return;
             const status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
@@ -1292,7 +1292,7 @@
         function toggleSection(el) { if (event.target.tagName === 'BUTTON') return; el.classList.toggle('expanded'); }
 
         // ========== CALCULATE PAYSLIP ==========
-        function calculatePayslip() {
+        async function calculatePayslip() {
             var currentInputs = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
             var overtime = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
             var multiRate = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
@@ -1344,7 +1344,7 @@
             }
 
             // Trigger narrative generation
-            generateNarrative(calc.gross, calc.paye, calc.uif, calc.deductions, calc.net);
+            await generateNarrative(calc.gross, calc.paye, calc.uif, calc.deductions, calc.net);
 
             // Show payslip action buttons
             document.getElementById('payslipActions').style.display = 'flex';
@@ -1549,7 +1549,7 @@
         }
 
         // ========== NARRATIVE FUNCTIONS ==========
-        function generateNarrative(gross, paye, uif, deductions, net) {
+        async function generateNarrative(gross, paye, uif, deductions, net) {
             if (typeof NarrativeGenerator === 'undefined') return;
 
             var currentCalc = {
@@ -1572,7 +1572,7 @@
 
             // Get previous period calc
             var prevPeriod = getPreviousPeriod(currentPeriod);
-            var prevCalc = calculatePeriodSilent(prevPeriod);
+            var prevCalc = await calculatePeriodSilent(prevPeriod);
 
             var narrative = NarrativeGenerator.generate(currentEmployee, currentPeriod, currentCalc, prevCalc, payrollData);
             NarrativeGenerator.save(currentCompanyId, currentEmpId, currentPeriod, narrative);
@@ -1582,8 +1582,8 @@
             document.getElementById('narrativeCard').style.display = 'block';
         }
 
-        function calculatePeriodSilent(period) {
-            var calc = PayrollEngine.calculateEmployeePeriod(currentCompanyId, currentEmpId, period, payrollData);
+        async function calculatePeriodSilent(period) {
+            var calc = await PayrollEngine.calculateEmployeePeriod(currentCompanyId, currentEmpId, period, payrollData);
             // Calculate overtime amount separately for narrative
             var hr = payrollData.basic_salary ? payrollData.basic_salary / PayrollEngine.HOURLY_DIVISOR : 0;
             var otKey = 'emp_overtime_' + currentCompanyId + '_' + currentEmpId + '_' + period;
@@ -1611,9 +1611,9 @@
             }
         }
 
-        function regenerateNarrative() {
+        async function regenerateNarrative() {
             NarrativeGenerator.clear(currentCompanyId, currentEmpId, currentPeriod);
-            calculatePayslip();
+            await calculatePayslip();
         }
 
         // ========== EMPLOYEE ATTENDANCE TAB ==========

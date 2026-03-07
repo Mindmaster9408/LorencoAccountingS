@@ -254,7 +254,7 @@ const PayrollEngine = {
      * @param {Object} [payrollData] - Optional pre-loaded payroll data
      * @returns {Object} { gross, paye, uif, sdl, deductions, net }
      */
-    calculateEmployeePeriod: function(companyId, empId, period, payrollData) {
+    calculateEmployeePeriod: async function(companyId, empId, period, payrollData) {
         // Check for historical data first - historical records store pre-calculated values
         var histData = this.getHistoricalRecord(companyId, empId, period);
         if (histData) {
@@ -273,14 +273,14 @@ const PayrollEngine = {
 
         if (!payrollData) {
             payrollData = (typeof DataAccess !== 'undefined')
-                ? DataAccess.getEmployeePayroll(companyId, empId)
+                ? await DataAccess.getEmployeePayroll(companyId, empId)
                 : JSON.parse(localStorage.getItem('emp_payroll_' + companyId + '_' + empId) || '{"basic_salary":0,"regular_inputs":[]}');
         }
 
         // Load employee record for age/medical/directive data
         var employeeOptions = {};
         var emp = (typeof DataAccess !== 'undefined')
-            ? DataAccess.getEmployeeById(companyId, empId)
+            ? await DataAccess.getEmployeeById(companyId, empId)
             : (function() {
                 var s = localStorage.getItem('employees_' + companyId);
                 return s ? JSON.parse(s).find(function(e) { return e.id === empId; }) : null;
@@ -301,16 +301,16 @@ const PayrollEngine = {
 
         var useDA = typeof DataAccess !== 'undefined';
         var currentInputs = useDA
-            ? DataAccess.getCurrentInputs(companyId, empId, period)
+            ? await DataAccess.getCurrentInputs(companyId, empId, period)
             : JSON.parse(localStorage.getItem('emp_current_' + companyId + '_' + empId + '_' + period) || '[]');
         var overtime = useDA
-            ? DataAccess.getOvertime(companyId, empId, period)
+            ? await DataAccess.getOvertime(companyId, empId, period)
             : JSON.parse(localStorage.getItem('emp_overtime_' + companyId + '_' + empId + '_' + period) || '[]');
         var multiRate = useDA
-            ? DataAccess.getMultiRate(companyId, empId, period)
+            ? await DataAccess.getMultiRate(companyId, empId, period)
             : JSON.parse(localStorage.getItem('emp_multi_rate_' + companyId + '_' + empId + '_' + period) || '[]');
         var shortTime = useDA
-            ? DataAccess.getShortTime(companyId, empId, period)
+            ? await DataAccess.getShortTime(companyId, empId, period)
             : JSON.parse(localStorage.getItem('emp_short_time_' + companyId + '_' + empId + '_' + period) || '[]');
 
         return this.calculateFromData(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions);

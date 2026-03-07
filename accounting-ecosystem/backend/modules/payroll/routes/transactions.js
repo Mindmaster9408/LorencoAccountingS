@@ -27,7 +27,7 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
 
     let query = supabase
       .from('payroll_transactions')
-      .select('*, employees(full_name, employee_number), payslip_items(*)')
+      .select('*, employees(first_name, last_name, employee_code), payslip_items(*)')
       .eq('company_id', req.companyId)
       .order('created_at', { ascending: false });
 

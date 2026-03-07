@@ -361,8 +361,8 @@
             return JSON.parse(localStorage.getItem('emp_payslip_status_' + currentCompanyId + '_' + empId + '_' + period) || '{"status":"draft"}');
         }
 
-        function calculateEmployeePeriod(empId, period) {
-            return PayrollEngine.calculateEmployeePeriod(currentCompanyId, empId, period);
+        async function calculateEmployeePeriod(empId, period) {
+            return await PayrollEngine.calculateEmployeePeriod(currentCompanyId, empId, period);
         }
 
         function r2(n) { return Math.round(n * 100) / 100; }
@@ -498,22 +498,22 @@
         }
 
         // ========== GENERATE REPORT ==========
-        function generateReport() {
+        async function generateReport() {
             switch (currentReport) {
-                case 'transaction-history': generateTransactionHistory(); break;
+                case 'transaction-history': await generateTransactionHistory(); break;
                 case 'employee-master': generateEmployeeMaster(); break;
                 case 'bank-details': generateBankDetails(); break;
-                case 'payroll-summary': generatePayrollSummary(); break;
+                case 'payroll-summary': await generatePayrollSummary(); break;
                 case 'audit-user': generateAuditUser(); break;
                 case 'audit-employee': generateAuditEmployee(); break;
-                case 'tax-report': generateTaxReport(); break;
-                case 'ytd-report': generateYTDReport(); break;
-                case 'variance-report': generateVarianceReport(); break;
+                case 'tax-report': await generateTaxReport(); break;
+                case 'ytd-report': await generateYTDReport(); break;
+                case 'variance-report': await generateVarianceReport(); break;
             }
         }
 
         // ========== REPORT 1: TRANSACTION HISTORY ==========
-        function generateTransactionHistory() {
+        async function generateTransactionHistory() {
             const fromPeriod = document.getElementById('filter-from').value;
             const toPeriod = document.getElementById('filter-to').value;
             const empFilter = document.getElementById('filter-employee').value;
@@ -531,12 +531,12 @@
             const rows = [];
             let totals = { gross: 0, paye: 0, uif: 0, deductions: 0, net: 0 };
 
-            periods.forEach(period => {
-                filteredEmps.forEach(emp => {
-                    const calc = calculateEmployeePeriod(emp.id, period);
-                    if (calc.gross <= 0) return;
+            for (const period of periods) {
+                for (const emp of filteredEmps) {
+                    const calc = await calculateEmployeePeriod(emp.id, period);
+                    if (calc.gross <= 0) continue;
                     const ps = getPayslipStatus(emp.id, period);
-                    if (statusFilter && ps.status !== statusFilter) return;
+                    if (statusFilter && ps.status !== statusFilter) continue;
                     rows.push([
                         formatPeriod(period), emp.employee_number, emp.first_name + ' ' + emp.last_name,
                         emp.department || '-', formatMoney(calc.gross), formatMoney(calc.paye),
@@ -544,8 +544,8 @@
                     ]);
                     totals.gross += calc.gross; totals.paye += calc.paye; totals.uif += calc.uif;
                     totals.deductions += calc.deductions; totals.net += calc.net;
-                });
-            });
+                }
+            }
 
             currentReportData = { headers, rows, title: 'Transaction History Report' };
 
@@ -662,7 +662,7 @@
         }
 
         // ========== REPORT 4: PAYROLL SUMMARY ==========
-        function generatePayrollSummary() {
+        async function generatePayrollSummary() {
             const fromPeriod = document.getElementById('filter-from').value;
             const toPeriod = document.getElementById('filter-to').value;
             const empFilter = document.getElementById('filter-employee').value;
@@ -680,10 +680,10 @@
             const headers = ['Employee #', 'Employee Name', 'Department', 'Gross Pay', 'PAYE', 'UIF (Employee)', 'UIF (Employer)', 'SDL', 'Other Deductions', 'Net Pay'];
             const rows = [];
 
-            periods.forEach(period => {
-                filteredEmps.forEach(emp => {
-                    const calc = calculateEmployeePeriod(emp.id, period);
-                    if (calc.gross <= 0) return;
+            for (const period of periods) {
+                for (const emp of filteredEmps) {
+                    const calc = await calculateEmployeePeriod(emp.id, period);
+                    if (calc.gross <= 0) continue;
                     const uifEr = calc.uif; // Employer matches
                     rows.push([
                         emp.employee_number, emp.first_name + ' ' + emp.last_name, emp.department || '-',
@@ -697,8 +697,8 @@
                     if (!deptTotals[dept]) deptTotals[dept] = { gross: 0, paye: 0, net: 0, count: 0 };
                     deptTotals[dept].gross += calc.gross; deptTotals[dept].paye += calc.paye;
                     deptTotals[dept].net += calc.net; deptTotals[dept].count++;
-                });
-            });
+                }
+            }
 
             const ctc = totals.gross + totals.uif_er + totals.sdl;
             currentReportData = { headers, rows, title: 'Payroll Summary Report' };
@@ -794,7 +794,7 @@
         }
 
         // ========== REPORT 6: TAX REPORT (SARS) ==========
-        function generateTaxReport() {
+        async function generateTaxReport() {
             const fromPeriod = document.getElementById('filter-from').value;
             const toPeriod = document.getElementById('filter-to').value;
 
@@ -803,10 +803,10 @@
             const headers = ['Employee #', 'Employee Name', 'ID Number', 'Gross Remuneration', 'PAYE', 'UIF (Employee)', 'UIF (Employer)', 'SDL'];
             const rows = [];
 
-            periods.forEach(period => {
-                employees.forEach(emp => {
-                    const calc = calculateEmployeePeriod(emp.id, period);
-                    if (calc.gross <= 0) return;
+            for (const period of periods) {
+                for (const emp of employees) {
+                    const calc = await calculateEmployeePeriod(emp.id, period);
+                    if (calc.gross <= 0) continue;
                     const uifEr = calc.uif;
                     rows.push([
                         emp.employee_number, emp.first_name + ' ' + emp.last_name,
@@ -815,8 +815,8 @@
                     ]);
                     totals.paye += calc.paye; totals.uif_emp += calc.uif;
                     totals.uif_er += uifEr; totals.sdl += calc.sdl; totals.gross += calc.gross;
-                });
-            });
+                }
+            }
 
             const totalPayable = totals.paye + totals.sdl + totals.uif_emp + totals.uif_er;
             currentReportData = { headers, rows, title: 'Tax Report (SARS Compliance)' };
@@ -839,7 +839,7 @@
         }
 
         // ========== REPORT 7: YEAR-TO-DATE ==========
-        function generateYTDReport() {
+        async function generateYTDReport() {
             const empFilter = document.getElementById('filter-employee').value;
             const deptFilter = document.getElementById('filter-department').value;
 
@@ -863,15 +863,15 @@
             const headers = ['Employee #', 'Employee Name', 'Department', 'YTD Gross', 'YTD PAYE', 'YTD UIF', 'YTD Deductions', 'YTD Net', 'Pay Periods'];
             const rows = [];
 
-            filteredEmps.forEach(emp => {
+            for (const emp of filteredEmps) {
                 let ytd = { gross: 0, paye: 0, uif: 0, deductions: 0, net: 0, periods: 0 };
-                periods.forEach(period => {
-                    const calc = calculateEmployeePeriod(emp.id, period);
+                for (const period of periods) {
+                    const calc = await calculateEmployeePeriod(emp.id, period);
                     if (calc.gross > 0) {
                         ytd.gross += calc.gross; ytd.paye += calc.paye; ytd.uif += calc.uif;
                         ytd.deductions += calc.deductions; ytd.net += calc.net; ytd.periods++;
                     }
-                });
+                }
                 if (ytd.periods > 0) {
                     rows.push([
                         emp.employee_number, emp.first_name + ' ' + emp.last_name, emp.department || '-',
@@ -879,7 +879,7 @@
                         formatMoney(ytd.deductions), formatMoney(ytd.net), ytd.periods
                     ]);
                 }
-            });
+            }
 
             currentReportData = { headers, rows, title: 'Year-to-Date Report (Tax Year from ' + formatPeriod(taxYearStart) + ')' };
 
@@ -895,7 +895,7 @@
         }
 
         // ========== REPORT 8: VARIANCE REPORT ==========
-        function generateVarianceReport() {
+        async function generateVarianceReport() {
             const period1 = document.getElementById('filter-period1').value;
             const period2 = document.getElementById('filter-period2').value;
             const empFilter = document.getElementById('filter-employee').value;
@@ -910,10 +910,10 @@
             const headers = ['Employee #', 'Employee Name', formatPeriod(period1) + ' Gross', formatPeriod(period2) + ' Gross', 'Variance (R)', 'Variance (%)', 'Flag'];
             const rows = [];
 
-            filteredEmps.forEach(emp => {
-                const calc1 = calculateEmployeePeriod(emp.id, period1);
-                const calc2 = calculateEmployeePeriod(emp.id, period2);
-                if (calc1.gross <= 0 && calc2.gross <= 0) return;
+            for (const emp of filteredEmps) {
+                const calc1 = await calculateEmployeePeriod(emp.id, period1);
+                const calc2 = await calculateEmployeePeriod(emp.id, period2);
+                if (calc1.gross <= 0 && calc2.gross <= 0) continue;
 
                 const variance = calc1.gross - calc2.gross;
                 const variancePct = calc2.gross > 0 ? ((variance / calc2.gross) * 100) : (calc1.gross > 0 ? 100 : 0);
@@ -931,7 +931,7 @@
                     ],
                     className: rowClass
                 });
-            });
+            }
 
             currentReportData = {
                 headers,
