@@ -56,6 +56,63 @@
 
     .month-col { min-width: 70px; }
     .name-col { min-width: 200px; text-align: left; padding-left: 10px; background: #fff; position: sticky; left: 0; z-index: 5; }
+
+    /* ═══ DARK THEME ═══ */
+    body { background: #12101f !important; color: #e2e8f0; }
+    .content { padding: 20px; }
+    .header-section {
+      background: #1c1a2e !important;
+      border: 1px solid rgba(255,255,255,0.07) !important;
+      box-shadow: none !important;
+      border-radius: 12px;
+    }
+    .header-section h1 { color: #e2e8f0 !important; }
+    .company-name { color: #e2e8f0 !important; }
+    .period-info { color: rgba(255,255,255,0.45) !important; }
+    .status-draft   { background: rgba(102,126,234,0.12) !important; color: #818cf8 !important; }
+    .status-approved { background: rgba(52,211,153,0.12) !important; color: #34d399 !important; }
+    .status-locked  { background: rgba(251,191,36,0.12) !important; color: #fbbf24 !important; }
+
+    .toolbar select, .toolbar input {
+      background: rgba(255,255,255,0.05) !important;
+      border: 1px solid rgba(255,255,255,0.12) !important;
+      color: #e2e8f0 !important;
+      border-radius: 6px;
+    }
+    .toolbar select option { background: #1c1a2e; }
+    .btn-save    { background: #667eea !important; color: #fff !important; }
+    .btn-approve { background: #10b981 !important; color: #fff !important; }
+    .btn-lock    { background: #ef4444 !important; color: #fff !important; }
+    .btn-config  { background: rgba(255,255,255,0.1) !important; color: #e2e8f0 !important; border: 1px solid rgba(255,255,255,0.12); }
+
+    .recon-container {
+      background: #1c1a2e !important;
+      border: 1px solid rgba(255,255,255,0.07) !important;
+      box-shadow: none !important;
+    }
+    table { background: #1c1a2e !important; }
+    th, td { border-color: rgba(255,255,255,0.08) !important; }
+    th { background: #2d2b50 !important; color: #c4b5fd !important; }
+    td { color: #cbd5e1 !important; background: #1c1a2e !important; }
+    .name-col { background: #1c1a2e !important; color: #e2e8f0 !important; }
+    .row-label { background: #1c1a2e !important; }
+
+    .employee-header { background: rgba(255,255,255,0.04) !important; color: #e2e8f0 !important; border-bottom: 2px solid #667eea !important; }
+    .employee-header:hover { background: rgba(255,255,255,0.07) !important; }
+    .section-label { background: rgba(102,126,234,0.12) !important; color: #a5b4fc !important; }
+
+    .total-row    { background: rgba(251,191,36,0.10) !important; color: #fbbf24 !important; }
+    .total-row td { background: rgba(251,191,36,0.10) !important; color: #fbbf24 !important; }
+    .netto-row    { background: rgba(52,211,153,0.10) !important; color: #34d399 !important; }
+    .netto-row td { background: rgba(52,211,153,0.10) !important; color: #34d399 !important; }
+    .variance-row    { background: rgba(239,68,68,0.10) !important; color: #fca5a5 !important; }
+    .variance-row td { background: rgba(239,68,68,0.10) !important; color: #fca5a5 !important; }
+    .grand-total-row    { background: #4f46e5 !important; color: #fff !important; }
+    .grand-total-row td { background: #4f46e5 !important; color: #fff !important; }
+
+    td input { color: #e2e8f0 !important; }
+    td input:focus { outline: 1px solid #667eea !important; background: rgba(102,126,234,0.12) !important; }
+    td.readonly, td.readonly input { background: rgba(255,255,255,0.03) !important; color: rgba(255,255,255,0.35) !important; }
   </style>
 
 <!--[if gte mso 9]><xml>
@@ -82,7 +139,6 @@
       <select id="periodSelect" onchange="loadPeriod()">
         <option value="2025-2026">2025/2026 Tax Year</option>
       </select>
-      <button class="btn-config" onclick="window.location.href='paye-config.html'">⚙ Configuration</button>
       <div style="flex: 1;"></div>
       <button id="saveBtn" class="btn-save" onclick="saveDraft()">💾 Save Draft</button>
       <button id="approveBtn" class="btn-approve" onclick="approveRecon()">✓ Approve</button>
@@ -441,7 +497,7 @@
       headerCell.className = 'name-col';
       headerCell.textContent = 'COMPANY SUMMARY - MONTHLY TOTALS';
       headerCell.colSpan = 20;
-      headerCell.style.background = '#4472c4';
+      headerCell.style.background = '#4f46e5';
       headerCell.style.color = 'white';
       headerCell.style.fontWeight = 'bold';
       headerCell.style.textAlign = 'center';
@@ -453,32 +509,38 @@
       let hMonth = summaryHeaderRow.insertCell();
       hMonth.className = 'name-col';
       hMonth.textContent = 'Month';
-      hMonth.style.background = '#d9e1f2';
+      hMonth.style.background = 'rgba(102,126,234,0.15)';
+      hMonth.style.color = '#a5b4fc';
       hMonth.style.fontWeight = 'bold';
 
       let hGross = summaryHeaderRow.insertCell();
       hGross.textContent = 'Gross Salary';
-      hGross.style.background = '#d9e1f2';
+      hGross.style.background = 'rgba(102,126,234,0.15)';
+      hGross.style.color = '#a5b4fc';
       hGross.style.fontWeight = 'bold';
 
       let hPaye = summaryHeaderRow.insertCell();
       hPaye.textContent = 'PAYE';
-      hPaye.style.background = '#d9e1f2';
+      hPaye.style.background = 'rgba(102,126,234,0.15)';
+      hPaye.style.color = '#a5b4fc';
       hPaye.style.fontWeight = 'bold';
 
       let hUif = summaryHeaderRow.insertCell();
       hUif.textContent = 'UIF';
-      hUif.style.background = '#d9e1f2';
+      hUif.style.background = 'rgba(102,126,234,0.15)';
+      hUif.style.color = '#a5b4fc';
       hUif.style.fontWeight = 'bold';
 
       let hSdl = summaryHeaderRow.insertCell();
       hSdl.textContent = 'SDL';
-      hSdl.style.background = '#d9e1f2';
+      hSdl.style.background = 'rgba(102,126,234,0.15)';
+      hSdl.style.color = '#a5b4fc';
       hSdl.style.fontWeight = 'bold';
 
       let hTotal = summaryHeaderRow.insertCell();
       hTotal.textContent = 'Total';
-      hTotal.style.background = '#d9e1f2';
+      hTotal.style.background = 'rgba(102,126,234,0.15)';
+      hTotal.style.color = '#a5b4fc';
       hTotal.style.fontWeight = 'bold';
 
       // Calculate monthly totals for all employees
@@ -513,7 +575,8 @@
         // Gross Salary cell
         let grossCell = monthRow.insertCell();
         grossCell.textContent = totalGross.toFixed(2);
-        grossCell.style.background = '#fff2cc';
+        grossCell.style.background = 'rgba(251,191,36,0.12)';
+        grossCell.style.color = '#fbbf24';
 
         // PAYE cell
         let payeCell = monthRow.insertCell();
@@ -530,7 +593,8 @@
         // Total cell
         let totalCell = monthRow.insertCell();
         totalCell.textContent = total.toFixed(2);
-        totalCell.style.background = '#c6e0b4';
+        totalCell.style.background = 'rgba(52,211,153,0.15)';
+        totalCell.style.color = '#34d399';
         totalCell.style.fontWeight = 'bold';
       });
 
@@ -589,7 +653,7 @@
       headerCell.className = 'name-col';
       headerCell.textContent = 'EMP201 SUBMITTED TO SARS';
       headerCell.colSpan = 20;
-      headerCell.style.background = '#28a745';
+      headerCell.style.background = '#059669';
       headerCell.style.color = 'white';
       headerCell.style.fontWeight = 'bold';
       headerCell.style.textAlign = 'center';
@@ -601,27 +665,32 @@
       let hMonth = emp201HeaderRow.insertCell();
       hMonth.className = 'name-col';
       hMonth.textContent = 'Month';
-      hMonth.style.background = '#d4edda';
+      hMonth.style.background = 'rgba(52,211,153,0.12)';
+      hMonth.style.color = '#34d399';
       hMonth.style.fontWeight = 'bold';
 
       let hPaye = emp201HeaderRow.insertCell();
       hPaye.textContent = 'PAYE';
-      hPaye.style.background = '#d4edda';
+      hPaye.style.background = 'rgba(52,211,153,0.12)';
+      hPaye.style.color = '#34d399';
       hPaye.style.fontWeight = 'bold';
 
       let hUif = emp201HeaderRow.insertCell();
       hUif.textContent = 'UIF';
-      hUif.style.background = '#d4edda';
+      hUif.style.background = 'rgba(52,211,153,0.12)';
+      hUif.style.color = '#34d399';
       hUif.style.fontWeight = 'bold';
 
       let hSdl = emp201HeaderRow.insertCell();
       hSdl.textContent = 'SDL';
-      hSdl.style.background = '#d4edda';
+      hSdl.style.background = 'rgba(52,211,153,0.12)';
+      hSdl.style.color = '#34d399';
       hSdl.style.fontWeight = 'bold';
 
       let hTotal = emp201HeaderRow.insertCell();
       hTotal.textContent = 'Total';
-      hTotal.style.background = '#d4edda';
+      hTotal.style.background = 'rgba(52,211,153,0.12)';
+      hTotal.style.color = '#34d399';
       hTotal.style.fontWeight = 'bold';
 
       // Monthly input rows
@@ -655,7 +724,8 @@
         const total = (parseFloat(emp201Data[mk].paye) || 0) + (parseFloat(emp201Data[mk].uif) || 0) + (parseFloat(emp201Data[mk].sdl) || 0);
         let totalCell = monthRow.insertCell();
         totalCell.textContent = total.toFixed(2);
-        totalCell.style.background = '#c6e0b4';
+        totalCell.style.background = 'rgba(52,211,153,0.15)';
+        totalCell.style.color = '#34d399';
         totalCell.style.fontWeight = 'bold';
       });
 
@@ -705,7 +775,7 @@
       headerCell.className = 'name-col';
       headerCell.textContent = 'RECONCILIATION DIFFERENCES (Calculated - Submitted)';
       headerCell.colSpan = 20;
-      headerCell.style.background = '#dc3545';
+      headerCell.style.background = '#b91c1c';
       headerCell.style.color = 'white';
       headerCell.style.fontWeight = 'bold';
       headerCell.style.textAlign = 'center';
@@ -717,27 +787,32 @@
       let hMonth = diffHeaderRow.insertCell();
       hMonth.className = 'name-col';
       hMonth.textContent = 'Month';
-      hMonth.style.background = '#f8d7da';
+      hMonth.style.background = 'rgba(239,68,68,0.12)';
+      hMonth.style.color = '#fca5a5';
       hMonth.style.fontWeight = 'bold';
 
       let hPaye = diffHeaderRow.insertCell();
       hPaye.textContent = 'PAYE Diff';
-      hPaye.style.background = '#f8d7da';
+      hPaye.style.background = 'rgba(239,68,68,0.12)';
+      hPaye.style.color = '#fca5a5';
       hPaye.style.fontWeight = 'bold';
 
       let hUif = diffHeaderRow.insertCell();
       hUif.textContent = 'UIF Diff';
-      hUif.style.background = '#f8d7da';
+      hUif.style.background = 'rgba(239,68,68,0.12)';
+      hUif.style.color = '#fca5a5';
       hUif.style.fontWeight = 'bold';
 
       let hSdl = diffHeaderRow.insertCell();
       hSdl.textContent = 'SDL Diff';
-      hSdl.style.background = '#f8d7da';
+      hSdl.style.background = 'rgba(239,68,68,0.12)';
+      hSdl.style.color = '#fca5a5';
       hSdl.style.fontWeight = 'bold';
 
       let hTotal = diffHeaderRow.insertCell();
       hTotal.textContent = 'Total Diff';
-      hTotal.style.background = '#f8d7da';
+      hTotal.style.background = 'rgba(239,68,68,0.12)';
+      hTotal.style.color = '#fca5a5';
       hTotal.style.fontWeight = 'bold';
 
       // Calculate differences for each month
@@ -777,29 +852,29 @@
         // PAYE Diff cell
         let payeDiffCell = monthRow.insertCell();
         payeDiffCell.textContent = payeDiff.toFixed(2);
-        payeDiffCell.style.background = payeDiff !== 0 ? '#fce4d6' : '#d4edda';
-        payeDiffCell.style.color = payeDiff < 0 ? '#dc3545' : (payeDiff > 0 ? '#856404' : '#155724');
+        payeDiffCell.style.background = payeDiff !== 0 ? 'rgba(239,68,68,0.18)' : 'rgba(52,211,153,0.12)';
+        payeDiffCell.style.color = payeDiff < 0 ? '#f87171' : (payeDiff > 0 ? '#fbbf24' : '#34d399');
         payeDiffCell.style.fontWeight = payeDiff !== 0 ? 'bold' : 'normal';
 
         // UIF Diff cell
         let uifDiffCell = monthRow.insertCell();
         uifDiffCell.textContent = uifDiff.toFixed(2);
-        uifDiffCell.style.background = uifDiff !== 0 ? '#fce4d6' : '#d4edda';
-        uifDiffCell.style.color = uifDiff < 0 ? '#dc3545' : (uifDiff > 0 ? '#856404' : '#155724');
+        uifDiffCell.style.background = uifDiff !== 0 ? 'rgba(239,68,68,0.18)' : 'rgba(52,211,153,0.12)';
+        uifDiffCell.style.color = uifDiff < 0 ? '#f87171' : (uifDiff > 0 ? '#fbbf24' : '#34d399');
         uifDiffCell.style.fontWeight = uifDiff !== 0 ? 'bold' : 'normal';
 
         // SDL Diff cell
         let sdlDiffCell = monthRow.insertCell();
         sdlDiffCell.textContent = sdlDiff.toFixed(2);
-        sdlDiffCell.style.background = sdlDiff !== 0 ? '#fce4d6' : '#d4edda';
-        sdlDiffCell.style.color = sdlDiff < 0 ? '#dc3545' : (sdlDiff > 0 ? '#856404' : '#155724');
+        sdlDiffCell.style.background = sdlDiff !== 0 ? 'rgba(239,68,68,0.18)' : 'rgba(52,211,153,0.12)';
+        sdlDiffCell.style.color = sdlDiff < 0 ? '#f87171' : (sdlDiff > 0 ? '#fbbf24' : '#34d399');
         sdlDiffCell.style.fontWeight = sdlDiff !== 0 ? 'bold' : 'normal';
 
         // Total Diff cell
         let totalDiffCell = monthRow.insertCell();
         totalDiffCell.textContent = totalDiff.toFixed(2);
-        totalDiffCell.style.background = totalDiff !== 0 ? '#fce4d6' : '#c6e0b4';
-        totalDiffCell.style.color = totalDiff < 0 ? '#dc3545' : (totalDiff > 0 ? '#856404' : '#155724');
+        totalDiffCell.style.background = totalDiff !== 0 ? 'rgba(239,68,68,0.18)' : 'rgba(52,211,153,0.15)';
+        totalDiffCell.style.color = totalDiff < 0 ? '#f87171' : (totalDiff > 0 ? '#fbbf24' : '#34d399');
         totalDiffCell.style.fontWeight = 'bold';
       });
 
@@ -838,19 +913,19 @@
 
       let payeDiffTotalCell = diffTotalRow.insertCell();
       payeDiffTotalCell.textContent = yearPayeDiff.toFixed(2);
-      payeDiffTotalCell.style.color = yearPayeDiff < 0 ? '#dc3545' : (yearPayeDiff > 0 ? '#856404' : '#155724');
+      payeDiffTotalCell.style.color = yearPayeDiff < 0 ? '#f87171' : (yearPayeDiff > 0 ? '#fbbf24' : '#34d399');
 
       let uifDiffTotalCell = diffTotalRow.insertCell();
       uifDiffTotalCell.textContent = yearUifDiff.toFixed(2);
-      uifDiffTotalCell.style.color = yearUifDiff < 0 ? '#dc3545' : (yearUifDiff > 0 ? '#856404' : '#155724');
+      uifDiffTotalCell.style.color = yearUifDiff < 0 ? '#f87171' : (yearUifDiff > 0 ? '#fbbf24' : '#34d399');
 
       let sdlDiffTotalCell = diffTotalRow.insertCell();
       sdlDiffTotalCell.textContent = yearSdlDiff.toFixed(2);
-      sdlDiffTotalCell.style.color = yearSdlDiff < 0 ? '#dc3545' : (yearSdlDiff > 0 ? '#856404' : '#155724');
+      sdlDiffTotalCell.style.color = yearSdlDiff < 0 ? '#f87171' : (yearSdlDiff > 0 ? '#fbbf24' : '#34d399');
 
       let totalDiffTotalCell = diffTotalRow.insertCell();
       totalDiffTotalCell.textContent = yearTotalDiff.toFixed(2);
-      totalDiffTotalCell.style.color = yearTotalDiff < 0 ? '#dc3545' : (yearTotalDiff > 0 ? '#856404' : '#155724');
+      totalDiffTotalCell.style.color = yearTotalDiff < 0 ? '#f87171' : (yearTotalDiff > 0 ? '#fbbf24' : '#34d399');
       totalDiffTotalCell.style.fontWeight = 'bold';
     }
 

@@ -218,9 +218,10 @@
             }
 
             // Add to ledger system (localStorage)
-            const accounts = JSON.parse(localStorage.getItem('lorenco_custom_accounts') || '[]');
+            const _cid = localStorage.getItem('activeCompanyId') || 'demo';
+            const accounts = JSON.parse(localStorage.getItem('lorenco_custom_accounts_' + _cid) || '[]');
             accounts.push({ code, name, type, category, vatApplicable });
-            localStorage.setItem('lorenco_custom_accounts', JSON.stringify(accounts));
+            localStorage.setItem('lorenco_custom_accounts_' + _cid, JSON.stringify(accounts));
             
             alert('Account added: ' + code + ' - ' + name);
             closeModal();

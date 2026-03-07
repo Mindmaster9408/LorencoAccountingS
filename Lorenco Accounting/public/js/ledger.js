@@ -78,13 +78,40 @@ const LedgerSystem = (function() {
     // DATA STORAGE
     // ==========================================
 
+    function getCompanyId() {
+        return localStorage.getItem('activeCompanyId') || 'demo';
+    }
+
+    function storageKey(base) {
+        return base + '_' + getCompanyId();
+    }
+
+    function migrateGlobalData() {
+        // One-time migration: move pre-namespacing data into the demo company namespace
+        const keys = [
+            'lorenco_journals', 'lorenco_customers', 'lorenco_pos_sales',
+            'lorenco_bank_allocations', 'lorenco_sean_learning', 'reviewedTransactions',
+            'lorenco_custom_accounts', 'itemsCatalog'
+        ];
+        keys.forEach(function(key) {
+            const demoKey = key + '_demo';
+            if (!localStorage.getItem(demoKey) && localStorage.getItem(key) !== null) {
+                localStorage.setItem(demoKey, localStorage.getItem(key));
+                localStorage.removeItem(key);
+            }
+        });
+        if (!localStorage.getItem('activeCompanyId')) {
+            localStorage.setItem('activeCompanyId', 'demo');
+        }
+    }
+
     function getJournals() {
-        const data = localStorage.getItem('lorenco_journals');
+        const data = localStorage.getItem(storageKey('lorenco_journals'));
         return data ? JSON.parse(data) : [];
     }
 
     function saveJournals(journals) {
-        localStorage.setItem('lorenco_journals', JSON.stringify(journals));
+        localStorage.setItem(storageKey('lorenco_journals'), JSON.stringify(journals));
     }
 
     function getNextJournalNumber() {
@@ -624,10 +651,10 @@ const LedgerSystem = (function() {
     // ==========================================
 
     function clearAllData() {
-        localStorage.removeItem('lorenco_journals');
-        localStorage.removeItem('lorenco_customers');
-        localStorage.removeItem('lorenco_pos_sales');
-        console.log('All ledger data cleared');
+        localStorage.removeItem(storageKey('lorenco_journals'));
+        localStorage.removeItem(storageKey('lorenco_customers'));
+        localStorage.removeItem(storageKey('lorenco_pos_sales'));
+        console.log('All ledger data cleared for company: ' + getCompanyId());
     }
 
     // ==========================================
@@ -637,7 +664,7 @@ const LedgerSystem = (function() {
     const CHECKOUT_CHARLIE_ID = 'checkout-charlie';
 
     function getCustomers() {
-        const data = localStorage.getItem('lorenco_customers');
+        const data = localStorage.getItem(storageKey('lorenco_customers'));
         let customers = data ? JSON.parse(data) : [];
 
         // Ensure Checkout Charlie system customer exists
@@ -668,7 +695,7 @@ const LedgerSystem = (function() {
     }
 
     function saveCustomers(customers) {
-        localStorage.setItem('lorenco_customers', JSON.stringify(customers));
+        localStorage.setItem(storageKey('lorenco_customers'), JSON.stringify(customers));
     }
 
     function getCustomer(customerId) {
@@ -752,7 +779,7 @@ const LedgerSystem = (function() {
     // ==========================================
 
     function getPOSSales(filters = {}) {
-        const data = localStorage.getItem('lorenco_pos_sales');
+        const data = localStorage.getItem(storageKey('lorenco_pos_sales'));
         let sales = data ? JSON.parse(data) : [];
 
         // Apply filters
@@ -779,7 +806,7 @@ const LedgerSystem = (function() {
     }
 
     function savePOSSales(sales) {
-        localStorage.setItem('lorenco_pos_sales', JSON.stringify(sales));
+        localStorage.setItem(storageKey('lorenco_pos_sales'), JSON.stringify(sales));
     }
 
     function getNextPOSNumber() {
@@ -1055,6 +1082,9 @@ const LedgerSystem = (function() {
             console.log('Imported', data.journals.length, 'journals');
         }
     }
+
+    // Run one-time data migration on load
+    migrateGlobalData();
 
     // ==========================================
     // PUBLIC API

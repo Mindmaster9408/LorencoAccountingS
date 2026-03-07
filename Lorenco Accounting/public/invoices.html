@@ -672,13 +672,117 @@
             color: #0066cc;
         }
         
+        /* ── dark theme modal footer ── */
         .modal-footer {
-            padding: 20px 25px;
-            border-top: 1px solid #e8eaed;
+            padding: 16px 24px;
+            border-top: 1px solid rgba(255,255,255,0.07);
             display: flex;
             justify-content: flex-end;
-            gap: 12px;
+            gap: 10px;
+            background: rgba(255,255,255,0.02);
         }
+
+        /* ═══════════════════════════════════════════
+           DARK THEME OVERRIDES
+        ═══════════════════════════════════════════ */
+        body { background: #12101f !important; color: #e2e8f0; }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 30px; }
+
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+
+        .page-title {
+            font-size: 26px; font-weight: 700;
+            background: linear-gradient(135deg, #667eea, #a78bfa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+
+        .header-actions { display: flex; gap: 10px; }
+
+        .btn {
+            padding: 9px 18px; border: none; border-radius: 9px;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;
+        }
+        .btn-primary { background: linear-gradient(135deg,#667eea,#764ba2); color:#fff; }
+        .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+        .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #e2e8f0; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+
+        .card { background: #1c1a2e !important; border: 1px solid rgba(255,255,255,0.07) !important; border-radius: 14px; box-shadow: none !important; }
+        .card-header { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06) !important; display: flex; justify-content: space-between; align-items: center; background: transparent !important; }
+
+        .tabs { padding: 0 20px; background: rgba(255,255,255,0.02) !important; border-bottom: 1px solid rgba(255,255,255,0.07) !important; }
+        .tab { color: rgba(255,255,255,0.4) !important; }
+        .tab:hover { color: #a5b4fc !important; background: none !important; }
+        .tab.active { color: #667eea !important; border-bottom-color: #667eea !important; }
+
+        .search-box input,
+        input[type="text"], input[type="number"], input[type="date"],
+        select, textarea {
+            background: rgba(255,255,255,0.05) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            color: #e2e8f0 !important;
+            border-radius: 8px;
+        }
+        select option { background: #1c1a2e; color: #e2e8f0; }
+        input:focus, select:focus, textarea:focus {
+            border-color: #667eea !important;
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.15) !important;
+            background: rgba(102,126,234,0.08) !important;
+        }
+
+        thead { background: rgba(255,255,255,0.03) !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; }
+        th { color: rgba(255,255,255,0.4) !important; }
+        td { border-bottom: 1px solid rgba(255,255,255,0.05) !important; color: #cbd5e1 !important; }
+        tbody tr:hover { background: rgba(102,126,234,0.06) !important; }
+
+        .invoice-number { color: #818cf8 !important; }
+        .badge-paid    { background: rgba(52,211,153,0.15) !important; color: #34d399 !important; border: 1px solid rgba(52,211,153,0.2) !important; }
+        .badge-unpaid  { background: rgba(251,191,36,0.15) !important; color: #fbbf24 !important; border: 1px solid rgba(251,191,36,0.2) !important; }
+        .badge-overdue { background: rgba(248,113,113,0.15) !important; color: #f87171 !important; border: 1px solid rgba(248,113,113,0.2) !important; }
+        .badge-draft   { background: rgba(148,163,184,0.12) !important; color: #94a3b8 !important; border: 1px solid rgba(148,163,184,0.15) !important; }
+
+        .action-btn { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; color: #a5b4fc !important; border-radius: 7px; }
+        .action-btn:hover { background: rgba(102,126,234,0.15) !important; border-color: #667eea !important; }
+
+        .modal-content { background: #1e1c30 !important; border: 1px solid rgba(255,255,255,0.1) !important; }
+        .modal-header { background: rgba(255,255,255,0.02) !important; border-bottom: 1px solid rgba(255,255,255,0.07) !important; }
+        .modal-title { color: #e2e8f0 !important; }
+        .close-btn { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; color: rgba(255,255,255,0.5) !important; }
+        .close-btn:hover { background: rgba(239,68,68,0.15) !important; color: #f87171 !important; }
+        .modal-body { overflow-y: auto; max-height: calc(90vh - 140px); }
+
+        label { color: rgba(255,255,255,0.5) !important; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+        .form-section { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important; }
+
+        .line-items-table thead { background: rgba(102,126,234,0.08) !important; }
+        .line-items-table th { color: rgba(255,255,255,0.45) !important; border-bottom: 1px solid rgba(255,255,255,0.07) !important; }
+        .line-items-table td { padding: 5px 4px !important; }
+        .line-items-table input[readonly] { background: rgba(255,255,255,0.03) !important; color: #94a3b8 !important; }
+
+        /* Inc VAT toggle */
+        .vat-toggle-cell { text-align: center; }
+        .vat-toggle-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .vat-toggle-wrap span { font-size: 9px; color: rgba(255,255,255,0.4); white-space: nowrap; }
+        .toggle-switch { position: relative; width: 34px; height: 18px; cursor: pointer; display: block; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; inset: 0; border-radius: 18px; background: rgba(255,255,255,0.1); transition: all 0.2s; }
+        .toggle-slider::before { content:''; position:absolute; width:14px; height:14px; border-radius:50%; background:#fff; left:2px; top:2px; transition: transform 0.2s; }
+        .toggle-switch input:checked + .toggle-slider { background: #667eea; }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+        .remove-line { color: rgba(239,68,68,0.6); cursor:pointer; font-size:18px; transition: color 0.2s; padding:4px; display:block; text-align:center; }
+        .remove-line:hover { color: #f87171; }
+
+        .totals { background: rgba(102,126,234,0.07) !important; border: 1px solid rgba(102,126,234,0.2) !important; border-radius: 12px; }
+        .total-row { color: rgba(255,255,255,0.6) !important; }
+        .total-row span:last-child { color: #e2e8f0 !important; }
+        .total-row.grand-total { border-top: 1px solid rgba(102,126,234,0.3) !important; color: #818cf8 !important; }
+        .total-row.grand-total span:last-child { color: #818cf8 !important; }
+
+        #invoiceCount { font-size:12px; color:rgba(255,255,255,0.35); }
     </style>
 </head>
 <body>
@@ -687,36 +791,28 @@
         <div class="page-header">
             <h1 class="page-title">Sales Invoices</h1>
             <div class="header-actions">
-                <button class="btn btn-secondary">
-                    <span>📊</span>
-                    Export
-                </button>
-                <button class="btn btn-primary" onclick="openNewInvoice()">
-                    <span>+</span>
-                    New Invoice
-                </button>
+                <button class="btn btn-secondary">📊 Export</button>
+                <button class="btn btn-primary" onclick="openNewInvoice()">＋ New Invoice</button>
             </div>
         </div>
 
         <div class="card">
             <div class="tabs">
-                <button class="tab active" onclick="switchMainTab(event, 'all')">All Invoices</button>
-                <button class="tab" onclick="switchMainTab(event, 'unpaid')">Unpaid</button>
-                <button class="tab" onclick="switchMainTab(event, 'overdue')">Overdue</button>
-                <button class="tab" onclick="switchMainTab(event, 'draft')">Drafts</button>
+                <button class="tab active" onclick="switchMainTab(event,'all')">All Invoices</button>
+                <button class="tab" onclick="switchMainTab(event,'unpaid')">Unpaid</button>
+                <button class="tab" onclick="switchMainTab(event,'overdue')">Overdue</button>
+                <button class="tab" onclick="switchMainTab(event,'draft')">Drafts</button>
             </div>
             <div class="card-header">
                 <div class="filters">
                     <div class="search-box">
                         <input type="text" placeholder="Search invoices..." oninput="filterInvoices(this.value)">
                     </div>
-                    <select onchange="filterByCustomer(this.value)">
+                    <select onchange="filterByCustomer(this.value)" id="customerFilterSel">
                         <option value="">All Customers</option>
-                        <option value="ABC Corporation">ABC Corporation</option>
-                        <option value="XYZ Enterprises">XYZ Enterprises</option>
-                        <option value="Tech Solutions Ltd">Tech Solutions Ltd</option>
                     </select>
                 </div>
+                <span id="invoiceCount"></span>
             </div>
             <div class="table-container">
                 <table id="invoiceTable">
@@ -726,103 +822,102 @@
                             <th>Customer</th>
                             <th>Date</th>
                             <th>Due Date</th>
-                            <th>Amount</th>
+                            <th>Excl VAT</th>
+                            <th>VAT</th>
+                            <th>Total Incl</th>
                             <th>Paid</th>
                             <th>Balance</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="invoiceTableBody">
-                        <!-- Invoices will be loaded here -->
-                    </tbody>
+                    <tbody id="invoiceTableBody"></tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- New/Edit Invoice Modal -->
+    <!-- ═══ New/Edit Invoice Modal ═══ -->
     <div id="invoiceModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title" id="modalTitle">New Invoice</h2>
+                <span class="modal-title" id="modalTitle">New Invoice</span>
                 <button class="close-btn" onclick="closeInvoiceModal()">×</button>
             </div>
             <div class="modal-body">
-                <form class="invoice-form">
-                    <div class="form-section">
-                        <div class="form-group">
-                            <label>Customer *</label>
-                            <select id="customerId" required>
-                                <option value="">Select Customer</option>
-                                <option value="1">ABC Corporation</option>
-                                <option value="2">XYZ Enterprises</option>
-                                <option value="3">Tech Solutions Ltd</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Invoice Number *</label>
-                            <input type="text" id="invoiceNumber" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Invoice Date *</label>
-                            <input type="date" id="invoiceDate" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Due Date *</label>
-                            <input type="date" id="dueDate" required>
-                        </div>
-                        <div class="form-group full-width">
-                            <label>Reference</label>
-                            <input type="text" id="reference">
-                        </div>
-                        <div class="form-group full-width">
-                            <label>Notes</label>
-                            <textarea id="notes" rows="2"></textarea>
-                        </div>
-                    </div>
 
-                    <div class="line-items">
-                        <div class="line-items-header">
-                            <h3>Line Items</h3>
-                            <button type="button" class="btn btn-secondary" onclick="addLineItem()">
-                                <span>+</span> Add Line
-                            </button>
-                        </div>
-                        <table class="line-items-table">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label>Customer *</label>
+                        <select id="customerId" required>
+                            <option value="">Select Customer</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Invoice Number *</label>
+                        <input type="text" id="invoiceNumber" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Invoice Date *</label>
+                        <input type="date" id="invoiceDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Due Date *</label>
+                        <input type="date" id="dueDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Reference</label>
+                        <input type="text" id="reference" placeholder="PO / reference">
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <input type="text" id="notes" placeholder="Optional notes">
+                    </div>
+                </div>
+
+                <!-- Line Items -->
+                <div class="line-items">
+                    <div class="line-items-header">
+                        <h3 style="font-size:14px;font-weight:700;color:#e2e8f0;">Line Items</h3>
+                        <button type="button" class="btn btn-secondary" onclick="addLineItem()">＋ Add Line</button>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="line-items-table" style="width:100%;border-collapse:collapse;">
                             <thead>
                                 <tr>
-                                    <th style="width: 40%;">Description</th>
-                                    <th style="width: 15%;">Quantity</th>
-                                    <th style="width: 15%;">Unit Price</th>
-                                    <th style="width: 15%;">VAT %</th>
-                                    <th style="width: 10%;">Total</th>
-                                    <th style="width: 5%;"></th>
+                                    <th style="width:155px;padding:9px 7px;">Item</th>
+                                    <th style="width:145px;padding:9px 7px;">Account</th>
+                                    <th style="width:195px;padding:9px 7px;">Description</th>
+                                    <th style="width:65px;padding:9px 7px;">Qty</th>
+                                    <th style="width:105px;padding:9px 7px;">Unit Price</th>
+                                    <th style="width:52px;padding:9px 4px;text-align:center;">Inc<br>VAT</th>
+                                    <th style="width:95px;padding:9px 7px;">Amount</th>
+                                    <th style="width:75px;padding:9px 7px;">VAT %</th>
+                                    <th style="width:88px;padding:9px 7px;">VAT Amt</th>
+                                    <th style="width:105px;padding:9px 7px;">Total</th>
+                                    <th style="width:26px;padding:9px 4px;"></th>
                                 </tr>
                             </thead>
-                            <tbody id="lineItemsBody">
-                                <!-- Line items will be added here -->
-                            </tbody>
+                            <tbody id="lineItemsBody"></tbody>
                         </table>
                     </div>
+                </div>
 
-                    <div class="totals-section">
-                        <div class="totals">
-                            <div class="total-row">
-                                <span>Subtotal:</span>
-                                <span id="subtotal">R 0.00</span>
-                            </div>
-                            <div class="total-row">
-                                <span>VAT:</span>
-                                <span id="vatAmount">R 0.00</span>
-                            </div>
-                            <div class="total-row grand-total">
-                                <span>Total:</span>
-                                <span id="grandTotal">R 0.00</span>
-                            </div>
+                <!-- Totals -->
+                <div class="totals-section">
+                    <div class="totals" style="width:300px;padding:16px 20px;">
+                        <div class="total-row" style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;">
+                            <span>Subtotal (Excl VAT):</span><span id="subtotal">R 0.00</span>
+                        </div>
+                        <div class="total-row" style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;">
+                            <span>VAT:</span><span id="vatAmount">R 0.00</span>
+                        </div>
+                        <div class="total-row grand-total" style="display:flex;justify-content:space-between;padding:12px 0 6px;margin-top:8px;font-weight:700;font-size:16px;">
+                            <span>Total (Incl VAT):</span><span id="grandTotal">R 0.00</span>
                         </div>
                     </div>
-                </form>
+                </div>
+
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeInvoiceModal()">Cancel</button>
@@ -833,267 +928,312 @@
     </div>
 
     <script>
-        // Sample invoice data
+        // ── Data ─────────────────────────────────────────────────────────────
         let invoices = [
-            {
-                id: 1,
-                number: 'INV-2024-001',
-                customer: 'ABC Corporation',
-                customerId: 1,
-                date: '2024-01-15',
-                dueDate: '2024-02-14',
-                amount: 15750.00,
-                paid: 0,
-                status: 'Unpaid'
-            },
-            {
-                id: 2,
-                number: 'INV-2024-002',
-                customer: 'XYZ Enterprises',
-                customerId: 2,
-                date: '2024-01-20',
-                dueDate: '2024-02-19',
-                amount: 8420.50,
-                paid: 0,
-                status: 'Unpaid'
-            },
-            {
-                id: 3,
-                number: 'INV-2024-003',
-                customer: 'Tech Solutions Ltd',
-                customerId: 3,
-                date: '2024-01-05',
-                dueDate: '2024-02-04',
-                amount: 25000.00,
-                paid: 25000.00,
-                status: 'Paid'
-            },
-            {
-                id: 4,
-                number: 'INV-2023-045',
-                customer: 'ABC Corporation',
-                customerId: 1,
-                date: '2023-12-15',
-                dueDate: '2024-01-14',
-                amount: 12500.00,
-                paid: 5000.00,
-                status: 'Overdue'
-            }
+            { id:1, number:'INV-2026-001', customer:'ABC Corporation',    customerId:1, date:'2026-01-15', dueDate:'2026-02-14', exclVat:13695.65, vatAmount:2054.35, total:15750.00, paid:0,       status:'Unpaid'  },
+            { id:2, number:'INV-2026-002', customer:'XYZ Enterprises',    customerId:2, date:'2026-01-20', dueDate:'2026-02-19', exclVat:7322.17,  vatAmount:1097.83, total:8420.00,  paid:0,       status:'Unpaid'  },
+            { id:3, number:'INV-2026-003', customer:'Tech Solutions Ltd',  customerId:3, date:'2026-01-05', dueDate:'2026-02-04', exclVat:21739.13, vatAmount:3260.87, total:25000.00, paid:25000.00, status:'Paid'   },
+            { id:4, number:'INV-2025-045', customer:'ABC Corporation',    customerId:1, date:'2025-12-15', dueDate:'2026-01-14', exclVat:10869.57, vatAmount:1630.43, total:12500.00, paid:5000.00,  status:'Overdue' }
+        ];
+
+        let customers = [
+            { id:1, name:'ABC Corporation' },
+            { id:2, name:'XYZ Enterprises' },
+            { id:3, name:'Tech Solutions Ltd' }
+        ];
+
+        function getItems() {
+            try { return JSON.parse(localStorage.getItem('itemsCatalog_' + (localStorage.getItem('activeCompanyId') || 'demo')) || '[]'); } catch { return []; }
+        }
+
+        const ACCOUNTS = [
+            { code:'4000', name:'Sales – Services' },
+            { code:'4001', name:'Sales – Products' },
+            { code:'4002', name:'Consulting Revenue' },
+            { code:'4100', name:'Other Income' }
         ];
 
         let currentFilter = 'all';
         let lineItemCounter = 0;
+        let editingId = null;
 
-        // Load invoices on page load
-        document.addEventListener('DOMContentLoaded', function() {
+        // ── Init ──────────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', function () {
+            populateCustomerDropdowns();
             loadInvoices();
-            addLineItem(); // Add first line item
-            
-            // Set default dates
-            const today = new Date().toISOString().split('T')[0];
-            const dueDate = new Date();
-            dueDate.setDate(dueDate.getDate() + 30);
-            document.getElementById('invoiceDate').value = today;
-            document.getElementById('dueDate').value = dueDate.toISOString().split('T')[0];
-            
-            // Generate invoice number
-            const nextNumber = (invoices.length + 1).toString().padStart(3, '0');
-            document.getElementById('invoiceNumber').value = `INV-2024-${nextNumber}`;
+            setDefaultDates();
+            generateInvoiceNumber();
+            addLineItem();
         });
 
-        function loadInvoices(filter = 'all') {
-            currentFilter = filter;
-            const tbody = document.getElementById('invoiceTableBody');
-            tbody.innerHTML = '';
+        function setDefaultDates() {
+            const today = new Date().toISOString().split('T')[0];
+            const due   = new Date(); due.setDate(due.getDate() + 30);
+            document.getElementById('invoiceDate').value = today;
+            document.getElementById('dueDate').value     = due.toISOString().split('T')[0];
+        }
 
-            let filteredInvoices = invoices;
-            if (filter === 'unpaid') {
-                filteredInvoices = invoices.filter(inv => inv.status === 'Unpaid');
-            } else if (filter === 'overdue') {
-                filteredInvoices = invoices.filter(inv => inv.status === 'Overdue');
-            } else if (filter === 'draft') {
-                filteredInvoices = invoices.filter(inv => inv.status === 'Draft');
-            }
+        function generateInvoiceNumber() {
+            const year = new Date().getFullYear();
+            const next = (invoices.length + 1).toString().padStart(3, '0');
+            document.getElementById('invoiceNumber').value = `INV-${year}-${next}`;
+        }
 
-            filteredInvoices.forEach(invoice => {
-                const balance = invoice.amount - invoice.paid;
-                const statusClass = invoice.status.toLowerCase().replace(' ', '-');
-                
-                const row = `
-                    <tr>
-                        <td><span class="invoice-number" onclick="viewInvoice(${invoice.id})">${invoice.number}</span></td>
-                        <td>${invoice.customer}</td>
-                        <td>${new Date(invoice.date).toLocaleDateString()}</td>
-                        <td>${new Date(invoice.dueDate).toLocaleDateString()}</td>
-                        <td>R ${invoice.amount.toFixed(2)}</td>
-                        <td>R ${invoice.paid.toFixed(2)}</td>
-                        <td>R ${balance.toFixed(2)}</td>
-                        <td><span class="badge badge-${statusClass}">${invoice.status}</span></td>
-                        <td>
-                            <div class="actions">
-                                <button class="action-btn" onclick="viewInvoice(${invoice.id})">View</button>
-                                <button class="action-btn" onclick="emailInvoice(${invoice.id})">Email</button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
+        function populateCustomerDropdowns() {
+            const sel  = document.getElementById('customerId');
+            const fsel = document.getElementById('customerFilterSel');
+            sel.innerHTML  = '<option value="">Select Customer</option>';
+            fsel.innerHTML = '<option value="">All Customers</option>';
+            customers.forEach(c => {
+                sel.innerHTML  += `<option value="${c.id}">${c.name}</option>`;
+                fsel.innerHTML += `<option value="${c.name}">${c.name}</option>`;
             });
         }
 
+        // ── Invoice List ──────────────────────────────────────────────────────
+        function loadInvoices(filter) {
+            if (filter !== undefined) currentFilter = filter;
+            let list = [...invoices];
+            if (currentFilter === 'unpaid')  list = list.filter(i => i.status === 'Unpaid');
+            if (currentFilter === 'overdue') list = list.filter(i => i.status === 'Overdue');
+            if (currentFilter === 'draft')   list = list.filter(i => i.status === 'Draft');
+
+            const tbody = document.getElementById('invoiceTableBody');
+            document.getElementById('invoiceCount').textContent = `${list.length} invoice${list.length !== 1 ? 's' : ''}`;
+
+            if (list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:50px;color:rgba(255,255,255,0.25);">No invoices found</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = list.map(inv => {
+                const balance  = inv.total - inv.paid;
+                const sc       = inv.status.toLowerCase();
+                const balColor = balance > 0 ? '#fbbf24' : '#34d399';
+                return `<tr>
+                    <td><span class="invoice-number" onclick="viewInvoice(${inv.id})" style="cursor:pointer;">${inv.number}</span></td>
+                    <td>${inv.customer}</td>
+                    <td>${fmtDate(inv.date)}</td>
+                    <td>${fmtDate(inv.dueDate)}</td>
+                    <td>R ${fmt(inv.exclVat)}</td>
+                    <td>R ${fmt(inv.vatAmount)}</td>
+                    <td style="font-weight:600;">R ${fmt(inv.total)}</td>
+                    <td>R ${fmt(inv.paid)}</td>
+                    <td style="color:${balColor};">R ${fmt(balance)}</td>
+                    <td><span class="badge badge-${sc}">${inv.status}</span></td>
+                    <td>
+                        <div class="actions">
+                            <button class="action-btn" onclick="viewInvoice(${inv.id})">View</button>
+                            <button class="action-btn" onclick="emailInvoice(${inv.id})">Email</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
         function switchMainTab(event, filter) {
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
             loadInvoices(filter);
         }
 
         function filterInvoices(search) {
-            const tbody = document.getElementById('invoiceTableBody');
-            const rows = tbody.getElementsByTagName('tr');
-            
-            for (let row of rows) {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(search.toLowerCase()) ? '' : 'none';
-            }
+            [...document.querySelectorAll('#invoiceTableBody tr')].forEach(row => {
+                row.style.display = row.textContent.toLowerCase().includes(search.toLowerCase()) ? '' : 'none';
+            });
         }
 
         function filterByCustomer(customer) {
-            const tbody = document.getElementById('invoiceTableBody');
-            const rows = tbody.getElementsByTagName('tr');
-            
-            for (let row of rows) {
-                if (!customer) {
-                    row.style.display = '';
-                } else {
-                    const text = row.textContent;
-                    row.style.display = text.includes(customer) ? '' : 'none';
-                }
-            }
+            [...document.querySelectorAll('#invoiceTableBody tr')].forEach(row => {
+                row.style.display = (!customer || row.textContent.includes(customer)) ? '' : 'none';
+            });
         }
 
+        // ── Modal Open/Close ──────────────────────────────────────────────────
         function openNewInvoice() {
+            editingId = null;
             document.getElementById('modalTitle').textContent = 'New Invoice';
             document.getElementById('invoiceModal').classList.add('active');
+            document.getElementById('lineItemsBody').innerHTML = '';
+            lineItemCounter = 0;
+            setDefaultDates();
+            generateInvoiceNumber();
+            addLineItem();
         }
 
         function closeInvoiceModal() {
             document.getElementById('invoiceModal').classList.remove('active');
         }
 
+        // ── Line Items ────────────────────────────────────────────────────────
         function addLineItem() {
             lineItemCounter++;
-            const tbody = document.getElementById('lineItemsBody');
+            const id    = lineItemCounter;
+            const items = getItems();
+
+            const itemOptions = items.map(it =>
+                `<option value="${it.id}" data-price="${it.unitPrice}" data-vat="${it.vatRate}" data-account="${it.accountCode || ''}" data-desc="${it.name}">${it.name}</option>`
+            ).join('');
+
+            const acctOptions = ACCOUNTS.map(a =>
+                `<option value="${a.code}">${a.code} – ${a.name}</option>`
+            ).join('');
+
             const row = document.createElement('tr');
-            row.id = `line-${lineItemCounter}`;
+            row.id = `li-${id}`;
             row.innerHTML = `
-                <td><input type="text" placeholder="Description" onchange="calculateTotals()"></td>
-                <td><input type="number" value="1" min="0" step="1" onchange="calculateLineTotal(${lineItemCounter})"></td>
-                <td><input type="number" value="0" min="0" step="0.01" onchange="calculateLineTotal(${lineItemCounter})"></td>
+                <td><select id="li-item-${id}" onchange="onItemSelect(${id})"><option value="">-- Select --</option>${itemOptions}</select></td>
+                <td><select id="li-acct-${id}"><option value="">Select</option>${acctOptions}</select></td>
+                <td><input type="text" id="li-desc-${id}" placeholder="Description" style="width:100%;"></td>
+                <td><input type="number" id="li-qty-${id}" value="1" min="0.01" step="0.01" oninput="calcLine(${id})" style="width:100%;"></td>
+                <td><input type="number" id="li-price-${id}" value="0" min="0" step="0.01" oninput="calcLine(${id})" style="width:100%;"></td>
+                <td class="vat-toggle-cell">
+                    <div class="vat-toggle-wrap">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="li-incvat-${id}" onchange="onIncVatChange(${id})">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span id="li-incvat-lbl-${id}">Excl</span>
+                    </div>
+                </td>
+                <td><input type="text" id="li-amt-${id}" readonly value="R 0.00" style="width:100%;"></td>
                 <td>
-                    <select onchange="calculateLineTotal(${lineItemCounter})">
+                    <select id="li-vat-${id}" onchange="calcLine(${id})" style="width:100%;">
                         <option value="0">0%</option>
                         <option value="15" selected>15%</option>
                     </select>
                 </td>
-                <td><input type="text" readonly value="R 0.00" id="total-${lineItemCounter}"></td>
-                <td><span class="remove-line" onclick="removeLineItem(${lineItemCounter})">×</span></td>
+                <td><input type="text" id="li-vatamt-${id}" readonly value="R 0.00" style="width:100%;"></td>
+                <td><input type="text" id="li-total-${id}" readonly value="R 0.00" style="width:100%;font-weight:600;"></td>
+                <td><span class="remove-line" onclick="removeLine(${id})">×</span></td>
             `;
-            tbody.appendChild(row);
+            document.getElementById('lineItemsBody').appendChild(row);
         }
 
-        function removeLineItem(id) {
-            document.getElementById(`line-${id}`).remove();
-            calculateTotals();
+        function onIncVatChange(id) {
+            const chk = document.getElementById(`li-incvat-${id}`);
+            document.getElementById(`li-incvat-lbl-${id}`).textContent = chk.checked ? 'Incl' : 'Excl';
+            calcLine(id);
         }
 
-        function calculateLineTotal(id) {
-            const row = document.getElementById(`line-${id}`);
-            const inputs = row.getElementsByTagName('input');
-            const select = row.getElementsByTagName('select')[0];
-            
-            const qty = parseFloat(inputs[1].value) || 0;
-            const price = parseFloat(inputs[2].value) || 0;
-            const vatRate = parseFloat(select.value) || 0;
-            
-            const subtotal = qty * price;
-            const vat = subtotal * (vatRate / 100);
-            const total = subtotal + vat;
-            
-            document.getElementById(`total-${id}`).value = `R ${total.toFixed(2)}`;
-            calculateTotals();
+        function onItemSelect(id) {
+            const sel = document.getElementById(`li-item-${id}`);
+            const opt = sel.selectedOptions[0];
+            if (!opt || !opt.value) return;
+            document.getElementById(`li-price-${id}`).value = parseFloat(opt.dataset.price) || 0;
+            document.getElementById(`li-desc-${id}`).value  = opt.dataset.desc || '';
+            const vatSel = document.getElementById(`li-vat-${id}`);
+            if (vatSel) vatSel.value = opt.dataset.vat || '15';
+            const acctSel = document.getElementById(`li-acct-${id}`);
+            if (acctSel && opt.dataset.account) acctSel.value = opt.dataset.account;
+            calcLine(id);
         }
 
-        function calculateTotals() {
-            let subtotal = 0;
-            let vatAmount = 0;
-            
-            const rows = document.getElementById('lineItemsBody').getElementsByTagName('tr');
-            for (let row of rows) {
-                const inputs = row.getElementsByTagName('input');
-                const select = row.getElementsByTagName('select')[0];
-                
-                const qty = parseFloat(inputs[1].value) || 0;
-                const price = parseFloat(inputs[2].value) || 0;
-                const vatRate = parseFloat(select.value) || 0;
-                
-                const lineSubtotal = qty * price;
-                const lineVat = lineSubtotal * (vatRate / 100);
-                
-                subtotal += lineSubtotal;
-                vatAmount += lineVat;
+        function calcLine(id) {
+            const qty     = parseFloat(document.getElementById(`li-qty-${id}`)?.value)   || 0;
+            const price   = parseFloat(document.getElementById(`li-price-${id}`)?.value) || 0;
+            const vatRate = parseFloat(document.getElementById(`li-vat-${id}`)?.value)   || 0;
+            const incVat  = document.getElementById(`li-incvat-${id}`)?.checked;
+
+            let exclAmt, vatAmt, totalAmt;
+            if (incVat) {
+                totalAmt = qty * price;
+                exclAmt  = totalAmt / (1 + vatRate / 100);
+                vatAmt   = totalAmt - exclAmt;
+            } else {
+                exclAmt  = qty * price;
+                vatAmt   = exclAmt * (vatRate / 100);
+                totalAmt = exclAmt + vatAmt;
             }
-            
-            const total = subtotal + vatAmount;
-            
-            document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
-            document.getElementById('vatAmount').textContent = `R ${vatAmount.toFixed(2)}`;
-            document.getElementById('grandTotal').textContent = `R ${total.toFixed(2)}`;
+
+            document.getElementById(`li-amt-${id}`).value    = `R ${fmt(exclAmt)}`;
+            document.getElementById(`li-vatamt-${id}`).value = `R ${fmt(vatAmt)}`;
+            document.getElementById(`li-total-${id}`).value  = `R ${fmt(totalAmt)}`;
+            calcTotals();
         }
 
+        function removeLine(id) {
+            const row = document.getElementById(`li-${id}`);
+            if (row) row.remove();
+            calcTotals();
+        }
+
+        function calcTotals() {
+            let excl = 0, vat = 0;
+            [...document.querySelectorAll('#lineItemsBody tr')].forEach(row => {
+                const id      = row.id.replace('li-', '');
+                const qty     = parseFloat(document.getElementById(`li-qty-${id}`)?.value)   || 0;
+                const price   = parseFloat(document.getElementById(`li-price-${id}`)?.value) || 0;
+                const vatRate = parseFloat(document.getElementById(`li-vat-${id}`)?.value)   || 0;
+                const incVat  = document.getElementById(`li-incvat-${id}`)?.checked;
+                if (incVat) {
+                    const t = qty * price;
+                    const e = t / (1 + vatRate / 100);
+                    excl += e; vat += t - e;
+                } else {
+                    const e = qty * price;
+                    excl += e; vat += e * (vatRate / 100);
+                }
+            });
+            document.getElementById('subtotal').textContent  = `R ${fmt(excl)}`;
+            document.getElementById('vatAmount').textContent = `R ${fmt(vat)}`;
+            document.getElementById('grandTotal').textContent = `R ${fmt(excl + vat)}`;
+        }
+
+        // ── Save ──────────────────────────────────────────────────────────────
         function saveInvoice() {
-            const customer = document.getElementById('customerId').value;
-            const invoiceNumber = document.getElementById('invoiceNumber').value;
-            
-            if (!customer || !invoiceNumber) {
-                alert('Please fill in all required fields');
-                return;
-            }
-            
-            // Get total from display
-            const totalText = document.getElementById('grandTotal').textContent;
-            const amount = parseFloat(totalText.replace('R ', '').replace(',', ''));
-            
+            const custId = document.getElementById('customerId').value;
+            const num    = document.getElementById('invoiceNumber').value.trim();
+            if (!custId || !num) { alert('Please fill in Customer and Invoice Number.'); return; }
+
+            const excl  = parseAmt(document.getElementById('subtotal').textContent);
+            const vat   = parseAmt(document.getElementById('vatAmount').textContent);
             const invoice = {
-                id: invoices.length + 1,
-                number: invoiceNumber,
+                id: editingId || (invoices.length + 1),
+                number: num,
                 customer: document.getElementById('customerId').selectedOptions[0].text,
-                customerId: parseInt(customer),
+                customerId: parseInt(custId),
                 date: document.getElementById('invoiceDate').value,
                 dueDate: document.getElementById('dueDate').value,
-                amount: amount,
-                paid: 0,
-                status: 'Unpaid'
+                exclVat: excl, vatAmount: vat, total: excl + vat,
+                paid: 0, status: 'Unpaid'
             };
-            
-            invoices.push(invoice);
-            loadInvoices(currentFilter);
+
+            if (editingId) {
+                const idx = invoices.findIndex(i => i.id === editingId);
+                if (idx !== -1) invoices[idx] = invoice;
+            } else {
+                invoices.push(invoice);
+            }
+            loadInvoices();
             closeInvoiceModal();
-            
-            alert('Invoice created successfully!');
         }
 
         function saveDraft() {
-            alert('Saved as draft');
+            const num = document.getElementById('invoiceNumber').value.trim();
+            if (!num) { alert('Please enter an invoice number.'); return; }
+            const excl  = parseAmt(document.getElementById('subtotal').textContent);
+            const vat   = parseAmt(document.getElementById('vatAmount').textContent);
+            invoices.push({
+                id: invoices.length + 1, number: num,
+                customer: document.getElementById('customerId').value
+                    ? document.getElementById('customerId').selectedOptions[0].text : '—',
+                customerId: parseInt(document.getElementById('customerId').value) || 0,
+                date: document.getElementById('invoiceDate').value,
+                dueDate: document.getElementById('dueDate').value,
+                exclVat: excl, vatAmount: vat, total: excl + vat, paid: 0, status: 'Draft'
+            });
+            loadInvoices();
             closeInvoiceModal();
         }
 
-        function viewInvoice(id) {
-            alert('View invoice: ' + id);
-        }
+        function viewInvoice(id)  { alert('View invoice #' + id + ' — full view coming soon.'); }
+        function emailInvoice(id) { alert('Email invoice #' + id + ' — email integration coming soon.'); }
 
-        function emailInvoice(id) {
-            alert('Email invoice: ' + id);
-        }
+        // ── Helpers ───────────────────────────────────────────────────────────
+        function fmt(n)      { return (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+        function parseAmt(s) { return parseFloat((s || '').replace('R ', '').replace(/,/g, '')) || 0; }
+        function fmtDate(d)  { return d ? new Date(d + 'T00:00:00').toLocaleDateString('en-ZA', {day:'numeric',month:'short',year:'numeric'}) : '—'; }
     </script>
 </body>
 </html>

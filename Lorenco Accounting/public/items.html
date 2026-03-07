@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Accounting - Items</title>
+    <script src="js/navigation.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #12101f;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1300px; margin: 0 auto; padding: 30px; }
+
+        /* ─── Page Header ─── */
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+        .page-title {
+            font-size: 26px; font-weight: 700;
+            background: linear-gradient(135deg, #667eea, #a78bfa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .header-actions { display: flex; gap: 10px; }
+
+        /* ─── Buttons ─── */
+        .btn {
+            padding: 9px 18px; border: none; border-radius: 9px;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;
+        }
+        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+        .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+        .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #e2e8f0; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+        .btn-danger { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25); color: #fca5a5; }
+        .btn-sm { padding: 5px 11px; font-size: 12px; border-radius: 7px; }
+
+        /* ─── Stats Row ─── */
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .stat-card {
+            background: #1c1a2e; border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 12px; padding: 18px 20px;
+        }
+        .stat-label { font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .stat-value { font-size: 24px; font-weight: 700; color: #818cf8; }
+
+        /* ─── Card ─── */
+        .card { background: #1c1a2e; border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; overflow: hidden; }
+
+        /* ─── Filters ─── */
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .filters { display: flex; gap: 10px; align-items: center; }
+
+        .search-box { position: relative; }
+        .search-box input {
+            padding: 8px 14px 8px 36px;
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px; color: #e2e8f0; font-size: 13px; width: 240px;
+        }
+        .search-box input:focus { outline: none; border-color: #667eea; background: rgba(102,126,234,0.08); }
+        .search-box::before { content:'🔍'; position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:13px; pointer-events:none; }
+        select {
+            padding: 8px 12px; background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+            color: #e2e8f0; font-size: 13px; cursor: pointer;
+        }
+        select option { background: #1c1a2e; }
+
+        /* ─── Table ─── */
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); }
+        th {
+            padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 700;
+            color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.6px;
+        }
+        td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; color: #cbd5e1; }
+        tbody tr:hover { background: rgba(102,126,234,0.06); }
+
+        .item-name { font-weight: 600; color: #e2e8f0; cursor: pointer; }
+        .item-name:hover { color: #818cf8; }
+
+        .badge {
+            display: inline-block; padding: 3px 10px; border-radius: 12px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .badge-product { background: rgba(102,126,234,0.15); color: #818cf8; border: 1px solid rgba(102,126,234,0.2); }
+        .badge-service { background: rgba(52,211,153,0.13); color: #34d399; border: 1px solid rgba(52,211,153,0.2); }
+        .badge-active   { background: rgba(52,211,153,0.13); color: #34d399; border: 1px solid rgba(52,211,153,0.2); }
+        .badge-inactive { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.15); }
+
+        .actions { display: flex; gap: 6px; }
+        .action-btn {
+            padding: 5px 11px; background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 7px;
+            font-size: 12px; color: #a5b4fc; cursor: pointer; transition: all 0.2s;
+        }
+        .action-btn:hover { background: rgba(102,126,234,0.15); border-color: #667eea; }
+        .action-btn.danger { color: #fca5a5; }
+        .action-btn.danger:hover { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); }
+
+        /* ─── Modal ─── */
+        .modal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7); z-index: 2000;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: #1e1c30; border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px; width: 100%; max-width: 620px; overflow: hidden;
+        }
+        .modal-header {
+            padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.07);
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.02);
+        }
+        .modal-title { font-size: 17px; font-weight: 700; color: #e2e8f0; }
+        .close-btn {
+            width: 32px; height: 32px; border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05); border-radius: 8px;
+            cursor: pointer; font-size: 18px; color: rgba(255,255,255,0.5); transition: all 0.2s;
+        }
+        .close-btn:hover { background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.3); }
+
+        .modal-body { padding: 24px; }
+        .modal-footer {
+            padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.07);
+            display: flex; justify-content: flex-end; gap: 10px;
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* ─── Form ─── */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.5px; }
+        input[type="text"], input[type="number"], select, textarea {
+            padding: 9px 12px; background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+            color: #e2e8f0; font-size: 13px; font-family: inherit; transition: all 0.2s;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none; border-color: #667eea;
+            background: rgba(102,126,234,0.08);
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
+        }
+        textarea { resize: vertical; min-height: 66px; }
+
+        /* Type radio */
+        .type-selector { display: flex; gap: 10px; }
+        .type-option { flex: 1; }
+        .type-option input { display: none; }
+        .type-option label {
+            display: block; padding: 10px; text-align: center;
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; cursor: pointer;
+            font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.45);
+            text-transform: none; letter-spacing: 0; transition: all 0.2s;
+        }
+        .type-option input:checked + label {
+            border-color: #667eea; background: rgba(102,126,234,0.12); color: #818cf8;
+        }
+        .type-option label:hover { border-color: rgba(102,126,234,0.4); color: #a5b4fc; }
+
+        /* ─── Empty state ─── */
+        .empty-state { text-align: center; padding: 60px 20px; color: rgba(255,255,255,0.3); }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state p { margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title">Items Catalog</h1>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="exportItems()">📤 Export</button>
+                <button class="btn btn-primary" onclick="openNewItem()">＋ New Item</button>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-label">Total Items</div>
+                <div class="stat-value" id="statTotal">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Products</div>
+                <div class="stat-value" id="statProducts">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Services</div>
+                <div class="stat-value" id="statServices">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active</div>
+                <div class="stat-value" id="statActive">0</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="filters">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="Search items..." oninput="renderItems()">
+                    </div>
+                    <select id="typeFilter" onchange="renderItems()">
+                        <option value="">All Types</option>
+                        <option value="product">Products</option>
+                        <option value="service">Services</option>
+                    </select>
+                    <select id="statusFilter" onchange="renderItems()">
+                        <option value="">All Status</option>
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
+                    </select>
+                </div>
+                <span id="itemCount" style="font-size:12px;color:rgba(255,255,255,0.35);"></span>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Unit</th>
+                            <th>Unit Price</th>
+                            <th>VAT Rate</th>
+                            <th>Account</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ New/Edit Item Modal ═══ -->
+    <div id="itemModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="modalTitle">New Item</span>
+                <button class="close-btn" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-grid">
+
+                    <!-- Type selector (full width) -->
+                    <div class="form-group full">
+                        <label>Type</label>
+                        <div class="type-selector">
+                            <div class="type-option">
+                                <input type="radio" id="typeProduct" name="itemType" value="product" checked onchange="onTypeChange()">
+                                <label for="typeProduct">📦 Product</label>
+                            </div>
+                            <div class="type-option">
+                                <input type="radio" id="typeService" name="itemType" value="service" onchange="onTypeChange()">
+                                <label for="typeService">⚙️ Service</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Item Code *</label>
+                        <input type="text" id="iCode" placeholder="e.g. SVC-001">
+                    </div>
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" id="iName" placeholder="Item name">
+                    </div>
+
+                    <div class="form-group full">
+                        <label>Description</label>
+                        <textarea id="iDesc" placeholder="Optional description shown on invoices"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Unit</label>
+                        <select id="iUnit">
+                            <option value="each">Each</option>
+                            <option value="hour">Hour</option>
+                            <option value="day">Day</option>
+                            <option value="month">Month</option>
+                            <option value="kg">kg</option>
+                            <option value="litre">Litre</option>
+                            <option value="m2">m²</option>
+                            <option value="m3">m³</option>
+                            <option value="km">km</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Unit Price (R) *</label>
+                        <input type="number" id="iPrice" min="0" step="0.01" placeholder="0.00">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Default VAT Rate</label>
+                        <select id="iVat">
+                            <option value="0">0% (Zero-rated / Exempt)</option>
+                            <option value="15" selected>15% (Standard)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>GL Account</label>
+                        <select id="iAccount">
+                            <option value="">— Select Account —</option>
+                            <option value="4000">4000 – Sales: Services</option>
+                            <option value="4001">4001 – Sales: Products</option>
+                            <option value="4002">4002 – Consulting Revenue</option>
+                            <option value="4100">4100 – Other Income</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group full" style="flex-direction:row;align-items:center;gap:10px;">
+                        <input type="checkbox" id="iActive" style="width:16px;height:16px;cursor:pointer;" checked>
+                        <label for="iActive" style="text-transform:none;letter-spacing:0;font-size:13px;color:#e2e8f0;cursor:pointer;">Active (available on invoices)</label>
+                    </div>
+
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveItem()">Save Item</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'itemsCatalog_' + (localStorage.getItem('activeCompanyId') || 'demo');
+
+        // ── Data ─────────────────────────────────────────────────────────────
+        function loadItems()   { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; } }
+        function saveItems(items) { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+
+        let items      = loadItems();
+        let editingId  = null;
+
+        // Seed sample items if empty
+        if (items.length === 0) {
+            items = [
+                { id:1, code:'SVC-001', name:'Accounting Advisory',    description:'Hourly accounting advice',         type:'service', unit:'hour',  unitPrice:650,   vatRate:15, accountCode:'4000', isActive:true },
+                { id:2, code:'SVC-002', name:'Tax Return Preparation', description:'Annual tax return (individual)',   type:'service', unit:'each',  unitPrice:2500,  vatRate:15, accountCode:'4002', isActive:true },
+                { id:3, code:'SVC-003', name:'Payroll Processing',     description:'Monthly payroll (per employee)',   type:'service', unit:'month', unitPrice:180,   vatRate:15, accountCode:'4000', isActive:true },
+                { id:4, code:'PRD-001', name:'Accounting Software',    description:'Annual licence per user',          type:'product', unit:'each',  unitPrice:1200,  vatRate:15, accountCode:'4001', isActive:true },
+                { id:5, code:'PRD-002', name:'Cloud Storage Add-on',   description:'Extra 100GB cloud storage',        type:'product', unit:'month', unitPrice:99,    vatRate:15, accountCode:'4001', isActive:false }
+            ];
+            saveItems(items);
+        }
+
+        // ── Init ──────────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', () => {
+            items = loadItems();
+            renderItems();
+        });
+
+        // ── Render ────────────────────────────────────────────────────────────
+        function renderItems() {
+            const search  = (document.getElementById('searchInput').value || '').toLowerCase();
+            const typeFlt = document.getElementById('typeFilter').value;
+            const statusFlt = document.getElementById('statusFilter').value;
+
+            let list = items.filter(it => {
+                const matchSearch = !search ||
+                    it.name.toLowerCase().includes(search) ||
+                    it.code.toLowerCase().includes(search) ||
+                    (it.description || '').toLowerCase().includes(search);
+                const matchType   = !typeFlt   || it.type === typeFlt;
+                const matchStatus = statusFlt === '' || String(it.isActive) === statusFlt;
+                return matchSearch && matchType && matchStatus;
+            });
+
+            // Stats
+            document.getElementById('statTotal').textContent    = items.length;
+            document.getElementById('statProducts').textContent = items.filter(i => i.type === 'product').length;
+            document.getElementById('statServices').textContent = items.filter(i => i.type === 'service').length;
+            document.getElementById('statActive').textContent   = items.filter(i => i.isActive).length;
+            document.getElementById('itemCount').textContent    = `${list.length} item${list.length !== 1 ? 's' : ''}`;
+
+            const tbody = document.getElementById('itemsTableBody');
+            if (list.length === 0) {
+                tbody.innerHTML = `
+                    <tr><td colspan="9">
+                        <div class="empty-state">
+                            <div class="icon">📦</div>
+                            <p>No items found</p>
+                            <button class="btn btn-primary" onclick="openNewItem()">＋ Add First Item</button>
+                        </div>
+                    </td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = list.map(it => `
+                <tr>
+                    <td style="font-family:monospace;font-size:12px;color:#818cf8;">${it.code}</td>
+                    <td><span class="item-name" onclick="openEditItem(${it.id})">${it.name}</span>
+                        ${it.description ? `<div style="font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px;">${it.description}</div>` : ''}
+                    </td>
+                    <td><span class="badge badge-${it.type}">${it.type}</span></td>
+                    <td style="color:rgba(255,255,255,0.5);">${it.unit}</td>
+                    <td style="font-weight:600;">R ${fmt(it.unitPrice)}</td>
+                    <td>${it.vatRate}%</td>
+                    <td style="font-family:monospace;font-size:12px;">${it.accountCode || '—'}</td>
+                    <td><span class="badge badge-${it.isActive ? 'active' : 'inactive'}">${it.isActive ? 'Active' : 'Inactive'}</span></td>
+                    <td>
+                        <div class="actions">
+                            <button class="action-btn" onclick="openEditItem(${it.id})">Edit</button>
+                            <button class="action-btn" onclick="toggleStatus(${it.id})">${it.isActive ? 'Deactivate' : 'Activate'}</button>
+                            <button class="action-btn danger" onclick="deleteItem(${it.id})">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // ── Modal ─────────────────────────────────────────────────────────────
+        function openNewItem() {
+            editingId = null;
+            document.getElementById('modalTitle').textContent = 'New Item';
+            clearForm();
+            document.getElementById('itemModal').classList.add('active');
+        }
+
+        function openEditItem(id) {
+            const item = items.find(i => i.id === id);
+            if (!item) return;
+            editingId = id;
+            document.getElementById('modalTitle').textContent = 'Edit Item';
+            document.querySelector(`input[name="itemType"][value="${item.type}"]`).checked = true;
+            document.getElementById('iCode').value    = item.code;
+            document.getElementById('iName').value    = item.name;
+            document.getElementById('iDesc').value    = item.description || '';
+            document.getElementById('iUnit').value    = item.unit;
+            document.getElementById('iPrice').value   = item.unitPrice;
+            document.getElementById('iVat').value     = String(item.vatRate);
+            document.getElementById('iAccount').value = item.accountCode || '';
+            document.getElementById('iActive').checked = item.isActive;
+            document.getElementById('itemModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('itemModal').classList.remove('active');
+        }
+
+        function clearForm() {
+            document.querySelector('input[name="itemType"][value="product"]').checked = true;
+            document.getElementById('iCode').value    = '';
+            document.getElementById('iName').value    = '';
+            document.getElementById('iDesc').value    = '';
+            document.getElementById('iUnit').value    = 'each';
+            document.getElementById('iPrice').value   = '';
+            document.getElementById('iVat').value     = '15';
+            document.getElementById('iAccount').value = '';
+            document.getElementById('iActive').checked = true;
+        }
+
+        function onTypeChange() {
+            // Auto-fill GL account suggestion when type changes
+            const type = document.querySelector('input[name="itemType"]:checked').value;
+            const acct = document.getElementById('iAccount');
+            if (!acct.value) acct.value = type === 'service' ? '4000' : '4001';
+        }
+
+        function saveItem() {
+            const code  = document.getElementById('iCode').value.trim();
+            const name  = document.getElementById('iName').value.trim();
+            const price = parseFloat(document.getElementById('iPrice').value);
+
+            if (!code)          { alert('Please enter an item code.');  return; }
+            if (!name)          { alert('Please enter a name.');         return; }
+            if (isNaN(price))   { alert('Please enter a valid price.');  return; }
+
+            // Check code uniqueness
+            const duplicate = items.find(i => i.code === code && i.id !== editingId);
+            if (duplicate) { alert(`Item code "${code}" already exists.`); return; }
+
+            const item = {
+                id:          editingId || (items.length ? Math.max(...items.map(i => i.id)) + 1 : 1),
+                code:        code,
+                name:        name,
+                description: document.getElementById('iDesc').value.trim(),
+                type:        document.querySelector('input[name="itemType"]:checked').value,
+                unit:        document.getElementById('iUnit').value,
+                unitPrice:   price,
+                vatRate:     parseInt(document.getElementById('iVat').value),
+                accountCode: document.getElementById('iAccount').value,
+                isActive:    document.getElementById('iActive').checked
+            };
+
+            if (editingId) {
+                const idx = items.findIndex(i => i.id === editingId);
+                if (idx !== -1) items[idx] = item;
+            } else {
+                items.push(item);
+            }
+
+            saveItems(items);
+            renderItems();
+            closeModal();
+        }
+
+        function toggleStatus(id) {
+            const item = items.find(i => i.id === id);
+            if (!item) return;
+            item.isActive = !item.isActive;
+            saveItems(items);
+            renderItems();
+        }
+
+        function deleteItem(id) {
+            const item = items.find(i => i.id === id);
+            if (!item) return;
+            if (!confirm(`Delete "${item.name}"? This cannot be undone.`)) return;
+            items = items.filter(i => i.id !== id);
+            saveItems(items);
+            renderItems();
+        }
+
+        function exportItems() {
+            const headers = ['Code', 'Name', 'Description', 'Type', 'Unit', 'Unit Price', 'VAT Rate', 'Account', 'Active'];
+            const rows = items.map(i => [
+                i.code, i.name, i.description || '', i.type, i.unit,
+                i.unitPrice, i.vatRate + '%', i.accountCode || '', i.isActive ? 'Yes' : 'No'
+            ]);
+            const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+            const a   = document.createElement('a');
+            a.href    = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+            a.download = 'items-catalog.csv';
+            a.click();
+        }
+
+        function fmt(n) { return (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    </script>
+</body>
+</html>

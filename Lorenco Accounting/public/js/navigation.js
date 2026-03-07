@@ -89,14 +89,13 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item">
-        <a href="#">Items</a>
+      <div class="nav-item ${currentPage.includes('items') ? 'active' : ''}">
+        <a href="items.html">Items</a>
         <div class="dropdown">
-          <a href="#">Product List</a>
-          <a href="#">Service List</a>
-          <a href="#">New Item</a>
-          <a href="#">Stock Adjustments</a>
-          <a href="#">Price Lists</a>
+          <a href="items.html">All Items</a>
+          <a href="items.html">Products</a>
+          <a href="items.html">Services</a>
+          <a href="items.html">New Item</a>
         </div>
       </div>
 
@@ -145,7 +144,6 @@ function createNavigation() {
           <div class="dropdown-header">PAYE</div>
           <a href="paye.html">PAYE Overview</a>
           <a href="paye-reconciliation.html">PAYE Reconciliation</a>
-          <a href="paye-config.html">PAYE Configuration</a>
           <div class="dropdown-header">VAT</div>
           <a href="vat.html">VAT Returns</a>
           <a href="vat-return.html">VAT Report</a>
