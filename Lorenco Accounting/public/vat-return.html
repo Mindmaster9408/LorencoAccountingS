@@ -581,15 +581,6 @@
             user = mockUser;
         }
         
-        // Display user info
-        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
-        document.getElementById('userName').textContent = fullName || user.email || 'User';
-        document.getElementById('companyName').textContent = user.companyName || 'Demo Company Ltd';
-        
-        const initial = (user.firstName?.[0] || user.email?.[0] || 'U').toUpperCase();
-        document.getElementById('userAvatar').textContent = initial;
-        }
-        
         function generateReport() {
             alert('Generating VAT return with selected parameters...');
         }

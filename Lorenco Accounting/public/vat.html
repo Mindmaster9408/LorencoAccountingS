@@ -1320,7 +1320,7 @@
         // Load VAT data from journals and populate reconciliation table
         function loadVATReconData() {
             // Get journal entries from localStorage
-            const journals = JSON.parse(localStorage.getItem('journals') || '[]');
+            const journals = (typeof LedgerSystem !== 'undefined') ? LedgerSystem.getJournals() : [];
             
             // Initialize data structure for VAT periods
             const vatPeriods = {
@@ -1423,6 +1423,13 @@
         window.addEventListener('DOMContentLoaded', () => {
             loadVATReconData();
             loadVATSubmissionHistory();
+            // Auto-open recon section if navigated directly via #recon hash
+            if (window.location.hash === '#recon') {
+                openVATRecon();
+                setTimeout(() => {
+                    document.getElementById('vatReconSection').scrollIntoView({ behavior: 'smooth' });
+                }, 100);
+            }
         });
 
         // ========================================================

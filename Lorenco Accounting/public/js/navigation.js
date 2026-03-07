@@ -145,8 +145,9 @@ function createNavigation() {
           <a href="paye.html">PAYE Overview</a>
           <a href="paye-reconciliation.html">PAYE Reconciliation</a>
           <div class="dropdown-header">VAT</div>
-          <a href="vat.html">VAT Returns</a>
-          <a href="vat-return.html">VAT Report</a>
+          <a href="vat.html">VAT Management</a>
+          <a href="vat.html#recon">VAT Reconciliation</a>
+          <a href="vat-return.html">VAT Report (VAT201)</a>
         </div>
       </div>
 
