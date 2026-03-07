@@ -25,6 +25,11 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   try {
     const { period_id, employee_id } = req.query;
 
+    // Reject non-integer employee_id (e.g. old localStorage string IDs like "emp-abc123")
+    if (employee_id && !/^\d+$/.test(String(employee_id))) {
+      return res.json({ transactions: [], data: [], current_inputs: [], overtimes: [] });
+    }
+
     let query = supabase
       .from('payroll_transactions')
       .select('*, employees(first_name, last_name, employee_code), payslip_items(*)')
@@ -32,7 +37,7 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (period_id) query = query.eq('period_id', period_id);
-    if (employee_id) query = query.eq('employee_id', employee_id);
+    if (employee_id) query = query.eq('employee_id', parseInt(employee_id));
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });

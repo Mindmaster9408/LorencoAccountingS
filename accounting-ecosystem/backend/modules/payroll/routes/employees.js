@@ -64,10 +64,15 @@ router.get('/historical-log', requirePermission('PAYROLL.VIEW'), async (req, res
  */
 router.get('/:id', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   try {
+    // Reject non-integer IDs (e.g. old localStorage string IDs like "emp-abc123")
+    if (!/^\d+$/.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
     const { data, error } = await supabase
       .from('employees')
       .select('*, employee_bank_details(*)')
-      .eq('id', req.params.id)
+      .eq('id', parseInt(req.params.id))
       .eq('company_id', req.companyId)
       .single();
 

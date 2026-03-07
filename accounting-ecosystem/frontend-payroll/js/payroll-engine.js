@@ -271,15 +271,20 @@ const PayrollEngine = {
             };
         }
 
+        // Use DataAccess (API) only when empId is a numeric Supabase ID.
+        // String IDs like "emp-abc123" are localStorage-based — use localStorage directly
+        // to avoid invalid integer errors hitting the backend.
+        var useDA = typeof DataAccess !== 'undefined' && /^\d+$/.test(String(empId));
+
         if (!payrollData) {
-            payrollData = (typeof DataAccess !== 'undefined')
+            payrollData = useDA
                 ? await DataAccess.getEmployeePayroll(companyId, empId)
                 : JSON.parse(localStorage.getItem('emp_payroll_' + companyId + '_' + empId) || '{"basic_salary":0,"regular_inputs":[]}');
         }
 
         // Load employee record for age/medical/directive data
         var employeeOptions = {};
-        var emp = (typeof DataAccess !== 'undefined')
+        var emp = useDA
             ? await DataAccess.getEmployeeById(companyId, empId)
             : (function() {
                 var s = localStorage.getItem('employees_' + companyId);
@@ -299,7 +304,6 @@ const PayrollEngine = {
             }
         }
 
-        var useDA = typeof DataAccess !== 'undefined';
         var currentInputs = useDA
             ? await DataAccess.getCurrentInputs(companyId, empId, period)
             : JSON.parse(localStorage.getItem('emp_current_' + companyId + '_' + empId + '_' + period) || '[]');
