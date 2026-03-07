@@ -341,7 +341,7 @@
                         <tr class="total-row"><td><strong>NET SALARY:</strong></td><td style="text-align: right;"><strong id="totalNet" style="font-size: 18px; color: #28a745;">R 0.00</strong></td></tr>
                     </table>
                     <button class="btn btn-success" style="width: 100%; margin-top: 15px;" onclick="calculatePayslip()">Calculate Payslip</button>
-                    <div id="payslipActions" style="display: none; margin-top: 10px; gap: 10px;">
+                    <div id="payslipActions" style="display: none; margin-top: 10px; gap: 10px; position: relative; z-index: 10;">
                         <button class="btn" style="flex: 1;" onclick="previewPayslip()">Preview Payslip</button>
                         <button class="btn btn-success" style="flex: 1;" onclick="downloadPayslipPDF()">Download PDF</button>
                     </div>
@@ -902,14 +902,20 @@
 
             content.classList.remove('locked-overlay');
 
+            // Buttons injected into the status bar sit outside #payrollContent and are never covered by the overlay
+            var viewBtns = '<div style="display:flex; gap:10px; margin-top:10px;">' +
+                '<button class="btn" style="flex:1;" onclick="calculatePayslip().then(previewPayslip)">👁 View Payslip</button>' +
+                '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>' +
+                '</div>';
+
             if (lockedRun && psStatus.status === 'finalized') {
                 // Pay run exists AND payslip finalized = fully locked
-                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>';
+                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
                 content.classList.add('locked-overlay');
             } else if (psStatus.status === 'finalized') {
                 // Finalized but no pay run yet = can unfinalize freely
-                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + new Date(psStatus.finalized_date).toLocaleDateString() + ' by ' + (psStatus.finalized_by || 'System') + '</div>';
+                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + new Date(psStatus.finalized_date).toLocaleDateString() + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" data-permission="UNFINALIZE_PAYSLIP" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
                 content.classList.add('locked-overlay');
             } else {
