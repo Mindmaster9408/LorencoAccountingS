@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography } from '@mui/material';
+import { Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, TextField } from '@mui/material';
 
 function Dashboard() {
   const [users, setUsers] = useState([]);
@@ -19,6 +19,13 @@ function Dashboard() {
     fetchUsers();
   };
 
+  const handleEmployeeCount = async (subId, count) => {
+    const num = parseInt(count, 10);
+    if (isNaN(num) || num < 0) return;
+    await axios.put(`/api/subscription/${subId}/employee-count`, { count: num });
+    fetchUsers();
+  };
+
   return (
     <TableContainer component={Paper}>
       <Typography variant="h5" sx={{ m: 2 }}>User Subscriptions</Typography>
@@ -28,6 +35,7 @@ function Dashboard() {
             <TableCell>User</TableCell>
             <TableCell>Email</TableCell>
             <TableCell>App</TableCell>
+            <TableCell>Employees</TableCell>
             <TableCell>Status</TableCell>
             <TableCell>Payment</TableCell>
             <TableCell>Actions</TableCell>
@@ -40,6 +48,15 @@ function Dashboard() {
                 <TableCell>{user.name}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>{sub.app?.name || ''}</TableCell>
+                <TableCell>
+                  <TextField
+                    type="number"
+                    size="small"
+                    value={sub.employeeCount || 0}
+                    onChange={(e) => handleEmployeeCount(sub._id, e.target.value)}
+                    inputProps={{ min: 0, style: { width: 60, textAlign: 'center' } }}
+                  />
+                </TableCell>
                 <TableCell>{sub.active ? 'Active' : 'Inactive'}</TableCell>
                 <TableCell>{sub.paymentStatus}</TableCell>
                 <TableCell>

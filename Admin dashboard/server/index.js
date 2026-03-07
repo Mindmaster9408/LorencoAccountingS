@@ -46,4 +46,13 @@ app.post('/api/subscription/:id/remind', auth, async (req, res) => {
   res.json({ success: true, message: 'Reminder sent (placeholder)' });
 });
 
+app.put('/api/subscription/:id/employee-count', auth, async (req, res) => {
+  const { count } = req.body;
+  if (typeof count !== 'number' || count < 0) {
+    return res.status(400).json({ error: 'Invalid employee count' });
+  }
+  const sub = await Subscription.findByIdAndUpdate(req.params.id, { employeeCount: count }, { new: true });
+  res.json(sub);
+});
+
 app.listen(4000, () => console.log('Server running on port 4000'));
