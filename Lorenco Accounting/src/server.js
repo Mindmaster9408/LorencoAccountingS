@@ -112,6 +112,7 @@ app.use('/api/paye/reconciliation', payeReconciliationRoutes);
 app.use('/api/employees', employeesRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/integrations', integrationsRoutes);
+app.use('/api/kv', require('./routes/kv'));
 
 // Root endpoint - redirect to login page
 app.get('/', (req, res) => {

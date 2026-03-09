@@ -66,5 +66,6 @@ router.use('/employees', require('./routes/employees'));
 
 // External integrations API
 router.use('/integrations', require('./routes/integrations'));
+router.use('/kv', require('./routes/kv'));
 
 module.exports = router;

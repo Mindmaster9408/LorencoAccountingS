@@ -497,4 +497,12 @@ var DataAccess = {
         var keys = DataAccess.listKeys();
         return keys[i] || null;
     };
+
+    // Override localStorage.length so iteration loops see cloud keys
+    try {
+        Object.defineProperty(localStorage, 'length', {
+            get: function() { return DataAccess.listKeys().length; },
+            configurable: true
+        });
+    } catch (_) { /* read-only in some environments — safe to skip */ }
 })();

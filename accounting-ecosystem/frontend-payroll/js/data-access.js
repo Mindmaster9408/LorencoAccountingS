@@ -495,3 +495,127 @@ var DataAccess = (function() {
         }
     };
 })();
+
+// ============================================================
+// Cloud localStorage Bridge — ECO Payroll
+//
+// Intercepts ALL localStorage.*  calls and routes payroll data
+// through the /api/payroll/kv endpoint (Supabase-backed, company-
+// scoped) so that clearing browser history never loses any data.
+//
+// Only 'session' and 'token' stay in native localStorage.
+// 'cache_*' keys used as offline fallback also remain local.
+// ============================================================
+(function installEcoPayrollLocalStorageBridge() {
+    'use strict';
+
+    if (window.__ecoPayrollBridgeInstalled) return;
+    window.__ecoPayrollBridgeInstalled = true;
+
+    var KV_URL = window.location.origin + '/api/payroll/kv';
+
+    // Keys that must stay in native localStorage (auth state)
+    function isLocalKey(key) {
+        return key === 'session' || key === 'token' ||
+               (typeof key === 'string' && key.indexOf('cache_') === 0) ||
+               (typeof key === 'string' && key.indexOf('eco_') === 0) ||
+               key === 'availableCompanies' ||
+               key === 'user' || key === 'sso_source' || key === 'language';
+    }
+
+    // In-memory cache populated synchronously on page load
+    window._ecoPayrollKvCache = {};
+    window._ecoPayrollKvOnline = false;
+
+    try {
+        var token = (function() {
+            try { return window.localStorage.getItem
+                ? window.localStorage.getItem.call
+                    ? null // bridge not installed yet, read direct
+                    : null
+                : null;
+            } catch(e){ return null; }
+        }());
+        // Read token before bridge patches localStorage
+        token = Object.getOwnPropertyDescriptor(Storage.prototype, 'getItem')
+            ? Storage.prototype.getItem.call(localStorage, 'token')
+            : null;
+
+        if (token) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', KV_URL, false);  // synchronous
+            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+            xhr.send(null);
+            if (xhr.status === 200) {
+                window._ecoPayrollKvCache = JSON.parse(xhr.responseText) || {};
+                window._ecoPayrollKvOnline = true;
+                console.log('%c✅ ECO Payroll cloud connected — data in Supabase (no local)', 'color:#28a745;font-weight:bold;');
+            }
+        }
+    } catch(e) {
+        console.warn('ECO Payroll cloud bridge: offline — ' + e.message);
+    }
+
+    function kvGet(key) {
+        var raw = window._ecoPayrollKvCache[key];
+        if (raw === undefined || raw === null) return null;
+        try { return typeof raw === 'string' ? raw : JSON.stringify(raw); } catch(_) { return String(raw); }
+    }
+
+    function kvSet(key, value) {
+        var parsed;
+        try { parsed = JSON.parse(value); } catch(_) { parsed = value; }
+        window._ecoPayrollKvCache[key] = parsed;
+        if (!window._ecoPayrollKvOnline) return;
+        var token = Storage.prototype.getItem.call(localStorage, 'token');
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', KV_URL + '/' + encodeURIComponent(key), true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        xhr.send(JSON.stringify({ value: parsed }));
+    }
+
+    function kvRemove(key) {
+        delete window._ecoPayrollKvCache[key];
+        if (!window._ecoPayrollKvOnline) return;
+        var token = Storage.prototype.getItem.call(localStorage, 'token');
+        var xhr = new XMLHttpRequest();
+        xhr.open('DELETE', KV_URL + '/' + encodeURIComponent(key), true);
+        if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        xhr.send(null);
+    }
+
+    function kvKeys() {
+        return Object.keys(window._ecoPayrollKvCache);
+    }
+
+    var _native = {
+        getItem:    Storage.prototype.getItem.bind(localStorage),
+        setItem:    Storage.prototype.setItem.bind(localStorage),
+        removeItem: Storage.prototype.removeItem.bind(localStorage),
+        key:        Storage.prototype.key.bind(localStorage)
+    };
+
+    localStorage.getItem = function(key) {
+        if (isLocalKey(key)) return _native.getItem(key);
+        return kvGet(key);
+    };
+    localStorage.setItem = function(key, value) {
+        if (isLocalKey(key)) { _native.setItem(key, value); return; }
+        kvSet(key, value);
+    };
+    localStorage.removeItem = function(key) {
+        if (isLocalKey(key)) { _native.removeItem(key); return; }
+        kvRemove(key);
+    };
+    localStorage.key = function(index) {
+        var keys = kvKeys();
+        return keys[Number(index)] || null;
+    };
+    try {
+        Object.defineProperty(localStorage, 'length', {
+            get: function() { return kvKeys().length; },
+            configurable: true
+        });
+    } catch(_) {}
+}());

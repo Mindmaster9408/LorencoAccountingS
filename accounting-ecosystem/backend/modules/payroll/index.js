@@ -10,6 +10,7 @@ const periodsRoutes = require('./routes/periods');
 const transactionsRoutes = require('./routes/transactions');
 const itemsRoutes = require('./routes/items');
 const attendanceRoutes = require('./routes/attendance');
+const kvRoutes = require('./routes/kv');
 
 const router = express.Router();
 
@@ -18,6 +19,7 @@ router.use('/periods', periodsRoutes);
 router.use('/transactions', transactionsRoutes);
 router.use('/items', itemsRoutes);
 router.use('/attendance', attendanceRoutes);
+router.use('/kv', kvRoutes);
 
 // Health check for Payroll module
 router.get('/status', (req, res) => {

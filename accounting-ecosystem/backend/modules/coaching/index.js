@@ -9,6 +9,7 @@ const router = express.Router();
 router.use('/auth',    require('./routes/auth'));
 router.use('/clients', require('./routes/clients'));
 router.use('/admin',   require('./routes/admin'));
+router.use('/leads',   require('./routes/leads'));
 
 // AI routes — only mount if ANTHROPIC_API_KEY is configured
 if (process.env.ANTHROPIC_API_KEY) {

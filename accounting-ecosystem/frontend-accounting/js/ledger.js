@@ -1,9 +1,118 @@
 /**
- * Lorenco Accounting - Shared Ledger System
+ * Lorenco Accounting - Shared Ledger System (ECO edition)
  *
  * Central data store for chart of accounts, journal entries, and reporting.
- * Uses localStorage for demo persistence.
+ * Data is stored in cloud (Supabase) via /api/accounting/kv — never in localStorage.
+ * Clearing browser history or switching browsers does NOT lose any data.
  */
+
+// ============================================================
+// Cloud localStorage Bridge — ECO Accounting
+//
+// Intercepts ALL localStorage.*  calls and routes accounting data
+// through /api/accounting/kv (Supabase-backed, company-scoped).
+// Only token/session/auth state stays in native localStorage.
+// ============================================================
+(function installEcoAccountingLocalStorageBridge() {
+    'use strict';
+
+    if (window.__ecoAccountingBridgeInstalled) return;
+    window.__ecoAccountingBridgeInstalled = true;
+
+    // Note: eco-api-interceptor may not be loaded yet, so use direct path
+    var KV_URL = window.location.origin + '/api/accounting/kv';
+
+    function isLocalKey(key) {
+        return key === 'token' || key === 'user' || key === 'session' ||
+               key === 'demoMode' || key === 'sso_source' || key === 'language' ||
+               key === 'auth_token' || key === 'selectedCompanyId' ||
+               (typeof key === 'string' && key.indexOf('eco_') === 0);
+    }
+
+    window._ecoAccountingKvCache = {};
+    window._ecoAccountingKvOnline = false;
+
+    try {
+        var token = Storage.prototype.getItem.call(localStorage, 'token') ||
+                    Storage.prototype.getItem.call(localStorage, 'auth_token') ||
+                    Storage.prototype.getItem.call(localStorage, 'eco_token');
+        if (token) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', KV_URL, false);   // synchronous
+            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+            xhr.send(null);
+            if (xhr.status === 200) {
+                window._ecoAccountingKvCache = JSON.parse(xhr.responseText) || {};
+                window._ecoAccountingKvOnline = true;
+                console.log('%c✅ ECO Accounting cloud connected — data in Supabase (no local)', 'color:#28a745;font-weight:bold;');
+            }
+        }
+    } catch(e) {
+        console.warn('ECO Accounting cloud bridge: offline — ' + e.message);
+    }
+
+    function kvGet(key) {
+        var raw = window._ecoAccountingKvCache[key];
+        if (raw === undefined || raw === null) return null;
+        try { return typeof raw === 'string' ? raw : JSON.stringify(raw); } catch(_) { return String(raw); }
+    }
+
+    function kvSet(key, value) {
+        var parsed;
+        try { parsed = JSON.parse(value); } catch(_) { parsed = value; }
+        window._ecoAccountingKvCache[key] = parsed;
+        if (!window._ecoAccountingKvOnline) return;
+        var tok = Storage.prototype.getItem.call(localStorage, 'token') ||
+                  Storage.prototype.getItem.call(localStorage, 'auth_token') ||
+                  Storage.prototype.getItem.call(localStorage, 'eco_token');
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', KV_URL + '/' + encodeURIComponent(key), true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+        xhr.send(JSON.stringify({ value: parsed }));
+    }
+
+    function kvRemove(key) {
+        delete window._ecoAccountingKvCache[key];
+        if (!window._ecoAccountingKvOnline) return;
+        var tok = Storage.prototype.getItem.call(localStorage, 'token') ||
+                  Storage.prototype.getItem.call(localStorage, 'auth_token') ||
+                  Storage.prototype.getItem.call(localStorage, 'eco_token');
+        var xhr = new XMLHttpRequest();
+        xhr.open('DELETE', KV_URL + '/' + encodeURIComponent(key), true);
+        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+        xhr.send(null);
+    }
+
+    var _native = {
+        getItem:    Storage.prototype.getItem.bind(localStorage),
+        setItem:    Storage.prototype.setItem.bind(localStorage),
+        removeItem: Storage.prototype.removeItem.bind(localStorage),
+        key:        Storage.prototype.key.bind(localStorage)
+    };
+
+    localStorage.getItem = function(key) {
+        if (isLocalKey(key)) return _native.getItem(key);
+        return kvGet(key);
+    };
+    localStorage.setItem = function(key, value) {
+        if (isLocalKey(key)) { _native.setItem(key, value); return; }
+        kvSet(key, value);
+    };
+    localStorage.removeItem = function(key) {
+        if (isLocalKey(key)) { _native.removeItem(key); return; }
+        kvRemove(key);
+    };
+    localStorage.key = function(index) {
+        return Object.keys(window._ecoAccountingKvCache)[Number(index)] || null;
+    };
+    try {
+        Object.defineProperty(localStorage, 'length', {
+            get: function() { return Object.keys(window._ecoAccountingKvCache).length; },
+            configurable: true
+        });
+    } catch(_) {}
+}());
 
 const LedgerSystem = (function() {
     'use strict';

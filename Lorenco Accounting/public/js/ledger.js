@@ -2,8 +2,109 @@
  * Lorenco Accounting - Shared Ledger System
  *
  * Central data store for chart of accounts, journal entries, and reporting.
- * Uses localStorage for demo persistence.
+ * Data is stored in cloud (PostgreSQL) via /api/kv — never in localStorage.
+ * Clearing browser history or switching browsers does NOT lose any data.
  */
+
+// ============================================================
+// Cloud localStorage Bridge — Lorenco Accounting
+//
+// Intercepts ALL localStorage.*  calls made anywhere on the page
+// and routes accounting data through /api/kv (PostgreSQL-backed,
+// company-scoped).  Only token/session/auth state stays local.
+// ============================================================
+(function installAccountingLocalStorageBridge() {
+    'use strict';
+
+    if (window.__accountingBridgeInstalled) return;
+    window.__accountingBridgeInstalled = true;
+
+    var KV_URL = window.location.origin + '/api/kv';
+
+    function isLocalKey(key) {
+        return key === 'token' || key === 'user' || key === 'session' ||
+               key === 'demoMode' || key === 'sso_source' || key === 'language' ||
+               (typeof key === 'string' && key.indexOf('eco_') === 0);
+    }
+
+    window._accountingKvCache = {};
+    window._accountingKvOnline = false;
+
+    try {
+        var token = Storage.prototype.getItem.call(localStorage, 'token');
+        if (token) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', KV_URL, false);   // synchronous
+            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+            xhr.send(null);
+            if (xhr.status === 200) {
+                window._accountingKvCache = JSON.parse(xhr.responseText) || {};
+                window._accountingKvOnline = true;
+                console.log('%c✅ Accounting cloud connected — data in PostgreSQL (no local)', 'color:#28a745;font-weight:bold;');
+            }
+        }
+    } catch(e) {
+        console.warn('Accounting cloud bridge: offline — ' + e.message);
+    }
+
+    function kvGet(key) {
+        var raw = window._accountingKvCache[key];
+        if (raw === undefined || raw === null) return null;
+        try { return typeof raw === 'string' ? raw : JSON.stringify(raw); } catch(_) { return String(raw); }
+    }
+
+    function kvSet(key, value) {
+        var parsed;
+        try { parsed = JSON.parse(value); } catch(_) { parsed = value; }
+        window._accountingKvCache[key] = parsed;
+        if (!window._accountingKvOnline) return;
+        var tok = Storage.prototype.getItem.call(localStorage, 'token');
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', KV_URL + '/' + encodeURIComponent(key), true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+        xhr.send(JSON.stringify({ value: parsed }));
+    }
+
+    function kvRemove(key) {
+        delete window._accountingKvCache[key];
+        if (!window._accountingKvOnline) return;
+        var tok = Storage.prototype.getItem.call(localStorage, 'token');
+        var xhr = new XMLHttpRequest();
+        xhr.open('DELETE', KV_URL + '/' + encodeURIComponent(key), true);
+        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+        xhr.send(null);
+    }
+
+    var _native = {
+        getItem:    Storage.prototype.getItem.bind(localStorage),
+        setItem:    Storage.prototype.setItem.bind(localStorage),
+        removeItem: Storage.prototype.removeItem.bind(localStorage),
+        key:        Storage.prototype.key.bind(localStorage)
+    };
+
+    localStorage.getItem = function(key) {
+        if (isLocalKey(key)) return _native.getItem(key);
+        return kvGet(key);
+    };
+    localStorage.setItem = function(key, value) {
+        if (isLocalKey(key)) { _native.setItem(key, value); return; }
+        kvSet(key, value);
+    };
+    localStorage.removeItem = function(key) {
+        if (isLocalKey(key)) { _native.removeItem(key); return; }
+        kvRemove(key);
+    };
+    localStorage.key = function(index) {
+        return Object.keys(window._accountingKvCache)[Number(index)] || null;
+    };
+    try {
+        Object.defineProperty(localStorage, 'length', {
+            get: function() { return Object.keys(window._accountingKvCache).length; },
+            configurable: true
+        });
+    } catch(_) {}
+}());
 
 const LedgerSystem = (function() {
     'use strict';

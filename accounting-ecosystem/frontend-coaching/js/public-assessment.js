@@ -195,7 +195,7 @@ function updateProgress() {
     if (textEl) textEl.textContent = `${answeredCount} / ${totalQuestions} questions answered`;
 }
 
-function submitAssessment() {
+async function submitAssessment() {
     // Check if all questions answered
     const totalQuestions = Object.values(BASIS_QUESTIONS).reduce((sum, arr) => sum + arr.length, 0);
     const answeredCount = Object.values(basisAnswers).reduce((sum, section) =>
@@ -229,10 +229,16 @@ function submitAssessment() {
         contacted: false
     };
 
-    // Save to public leads storage
-    const leads = JSON.parse(localStorage.getItem('public_leads') || '[]');
-    leads.push(lead);
-    localStorage.setItem('public_leads', JSON.stringify(leads));
+    // Save lead to server (cloud — no localStorage)
+    try {
+        await fetch('/api/coaching/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lead)
+        });
+    } catch (e) {
+        console.warn('Could not save lead to server:', e.message);
+    }
 
     // Show success message
     $('#assessment-section').style.display = 'none';

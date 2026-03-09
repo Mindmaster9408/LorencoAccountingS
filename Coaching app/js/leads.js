@@ -1,28 +1,54 @@
 // Leads management for public BASIS assessments
 import { $, escapeHtml } from './config.js';
 import { createNewClient, saveClient, readStore } from './storage.js';
+import { api } from './api.js';
+
+// ── Cloud helpers — all leads data lives in the backend (never localStorage) ─
+
+async function fetchLeads() {
+    try {
+        const data = await api.request('GET', '/leads');
+        return data.leads || [];
+    } catch (e) {
+        console.warn('Could not fetch leads from server:', e.message);
+        return [];
+    }
+}
+
+async function saveLead(leadData) {
+    return api.request('POST', '/leads', leadData);
+}
+
+async function updateLead(id, changes) {
+    return api.request('PUT', '/leads/' + id, changes);
+}
+
+async function deleteLead_api(id) {
+    return api.request('DELETE', '/leads/' + id);
+}
 
 export function renderLeads() {
     updateLeadsStats();
     renderLeadsList();
 }
 
-function updateLeadsStats() {
-    const leads = JSON.parse(localStorage.getItem('public_leads') || '[]');
+async function updateLeadsStats() {
+    const leads = await fetchLeads();
 
     const totalLeads = leads.length;
-    const interestedLeads = leads.filter(l => l.wantsCoaching).length;
-    const contactedLeads = leads.filter(l => l.contacted).length;
-    const convertedLeads = leads.filter(l => l.convertedToClient).length;
+    // Map backend columns back to the display fields used in the card
+    const interestedLeads = leads.filter(l => l.wants_coaching || l.wantsCoaching).length;
+    const contactedLeads  = leads.filter(l => l.status === 'contacted' || l.contacted).length;
+    const convertedLeads  = leads.filter(l => l.status === 'converted' || l.convertedToClient).length;
 
-    $('#total-leads').textContent = totalLeads;
-    $('#interested-leads').textContent = interestedLeads;
-    $('#contacted-leads').textContent = contactedLeads;
-    $('#converted-leads').textContent = convertedLeads;
+    if ($('#total-leads'))     $('#total-leads').textContent     = totalLeads;
+    if ($('#interested-leads'))$('#interested-leads').textContent = interestedLeads;
+    if ($('#contacted-leads')) $('#contacted-leads').textContent  = contactedLeads;
+    if ($('#converted-leads')) $('#converted-leads').textContent  = convertedLeads;
 }
 
-export function renderLeadsList() {
-    const leads = JSON.parse(localStorage.getItem('public_leads') || '[]');
+export async function renderLeadsList() {
+    const leads = await fetchLeads();
     const container = $('#leads-list');
     if (!container) return;
 
@@ -30,18 +56,16 @@ export function renderLeadsList() {
     const activeTab = document.querySelector('.leads-filters .tab.active');
     const filter = activeTab?.dataset.filter || 'all';
 
-    // Filter leads
     let filteredLeads = leads;
-    if (filter === 'interested') {
-        filteredLeads = leads.filter(l => l.wantsCoaching && !l.convertedToClient);
-    } else if (filter === 'not-contacted') {
-        filteredLeads = leads.filter(l => !l.contacted && !l.convertedToClient);
-    } else if (filter === 'contacted') {
-        filteredLeads = leads.filter(l => l.contacted && !l.convertedToClient);
-    }
+    const wantsCoaching = l => l.wants_coaching || l.wantsCoaching;
+    const isContacted   = l => l.status === 'contacted' || l.contacted;
+    const isConverted   = l => l.status === 'converted' || l.convertedToClient;
 
-    // Sort by date (newest first)
-    filteredLeads.sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
+    if (filter === 'interested')    filteredLeads = leads.filter(l => wantsCoaching(l) && !isConverted(l));
+    if (filter === 'not-contacted') filteredLeads = leads.filter(l => !isContacted(l) && !isConverted(l));
+    if (filter === 'contacted')     filteredLeads = leads.filter(l =>  isContacted(l) && !isConverted(l));
+
+    filteredLeads.sort((a, b) => new Date(b.created_at || b.registeredAt) - new Date(a.created_at || a.registeredAt));
 
     if (filteredLeads.length === 0) {
         container.innerHTML = `
@@ -55,9 +79,6 @@ export function renderLeadsList() {
                         <input type="text" readonly value="${window.location.origin + window.location.pathname.replace('index.html', '')}public-assessment.html" id="public-link-input">
                         <button class="btn-primary" onclick="copyPublicLink()">Copy Link</button>
                     </div>
-                    <p style="margin-top: 12px; font-size: 14px; color: #64748b;">
-                        Share this on social media, your website, or via email to collect leads!
-                    </p>
                 </div>
             </div>
         `;
@@ -68,25 +89,19 @@ export function renderLeadsList() {
 }
 
 function createLeadCard(lead) {
+    const isContacted  = lead.status === 'contacted'  || lead.contacted;
+    const isConverted  = lead.status === 'converted'  || lead.convertedToClient;
+    const wantsCoach   = lead.wants_coaching || lead.wantsCoaching;
+
     const cardClasses = ['lead-card'];
-    if (lead.wantsCoaching) cardClasses.push('interested');
-    if (lead.contacted) cardClasses.push('contacted');
+    if (wantsCoach)   cardClasses.push('interested');
+    if (isContacted)  cardClasses.push('contacted');
 
-    const registeredDate = new Date(lead.registeredAt).toLocaleDateString('en-ZA', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+    const registeredDate = new Date(lead.created_at || lead.registeredAt).toLocaleDateString('en-ZA', {
+        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
 
-    const completedDate = new Date(lead.completedAt).toLocaleDateString('en-ZA', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
-
-    const basisCode = lead.basisResults?.basisOrder?.join(' ') || '—';
+    const basisCode = (lead.basis_results || lead.basisResults)?.basisOrder?.join(' ') || '—';
 
     return `
         <div class="${cardClasses.join(' ')}" data-lead-id="${lead.id}">
@@ -95,131 +110,74 @@ function createLeadCard(lead) {
                     <div class="lead-name">${escapeHtml(lead.name)}</div>
                     ${lead.company ? `<div class="lead-company">🏢 ${escapeHtml(lead.company)}</div>` : ''}
                     <div class="lead-contact">
-                        <span>📧 ${escapeHtml(lead.email)}</span>
-                        <span>📞 ${escapeHtml(lead.phone)}</span>
-                        <span>🌐 ${escapeHtml(lead.preferred_lang)}</span>
+                        <span>📧 ${escapeHtml(lead.email || '—')}</span>
+                        <span>📞 ${escapeHtml(lead.phone || '—')}</span>
                     </div>
                 </div>
                 <div class="lead-badges">
-                    ${lead.wantsCoaching ? '<span class="lead-badge interested">💼 Wants Coaching</span>' : ''}
-                    ${lead.contacted ? '<span class="lead-badge contacted">✓ Contacted</span>' : ''}
-                    ${lead.convertedToClient ? '<span class="lead-badge converted">⭐ Client</span>' : ''}
+                    ${wantsCoach  ? '<span class="lead-badge interested">💼 Wants Coaching</span>' : ''}
+                    ${isContacted ? '<span class="lead-badge contacted">✓ Contacted</span>' : ''}
+                    ${isConverted ? '<span class="lead-badge converted">⭐ Client</span>' : ''}
                 </div>
             </div>
-
             <div class="lead-basis">
                 <strong>BASIS Profile:</strong> <span class="lead-basis-code">${basisCode}</span>
             </div>
-
-            ${lead.wantsCoaching && lead.coachingGoals ? `
+            ${(lead.coaching_goals || lead.coachingGoals) ? `
                 <div class="lead-goals">
-                    <strong>Goals/Challenges:</strong><br>
-                    ${escapeHtml(lead.coachingGoals)}
+                    <strong>Goals:</strong><br>${escapeHtml(lead.coaching_goals || lead.coachingGoals)}
                 </div>
             ` : ''}
-
             <div class="lead-actions">
-                ${!lead.contacted && !lead.convertedToClient ? `
-                    <button class="btn-contact" onclick="markAsContacted('${lead.id}')">
-                        ✓ Mark as Contacted
-                    </button>
-                ` : ''}
-                ${!lead.convertedToClient ? `
-                    <button class="btn-convert" onclick="convertToClient('${lead.id}')">
-                        ⭐ Convert to Client
-                    </button>
-                ` : ''}
-                <button class="btn-view-report" onclick="viewLeadReport('${lead.id}')">
-                    📊 View BASIS Report
-                </button>
-                <button class="btn-delete" onclick="deleteLead('${lead.id}')">
-                    🗑️ Delete
-                </button>
+                ${!isContacted && !isConverted ? `<button class="btn-contact" onclick="markAsContacted('${lead.id}')">✓ Mark as Contacted</button>` : ''}
+                ${!isConverted ? `<button class="btn-convert" onclick="convertToClient('${lead.id}')">⭐ Convert to Client</button>` : ''}
+                <button class="btn-delete" onclick="deleteLead('${lead.id}')">🗑️ Delete</button>
             </div>
-
-            <div class="lead-timestamp">
-                Registered: ${registeredDate} | Completed: ${completedDate}
-            </div>
+            <div class="lead-timestamp">Registered: ${registeredDate}</div>
         </div>
     `;
 }
 
 // Global functions for button clicks
-window.markAsContacted = function(leadId) {
-    const leads = JSON.parse(localStorage.getItem('public_leads') || '[]');
-    const lead = leads.find(l => l.id === leadId);
-    if (lead) {
-        lead.contacted = true;
-        lead.contactedAt = new Date().toISOString();
-        localStorage.setItem('public_leads', JSON.stringify(leads));
+window.markAsContacted = async function(leadId) {
+    try {
+        await updateLead(leadId, { status: 'contacted' });
         renderLeads();
-    }
+    } catch(e) { alert('Could not update lead: ' + e.message); }
 };
 
 window.convertToClient = async function(leadId) {
-    const leads = JSON.parse(localStorage.getItem('public_leads') || '[]');
-    const lead = leads.find(l => l.id === leadId);
-    if (!lead) return;
+    try {
+        const leads = await fetchLeads();
+        const lead = leads.find(l => String(l.id) === String(leadId));
+        if (!lead) return;
+        const confirmed = confirm('Convert ' + lead.name + ' to a client?');
+        if (!confirmed) return;
 
-    const confirmed = confirm(`Convert ${lead.name} to a client?`);
-    if (!confirmed) return;
+        const client = createNewClient(lead.name);
+        client.email = lead.email;
+        client.phone = lead.phone;
+        client.preferred_lang = lead.preferred_lang || 'English';
+        client.status = 'Active - New Client from Lead';
+        client.notes = 'Converted from public lead on ' + new Date().toLocaleDateString();
+        const saved = await saveClient(client);
 
-    // Create client from lead
-    const client = createNewClient(lead.name);
-    client.firstName = lead.firstName;
-    client.surname = lead.surname;
-    client.email = lead.email;
-    client.phone = lead.phone;
-    client.company = lead.company;
-    client.preferred_lang = lead.preferred_lang;
-    client.basisAnswers = lead.basisAnswers;
-    client.basisResults = lead.basisResults;
-    client.status = 'Active - New Client from Lead';
-    client.notes = `Converted from public lead on ${new Date().toLocaleDateString()}`;
-    if (lead.coachingGoals) {
-        client.notes += `\n\nGoals: ${lead.coachingGoals}`;
-    }
-
-    await saveClient(client);
-
-    // Mark lead as converted
-    lead.convertedToClient = true;
-    lead.convertedAt = new Date().toISOString();
-    lead.clientId = client.id;
-    localStorage.setItem('public_leads', JSON.stringify(leads));
-
-    alert(`${lead.name} has been added as a client!`);
-    renderLeads();
+        await updateLead(leadId, { status: 'converted' });
+        alert(lead.name + ' has been added as a client!');
+        renderLeads();
+    } catch(e) { alert('Could not convert lead: ' + e.message); }
 };
 
-window.viewLeadReport = function(leadId) {
-    const leads = JSON.parse(localStorage.getItem('public_leads') || '[]');
-    const lead = leads.find(l => l.id === leadId);
-    if (!lead) return;
-
-    // Import and generate BASIS report
-    import('./basis-report-ui.js').then(module => {
-        // Create a temporary client object with lead data
-        const tempClient = {
-            name: lead.name,
-            preferred_lang: lead.preferred_lang,
-            basisResults: lead.basisResults
-        };
-        module.generateAndDownloadReport(tempClient);
-    });
-};
-
-window.deleteLead = function(leadId) {
-    const leads = JSON.parse(localStorage.getItem('public_leads') || '[]');
-    const lead = leads.find(l => l.id === leadId);
-    if (!lead) return;
-
-    const confirmed = confirm(`Delete lead for ${lead.name}? This cannot be undone.`);
-    if (!confirmed) return;
-
-    const updatedLeads = leads.filter(l => l.id !== leadId);
-    localStorage.setItem('public_leads', JSON.stringify(updatedLeads));
-    renderLeads();
+window.deleteLead = async function(leadId) {
+    try {
+        const leads = await fetchLeads();
+        const lead = leads.find(l => String(l.id) === String(leadId));
+        if (!lead) return;
+        const confirmed = confirm('Delete lead for ' + lead.name + '? This cannot be undone.');
+        if (!confirmed) return;
+        await deleteLead_api(leadId);
+        renderLeads();
+    } catch(e) { alert('Could not delete lead: ' + e.message); }
 };
 
 window.copyPublicLink = function() {
@@ -249,9 +207,7 @@ export function setupLeadsListeners() {
             navigator.clipboard.writeText(publicUrl).then(() => {
                 const originalText = copyLinkBtn.textContent;
                 copyLinkBtn.textContent = '✓ Copied!';
-                setTimeout(() => {
-                    copyLinkBtn.textContent = originalText;
-                }, 2000);
+                setTimeout(() => { copyLinkBtn.textContent = originalText; }, 2000);
             });
         });
     }
