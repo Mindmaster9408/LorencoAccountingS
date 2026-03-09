@@ -97,8 +97,8 @@ function renderJourneyStep(client, stepNum) {
     const isCurrent = currentStep === stepNum;
     const isLocked = stepNum > currentStep && !isCompleted;
 
-    const stepData = client.journeyProgress?.stepNotes?.[stepNum] || '';
-    const completionDate = client.journeyProgress?.stepCompletionDates?.[stepNum] || null;
+    const stepData = (client.journeyProgress && client.journeyProgress.stepNotes && client.journeyProgress.stepNotes[stepNum]) || '';
+    const completionDate = (client.journeyProgress && client.journeyProgress.stepCompletionDates && client.journeyProgress.stepCompletionDates[stepNum]) || null;
 
     let statusClass = '';
     let statusIcon = '';

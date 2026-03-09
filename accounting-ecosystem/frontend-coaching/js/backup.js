@@ -81,7 +81,7 @@ export function getAllBackups() {
         let clientCount = 0;
         try {
             const parsed = JSON.parse(data);
-            clientCount = parsed.clients?.length || 0;
+            clientCount = (parsed.clients && parsed.clients.length) || 0;
         } catch(e) {}
 
         return {
@@ -215,10 +215,10 @@ export function getStorageStats() {
         const backups = getAllBackups();
 
         return {
-            clientCount: parsed.clients?.length || 0,
+            clientCount: (parsed.clients && parsed.clients.length) || 0,
             dataSize: new Blob([userData]).size,
             backupCount: backups.length,
-            lastBackup: backups[0]?.date || null,
+            lastBackup: (backups[0] && backups[0].date) || null,
             totalBackupSize: backups.reduce((sum, b) => sum + b.size, 0)
         };
     } catch(e) {

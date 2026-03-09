@@ -60,7 +60,7 @@ function renderAdminDashboard(users) {
         const userData = localStorage.getItem(userDataKey);
         if (userData) {
             const parsed = JSON.parse(userData);
-            return sum + (parsed.clients?.length || 0);
+            return sum + ((parsed.clients && parsed.clients.length) || 0);
         }
         return sum;
     }, 0);
@@ -158,7 +158,7 @@ function attachAdminListeners() {
     });
 
     // Switch to coaching
-    $('#switch-to-coaching')?.addEventListener('click', () => {
+    if ($('#switch-to-coaching')) $('#switch-to-coaching').addEventListener('click', () => {
         import('./auth.js').then(authModule => {
             authModule.setAdminMode(false);
             window.location.reload();
@@ -166,7 +166,7 @@ function attachAdminListeners() {
     });
 
     // Logout
-    $('#admin-logout')?.addEventListener('click', () => {
+    if ($('#admin-logout')) $('#admin-logout').addEventListener('click', () => {
         if (confirm('Logout from admin panel?')) {
             import('./auth.js').then(authModule => {
                 authModule.logout();
@@ -177,15 +177,15 @@ function attachAdminListeners() {
     });
 
     // Quick actions
-    $('#export-all-data')?.addEventListener('click', () => {
+    if ($('#export-all-data')) $('#export-all-data').addEventListener('click', () => {
         exportAllData();
     });
 
-    $('#backup-data')?.addEventListener('click', () => {
+    if ($('#backup-data')) $('#backup-data').addEventListener('click', () => {
         alert('Backup feature coming soon');
     });
 
-    $('#view-logs')?.addEventListener('click', () => {
+    if ($('#view-logs')) $('#view-logs').addEventListener('click', () => {
         alert('System logs feature coming soon');
     });
 }

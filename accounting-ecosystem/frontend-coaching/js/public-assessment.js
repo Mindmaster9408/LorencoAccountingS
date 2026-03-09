@@ -8,7 +8,7 @@ let basisAnswers = {};
 let wantsCoachingInfo = false;
 
 // Start assessment button
-$('#start-public-assessment-btn')?.addEventListener('click', () => {
+if ($('#start-public-assessment-btn')) $('#start-public-assessment-btn').addEventListener('click', () => {
     const firstName = $('#reg-firstname').value.trim();
     const surname = $('#reg-surname').value.trim();
     const email = $('#reg-email').value.trim();
@@ -168,7 +168,7 @@ function attachEventListeners() {
     });
 
     // Coaching interest checkbox
-    $('#wants-coaching')?.addEventListener('change', (e) => {
+    if ($('#wants-coaching')) $('#wants-coaching').addEventListener('change', (e) => {
         wantsCoachingInfo = e.target.checked;
         const detailsSection = $('#coaching-details');
         if (detailsSection) {
@@ -177,7 +177,7 @@ function attachEventListeners() {
     });
 
     // Submit button
-    $('#submit-public-basis')?.addEventListener('click', submitAssessment);
+    if ($('#submit-public-basis')) $('#submit-public-basis').addEventListener('click', submitAssessment);
 }
 
 function updateProgress() {
@@ -213,7 +213,7 @@ async function submitAssessment() {
     // Add coaching interest data
     if (wantsCoachingInfo) {
         leadData.wantsCoaching = true;
-        leadData.coachingGoals = $('#coaching-goals')?.value.trim() || '';
+        leadData.coachingGoals = (($('#coaching-goals') && $('#coaching-goals').value) || '').trim() || '';
     } else {
         leadData.wantsCoaching = false;
     }

@@ -48,7 +48,7 @@ function showError(message = null) {
 }
 
 // Start assessment button
-$('#start-assessment-btn')?.addEventListener('click', () => {
+if ($('#start-assessment-btn')) $('#start-assessment-btn').addEventListener('click', () => {
     const firstName = $('#client-firstname').value.trim();
     const surname = $('#client-surname').value.trim();
     const email = $('#client-email').value.trim();
@@ -178,7 +178,7 @@ function attachEventListeners() {
     });
 
     // Submit button
-    $('#submit-basis')?.addEventListener('click', submitAssessment);
+    if ($('#submit-basis')) $('#submit-basis').addEventListener('click', submitAssessment);
 }
 
 function updateProgress() {

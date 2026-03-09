@@ -64,15 +64,15 @@ function renderBASISOptions(client, container) {
     `;
 
     // Attach event listeners
-    $('#start-coach-led')?.addEventListener('click', () => {
+    if ($('#start-coach-led')) $('#start-coach-led').addEventListener('click', () => {
         renderBASISQuestionnaire(client, container);
     });
 
-    $('#generate-link')?.addEventListener('click', () => {
+    if ($('#generate-link')) $('#generate-link').addEventListener('click', () => {
         generateAssessmentLink(client);
     });
 
-    $('#copy-link')?.addEventListener('click', () => {
+    if ($('#copy-link')) $('#copy-link').addEventListener('click', () => {
         const input = $('#assessment-link-input');
         input.select();
         document.execCommand('copy');
@@ -172,7 +172,7 @@ function renderSectionQuestions(sectionKey, client) {
 
     return questions.map((question, index) => {
         const questionId = `${sectionKey}_${question.id}`;
-        const currentAnswer = client.basisAnswers?.[questionId] || null;
+        const currentAnswer = (client.basisAnswers && client.basisAnswers[questionId]) || null;
 
         return `
             <div class="basis-question">

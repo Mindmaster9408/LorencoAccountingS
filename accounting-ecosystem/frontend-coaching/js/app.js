@@ -18,7 +18,7 @@ function init() {
     }
 
     const currentUser = getCurrentUser();
-    console.log('User logged in:', currentUser?.email);
+    console.log('User logged in:', currentUser ? currentUser.email : undefined);
 
     // Regular coaching app
     console.log('Loading coaching app...');
@@ -49,7 +49,7 @@ function init() {
 
 function addUserInfoToSidebar() {
     const sidebar = document.querySelector('.sidebar');
-    const brand = sidebar?.querySelector('.brand');
+    const brand = sidebar ? sidebar.querySelector('.brand') : null;
 
     if (brand) {
         const user = getCurrentUser();
