@@ -1652,7 +1652,7 @@
             var html = '<table class="data-table"><thead><tr><th>Date</th><th>Source</th><th>Records</th><th>Periods</th><th>User</th><th>Actions</th></tr></thead><tbody>';
             log.forEach(function(entry) {
                 var date = new Date(entry.timestamp);
-                var formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                var formattedDate = formatDateTime(date);
                 var periodList = (entry.periods || []).map(function(p) { return formatPeriod(p); }).join(', ');
                 var rowStyle = entry.undone ? 'opacity:0.5; text-decoration:line-through;' : '';
                 html += '<tr style="' + rowStyle + '">';

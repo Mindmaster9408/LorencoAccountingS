@@ -362,6 +362,23 @@ window.getTodayISO = function() {
     return window.formatDate(now, 'ISO');
 };
 
+/**
+ * Format time only (HH:MM)
+ * @param {Date|string} date
+ * @returns {string} HH:MM
+ */
+window.formatTime = function(date) {
+    if (!date) return '';
+    if (!(date instanceof Date)) {
+        date = window.parseStandardDate(date);
+    }
+    if (!date || isNaN(date.getTime())) return '';
+    
+    var hours = String(date.getHours()).padStart(2, '0');
+    var minutes = String(date.getMinutes()).padStart(2, '0');
+    return hours + ':' + minutes;
+};
+
 // ============================================================================
 // JAVASCRIPT POLYFILLS
 // ============================================================================

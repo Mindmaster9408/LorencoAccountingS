@@ -1180,7 +1180,7 @@
 
             const headers = ['Timestamp', 'User', 'Action Type', 'Entity Type', 'Description'];
             const rows = logs.map(l => [
-                new Date(l.timestamp).toLocaleString(), l.user_name || '-',
+                formatDateTime(parseStandardDate(l.timestamp)), l.user_name || '-',
                 l.action_type, l.entity_type, l.description || '-'
             ]);
 
@@ -1212,7 +1212,7 @@
 
             const headers = ['Timestamp', 'User', 'Action Type', 'Description'];
             const rows = logs.map(l => [
-                new Date(l.timestamp).toLocaleString(), l.user_name || '-',
+                formatDateTime(parseStandardDate(l.timestamp)), l.user_name || '-',
                 l.action_type, l.description || '-'
             ]);
 
@@ -1496,7 +1496,7 @@
             doc.text(currentReportData.title, 14, 32);
             doc.setFontSize(9);
             doc.setTextColor(128, 128, 128);
-            doc.text('Generated: ' + new Date().toLocaleString() + ' | By: ' + (AUTH.getSession().name || AUTH.getSession().email), 14, 40);
+            doc.text('Generated: ' + formatDateTime(new Date()) + ' | By: ' + (AUTH.getSession().name || AUTH.getSession().email), 14, 40);
 
             // Confidential watermark
             if (currentReportData.isSensitive) {

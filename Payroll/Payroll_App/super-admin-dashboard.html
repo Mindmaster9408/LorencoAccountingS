@@ -572,7 +572,7 @@
                         </span>
                     </td>
                     <td>${company.subscription_status === 'active' ? '✓ Active' : '⚠ Suspended'}</td>
-                    <td>${new Date(company.created_date).toLocaleDateString()}</td>
+                    <td>${formatDate(parseStandardDate(company.created_date), 'ZA')}</td>
                     <td>
                         <div class="action-buttons">
                             <button class="btn-action btn-view" onclick="viewDetails('${company.id}')">View</button>
@@ -617,7 +617,7 @@
                 <p><strong>Total Employees:</strong> ${company.employees}</p>
                 <p><strong>Status:</strong> <span style="color: ${company.active ? '#28a745' : '#dc3545'}; font-weight: 600;">${company.active ? 'ACTIVE' : 'SUSPENDED'}</span></p>
                 <p><strong>Subscription Status:</strong> ${company.subscription_status === 'active' ? '✓ Active' : '⚠ Suspended'}</p>
-                <p><strong>Created Date:</strong> ${new Date(company.created_date).toLocaleDateString()}</p>
+                <p><strong>Created Date:</strong> ${formatDate(parseStandardDate(company.created_date), 'ZA')}</p>
             `;
 
             document.getElementById('detail-modal-body').innerHTML = detailsHtml;

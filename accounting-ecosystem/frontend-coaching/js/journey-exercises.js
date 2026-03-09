@@ -92,11 +92,7 @@ function render4QuadrantExercise(client, container) {
     }
 
     const data = client.exerciseData.fourQuadrant;
-    const sessionDate = new Date().toLocaleDateString('en-ZA', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+    const sessionDate = formatDate(new Date(), 'ZA');
 
     container.innerHTML = `
         <div class="exercise-page four-quadrant-page">

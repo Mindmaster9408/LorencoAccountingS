@@ -1712,7 +1712,7 @@
 
             // Footer
             html += '<div style="font-size: 10px; color: #999; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">';
-            html += '<div>Generated: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString() + '</div>';
+            html += '<div>Generated: ' + formatDateTime(new Date()) + '</div>';
             html += '<div>This is a system-generated document.</div>';
             html += '</div>';
 
@@ -1940,7 +1940,7 @@
             if (notes.length === 0) { list.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">No notes yet. Add a note above.</p>'; return; }
             list.innerHTML = [...notes].sort((a, b) => b.date_created.localeCompare(a.date_created)).map(n => {
                 const d = new Date(n.date_created);
-                return '<div class="note-item"><div class="note-header"><span class="note-meta">' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + ' - ' + (n.author || 'System') + '</span><button class="btn btn-danger btn-sm" onclick="deleteNote(\'' + n.id + '\')">Delete</button></div><div class="note-text">' + n.text.replace(/\n/g, '<br>') + '</div></div>';
+                return '<div class="note-item"><div class="note-header"><span class="note-meta">' + formatDateTime(d) + ' - ' + (n.author || 'System') + '</span><button class="btn btn-danger btn-sm" onclick="deleteNote(\'' + n.id + '\')">Delete</button></div><div class="note-text">' + n.text.replace(/\n/g, '<br>') + '</div></div>';
             }).join('');
         }
         function addNote() {

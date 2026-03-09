@@ -92,11 +92,7 @@ function render4QuadrantExercise(client, container) {
     }
 
     const data = client.exerciseData.fourQuadrant;
-    const sessionDate = new Date().toLocaleDateString('en-ZA', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+    const sessionDate = formatDate(new Date(), 'ZA');
 
     container.innerHTML = `
         <div class="exercise-page four-quadrant-page">
@@ -561,7 +557,7 @@ function renderPresentGapFuture(client, container) {
                         <div class="message-avatar">${msg.role === 'user' ? '👤' : '🤖'}</div>
                         <div class="message-content">
                             <div class="message-text">${escapeHtml(msg.content)}</div>
-                            <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}</div>
+                            <div class="message-time">${formatTime(parseStandardDate(msg.timestamp))}</div>
                         </div>
                     </div>
                 `).join('');
