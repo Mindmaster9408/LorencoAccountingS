@@ -308,7 +308,7 @@ function renderPresentGapFuture(client, container) {
     const data = client.exerciseData.presentGapFuture;
 
     // Get dream from Step 1 (4 Quadrant)
-    const dreamFromStep1 = client.exerciseData?.fourQuadrant?.dreamSummary || client.dream || '';
+    const dreamFromStep1 = ((client.exerciseData && client.exerciseData.fourQuadrant && client.exerciseData.fourQuadrant.dreamSummary) || '') || client.dream || '';
 
     const presentQuestions = [
         "What are you proud of that you created in your life the past 3 months?",
@@ -460,7 +460,7 @@ function renderPresentGapFuture(client, container) {
                             id="pgf-eval-experience"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.experience || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.experience) || '')}</textarea>
                     </div>
                 </div>
 
@@ -472,7 +472,7 @@ function renderPresentGapFuture(client, container) {
                             id="pgf-eval-insights"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.insights || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.insights) || '')}</textarea>
                     </div>
                 </div>
 
@@ -484,7 +484,7 @@ function renderPresentGapFuture(client, container) {
                             id="pgf-eval-stood-out"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.stoodOut || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.stoodOut) || '')}</textarea>
                     </div>
                 </div>
 
@@ -496,7 +496,7 @@ function renderPresentGapFuture(client, container) {
                             id="pgf-eval-future"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.future23Years || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.future23Years) || '')}</textarea>
                     </div>
                 </div>
 
@@ -508,7 +508,7 @@ function renderPresentGapFuture(client, container) {
                             id="pgf-eval-24hours"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.next24Hours || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.next24Hours) || '')}</textarea>
                     </div>
                 </div>
             </div>
@@ -709,7 +709,7 @@ function renderFlightPlan(client, container) {
                             id="fp-eval-experience"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.experience || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.experience) || '')}</textarea>
                     </div>
                 </div>
 
@@ -721,7 +721,7 @@ function renderFlightPlan(client, container) {
                             id="fp-eval-insights"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.insights || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.insights) || '')}</textarea>
                     </div>
                 </div>
 
@@ -733,7 +733,7 @@ function renderFlightPlan(client, container) {
                             id="fp-eval-stood-out"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.stoodOut || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.stoodOut) || '')}</textarea>
                     </div>
                 </div>
 
@@ -745,7 +745,7 @@ function renderFlightPlan(client, container) {
                             id="fp-eval-future"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.future23Years || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.future23Years) || '')}</textarea>
                     </div>
                 </div>
 
@@ -757,7 +757,7 @@ function renderFlightPlan(client, container) {
                             id="fp-eval-24hours"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.next24Hours || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.next24Hours) || '')}</textarea>
                     </div>
                 </div>
             </div>
@@ -852,7 +852,7 @@ function renderDeepDive(client, container) {
     const data = client.exerciseData.deepDive;
 
     // Get dream from Step 2
-    const dreamFromStep2 = client.dream || client.exerciseData?.fourQuadrant?.dreamSummary || '';
+    const dreamFromStep2 = client.dream || ((client.exerciseData && client.exerciseData.fourQuadrant && client.exerciseData.fourQuadrant.dreamSummary) || '') || '';
 
     container.innerHTML = `
         <div class="exercise-page deep-dive-page">
@@ -923,7 +923,7 @@ function renderDeepDive(client, container) {
                             id="dd-eval-experience"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.experience || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.experience) || '')}</textarea>
                     </div>
                 </div>
 
@@ -935,7 +935,7 @@ function renderDeepDive(client, container) {
                             id="dd-eval-insights"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.insights || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.insights) || '')}</textarea>
                     </div>
                 </div>
 
@@ -947,7 +947,7 @@ function renderDeepDive(client, container) {
                             id="dd-eval-stood-out"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.stoodOut || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.stoodOut) || '')}</textarea>
                     </div>
                 </div>
 
@@ -959,7 +959,7 @@ function renderDeepDive(client, container) {
                             id="dd-eval-future"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.future23Years || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.future23Years) || '')}</textarea>
                     </div>
                 </div>
 
@@ -971,7 +971,7 @@ function renderDeepDive(client, container) {
                             id="dd-eval-24hours"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.next24Hours || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.next24Hours) || '')}</textarea>
                     </div>
                 </div>
             </div>
@@ -1190,7 +1190,7 @@ function renderEcochart(client, container) {
                             id="eco-eval-experience"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.experience || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.experience) || '')}</textarea>
                     </div>
                 </div>
 
@@ -1202,7 +1202,7 @@ function renderEcochart(client, container) {
                             id="eco-eval-insights"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.insights || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.insights) || '')}</textarea>
                     </div>
                 </div>
 
@@ -1214,7 +1214,7 @@ function renderEcochart(client, container) {
                             id="eco-eval-stood-out"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.stoodOut || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.stoodOut) || '')}</textarea>
                     </div>
                 </div>
 
@@ -1226,7 +1226,7 @@ function renderEcochart(client, container) {
                             id="eco-eval-future"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.future23Years || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.future23Years) || '')}</textarea>
                     </div>
                 </div>
 
@@ -1238,7 +1238,7 @@ function renderEcochart(client, container) {
                             id="eco-eval-24hours"
                             rows="2"
                             placeholder="Your answer..."
-                        >${escapeHtml(data.evaluations?.next24Hours || '')}</textarea>
+                        >${escapeHtml((data.evaluations && data.evaluations.next24Hours) || '')}</textarea>
                     </div>
                 </div>
             </div>
@@ -1646,7 +1646,7 @@ function renderAssessments(client, container) {
                     <div class="eval-icon">🎯</div>
                     <div class="eval-content">
                         <label>What was your experience of this session?</label>
-                        <textarea id="assess-eval-experience" rows="2" placeholder="Your answer...">${escapeHtml(data.evaluations?.experience || '')}</textarea>
+                        <textarea id="assess-eval-experience" rows="2" placeholder="Your answer...">${escapeHtml((data.evaluations && data.evaluations.experience) || '')}</textarea>
                     </div>
                 </div>
 
@@ -1654,7 +1654,7 @@ function renderAssessments(client, container) {
                     <div class="eval-icon">❓</div>
                     <div class="eval-content">
                         <label>What insights did you get, what did you learn from this interview?</label>
-                        <textarea id="assess-eval-insights" rows="2" placeholder="Your answer...">${escapeHtml(data.evaluations?.insights || '')}</textarea>
+                        <textarea id="assess-eval-insights" rows="2" placeholder="Your answer...">${escapeHtml((data.evaluations && data.evaluations.insights) || '')}</textarea>
                     </div>
                 </div>
 
@@ -1662,7 +1662,7 @@ function renderAssessments(client, container) {
                     <div class="eval-icon">🤝</div>
                     <div class="eval-content">
                         <label>What stood out?</label>
-                        <textarea id="assess-eval-stood-out" rows="2" placeholder="Your answer...">${escapeHtml(data.evaluations?.stoodOut || '')}</textarea>
+                        <textarea id="assess-eval-stood-out" rows="2" placeholder="Your answer...">${escapeHtml((data.evaluations && data.evaluations.stoodOut) || '')}</textarea>
                     </div>
                 </div>
 
@@ -1670,7 +1670,7 @@ function renderAssessments(client, container) {
                     <div class="eval-icon">🏛️</div>
                     <div class="eval-content">
                         <label>If we had the same discussion 2/3 years from now what should be different both professional and personal</label>
-                        <textarea id="assess-eval-future" rows="2" placeholder="Your answer...">${escapeHtml(data.evaluations?.future23Years || '')}</textarea>
+                        <textarea id="assess-eval-future" rows="2" placeholder="Your answer...">${escapeHtml((data.evaluations && data.evaluations.future23Years) || '')}</textarea>
                     </div>
                 </div>
 
@@ -1678,7 +1678,7 @@ function renderAssessments(client, container) {
                     <div class="eval-icon">🎯</div>
                     <div class="eval-content">
                         <label>One thing you can do within the next 24hours that will increase your chances to reach your goal?</label>
-                        <textarea id="assess-eval-24hours" rows="2" placeholder="Your answer...">${escapeHtml(data.evaluations?.next24Hours || '')}</textarea>
+                        <textarea id="assess-eval-24hours" rows="2" placeholder="Your answer...">${escapeHtml((data.evaluations && data.evaluations.next24Hours) || '')}</textarea>
                     </div>
                 </div>
             </div>
@@ -1907,7 +1907,7 @@ function renderMLNP(client, container) {
                                 id="mlnp-eval-experience"
                                 rows="2"
                                 placeholder="Your answer..."
-                            >${escapeHtml(data.evaluations?.experience || '')}</textarea>
+                            >${escapeHtml((data.evaluations && data.evaluations.experience) || '')}</textarea>
                         </div>
                     </div>
 
@@ -1919,7 +1919,7 @@ function renderMLNP(client, container) {
                                 id="mlnp-eval-insights"
                                 rows="2"
                                 placeholder="Your answer..."
-                            >${escapeHtml(data.evaluations?.insights || '')}</textarea>
+                            >${escapeHtml((data.evaluations && data.evaluations.insights) || '')}</textarea>
                         </div>
                     </div>
 
@@ -1931,7 +1931,7 @@ function renderMLNP(client, container) {
                                 id="mlnp-eval-stood-out"
                                 rows="2"
                                 placeholder="Your answer..."
-                            >${escapeHtml(data.evaluations?.stoodOut || '')}</textarea>
+                            >${escapeHtml((data.evaluations && data.evaluations.stoodOut) || '')}</textarea>
                         </div>
                     </div>
 
@@ -1943,7 +1943,7 @@ function renderMLNP(client, container) {
                                 id="mlnp-eval-future"
                                 rows="2"
                                 placeholder="Your answer..."
-                            >${escapeHtml(data.evaluations?.future23Years || '')}</textarea>
+                            >${escapeHtml((data.evaluations && data.evaluations.future23Years) || '')}</textarea>
                         </div>
                     </div>
 
@@ -1955,7 +1955,7 @@ function renderMLNP(client, container) {
                                 id="mlnp-eval-next24"
                                 rows="2"
                                 placeholder="Your answer..."
-                            >${escapeHtml(data.evaluations?.next24Hours || '')}</textarea>
+                            >${escapeHtml((data.evaluations && data.evaluations.next24Hours) || '')}</textarea>
                         </div>
                     </div>
                 </div>
