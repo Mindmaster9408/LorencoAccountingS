@@ -34,6 +34,7 @@ body {
 /* ── Top Bar ────────────────────────────────────────────────────────────────── */
 .top-bar {
     background: rgba(0,0,0,0.4) !important;
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border);
     box-shadow: none !important;
@@ -174,6 +175,7 @@ body {
 .panel,
 .widget {
     background: var(--surface) !important;
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     border: 1px solid var(--border) !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
@@ -490,6 +492,7 @@ select option {
 /* ── Sidebar ────────────────────────────────────────────────────────────────── */
 .sidebar {
     background: var(--surface) !important;
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     border-color: var(--border) !important;
 }
