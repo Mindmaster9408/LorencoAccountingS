@@ -13,7 +13,7 @@ var SeanPayrollHelper = (function() {
     const API_BASE = window.location.origin + '/api/payroll/sean';
 
     function getToken() {
-        return localStorage.getItem('token');
+        return safeLocalStorage.getItem('token');
     }
 
     async function apiRequest(method, path, body) {
@@ -25,7 +25,7 @@ var SeanPayrollHelper = (function() {
         if (body && method !== 'GET') opts.body = JSON.stringify(body);
         const response = await fetch(url, opts);
         if (response.status === 401) {
-            localStorage.removeItem('token');
+            safeLocalStorage.removeItem('token');
             window.location.href = 'login.html';
             throw new Error('Session expired');
         }

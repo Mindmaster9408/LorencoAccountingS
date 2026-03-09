@@ -32,7 +32,7 @@ var Permissions = {
      */
     getRole: function() {
         try {
-            var session = JSON.parse(localStorage.getItem('session') || '{}');
+            var session = JSON.parse(safeLocalStorage.getItem('session') || '{}');
             return session.role || '';
         } catch(e) {
             return '';

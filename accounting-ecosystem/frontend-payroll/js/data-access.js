@@ -16,7 +16,7 @@ var DataAccess = (function() {
     // ─── HTTP Helper ─────────────────────────────────────────────────────────
 
     function getToken() {
-        return localStorage.getItem('token');
+        return safeLocalStorage.getItem('token');
     }
 
     async function apiRequest(method, path, body) {
@@ -35,8 +35,8 @@ var DataAccess = (function() {
 
             // Token expired — redirect to login
             if (response.status === 401) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('session');
+                safeLocalStorage.removeItem('token');
+                safeLocalStorage.removeItem('session');
                 window.location.href = 'login.html';
                 throw new Error('Session expired');
             }
@@ -60,12 +60,12 @@ var DataAccess = (function() {
     // ─── Local Cache (fallback for offline reads) ────────────────────────────
 
     function cacheSet(key, data) {
-        try { localStorage.setItem('cache_' + key, JSON.stringify(data)); } catch(e) {}
+        try { safeLocalStorage.setItem('cache_' + key, JSON.stringify(data)); } catch(e) {}
     }
 
     function cacheGet(key) {
         try {
-            const val = localStorage.getItem('cache_' + key);
+            const val = safeLocalStorage.getItem('cache_' + key);
             return val ? JSON.parse(val) : null;
         } catch(e) { return null; }
     }
@@ -79,18 +79,18 @@ var DataAccess = (function() {
         // === SESSION (local — token-based) ===
 
         getSession: function() {
-            var val = localStorage.getItem('session');
+            var val = safeLocalStorage.getItem('session');
             if (!val) return null;
             try { return JSON.parse(val); } catch(e) { return null; }
         },
 
         saveSession: function(session) {
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
         },
 
         clearSession: function() {
-            localStorage.removeItem('session');
-            localStorage.removeItem('token');
+            safeLocalStorage.removeItem('session');
+            safeLocalStorage.removeItem('token');
         },
 
         // === COMPANIES ===
@@ -499,11 +499,11 @@ var DataAccess = (function() {
 // ============================================================
 // Cloud localStorage Bridge — ECO Payroll
 //
-// Intercepts ALL localStorage.*  calls and routes payroll data
+// Intercepts ALL safeLocalStorage.*  calls and routes payroll data
 // through the /api/payroll/kv endpoint (Supabase-backed, company-
 // scoped) so that clearing browser history never loses any data.
 //
-// Only 'session' and 'token' stay in native localStorage.
+// Only 'session' and 'token' stay in native safeLocalStorage.
 // 'cache_*' keys used as offline fallback also remain local.
 // ============================================================
 (function installEcoPayrollLocalStorageBridge() {
@@ -529,8 +529,8 @@ var DataAccess = (function() {
 
     try {
         var token = (function() {
-            try { return window.localStorage.getItem
-                ? window.localStorage.getItem.call
+            try { return window.safeLocalStorage.getItem
+                ? window.safeLocalStorage.getItem.call
                     ? null // bridge not installed yet, read direct
                     : null
                 : null;
@@ -596,19 +596,19 @@ var DataAccess = (function() {
         key:        Storage.prototype.key.bind(localStorage)
     };
 
-    localStorage.getItem = function(key) {
+    safeLocalStorage.getItem = function(key) {
         if (isLocalKey(key)) return _native.getItem(key);
         return kvGet(key);
     };
-    localStorage.setItem = function(key, value) {
+    safeLocalStorage.setItem = function(key, value) {
         if (isLocalKey(key)) { _native.setItem(key, value); return; }
         kvSet(key, value);
     };
-    localStorage.removeItem = function(key) {
+    safeLocalStorage.removeItem = function(key) {
         if (isLocalKey(key)) { _native.removeItem(key); return; }
         kvRemove(key);
     };
-    localStorage.key = function(index) {
+    safeLocalStorage.key = function(index) {
         var keys = kvKeys();
         return keys[Number(index)] || null;
     };

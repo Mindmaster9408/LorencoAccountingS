@@ -412,6 +412,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -466,7 +467,7 @@
         function switchToCompany(companyId) {
             const session = AUTH.getSession();
             session.company_id = companyId;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             location.reload();
         }
 
@@ -481,7 +482,7 @@
             // 1. Fetch basic company info from backend API (authoritative source)
             let apiCompany = {};
             try {
-                const token = localStorage.getItem('token');
+                const token = safeLocalStorage.getItem('token');
                 const res = await fetch('/api/companies/' + currentCompanyId, {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
@@ -492,7 +493,7 @@
             } catch(e) { console.warn('Could not load company from API:', e); }
 
             // 2. Merge with extended payroll details stored locally
-            const stored = localStorage.getItem(getStorageKey());
+            const stored = safeLocalStorage.getItem(getStorageKey());
             const extra = stored ? JSON.parse(stored) : {};
 
             // Parse address from API if it's a JSON object
@@ -748,16 +749,16 @@
             companyData.fnb_originator_code = document.getElementById('f-fnb-code').value.trim();
 
             // Save extended details to localStorage
-            localStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Updated company details for ' + (companyData.name || 'Unknown'));
 
             // Update company name in available companies cache
             try {
-                const cached = JSON.parse(localStorage.getItem('availableCompanies') || '[]');
+                const cached = JSON.parse(safeLocalStorage.getItem('availableCompanies') || '[]');
                 const idx = cached.findIndex(c => c.id == currentCompanyId);
                 if (idx !== -1) {
                     cached[idx].name = companyData.name || cached[idx].name;
-                    localStorage.setItem('availableCompanies', JSON.stringify(cached));
+                    safeLocalStorage.setItem('availableCompanies', JSON.stringify(cached));
                 }
             } catch(e) {}
 
@@ -777,7 +778,7 @@
             var reader = new FileReader();
             reader.onload = function(e) {
                 companyData.logo_data = e.target.result;
-                localStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+                safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
                 AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Uploaded company logo');
                 updateLogoPreview();
                 alert('Logo uploaded successfully!');
@@ -789,7 +790,7 @@
             if (!companyData.logo_data) return;
             if (!confirm('Remove the company logo?')) return;
             companyData.logo_data = '';
-            localStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Removed company logo');
             updateLogoPreview();
         }
@@ -840,7 +841,7 @@
             await AUTH.getCompanies();
             var session = AUTH.getSession();
             session.company_id = result.company.id || result.company.company_id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             location.reload();

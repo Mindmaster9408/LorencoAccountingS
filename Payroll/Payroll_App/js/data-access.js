@@ -74,7 +74,7 @@ var DataAccess = {
     getRaw: function(key) {
         if (key === 'session' || key === 'token') {
             var nativeStore = window._payrollNativeLocalStorage;
-            return nativeStore ? nativeStore.getItem(key) : localStorage.getItem(key);
+            return nativeStore ? nativeStore.getItem(key) : safeLocalStorage.getItem(key);
         }
         if (!window._payrollCache || !Object.prototype.hasOwnProperty.call(window._payrollCache, key)) {
             return null;
@@ -90,8 +90,8 @@ var DataAccess = {
             if (nativeStore.getItem('session') !== null) keys.push('session');
             if (nativeStore.getItem('token') !== null) keys.push('token');
         } else {
-            if (localStorage.getItem('session') !== null) keys.push('session');
-            if (localStorage.getItem('token') !== null) keys.push('token');
+            if (safeLocalStorage.getItem('session') !== null) keys.push('session');
+            if (safeLocalStorage.getItem('token') !== null) keys.push('token');
         }
         if (window._payrollCache) {
             keys = keys.concat(Object.keys(window._payrollCache));
@@ -137,17 +137,17 @@ var DataAccess = {
     // === SESSION (browser-local only — login state per device) ===
 
     getSession: function() {
-        var val = localStorage.getItem('session');
+        var val = safeLocalStorage.getItem('session');
         if (!val) return null;
         try { return JSON.parse(val); } catch(e) { return val; }
     },
 
     saveSession: function(session) {
-        localStorage.setItem('session', JSON.stringify(session));
+        safeLocalStorage.setItem('session', JSON.stringify(session));
     },
 
     clearSession: function() {
-        localStorage.removeItem('session');
+        safeLocalStorage.removeItem('session');
     },
 
     // === COMPANIES ===
@@ -450,10 +450,16 @@ var DataAccess = {
     if (!window.localStorage) return;
 
     var nativeStore = {
-        getItem: localStorage.getItem.bind(localStorage),
-        setItem: localStorage.setItem.bind(localStorage),
-        removeItem: localStorage.removeItem.bind(localStorage),
-        key: localStorage.key.bind(localStorage)
+        getItem: safeLocalStorage.getItem.bind(safeLocalStorage),
+        setItem: safeLocalStorage.setItem.bind(safeLocalStorage),
+        removeItem: safeLocalStorage.removeItem.bind(safeLocalStorage),
+        key: function(index) {
+            try {
+                return typeof localStorage.key === 'function' ? localStorage.key(index) : null;
+            } catch (_) {
+                return null;
+            }
+        }
     };
     window._payrollNativeLocalStorage = nativeStore;
 
@@ -470,12 +476,12 @@ var DataAccess = {
         try { return JSON.parse(raw); } catch (e) { return raw; }
     }
 
-    localStorage.getItem = function(key) {
+    safeLocalStorage.getItem = function(key) {
         if (!isCloudKey(key)) return nativeStore.getItem(key);
         return DataAccess.getRaw(key);
     };
 
-    localStorage.setItem = function(key, value) {
+    safeLocalStorage.setItem = function(key, value) {
         if (!isCloudKey(key)) {
             nativeStore.setItem(key, value);
             return;
@@ -483,7 +489,7 @@ var DataAccess = {
         DataAccess.set(key, parseRaw(value));
     };
 
-    localStorage.removeItem = function(key) {
+    safeLocalStorage.removeItem = function(key) {
         if (!isCloudKey(key)) {
             nativeStore.removeItem(key);
             return;
@@ -491,14 +497,14 @@ var DataAccess = {
         DataAccess.remove(key);
     };
 
-    localStorage.key = function(index) {
+    safeLocalStorage.key = function(index) {
         var i = Number(index);
         if (!Number.isFinite(i) || i < 0) return null;
         var keys = DataAccess.listKeys();
         return keys[i] || null;
     };
 
-    // Override localStorage.length so iteration loops see cloud keys
+    // Override safeLocalStorage.length so iteration loops see cloud keys
     try {
         Object.defineProperty(localStorage, 'length', {
             get: function() { return DataAccess.listKeys().length; },

@@ -542,6 +542,7 @@
     </div>
 
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="js/polyfills.js"></script>
     <script src="js/bulk-import-utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="js/data-access.js"></script>
@@ -609,7 +610,7 @@
         function switchToCompany(companyId) {
             const session = AUTH.getSession();
             session.company_id = companyId;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             window.location.reload();
         }
 
@@ -629,7 +630,7 @@
 
         // ========== PAYSLIPS TAB ==========
         function loadEmployees() {
-            const stored = localStorage.getItem('employees_' + currentCompanyId);
+            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             employees = stored ? JSON.parse(stored) : [];
             displayEmployees(employees);
         }
@@ -682,7 +683,7 @@
 
         // ========== PAYROLL RUNS TAB ==========
         function loadPayruns() {
-            const stored = localStorage.getItem('payruns_' + currentCompanyId);
+            const stored = safeLocalStorage.getItem('payruns_' + currentCompanyId);
             payruns = stored ? JSON.parse(stored) : [];
             
             // Auto-generate pending pay runs based on company pay frequencies
@@ -776,7 +777,7 @@
 
         function getCompanyDetails() {
             const key = 'company_details_' + currentCompanyId;
-            const stored = localStorage.getItem(key);
+            const stored = safeLocalStorage.getItem(key);
             return stored ? JSON.parse(stored) : { pay_frequencies: ['Monthly'], pay_day: 25 };
         }
 
@@ -1083,7 +1084,7 @@
                     c.totalDeductions = c.deductions || 0;
                     c.overtimeAmount = 0;
                     var hr = pd.basic_salary ? pd.basic_salary / 173.33 : 0;
-                    JSON.parse(localStorage.getItem('emp_overtime_' + currentCompanyId + '_' + empId + '_' + run.period) || '[]').forEach(function(ot) {
+                    JSON.parse(safeLocalStorage.getItem('emp_overtime_' + currentCompanyId + '_' + empId + '_' + run.period) || '[]').forEach(function(ot) {
                         c.overtimeAmount += (parseFloat(ot.hours) || 0) * hr * (parseFloat(ot.rate_multiplier) || 1.5);
                     });
                     return c;
@@ -1260,12 +1261,12 @@
         }
 
         function savePayruns() {
-            localStorage.setItem('payruns_' + currentCompanyId, JSON.stringify(payruns));
+            safeLocalStorage.setItem('payruns_' + currentCompanyId, JSON.stringify(payruns));
         }
 
         function getPayslipStatus(empId, period) {
             const key = 'emp_payslip_status_' + currentCompanyId + '_' + empId + '_' + period;
-            const stored = localStorage.getItem(key);
+            const stored = safeLocalStorage.getItem(key);
             return stored ? JSON.parse(stored) : { status: 'draft' };
         }
 
@@ -1327,7 +1328,7 @@
 
         // ========== PAYROLL CALCULATION ==========
         function getEmployeePayroll(empId) {
-            const stored = localStorage.getItem('emp_payroll_' + currentCompanyId + '_' + empId);
+            const stored = safeLocalStorage.getItem('emp_payroll_' + currentCompanyId + '_' + empId);
             return stored ? JSON.parse(stored) : { basic_salary: 0, regular_inputs: [] };
         }
 
@@ -1339,13 +1340,13 @@
         // ========== EMP201 & UIF RETURNS ==========
         function getReturnStatus(runId, type) {
             const key = 'return_status_' + currentCompanyId + '_' + runId + '_' + type;
-            const stored = localStorage.getItem(key);
+            const stored = safeLocalStorage.getItem(key);
             return stored ? JSON.parse(stored) : { status: 'pending', submitted_date: null };
         }
 
         function setReturnStatus(runId, type, status) {
             const key = 'return_status_' + currentCompanyId + '_' + runId + '_' + type;
-            localStorage.setItem(key, JSON.stringify(status));
+            safeLocalStorage.setItem(key, JSON.stringify(status));
         }
 
         function createReturnsSection(run) {
@@ -1986,17 +1987,17 @@
                     basic_salary: row.basic,
                     regular_inputs: row.regularInputs || []
                 };
-                localStorage.setItem(payrollKey, JSON.stringify(payrollData));
+                safeLocalStorage.setItem(payrollKey, JSON.stringify(payrollData));
 
                 // Save overtime if present
                 if (row.overtime && row.overtime.length > 0) {
                     var otKey = 'emp_overtime_' + currentCompanyId + '_' + row._empId + '_' + period;
-                    localStorage.setItem(otKey, JSON.stringify(row.overtime));
+                    safeLocalStorage.setItem(otKey, JSON.stringify(row.overtime));
                 }
 
                 // Set payslip status to draft
                 var statusKey = 'emp_payslip_status_' + currentCompanyId + '_' + row._empId + '_' + period;
-                localStorage.setItem(statusKey, JSON.stringify({ status: 'draft' }));
+                safeLocalStorage.setItem(statusKey, JSON.stringify({ status: 'draft' }));
 
                 savedCount++;
             });
@@ -2057,7 +2058,7 @@
             // Switch to the new company
             session = AUTH.getSession();
             session.company_id = result.company.id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             location.reload();

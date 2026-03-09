@@ -276,7 +276,7 @@ const AUTH = {
         // Save company to localStorage
         const registeredCompanies = this.getRegisteredCompanies();
         registeredCompanies.push(newCompany);
-        localStorage.setItem('registered_companies', JSON.stringify(registeredCompanies));
+        safeLocalStorage.setItem('registered_companies', JSON.stringify(registeredCompanies));
 
         // Seed demo company data (employees, payroll items, PAYE config, etc.)
         if (typeof DemoCompanySeed !== 'undefined') {
@@ -301,7 +301,7 @@ const AUTH = {
         
         // Save user to localStorage
         registeredUsers.push(newUser);
-        localStorage.setItem('registered_users', JSON.stringify(registeredUsers));
+        safeLocalStorage.setItem('registered_users', JSON.stringify(registeredUsers));
 
         this.setSession(newUser);
         return { success: true, user: newUser, company: newCompany, message: 'Registration successful' };
@@ -318,12 +318,12 @@ const AUTH = {
             company_ids: user.company_ids || (user.company_id ? [user.company_id] : []),
             login_time: new Date().toISOString()
         };
-        localStorage.setItem('session', JSON.stringify(sessionData));
+        safeLocalStorage.setItem('session', JSON.stringify(sessionData));
     },
 
     // Get Current Session
     getSession: function() {
-        const session = localStorage.getItem('session');
+        const session = safeLocalStorage.getItem('session');
         return session ? JSON.parse(session) : null;
     },
 
@@ -334,7 +334,7 @@ const AUTH = {
 
     // Logout
     logout: function() {
-        localStorage.removeItem('session');
+        safeLocalStorage.removeItem('session');
         window.location.href = 'login.html';
     },
 
@@ -412,13 +412,13 @@ const AUTH = {
 
     // Get Registered Users from localStorage
     getRegisteredUsers: function() {
-        const stored = localStorage.getItem('registered_users');
+        const stored = safeLocalStorage.getItem('registered_users');
         return stored ? JSON.parse(stored) : [];
     },
 
     // Get Registered Companies from localStorage
     getRegisteredCompanies: function() {
-        const stored = localStorage.getItem('registered_companies');
+        const stored = safeLocalStorage.getItem('registered_companies');
         return stored ? JSON.parse(stored) : [];
     },
 
@@ -470,7 +470,7 @@ const AUTH = {
             const idx = registeredUsers.findIndex(u => u.email === email);
             if (idx !== -1) {
                 registeredUsers[idx].password = newPassword;
-                localStorage.setItem('registered_users', JSON.stringify(registeredUsers));
+                safeLocalStorage.setItem('registered_users', JSON.stringify(registeredUsers));
             }
         }
 
@@ -494,7 +494,7 @@ const AUTH = {
         // Persist to localStorage
         var registeredCompanies = this.getRegisteredCompanies();
         registeredCompanies.push(newCompany);
-        localStorage.setItem('registered_companies', JSON.stringify(registeredCompanies));
+        safeLocalStorage.setItem('registered_companies', JSON.stringify(registeredCompanies));
 
         // Seed demo company data (employees, payroll items, PAYE config, etc.)
         if (typeof DemoCompanySeed !== 'undefined') {
@@ -532,7 +532,7 @@ const AUTH = {
             if (regUser.company_ids.indexOf(companyId) === -1) {
                 regUser.company_ids.push(companyId);
             }
-            localStorage.setItem('registered_users', JSON.stringify(registeredUsers));
+            safeLocalStorage.setItem('registered_users', JSON.stringify(registeredUsers));
         }
 
         return true;
@@ -547,7 +547,7 @@ const AUTH = {
         if (session.company_ids.indexOf(newCompanyId) === -1) {
             session.company_ids.push(newCompanyId);
         }
-        localStorage.setItem('session', JSON.stringify(session));
+        safeLocalStorage.setItem('session', JSON.stringify(session));
         return true;
     },
 

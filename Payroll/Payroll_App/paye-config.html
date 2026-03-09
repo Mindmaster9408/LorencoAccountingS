@@ -218,7 +218,8 @@
     <a href="paye-reconciliation.html" class="mobile-nav-item"><span class="mobile-nav-icon">🧾</span><span class="mobile-nav-label">PAYE Recon</span></a>
   </nav>
 
-  <script src="js/data-access.js"></script>
+  <script src="js/polyfills.js"></script>
+    <script src="js/data-access.js"></script>
   <script src="js/permissions.js"></script>
   <script src="js/audit.js"></script>
   <script src="js/demo-company-seed.js"></script>
@@ -254,7 +255,7 @@
     }
 
     function fetchConfig() {
-      const stored = localStorage.getItem('paye_config_' + currentCompanyId);
+      const stored = safeLocalStorage.getItem('paye_config_' + currentCompanyId);
       if (stored) {
         try {
           const data = JSON.parse(stored);
@@ -272,7 +273,7 @@
     }
 
     function fetchEmployees() {
-      const stored = localStorage.getItem('employees_' + currentCompanyId);
+      const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
       if (stored) {
         try {
           const parsed = JSON.parse(stored);
@@ -404,7 +405,7 @@
       e.preventDefault();
 
       // Save PAYE config
-      localStorage.setItem('paye_config_' + currentCompanyId, JSON.stringify({
+      safeLocalStorage.setItem('paye_config_' + currentCompanyId, JSON.stringify({
         incomeTypes: incomeTypes,
         deductionTypes: deductionTypes
       }));
@@ -420,14 +421,14 @@
         ...getExistingEmployeeData(emp.id)
       }));
 
-      localStorage.setItem('employees_' + currentCompanyId, JSON.stringify(empData));
+      safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(empData));
 
       alert('✅ Configuration saved successfully!');
     };
 
     function getExistingEmployeeData(empId) {
       // Preserve existing employee fields that aren't edited here
-      const stored = localStorage.getItem('employees_' + currentCompanyId);
+      const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
       if (stored) {
         try {
           const parsed = JSON.parse(stored);

@@ -12,13 +12,15 @@
             padding: 20px;
             min-height: 100vh;
         }
-        .wrapper { display: flex; gap: 20px; max-width: 1600px; margin: 0 auto; }
+        .wrapper { display: flex; max-width: 1600px; margin: 0 auto; }
+        .wrapper > * { margin-right: 20px; }
+        .wrapper > *:last-child { margin-right: 0; }
 
         /* SIDEBAR */
         .sidebar {
             width: 300px; background: white; border-radius: 15px;
             padding: 25px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            height: fit-content; position: sticky; top: 20px;
+            height: fit-content; position: -webkit-sticky; position: sticky; top: 20px;
         }
         .sidebar-header { padding: 0 20px 20px; border-bottom: 2px solid #eee; }
         .sidebar-title { color: #667eea; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
@@ -58,13 +60,16 @@
         }
         .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .header h1 { color: #667eea; margin-bottom: 0; }
-        .employee-info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px; }
+        .employee-info { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 15px; }
+        .employee-info > * { margin: 7.5px; }
         .info-item { padding: 10px; background: #f8f9fa; border-radius: 8px; }
         .info-label { font-size: 12px; color: #666; margin-bottom: 5px; }
         .info-value { font-size: 16px; font-weight: 600; color: #333; }
 
         /* TABS */
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tabs { display: flex; margin-bottom: 20px; }
+        .tabs > * { margin-right: 10px; }
+        .tabs > *:last-child { margin-right: 0; }
         .tab {
             padding: 15px 30px; background: white; border: none; border-radius: 10px 10px 0 0;
             cursor: pointer; font-size: 16px; font-weight: 600; color: #666; transition: all 0.3s;
@@ -81,7 +86,8 @@
         .card h3 { color: #667eea; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #667eea; }
 
         /* SECTIONS */
-        .section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .section-grid { display: grid; grid-template-columns: 1fr 1fr; }
+        .section-grid > * { margin: 10px; }
         .section { background: #f8f9fa; padding: 20px; border-radius: 10px; }
         .section-title {
             font-weight: 600; color: #667eea; margin-bottom: 15px;
@@ -149,10 +155,12 @@
             width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px;
         }
         .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #667eea; }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; }
+        .form-row > * { margin: 7.5px; }
 
         /* LEAVE */
-        .leave-balances { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px; }
+        .leave-balances { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 25px; }
+        .leave-balances > * { margin: 7.5px; }
         .leave-balance-card {
             background: white; border-radius: 12px; padding: 20px; text-align: center;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-top: 4px solid #667eea;
@@ -208,6 +216,25 @@
         /* AUTH MODAL */
         .auth-input { width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; margin-bottom: 10px; }
         .auth-input:focus { outline: none; border-color: #667eea; }
+
+        @supports (gap: 1rem) {
+            .wrapper { gap: 20px; }
+            .wrapper > * { margin-right: 0; }
+            .employee-info { gap: 15px; }
+            .employee-info > * { margin: 0; }
+            .tabs { gap: 10px; }
+            .tabs > * { margin-right: 0; }
+            .section-grid { gap: 20px; }
+            .section-grid > * { margin: 0; }
+            .form-row { gap: 15px; }
+            .form-row > * { margin: 0; }
+            .leave-balances { gap: 15px; }
+            .leave-balances > * { margin: 0; }
+        }
+
+        @supports not ((position: sticky) or (position: -webkit-sticky)) {
+            .sidebar { position: static; top: auto; }
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/mobile-responsive.css">
@@ -686,6 +713,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -707,13 +735,17 @@
             const params = new URLSearchParams(window.location.search);
             currentEmpId = params.get('id');
             if (!currentEmpId) { alert('No employee specified'); window.location.href = 'payruns.html'; return; }
-            loadEmployee();
-            loadEmployeeNav();
-            loadCompaniesCarousel();
-            initPeriodSelect();
-            loadPayrollData();
-            loadLeaveData();
-            loadNotes();
+            
+            // Use setTimeout to ensure DOM is fully ready (Edge compatibility)
+            setTimeout(function() {
+                loadEmployee();
+                loadEmployeeNav();
+                loadCompaniesCarousel();
+                initPeriodSelect();
+                loadPayrollData();
+                loadLeaveData();
+                loadNotes();
+            }, 50);
         });
 
         // ========== SIDEBAR ==========
@@ -754,7 +786,7 @@
         function switchToCompany(companyId) {
             const session = AUTH.getSession();
             session.company_id = companyId;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             window.location.href = 'payruns.html';
         }
 
@@ -763,7 +795,7 @@
         }
 
         function loadEmployee() {
-            const stored = localStorage.getItem('employees_' + currentCompanyId);
+            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             const employees = stored ? JSON.parse(stored) : [];
             currentEmployee = employees.find(e => e.id === currentEmpId);
             if (!currentEmployee) { alert('Employee not found'); window.location.href = 'payruns.html'; return; }
@@ -805,7 +837,7 @@
 
         // ========== EMPLOYEE QUICK NAV ==========
         function getEmployeesSorted() {
-            var stored = localStorage.getItem('employees_' + currentCompanyId);
+            var stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             var employees = stored ? JSON.parse(stored) : [];
             employees.sort(function(a, b) {
                 var nameA = ((a.first_name || '') + ' ' + (a.last_name || '')).toLowerCase();
@@ -884,12 +916,12 @@
 
         // ========== PAYSLIP STATUS ==========
         function getPayslipStatus() {
-            const stored = localStorage.getItem(getPayslipStatusKey());
+            const stored = safeLocalStorage.getItem(getPayslipStatusKey());
             return stored ? JSON.parse(stored) : { status: 'draft' };
         }
 
         function isPayrunLockedForPeriod() {
-            const payruns = JSON.parse(localStorage.getItem('payruns_' + currentCompanyId) || '[]');
+            const payruns = JSON.parse(safeLocalStorage.getItem('payruns_' + currentCompanyId) || '[]');
             return payruns.find(pr => pr.period === currentPeriod && (pr.status === 'finalized' || pr.status === 'paid'));
         }
 
@@ -915,7 +947,7 @@
                 content.classList.add('locked-overlay');
             } else if (psStatus.status === 'finalized') {
                 // Finalized but no pay run yet = can unfinalize freely
-                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + new Date(psStatus.finalized_date).toLocaleDateString() + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
+                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + formatDate(parseStandardDate(psStatus.finalized_date), 'ZA') + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" data-permission="UNFINALIZE_PAYSLIP" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
                 content.classList.add('locked-overlay');
             } else {
@@ -933,10 +965,10 @@
             const session = AUTH.getSession();
             if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '? It will be locked for editing.')) return;
             const status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
-            localStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
+            safeLocalStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
             // Save frozen snapshot so salary changes don't affect this period
             var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-            localStorage.setItem(histKey, JSON.stringify({
+            safeLocalStorage.setItem(histKey, JSON.stringify({
                 basic_salary: payrollData.basic_salary || 0,
                 gross: calc.gross, paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
                 deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
@@ -950,9 +982,9 @@
         function unfinalizePayslip() {
             if (!Permissions.require('UNFINALIZE_PAYSLIP')) return;
             if (!confirm('Unfinalize this payslip? It will be editable again.')) return;
-            localStorage.removeItem(getPayslipStatusKey());
+            safeLocalStorage.removeItem(getPayslipStatusKey());
             // Remove the frozen snapshot so values recalculate live
-            localStorage.removeItem('emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod);
+            safeLocalStorage.removeItem('emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod);
             AuditTrail.logUnfinalize(currentCompanyId, 'payslip', 'Unfinalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
             updatePayslipUI();
         }
@@ -982,7 +1014,7 @@
             }
 
             // Unlock: remove finalized status
-            localStorage.removeItem(getPayslipStatusKey());
+            safeLocalStorage.removeItem(getPayslipStatusKey());
             closeModal('managerAuthModal');
             updatePayslipUI();
             alert('Payslip unlocked by ' + email + '. You can now make changes.');
@@ -996,28 +1028,75 @@
 
         // ========== PAYROLL DATA ==========
         function loadPayrollData() {
-            currentPeriod = document.getElementById('payPeriod').value;
-            const stored = localStorage.getItem(getPayrollKey());
-            payrollData = stored ? JSON.parse(stored) : { basic_salary: 0, regular_inputs: [] };
-            renderPayroll();
-            updatePayslipUI();
+            try {
+                var periodSelect = document.getElementById('payPeriod');
+                if (!periodSelect) {
+                    console.warn('Period select not ready, retrying...');
+                    setTimeout(loadPayrollData, 100);
+                    return;
+                }
+                currentPeriod = periodSelect.value;
+                const stored = safeLocalStorage.getItem(getPayrollKey());
+                payrollData = stored ? JSON.parse(stored) : { basic_salary: 0, regular_inputs: [] };
+                
+                // Ensure payrollData has required structure (cross-browser compatibility)
+                if (!payrollData) payrollData = { basic_salary: 0, regular_inputs: [] };
+                if (!payrollData.regular_inputs) payrollData.regular_inputs = [];
+                if (payrollData.basic_salary === undefined) payrollData.basic_salary = 0;
+                
+                renderPayroll();
+                updatePayslipUI();
+            } catch(e) {
+                console.error('Error loading payroll data:', e);
+                setTimeout(function() {
+                    try { renderPayroll(); updatePayslipUI(); } catch(e2) { console.error('Retry failed:', e2); }
+                }, 200);
+            }
         }
 
         function savePayrollData() {
-            localStorage.setItem(getPayrollKey(), JSON.stringify(payrollData));
+            try {
+                safeLocalStorage.setItem(getPayrollKey(), JSON.stringify(payrollData));
+            } catch(e) {
+                console.error('Error saving payroll data:', e);
+            }
         }
 
         function renderPayroll() {
-            // Show frozen basic salary for finalized periods
-            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-            var frozen = localStorage.getItem(histKey);
-            var displaySalary = payrollData.basic_salary || 0;
-            if (frozen) { try { var snap = JSON.parse(frozen); if (snap.basic_salary !== undefined) displaySalary = snap.basic_salary; } catch(e) {} }
-            document.getElementById('basicSalary').textContent = formatMoney(displaySalary);
+            try {
+                // Defensive checks for cross-browser compatibility
+                if (!payrollData) {
+                    console.warn('payrollData not initialized');
+                    payrollData = { basic_salary: 0, regular_inputs: [] };
+                }
+                if (!payrollData.regular_inputs) {
+                    payrollData.regular_inputs = [];
+                }
+                
+                // Show frozen basic salary for finalized periods
+                var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+                var frozen = safeLocalStorage.getItem(histKey);
+                var displaySalary = payrollData.basic_salary || 0;
+                if (frozen) { 
+                    try { 
+                        var snap = JSON.parse(frozen); 
+                        if (snap && snap.basic_salary !== undefined) displaySalary = snap.basic_salary; 
+                    } catch(e) { 
+                        console.warn('Error parsing frozen data:', e); 
+                    } 
+                }
+                
+                var basicSalaryEl = document.getElementById('basicSalary');
+                if (basicSalaryEl) {
+                    basicSalaryEl.textContent = formatMoney(displaySalary);
+                } else {
+                    console.warn('basicSalary element not found');
+                }
 
-            // Regular inputs
-            const riList = document.getElementById('regularInputsList');
-            riList.innerHTML = payrollData.regular_inputs.map(ri => {
+                // Regular inputs
+                const riList = document.getElementById('regularInputsList');
+                if (riList && Array.isArray(payrollData.regular_inputs)) {
+                    riList.innerHTML = payrollData.regular_inputs.map(ri => {
                 const color = ri.type === 'deduction' ? '#dc3545' : '#28a745';
                 const prefix = ri.type === 'deduction' ? '- ' : '+ ';
                 return '<div class="salary-item editable"><span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span></span><span><span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ri.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button></span></div>';
@@ -1025,7 +1104,7 @@
 
             // Current inputs
             const ciList = document.getElementById('currentInputsList');
-            const currentInputs = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
+            const currentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
             if (currentInputs.length === 0) {
                 ciList.innerHTML = '<p style="color: #999; font-size: 14px;">No current inputs for this period</p>';
             } else {
@@ -1038,19 +1117,19 @@
 
             // Overtime
             const otList = document.getElementById('overtimeList');
-            const overtime = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
+            const overtime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
             otList.innerHTML = overtime.length === 0 ? '<p style="color:#999;font-size:14px;">No overtime recorded</p>' :
                 overtime.map(ot => '<div class="salary-item"><span class="salary-label">' + ot.date + ' - ' + ot.hours + 'hrs @ ' + ot.rate_multiplier + 'x' + (ot.description ? ' (' + ot.description + ')' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteOvertime(\'' + ot.id + '\')">x</button></div>').join('');
 
             // Short time
             const stList = document.getElementById('shortTimeList');
-            const shortTime = JSON.parse(localStorage.getItem(getShortTimeKey()) || '[]');
+            const shortTime = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
             stList.innerHTML = shortTime.length === 0 ? '<p style="color:#999;font-size:14px;">No short time recorded</p>' :
                 shortTime.map(st => '<div class="salary-item"><span class="salary-label">' + st.date + ' - ' + st.hours_missed + 'hrs missed' + (st.reason ? ' (' + st.reason + ')' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteShortTime(\'' + st.id + '\')">x</button></div>').join('');
 
             // Multi-rate
             const mrList = document.getElementById('multiRateList');
-            const multiRate = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
+            const multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
             mrList.innerHTML = multiRate.length === 0 ? '<p style="color:#999;font-size:14px;">No multi-rate hours recorded</p>' :
                 multiRate.map(mr => '<div class="salary-item"><span class="salary-label">' + mr.description + ' - ' + mr.hours + 'hrs @ R' + parseFloat(mr.hourly_rate).toFixed(2) + '/hr</span><span><span class="salary-value">' + formatMoney(mr.hours * mr.hourly_rate) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteMultiRate(\'' + mr.id + '\')">x</button></span></div>').join('');
             Permissions.enforceUI();
@@ -1125,7 +1204,7 @@
         ];
 
         function getHiddenPayrollItems() {
-            try { return JSON.parse(localStorage.getItem('hidden_payroll_items_' + currentCompanyId) || '[]'); } catch(e) { return []; }
+            try { return JSON.parse(safeLocalStorage.getItem('hidden_payroll_items_' + currentCompanyId) || '[]'); } catch(e) { return []; }
         }
 
         function buildItemList(containerEl, items, selectFn, customFn) {
@@ -1258,17 +1337,17 @@
                 description: desc,
                 amount: amount
             };
-            const items = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
+            const items = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
             items.push(input);
-            localStorage.setItem(getCurrentKey(), JSON.stringify(items)); renderPayroll(); closeModal('addCurrentModal');
+            safeLocalStorage.setItem(getCurrentKey(), JSON.stringify(items)); renderPayroll(); closeModal('addCurrentModal');
             AuditTrail.logCreate(currentCompanyId, 'current_input', 'Added current input "' + desc + '" (' + type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + currentPeriod);
         }
         function deleteCurrentInput(id) {
             if (!confirm('Delete this current input?')) return;
-            var allItems = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
+            var allItems = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
             var deleted = allItems.find(i => i.id === id);
             const items = allItems.filter(i => i.id !== id);
-            localStorage.setItem(getCurrentKey(), JSON.stringify(items)); renderPayroll();
+            safeLocalStorage.setItem(getCurrentKey(), JSON.stringify(items)); renderPayroll();
             AuditTrail.logDelete(currentCompanyId, 'current_input', 'Deleted current input "' + (deleted ? deleted.description : id) + '" for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + currentPeriod);
         }
 
@@ -1278,11 +1357,11 @@
             const date = document.getElementById('overtimeDate').value;
             const hours = parseFloat(document.getElementById('overtimeHours').value);
             if (!date || !hours) { alert('Please fill in date and hours'); return; }
-            const items = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
+            const items = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
             items.push({ id: 'ot-' + Math.random().toString(36).substr(2, 9), date: date, hours: hours, rate_multiplier: parseFloat(document.getElementById('overtimeRate').value), description: document.getElementById('overtimeDesc').value.trim() });
-            localStorage.setItem(getOvertimeKey(), JSON.stringify(items)); renderPayroll(); closeModal('addOvertimeModal');
+            safeLocalStorage.setItem(getOvertimeKey(), JSON.stringify(items)); renderPayroll(); closeModal('addOvertimeModal');
         }
-        function deleteOvertime(id) { if (!confirm('Delete?')) return; const items = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]').filter(i => i.id !== id); localStorage.setItem(getOvertimeKey(), JSON.stringify(items)); renderPayroll(); }
+        function deleteOvertime(id) { if (!confirm('Delete?')) return; const items = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').filter(i => i.id !== id); safeLocalStorage.setItem(getOvertimeKey(), JSON.stringify(items)); renderPayroll(); }
 
         // ========== SHORT TIME ==========
         function openAddShortTime() { document.getElementById('shortTimeDate').value = ''; document.getElementById('shortTimeHours').value = ''; document.getElementById('shortTimeReason').value = ''; document.getElementById('addShortTimeModal').classList.add('show'); }
@@ -1290,11 +1369,11 @@
             const date = document.getElementById('shortTimeDate').value;
             const hours = parseFloat(document.getElementById('shortTimeHours').value);
             if (!date || !hours) { alert('Please fill in date and hours'); return; }
-            const items = JSON.parse(localStorage.getItem(getShortTimeKey()) || '[]');
+            const items = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
             items.push({ id: 'st-' + Math.random().toString(36).substr(2, 9), date: date, hours_missed: hours, reason: document.getElementById('shortTimeReason').value.trim() });
-            localStorage.setItem(getShortTimeKey(), JSON.stringify(items)); renderPayroll(); closeModal('addShortTimeModal');
+            safeLocalStorage.setItem(getShortTimeKey(), JSON.stringify(items)); renderPayroll(); closeModal('addShortTimeModal');
         }
-        function deleteShortTime(id) { if (!confirm('Delete?')) return; const items = JSON.parse(localStorage.getItem(getShortTimeKey()) || '[]').filter(i => i.id !== id); localStorage.setItem(getShortTimeKey(), JSON.stringify(items)); renderPayroll(); }
+        function deleteShortTime(id) { if (!confirm('Delete?')) return; const items = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]').filter(i => i.id !== id); safeLocalStorage.setItem(getShortTimeKey(), JSON.stringify(items)); renderPayroll(); }
 
         // ========== MULTI-RATE ==========
         function openAddMultiRate() { document.getElementById('multiRateDesc').value = ''; document.getElementById('multiRateHourly').value = ''; document.getElementById('multiRateHours').value = ''; document.getElementById('addMultiRateModal').classList.add('show'); }
@@ -1303,11 +1382,11 @@
             const rate = parseFloat(document.getElementById('multiRateHourly').value);
             const hours = parseFloat(document.getElementById('multiRateHours').value);
             if (!desc || !rate || !hours) { alert('Please fill in all fields'); return; }
-            const items = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
+            const items = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
             items.push({ id: 'mr-' + Math.random().toString(36).substr(2, 9), description: desc, hourly_rate: rate, hours: hours });
-            localStorage.setItem(getMultiRateKey(), JSON.stringify(items)); renderPayroll(); closeModal('addMultiRateModal');
+            safeLocalStorage.setItem(getMultiRateKey(), JSON.stringify(items)); renderPayroll(); closeModal('addMultiRateModal');
         }
-        function deleteMultiRate(id) { if (!confirm('Delete?')) return; const items = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]').filter(i => i.id !== id); localStorage.setItem(getMultiRateKey(), JSON.stringify(items)); renderPayroll(); }
+        function deleteMultiRate(id) { if (!confirm('Delete?')) return; const items = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]').filter(i => i.id !== id); safeLocalStorage.setItem(getMultiRateKey(), JSON.stringify(items)); renderPayroll(); }
 
         // ========== TOGGLE ==========
         function toggleAdditionalHours() { document.getElementById('additionalHoursSection').style.display = document.getElementById('showAdditionalHours').checked ? 'block' : 'none'; }
@@ -1317,7 +1396,7 @@
         async function calculatePayslip() {
             // If this period is finalized, use the frozen snapshot instead of recalculating
             var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-            var frozen = localStorage.getItem(histKey);
+            var frozen = safeLocalStorage.getItem(histKey);
             if (frozen) {
                 try {
                     var snap = JSON.parse(frozen);
@@ -1336,10 +1415,10 @@
                 } catch(e) { /* fall through to live calculation */ }
             }
 
-            var currentInputs = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
-            var overtime = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
-            var multiRate = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
-            var shortTime = JSON.parse(localStorage.getItem(getShortTimeKey()) || '[]');
+            var currentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
+            var overtime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
+            var multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
+            var shortTime = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
 
             // Build employee options for age/medical/directive
             var employeeOptions = {};
@@ -1396,10 +1475,10 @@
 
         // ========== PAYSLIP PREVIEW & PDF EXPORT ==========
         function getPayslipData() {
-            var currentInputs = JSON.parse(localStorage.getItem(getCurrentKey()) || '[]');
-            var overtime = JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]');
-            var multiRate = JSON.parse(localStorage.getItem(getMultiRateKey()) || '[]');
-            var shortTime = JSON.parse(localStorage.getItem(getShortTimeKey()) || '[]');
+            var currentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
+            var overtime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
+            var multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
+            var shortTime = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
 
             var employeeOptions = {};
             if (currentEmployee) {
@@ -1605,12 +1684,12 @@
 
             // Calculate overtime amount
             var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / 173.33 : 0;
-            JSON.parse(localStorage.getItem(getOvertimeKey()) || '[]').forEach(function(ot) {
+            JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').forEach(function(ot) {
                 currentCalc.overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
             });
 
             // Calculate current inputs total
-            JSON.parse(localStorage.getItem(getCurrentKey()) || '[]').forEach(function(ci) {
+            JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]').forEach(function(ci) {
                 if (ci.type !== 'deduction') currentCalc.currentInputsTotal += parseFloat(ci.amount) || 0;
             });
 
@@ -1632,7 +1711,7 @@
             var hr = payrollData.basic_salary ? payrollData.basic_salary / PayrollEngine.HOURLY_DIVISOR : 0;
             var otKey = 'emp_overtime_' + currentCompanyId + '_' + currentEmpId + '_' + period;
             var otAmount = 0;
-            JSON.parse(localStorage.getItem(otKey) || '[]').forEach(function(ot) {
+            JSON.parse(safeLocalStorage.getItem(otKey) || '[]').forEach(function(ot) {
                 otAmount += (parseFloat(ot.hours)||0) * hr * (parseFloat(ot.rate_multiplier)||1.5);
             });
             return { gross: calc.gross, paye: calc.paye, uif: calc.uif, totalDeductions: calc.deductions, net: calc.net, basicSalary: payrollData.basic_salary || 0, overtimeAmount: otAmount, currentInputsTotal: 0 };
@@ -1678,7 +1757,7 @@
                 var date = new Date(year, month - 1, day);
                 var dateStr = year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
                 var key = 'attendance_' + currentCompanyId + '_' + dateStr;
-                var entries = JSON.parse(localStorage.getItem(key) || '[]');
+                var entries = JSON.parse(safeLocalStorage.getItem(key) || '[]');
                 var empEntry = entries.find(function(e) { return e.emp_id === currentEmpId; });
                 var isWeekend = (date.getDay() === 0 || date.getDay() === 6);
 
@@ -1747,17 +1826,17 @@
             currentEmployee.account_number = document.getElementById('editAccountNumber').value.trim();
             currentEmployee.branch_code = document.getElementById('editBranchCode').value.trim();
 
-            const stored = localStorage.getItem('employees_' + currentCompanyId);
+            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             const employees = stored ? JSON.parse(stored) : [];
             const idx = employees.findIndex(e => e.id === currentEmpId);
-            if (idx !== -1) { employees[idx] = currentEmployee; localStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees)); }
+            if (idx !== -1) { employees[idx] = currentEmployee; safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees)); }
             AuditTrail.logUpdate(currentCompanyId, 'employee', 'Updated employee info for ' + currentEmployee.first_name + ' ' + currentEmployee.last_name + ' (' + (currentEmployee.employee_number || currentEmpId) + ')');
             loadEmployee(); closeModal('editEmployeeModal'); alert('Employee information saved!');
         }
 
         // ========== LEAVE ==========
         function loadLeaveData() {
-            const leave = JSON.parse(localStorage.getItem(getLeaveKey()) || '[]');
+            const leave = JSON.parse(safeLocalStorage.getItem(getLeaveKey()) || '[]');
             renderLeave(leave); updateLeaveBalances(leave);
         }
         function renderLeave(leave) {
@@ -1789,15 +1868,15 @@
             const end = document.getElementById('leaveEndDate').value;
             const days = parseFloat(document.getElementById('leaveDays').value);
             if (!start || !end || !days) { alert('Please fill in all required fields'); return; }
-            const leave = JSON.parse(localStorage.getItem(getLeaveKey()) || '[]');
+            const leave = JSON.parse(safeLocalStorage.getItem(getLeaveKey()) || '[]');
             leave.push({ id: 'lv-' + Math.random().toString(36).substr(2, 9), type: document.getElementById('leaveType').value, start_date: start, end_date: end, days: days, status: document.getElementById('leaveStatus').value, reason: document.getElementById('leaveReason').value.trim(), date_created: new Date().toISOString() });
-            localStorage.setItem(getLeaveKey(), JSON.stringify(leave)); loadLeaveData(); closeModal('addLeaveModal');
+            safeLocalStorage.setItem(getLeaveKey(), JSON.stringify(leave)); loadLeaveData(); closeModal('addLeaveModal');
         }
-        function deleteLeave(id) { if (!confirm('Delete this leave record?')) return; const leave = JSON.parse(localStorage.getItem(getLeaveKey()) || '[]').filter(l => l.id !== id); localStorage.setItem(getLeaveKey(), JSON.stringify(leave)); loadLeaveData(); }
+        function deleteLeave(id) { if (!confirm('Delete this leave record?')) return; const leave = JSON.parse(safeLocalStorage.getItem(getLeaveKey()) || '[]').filter(l => l.id !== id); safeLocalStorage.setItem(getLeaveKey(), JSON.stringify(leave)); loadLeaveData(); }
 
         // ========== NOTES ==========
         function loadNotes() {
-            const notes = JSON.parse(localStorage.getItem(getNotesKey()) || '[]');
+            const notes = JSON.parse(safeLocalStorage.getItem(getNotesKey()) || '[]');
             const list = document.getElementById('notesList');
             if (notes.length === 0) { list.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">No notes yet. Add a note above.</p>'; return; }
             list.innerHTML = [...notes].sort((a, b) => b.date_created.localeCompare(a.date_created)).map(n => {
@@ -1809,12 +1888,12 @@
             const text = document.getElementById('newNote').value.trim();
             if (!text) { alert('Please enter a note'); return; }
             const session = AUTH.getSession();
-            const notes = JSON.parse(localStorage.getItem(getNotesKey()) || '[]');
+            const notes = JSON.parse(safeLocalStorage.getItem(getNotesKey()) || '[]');
             notes.push({ id: 'nt-' + Math.random().toString(36).substr(2, 9), text: text, date_created: new Date().toISOString(), author: session.name || session.email });
-            localStorage.setItem(getNotesKey(), JSON.stringify(notes));
+            safeLocalStorage.setItem(getNotesKey(), JSON.stringify(notes));
             document.getElementById('newNote').value = ''; loadNotes();
         }
-        function deleteNote(id) { if (!confirm('Delete this note?')) return; const notes = JSON.parse(localStorage.getItem(getNotesKey()) || '[]').filter(n => n.id !== id); localStorage.setItem(getNotesKey(), JSON.stringify(notes)); loadNotes(); }
+        function deleteNote(id) { if (!confirm('Delete this note?')) return; const notes = JSON.parse(safeLocalStorage.getItem(getNotesKey()) || '[]').filter(n => n.id !== id); safeLocalStorage.setItem(getNotesKey(), JSON.stringify(notes)); loadNotes(); }
 
         // ========== HELPERS ==========
         function formatMoney(amount) { return 'R ' + (parseFloat(amount) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
@@ -1859,7 +1938,7 @@
             await AUTH.getCompanies();
             var session = AUTH.getSession();
             session.company_id = result.company.id || result.company.company_id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             location.reload();

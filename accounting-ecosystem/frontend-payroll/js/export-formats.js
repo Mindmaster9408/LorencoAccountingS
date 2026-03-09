@@ -182,7 +182,7 @@ const ExportFormats = {
 
     // ---- Helpers ----
     getCompanyDetails: function(companyId) {
-        var stored = localStorage.getItem('company_details_' + companyId);
+        var stored = safeLocalStorage.getItem('company_details_' + companyId);
         return stored ? JSON.parse(stored) : {};
     },
 

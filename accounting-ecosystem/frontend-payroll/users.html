@@ -191,6 +191,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -374,7 +375,7 @@
                 // Save to localStorage registered_users
                 const registeredUsers = AUTH.getRegisteredUsers();
                 registeredUsers.push(newUser);
-                localStorage.setItem('registered_users', JSON.stringify(registeredUsers));
+                safeLocalStorage.setItem('registered_users', JSON.stringify(registeredUsers));
 
                 // Also add to in-memory so AUTH.findUserByEmail works immediately
                 AUTH.USERS.push(newUser);
@@ -410,7 +411,7 @@
                 registeredUsers[regIdx].role = role;
                 registeredUsers[regIdx].active = active;
                 if (password) registeredUsers[regIdx].password = password;
-                localStorage.setItem('registered_users', JSON.stringify(registeredUsers));
+                safeLocalStorage.setItem('registered_users', JSON.stringify(registeredUsers));
             }
 
             // If editing self, update session
@@ -418,7 +419,7 @@
                 currentSession.name = name;
                 currentSession.email = email;
                 currentSession.role = role;
-                localStorage.setItem('session', JSON.stringify(currentSession));
+                safeLocalStorage.setItem('session', JSON.stringify(currentSession));
             }
         }
 
@@ -447,7 +448,7 @@
             // Remove from localStorage
             const registeredUsers = AUTH.getRegisteredUsers();
             const filtered = registeredUsers.filter(u => u.id !== userId);
-            localStorage.setItem('registered_users', JSON.stringify(filtered));
+            safeLocalStorage.setItem('registered_users', JSON.stringify(filtered));
 
             AuditTrail.logDelete(currentCompanyId, 'user', 'Deleted user "' + user.name + '" (' + user.email + ')');
             loadUsers();

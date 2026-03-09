@@ -674,6 +674,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -743,7 +744,7 @@
         function switchToCompany(company_id) {
             const session = AUTH.getSession();
             session.company_id = company_id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             location.reload();
         }
 
@@ -812,9 +813,9 @@
 
         function getHiddenItemsKey() { return 'hidden_payroll_items_' + currentCompanyId; }
         function getHiddenItems() {
-            try { return JSON.parse(localStorage.getItem(getHiddenItemsKey()) || '[]'); } catch(e) { return []; }
+            try { return JSON.parse(safeLocalStorage.getItem(getHiddenItemsKey()) || '[]'); } catch(e) { return []; }
         }
-        function saveHiddenItems(list) { localStorage.setItem(getHiddenItemsKey(), JSON.stringify(list)); }
+        function saveHiddenItems(list) { safeLocalStorage.setItem(getHiddenItemsKey(), JSON.stringify(list)); }
 
         var showingHidden = false;
         function toggleHiddenStandardItems() {
@@ -875,7 +876,7 @@
         }
 
         function loadItems() {
-            const stored = localStorage.getItem(getStorageKey());
+            const stored = safeLocalStorage.getItem(getStorageKey());
             if (stored) {
                 try {
                     currentItems = JSON.parse(stored);
@@ -890,7 +891,7 @@
         }
 
         function saveItemsToStorage() {
-            localStorage.setItem(getStorageKey(), JSON.stringify(currentItems));
+            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(currentItems));
         }
 
         function displayItemsByCategory() {
@@ -1128,7 +1129,7 @@
             await AUTH.getCompanies();
             var session = AUTH.getSession();
             session.company_id = result.company.id || result.company.company_id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             location.reload();

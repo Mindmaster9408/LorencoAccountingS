@@ -606,6 +606,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -614,11 +615,11 @@
         // Check if already logged in
         window.addEventListener('load', function() {
             // ── SSO Pickup from Ecosystem Dashboard ──
-            const ssoSource = localStorage.getItem('sso_source');
+            const ssoSource = safeLocalStorage.getItem('sso_source');
             if (ssoSource === 'ecosystem') {
-                const ssoToken = localStorage.getItem('token');
-                const ssoUser = localStorage.getItem('user');
-                const ssoCompany = localStorage.getItem('company');
+                const ssoToken = safeLocalStorage.getItem('token');
+                const ssoUser = safeLocalStorage.getItem('user');
+                const ssoCompany = safeLocalStorage.getItem('company');
                 if (ssoToken && ssoUser) {
                     try {
                         const user = JSON.parse(ssoUser);
@@ -635,7 +636,7 @@
                             is_super_admin: user.isSuperAdmin || false,
                         };
                         AUTH.setSession(session);
-                        localStorage.removeItem('sso_source');
+                        safeLocalStorage.removeItem('sso_source');
                         console.log('[SSO] Ecosystem bypass — user:', user.fullName, 'company:', session.company_name);
 
                         // Go directly to dashboard if company is set (e.g. via SSO)
@@ -647,7 +648,7 @@
                         return;
                     } catch (e) {
                         console.warn('[SSO] Failed to parse ecosystem data:', e);
-                        localStorage.removeItem('sso_source');
+                        safeLocalStorage.removeItem('sso_source');
                     }
                 }
             }

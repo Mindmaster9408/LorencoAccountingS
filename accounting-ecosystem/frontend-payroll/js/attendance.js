@@ -24,7 +24,7 @@ const AttendanceManager = {
 
     // ---- Load Employees ----
     loadEmployees: function() {
-        const stored = localStorage.getItem('employees_' + this.currentCompanyId);
+        const stored = safeLocalStorage.getItem('employees_' + this.currentCompanyId);
         this.employees = stored ? JSON.parse(stored) : [];
     },
 
@@ -192,7 +192,7 @@ const AttendanceManager = {
     // ---- Get Entries For Date ----
     getEntriesForDate: function(dateStr, filterEmpId) {
         var key = 'attendance_' + this.currentCompanyId + '_' + dateStr;
-        var stored = localStorage.getItem(key);
+        var stored = safeLocalStorage.getItem(key);
         var entries = stored ? JSON.parse(stored) : [];
         if (filterEmpId && filterEmpId !== 'all') {
             entries = entries.filter(function(e) { return e.emp_id === filterEmpId; });
@@ -248,9 +248,9 @@ const AttendanceManager = {
         var entries = this.getEntriesForDate(dateStr, 'all');
         entries = entries.filter(function(e) { return e.id !== entryId; });
         if (entries.length > 0) {
-            localStorage.setItem(key, JSON.stringify(entries));
+            safeLocalStorage.setItem(key, JSON.stringify(entries));
         } else {
-            localStorage.removeItem(key);
+            safeLocalStorage.removeItem(key);
         }
         this.logAudit('DELETE', 'attendance', 'Deleted entry ' + entryId + ' for ' + dateStr);
         this.showDayDetails(dateStr);
@@ -322,7 +322,7 @@ const AttendanceManager = {
         }
 
         entries.push(entry);
-        localStorage.setItem(key, JSON.stringify(entries));
+        safeLocalStorage.setItem(key, JSON.stringify(entries));
 
         this.logAudit('CREATE', 'attendance', 'Added entry for ' + date + ' - ' + hours.toFixed(1) + 'h');
         this.closeAllModals();
@@ -541,7 +541,7 @@ const AttendanceManager = {
             var key = 'attendance_' + self.currentCompanyId + '_' + date;
             var entries = self.getEntriesForDate(date, 'all');
             entries.push(entry);
-            localStorage.setItem(key, JSON.stringify(entries));
+            safeLocalStorage.setItem(key, JSON.stringify(entries));
             imported++;
         });
 
@@ -720,7 +720,7 @@ const AttendanceManager = {
             // Add overtime
             if (s.overtime > 0) {
                 var otKey = 'emp_overtime_' + self.currentCompanyId + '_' + empId + '_' + periodStr;
-                var overtime = JSON.parse(localStorage.getItem(otKey) || '[]');
+                var overtime = JSON.parse(safeLocalStorage.getItem(otKey) || '[]');
 
                 // Remove existing auto entries
                 overtime = overtime.filter(function(ot) { return ot.description !== 'AUTO: From Attendance'; });
@@ -732,13 +732,13 @@ const AttendanceManager = {
                     rate_multiplier: 1.5,
                     description: 'AUTO: From Attendance'
                 });
-                localStorage.setItem(otKey, JSON.stringify(overtime));
+                safeLocalStorage.setItem(otKey, JSON.stringify(overtime));
             }
 
             // Add absences as short time
             if (s.absences > 0) {
                 var stKey = 'emp_short_time_' + self.currentCompanyId + '_' + empId + '_' + periodStr;
-                var shortTime = JSON.parse(localStorage.getItem(stKey) || '[]');
+                var shortTime = JSON.parse(safeLocalStorage.getItem(stKey) || '[]');
 
                 // Remove existing auto entries
                 shortTime = shortTime.filter(function(st) { return st.reason !== 'AUTO: Absences from Attendance'; });
@@ -749,7 +749,7 @@ const AttendanceManager = {
                     hours_missed: s.absences * 8,
                     reason: 'AUTO: Absences from Attendance'
                 });
-                localStorage.setItem(stKey, JSON.stringify(shortTime));
+                safeLocalStorage.setItem(stKey, JSON.stringify(shortTime));
             }
 
             applied++;

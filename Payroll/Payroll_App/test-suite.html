@@ -113,6 +113,7 @@
 
     <div id="results"></div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/demo-company-seed.js"></script>
     <script src="js/payroll-engine.js"></script>
@@ -227,12 +228,12 @@
 
     function setupTestData() {
         // Employee A: R10,000 basic, no extras
-        localStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-A', JSON.stringify({
+        safeLocalStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-A', JSON.stringify({
             basic_salary: 10000, regular_inputs: []
         }));
 
         // Employee B: R50,000 basic, medical aid R2,000 + retirement R5,000
-        localStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-B', JSON.stringify({
+        safeLocalStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-B', JSON.stringify({
             basic_salary: 50000, regular_inputs: [
                 { id: 'ri-1', type: 'deduction', amount: 2000, description: 'Medical Aid' },
                 { id: 'ri-2', type: 'deduction', amount: 5000, description: 'Retirement Fund' }
@@ -240,27 +241,27 @@
         }));
 
         // Employee C: R15,000 basic, mid-month hire (short time = half month)
-        localStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-C', JSON.stringify({
+        safeLocalStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-C', JSON.stringify({
             basic_salary: 15000, regular_inputs: []
         }));
-        localStorage.setItem('emp_short_time_' + TEST_COMPANY + '_emp-C_' + TEST_PERIOD, JSON.stringify([
+        safeLocalStorage.setItem('emp_short_time_' + TEST_COMPANY + '_emp-C_' + TEST_PERIOD, JSON.stringify([
             { id: 'st-1', hours_missed: 86.665, description: 'Mid-month hire (started 15th)' }
         ]));
 
         // Employee D: R30,000 basic, loan repayment R2,000
-        localStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-D', JSON.stringify({
+        safeLocalStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-D', JSON.stringify({
             basic_salary: 30000, regular_inputs: [
                 { id: 'ri-3', type: 'deduction', amount: 2000, description: 'Loan Repayment' }
             ]
         }));
 
         // Employee E: R100,000 basic, no extras
-        localStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-E', JSON.stringify({
+        safeLocalStorage.setItem('emp_payroll_' + TEST_COMPANY + '_emp-E', JSON.stringify({
             basic_salary: 100000, regular_inputs: []
         }));
 
         // Employee list
-        localStorage.setItem('employees_' + TEST_COMPANY, JSON.stringify([
+        safeLocalStorage.setItem('employees_' + TEST_COMPANY, JSON.stringify([
             { id: 'emp-A', employee_number: 'EMP001', first_name: 'Alice', last_name: 'Anderson', department: 'Finance', id_number: '9001015800085', payment_method: 'EFT', bank_name: 'FNB', account_number: '1234567890', branch_code: '250655' },
             { id: 'emp-B', employee_number: 'EMP002', first_name: 'Bob', last_name: 'Brown', department: 'IT', id_number: '8502025800086', payment_method: 'EFT', bank_name: 'ABSA', account_number: '9876543210', branch_code: '632005' },
             { id: 'emp-C', employee_number: 'EMP003', first_name: 'Carol', last_name: 'Clark', department: 'Finance', payment_method: 'Cash' },
@@ -269,29 +270,29 @@
         ]));
 
         // Payrun for the period
-        localStorage.setItem('payruns_' + TEST_COMPANY, JSON.stringify([
+        safeLocalStorage.setItem('payruns_' + TEST_COMPANY, JSON.stringify([
             { id: 'pr-test-1', period: TEST_PERIOD, status: 'finalized', frequency: 'Monthly', created: '2025-01-25T10:00:00Z' }
         ]));
 
         // Payslip statuses (all finalized for integration tests)
         ['emp-A', 'emp-B', 'emp-C', 'emp-D', 'emp-E'].forEach(function(empId) {
-            localStorage.setItem('emp_payslip_status_' + TEST_COMPANY + '_' + empId + '_' + TEST_PERIOD,
+            safeLocalStorage.setItem('emp_payslip_status_' + TEST_COMPANY + '_' + empId + '_' + TEST_PERIOD,
                 JSON.stringify({ status: 'finalized', finalized_at: '2025-01-25T10:00:00Z' }));
         });
 
         // Audit log (empty)
-        localStorage.setItem('audit_log_' + TEST_COMPANY, JSON.stringify([]));
+        safeLocalStorage.setItem('audit_log_' + TEST_COMPANY, JSON.stringify([]));
     }
 
     function cleanupTestData() {
         var keysToRemove = [];
-        for (var i = 0; i < localStorage.length; i++) {
-            var key = localStorage.key(i);
+        for (var i = 0; i < safeLocalStorage.length; i++) {
+            var key = safeLocalStorage.key(i);
             if (key && key.indexOf(TEST_COMPANY) !== -1) {
                 keysToRemove.push(key);
             }
         }
-        keysToRemove.forEach(function(key) { localStorage.removeItem(key); });
+        keysToRemove.forEach(function(key) { safeLocalStorage.removeItem(key); });
     }
 
     // ============================================================
@@ -653,7 +654,7 @@
         TestRunner.assertClose('Transaction History: total net = R140,153.72', totalNet, 140153.72, 0.20);
 
         // Test 13.2: Employee Master List count
-        var empList = JSON.parse(localStorage.getItem('employees_' + TEST_COMPANY) || '[]');
+        var empList = JSON.parse(safeLocalStorage.getItem('employees_' + TEST_COMPANY) || '[]');
         TestRunner.assertEqual('Employee Master List: 5 employees', empList.length, 5);
 
         // Test 13.3: Bank details masking
@@ -781,7 +782,7 @@
         // Test 15.1: Write 100 employee payroll records
         var startWrite = performance.now();
         for (var i = 0; i < 100; i++) {
-            localStorage.setItem('emp_payroll_' + TEST_COMPANY + '_perf-' + i, JSON.stringify({
+            safeLocalStorage.setItem('emp_payroll_' + TEST_COMPANY + '_perf-' + i, JSON.stringify({
                 basic_salary: 10000 + (i * 500),
                 regular_inputs: [{ type: 'deduction', amount: 500, description: 'Test' }]
             }));
@@ -792,7 +793,7 @@
         // Test 15.2: Read 100 employee payroll records
         var startRead = performance.now();
         for (var j = 0; j < 100; j++) {
-            JSON.parse(localStorage.getItem('emp_payroll_' + TEST_COMPANY + '_perf-' + j));
+            JSON.parse(safeLocalStorage.getItem('emp_payroll_' + TEST_COMPANY + '_perf-' + j));
         }
         var readTime = performance.now() - startRead;
         TestRunner.assertPerformance('Read 100 employee payroll records', readTime, 200);
@@ -809,16 +810,16 @@
 
         // Test 15.4: localStorage size check
         var totalSize = 0;
-        for (var m = 0; m < localStorage.length; m++) {
-            var key = localStorage.key(m);
-            totalSize += key.length + (localStorage.getItem(key) || '').length;
+        for (var m = 0; m < safeLocalStorage.length; m++) {
+            var key = safeLocalStorage.key(m);
+            totalSize += key.length + (safeLocalStorage.getItem(key) || '').length;
         }
         var sizeMB = totalSize / (1024 * 1024);
         TestRunner.assertTrue('localStorage usage under 5MB (current: ' + sizeMB.toFixed(2) + 'MB)', sizeMB < 5);
 
         // Cleanup performance test data
         for (var n = 0; n < 100; n++) {
-            localStorage.removeItem('emp_payroll_' + TEST_COMPANY + '_perf-' + n);
+            safeLocalStorage.removeItem('emp_payroll_' + TEST_COMPANY + '_perf-' + n);
         }
     }
 
@@ -829,21 +830,21 @@
         TestRunner.suite('16. Security Tests', 'security');
 
         // Test 16.1: Company A cannot read Company B's employees
-        localStorage.setItem('employees_TEST_SEC_A', JSON.stringify([{ id: 'e1', name: 'Emp A' }]));
-        localStorage.setItem('employees_TEST_SEC_B', JSON.stringify([{ id: 'e2', name: 'Emp B' }]));
-        var compAData = JSON.parse(localStorage.getItem('employees_TEST_SEC_A'));
-        var compBData = JSON.parse(localStorage.getItem('employees_TEST_SEC_B'));
+        safeLocalStorage.setItem('employees_TEST_SEC_A', JSON.stringify([{ id: 'e1', name: 'Emp A' }]));
+        safeLocalStorage.setItem('employees_TEST_SEC_B', JSON.stringify([{ id: 'e2', name: 'Emp B' }]));
+        var compAData = JSON.parse(safeLocalStorage.getItem('employees_TEST_SEC_A'));
+        var compBData = JSON.parse(safeLocalStorage.getItem('employees_TEST_SEC_B'));
         TestRunner.assertTrue('Company isolation: A and B data stored separately',
             compAData[0].name !== compBData[0].name);
         TestRunner.assertEqual('Company A sees own employee', compAData[0].name, 'Emp A');
-        localStorage.removeItem('employees_TEST_SEC_A');
-        localStorage.removeItem('employees_TEST_SEC_B');
+        safeLocalStorage.removeItem('employees_TEST_SEC_A');
+        safeLocalStorage.removeItem('employees_TEST_SEC_B');
 
         // Test 16.2: Company A cannot read Company B's payroll
-        localStorage.setItem('emp_payroll_TEST_SEC_A_e1', JSON.stringify({ basic_salary: 10000 }));
-        var crossRead = localStorage.getItem('emp_payroll_TEST_SEC_B_e1');
+        safeLocalStorage.setItem('emp_payroll_TEST_SEC_A_e1', JSON.stringify({ basic_salary: 10000 }));
+        var crossRead = safeLocalStorage.getItem('emp_payroll_TEST_SEC_B_e1');
         TestRunner.assertTrue('Company isolation: cross-company payroll returns null', crossRead === null);
-        localStorage.removeItem('emp_payroll_TEST_SEC_A_e1');
+        safeLocalStorage.removeItem('emp_payroll_TEST_SEC_A_e1');
 
         // Test 16.3: XSS in employee name (simulated)
         var xssName = '<script>alert("xss")</script>';
@@ -861,10 +862,10 @@
 
         // Test 16.5: Audit log records entries
         var auditKey = 'audit_log_' + TEST_COMPANY;
-        var logs = JSON.parse(localStorage.getItem(auditKey) || '[]');
+        var logs = JSON.parse(safeLocalStorage.getItem(auditKey) || '[]');
         logs.push({ timestamp: new Date().toISOString(), action: 'TEST', resource: 'security_test', description: 'Test audit entry' });
-        localStorage.setItem(auditKey, JSON.stringify(logs));
-        var verifyLogs = JSON.parse(localStorage.getItem(auditKey));
+        safeLocalStorage.setItem(auditKey, JSON.stringify(logs));
+        var verifyLogs = JSON.parse(safeLocalStorage.getItem(auditKey));
         TestRunner.assertTrue('Audit log records entries', verifyLogs.length > 0);
         TestRunner.assertEqual('Audit log action stored correctly', verifyLogs[verifyLogs.length - 1].action, 'TEST');
 

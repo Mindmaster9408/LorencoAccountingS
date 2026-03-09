@@ -505,6 +505,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -713,7 +714,7 @@
             keys.forEach(function(key) {
                 var raw = (typeof DataAccess !== 'undefined' && DataAccess.getRaw)
                     ? DataAccess.getRaw(key)
-                    : localStorage.getItem(key);
+                    : safeLocalStorage.getItem(key);
                 try { allData[key] = JSON.parse(raw); }
                 catch(e) { allData[key] = raw; }
             });
@@ -739,7 +740,7 @@
                     if (!confirm('This will overwrite existing data with ' + Object.keys(data).length + ' items. Continue?')) return;
                     Object.keys(data).forEach(function(key) {
                         var val = data[key];
-                        localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
+                        safeLocalStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
                     });
                     statusEl.innerHTML = '<span style="color:#28a745;">✓ Imported ' + Object.keys(data).length + ' items. Refreshing...</span>';
                     setTimeout(function() { window.location.reload(); }, 1500);

@@ -245,7 +245,7 @@ const PayrollEngine = {
     // === LOCALSTORAGE-COUPLED WRAPPER ===
 
     /**
-     * Calculate employee payroll for a period, reading data from localStorage.
+     * Calculate employee payroll for a period, reading data from safeLocalStorage.
      * Convenience wrapper around calculateFromData.
      *
      * @param {string} companyId - Company identifier
@@ -274,7 +274,7 @@ const PayrollEngine = {
         if (!payrollData) {
             payrollData = (typeof DataAccess !== 'undefined')
                 ? DataAccess.getEmployeePayroll(companyId, empId)
-                : JSON.parse(localStorage.getItem('emp_payroll_' + companyId + '_' + empId) || '{"basic_salary":0,"regular_inputs":[]}');
+                : JSON.parse(safeLocalStorage.getItem('emp_payroll_' + companyId + '_' + empId) || '{"basic_salary":0,"regular_inputs":[]}');
         }
 
         // Load employee record for age/medical/directive data
@@ -282,7 +282,7 @@ const PayrollEngine = {
         var emp = (typeof DataAccess !== 'undefined')
             ? DataAccess.getEmployeeById(companyId, empId)
             : (function() {
-                var s = localStorage.getItem('employees_' + companyId);
+                var s = safeLocalStorage.getItem('employees_' + companyId);
                 return s ? JSON.parse(s).find(function(e) { return e.id === empId; }) : null;
             })();
         if (emp) {
@@ -302,16 +302,16 @@ const PayrollEngine = {
         var useDA = typeof DataAccess !== 'undefined';
         var currentInputs = useDA
             ? DataAccess.getCurrentInputs(companyId, empId, period)
-            : JSON.parse(localStorage.getItem('emp_current_' + companyId + '_' + empId + '_' + period) || '[]');
+            : JSON.parse(safeLocalStorage.getItem('emp_current_' + companyId + '_' + empId + '_' + period) || '[]');
         var overtime = useDA
             ? DataAccess.getOvertime(companyId, empId, period)
-            : JSON.parse(localStorage.getItem('emp_overtime_' + companyId + '_' + empId + '_' + period) || '[]');
+            : JSON.parse(safeLocalStorage.getItem('emp_overtime_' + companyId + '_' + empId + '_' + period) || '[]');
         var multiRate = useDA
             ? DataAccess.getMultiRate(companyId, empId, period)
-            : JSON.parse(localStorage.getItem('emp_multi_rate_' + companyId + '_' + empId + '_' + period) || '[]');
+            : JSON.parse(safeLocalStorage.getItem('emp_multi_rate_' + companyId + '_' + empId + '_' + period) || '[]');
         var shortTime = useDA
             ? DataAccess.getShortTime(companyId, empId, period)
-            : JSON.parse(localStorage.getItem('emp_short_time_' + companyId + '_' + empId + '_' + period) || '[]');
+            : JSON.parse(safeLocalStorage.getItem('emp_short_time_' + companyId + '_' + empId + '_' + period) || '[]');
 
         return this.calculateFromData(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions);
     },
@@ -324,7 +324,7 @@ const PayrollEngine = {
      */
     getHistoricalRecord: function(companyId, empId, period) {
         var key = 'emp_historical_' + companyId + '_' + empId + '_' + period;
-        var stored = localStorage.getItem(key);
+        var stored = safeLocalStorage.getItem(key);
         if (!stored) return null;
         try { return JSON.parse(stored); } catch(e) { return null; }
     },
@@ -333,7 +333,7 @@ const PayrollEngine = {
      * Check if a historical record exists for an employee/period.
      */
     hasHistoricalRecord: function(companyId, empId, period) {
-        return localStorage.getItem('emp_historical_' + companyId + '_' + empId + '_' + period) !== null;
+        return safeLocalStorage.getItem('emp_historical_' + companyId + '_' + empId + '_' + period) !== null;
     },
 
     /**
@@ -378,7 +378,7 @@ const PayrollEngine = {
                     try {
                         var raw = (typeof DataAccess !== 'undefined' && DataAccess.getRaw)
                             ? DataAccess.getRaw(key)
-                            : localStorage.getItem(key);
+                            : safeLocalStorage.getItem(key);
                         records[period] = JSON.parse(raw);
                     } catch(e) { /* skip corrupt records */ }
                 }
@@ -391,7 +391,7 @@ const PayrollEngine = {
      * Delete a historical record.
      */
     deleteHistoricalRecord: function(companyId, empId, period) {
-        localStorage.removeItem('emp_historical_' + companyId + '_' + empId + '_' + period);
+        safeLocalStorage.removeItem('emp_historical_' + companyId + '_' + empId + '_' + period);
     },
 
     /**
@@ -401,19 +401,19 @@ const PayrollEngine = {
     undoImportBatch: function(companyId, importLogId) {
         var logKey = 'historical_import_log_' + companyId;
         var log = [];
-        try { log = JSON.parse(localStorage.getItem(logKey) || '[]'); } catch(e) { return 0; }
+        try { log = JSON.parse(safeLocalStorage.getItem(logKey) || '[]'); } catch(e) { return 0; }
 
         var entry = log.find(function(l) { return l.id === importLogId; });
         if (!entry) return 0;
 
-        var employees = JSON.parse(localStorage.getItem('employees_' + companyId) || '[]');
+        var employees = JSON.parse(safeLocalStorage.getItem('employees_' + companyId) || '[]');
         var deletedCount = 0;
 
         // Delete all historical records for the periods in this import
         (entry.periods || []).forEach(function(period) {
             employees.forEach(function(emp) {
                 var key = 'emp_historical_' + companyId + '_' + emp.id + '_' + period;
-                var record = localStorage.getItem(key);
+                var record = safeLocalStorage.getItem(key);
                 if (record) {
                     try {
                         var data = JSON.parse(record);
@@ -423,7 +423,7 @@ const PayrollEngine = {
                             var logTime = new Date(entry.timestamp).getTime();
                             // Within 60 seconds of the log entry = same batch
                             if (Math.abs(importTime - logTime) < 60000) {
-                                localStorage.removeItem(key);
+                                safeLocalStorage.removeItem(key);
                                 deletedCount++;
                             }
                         }
@@ -435,7 +435,7 @@ const PayrollEngine = {
         // Mark the log entry as undone
         entry.undone = true;
         entry.undone_date = new Date().toISOString();
-        localStorage.setItem(logKey, JSON.stringify(log));
+        safeLocalStorage.setItem(logKey, JSON.stringify(log));
 
         return deletedCount;
     }

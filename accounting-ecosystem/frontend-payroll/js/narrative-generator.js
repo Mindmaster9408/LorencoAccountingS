@@ -382,17 +382,17 @@ const NarrativeGenerator = {
     // ---- Storage ----
     save: function(companyId, empId, period, narrative) {
         var key = 'narrative_' + companyId + '_' + empId + '_' + period;
-        localStorage.setItem(key, JSON.stringify(narrative));
+        safeLocalStorage.setItem(key, JSON.stringify(narrative));
     },
 
     load: function(companyId, empId, period) {
         var key = 'narrative_' + companyId + '_' + empId + '_' + period;
-        var stored = localStorage.getItem(key);
+        var stored = safeLocalStorage.getItem(key);
         return stored ? JSON.parse(stored) : null;
     },
 
     clear: function(companyId, empId, period) {
         var key = 'narrative_' + companyId + '_' + empId + '_' + period;
-        localStorage.removeItem(key);
+        safeLocalStorage.removeItem(key);
     }
 };

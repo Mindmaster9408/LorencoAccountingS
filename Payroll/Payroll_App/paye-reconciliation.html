@@ -181,7 +181,8 @@
     <a href="paye-reconciliation.html" class="mobile-nav-item active"><span class="mobile-nav-icon">🧾</span><span class="mobile-nav-label">PAYE Recon</span></a>
   </nav>
 
-  <script src="js/data-access.js"></script>
+  <script src="js/polyfills.js"></script>
+    <script src="js/data-access.js"></script>
   <script src="js/permissions.js"></script>
   <script src="js/audit.js"></script>
   <script src="js/demo-company-seed.js"></script>
@@ -222,7 +223,7 @@
 
     function loadConfig() {
       // Load config from localStorage (payroll app is localStorage-based)
-      const stored = localStorage.getItem('paye_config_' + currentCompanyId);
+      const stored = safeLocalStorage.getItem('paye_config_' + currentCompanyId);
       if (stored) {
         try {
           const data = JSON.parse(stored);
@@ -255,7 +256,7 @@
 
     function loadEmployees() {
       // Load employees from localStorage (payroll storage key)
-      const stored = localStorage.getItem('employees_' + currentCompanyId);
+      const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
       if (stored) {
         try {
           const parsed = JSON.parse(stored);
@@ -274,7 +275,7 @@
       }
 
       // Load saved recon data from localStorage
-      const savedRecon = localStorage.getItem('paye_recon_data_' + currentCompanyId);
+      const savedRecon = safeLocalStorage.getItem('paye_recon_data_' + currentCompanyId);
       if (savedRecon) {
         try {
           const parsed = JSON.parse(savedRecon);
@@ -374,7 +375,7 @@
       // Try to load payrun history from localStorage (from payruns.html)
       const data = {};
       try {
-        const payruns = JSON.parse(localStorage.getItem('payruns_' + currentCompanyId) || '[]');
+        const payruns = JSON.parse(safeLocalStorage.getItem('payruns_' + currentCompanyId) || '[]');
         payruns.forEach(run => {
           if (run.employees && run.period) {
             const mk = run.period; // e.g., "2025-03"
@@ -806,7 +807,7 @@
         periodId: currentPeriodId
       };
 
-      localStorage.setItem('paye_recon_data_' + currentCompanyId, JSON.stringify(saveData));
+      safeLocalStorage.setItem('paye_recon_data_' + currentCompanyId, JSON.stringify(saveData));
       alert('✅ Draft saved successfully!');
     }
 
@@ -820,7 +821,7 @@
         approvedAt: new Date().toISOString(),
         periodId: currentPeriodId
       };
-      localStorage.setItem('paye_recon_data_' + currentCompanyId, JSON.stringify(saveData));
+      safeLocalStorage.setItem('paye_recon_data_' + currentCompanyId, JSON.stringify(saveData));
       updateStatus();
       renderTable();
       alert('✅ Reconciliation approved!');
@@ -836,7 +837,7 @@
         lockedAt: new Date().toISOString(),
         periodId: currentPeriodId
       };
-      localStorage.setItem('paye_recon_data_' + currentCompanyId, JSON.stringify(saveData));
+      safeLocalStorage.setItem('paye_recon_data_' + currentCompanyId, JSON.stringify(saveData));
       updateStatus();
       renderTable();
       alert('🔒 Reconciliation locked!');

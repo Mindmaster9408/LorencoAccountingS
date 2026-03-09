@@ -281,6 +281,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -342,23 +343,23 @@
         function switchToCompany(companyId) {
             const session = AUTH.getSession();
             session.company_id = companyId;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             location.reload();
         }
         function handleLogout() { if (confirm('Are you sure you want to logout?')) AUTH.logout(); }
 
         // ========== DATA LOADING ==========
         function loadData() {
-            employees = JSON.parse(localStorage.getItem('employees_' + currentCompanyId) || '[]');
-            payruns = JSON.parse(localStorage.getItem('payruns_' + currentCompanyId) || '[]');
+            employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
+            payruns = JSON.parse(safeLocalStorage.getItem('payruns_' + currentCompanyId) || '[]');
         }
 
         function getEmployeePayroll(empId) {
-            return JSON.parse(localStorage.getItem('emp_payroll_' + currentCompanyId + '_' + empId) || '{"basic_salary":0,"regular_inputs":[]}');
+            return JSON.parse(safeLocalStorage.getItem('emp_payroll_' + currentCompanyId + '_' + empId) || '{"basic_salary":0,"regular_inputs":[]}');
         }
 
         function getPayslipStatus(empId, period) {
-            return JSON.parse(localStorage.getItem('emp_payslip_status_' + currentCompanyId + '_' + empId + '_' + period) || '{"status":"draft"}');
+            return JSON.parse(safeLocalStorage.getItem('emp_payslip_status_' + currentCompanyId + '_' + empId + '_' + period) || '{"status":"draft"}');
         }
 
         async function calculateEmployeePeriod(empId, period) {
@@ -381,7 +382,7 @@
 
         function logReportGeneration(reportType, parameters) {
             const session = AUTH.getSession();
-            const history = JSON.parse(localStorage.getItem('report_history_' + currentCompanyId) || '[]');
+            const history = JSON.parse(safeLocalStorage.getItem('report_history_' + currentCompanyId) || '[]');
             history.push({
                 id: 'rpt-' + Math.random().toString(36).substr(2, 9),
                 report_type: reportType,
@@ -389,7 +390,7 @@
                 generated_at: new Date().toISOString(),
                 parameters: parameters
             });
-            localStorage.setItem('report_history_' + currentCompanyId, JSON.stringify(history));
+            safeLocalStorage.setItem('report_history_' + currentCompanyId, JSON.stringify(history));
             logAudit('GENERATE', 'report', 'Generated ' + reportType + ' report', null, parameters);
         }
 
@@ -737,7 +738,7 @@
             const dateTo = document.getElementById('filter-date-to').value;
             const actionFilter = document.getElementById('filter-action').value;
 
-            let logs = JSON.parse(localStorage.getItem('audit_log_' + currentCompanyId) || '[]');
+            let logs = JSON.parse(safeLocalStorage.getItem('audit_log_' + currentCompanyId) || '[]');
             logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
             if (dateFrom) logs = logs.filter(l => l.timestamp.slice(0, 10) >= dateFrom);
@@ -769,7 +770,7 @@
             const dateTo = document.getElementById('filter-date-to').value;
 
             const emp = employees.find(e => e.id === empFilter);
-            let logs = JSON.parse(localStorage.getItem('audit_log_' + currentCompanyId) || '[]');
+            let logs = JSON.parse(safeLocalStorage.getItem('audit_log_' + currentCompanyId) || '[]');
             logs = logs.filter(l => l.employee_id === empFilter);
             logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
@@ -1140,7 +1141,7 @@
             await AUTH.getCompanies();
             var session = AUTH.getSession();
             session.company_id = result.company.id || result.company.company_id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             location.reload();

@@ -258,6 +258,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -328,7 +329,7 @@
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Employees:</span>
-                            <span class="detail-value">${(function(){ try { return JSON.parse(localStorage.getItem('employees_' + company.id) || '[]').length; } catch(e) { return 0; } })()}</span>
+                            <span class="detail-value">${(function(){ try { return JSON.parse(safeLocalStorage.getItem('employees_' + company.id) || '[]').length; } catch(e) { return 0; } })()}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Subscription:</span>
@@ -360,7 +361,7 @@
         function selectCompany(company_id) {
             const session = AUTH.getSession();
             session.company_id = company_id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             window.location.href = 'company-dashboard.html';
         }
 
@@ -405,7 +406,7 @@
             // Switch to the new company
             session = AUTH.getSession();
             session.company_id = result.company.id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             window.location.href = 'company-dashboard.html';

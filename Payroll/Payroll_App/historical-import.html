@@ -445,6 +445,7 @@
     <!-- External Scripts -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="js/polyfills.js"></script>
     <script src="js/bulk-import-utils.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
@@ -519,7 +520,7 @@
         function switchToCompany(companyId) {
             var session = AUTH.getSession();
             session.company_id = companyId;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             window.location.reload();
         }
 
@@ -531,7 +532,7 @@
 
         // ========== DATA LOADING ==========
         function loadEmployees() {
-            var stored = localStorage.getItem('employees_' + currentCompanyId);
+            var stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             employees = stored ? JSON.parse(stored) : [];
         }
 
@@ -658,7 +659,7 @@
 
                 // Conflict detection: compare imported basic with current employee salary
                 if (emp && basic > 0) {
-                    var currentPayroll = JSON.parse(localStorage.getItem('emp_payroll_' + currentCompanyId + '_' + emp.id) || '{}');
+                    var currentPayroll = JSON.parse(safeLocalStorage.getItem('emp_payroll_' + currentCompanyId + '_' + emp.id) || '{}');
                     if (currentPayroll.basic_salary && Math.abs(currentPayroll.basic_salary - basic) > 1) {
                         // Not an error, just a warning flag
                     }
@@ -833,7 +834,7 @@
                         source: 'csv_import',
                         imported_date: importTimestamp
                     };
-                    localStorage.setItem(histKey, JSON.stringify(histData));
+                    safeLocalStorage.setItem(histKey, JSON.stringify(histData));
                     keysWritten.push(histKey);
 
                     // Accumulate stats per period
@@ -856,7 +857,7 @@
 
             } catch (err) {
                 // Rollback: remove all keys written in this batch
-                keysWritten.forEach(function(key) { localStorage.removeItem(key); });
+                keysWritten.forEach(function(key) { safeLocalStorage.removeItem(key); });
                 alert('Import failed and was rolled back: ' + err.message);
                 return;
             }
@@ -1159,7 +1160,7 @@
                         source: 'pdf_import',
                         imported_date: importTimestamp
                     };
-                    localStorage.setItem(histKey, JSON.stringify(histData));
+                    safeLocalStorage.setItem(histKey, JSON.stringify(histData));
                     keysWritten.push(histKey);
 
                     if (!periodStats[period]) {
@@ -1180,7 +1181,7 @@
                     logHistoricalImport('PDF Payslip Import', importedCount, Object.keys(periodsCreated));
                 }
             } catch (err) {
-                keysWritten.forEach(function(key) { localStorage.removeItem(key); });
+                keysWritten.forEach(function(key) { safeLocalStorage.removeItem(key); });
                 alert('Import failed and was rolled back: ' + err.message);
                 return;
             }
@@ -1317,7 +1318,7 @@
                     // Check for existing historical data
                     var histKey = 'emp_historical_' + currentCompanyId + '_' + emp.id + '_' + period;
                     var existing = null;
-                    try { existing = JSON.parse(localStorage.getItem(histKey)); } catch(e) {}
+                    try { existing = JSON.parse(safeLocalStorage.getItem(histKey)); } catch(e) {}
 
                     var basic = existing ? (existing.basic || '') : '';
                     var gross = existing ? (existing.gross || '') : '';
@@ -1500,7 +1501,7 @@
                     // Validate gross >= basic
                     if (gross > 0 && basic > 0 && gross < basic) {
                         alert('Row for period ' + period + ': Gross (R' + gross + ') cannot be less than Basic (R' + basic + '). Please correct and try again.');
-                        keysWritten.forEach(function(key) { localStorage.removeItem(key); });
+                        keysWritten.forEach(function(key) { safeLocalStorage.removeItem(key); });
                         return;
                     }
 
@@ -1523,7 +1524,7 @@
                         source: 'manual_entry',
                         imported_date: importTimestamp
                     };
-                    localStorage.setItem(histKey, JSON.stringify(histData));
+                    safeLocalStorage.setItem(histKey, JSON.stringify(histData));
                     keysWritten.push(histKey);
 
                     if (!periodStats[period]) {
@@ -1550,7 +1551,7 @@
                 logHistoricalImport('Manual Entry', savedCount, Object.keys(periodsCreated));
 
             } catch (err) {
-                keysWritten.forEach(function(key) { localStorage.removeItem(key); });
+                keysWritten.forEach(function(key) { safeLocalStorage.removeItem(key); });
                 alert('Save failed and was rolled back: ' + err.message);
                 return;
             }
@@ -1570,7 +1571,7 @@
         function createHistoricalPayruns(periodsObj, periodStats) {
             var payrunsKey = 'payruns_' + currentCompanyId;
             var payruns = [];
-            try { payruns = JSON.parse(localStorage.getItem(payrunsKey) || '[]'); } catch(e) { payruns = []; }
+            try { payruns = JSON.parse(safeLocalStorage.getItem(payrunsKey) || '[]'); } catch(e) { payruns = []; }
 
             var periods = Object.keys(periodsObj);
             periods.forEach(function(period) {
@@ -1607,13 +1608,13 @@
                 }
             });
 
-            localStorage.setItem(payrunsKey, JSON.stringify(payruns));
+            safeLocalStorage.setItem(payrunsKey, JSON.stringify(payruns));
         }
 
         function logHistoricalImport(source, count, periods) {
             var logKey = 'historical_import_log_' + currentCompanyId;
             var log = [];
-            try { log = JSON.parse(localStorage.getItem(logKey) || '[]'); } catch(e) { log = []; }
+            try { log = JSON.parse(safeLocalStorage.getItem(logKey) || '[]'); } catch(e) { log = []; }
 
             var session = AUTH.getSession();
             log.push({
@@ -1626,7 +1627,7 @@
                 company_id: currentCompanyId
             });
 
-            localStorage.setItem(logKey, JSON.stringify(log));
+            safeLocalStorage.setItem(logKey, JSON.stringify(log));
 
             // Also log to audit trail
             if (typeof BulkImportUtils !== 'undefined') {
@@ -1637,7 +1638,7 @@
         function loadImportLog() {
             var logKey = 'historical_import_log_' + currentCompanyId;
             var log = [];
-            try { log = JSON.parse(localStorage.getItem(logKey) || '[]'); } catch(e) { log = []; }
+            try { log = JSON.parse(safeLocalStorage.getItem(logKey) || '[]'); } catch(e) { log = []; }
 
             var container = document.getElementById('importLogArea');
             if (log.length === 0) {
@@ -1714,7 +1715,7 @@
             // Switch to the new company
             session = AUTH.getSession();
             session.company_id = result.company.id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             location.reload();

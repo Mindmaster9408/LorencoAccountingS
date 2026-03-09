@@ -274,7 +274,8 @@
     <a href="paye.html" class="mobile-nav-item active"><span class="mobile-nav-icon">🧾</span><span class="mobile-nav-label">PAYE</span></a>
   </nav>
 
-  <script src="js/data-access.js"></script>
+  <script src="js/polyfills.js"></script>
+    <script src="js/data-access.js"></script>
   <script src="js/permissions.js"></script>
   <script src="js/audit.js"></script>
   <script src="js/demo-company-seed.js"></script>
@@ -335,7 +336,7 @@
     }
 
     function loadEmployees() {
-      const stored = localStorage.getItem('employees_' + currentCompanyId);
+      const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
       if (stored) {
         try {
           const parsed = JSON.parse(stored);
@@ -353,7 +354,7 @@
         employees = DEMO_EMPLOYEES;
       }
 
-      const savedRecon = localStorage.getItem('paye_recon_data_' + currentCompanyId);
+      const savedRecon = safeLocalStorage.getItem('paye_recon_data_' + currentCompanyId);
       if (savedRecon) {
         try { reconData = JSON.parse(savedRecon).reconData || {}; } catch (e) { reconData = {}; }
       }

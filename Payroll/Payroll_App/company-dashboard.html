@@ -592,6 +592,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -685,7 +686,7 @@
         function switchToCompany(company_id) {
             const session = AUTH.getSession();
             session.company_id = company_id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             location.reload();
         }
 
@@ -704,7 +705,7 @@
         }
 
         function updateEmployeeCount() {
-            const stored = localStorage.getItem('employees_' + currentCompanyId);
+            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             let count = 0;
             if (stored) {
                 try { count = JSON.parse(stored).length; } catch (e) {}
@@ -736,7 +737,7 @@
         }
 
         function loadEmployeesFromStorage() {
-            const stored = localStorage.getItem('employees_' + currentCompanyId);
+            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             if (stored) {
                 try {
                     employees = JSON.parse(stored);
@@ -854,7 +855,7 @@
                 employees.push(newEmployee);
             }
 
-            localStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
+            safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
 
             successDiv.textContent = isEdit ? 'Employee updated successfully!' : 'Employee added successfully!';
             successDiv.style.display = 'block';
@@ -870,7 +871,7 @@
         function deleteEmployee(id) {
             if (confirm('Are you sure you want to delete this employee?')) {
                 employees = employees.filter(e => e.id !== id);
-                localStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
+                safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
                 displayEmployees();
                 updateEmployeeCount();
             }
@@ -913,7 +914,7 @@
             // Switch to the new company
             session = AUTH.getSession();
             session.company_id = result.company.id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             location.reload();
@@ -963,7 +964,7 @@
             keys.forEach(function(key) {
                 var raw = (typeof DataAccess !== 'undefined' && DataAccess.getRaw)
                     ? DataAccess.getRaw(key)
-                    : localStorage.getItem(key);
+                    : safeLocalStorage.getItem(key);
                 try { allData[key] = JSON.parse(raw); }
                 catch(e) { allData[key] = raw; }
             });
@@ -989,7 +990,7 @@
                     var count = 0;
                     Object.keys(data).forEach(function(key) {
                         var val = data[key];
-                        localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
+                        safeLocalStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
                         count++;
                     });
                     statusEl.innerHTML = '<span style="color:#28a745;">✓ Successfully imported ' + count + ' items. Refreshing...</span>';

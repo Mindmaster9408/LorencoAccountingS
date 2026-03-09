@@ -13,7 +13,7 @@ const AUTH = (function() {
     async function apiRequest(method, path, body) {
         const url = API_BASE + path;
         const headers = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('token');
+        const token = safeLocalStorage.getItem('token');
         if (token) headers['Authorization'] = 'Bearer ' + token;
 
         const opts = { method, headers };
@@ -40,14 +40,14 @@ const AUTH = (function() {
                 });
 
                 if (result.token) {
-                    localStorage.setItem('token', result.token);
+                    safeLocalStorage.setItem('token', result.token);
 
                     const user = result.user || {};
                     const companies = result.companies || [];
                     const selectedCompany = result.selectedCompany || null;
 
                     // Store companies list for company-selection page
-                    localStorage.setItem('availableCompanies', JSON.stringify(companies));
+                    safeLocalStorage.setItem('availableCompanies', JSON.stringify(companies));
 
                     const session = {
                         user_id: user.id,
@@ -91,7 +91,7 @@ const AUTH = (function() {
                 });
 
                 if (result.token) {
-                    localStorage.setItem('token', result.token);
+                    safeLocalStorage.setItem('token', result.token);
                     return { success: true, user: result.user };
                 }
 
@@ -110,7 +110,7 @@ const AUTH = (function() {
                 });
 
                 if (result.token) {
-                    localStorage.setItem('token', result.token);
+                    safeLocalStorage.setItem('token', result.token);
 
                     const session = this.getSession() || {};
                     session.company_id = companyId;
@@ -129,12 +129,12 @@ const AUTH = (function() {
         // ─── Session Management ──────────────────────────────────────────
 
         setSession: function(session) {
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
         },
 
         getSession: function() {
             try {
-                const val = localStorage.getItem('session');
+                const val = safeLocalStorage.getItem('session');
                 return val ? JSON.parse(val) : null;
             } catch(e) {
                 return null;
@@ -142,7 +142,7 @@ const AUTH = (function() {
         },
 
         isAuthenticated: function() {
-            return !!localStorage.getItem('token') && !!this.getSession();
+            return !!safeLocalStorage.getItem('token') && !!this.getSession();
         },
 
         getCurrentUser: function() {
@@ -154,7 +154,7 @@ const AUTH = (function() {
         logout: function() {
             // Try to notify server (fire and forget)
             try {
-                const token = localStorage.getItem('token');
+                const token = safeLocalStorage.getItem('token');
                 if (token) {
                     fetch(API_BASE + '/auth/logout', {
                         method: 'POST',
@@ -163,13 +163,13 @@ const AUTH = (function() {
                 }
             } catch(e) {}
 
-            localStorage.removeItem('token');
-            localStorage.removeItem('session');
+            safeLocalStorage.removeItem('token');
+            safeLocalStorage.removeItem('session');
 
             // Clear cached data
             Object.keys(localStorage).forEach(function(key) {
                 if (key.startsWith('cache_')) {
-                    localStorage.removeItem(key);
+                    safeLocalStorage.removeItem(key);
                 }
             });
 
@@ -209,12 +209,12 @@ const AUTH = (function() {
             try {
                 const result = await apiRequest('GET', '/auth/companies');
                 const companies = result.companies || result.data || [];
-                localStorage.setItem('availableCompanies', JSON.stringify(companies));
+                safeLocalStorage.setItem('availableCompanies', JSON.stringify(companies));
                 return companies;
             } catch(e) {
                 // Fall back to cached list from login
                 try {
-                    return JSON.parse(localStorage.getItem('availableCompanies')) || [];
+                    return JSON.parse(safeLocalStorage.getItem('availableCompanies')) || [];
                 } catch(e2) { return []; }
             }
         },
@@ -222,7 +222,7 @@ const AUTH = (function() {
         // Synchronous version — reads from localStorage cache (used by company-selection.html)
         getCompaniesForUser: function() {
             try {
-                return JSON.parse(localStorage.getItem('availableCompanies')) || [];
+                return JSON.parse(safeLocalStorage.getItem('availableCompanies')) || [];
             } catch(e) { return []; }
         },
 
@@ -305,7 +305,7 @@ const AUTH = (function() {
         // ─── getCompanyById — look up a company from the cached list ────────────
         getCompanyById: function(companyId) {
             try {
-                const companies = JSON.parse(localStorage.getItem('availableCompanies')) || [];
+                const companies = JSON.parse(safeLocalStorage.getItem('availableCompanies')) || [];
                 const c = companies.find(function(co) {
                     return String(co.id || co.company_id) === String(companyId);
                 });

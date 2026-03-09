@@ -411,6 +411,7 @@
         </div>
     </div>
 
+    <script src="js/polyfills.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
@@ -466,7 +467,7 @@
         function switchToCompany(companyId) {
             const session = AUTH.getSession();
             session.company_id = companyId;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
             location.reload();
         }
 
@@ -480,7 +481,7 @@
         function loadCompanyDetails() {
             // Merge AUTH company data with localStorage extended data
             const authCompany = AUTH.getCompanyById(currentCompanyId) || {};
-            const stored = localStorage.getItem(getStorageKey());
+            const stored = safeLocalStorage.getItem(getStorageKey());
             const extra = stored ? JSON.parse(stored) : {};
 
             companyData = {
@@ -733,7 +734,7 @@
             companyData.fnb_originator_code = document.getElementById('f-fnb-code').value.trim();
 
             // Save extended details to localStorage
-            localStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Updated company details for ' + (companyData.name || 'Unknown'));
 
             // Also update the company name in AUTH system if changed
@@ -747,7 +748,7 @@
                 if (regIdx !== -1) {
                     regCompanies[regIdx].name = companyData.name;
                     regCompanies[regIdx].email = companyData.email || regCompanies[regIdx].email;
-                    localStorage.setItem('registered_companies', JSON.stringify(regCompanies));
+                    safeLocalStorage.setItem('registered_companies', JSON.stringify(regCompanies));
                 }
             }
 
@@ -767,7 +768,7 @@
             var reader = new FileReader();
             reader.onload = function(e) {
                 companyData.logo_data = e.target.result;
-                localStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+                safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
                 AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Uploaded company logo');
                 updateLogoPreview();
                 alert('Logo uploaded successfully!');
@@ -779,7 +780,7 @@
             if (!companyData.logo_data) return;
             if (!confirm('Remove the company logo?')) return;
             companyData.logo_data = '';
-            localStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Removed company logo');
             updateLogoPreview();
         }
@@ -829,7 +830,7 @@
             // Switch to the new company
             session = AUTH.getSession();
             session.company_id = result.company.id;
-            localStorage.setItem('session', JSON.stringify(session));
+            safeLocalStorage.setItem('session', JSON.stringify(session));
 
             closeAddCompanyModal();
             location.reload();

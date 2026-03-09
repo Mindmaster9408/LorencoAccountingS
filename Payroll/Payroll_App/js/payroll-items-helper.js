@@ -6,12 +6,12 @@
 var PayrollItemsHelper = {
 
     /**
-     * Get all payroll items for a company from localStorage.
+     * Get all payroll items for a company from safeLocalStorage.
      * @param {string} companyId
      * @returns {Array} Array of payroll item objects
      */
     getItems: function(companyId) {
-        var stored = localStorage.getItem('payroll_items_' + companyId);
+        var stored = safeLocalStorage.getItem('payroll_items_' + companyId);
         if (!stored) return [];
         try { return JSON.parse(stored); } catch(e) { return []; }
     },

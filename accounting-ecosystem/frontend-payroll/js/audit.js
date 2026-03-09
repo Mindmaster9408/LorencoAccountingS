@@ -15,7 +15,7 @@ var AuditTrail = {
      */
     log: function(companyId, actionType, entityType, description, details) {
         var session = {};
-        try { session = JSON.parse(localStorage.getItem('session') || '{}'); } catch(e) {}
+        try { session = JSON.parse(safeLocalStorage.getItem('session') || '{}'); } catch(e) {}
 
         var entry = {
             id: 'audit-' + Math.random().toString(36).substr(2, 9),
@@ -33,7 +33,7 @@ var AuditTrail = {
 
         var key = 'audit_log_' + companyId;
         var log = [];
-        try { log = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) { log = []; }
+        try { log = JSON.parse(safeLocalStorage.getItem(key) || '[]'); } catch(e) { log = []; }
         log.push(entry);
 
         // Keep last 1000 entries to prevent localStorage overflow
@@ -41,7 +41,7 @@ var AuditTrail = {
             log = log.slice(log.length - 1000);
         }
 
-        localStorage.setItem(key, JSON.stringify(log));
+        safeLocalStorage.setItem(key, JSON.stringify(log));
         return entry;
     },
 
