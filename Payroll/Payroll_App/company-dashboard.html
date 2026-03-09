@@ -957,11 +957,16 @@
 
         function exportAllData() {
             var allData = {};
-            for (var i = 0; i < localStorage.length; i++) {
-                var key = localStorage.key(i);
-                try { allData[key] = JSON.parse(localStorage.getItem(key)); }
-                catch(e) { allData[key] = localStorage.getItem(key); }
-            }
+            var keys = (typeof DataAccess !== 'undefined' && DataAccess.listKeys)
+                ? DataAccess.listKeys()
+                : [];
+            keys.forEach(function(key) {
+                var raw = (typeof DataAccess !== 'undefined' && DataAccess.getRaw)
+                    ? DataAccess.getRaw(key)
+                    : localStorage.getItem(key);
+                try { allData[key] = JSON.parse(raw); }
+                catch(e) { allData[key] = raw; }
+            });
             var blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
             var url = URL.createObjectURL(blob);
             var a = document.createElement('a');

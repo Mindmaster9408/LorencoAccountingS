@@ -855,8 +855,11 @@
             }
 
             // Add any periods where this employee has a payslip status
-            for (var i = 0; i < localStorage.length; i++) {
-                var key = localStorage.key(i);
+            var keys = (typeof DataAccess !== 'undefined' && DataAccess.listKeys)
+                ? DataAccess.listKeys()
+                : [];
+            for (var i = 0; i < keys.length; i++) {
+                var key = keys[i];
                 var prefix = 'emp_payslip_status_' + currentCompanyId + '_' + currentEmpId + '_';
                 if (key && key.indexOf(prefix) === 0) {
                     var period = key.replace(prefix, '');

@@ -71,6 +71,34 @@ var DataAccess = {
         return cached;
     },
 
+    getRaw: function(key) {
+        if (key === 'session' || key === 'token') {
+            var nativeStore = window._payrollNativeLocalStorage;
+            return nativeStore ? nativeStore.getItem(key) : localStorage.getItem(key);
+        }
+        if (!window._payrollCache || !Object.prototype.hasOwnProperty.call(window._payrollCache, key)) {
+            return null;
+        }
+        var cached = window._payrollCache[key];
+        return typeof cached === 'string' ? cached : JSON.stringify(cached);
+    },
+
+    listKeys: function() {
+        var keys = [];
+        var nativeStore = window._payrollNativeLocalStorage;
+        if (nativeStore) {
+            if (nativeStore.getItem('session') !== null) keys.push('session');
+            if (nativeStore.getItem('token') !== null) keys.push('token');
+        } else {
+            if (localStorage.getItem('session') !== null) keys.push('session');
+            if (localStorage.getItem('token') !== null) keys.push('token');
+        }
+        if (window._payrollCache) {
+            keys = keys.concat(Object.keys(window._payrollCache));
+        }
+        return keys;
+    },
+
     set: function(key, value) {
         var jsonValue = JSON.stringify(value);
 
@@ -411,3 +439,62 @@ var DataAccess = {
         return records;
     }
 };
+
+// Keep legacy pages functional while enforcing cloud-backed payroll storage.
+(function installLocalStorageCloudBridge() {
+    'use strict';
+
+    if (window.__payrollLocalStorageCloudBridgeInstalled) return;
+    window.__payrollLocalStorageCloudBridgeInstalled = true;
+
+    if (!window.localStorage) return;
+
+    var nativeStore = {
+        getItem: localStorage.getItem.bind(localStorage),
+        setItem: localStorage.setItem.bind(localStorage),
+        removeItem: localStorage.removeItem.bind(localStorage),
+        key: localStorage.key.bind(localStorage)
+    };
+    window._payrollNativeLocalStorage = nativeStore;
+
+    function isLocalSessionKey(key) {
+        return key === 'session' || key === 'token';
+    }
+
+    function isCloudKey(key) {
+        return typeof key === 'string' && key.length > 0 && !isLocalSessionKey(key);
+    }
+
+    function parseRaw(raw) {
+        if (raw === null || raw === undefined) return null;
+        try { return JSON.parse(raw); } catch (e) { return raw; }
+    }
+
+    localStorage.getItem = function(key) {
+        if (!isCloudKey(key)) return nativeStore.getItem(key);
+        return DataAccess.getRaw(key);
+    };
+
+    localStorage.setItem = function(key, value) {
+        if (!isCloudKey(key)) {
+            nativeStore.setItem(key, value);
+            return;
+        }
+        DataAccess.set(key, parseRaw(value));
+    };
+
+    localStorage.removeItem = function(key) {
+        if (!isCloudKey(key)) {
+            nativeStore.removeItem(key);
+            return;
+        }
+        DataAccess.remove(key);
+    };
+
+    localStorage.key = function(index) {
+        var i = Number(index);
+        if (!Number.isFinite(i) || i < 0) return null;
+        var keys = DataAccess.listKeys();
+        return keys[i] || null;
+    };
+})();

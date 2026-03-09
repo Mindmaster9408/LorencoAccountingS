@@ -427,8 +427,11 @@
             }
             // Include any periods with payslip statuses in localStorage
             var prefix = 'emp_payslip_status_' + currentCompanyId + '_';
-            for (var i = 0; i < localStorage.length; i++) {
-                var key = localStorage.key(i);
+            var keys = (typeof DataAccess !== 'undefined' && DataAccess.listKeys)
+                ? DataAccess.listKeys()
+                : [];
+            for (var i = 0; i < keys.length; i++) {
+                var key = keys[i];
                 if (key && key.indexOf(prefix) === 0) {
                     var parts = key.replace(prefix, '').split('_');
                     var period = parts[parts.length - 1];

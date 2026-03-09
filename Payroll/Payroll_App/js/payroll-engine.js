@@ -343,8 +343,11 @@ const PayrollEngine = {
     getHistoricalPeriods: function(companyId) {
         var prefix = 'emp_historical_' + companyId + '_';
         var periods = {};
-        for (var i = 0; i < localStorage.length; i++) {
-            var key = localStorage.key(i);
+        var keys = (typeof DataAccess !== 'undefined' && DataAccess.listKeys)
+            ? DataAccess.listKeys()
+            : [];
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
             if (key && key.indexOf(prefix) === 0) {
                 var parts = key.replace(prefix, '').split('_');
                 var period = parts[parts.length - 1];
@@ -364,13 +367,19 @@ const PayrollEngine = {
     getEmployeeHistory: function(companyId, empId) {
         var prefix = 'emp_historical_' + companyId + '_' + empId + '_';
         var records = {};
-        for (var i = 0; i < localStorage.length; i++) {
-            var key = localStorage.key(i);
+        var keys = (typeof DataAccess !== 'undefined' && DataAccess.listKeys)
+            ? DataAccess.listKeys()
+            : [];
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
             if (key && key.indexOf(prefix) === 0) {
                 var period = key.replace(prefix, '');
                 if (/^\d{4}-\d{2}$/.test(period)) {
                     try {
-                        records[period] = JSON.parse(localStorage.getItem(key));
+                        var raw = (typeof DataAccess !== 'undefined' && DataAccess.getRaw)
+                            ? DataAccess.getRaw(key)
+                            : localStorage.getItem(key);
+                        records[period] = JSON.parse(raw);
                     } catch(e) { /* skip corrupt records */ }
                 }
             }
