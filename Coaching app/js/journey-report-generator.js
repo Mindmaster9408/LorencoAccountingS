@@ -28,7 +28,8 @@ export async function generateStepReport(client, stepNumber) {
                'Phase 3: Mastery'
     };
 
-    const stepData = client.journeyProgress?.[`step${stepNumber}`] || {};
+    const journeyProgress = (client && client.journeyProgress) ? client.journeyProgress : {};
+    const stepData = journeyProgress[`step${stepNumber}`] || {};
     const notes = stepData.notes || 'No notes recorded for this step.';
     const aiDiscussions = stepData.aiDiscussions || [];
     const completedDate = stepData.completedDate || 'Not completed';
@@ -278,8 +279,9 @@ export async function generateComprehensiveJourneyReport(client) {
     }));
 
     const completedSteps = allSteps.filter(step => {
-        const stepData = client.journeyProgress?.[`step${step.number}`];
-        return stepData?.completed;
+        const clientProgress = (client && client.journeyProgress) ? client.journeyProgress : {};
+        const stepData = clientProgress[`step${step.number}`];
+        return !!(stepData && stepData.completed);
     });
 
     const progress = client.journeyProgress || {};

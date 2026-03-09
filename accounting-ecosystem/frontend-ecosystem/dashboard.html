@@ -1497,7 +1497,7 @@
         // ── Render Apps ──
         function renderApps() {
             const container = document.getElementById('appsGrid');
-            const companyModules = selectedCompany?.modules_enabled || [];
+            const companyModules = (selectedCompany && selectedCompany.modules_enabled) ? selectedCompany.modules_enabled : [];
             let activeCount = 0;
 
             container.innerHTML = APP_DEFS.map(app => {
@@ -1505,7 +1505,7 @@
                 if (app.key === 'sean' && !isSuperAdmin) return '';
 
                 // Coaching is only visible to super admins or Ruan specifically
-                if (app.key === 'coaching' && !isSuperAdmin && currentUser?.email !== 'ruanvlog@lorenco.co.za') return '';
+                if (app.key === 'coaching' && !isSuperAdmin && (!currentUser || currentUser.email !== 'ruanvlog@lorenco.co.za')) return '';
 
                 // App is active if the company has it in modules_enabled
                 // Super admins can see all apps as active
@@ -1570,7 +1570,7 @@
                         },
                         body: JSON.stringify({
                             targetApp: 'coaching',
-                            companyId: selectedCompany?.id || null
+                            companyId: (selectedCompany && selectedCompany.id) || null
                         })
                     });
                     if (res.ok) {
@@ -1600,7 +1600,7 @@
                     },
                     body: JSON.stringify({
                         targetApp: appKey,
-                        companyId: selectedCompany?.id || null
+                        companyId: (selectedCompany && selectedCompany.id) || null
                     })
                 });
 
@@ -1792,8 +1792,8 @@
 
             // Resolve managing company: use dropdown for superadmins, fall back to selected company
             const managingCompanyId = isSuperAdmin
-                ? (parseInt(document.getElementById('acManagingCompany').value) || selectedCompany?.id || null)
-                : (selectedCompany?.id || null);
+                ? (parseInt(document.getElementById('acManagingCompany').value) || (selectedCompany && selectedCompany.id) || null)
+                : ((selectedCompany && selectedCompany.id) || null);
 
             const payload = {
                 name: document.getElementById('acName').value.trim(),
@@ -2448,7 +2448,7 @@
                                 <div style="font-size:0.78rem;color:var(--text-muted);margin-top:1px;">${escHtml(u.email || '')}</div>
                             </div>
                             <span style="padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;background:rgba(255,255,255,0.06);color:${roleColor};">${(u.role || 'user').replace(/_/g,' ')}</span>
-                            ${!isSelf && (isSuperAdmin || selectedCompany?.role === 'business_owner') ? `
+                            ${!isSelf && (isSuperAdmin || ((selectedCompany && selectedCompany.role) === 'business_owner')) ? `
                             <button type="button" onclick="changeUserRole(${u.id}, '${escHtml(u.full_name || u.username)}')" style="padding:5px 10px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Role</button>
                             <button type="button" onclick="removePracticeUser(${u.id}, '${escHtml(u.full_name || u.username)}')" style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fca5a5;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Remove</button>
                             ` : ''}

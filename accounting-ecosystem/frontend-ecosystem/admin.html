@@ -565,10 +565,10 @@
             document.getElementById('statTotal').textContent     = allClients.length;
             document.getElementById('statActive').textContent    = allClients.filter(c => c.is_active).length;
             document.getElementById('statInactive').textContent  = allClients.filter(c => !c.is_active).length;
-            document.getElementById('statPos').textContent       = allClients.filter(c => c.apps?.includes('pos')).length;
-            document.getElementById('statPayroll').textContent   = allClients.filter(c => c.apps?.includes('payroll')).length;
-            document.getElementById('statAccounting').textContent = allClients.filter(c => c.apps?.includes('accounting')).length;
-            document.getElementById('statSean').textContent      = allClients.filter(c => c.apps?.includes('sean')).length;
+            document.getElementById('statPos').textContent       = allClients.filter(c => Array.isArray(c.apps) && c.apps.includes('pos')).length;
+            document.getElementById('statPayroll').textContent   = allClients.filter(c => Array.isArray(c.apps) && c.apps.includes('payroll')).length;
+            document.getElementById('statAccounting').textContent = allClients.filter(c => Array.isArray(c.apps) && c.apps.includes('accounting')).length;
+            document.getElementById('statSean').textContent      = allClients.filter(c => Array.isArray(c.apps) && c.apps.includes('sean')).length;
         }
 
         // ── Filters ─────────────────────────────────────────────────────────
@@ -603,7 +603,7 @@
             if (statusFilter === 'inactive') filtered = filtered.filter(c => !c.is_active);
 
             // App
-            if (appFilter !== 'all') filtered = filtered.filter(c => c.apps?.includes(appFilter));
+            if (appFilter !== 'all') filtered = filtered.filter(c => Array.isArray(c.apps) && c.apps.includes(appFilter));
 
             // Managing company
             if (coFilter) filtered = filtered.filter(c => String(c.company_id) === coFilter);
@@ -611,10 +611,10 @@
             // Search
             if (search) {
                 filtered = filtered.filter(c =>
-                    c.name?.toLowerCase().includes(search) ||
-                    c.email?.toLowerCase().includes(search) ||
-                    c.phone?.includes(search) ||
-                    c.id_number?.includes(search)
+                    (c.name || '').toLowerCase().includes(search) ||
+                    (c.email || '').toLowerCase().includes(search) ||
+                    (c.phone || '').includes(search) ||
+                    (c.id_number || '').includes(search)
                 );
             }
 
