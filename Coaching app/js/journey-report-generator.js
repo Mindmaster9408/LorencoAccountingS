@@ -204,7 +204,7 @@ export async function generateStepReport(client, stepNumber) {
             </div>
             <div class="meta-item">
                 <div class="meta-label">Step Completed</div>
-                <div class="meta-value">${completedDate !== 'Not completed' ? new Date(completedDate).toLocaleDateString() : 'In Progress'}</div>
+                <div class="meta-value">${completedDate !== 'Not completed' ? formatDate(parseStandardDate(completedDate), 'ZA') : 'In Progress'}</div>
             </div>
             <div class="meta-item">
                 <div class="meta-label">Phase</div>
@@ -238,7 +238,7 @@ export async function generateStepReport(client, stepNumber) {
             <div class="ai-discussion">
                 <div class="ai-discussion-header">
                     <span class="ai-label">🤖 AI Coach Session ${index + 1}</span>
-                    <span class="ai-timestamp">${discussion.timestamp ? new Date(discussion.timestamp).toLocaleString() : 'No timestamp'}</span>
+                    <span class="ai-timestamp">${discussion.timestamp ? formatDateTime(parseStandardDate(discussion.timestamp)) : 'No timestamp'}</span>
                 </div>
                 <div class="ai-content">${discussion.content || discussion.message || 'No content'}</div>
             </div>
@@ -505,7 +505,7 @@ export async function generateComprehensiveJourneyReport(client) {
             <div class="step-header">
                 <div class="step-title">${step.icon} Step ${step.number}: ${step.title}</div>
                 <div class="step-meta">
-                    ${completed ? `✓ Completed: ${new Date(completedDate).toLocaleDateString()}` : '⏳ In Progress'}
+                    ${completed ? `✓ Completed: ${formatDate(parseStandardDate(completedDate), 'ZA')}` : '⏳ In Progress'}
                 </div>
             </div>
             <div class="step-description">${step.description}</div>
@@ -522,7 +522,7 @@ export async function generateComprehensiveJourneyReport(client) {
                 <div class="notes-title">🤖 AI Coach Discussions (${aiDiscussions.length})</div>
                 ${aiDiscussions.map((discussion, i) => `
                     <div class="ai-discussion">
-                        <div class="ai-header">Session ${i + 1} - ${discussion.timestamp ? new Date(discussion.timestamp).toLocaleString() : 'No timestamp'}</div>
+                        <div class="ai-header">Session ${i + 1} - ${discussion.timestamp ? formatDateTime(parseStandardDate(discussion.timestamp)) : 'No timestamp'}</div>
                         <div>${discussion.content || discussion.message || 'No content'}</div>
                     </div>
                 `).join('')}
@@ -546,7 +546,7 @@ export async function generateComprehensiveJourneyReport(client) {
             <div class="step-header">
                 <div class="step-title">${step.icon} Step ${step.number}: ${step.title}</div>
                 <div class="step-meta">
-                    ${completed ? `✓ Completed: ${new Date(completedDate).toLocaleDateString()}` : '⏳ In Progress'}
+                    ${completed ? `✓ Completed: ${formatDate(parseStandardDate(completedDate), 'ZA')}` : '⏳ In Progress'}
                 </div>
             </div>
             <div class="step-description">${step.description}</div>
@@ -563,7 +563,7 @@ export async function generateComprehensiveJourneyReport(client) {
                 <div class="notes-title">🤖 AI Coach Discussions (${aiDiscussions.length})</div>
                 ${aiDiscussions.map((discussion, i) => `
                     <div class="ai-discussion">
-                        <div class="ai-header">Session ${i + 1} - ${discussion.timestamp ? new Date(discussion.timestamp).toLocaleString() : 'No timestamp'}</div>
+                        <div class="ai-header">Session ${i + 1} - ${discussion.timestamp ? formatDateTime(parseStandardDate(discussion.timestamp)) : 'No timestamp'}</div>
                         <div>${discussion.content || discussion.message || 'No content'}</div>
                     </div>
                 `).join('')}
@@ -587,7 +587,7 @@ export async function generateComprehensiveJourneyReport(client) {
             <div class="step-header">
                 <div class="step-title">${step.icon} Step ${step.number}: ${step.title}</div>
                 <div class="step-meta">
-                    ${completed ? `✓ Completed: ${new Date(completedDate).toLocaleDateString()}` : '⏳ In Progress'}
+                    ${completed ? `✓ Completed: ${formatDate(parseStandardDate(completedDate), 'ZA')}` : '⏳ In Progress'}
                 </div>
             </div>
             <div class="step-description">${step.description}</div>
@@ -604,7 +604,7 @@ export async function generateComprehensiveJourneyReport(client) {
                 <div class="notes-title">🤖 AI Coach Discussions (${aiDiscussions.length})</div>
                 ${aiDiscussions.map((discussion, i) => `
                     <div class="ai-discussion">
-                        <div class="ai-header">Session ${i + 1} - ${discussion.timestamp ? new Date(discussion.timestamp).toLocaleString() : 'No timestamp'}</div>
+                        <div class="ai-header">Session ${i + 1} - ${discussion.timestamp ? formatDateTime(parseStandardDate(discussion.timestamp)) : 'No timestamp'}</div>
                         <div>${discussion.content || discussion.message || 'No content'}</div>
                     </div>
                 `).join('')}

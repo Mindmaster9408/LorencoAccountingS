@@ -2084,7 +2084,7 @@
                         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;">
                             <div>
                                 <div style="font-weight:600;font-size:0.9rem;">🏛 ${escHtml(f.firm_name)}</div>
-                                <div style="font-size:0.75rem;color:var(--text-muted);">Linked ${new Date(f.granted_at).toLocaleDateString('en-ZA')}</div>
+                                <div style="font-size:0.75rem;color:var(--text-muted);">Linked ${formatDate(parseStandardDate(f.granted_at), 'ZA')}</div>
                             </div>
                             <button type="button" onclick="revokeFirmAccess(${clientId}, ${f.firm_company_id}, '${escHtml(f.firm_name)}')"
                                 style="padding:5px 12px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;border-radius:8px;cursor:pointer;font-size:0.78rem;font-weight:600;">

@@ -97,9 +97,7 @@ function createLeadCard(lead) {
     if (wantsCoach)   cardClasses.push('interested');
     if (isContacted)  cardClasses.push('contacted');
 
-    const registeredDate = new Date(lead.created_at || lead.registeredAt).toLocaleDateString('en-ZA', {
-        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    const registeredDate = formatDateTime(parseStandardDate(lead.created_at || lead.registeredAt));
 
     const basisCode = (lead.basis_results || lead.basisResults)?.basisOrder?.join(' ') || '—';
 
@@ -159,7 +157,7 @@ window.convertToClient = async function(leadId) {
         client.phone = lead.phone;
         client.preferred_lang = lead.preferred_lang || 'English';
         client.status = 'Active - New Client from Lead';
-        client.notes = 'Converted from public lead on ' + new Date().toLocaleDateString();
+        client.notes = 'Converted from public lead on ' + formatDate(new Date(), 'ZA');
         const saved = await saveClient(client);
 
         await updateLead(leadId, { status: 'converted' });

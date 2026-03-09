@@ -678,7 +678,7 @@
             }).join('');
 
             const dateStr = c.created_at
-                ? new Date(c.created_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
+                ? formatDate(parseStandardDate(c.created_at), 'ZA')
                 : '—';
 
             return `
