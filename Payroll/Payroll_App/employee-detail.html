@@ -294,7 +294,7 @@
                 <div class="section-grid">
                     <div class="section">
                         <div class="section-title"><span>📅 Regular Inputs (Monthly)</span><button class="btn btn-sm btn-success" onclick="openAddRegularInput()">+ Add</button></div>
-                        <div class="salary-item editable" data-permission="EDIT_PAYROLL" onclick="editBasicSalary()">
+                        <div class="salary-item editable" data-permission="VIEW_PAYROLL" onclick="editBasicSalary()">
                             <span class="salary-label">Basic Salary</span>
                             <span class="salary-value" id="basicSalary">R 0.00</span>
                         </div>
@@ -1116,6 +1116,7 @@
 
         // ========== BASIC SALARY ==========
         function editBasicSalary() {
+            if (!Permissions.require('EDIT_PAYROLL')) return;
             document.getElementById('editBasicValue').value = payrollData.basic_salary || 0;
             document.getElementById('editBasicModal').classList.add('show');
         }

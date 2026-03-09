@@ -532,57 +532,470 @@
             }
         }
 
-        // ========== REPORT 1: TRANSACTION HISTORY ==========
+        // ========== REPORT 1: TRANSACTION HISTORY MATRIX ==========
+        // Builds a dynamic payroll item matrix: one row per employee, one column
+        // per active payroll item, plus fixed summary columns at the end.
         function generateTransactionHistory() {
-            const fromPeriod = document.getElementById('filter-from').value;
-            const toPeriod = document.getElementById('filter-to').value;
-            const empFilter = document.getElementById('filter-employee').value;
-            const deptFilter = document.getElementById('filter-department').value;
-            const statusFilter = document.getElementById('filter-status').value;
+            var fromPeriod = document.getElementById('filter-from').value;
+            var toPeriod   = document.getElementById('filter-to').value;
+            var empFilter  = document.getElementById('filter-employee').value;
+            var deptFilter = document.getElementById('filter-department').value;
+            var statusFilter = document.getElementById('filter-status').value;
 
-            const periods = getAvailablePeriods().filter(p => p >= toPeriod && p <= fromPeriod);
-            let filteredEmps = employees.filter(e => {
-                if (empFilter && e.id !== empFilter) return false;
+            // fromPeriod = the recent end (larger YYYY-MM), toPeriod = older end
+            var periods = getAvailablePeriods()
+                .filter(function(p) { return p >= toPeriod && p <= fromPeriod; })
+                .sort();
+
+            var filteredEmps = employees.filter(function(e) {
+                if (empFilter  && e.id !== empFilter)          return false;
                 if (deptFilter && e.department !== deptFilter) return false;
                 return true;
             });
 
-            const headers = ['Period', 'Employee #', 'Employee Name', 'Department', 'Gross Pay', 'PAYE', 'UIF', 'Deductions', 'Net Pay', 'Status'];
-            const rows = [];
-            let totals = { gross: 0, paye: 0, uif: 0, deductions: 0, net: 0 };
+            if (periods.length === 0 || filteredEmps.length === 0) {
+                document.getElementById('summary-section').innerHTML = '';
+                document.getElementById('results-section').innerHTML =
+                    '<div class="empty-state"><div class="empty-icon">📭</div>' +
+                    '<div class="empty-text">No payroll transactions found for the selected filters.</div>' +
+                    '<div class="empty-sub">Try adjusting the period range or filters.</div></div>';
+                document.getElementById('export-bar').style.display = 'none';
+                return;
+            }
 
-            periods.forEach(period => {
-                filteredEmps.forEach(emp => {
-                    const calc = calculateEmployeePeriod(emp.id, period);
-                    if (calc.gross <= 0) return;
-                    const ps = getPayslipStatus(emp.id, period);
-                    if (statusFilter && ps.status !== statusFilter) return;
-                    rows.push([
-                        formatPeriod(period), emp.employee_number, emp.first_name + ' ' + emp.last_name,
-                        emp.department || '-', formatMoney(calc.gross), formatMoney(calc.paye),
-                        formatMoney(calc.uif), formatMoney(calc.deductions), formatMoney(calc.net), ps.status
-                    ]);
-                    totals.gross += calc.gross; totals.paye += calc.paye; totals.uif += calc.uif;
-                    totals.deductions += calc.deductions; totals.net += calc.net;
+            var matrix = buildTransactionMatrix(periods, filteredEmps, statusFilter);
+
+            // Summary cards
+            var totGross = 0, totPaye = 0, totUif = 0, totNet = 0;
+            matrix.rows.forEach(function(row) {
+                totGross += row.summary.totalBeforeTax;
+                totPaye  += row.summary.paye;
+                totUif   += row.summary.uif;
+                totNet   += row.summary.netSalary;
+            });
+
+            var periodLabel = (fromPeriod === toPeriod)
+                ? formatPeriod(fromPeriod)
+                : formatPeriod(toPeriod) + ' – ' + formatPeriod(fromPeriod);
+
+            document.getElementById('summary-section').innerHTML =
+                '<div class="summary-cards">' +
+                '<div class="summary-card"><div class="summary-card-label">Period</div><div class="summary-card-value" style="font-size:1rem;">' + periodLabel + '</div></div>' +
+                '<div class="summary-card"><div class="summary-card-label">Employees</div><div class="summary-card-value">' + matrix.rows.length + '</div></div>' +
+                '<div class="summary-card green"><div class="summary-card-label">Total Gross</div><div class="summary-card-value">' + formatMoney(totGross) + '</div></div>' +
+                '<div class="summary-card red"><div class="summary-card-label">Total PAYE</div><div class="summary-card-value">' + formatMoney(totPaye) + '</div></div>' +
+                '<div class="summary-card orange"><div class="summary-card-label">Total UIF</div><div class="summary-card-value">' + formatMoney(totUif) + '</div></div>' +
+                '<div class="summary-card teal"><div class="summary-card-label">Total Net Salary</div><div class="summary-card-value">' + formatMoney(totNet) + '</div></div>' +
+                '</div>';
+
+            renderMatrixTable(matrix);
+            logReportGeneration('Transaction History', { from: fromPeriod, to: toPeriod, employee: empFilter, department: deptFilter });
+        }
+
+        // Scans all employee/period data to discover which payroll items are actually
+        // used, then builds one aggregated row per employee across all periods.
+        function buildTransactionMatrix(periods, filteredEmps, statusFilter) {
+            var useDA = typeof DataAccess !== 'undefined';
+
+            // Payroll items master list — for resolving payroll_item_id to a name
+            var masterItems = useDA
+                ? DataAccess.getPayrollItems(currentCompanyId)
+                : JSON.parse(localStorage.getItem('payroll_items_' + currentCompanyId) || '[]');
+            var itemNameMap = {};
+            masterItems.forEach(function(item) { itemNameMap[item.id] = item.item_name; });
+
+            // Convert a free-text description into a stable Map key
+            function slugify(str) {
+                return (str || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'item';
+            }
+
+            // Resolve the best display name from an input object
+            function getInputDesc(input) {
+                return input.description
+                    || input.item_name
+                    || (input.payroll_item_id ? itemNameMap[input.payroll_item_id] : null)
+                    || 'Unnamed Item';
+            }
+
+            // Data-access helpers (work with DataAccess cloud layer or raw localStorage)
+            function getPD(empId) {
+                return useDA
+                    ? DataAccess.getEmployeePayroll(currentCompanyId, empId)
+                    : JSON.parse(localStorage.getItem('emp_payroll_' + currentCompanyId + '_' + empId) || '{"basic_salary":0,"regular_inputs":[]}');
+            }
+            function getCI(empId, period) {
+                return useDA
+                    ? DataAccess.getCurrentInputs(currentCompanyId, empId, period)
+                    : JSON.parse(localStorage.getItem('emp_current_' + currentCompanyId + '_' + empId + '_' + period) || '[]');
+            }
+            function getOT(empId, period) {
+                return useDA
+                    ? DataAccess.getOvertime(currentCompanyId, empId, period)
+                    : JSON.parse(localStorage.getItem('emp_overtime_' + currentCompanyId + '_' + empId + '_' + period) || '[]');
+            }
+            function getMR(empId, period) {
+                return useDA
+                    ? DataAccess.getMultiRate(currentCompanyId, empId, period)
+                    : JSON.parse(localStorage.getItem('emp_multi_rate_' + currentCompanyId + '_' + empId + '_' + period) || '[]');
+            }
+            function getST(empId, period) {
+                return useDA
+                    ? DataAccess.getShortTime(currentCompanyId, empId, period)
+                    : JSON.parse(localStorage.getItem('emp_short_time_' + currentCompanyId + '_' + empId + '_' + period) || '[]');
+            }
+
+            // ── PASS 1: Discover all distinct payroll item columns ──────────────
+            // earningColMap / deductionColMap preserve insertion order (first-seen = column order)
+            var earningColMap   = new Map();   // slug → label
+            var deductionColMap = new Map();   // slug → label
+            earningColMap.set('basic_salary', 'Basic Salary');
+
+            var hasOvertime = false, hasMultiRate = false, hasShortTime = false;
+
+            filteredEmps.forEach(function(emp) {
+                // Regular (recurring) inputs that are on the employee's payroll setup
+                var pd = getPD(emp.id);
+                (pd.regular_inputs || []).forEach(function(ri) {
+                    var slug = slugify(getInputDesc(ri));
+                    if (ri.type === 'deduction') {
+                        if (!deductionColMap.has(slug)) deductionColMap.set(slug, getInputDesc(ri));
+                    } else {
+                        if (slug !== 'basic_salary' && !earningColMap.has(slug)) earningColMap.set(slug, getInputDesc(ri));
+                    }
+                });
+
+                periods.forEach(function(period) {
+                    // Historical records store deduction line items
+                    var hist = PayrollEngine.getHistoricalRecord(currentCompanyId, emp.id, period);
+                    if (hist) {
+                        (hist.deductions || []).forEach(function(d) {
+                            var slug = slugify(d.description || 'Deduction');
+                            if (!deductionColMap.has(slug)) deductionColMap.set(slug, d.description || 'Deduction');
+                        });
+                        return;
+                    }
+                    // Period-specific one-time inputs
+                    (getCI(emp.id, period) || []).forEach(function(input) {
+                        var slug = slugify(getInputDesc(input));
+                        if (input.type === 'deduction') {
+                            if (!deductionColMap.has(slug)) deductionColMap.set(slug, getInputDesc(input));
+                        } else {
+                            if (slug !== 'basic_salary' && !earningColMap.has(slug)) earningColMap.set(slug, getInputDesc(input));
+                        }
+                    });
+                    if ((getOT(emp.id, period) || []).length) hasOvertime  = true;
+                    if ((getMR(emp.id, period) || []).length) hasMultiRate = true;
+                    if ((getST(emp.id, period) || []).length) hasShortTime = true;
                 });
             });
 
-            currentReportData = { headers, rows, title: 'Transaction History Report' };
+            // Special computed items use underscore-prefixed keys to avoid slug collisions
+            if (hasOvertime)  earningColMap.set('_overtime',   'Overtime');
+            if (hasMultiRate) earningColMap.set('_multi_rate', 'Multi-Rate Pay');
+            if (hasShortTime) deductionColMap.set('_short_time', 'Short Time Deduction');
 
-            // Summary
-            document.getElementById('summary-section').innerHTML =
-                '<div class="summary-cards">' +
-                '<div class="summary-card"><div class="summary-card-label">Total Transactions</div><div class="summary-card-value">' + rows.length + '</div></div>' +
-                '<div class="summary-card green"><div class="summary-card-label">Total Gross</div><div class="summary-card-value">' + formatMoney(totals.gross) + '</div></div>' +
-                '<div class="summary-card red"><div class="summary-card-label">Total PAYE</div><div class="summary-card-value">' + formatMoney(totals.paye) + '</div></div>' +
-                '<div class="summary-card teal"><div class="summary-card-label">Total Net</div><div class="summary-card-value">' + formatMoney(totals.net) + '</div></div>' +
-                '</div>';
+            var earningCols   = [];
+            var deductionCols = [];
+            earningColMap.forEach(function(label, key)   { earningCols.push({ key: key, label: label }); });
+            deductionColMap.forEach(function(label, key) { deductionCols.push({ key: key, label: label }); });
 
-            renderTable(headers, rows, [
-                '', '', '', 'TOTALS:', formatMoney(totals.gross), formatMoney(totals.paye),
-                formatMoney(totals.uif), formatMoney(totals.deductions), formatMoney(totals.net), ''
-            ]);
-            logReportGeneration('Transaction History', { from: fromPeriod, to: toPeriod, employee: empFilter, department: deptFilter });
+            // ── PASS 2: Accumulate values per employee (summed across periods) ─
+            var rows = [];
+
+            filteredEmps.forEach(function(emp) {
+                var earnings   = {};
+                var deductions = {};
+                earningCols.forEach(function(c)   { earnings[c.key]   = 0; });
+                deductionCols.forEach(function(c) { deductions[c.key] = 0; });
+                var summary = { totalBeforeTax: 0, paye: 0, uif: 0, totalDeductions: 0, netSalary: 0 };
+                var hasData = false;
+
+                var pd = getPD(emp.id);
+                var basicSalary = parseFloat(pd.basic_salary) || 0;
+
+                // Resolve employee record for PAYE options (age, medical, directive)
+                var empRecord = useDA ? DataAccess.getEmployeeById(currentCompanyId, emp.id) : emp;
+
+                periods.forEach(function(period) {
+                    // Respect status filter
+                    var ps = getPayslipStatus(emp.id, period);
+                    if (statusFilter && ps.status !== statusFilter) return;
+
+                    // ── Historical record path ────────────────────────────────
+                    var hist = PayrollEngine.getHistoricalRecord(currentCompanyId, emp.id, period);
+                    if (hist) {
+                        if ((hist.gross || 0) <= 0) return;
+                        hasData = true;
+
+                        // Historical may or may not store basic_salary separately;
+                        // fall back to gross so the row is not empty.
+                        var histBasic = (hist.basic_salary != null)
+                            ? parseFloat(hist.basic_salary)
+                            : (hist.gross || 0);
+                        earnings['basic_salary'] += histBasic;
+
+                        var histDeductSum = 0;
+                        (hist.deductions || []).forEach(function(d) {
+                            var slug = slugify(d.description || 'Deduction');
+                            var amt  = parseFloat(d.amount) || 0;
+                            if (deductions[slug] !== undefined) deductions[slug] += amt;
+                            histDeductSum += amt;
+                        });
+
+                        summary.paye           += hist.paye || 0;
+                        summary.uif            += hist.uif  || 0;
+                        summary.totalBeforeTax += hist.gross || 0;
+                        summary.totalDeductions += (hist.paye || 0) + (hist.uif || 0) + histDeductSum;
+                        summary.netSalary      += hist.net  || 0;
+                        return;
+                    }
+
+                    // ── Live data path ────────────────────────────────────────
+                    var ci = getCI(emp.id, period);
+                    var ot = getOT(emp.id, period);
+                    var mr = getMR(emp.id, period);
+                    var st = getST(emp.id, period);
+
+                    // Build PAYE calculation options from employee demographics
+                    var empOpts = {};
+                    if (empRecord && empRecord.id_number) {
+                        var parts     = period.split('-');
+                        var periodEnd = new Date(parseInt(parts[0]), parseInt(parts[1]), 0);
+                        empOpts.age   = PayrollEngine.getAgeFromId(empRecord.id_number, periodEnd);
+                    }
+                    if (empRecord && empRecord.medical_aid_members) {
+                        empOpts.medicalMembers = parseInt(empRecord.medical_aid_members) || 0;
+                    }
+                    if (empRecord && empRecord.tax_directive) {
+                        empOpts.taxDirective = parseFloat(empRecord.tax_directive) || 0;
+                    }
+
+                    // Authoritative summary figures — always use the engine, never re-derive
+                    var calc = PayrollEngine.calculateFromData(pd, ci, ot, mr, st, empOpts);
+                    if (calc.gross <= 0) return;
+                    hasData = true;
+
+                    // Basic salary
+                    earnings['basic_salary'] += basicSalary;
+
+                    // Recurring inputs from payroll setup
+                    (pd.regular_inputs || []).forEach(function(ri) {
+                        var slug = slugify(getInputDesc(ri));
+                        var amt  = parseFloat(ri.amount) || 0;
+                        if (ri.type === 'deduction') {
+                            if (deductions[slug] !== undefined) deductions[slug] += amt;
+                        } else {
+                            if (earnings[slug] !== undefined) earnings[slug] += amt;
+                        }
+                    });
+
+                    // Period-specific one-time inputs
+                    (ci || []).forEach(function(input) {
+                        var slug = slugify(getInputDesc(input));
+                        var amt  = parseFloat(input.amount) || 0;
+                        if (input.type === 'deduction') {
+                            if (deductions[slug] !== undefined) deductions[slug] += amt;
+                        } else {
+                            if (earnings[slug] !== undefined) earnings[slug] += amt;
+                        }
+                    });
+
+                    // Overtime (calculated from hours × hourly rate × multiplier)
+                    if (ot && ot.length) {
+                        var hrRate  = basicSalary / PayrollEngine.HOURLY_DIVISOR;
+                        var otTotal = 0;
+                        ot.forEach(function(e) {
+                            otTotal += (parseFloat(e.hours) || 0) * hrRate * (parseFloat(e.rate_multiplier) || 1.5);
+                        });
+                        earnings['_overtime'] += PayrollEngine.r2(otTotal);
+                    }
+
+                    // Multi-rate pay (hours × explicit hourly rate)
+                    if (mr && mr.length) {
+                        var mrTotal = 0;
+                        mr.forEach(function(e) {
+                            mrTotal += (parseFloat(e.hours) || 0) * (parseFloat(e.hourly_rate) || 0);
+                        });
+                        earnings['_multi_rate'] += PayrollEngine.r2(mrTotal);
+                    }
+
+                    // Short time (hours missed × hourly rate, appears as a deduction column)
+                    if (st && st.length) {
+                        var stRate  = basicSalary / PayrollEngine.HOURLY_DIVISOR;
+                        var stTotal = 0;
+                        st.forEach(function(e) {
+                            stTotal += (parseFloat(e.hours_missed) || 0) * stRate;
+                        });
+                        deductions['_short_time'] += PayrollEngine.r2(stTotal);
+                    }
+
+                    // Summary totals from engine (authoritative — never re-derive)
+                    summary.paye            += calc.paye;
+                    summary.uif             += calc.uif;
+                    summary.totalBeforeTax  += calc.gross;
+                    // totalDeductions = PAYE + UIF + all other deductions
+                    summary.totalDeductions += calc.paye + calc.uif + calc.deductions;
+                    summary.netSalary       += calc.net;
+                });
+
+                if (!hasData) return;
+
+                var ln      = (emp.last_name  || '').trim();
+                var fn      = (emp.first_name || '').trim();
+                var empName = ln && fn ? ln + ', ' + fn : (ln || fn || emp.employee_number || '-');
+
+                rows.push({
+                    empName:    empName,
+                    empNumber:  emp.employee_number || '-',
+                    department: emp.department || '-',
+                    earnings:   earnings,
+                    deductions: deductions,
+                    summary: {
+                        totalBeforeTax:  PayrollEngine.r2(summary.totalBeforeTax),
+                        paye:            PayrollEngine.r2(summary.paye),
+                        uif:             PayrollEngine.r2(summary.uif),
+                        totalDeductions: PayrollEngine.r2(summary.totalDeductions),
+                        netSalary:       PayrollEngine.r2(summary.netSalary)
+                    }
+                });
+            });
+
+            return { earningCols: earningCols, deductionCols: deductionCols, rows: rows };
+        }
+
+        // Renders the transaction matrix table and updates currentReportData for export.
+        function renderMatrixTable(matrix) {
+            if (matrix.rows.length === 0) {
+                document.getElementById('results-section').innerHTML =
+                    '<div class="empty-state"><div class="empty-icon">📭</div>' +
+                    '<div class="empty-text">No payroll transactions found for the selected filters.</div>' +
+                    '<div class="empty-sub">Try adjusting the period range, employee, or status filter.</div></div>';
+                document.getElementById('export-bar').style.display = 'none';
+                currentReportData = { headers: [], rows: [], title: 'Transaction History Report' };
+                return;
+            }
+
+            // Column-level totals
+            var totEarnings   = {};
+            var totDeductions = {};
+            var totSummary    = { totalBeforeTax: 0, paye: 0, uif: 0, totalDeductions: 0, netSalary: 0 };
+            matrix.earningCols.forEach(function(c)   { totEarnings[c.key]   = 0; });
+            matrix.deductionCols.forEach(function(c) { totDeductions[c.key] = 0; });
+
+            matrix.rows.forEach(function(row) {
+                matrix.earningCols.forEach(function(c)   { totEarnings[c.key]   += row.earnings[c.key]   || 0; });
+                matrix.deductionCols.forEach(function(c) { totDeductions[c.key] += row.deductions[c.key] || 0; });
+                totSummary.totalBeforeTax  += row.summary.totalBeforeTax;
+                totSummary.paye            += row.summary.paye;
+                totSummary.uif             += row.summary.uif;
+                totSummary.totalDeductions += row.summary.totalDeductions;
+                totSummary.netSalary       += row.summary.netSalary;
+            });
+
+            // Hide columns where every employee had zero (keep Basic Salary always)
+            var activeEarningCols   = matrix.earningCols.filter(function(c)   { return c.key === 'basic_salary' || (totEarnings[c.key]   || 0) > 0; });
+            var activeDeductionCols = matrix.deductionCols.filter(function(c) { return (totDeductions[c.key] || 0) > 0; });
+
+            // Build HTML ─────────────────────────────────────────────────────
+            var html = '<div class="results-container"><table class="results-table" style="border-collapse:collapse;">';
+
+            // Two-row grouped header
+            html += '<thead>';
+            html += '<tr>';
+            html += '<th rowspan="2" style="vertical-align:middle;min-width:180px;">Employee Name</th>';
+            html += '<th rowspan="2" style="vertical-align:middle;min-width:80px;">Emp #</th>';
+            html += '<th rowspan="2" style="vertical-align:middle;min-width:110px;">Department</th>';
+            if (activeEarningCols.length > 0) {
+                html += '<th colspan="' + activeEarningCols.length + '" style="background:#e8f5e9;text-align:center;border-bottom:2px solid #a5d6a7;color:#2e7d32;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">↑ Earnings</th>';
+            }
+            if (activeDeductionCols.length > 0) {
+                html += '<th colspan="' + activeDeductionCols.length + '" style="background:#fff3e0;text-align:center;border-bottom:2px solid #ffcc80;color:#e65100;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">↓ Deductions</th>';
+            }
+            html += '<th colspan="5" style="background:#e8eaf6;text-align:center;border-bottom:2px solid #9fa8da;color:#283593;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Summary</th>';
+            html += '</tr>';
+
+            html += '<tr>';
+            activeEarningCols.forEach(function(c) {
+                html += '<th style="background:#f1f8e9;font-size:12px;min-width:120px;">' + c.label + '</th>';
+            });
+            activeDeductionCols.forEach(function(c) {
+                html += '<th style="background:#fff8e1;font-size:12px;min-width:120px;">' + c.label + '</th>';
+            });
+            html += '<th style="background:#e8eaf6;font-size:12px;min-width:130px;font-weight:700;">Total Before Tax</th>';
+            html += '<th style="background:#fce4ec;font-size:12px;min-width:100px;">PAYE</th>';
+            html += '<th style="background:#e0f2f1;font-size:12px;min-width:100px;">UIF</th>';
+            html += '<th style="background:#fbe9e7;font-size:12px;min-width:130px;">Total Deductions</th>';
+            html += '<th style="background:#e8f5e9;font-size:12px;min-width:130px;font-weight:700;">Net Salary</th>';
+            html += '</tr>';
+            html += '</thead><tbody>';
+
+            // Data rows
+            matrix.rows.forEach(function(row) {
+                html += '<tr>';
+                html += '<td style="font-weight:600;">' + row.empName + '</td>';
+                html += '<td>' + row.empNumber + '</td>';
+                html += '<td>' + row.department + '</td>';
+                activeEarningCols.forEach(function(c) {
+                    var v = row.earnings[c.key] || 0;
+                    html += v > 0
+                        ? '<td class="amount" style="color:#2e7d32;">' + formatMoney(v) + '</td>'
+                        : '<td class="amount" style="color:#bbb;">—</td>';
+                });
+                activeDeductionCols.forEach(function(c) {
+                    var v = row.deductions[c.key] || 0;
+                    html += v > 0
+                        ? '<td class="amount" style="color:#bf360c;">' + formatMoney(v) + '</td>'
+                        : '<td class="amount" style="color:#bbb;">—</td>';
+                });
+                html += '<td class="amount" style="font-weight:700;background:#f0f0f8;">'         + formatMoney(row.summary.totalBeforeTax)  + '</td>';
+                html += '<td class="amount" style="color:#c62828;">'                              + formatMoney(row.summary.paye)             + '</td>';
+                html += '<td class="amount" style="color:#00695c;">'                              + formatMoney(row.summary.uif)              + '</td>';
+                html += '<td class="amount" style="color:#bf360c;">'                              + formatMoney(row.summary.totalDeductions)  + '</td>';
+                html += '<td class="amount" style="font-weight:700;color:#1b5e20;background:#f0f8f0;">' + formatMoney(row.summary.netSalary) + '</td>';
+                html += '</tr>';
+            });
+
+            // Totals row
+            html += '<tr class="total-row"><td colspan="3">TOTALS</td>';
+            activeEarningCols.forEach(function(c) {
+                html += '<td class="amount">' + formatMoney(totEarnings[c.key] || 0) + '</td>';
+            });
+            activeDeductionCols.forEach(function(c) {
+                html += '<td class="amount">' + formatMoney(totDeductions[c.key] || 0) + '</td>';
+            });
+            html += '<td class="amount" style="font-weight:700;">' + formatMoney(totSummary.totalBeforeTax)  + '</td>';
+            html += '<td class="amount">'                          + formatMoney(totSummary.paye)             + '</td>';
+            html += '<td class="amount">'                          + formatMoney(totSummary.uif)              + '</td>';
+            html += '<td class="amount">'                          + formatMoney(totSummary.totalDeductions)  + '</td>';
+            html += '<td class="amount" style="font-weight:700;">' + formatMoney(totSummary.netSalary)       + '</td>';
+            html += '</tr>';
+
+            html += '</tbody></table></div>';
+            document.getElementById('results-section').innerHTML = html;
+            document.getElementById('export-bar').style.display = 'flex';
+            Permissions.enforceUI();
+
+            // Populate currentReportData so CSV / Excel / PDF exports work unchanged
+            var exportHeaders = ['Employee Name', 'Emp #', 'Department'];
+            activeEarningCols.forEach(function(c)   { exportHeaders.push(c.label); });
+            activeDeductionCols.forEach(function(c) { exportHeaders.push(c.label); });
+            exportHeaders.push('Total Before Tax', 'PAYE', 'UIF', 'Total Deductions', 'Net Salary');
+
+            var exportRows = matrix.rows.map(function(row) {
+                var r = [row.empName, row.empNumber, row.department];
+                activeEarningCols.forEach(function(c)   { r.push(formatMoney(row.earnings[c.key]   || 0)); });
+                activeDeductionCols.forEach(function(c) { r.push(formatMoney(row.deductions[c.key] || 0)); });
+                r.push(
+                    formatMoney(row.summary.totalBeforeTax),
+                    formatMoney(row.summary.paye),
+                    formatMoney(row.summary.uif),
+                    formatMoney(row.summary.totalDeductions),
+                    formatMoney(row.summary.netSalary)
+                );
+                return r;
+            });
+
+            currentReportData = { headers: exportHeaders, rows: exportRows, title: 'Transaction History Report' };
         }
 
         // ========== REPORT 2: EMPLOYEE MASTER LIST ==========
