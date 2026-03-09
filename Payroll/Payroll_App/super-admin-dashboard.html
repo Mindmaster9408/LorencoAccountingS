@@ -434,6 +434,22 @@
             >
         </div>
 
+        <!-- Data Backup & Restore -->
+        <div style="background:white; border-radius:15px; padding:25px; margin-bottom:25px; box-shadow:0 4px 15px rgba(0,0,0,0.1);">
+            <h2 style="color:#667eea; margin-bottom:15px;">💾 Data Backup &amp; Restore</h2>
+            <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:12px 15px; margin-bottom:15px; font-size:13px; color:#856404;">
+                ⚠️ <strong>Cross-Browser:</strong> Payroll data is stored in this browser only. Export below to transfer data to another browser (e.g. Edge → Chrome).
+            </div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <button onclick="exportAllData()" style="background:linear-gradient(135deg,#667eea,#764ba2); color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">⬇️ Export All Data</button>
+                <label style="background:linear-gradient(135deg,#28a745,#20c997); color:white; padding:10px 20px; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">
+                    ⬆️ Import Data
+                    <input type="file" id="adminImportFile" accept=".json" onchange="importDataFromFile(event)" style="display:none;">
+                </label>
+            </div>
+            <div id="adminImportStatus" style="margin-top:10px; font-size:13px;"></div>
+        </div>
+
         <div class="companies-section">
             <h2>Company Management</h2>
             <table id="companies-table">
@@ -688,6 +704,47 @@
                 closeModal('confirm-modal');
             }
         });
+
+        function exportAllData() {
+            var allData = {};
+            for (var i = 0; i < localStorage.length; i++) {
+                var key = localStorage.key(i);
+                try { allData[key] = JSON.parse(localStorage.getItem(key)); }
+                catch(e) { allData[key] = localStorage.getItem(key); }
+            }
+            var blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'payroll_full_backup_' + new Date().toISOString().slice(0,10) + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importDataFromFile(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+            var statusEl = document.getElementById('adminImportStatus');
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    var data = JSON.parse(e.target.result);
+                    if (!confirm('This will overwrite existing data with ' + Object.keys(data).length + ' items. Continue?')) return;
+                    Object.keys(data).forEach(function(key) {
+                        var val = data[key];
+                        localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
+                    });
+                    statusEl.innerHTML = '<span style="color:#28a745;">✓ Imported ' + Object.keys(data).length + ' items. Refreshing...</span>';
+                    setTimeout(function() { window.location.reload(); }, 1500);
+                } catch(err) {
+                    statusEl.innerHTML = '<span style="color:#dc3545;">✗ Import failed: ' + err.message + '</span>';
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
     </script>
     <script src="js/mobile-utils.js"></script>
 </body>

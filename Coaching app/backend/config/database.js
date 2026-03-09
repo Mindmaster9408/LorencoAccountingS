@@ -1,4 +1,4 @@
-// Database configuration and connection pool
+// Database configuration - Supabase PostgreSQL Connection
 import pg from 'pg';
 import dotenv from 'dotenv';
 
@@ -6,16 +6,24 @@ dotenv.config();
 
 const { Pool } = pg;
 
+// Support both Supabase DATABASE_URL and individual env vars
+const connectionConfig = process.env.DATABASE_URL
+    ? { connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+    : {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT || 5432,
+        database: process.env.DB_NAME || 'postgres',
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD,
+        ssl: { rejectUnauthorized: false },
+    };
+
 // Create PostgreSQL connection pool
 const pool = new Pool({
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 5432,
-    database: process.env.DB_NAME || 'coaching_app',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD,
-    max: 20, // Maximum number of clients in the pool
+    ...connectionConfig,
+    max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 5000,
 });
 
 // Test database connection

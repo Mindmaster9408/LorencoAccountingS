@@ -8,7 +8,6 @@ import { renderSettings } from './settings.js';
 import { isLoggedIn, getCurrentUser, isAdmin, getAdminMode } from './auth.js';
 import { showLoginScreen, showUserInfo } from './login-ui.js';
 import { renderAdminPanel } from './admin-panel.js';
-import { startAutoBackup } from './backup.js';
 
 // Initialize the app
 function init() {
@@ -58,10 +57,7 @@ function init() {
     // Render initial view
     switchRoute('dashboard');
 
-    // Start automatic backup system
-    startAutoBackup();
-
-    console.log('Coaching App ready!');
+    console.log('Coaching App ready! (Cloud storage — Supabase)');
 }
 
 function addUserInfoToSidebar() {

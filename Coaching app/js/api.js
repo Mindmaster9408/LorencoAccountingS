@@ -1,5 +1,6 @@
 // API configuration and helper functions
-export const API_BASE_URL = 'http://localhost:3001/api';
+// Auto-detect server URL — works for localhost and deployed environments
+export const API_BASE_URL = (window.location.origin) + '/api';
 
 const TOKEN_KEY = 'auth_token';
 

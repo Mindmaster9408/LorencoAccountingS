@@ -1,7 +1,59 @@
 // ============================================================
-// DataAccess - Abstraction layer over localStorage
-// Centralizes all data persistence operations.
-// Future: swap localStorage calls for Supabase/API calls.
+// DataAccess - Cloud storage layer via Supabase
+//
+// All data lives in Supabase (cloud PostgreSQL). The server
+// exposes the same /api/storage endpoints but now backed by
+// the payroll_kv_store table — no local files at all.
+//
+// On every page load this script:
+//   1. Fetches the full cloud data store into a local cache
+//   2. Every write goes to the server (Supabase) first,
+//      then updates the local cache for instant reads
+//
+// Works on localhost, Zeabur, or any deployed server.
+// ============================================================
+
+(function _initCloudSync() {
+    'use strict';
+
+    // These keys are session/auth — stay browser-local only (login state)
+    var SESSION_KEYS = { session: 1, token: 1 };
+
+    // Auto-detect server URL — works for localhost and deployed environments
+    var SERVER_URL = window.location.origin;
+
+    // In-memory cache for fast reads (populated from Supabase on every page load)
+    window._payrollCache = {};
+
+    try {
+        // Load ALL data from Supabase via server (synchronous on page load)
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', SERVER_URL + '/api/storage', false);   // false = synchronous
+        xhr.send(null);
+
+        if (xhr.status !== 200) throw new Error('Server returned ' + xhr.status);
+
+        window._payrollCache  = JSON.parse(xhr.responseText);
+        window._payrollServerUrl    = SERVER_URL;
+        window._payrollServerOnline = true;
+
+        console.log('%c✅ Payroll cloud connected — all data in Supabase (no local storage)', 'color:#28a745;font-weight:bold;');
+
+    } catch (e) {
+        window._payrollServerOnline = false;
+        console.log('%c❌ Payroll cloud server not reachable — data unavailable\n   ' + e.message, 'color:#dc3545;font-weight:bold;');
+    }
+}());
+
+// ============================================================
+// DataAccess - Cloud-ONLY abstraction (Supabase is truth)
+//
+// - get()    → reads from in-memory cache (loaded from Supabase)
+// - set()    → writes to Supabase, then updates cache
+// - remove() → deletes from Supabase, then removes from cache
+//
+// localStorage is NEVER used for payroll data.
+// You can switch browsers and all data is the same.
 // ============================================================
 
 var DataAccess = {
@@ -9,31 +61,65 @@ var DataAccess = {
     // === GENERIC OPERATIONS ===
 
     get: function(key) {
-        var val = localStorage.getItem(key);
-        if (!val) return null;
-        try { return JSON.parse(val); } catch(e) { return val; }
+        if (!window._payrollCache || !window._payrollCache.hasOwnProperty(key)) {
+            return null;
+        }
+        var cached = window._payrollCache[key];
+        if (typeof cached === 'string') {
+            try { return JSON.parse(cached); } catch(e) { return cached; }
+        }
+        return cached;
     },
 
     set: function(key, value) {
-        localStorage.setItem(key, JSON.stringify(value));
+        var jsonValue = JSON.stringify(value);
+
+        // Update in-memory cache immediately (for instant reads on same page)
+        if (window._payrollCache) {
+            window._payrollCache[key] = value;
+        }
+
+        // Write to Supabase via server (async, non-blocking)
+        if (window._payrollServerOnline) {
+            var x = new XMLHttpRequest();
+            x.open('PUT', (window._payrollServerUrl || window.location.origin) + '/api/storage/' + encodeURIComponent(key), true);
+            x.setRequestHeader('Content-Type', 'application/json');
+            x.onerror = function() { window._payrollServerOnline = false; };
+            x.send(JSON.stringify({ value: jsonValue }));
+        }
     },
 
     remove: function(key) {
-        localStorage.removeItem(key);
+        // Remove from in-memory cache
+        if (window._payrollCache) {
+            delete window._payrollCache[key];
+        }
+
+        // Delete from Supabase via server (async)
+        if (window._payrollServerOnline) {
+            var x = new XMLHttpRequest();
+            x.open('DELETE', (window._payrollServerUrl || window.location.origin) + '/api/storage/' + encodeURIComponent(key), true);
+            x.onerror = function() { window._payrollServerOnline = false; };
+            x.send(null);
+        }
     },
 
     // === SESSION ===
 
+    // === SESSION (browser-local only — login state per device) ===
+
     getSession: function() {
-        return this.get('session');
+        var val = localStorage.getItem('session');
+        if (!val) return null;
+        try { return JSON.parse(val); } catch(e) { return val; }
     },
 
     saveSession: function(session) {
-        this.set('session', session);
+        localStorage.setItem('session', JSON.stringify(session));
     },
 
     clearSession: function() {
-        this.remove('session');
+        localStorage.removeItem('session');
     },
 
     // === COMPANIES ===

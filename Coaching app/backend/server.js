@@ -1,9 +1,11 @@
-// Main Express server
+// Main Express server — Supabase cloud backend
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { testConnection } from './config/database.js';
 
 // Import routes
@@ -19,27 +21,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));
 
-// CORS configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
-    'http://localhost:5500',
-    'http://127.0.0.1:5500'
-];
-
-app.use(cors({
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    credentials: true
-}));
+// CORS — allow same-origin + any deployed origin
+app.use(cors());
 
 // Rate limiting
 const limiter = rateLimit({
@@ -79,18 +64,20 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({ error: 'Endpoint not found' });
+// Serve frontend static files (parent directory = Coaching app root)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const FRONTEND_DIR = path.join(__dirname, '..');
+app.use(express.static(FRONTEND_DIR, { extensions: ['html'] }));
+
+// Fallback: serve index.html for unmatched routes
+app.get('*', (req, res) => {
+    res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Error:', err);
-
-    if (err.message === 'Not allowed by CORS') {
-        return res.status(403).json({ error: 'CORS policy violation' });
-    }
 
     res.status(err.status || 500).json({
         error: err.message || 'Internal server error',
@@ -106,20 +93,20 @@ const startServer = async () => {
         const dbConnected = await testConnection();
 
         if (!dbConnected) {
-            console.error('❌ Failed to connect to database');
-            console.error('Please ensure PostgreSQL is running and .env is configured correctly');
+            console.error('❌ Failed to connect to Supabase database');
+            console.error('Please ensure DATABASE_URL is set correctly in .env');
             process.exit(1);
         }
 
         // Start listening
-        app.listen(PORT, () => {
+        app.listen(PORT, '0.0.0.0', () => {
             console.log('=================================');
-            console.log('  Coaching App Backend Server  ');
+            console.log('  Coaching App — Cloud Server    ');
             console.log('=================================');
-            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`Server running on port: ${PORT}`);
-            console.log(`Health check: http://localhost:${PORT}/health`);
-            console.log(`API base URL: http://localhost:${PORT}/api`);
+            console.log(`Storage:  Supabase (cloud PostgreSQL)`);
+            console.log(`Server:   http://localhost:${PORT}`);
+            console.log(`Health:   http://localhost:${PORT}/health`);
+            console.log('No local storage — deploy on Zeabur.');
             console.log('=================================');
         });
 
