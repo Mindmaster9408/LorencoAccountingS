@@ -52,7 +52,7 @@ export async function openClient(clientId, options = {}) {
 
     // Setup back button
     setTimeout(() => {
-        $('#back-to-tower')?.addEventListener('click', (e) => {
+        if ($('#back-to-tower')) $('#back-to-tower').addEventListener('click', (e) => {
             e.preventDefault();
 
             // Show header actions again
@@ -104,11 +104,11 @@ export async function openClient(clientId, options = {}) {
                 <div class="form-row">
                     <div class="form-group">
                         <label>First Name</label>
-                        <input type="text" id="detail-firstname" value="${escapeHtml(client.firstName || client.name?.split(' ')[0] || '')}" placeholder="First name">
+                        <input type="text" id="detail-firstname" value="${escapeHtml(client.firstName || ((client.name || '').split(' ')[0]) || '')}" placeholder="First name">
                     </div>
                     <div class="form-group">
                         <label>Surname</label>
-                        <input type="text" id="detail-surname" value="${escapeHtml(client.surname || client.name?.split(' ').slice(1).join(' ') || '')}" placeholder="Surname">
+                        <input type="text" id="detail-surname" value="${escapeHtml(client.surname || ((client.name || '').split(' ').slice(1).join(' ')) || '')}" placeholder="Surname">
                     </div>
                 </div>
                 <div class="form-row">

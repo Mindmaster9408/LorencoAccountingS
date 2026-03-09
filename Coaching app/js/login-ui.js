@@ -93,8 +93,10 @@ function attachLoginListeners() {
     const createBtn = $('#create-user-btn');
     if (createBtn) {
         createBtn.addEventListener('click', () => {
-            const username = $('#new-username')?.value.trim();
-            const fullName = $('#new-fullname')?.value.trim();
+            const usernameEl = $('#new-username');
+            const fullNameEl = $('#new-fullname');
+            const username = usernameEl ? usernameEl.value.trim() : '';
+            const fullName = fullNameEl ? fullNameEl.value.trim() : '';
 
             if (!username || !fullName) {
                 alert('Please enter both username and full name');
@@ -126,7 +128,7 @@ function attachLoginListeners() {
         if (input) {
             input.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
-                    createBtn?.click();
+                    if (createBtn) createBtn.click();
                 }
             });
         }
@@ -184,24 +186,25 @@ function showAdminLoginDialog() {
     document.body.appendChild(dialog);
 
     // Close button
-    $('#close-admin-modal')?.addEventListener('click', () => {
+    if ($('#close-admin-modal')) $('#close-admin-modal').addEventListener('click', () => {
         dialog.remove();
     });
 
     // Focus password field
     const passwordInput = $('#admin-password');
-    passwordInput?.focus();
+    if (passwordInput) passwordInput.focus();
 
     // Submit on Enter
-    passwordInput?.addEventListener('keypress', (e) => {
+    if (passwordInput) passwordInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
-            $('#admin-login-submit')?.click();
+            const submitBtn = $('#admin-login-submit');
+            if (submitBtn) submitBtn.click();
         }
     });
 
     // Login button
-    $('#admin-login-submit')?.addEventListener('click', () => {
-        const password = passwordInput?.value;
+    if ($('#admin-login-submit')) $('#admin-login-submit').addEventListener('click', () => {
+        const password = passwordInput ? passwordInput.value : '';
         const errorDiv = $('#admin-login-error');
 
         if (!password) {
@@ -269,7 +272,7 @@ function showAdminChoiceScreen() {
     `;
 
     // Admin panel choice
-    $('#choice-admin-panel')?.addEventListener('click', () => {
+    if ($('#choice-admin-panel')) $('#choice-admin-panel').addEventListener('click', () => {
         import('./auth.js').then(authModule => {
             authModule.setAdminMode(true);
             window.location.reload();
@@ -277,7 +280,7 @@ function showAdminChoiceScreen() {
     });
 
     // Coaching choice
-    $('#choice-coaching')?.addEventListener('click', () => {
+    if ($('#choice-coaching')) $('#choice-coaching').addEventListener('click', () => {
         import('./auth.js').then(authModule => {
             authModule.setAdminMode(false);
             window.location.reload();
@@ -285,7 +288,7 @@ function showAdminChoiceScreen() {
     });
 
     // Logout button
-    $('#logout-from-choice')?.addEventListener('click', () => {
+    if ($('#logout-from-choice')) $('#logout-from-choice').addEventListener('click', () => {
         import('./auth.js').then(authModule => {
             authModule.logout();
             authModule.clearAdminMode();
@@ -326,7 +329,7 @@ function showManageUsersDialog() {
     document.body.appendChild(dialog);
 
     // Close button
-    $('#close-modal')?.addEventListener('click', () => {
+    if ($('#close-modal')) $('#close-modal').addEventListener('click', () => {
         dialog.remove();
     });
 

@@ -14,6 +14,16 @@ function saveSettings(settings) {
 
 let currentSettings = null;
 
+function getInputValue(selector, fallback) {
+    const el = $(selector);
+    return el ? el.value : fallback;
+}
+
+function getInputChecked(selector, fallback) {
+    const el = $(selector);
+    return el ? el.checked : fallback;
+}
+
 export function renderSettings() {
     const view = $('#settings');
     if (!view) return;
@@ -350,7 +360,8 @@ function attachSettingsListeners() {
             tabContents.forEach(c => c.classList.remove('active'));
 
             btn.classList.add('active');
-            $(`#${tabName}-tab`)?.classList.add('active');
+            const tabEl = $(`#${tabName}-tab`);
+            if (tabEl) tabEl.classList.add('active');
         });
     });
 
@@ -493,25 +504,25 @@ window.removeCompanyLogo = function() {
 window.saveAllSettings = function() {
     currentSettings = {
         company: {
-            name: $('#company-name')?.value || 'The Neuro-Coach Method',
+            name: getInputValue('#company-name', 'The Neuro-Coach Method') || 'The Neuro-Coach Method',
             logo: currentSettings.company.logo,
-            primaryColor: $('#primary-color')?.value || '#3b82f6',
-            secondaryColor: $('#secondary-color')?.value || '#8b5cf6',
-            accentColor: $('#accent-color')?.value || '#ec4899'
+            primaryColor: getInputValue('#primary-color', '#3b82f6') || '#3b82f6',
+            secondaryColor: getInputValue('#secondary-color', '#8b5cf6') || '#8b5cf6',
+            accentColor: getInputValue('#accent-color', '#ec4899') || '#ec4899'
         },
         reportTemplates: {
             basisReport: {
-                headerText: $('#basis-header')?.value || 'BASIS Assessment Report',
-                footerText: $('#basis-footer')?.value || '© {year} {companyName}',
-                includeCoachName: $('#basis-include-coach')?.checked || false,
-                includeDate: $('#basis-include-date')?.checked || false,
-                includePageNumbers: $('#basis-include-pages')?.checked || false
+                headerText: getInputValue('#basis-header', 'BASIS Assessment Report') || 'BASIS Assessment Report',
+                footerText: getInputValue('#basis-footer', '© {year} {companyName}') || '© {year} {companyName}',
+                includeCoachName: getInputChecked('#basis-include-coach', false) || false,
+                includeDate: getInputChecked('#basis-include-date', false) || false,
+                includePageNumbers: getInputChecked('#basis-include-pages', false) || false
             },
             progressReport: {
-                headerText: $('#progress-header')?.value || 'Progress Report',
-                footerText: $('#progress-footer')?.value || '© {year} {companyName}',
-                includeCoachName: $('#progress-include-coach')?.checked || false,
-                includeDate: $('#progress-include-date')?.checked || false
+                headerText: getInputValue('#progress-header', 'Progress Report') || 'Progress Report',
+                footerText: getInputValue('#progress-footer', '© {year} {companyName}') || '© {year} {companyName}',
+                includeCoachName: getInputChecked('#progress-include-coach', false) || false,
+                includeDate: getInputChecked('#progress-include-date', false) || false
             }
         }
     };

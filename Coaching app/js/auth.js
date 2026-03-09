@@ -114,12 +114,13 @@ export function isLoggedIn() {
 
 // Get user-specific storage key
 export function getUserStorageKey(username) {
-    return `coaching_app_store_${username || getCurrentUser()?.username}`;
+    const currentUser = getCurrentUser();
+    return `coaching_app_store_${username || (currentUser ? currentUser.username : '')}`;
 }
 
 // Admin-specific functions
 export function isAdmin(user) {
-    return user?.isAdmin === true || user?.username === ADMIN_USER.username;
+    return (user && user.isAdmin === true) || (user && user.username === ADMIN_USER.username);
 }
 
 export function loginAdmin(password) {

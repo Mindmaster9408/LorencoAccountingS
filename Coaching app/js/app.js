@@ -21,7 +21,7 @@ function init() {
     }
 
     const currentUser = getCurrentUser();
-    console.log('User logged in:', currentUser?.fullName);
+    console.log('User logged in:', currentUser ? currentUser.fullName : undefined);
 
     // Check if admin and in admin mode
     if (isAdmin(currentUser) && getAdminMode()) {
@@ -62,7 +62,7 @@ function init() {
 
 function addUserInfoToSidebar() {
     const sidebar = document.querySelector('.sidebar');
-    const brand = sidebar?.querySelector('.brand');
+    const brand = sidebar ? sidebar.querySelector('.brand') : null;
 
     if (brand) {
         const userInfoHtml = showUserInfo();

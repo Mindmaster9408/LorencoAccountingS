@@ -56,7 +56,9 @@ function createClientCard(client) {
     const currentStepData = JOURNEY_DATA[currentStep];
 
     // Get BASIS code if available
-    const basisCode = client.basisResults?.basisOrder?.join(' ') || null;
+    const basisCode = (client.basisResults && client.basisResults.basisOrder)
+        ? client.basisResults.basisOrder.join(' ')
+        : null;
     const hasBasis = !!basisCode;
 
     // Determine color based on language preference
@@ -92,9 +94,9 @@ function createClientCard(client) {
         Step ${currentStep}: ${currentStepData.title}
       </div>
       <div class="mini-gauges">
-        <div class="g-badge">Fuel ${Math.round(client.gauges?.fuel || 0)}%</div>
-        <div class="g-badge">Flow ${Math.round(client.gauges?.horizon || 0)}%</div>
-        <div class="g-badge">Engine ${Math.round(client.gauges?.engine || 0)}%</div>
+        <div class="g-badge">Fuel ${Math.round((client.gauges && client.gauges.fuel) || 0)}%</div>
+        <div class="g-badge">Flow ${Math.round((client.gauges && client.gauges.horizon) || 0)}%</div>
+        <div class="g-badge">Engine ${Math.round((client.gauges && client.gauges.engine) || 0)}%</div>
       </div>
       <div class="progress-bar"><i style="width:${percentComplete}%"></i></div>
     </div>
