@@ -5,6 +5,11 @@ import { saveClient } from './storage.js';
 // Global current client reference
 let currentClient = null;
 
+function getInputValue(selector) {
+    const el = $(selector);
+    return el ? el.value : undefined;
+}
+
 // Helper function to render AI chat
 export function renderAIChat(chatHistory) {
     const container = document.getElementById('ai-chat');
@@ -31,21 +36,21 @@ window.save4QuadrantExercise = async function() {
     if (!currentClient) return;
 
     const data = {
-        painsAndFrustrations: $('#q-pains')?.value || '',
-        goalsAndDesires: $('#q-goals')?.value || '',
-        fearsAndImplications: $('#q-fears')?.value || '',
-        dreamsAndAspirations: $('#q-dreams')?.value || '',
-        dreamSummary: $('#dream-summary')?.value || '',
-        our1Percent: $('#our-1-percent')?.value || '',
+        painsAndFrustrations: getInputValue('#q-pains') || '',
+        goalsAndDesires: getInputValue('#q-goals') || '',
+        fearsAndImplications: getInputValue('#q-fears') || '',
+        dreamsAndAspirations: getInputValue('#q-dreams') || '',
+        dreamSummary: getInputValue('#dream-summary') || '',
+        our1Percent: getInputValue('#our-1-percent') || '',
         evaluations: {
-            experience: $('#eval-experience')?.value || '',
-            insights: $('#eval-insights')?.value || '',
-            stoodOut: $('#eval-stood-out')?.value || '',
-            future23Years: $('#eval-future')?.value || '',
-            next24Hours: $('#eval-24hours')?.value || ''
+            experience: getInputValue('#eval-experience') || '',
+            insights: getInputValue('#eval-insights') || '',
+            stoodOut: getInputValue('#eval-stood-out') || '',
+            future23Years: getInputValue('#eval-future') || '',
+            next24Hours: getInputValue('#eval-24hours') || ''
         },
-        sessionNotes: $('#session-notes')?.value || '',
-        aiCoachNotes: currentClient.exerciseData?.fourQuadrant?.aiCoachNotes || []
+        sessionNotes: getInputValue('#session-notes') || '',
+        aiCoachNotes: (((currentClient.exerciseData || {}).fourQuadrant || {}).aiCoachNotes) || []
     };
 
     currentClient.exerciseData.fourQuadrant = data;
@@ -204,19 +209,19 @@ window.savePresentGapFuture = async function() {
     if (!currentClient) return;
 
     const data = {
-        present: Array(10).fill(null).map((_, i) => $('#present-' + i)?.value || ''),
-        gap: Array(9).fill(null).map((_, i) => $('#gap-' + i)?.value || ''),
-        future: Array(11).fill(null).map((_, i) => $('#future-' + i)?.value || ''),
-        gapFillIn: Array(4).fill(null).map((_, i) => $('#gap-fill-' + i)?.value || ''),
+        present: Array(10).fill(null).map((_, i) => getInputValue('#present-' + i) || ''),
+        gap: Array(9).fill(null).map((_, i) => getInputValue('#gap-' + i) || ''),
+        future: Array(11).fill(null).map((_, i) => getInputValue('#future-' + i) || ''),
+        gapFillIn: Array(4).fill(null).map((_, i) => getInputValue('#gap-fill-' + i) || ''),
         evaluations: {
-            experience: $('#pgf-eval-experience')?.value || '',
-            insights: $('#pgf-eval-insights')?.value || '',
-            stoodOut: $('#pgf-eval-stood-out')?.value || '',
-            future23Years: $('#pgf-eval-future')?.value || '',
-            next24Hours: $('#pgf-eval-24hours')?.value || ''
+            experience: getInputValue('#pgf-eval-experience') || '',
+            insights: getInputValue('#pgf-eval-insights') || '',
+            stoodOut: getInputValue('#pgf-eval-stood-out') || '',
+            future23Years: getInputValue('#pgf-eval-future') || '',
+            next24Hours: getInputValue('#pgf-eval-24hours') || ''
         },
-        sessionNotes: $('#pgf-session-notes')?.value || '',
-        aiCoachNotes: currentClient.exerciseData?.presentGapFuture?.aiCoachNotes || []
+        sessionNotes: getInputValue('#pgf-session-notes') || '',
+        aiCoachNotes: (((currentClient.exerciseData || {}).presentGapFuture || {}).aiCoachNotes) || []
     };
 
     currentClient.exerciseData.presentGapFuture = data;
@@ -225,7 +230,7 @@ window.savePresentGapFuture = async function() {
     const dreamConfirmation = data.future[10]; // Index 10 = "Do you still agree with your dream?"
     if (dreamConfirmation && dreamConfirmation.trim().toLowerCase().includes('yes')) {
         // Keep the dream from Step 1
-        const dreamFromStep1 = currentClient.exerciseData?.fourQuadrant?.dreamSummary;
+        const dreamFromStep1 = (((currentClient.exerciseData || {}).fourQuadrant || {}).dreamSummary);
         if (dreamFromStep1) {
             currentClient.dream = dreamFromStep1.trim();
         }
@@ -320,8 +325,8 @@ The Flight Plan visualizes the journey from current reality to dream achievement
 };
 
 window.calculateOnePercent = function() {
-    const timelineNumber = parseFloat($('#timeline-number')?.value) || 0;
-    const timelineUnit = $('#timeline-unit')?.value || 'years';
+    const timelineNumber = parseFloat(getInputValue('#timeline-number')) || 0;
+    const timelineUnit = getInputValue('#timeline-unit') || 'years';
 
     let totalDays = 0;
     if (timelineUnit === 'years') {
@@ -353,8 +358,8 @@ window.calculateOnePercent = function() {
 window.saveFlightPlan = async function() {
     if (!currentClient) return;
 
-    const timelineNumber = $('#timeline-number')?.value || '';
-    const timelineUnit = $('#timeline-unit')?.value || 'years';
+    const timelineNumber = getInputValue('#timeline-number') || '';
+    const timelineUnit = getInputValue('#timeline-unit') || 'years';
 
     let totalDays = 0;
     if (timelineNumber) {
@@ -367,16 +372,16 @@ window.saveFlightPlan = async function() {
         timelineUnit: timelineUnit,
         totalDays: totalDays,
         onePercentDays: onePercentDays,
-        flightPlanItems: Array(5).fill(null).map((_, i) => $('#flight-item-' + i)?.value || ''),
+        flightPlanItems: Array(5).fill(null).map((_, i) => getInputValue('#flight-item-' + i) || ''),
         evaluations: {
-            experience: $('#fp-eval-experience')?.value || '',
-            insights: $('#fp-eval-insights')?.value || '',
-            stoodOut: $('#fp-eval-stood-out')?.value || '',
-            future23Years: $('#fp-eval-future')?.value || '',
-            next24Hours: $('#fp-eval-24hours')?.value || ''
+            experience: getInputValue('#fp-eval-experience') || '',
+            insights: getInputValue('#fp-eval-insights') || '',
+            stoodOut: getInputValue('#fp-eval-stood-out') || '',
+            future23Years: getInputValue('#fp-eval-future') || '',
+            next24Hours: getInputValue('#fp-eval-24hours') || ''
         },
-        sessionNotes: $('#fp-session-notes')?.value || '',
-        aiCoachNotes: currentClient.exerciseData?.flightPlan?.aiCoachNotes || []
+        sessionNotes: getInputValue('#fp-session-notes') || '',
+        aiCoachNotes: (((currentClient.exerciseData || {}).flightPlan || {}).aiCoachNotes) || []
     };
 
     currentClient.exerciseData.flightPlan = data;
@@ -499,20 +504,20 @@ window.saveDeepDive = async function() {
 
     const deepDiveItems = currentClient.exerciseData.deepDive.deepDiveItems.map((item, i) => ({
         question: `What is most important${i > 0 ? ' about that' : ''}?`,
-        answer: $(`#dd-answer-${i}`)?.value || ''
+        answer: getInputValue(`#dd-answer-${i}`) || ''
     }));
 
     const data = {
         deepDiveItems: deepDiveItems,
         evaluations: {
-            experience: $('#dd-eval-experience')?.value || '',
-            insights: $('#dd-eval-insights')?.value || '',
-            stoodOut: $('#dd-eval-stood-out')?.value || '',
-            future23Years: $('#dd-eval-future')?.value || '',
-            next24Hours: $('#dd-eval-24hours')?.value || ''
+            experience: getInputValue('#dd-eval-experience') || '',
+            insights: getInputValue('#dd-eval-insights') || '',
+            stoodOut: getInputValue('#dd-eval-stood-out') || '',
+            future23Years: getInputValue('#dd-eval-future') || '',
+            next24Hours: getInputValue('#dd-eval-24hours') || ''
         },
-        sessionNotes: $('#dd-session-notes')?.value || '',
-        aiCoachNotes: currentClient.exerciseData?.deepDive?.aiCoachNotes || []
+        sessionNotes: getInputValue('#dd-session-notes') || '',
+        aiCoachNotes: (((currentClient.exerciseData || {}).deepDive || {}).aiCoachNotes) || []
     };
 
     currentClient.exerciseData.deepDive = data;
@@ -588,8 +593,8 @@ window.updateEcochartTotals = function() {
         const giveInput = document.getElementById(`block-give-${i}`);
         const takeInput = document.getElementById(`block-take-${i}`);
 
-        const giveValue = parseFloat(giveInput?.value || 0);
-        const takeValue = parseFloat(takeInput?.value || 0);
+        const giveValue = parseFloat((giveInput && giveInput.value) || 0);
+        const takeValue = parseFloat((takeInput && takeInput.value) || 0);
 
         totalGive += giveValue;
         totalTake += takeValue;
@@ -641,22 +646,22 @@ window.saveEcochart = async function() {
 
     // Collect all block data
     const blocks = currentClient.exerciseData.ecochart.blocks.map((block, i) => ({
-        name: $('#block-name-' + i)?.value || '',
-        give: parseFloat($('#block-give-' + i)?.value || 0),
-        take: parseFloat($('#block-take-' + i)?.value || 0)
+        name: getInputValue('#block-name-' + i) || '',
+        give: parseFloat(getInputValue('#block-give-' + i) || 0),
+        take: parseFloat(getInputValue('#block-take-' + i) || 0)
     }));
 
     const data = {
         blocks: blocks,
         evaluations: {
-            experience: $('#eco-eval-experience')?.value || '',
-            insights: $('#eco-eval-insights')?.value || '',
-            stoodOut: $('#eco-eval-stood-out')?.value || '',
-            future23Years: $('#eco-eval-future')?.value || '',
-            next24Hours: $('#eco-eval-24hours')?.value || ''
+            experience: getInputValue('#eco-eval-experience') || '',
+            insights: getInputValue('#eco-eval-insights') || '',
+            stoodOut: getInputValue('#eco-eval-stood-out') || '',
+            future23Years: getInputValue('#eco-eval-future') || '',
+            next24Hours: getInputValue('#eco-eval-24hours') || ''
         },
-        sessionNotes: $('#eco-session-notes')?.value || '',
-        aiCoachNotes: currentClient.exerciseData?.ecochart?.aiCoachNotes || []
+        sessionNotes: getInputValue('#eco-session-notes') || '',
+        aiCoachNotes: (((currentClient.exerciseData || {}).ecochart || {}).aiCoachNotes) || []
     };
 
     currentClient.exerciseData.ecochart = data;
@@ -753,38 +758,38 @@ window.updateAssessmentBars = function() {
         const id = input.id;
 
         // Find corresponding bar
-        const barFill = input.nextElementSibling?.querySelector('.bar-fill');
-        const barValue = input.nextElementSibling?.querySelector('.bar-value');
+        const barFill = input.nextElementSibling ? input.nextElementSibling.querySelector('.bar-fill') : null;
+        const barValue = input.nextElementSibling ? input.nextElementSibling.querySelector('.bar-value') : null;
 
         if (barFill) barFill.style.width = value + '%';
         if (barValue) barValue.textContent = value + '%';
     });
 
     // Update total scores
-    const posTotal = (parseFloat($('#pos-expectation')?.value || 0)) +
-                     (parseFloat($('#pos-achievement')?.value || 0)) +
-                     (parseFloat($('#pos-satisfaction')?.value || 0));
+    const posTotal = (parseFloat(getInputValue('#pos-expectation') || 0)) +
+                     (parseFloat(getInputValue('#pos-achievement') || 0)) +
+                     (parseFloat(getInputValue('#pos-satisfaction') || 0));
 
-    const negTotal = (parseFloat($('#neg-frustration')?.value || 0)) +
-                     (parseFloat($('#neg-helplessness')?.value || 0)) +
-                     (parseFloat($('#neg-stress')?.value || 0));
+    const negTotal = (parseFloat(getInputValue('#neg-frustration') || 0)) +
+                     (parseFloat(getInputValue('#neg-helplessness') || 0)) +
+                     (parseFloat(getInputValue('#neg-stress') || 0));
 
-    const selfTotal = (parseFloat($('#self-insecurity')?.value || 0)) +
-                      (parseFloat($('#self-guilt')?.value || 0)) +
-                      (parseFloat($('#self-worth')?.value || 0));
+    const selfTotal = (parseFloat(getInputValue('#self-insecurity') || 0)) +
+                      (parseFloat(getInputValue('#self-guilt') || 0)) +
+                      (parseFloat(getInputValue('#self-worth') || 0));
 
-    const emoTotal = (parseFloat($('#emo-thoughts')?.value || 0)) +
-                     (parseFloat($('#emo-paranoia')?.value || 0)) +
-                     (parseFloat($('#emo-anxiety')?.value || 0)) +
-                     (parseFloat($('#emo-dependency')?.value || 0)) +
-                     (parseFloat($('#emo-senselessness')?.value || 0)) +
-                     (parseFloat($('#emo-memory')?.value || 0)) +
-                     (parseFloat($('#emo-suicidal')?.value || 0));
+    const emoTotal = (parseFloat(getInputValue('#emo-thoughts') || 0)) +
+                     (parseFloat(getInputValue('#emo-paranoia') || 0)) +
+                     (parseFloat(getInputValue('#emo-anxiety') || 0)) +
+                     (parseFloat(getInputValue('#emo-dependency') || 0)) +
+                     (parseFloat(getInputValue('#emo-senselessness') || 0)) +
+                     (parseFloat(getInputValue('#emo-memory') || 0)) +
+                     (parseFloat(getInputValue('#emo-suicidal') || 0));
 
-    const flowTotal = (parseFloat($('#flow-perseverance')?.value || 0)) +
-                      (parseFloat($('#flow-passion')?.value || 0)) +
-                      (parseFloat($('#flow-focus')?.value || 0)) +
-                      (parseFloat($('#flow-mastery')?.value || 0));
+    const flowTotal = (parseFloat(getInputValue('#flow-perseverance') || 0)) +
+                      (parseFloat(getInputValue('#flow-passion') || 0)) +
+                      (parseFloat(getInputValue('#flow-focus') || 0)) +
+                      (parseFloat(getInputValue('#flow-mastery') || 0));
 
     // Update total score displays
     const totals = document.querySelectorAll('.total-score');
@@ -800,44 +805,44 @@ window.saveAssessments = async function() {
 
     const data = {
         positivePsychoSocial: {
-            expectation: parseFloat($('#pos-expectation')?.value || 0),
-            achievement: parseFloat($('#pos-achievement')?.value || 0),
-            satisfaction: parseFloat($('#pos-satisfaction')?.value || 0)
+            expectation: parseFloat(getInputValue('#pos-expectation') || 0),
+            achievement: parseFloat(getInputValue('#pos-achievement') || 0),
+            satisfaction: parseFloat(getInputValue('#pos-satisfaction') || 0)
         },
         negativePsychoSocial: {
-            frustration: parseFloat($('#neg-frustration')?.value || 0),
-            helplessness: parseFloat($('#neg-helplessness')?.value || 0),
-            stress: parseFloat($('#neg-stress')?.value || 0)
+            frustration: parseFloat(getInputValue('#neg-frustration') || 0),
+            helplessness: parseFloat(getInputValue('#neg-helplessness') || 0),
+            stress: parseFloat(getInputValue('#neg-stress') || 0)
         },
         selfPerception: {
-            innerInsecurity: parseFloat($('#self-insecurity')?.value || 0),
-            guiltFeelings: parseFloat($('#self-guilt')?.value || 0),
-            lackOfSelfWorth: parseFloat($('#self-worth')?.value || 0)
+            innerInsecurity: parseFloat(getInputValue('#self-insecurity') || 0),
+            guiltFeelings: parseFloat(getInputValue('#self-guilt') || 0),
+            lackOfSelfWorth: parseFloat(getInputValue('#self-worth') || 0)
         },
         emotionalFunctioning: {
-            disturbingThoughts: parseFloat($('#emo-thoughts')?.value || 0),
-            paranoia: parseFloat($('#emo-paranoia')?.value || 0),
-            anxiety: parseFloat($('#emo-anxiety')?.value || 0),
-            dependency: parseFloat($('#emo-dependency')?.value || 0),
-            senselessnessOfExistence: parseFloat($('#emo-senselessness')?.value || 0),
-            memoryLoss: parseFloat($('#emo-memory')?.value || 0),
-            suicidalThoughts: parseFloat($('#emo-suicidal')?.value || 0)
+            disturbingThoughts: parseFloat(getInputValue('#emo-thoughts') || 0),
+            paranoia: parseFloat(getInputValue('#emo-paranoia') || 0),
+            anxiety: parseFloat(getInputValue('#emo-anxiety') || 0),
+            dependency: parseFloat(getInputValue('#emo-dependency') || 0),
+            senselessnessOfExistence: parseFloat(getInputValue('#emo-senselessness') || 0),
+            memoryLoss: parseFloat(getInputValue('#emo-memory') || 0),
+            suicidalThoughts: parseFloat(getInputValue('#emo-suicidal') || 0)
         },
         flowStateQualities: {
-            perseverance: parseFloat($('#flow-perseverance')?.value || 0),
-            passion: parseFloat($('#flow-passion')?.value || 0),
-            focus: parseFloat($('#flow-focus')?.value || 0),
-            mastery: parseFloat($('#flow-mastery')?.value || 0)
+            perseverance: parseFloat(getInputValue('#flow-perseverance') || 0),
+            passion: parseFloat(getInputValue('#flow-passion') || 0),
+            focus: parseFloat(getInputValue('#flow-focus') || 0),
+            mastery: parseFloat(getInputValue('#flow-mastery') || 0)
         },
         evaluations: {
-            experience: $('#assess-eval-experience')?.value || '',
-            insights: $('#assess-eval-insights')?.value || '',
-            stoodOut: $('#assess-eval-stood-out')?.value || '',
-            future23Years: $('#assess-eval-future')?.value || '',
-            next24Hours: $('#assess-eval-24hours')?.value || ''
+            experience: getInputValue('#assess-eval-experience') || '',
+            insights: getInputValue('#assess-eval-insights') || '',
+            stoodOut: getInputValue('#assess-eval-stood-out') || '',
+            future23Years: getInputValue('#assess-eval-future') || '',
+            next24Hours: getInputValue('#assess-eval-24hours') || ''
         },
-        sessionNotes: $('#assess-session-notes')?.value || '',
-        aiCoachNotes: currentClient.exerciseData?.assessments?.aiCoachNotes || []
+        sessionNotes: getInputValue('#assess-session-notes') || '',
+        aiCoachNotes: (((currentClient.exerciseData || {}).assessments || {}).aiCoachNotes) || []
     };
 
     currentClient.exerciseData.assessments = data;
@@ -983,11 +988,11 @@ window.saveEmotionWork = async function() {
 
     const emotionData = {
         ...currentEmotionWork,
-        triggers: $('#modal-triggers')?.value || '',
-        bodySensations: $('#modal-body-sensations')?.value || '',
-        thoughts: $('#modal-thoughts')?.value || '',
-        responses: $('#modal-responses')?.value || '',
-        newResponse: $('#modal-new-response')?.value || '',
+        triggers: getInputValue('#modal-triggers') || '',
+        bodySensations: getInputValue('#modal-body-sensations') || '',
+        thoughts: getInputValue('#modal-thoughts') || '',
+        responses: getInputValue('#modal-responses') || '',
+        newResponse: getInputValue('#modal-new-response') || '',
         savedAt: new Date().toISOString()
     };
 
@@ -1037,13 +1042,13 @@ window.saveMLNP = async function() {
     const data = {
         sessions: currentClient.exerciseData.mlnp.sessions || [],
         evaluations: {
-            experience: $('#mlnp-eval-experience')?.value || '',
-            insights: $('#mlnp-eval-insights')?.value || '',
-            stoodOut: $('#mlnp-eval-stood-out')?.value || '',
-            future23Years: $('#mlnp-eval-future')?.value || '',
-            next24Hours: $('#mlnp-eval-next24')?.value || ''
+            experience: getInputValue('#mlnp-eval-experience') || '',
+            insights: getInputValue('#mlnp-eval-insights') || '',
+            stoodOut: getInputValue('#mlnp-eval-stood-out') || '',
+            future23Years: getInputValue('#mlnp-eval-future') || '',
+            next24Hours: getInputValue('#mlnp-eval-next24') || ''
         },
-        sessionNotes: $('#mlnp-session-notes')?.value || '',
+        sessionNotes: getInputValue('#mlnp-session-notes') || '',
         aiCoachNotes: currentClient.exerciseData.mlnp.aiCoachNotes || []
     };
 
@@ -1092,7 +1097,7 @@ window.sendAIMessageMLNP = async function() {
 
     // Simulate AI response based on MLNP context
     let aiResponse = '';
-    const sessionCount = currentClient.exerciseData.mlnp.sessions?.length || 0;
+    const sessionCount = (currentClient.exerciseData.mlnp.sessions && currentClient.exerciseData.mlnp.sessions.length) || 0;
 
     if (message.toLowerCase().includes('pattern') || message.toLowerCase().includes('notice')) {
         aiResponse = `Based on your ${sessionCount} emotion exploration(s), I notice you're becoming more aware of your emotional patterns. This awareness is the first step in rewiring neural pathways. What specific pattern would you like to shift?`;

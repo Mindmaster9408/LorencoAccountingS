@@ -48,7 +48,7 @@ export async function renderLeadsList() {
     if (!container) return;
 
     const activeTab = document.querySelector('.leads-filters .tab.active');
-    const filter = activeTab?.dataset.filter || 'all';
+    const filter = (activeTab && activeTab.dataset && activeTab.dataset.filter) || 'all';
 
     let filteredLeads = leads;
     const wantsCoaching = l => l.wants_coaching || l.wantsCoaching;
@@ -93,7 +93,9 @@ function createLeadCard(lead) {
 
     const registeredDate = formatDateTime(parseStandardDate(lead.created_at || lead.registeredAt));
 
-    const basisCode = (lead.basis_results || lead.basisResults)?.basisOrder?.join(' ') || '—';
+    const basisSource = lead.basis_results || lead.basisResults;
+    const basisOrder = (basisSource && basisSource.basisOrder) ? basisSource.basisOrder : [];
+    const basisCode = basisOrder.join(' ') || '—';
 
     return `
         <div class="${cardClasses.join(' ')}" data-lead-id="${lead.id}">
