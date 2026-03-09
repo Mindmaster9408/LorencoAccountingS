@@ -1309,7 +1309,7 @@
                 const period = `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}`;
                 
                 if (vatPeriods[period]) {
-                    journal.entries?.forEach(entry => {
+                    (journal.entries || []).forEach(entry => {
                         const amount = parseFloat(entry.credit || entry.debit || 0);
                         const vatCode = entry.vatCode || '';
                         
@@ -1348,7 +1348,7 @@
                 if (index === rows.length - 1) return; // Skip total row
                 
                 const cells = row.cells;
-                const period = cells[1]?.textContent.trim();
+                const period = cells[1] ? cells[1].textContent.trim() : '';
                 
                 if (vatPeriods[period]) {
                     const data = vatPeriods[period];
@@ -1426,7 +1426,8 @@
 
         // Period selector and reconciliation workflow
         async function selectVATPeriod() {
-            const periodKey = document.getElementById('periodSelect')?.value;
+            const periodSelectEl = document.getElementById('periodSelect');
+            const periodKey = periodSelectEl ? periodSelectEl.value : '';
             if (!periodKey) return;
 
             try {
@@ -1563,9 +1564,10 @@
             }
 
             try {
+                const soaAmountEl = document.getElementById('soaAmount');
                 const reconData = {
                     vatPeriodId: currentPeriodData.id,
-                    soaAmount: document.getElementById('soaAmount')?.value || null,
+                    soaAmount: soaAmountEl ? soaAmountEl.value : null,
                     lines: [], // TODO: Collect line items from table
                     metadata: {}
                 };
@@ -2008,8 +2010,10 @@
             // In a real implementation, you'd have period-specific TB values
             
             // Get TB totals
-            const incomeVatTotal = parseFloat(document.querySelector('.tb-vat-total-income')?.textContent) || 0;
-            const expenseVatTotal = parseFloat(document.querySelector('.tb-vat-total-expense')?.textContent) || 0;
+            const incomeVatEl = document.querySelector('.tb-vat-total-income');
+            const expenseVatEl = document.querySelector('.tb-vat-total-expense');
+            const incomeVatTotal = parseFloat(incomeVatEl ? incomeVatEl.textContent : 0) || 0;
+            const expenseVatTotal = parseFloat(expenseVatEl ? expenseVatEl.textContent : 0) || 0;
 
             // Update "According to TB" for all periods
             document.querySelectorAll('.tb-income-ref').forEach(span => {
@@ -2030,8 +2034,8 @@
                 const inputs = row.querySelectorAll('input.vat-input');
                 // Column 1: Inclusive Income (115%)
                 // Column 2: Output (15%)
-                const inclusiveIncome = parseFloat(inputs[0]?.value) || 0;
-                const output15 = parseFloat(inputs[1]?.value) || 0;
+                const inclusiveIncome = parseFloat(inputs[0] ? inputs[0].value : 0) || 0;
+                const output15 = parseFloat(inputs[1] ? inputs[1].value : 0) || 0;
                 
                 const vatReportExcl = inclusiveIncome - output15;
                 span.textContent = vatReportExcl.toFixed(2);
@@ -2047,8 +2051,8 @@
                 const inputs = row.querySelectorAll('input.vat-input');
                 // Column 6: Inclusive Expenses (115%)
                 // Column 7: Input (15%)
-                const inclusiveExpense = parseFloat(inputs[5]?.value) || 0;
-                const input15 = parseFloat(inputs[6]?.value) || 0;
+                const inclusiveExpense = parseFloat(inputs[5] ? inputs[5].value : 0) || 0;
+                const input15 = parseFloat(inputs[6] ? inputs[6].value : 0) || 0;
                 
                 const vatReportExcl = inclusiveExpense - input15;
                 span.textContent = vatReportExcl.toFixed(2);

@@ -726,9 +726,9 @@
         console.warn('Failed to load company details, using demo data');
         // Demo data
         const demoData = {
-          name: currentCompany?.name || 'THEKSTRA BAKKERT (Pty) Ltd',
+          name: (currentCompany && currentCompany.name) || 'THEKSTRA BAKKERT (Pty) Ltd',
           tradingAs: '',
-          regNumber: currentCompany?.regNumber || '2020/123456/07',
+          regNumber: (currentCompany && currentCompany.regNumber) || '2020/123456/07',
           companyType: 'pty_ltd',
           incomeTaxNo: '9012345678',
           vatNumber: '4012345678',

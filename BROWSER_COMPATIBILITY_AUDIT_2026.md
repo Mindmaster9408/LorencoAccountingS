@@ -32,7 +32,7 @@ This comprehensive cross-browser compatibility audit analyzed the entire Lorenco
 ### Current Risk Snapshot (Browser-Delivered JS/HTML)
 
 Totals across primary browser apps (`frontend-ecosystem`, `frontend-accounting`, `Point of Sale`, `Payroll_App`):
-- Optional chaining occurrences: **66**
+- Optional chaining occurrences: **44**
 - Locale-dependent date formatting occurrences: **84**
 - Storage API usage (`localStorage` / `sessionStorage`): **284**
 
@@ -41,8 +41,8 @@ Per-app remaining counts:
 | App | Optional Chaining | Locale Date Formatting | Storage API Uses |
 |-----|-------------------|------------------------|------------------|
 | `accounting-ecosystem/frontend-ecosystem` | 1 | 0 | 93 |
-| `accounting-ecosystem/frontend-accounting` | 24 | 37 | 145 |
-| `Point of Sale` | 40 | 37 | 29 |
+| `accounting-ecosystem/frontend-accounting` | 12 | 37 | 145 |
+| `Point of Sale` | 30 | 37 | 29 |
 | `Payroll/Payroll_App` | 1 | 10 | 17 |
 
 Interpretation:

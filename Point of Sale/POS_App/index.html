@@ -5919,7 +5919,8 @@
 
         async function loadCustomers() {
             try {
-                const activeOnly = document.getElementById('activeCustomersOnly')?.checked;
+                const activeCustomersOnlyEl = document.getElementById('activeCustomersOnly');
+                const activeOnly = activeCustomersOnlyEl ? activeCustomersOnlyEl.checked : false;
                 const query = activeOnly ? '?active_only=true' : '';
 
                 const response = await fetch(`${API_URL}/customers${query}`, {
@@ -6231,8 +6232,10 @@
 
         async function loadStock() {
             try {
-                const lowStockOnly = document.getElementById('lowStockOnly')?.checked || false;
-                const category = document.getElementById('stockFilterCategory')?.value || '';
+                const lowStockOnlyEl = document.getElementById('lowStockOnly');
+                const stockFilterCategoryEl = document.getElementById('stockFilterCategory');
+                const lowStockOnly = lowStockOnlyEl ? lowStockOnlyEl.checked : false;
+                const category = stockFilterCategoryEl ? stockFilterCategoryEl.value : '';
 
                 let url = `${API_URL}/pos/stock?`;
                 if (lowStockOnly) url += 'low_stock_only=true&';
@@ -8447,10 +8450,10 @@
                     const stats = data.stats;
 
                     // Owner info
-                    document.getElementById('adminOwnerName').textContent = owner?.full_name || '-';
-                    document.getElementById('adminOwnerUsername').textContent = owner?.username || '-';
-                    document.getElementById('adminOwnerEmail').textContent = owner?.email || '-';
-                    document.getElementById('adminOwnerPhone').textContent = owner?.phone || '-';
+                    document.getElementById('adminOwnerName').textContent = (owner && owner.full_name) || '-';
+                    document.getElementById('adminOwnerUsername').textContent = (owner && owner.username) || '-';
+                    document.getElementById('adminOwnerEmail').textContent = (owner && owner.email) || '-';
+                    document.getElementById('adminOwnerPhone').textContent = (owner && owner.phone) || '-';
 
                     // Company details
                     document.getElementById('adminCompanyName').value = c.company_name || '';
@@ -8463,9 +8466,9 @@
                     document.getElementById('adminSubStatus').value = c.subscription_status || 'pending';
 
                     // Stats
-                    document.getElementById('adminStatUsers').textContent = stats?.user_count || 0;
-                    document.getElementById('adminStatProducts').textContent = stats?.product_count || 0;
-                    document.getElementById('adminStatSales').textContent = stats?.sale_count || 0;
+                    document.getElementById('adminStatUsers').textContent = (stats && stats.user_count) || 0;
+                    document.getElementById('adminStatProducts').textContent = (stats && stats.product_count) || 0;
+                    document.getElementById('adminStatSales').textContent = (stats && stats.sale_count) || 0;
                     document.getElementById('adminStatCreated').textContent = c.created_at ? new Date(c.created_at).toLocaleDateString() : '-';
                     document.getElementById('adminStatApproved').textContent = c.approved_at ? new Date(c.approved_at).toLocaleDateString() : 'Not yet';
                 } else {
