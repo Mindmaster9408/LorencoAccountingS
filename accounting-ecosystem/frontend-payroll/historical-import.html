@@ -158,6 +158,17 @@
         }
         .pdf-input:focus { outline: none; border-color: #667eea; background: #f0f4ff; }
 
+        /* PDF INCOME ITEM ROWS */
+        .pdf-item-row { display:flex; align-items:center; gap:5px; background:#1e1a3a; border:1px solid #667eea; border-radius:6px; padding:5px 8px; margin-bottom:4px; }
+        .pdf-item-search { position:relative; flex:1; min-width:130px; }
+        .pdf-item-search .search-input { width:100%; padding:4px 7px; border:1px solid #667eea; border-radius:4px; font-size:12px; background:#0e0e28; color:#d8d8ff; box-sizing:border-box; }
+        .pdf-item-search .search-input::placeholder { color:#7070aa; }
+        .pdf-item-dropdown { position:absolute; top:100%; left:0; right:0; z-index:999; background:#1a1a35; border:1px solid #667eea; border-top:none; border-radius:0 0 5px 5px; max-height:150px; overflow-y:auto; }
+        .pdf-item-opt { padding:5px 8px; font-size:12px; color:#c0c0f0; cursor:pointer; white-space:nowrap; }
+        .pdf-item-opt:hover { background:#667eea; color:#fff; }
+        .pdf-item-amount { width:85px; padding:4px 6px; border:1px solid #667eea; border-radius:4px; font-size:12px; text-align:right; background:#0e0e28; color:#d8d8ff; flex-shrink:0; }
+        .pdf-item-amount::placeholder { color:#7070aa; }
+
         /* FORM CONTROLS */
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; color: #555; font-weight: 600; font-size: 14px; }
@@ -360,7 +371,7 @@
                 <!-- PDF Results Area -->
                 <div id="pdfResultsArea" style="display:none;">
                     <div id="pdfResultsSummary"></div>
-                    <div style="overflow-x:auto; max-height:500px; overflow-y:auto;">
+                    <div style="overflow-x:auto;">
                         <table id="pdfResultsTable" class="data-table"></table>
                     </div>
                     <div style="display:flex; gap:10px; margin-top:15px; justify-content:flex-end;">
@@ -1122,6 +1133,20 @@
             var jobMatch = text.match(/Job\s*(?:Title|Position|Role)[:\s]+([A-Za-z][A-Za-z\s\/\-]{2,50}?)(?=\s*(?:Period|ID|Emp|Income|Employment|\d|$))/i);
             var jobTitle = jobMatch ? jobMatch[1].trim() : '';
 
+            // Extract individual income line items (2+ spaces between label and R amount = payslip table row)
+            var extraItems = [];
+            var skipLabelRe = /^(gross(\s*(pay|salary|earnings|remuneration))?|basic(\s*(salary|pay))?|paye|income\s*tax|pay\s*as\s*you\s*earn|uif(\s*(employee|contribution))?|net(\s*(pay|salary))?|nett(\s*(pay|salary))?|take\s*home|total(\s*(earnings|deductions?|income))?|sdl|company\s*uif|employer.*|tax\s*on|employee.*number|period|id(\s*number)?|job\s*(title|position)?)$/i;
+            var lineRe = /([A-Za-z][A-Za-z\s\/\-\(\)&]{1,45}?)\s{2,}R?\s*([\d][\d\s,]*\.\d{2})/g;
+            var lm;
+            while ((lm = lineRe.exec(text)) !== null) {
+                var lDesc = lm[1].trim();
+                var lAmt  = parseFloat(lm[2].replace(/[\s,]/g, ''));
+                if (lAmt > 0 && !skipLabelRe.test(lDesc) && lDesc.length > 2) {
+                    // avoid duplicating basic/gross if already extracted as those fields
+                    extraItems.push({ description: lDesc, amount: lAmt });
+                }
+            }
+
             results.push({
                 employee_number: empNumber,
                 employee_name: employeeName,
@@ -1133,7 +1158,7 @@
                 paye: paye,
                 uif: uif,
                 net: net,
-                _extraItems: [],
+                _extraItems: extraItems,
                 _valuesFound: valuesFound,
                 _error: null
             });
@@ -1216,7 +1241,7 @@
                 }
 
                 // Extra items area (income lines to build gross)
-                var extraItemsHtml = '<tr id="pdf_extra_row_' + idx + '" style="background:#f8f9ff;">'
+                var extraItemsHtml = '<tr id="pdf_extra_row_' + idx + '" style="background:#13122a;">'  
                     + '<td colspan="9" style="padding:6px 12px;">'
                     + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">'
                     + '<span style="font-size:11px; color:#667eea; font-weight:700;">📋 Income items (to reach Gross)</span>'
@@ -1242,6 +1267,14 @@
             tableHtml += '</tbody>';
             document.getElementById('pdfResultsTable').innerHTML = tableHtml;
             document.getElementById('pdfResultsArea').style.display = 'block';
+            // Pre-populate income items extracted from PDF
+            pdfExtractedRows.forEach(function(row, idx) {
+                if (row._extraItems && row._extraItems.length) {
+                    row._extraItems.forEach(function(item) {
+                        addPdfExtraItemPrefilled(idx, item.description, item.amount);
+                    });
+                }
+            });
         }
 
         // Called when employee dropdown changes — intercept "Add New Employee"
@@ -1315,20 +1348,79 @@
             }, 50);
         }
 
+        var _pdfItemCtr = 0;
+
+        function getPayrollItemSuggestions() {
+            var suggestions = [];
+            try {
+                var stored = safeLocalStorage.getItem('payroll_items_' + currentCompanyId);
+                if (stored) {
+                    JSON.parse(stored).forEach(function(it) { if (it.item_name) suggestions.push(it.item_name); });
+                }
+            } catch(e) {}
+            // Common SA payroll income items as fallback suggestions
+            var common = ['Commission','Overtime','Travel Allowance','Housing Allowance','Transport Allowance',
+                'Medical Aid','Pension','Bonus','13th Cheque','Reimbursement','Acting Allowance',
+                'Standby Allowance','Night Shift Allowance','Car Allowance','Tool Allowance'];
+            common.forEach(function(c) { if (suggestions.indexOf(c) < 0) suggestions.push(c); });
+            return suggestions;
+        }
+
         // Add an extra income item to a PDF row
-        function addPdfExtraItem(idx) {
+        function addPdfExtraItem(idx) { addPdfExtraItemPrefilled(idx, '', ''); }
+
+        function addPdfExtraItemPrefilled(idx, descValue, amtValue) {
             var container = document.getElementById('pdf_items_' + idx);
             if (!container) return;
-            var itemId = 'pdf_item_' + idx + '_' + Date.now();
+            var itemId = 'pdf_item_' + idx + '_' + (++_pdfItemCtr);
+            var suggestions = getPayrollItemSuggestions();
+            var optsHtml = suggestions.map(function(s) {
+                return '<div class="pdf-item-opt" onmousedown="pdAutoSelect(event,\'' + itemId + '\')">' + s.replace(/</g,'&lt;') + '</div>';
+            }).join('');
             var el = document.createElement('div');
             el.id = itemId;
-            el.style.cssText = 'display:flex; align-items:center; gap:4px; background:#fff; border:1px solid #dde; border-radius:5px; padding:4px 7px;';
-            el.innerHTML = '<input type="text" placeholder="Description" style="width:120px; padding:3px 5px; border:1px solid #ccc; border-radius:3px; font-size:11px;">'
-                + ' <input type="number" placeholder="Amount" step="0.01" min="0" style="width:80px; padding:3px 5px; border:1px solid #ccc; border-radius:3px; font-size:11px; text-align:right;">'
-                + ' <button onclick="removePdfExtraItem(\'' + itemId + '\')" style="background:#dc3545; color:white; border:none; border-radius:3px; width:18px; height:18px; cursor:pointer; font-size:11px; line-height:1; padding:0;">×</button>';
+            el.className = 'pdf-item-row';
+            el.innerHTML =
+                '<div class="pdf-item-search">'
+                + '<input type="text" class="search-input" value="' + (descValue || '').replace(/"/g,'&quot;') + '" placeholder="Type to search item..." oninput="pdFilterOpts(this)" onfocus="pdShowOpts(this)" onblur="pdHideOpts(this)">'
+                + '<div class="pdf-item-dropdown" style="display:none;">' + optsHtml + '</div>'
+                + '</div>'
+                + '<input type="number" class="pdf-item-amount" placeholder="Amount" step="0.01" min="0" value="' + (amtValue || '') + '">'
+                + '<button onclick="removePdfExtraItem(\'' + itemId + '\')" style="background:#dc3545;color:white;border:none;border-radius:3px;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1;padding:0;flex-shrink:0;">×</button>';
             container.appendChild(el);
-            // Auto-fill gross when amount changes
-            el.querySelector('input[type="number"]').addEventListener('change', function() { recalcPdfGross(idx); });
+            el.querySelector('.pdf-item-amount').addEventListener('change', function() { recalcPdfGross(idx); });
+            if (amtValue) recalcPdfGross(idx);
+        }
+
+        function pdShowOpts(input) {
+            pdFilterOpts(input);
+            var dd = input.parentNode.querySelector('.pdf-item-dropdown');
+            if (dd) dd.style.display = 'block';
+        }
+        function pdHideOpts(input) {
+            var dd = input.parentNode.querySelector('.pdf-item-dropdown');
+            if (dd) setTimeout(function() { dd.style.display = 'none'; }, 200);
+        }
+        function pdFilterOpts(input) {
+            var q = input.value.toLowerCase();
+            var dd = input.parentNode.querySelector('.pdf-item-dropdown');
+            if (!dd) return;
+            var anyVis = false;
+            dd.querySelectorAll('.pdf-item-opt').forEach(function(opt) {
+                var show = !q || opt.textContent.toLowerCase().indexOf(q) >= 0;
+                opt.style.display = show ? 'block' : 'none';
+                if (show) anyVis = true;
+            });
+            dd.style.display = anyVis ? 'block' : 'none';
+        }
+        function pdAutoSelect(e, itemId) {
+            e.preventDefault();
+            var row = document.getElementById(itemId);
+            if (!row) return;
+            var input = row.querySelector('.search-input');
+            var dd    = row.querySelector('.pdf-item-dropdown');
+            if (input) input.value = e.currentTarget.textContent;
+            if (dd) dd.style.display = 'none';
         }
         function removePdfExtraItem(itemId) {
             var el = document.getElementById(itemId);
@@ -1342,7 +1434,7 @@
             var container = document.getElementById('pdf_items_' + idx);
             if (!container) return;
             var total = 0;
-            container.querySelectorAll('input[type="number"]').forEach(function(inp) {
+            container.querySelectorAll('.pdf-item-amount').forEach(function(inp) {
                 total += parseFloat(inp.value) || 0;
             });
             var basicVal = parseFloat(document.getElementById('pdf_basic_' + idx).value) || 0;
