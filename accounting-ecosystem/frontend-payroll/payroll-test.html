@@ -494,9 +494,9 @@
                         const statusClass = run.status === 'draft' ? 'badge-draft' : run.status === 'approved' ? 'badge-approved' : 'badge-paid';
                         html += `
                             <tr style="cursor: pointer;" onclick="viewPayrollRun(${run.id})">
-                                <td>${new Date(run.run_date).toLocaleDateString()}</td>
-                                <td>${new Date(run.pay_period_start).toLocaleDateString()} - ${new Date(run.pay_period_end).toLocaleDateString()}</td>
-                                <td>${new Date(run.payment_date).toLocaleDateString()}</td>
+                                <td>${formatDate(parseStandardDate(run.run_date), 'ZA')}</td>
+                                <td>${formatDate(parseStandardDate(run.pay_period_start), 'ZA')} - ${formatDate(parseStandardDate(run.pay_period_end), 'ZA')}</td>
+                                <td>${formatDate(parseStandardDate(run.payment_date), 'ZA')}</td>
                                 <td>${employees.length}</td>
                                 <td><strong>R ${parseFloat(run.total_net).toFixed(2)}</strong></td>
                                 <td><span class="badge ${statusClass}">${run.status.toUpperCase()}</span></td>

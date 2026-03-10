@@ -309,6 +309,12 @@
       return 'R ' + (parseFloat(val) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    // Cross-browser safe: returns "7 March 2026" format without relying on locale
+    function fmtLongDate(d) {
+      var m = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      return d.getDate() + ' ' + m[d.getMonth()] + ' ' + d.getFullYear();
+    }
+
     function init() {
       const session = AUTH.getSession();
       if (!session || !session.company_id) {
@@ -327,7 +333,7 @@
       const day = today.getDate();
       if (day >= 1 && day <= 7) {
         const dueMonth = new Date(today.getFullYear(), today.getMonth(), 7);
-        document.getElementById('dueDate').textContent = dueMonth.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
+        document.getElementById('dueDate').textContent = fmtLongDate(dueMonth);
         document.getElementById('dueAlert').style.display = 'flex';
       }
 
@@ -415,7 +421,7 @@
       const yr = parseInt(parts[0]);
       const mo = parseInt(parts[1]);
       const due = new Date(mo === 12 ? yr + 1 : yr, mo === 12 ? 0 : mo, 7);
-      const dueStr = due.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
+      const dueStr = fmtLongDate(due);
 
       document.getElementById('statPaye').textContent = fmt(totPaye);
       document.getElementById('statPayePeriod').textContent = monthLabel;

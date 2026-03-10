@@ -1187,7 +1187,7 @@
             '<div class="summary-card" style="' + (filteredFailed > 0 ? 'background:rgba(220,53,69,0.3)' : '') + '"><div class="number">' + filteredFailed + '</div><div class="label">Failed</div></div>' +
             '<div class="summary-card"><div class="number">' + (filteredTotal > 0 ? Math.round(filteredPassed / filteredTotal * 100) : 0) + '%</div><div class="label">Pass Rate</div></div>';
 
-        document.getElementById('timestamp').textContent = 'Last run: ' + new Date().toLocaleString();
+        document.getElementById('timestamp').textContent = 'Last run: ' + (window.formatDateTime ? window.formatDateTime(new Date()) : new Date().toISOString().slice(0,16).replace('T',' '));
     }
 
     // ============================================================

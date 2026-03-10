@@ -224,7 +224,7 @@ const PDFBranding = {
         doc.setFontSize(7);
         doc.setTextColor(150, 150, 150);
         doc.setFont(undefined, 'normal');
-        doc.text('Generated: ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(), margin, y);
+        doc.text('Generated: ' + (window.formatDateTime ? window.formatDateTime(new Date()) : new Date().toISOString().slice(0,16).replace('T',' ')), margin, y);
         doc.text('This is a system-generated document.', margin, y + 4);
 
         // Bottom bar

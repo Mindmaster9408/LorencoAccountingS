@@ -528,7 +528,7 @@
                 pay_frequencies: extra.pay_frequencies || [],
                 pay_day: extra.pay_day || '',
                 work_hours: extra.work_hours || '',
-                created_date: apiCompany.created_at ? new Date(apiCompany.created_at).toLocaleDateString() : '',
+                created_date: apiCompany.created_at ? formatDate(parseStandardDate(apiCompany.created_at), 'ZA') : '',
                 // Branding & Export
                 company_name: extra.company_name || extra.name || authCompany.name || '',
                 address_line1: extra.address_line1 || '',
