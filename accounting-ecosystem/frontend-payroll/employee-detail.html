@@ -543,8 +543,11 @@
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-weight:600; font-size:0.9rem; white-space:nowrap; color:#555;">R per month:</span>
+                    <span id="regularAmountLabel" style="font-weight:600; font-size:0.9rem; white-space:nowrap; color:#555;">R per month:</span>
                     <input type="number" id="regularInputAmount" step="0.01" min="0" placeholder="0.00" style="flex:1; padding:10px; border:2px solid #667eea; border-radius:6px; font-size:1.1rem; text-align:right; box-sizing:border-box;">
+                </div>
+                <div id="regularVariableNote" style="display:none; margin-top:8px; padding:7px 10px; background:#fff8e1; border:1px solid #f0a500; border-radius:6px; font-size:11px; color:#856404;">
+                    🔄 <strong>Variable item</strong> — enter a default/suggestion amount (can be R 0). The amount is editable directly on the employee profile each pay run.
                 </div>
             </div>
             <button id="regularSaveBtn" class="btn btn-success" style="width:100%; padding:13px; font-size:1rem; display:none;" onclick="saveRegularInput()">✓ Add to Monthly Payslip</button>
@@ -726,6 +729,7 @@
         let currentEmployee = null;
         let currentEmpId = null;
         let payrollData = { basic_salary: 0, regular_inputs: [] };
+        var _currentItemIsVariable = false;
         let currentPeriod = '';
 
         // ========== INIT ==========
@@ -1134,6 +1138,13 @@
                     riList.innerHTML = payrollData.regular_inputs.map(ri => {
                 const color = ri.type === 'deduction' ? '#dc3545' : '#28a745';
                 const prefix = ri.type === 'deduction' ? '- ' : '+ ';
+                if (ri.is_variable) {
+                    return '<div class="salary-item editable"><span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span> <span style="font-size:10px; color:#f0a500;" title="Variable — edit each pay run">🔄</span></span>'
+                        + '<span style="display:flex; align-items:center; gap:5px;">'
+                        + '<input type="number" step="0.01" min="0" value="' + (ri.amount || 0) + '" style="width:85px; padding:4px 6px; border:1px solid #667eea; border-radius:4px; font-size:0.88rem; text-align:right;" onchange="updateVariableAmount(\'' + ri.id + '\', this.value)" onclick="event.stopPropagation()" title="Enter this month\'s amount">'
+                        + '<button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button>'
+                        + '</span></div>';
+                }
                 return '<div class="salary-item editable"><span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span></span><span><span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ri.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button></span></div>';
             }).join('');
 
@@ -1250,6 +1261,9 @@
         function getHiddenPayrollItems() {
             try { return JSON.parse(safeLocalStorage.getItem('hidden_payroll_items_' + currentCompanyId) || '[]'); } catch(e) { return []; }
         }
+        function getCustomPayrollItems() {
+            try { return JSON.parse(safeLocalStorage.getItem('payroll_items_' + currentCompanyId) || '[]'); } catch(e) { return []; }
+        }
 
         function buildItemList(containerEl, items, selectFn, customFn) {
             var html = '';
@@ -1271,12 +1285,14 @@
 
         // ========== REGULAR INPUTS ==========
         function openAddRegularInput() {
+            _currentItemIsVariable = false;
             var listEl = document.getElementById('regularItemsList');
             var hidden = getHiddenPayrollItems();
             var visible = REGULAR_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
             buildItemList(listEl, visible, 'selectRegularItem', 'selectRegularCustom');
             document.getElementById('regularAmountPane').style.display = 'none';
             document.getElementById('regularSaveBtn').style.display = 'none';
+            document.getElementById('regularVariableNote').style.display = 'none';
             document.getElementById('regularInputAmount').value = '';
             document.getElementById('addRegularModal').classList.add('show');
         }
@@ -1290,12 +1306,29 @@
             document.getElementById('regularPaneBadge').textContent = type;
             document.getElementById('regularPaneBadge').style.cssText = 'font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; background:' + col + '22; color:' + col + ';';
             document.getElementById('regularCustomRow').style.display = 'none';
+            // Check if this item is marked variable in payroll items config
+            var customItems = getCustomPayrollItems();
+            var configItem = customItems.find(function(ci) { return ci.item_name === name; });
+            _currentItemIsVariable = configItem ? !!configItem.is_variable : false;
+            var noteEl = document.getElementById('regularVariableNote');
+            var labelEl = document.getElementById('regularAmountLabel');
+            if (_currentItemIsVariable) {
+                noteEl.style.display = 'block';
+                if (labelEl) labelEl.textContent = 'Default amount (suggestion, can be R 0):';
+            } else {
+                noteEl.style.display = 'none';
+                if (labelEl) labelEl.textContent = 'R per month:';
+            }
             document.getElementById('regularAmountPane').style.display = '';
             document.getElementById('regularSaveBtn').style.display = '';
-            document.getElementById('regularSaveBtn').textContent = '✓ Add "' + name + '" to Monthly Payslip';
+            document.getElementById('regularSaveBtn').textContent = '\u2713 Add "' + name + '" to Monthly Payslip';
             setTimeout(function() { document.getElementById('regularInputAmount').focus(); }, 50);
         }
         function selectRegularCustom() {
+            _currentItemIsVariable = false;
+            document.getElementById('regularVariableNote').style.display = 'none';
+            var labelEl = document.getElementById('regularAmountLabel');
+            if (labelEl) labelEl.textContent = 'R per month:';
             document.querySelectorAll('#regularItemsList .payroll-list-row').forEach(function(r) { r.classList.remove('selected-row'); r.style.background = ''; });
             document.getElementById('regularInputDesc').value = '';
             document.getElementById('regularInputType').value = 'allowance';
@@ -1310,14 +1343,15 @@
         function saveRegularInput() {
             var desc = document.getElementById('regularInputDesc').value.trim();
             var type = document.getElementById('regularInputType').value;
-            var amount = parseFloat(document.getElementById('regularInputAmount').value);
+            var amount = parseFloat(document.getElementById('regularInputAmount').value) || 0;
             if (!desc) { alert('Please select an item or enter a description'); return; }
-            if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
+            if (!_currentItemIsVariable && amount <= 0) { alert('Please enter a valid amount greater than R 0'); return; }
             var input = {
                 id: 'ri-' + Math.random().toString(36).substr(2, 9),
                 type: type,
                 description: desc,
-                amount: amount
+                amount: amount,
+                is_variable: _currentItemIsVariable
             };
             payrollData.regular_inputs.push(input);
             savePayrollData(); renderPayroll(); closeModal('addRegularModal');
@@ -1329,6 +1363,12 @@
             payrollData.regular_inputs = payrollData.regular_inputs.filter(r => r.id !== id);
             savePayrollData(); renderPayroll();
             AuditTrail.logDelete(currentCompanyId, 'regular_input', 'Deleted regular input "' + (deleted ? deleted.description : id) + '" for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+        }
+        function updateVariableAmount(id, value) {
+            var ri = payrollData.regular_inputs.find(function(r) { return r.id === id; });
+            if (!ri) return;
+            ri.amount = parseFloat(value) || 0;
+            savePayrollData();
         }
 
         // ========== CURRENT INPUTS ==========
