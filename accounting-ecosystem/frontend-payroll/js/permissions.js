@@ -33,7 +33,10 @@ var Permissions = {
     getRole: function() {
         try {
             var session = JSON.parse(safeLocalStorage.getItem('session') || '{}');
-            return session.role || '';
+            if (session.role) return session.role;
+            // Authenticated but role not set — default to business_owner
+            if (safeLocalStorage.getItem('token')) return 'business_owner';
+            return '';
         } catch(e) {
             return '';
         }
