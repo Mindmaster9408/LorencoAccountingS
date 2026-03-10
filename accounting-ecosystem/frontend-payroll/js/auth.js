@@ -5,6 +5,12 @@
 // against the Accounting Ecosystem backend at /api/auth/*
 // ============================================================
 
+// Safety shim: ensures safeLocalStorage is always available even if
+// polyfills.js failed to load or was not deployed.
+if (typeof window.safeLocalStorage === 'undefined') {
+    window.safeLocalStorage = window.localStorage;
+}
+
 const AUTH = (function() {
     'use strict';
 

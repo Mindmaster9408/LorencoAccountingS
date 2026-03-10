@@ -8,6 +8,12 @@
 // The API handles company_id scoping via the JWT token.
 // ============================================================
 
+// Safety shim: ensures safeLocalStorage is always available even if
+// polyfills.js failed to load or was not deployed.
+if (typeof window.safeLocalStorage === 'undefined') {
+    window.safeLocalStorage = window.localStorage;
+}
+
 var DataAccess = (function() {
     'use strict';
 
@@ -510,6 +516,9 @@ var DataAccess = (function() {
     'use strict';
 
     if (window.__ecoPayrollBridgeInstalled) return;
+    // Guard: if safeLocalStorage doesn't exist (polyfills.js not loaded),
+    // skip bridge installation to prevent ReferenceError crash.
+    if (typeof window.safeLocalStorage === 'undefined') return;
     window.__ecoPayrollBridgeInstalled = true;
 
     var KV_URL = window.location.origin + '/api/payroll/kv';

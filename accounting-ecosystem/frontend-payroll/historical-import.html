@@ -468,17 +468,27 @@
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
-            if (!AUTH.isLoggedIn()) {
+            // Always wire up file drop zones first — independent of auth state
+            // so drag-and-drop and Browse button work even if auth init throws
+            setupDragDropZones();
+
+            try {
+                if (!AUTH.isLoggedIn()) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+            } catch(e) {
+                console.error('Auth check failed:', e);
                 window.location.href = 'login.html';
                 return;
             }
+
             var session = AUTH.getSession();
             currentCompanyId = session.company_id;
             var company = AUTH.getCompanyById(currentCompanyId);
             document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown Company';
             loadCompaniesCarousel();
             loadEmployees();
-            setupDragDropZones();
             populateManualEntryControls();
             loadImportLog();
         });
