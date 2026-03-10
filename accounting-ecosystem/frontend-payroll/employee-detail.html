@@ -806,26 +806,7 @@
             const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             const employees = stored ? JSON.parse(stored) : [];
             currentEmployee = employees.find(e => e.id === currentEmpId);
-
-            // If not found locally OR missing key fields, fetch fresh from API
-            if (!currentEmployee || (!currentEmployee.id_number && !currentEmployee.job_title && !currentEmployee.position)) {
-                DataAccess.getEmployeeById(currentCompanyId, currentEmpId).then(function(emp) {
-                    if (!emp || !(emp.id || emp.employee_id)) {
-                        alert('Employee not found'); window.location.href = 'payruns.html'; return;
-                    }
-                    currentEmployee = emp;
-                    // Update cached list so next load is fast
-                    var fresh = employees.filter(function(e) { return e.id !== currentEmpId; });
-                    fresh.push(emp);
-                    safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(fresh));
-                    renderEmployeeDetails();
-                }).catch(function() {
-                    if (!currentEmployee) { alert('Employee not found'); window.location.href = 'payruns.html'; }
-                });
-                if (currentEmployee) renderEmployeeDetails(); // render what we have while API call is in flight
-                return;
-            }
-
+            if (!currentEmployee) { alert('Employee not found'); window.location.href = 'payruns.html'; return; }
             renderEmployeeDetails();
         }
 
@@ -1026,29 +1007,46 @@
             document.getElementById('managerAuthModal').classList.add('show');
         }
 
-        function verifyManagerAuth() {
+        async function verifyManagerAuth() {
             const email = document.getElementById('authEmail').value.trim();
             const password = document.getElementById('authPassword').value;
             if (!email || !password) { alert('Please enter both email and password'); return; }
 
-            // Check credentials via AUTH system
-            const result = AUTH.findUserByEmail(email);
-            if (!result) { alert('User not found'); return; }
-            if (result.user.password !== password) { alert('Invalid password'); return; }
-
-            // Check if user has authorized role
-            const role = result.user.role || '';
-            const allowedRoles = ['super_admin', 'admin', 'manager', 'business_owner'];
-            if (!allowedRoles.includes(role)) {
-                alert('Authorization denied. Only business owners, managers, and admins can unlock payslips.');
+            // Verify credentials against the server WITHOUT overwriting the current session
+            try {
+                const loginResp = await fetch(window.location.origin + '/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: email, password })
+                });
+                const loginData = await loginResp.json();
+                if (!loginResp.ok || !loginData.token) {
+                    alert('Invalid credentials — authorization denied.');
+                    return;
+                }
+                // Check returned role — require at least a management-level role
+                const allowedRoles = ['super_admin', 'business_owner', 'accountant', 'manager', 'admin'];
+                const role = (loginData.user && loginData.user.role) || '';
+                if (role && !allowedRoles.includes(role)) {
+                    alert('Authorization denied. Only business owners, managers, and admins can unlock payslips.');
+                    return;
+                }
+                // NOTE: the returned token/session is intentionally NOT stored — current user session is preserved
+            } catch(e) {
+                alert('Could not verify credentials: ' + e.message);
                 return;
             }
 
-            // Unlock: remove finalized status
+            // Unlock: remove finalized payslip status AND the frozen snapshot
             safeLocalStorage.removeItem(getPayslipStatusKey());
+            safeLocalStorage.removeItem('emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod);
+            AuditTrail.logUnfinalize(currentCompanyId, 'payslip', 'Manager unlock by ' + email + ' for ' +
+                (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) +
+                ' - ' + formatPeriodLabel(currentPeriod));
             closeModal('managerAuthModal');
+            loadPayrollData();   // reload so payroll inputs are live again
             updatePayslipUI();
-            alert('Payslip unlocked by ' + email + '. You can now make changes.');
+            alert('✅ Payslip unlocked by ' + email + '. You can now make changes.');
         }
 
         function formatPeriodLabel(period) {
@@ -1176,8 +1174,12 @@
 
         // ========== BASIC SALARY ==========
         function editBasicSalary() {
-            if (!Permissions.require('EDIT_PAYROLL')) return;
-            document.getElementById('editBasicValue').value = payrollData.basic_salary || 0;
+            // Don't allow editing if the period is locked by a finalized pay run
+            if (isPayrunLockedForPeriod()) {
+                alert('This period is locked by a finalized pay run. Use Request Unlock to make changes.');
+                return;
+            }
+            document.getElementById('editBasicValue').value = payrollData.basic_salary || '';
             document.getElementById('editBasicModal').classList.add('show');
         }
         function saveBasicSalary() {
