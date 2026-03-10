@@ -10,234 +10,174 @@
  */
 
 // ============================================================================
-// LOCALSTORAGE SAFETY WRAPPER
+// CLOUD-BACKED STORAGE LAYER
+// ============================================================================
+// RULE: NO business data is ever stored in browser localStorage.
+//       All business data lives in Supabase (cloud) only.
+//
+// How it works:
+//  1. Synchronous XHR preload at page load -> in-memory _cache.
+//  2. Reads  -> in-memory _cache (instant).
+//  3. Writes -> _cache immediately + async write-through to Supabase.
+//  4. Auth / session / UI preference keys -> native localStorage ONLY.
+//
+// KV endpoint: /api/payroll/kv
 // ============================================================================
 
-/**
- * Check if storage is available and not disabled
- * @param {string} type - 'localStorage' or 'sessionStorage'
- * @returns {boolean}
- */
-window.storageAvailable = function(type) {
-    try {
-        var storage = window[type];
-        var x = '__storage_test__';
-        storage.setItem(x, x);
-        storage.removeItem(x);
-        return true;
-    } catch(e) {
-        return e instanceof DOMException && (
-            // everything except Firefox
-            e.code === 22 ||
-            // Firefox
-            e.code === 1014 ||
-            // test name field too, because code might not be present
-            // everything except Firefox
-            e.name === 'QuotaExceededError' ||
-            // Firefox
-            e.name === 'NS_ERROR_DOM_QUOTA_REACHED') &&
-            // acknowledge QuotaExceededError only if there's something already stored
-            (storage && storage.length !== 0);
-    }
-};
+(function () {
+    'use strict';
 
-/**
- * Safe localStorage wrapper with automatic error handling
- * Gracefully degrades if localStorage is unavailable
- */
-window.safeLocalStorage = {
-    // In-memory fallback for when localStorage is unavailable
-    _memoryStorage: {},
-    _useMemory: false,
-    
-    /**
-     * Check if we can use localStorage
-     */
-    _checkAvailability: function() {
-        if (this._useMemory) return false;
-        if (!window.storageAvailable('localStorage')) {
-            console.warn('localStorage not available - using memory fallback');
-            this._useMemory = true;
-            return false;
-        }
-        return true;
-    },
-    
-    /**
-     * Set item with error handling
-     * @param {string} key
-     * @param {string} value
-     * @returns {boolean} Success status
-     */
-    setItem: function(key, value) {
-        if (this._useMemory || !this._checkAvailability()) {
-            this._memoryStorage[key] = value;
-            return true;
-        }
-        
-        try {
-            localStorage.setItem(key, value);
-            return true;
-        } catch(e) {
-            console.error('localStorage.setItem failed:', e.name, e.message);
-            
-            if (e.name === 'QuotaExceededError') {
-                console.warn('localStorage quota exceeded - attempting cleanup');
-                this.cleanup();
-                
-                // Try again after cleanup
-                try {
-                    localStorage.setItem(key, value);
-                    return true;
-                } catch(e2) {
-                    console.error('localStorage still full after cleanup');                    // Fall back to memory
-                    this._useMemory = true;
-                    this._memoryStorage[key] = value;
-                    return false;
-                }
-            }
-            
-            // Other error - fall back to memory
-            this._useMemory = true;
-            this._memoryStorage[key] = value;
-            return false;
-        }
-    },
-    
-    /**
-     * Get item with error handling
-     * @param {string} key
-     * @returns {string|null}
-     */
-    getItem: function(key) {
-        if (this._useMemory || !this._checkAvailability()) {
-            return this._memoryStorage[key] || null;
-        }
-        
-        try {
-            return localStorage.getItem(key);
-        } catch(e) {
-            console.error('localStorage.getItem failed:', e);
-            // Fall back to memory
-            return this._memoryStorage[key] || null;
-        }
-    },
-    
-    /**
-     * Remove item with error handling
-     * @param {string} key
-     * @returns {boolean} Success status
-     */
-    removeItem: function(key) {
-        if (this._useMemory || !this._checkAvailability()) {
-            delete this._memoryStorage[key];
-            return true;
-        }
-        
-        try {
-            localStorage.removeItem(key);
-            return true;
-        } catch(e) {
-            console.error('localStorage.removeItem failed:', e);
-            delete this._memoryStorage[key];
-            return false;
-        }
-    },
-    
-    /**
-     * Clear all items
-     */
-    clear: function() {
-        this._memoryStorage = {};
-        if (this._checkAvailability()) {
-            try {
-                localStorage.clear();
-            } catch(e) {
-                console.error('localStorage.clear failed:', e);
-            }
-        }
-    },
-    
-    /**
-     * Cleanup old/temporary data to free space
-     * Removes audit logs older than 30 days and temp data
-     */
-    cleanup: function() {
-        console.log('Running localStorage cleanup...');
-        var removed = 0;
-        
-        try {
-            var keys = Object.keys(localStorage);
-            var now = Date.now();
-            var thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
-            
-            keys.forEach(function(key) {
-                // Remove temp data
-                if (key.startsWith('temp_') || key.startsWith('cache_')) {
-                    localStorage.removeItem(key);
-                    removed++;
-                }
-                
-                // Remove old audit logs (keep last 30 days)
-                if (key.startsWith('audit_')) {
-                    try {
-                        var data = JSON.parse(localStorage.getItem(key));
-                        var timestamp = data.timestamp || 0;
-                        if (timestamp < thirtyDaysAgo) {
-                            localStorage.removeItem(key);
-                            removed++;
-                        }
-                    } catch(e) {
-                        // Invalid JSON - remove it
-                        localStorage.removeItem(key);
-                        removed++;
-                    }
-                }
-            });
-            
-            console.log('Cleanup complete: removed ' + removed + ' items');
-        } catch(e) {
-            console.error('Cleanup failed:', e);
-        }
-    },
-    
-    /**
-     * Get storage usage info
-     */
-    getUsageInfo: function() {
-        if (!this._checkAvailability()) {
-            return {
-                used: 0,
-                available: 0,
-                percentage: 0,
-                itemCount: Object.keys(this._memoryStorage).length
-            };
-        }
-        
-        try {
-            var total = 0;
-            for (var key in localStorage) {
-                if (localStorage.hasOwnProperty(key)) {
-                    total += localStorage[key].length + key.length;
-                }
-            }
-            
-            // Most browsers limit to 5MB (~5,000,000 characters)
-            var limit = 5000000;
-            var used = total * 2; // UTF-16 encoding = 2 bytes per character
-            var percentage = Math.round((used / limit) * 100);
-            
-            return {
-                used: used,
-                available: limit - used,
-                percentage: percentage,
-                itemCount: localStorage.length
-            };
-        } catch(e) {
-            return { used: 0, available: 0, percentage: 0, itemCount: 0 };
-        }
+    var KV = '/api/payroll/kv';
+
+    // Keys that STAY in native browser localStorage (auth/session/UI ONLY).
+    // EVERYTHING else -> Supabase. No exceptions.
+    var LOCAL_KEYS = {
+        token:1, paytime_token:1, session:1, user:1,
+        eco_user:1, eco_companies:1, eco_company_name:1, eco_super_admin:1,
+        sso_source:1, activeCompanyId:1, demoMode:1, isSuperAdmin:1,
+        auth_token:1, coaching_app_current_user:1, coaching_app_admin_mode:1
+    };
+    var LOCAL_PFX = ['theme','darkMode','dark_','sidebar',
+                     'viewMode','language','lang_','_lastVisit','cache_'];
+
+    function _isLocal(k) {
+        if (LOCAL_KEYS[k]) return true;
+        for (var i = 0; i < LOCAL_PFX.length; i++)
+            if (k.indexOf(LOCAL_PFX[i]) === 0) return true;
+        return false;
     }
-};
+
+    var _cache  = {};
+    var _online = false;
+
+    function _tok() {
+        try {
+            return localStorage.getItem('token') ||
+                   localStorage.getItem('paytime_token') || '';
+        } catch(e) { return ''; }
+    }
+
+    // Synchronous preload (runs once at script-load time)
+    (function _preload() {
+        try {
+            var tok = _tok();
+            if (!tok) return;                 // not yet logged in
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', KV, false);       // false = synchronous
+            xhr.setRequestHeader('Content-Type',  'application/json');
+            xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+            xhr.send(null);
+            if (xhr.status === 200) {
+                _cache  = JSON.parse(xhr.responseText) || {};
+                _online = true;
+                console.log(
+                    '%c\u2601\ufe0f  Paytime PAYROLL \u2014 all data in Supabase (zero local storage)',
+                    'color:#667eea;font-weight:bold;'
+                );
+            } else if (xhr.status === 401) {
+                try { localStorage.removeItem('token');   } catch(e) {}
+                try { localStorage.removeItem('session'); } catch(e) {}
+            }
+        } catch(e) {
+            console.warn('\u26a0\ufe0f  Cloud storage preload failed (Paytime PAYROLL):', e.message);
+        }
+    }());
+
+    function _cloudSet(key, val) {
+        if (!_online) return;
+        try {
+            var x = new XMLHttpRequest();
+            x.open('PUT', KV + '/' + encodeURIComponent(key), true);
+            x.setRequestHeader('Content-Type', 'application/json');
+            var t = _tok();
+            if (t) x.setRequestHeader('Authorization', 'Bearer ' + t);
+            x.send(JSON.stringify({ value: val }));
+        } catch(e) { console.warn('Cloud write failed:', key, e.message); }
+    }
+
+    function _cloudDel(key) {
+        if (!_online) return;
+        try {
+            var x = new XMLHttpRequest();
+            x.open('DELETE', KV + '/' + encodeURIComponent(key), true);
+            var t = _tok();
+            if (t) x.setRequestHeader('Authorization', 'Bearer ' + t);
+            x.send();
+        } catch(e) {}
+    }
+
+    window.safeLocalStorage = {
+
+        setItem: function (key, value) {
+            if (_isLocal(key)) {
+                try { localStorage.setItem(key, value); } catch(e) {}
+                return true;
+            }
+            var parsed;
+            try { parsed = (typeof value === 'string') ? JSON.parse(value) : value; }
+            catch(e) { parsed = value; }
+            _cache[key] = parsed;
+            _cloudSet(key, parsed);
+            return true;
+        },
+
+        getItem: function (key) {
+            if (_isLocal(key)) {
+                try { return localStorage.getItem(key); } catch(e) { return null; }
+            }
+            if (!Object.prototype.hasOwnProperty.call(_cache, key)) return null;
+            var v = _cache[key];
+            if (v === null || v === undefined) return null;
+            if (typeof v === 'string') return v;
+            return JSON.stringify(v);
+        },
+
+        removeItem: function (key) {
+            if (_isLocal(key)) {
+                try { localStorage.removeItem(key); } catch(e) {}
+                return true;
+            }
+            delete _cache[key];
+            _cloudDel(key);
+            return true;
+        },
+
+        clear: function () {
+            Object.keys(LOCAL_KEYS).forEach(function (k) {
+                try { localStorage.removeItem(k); } catch(e) {}
+            });
+            _cache = {};
+        },
+
+        reload: function () {
+            return new Promise(function (resolve) {
+                var tok = _tok();
+                if (!tok) { resolve(); return; }
+                var x = new XMLHttpRequest();
+                x.open('GET', KV, true);
+                x.setRequestHeader('Authorization', 'Bearer ' + tok);
+                x.onload = function () {
+                    if (x.status === 200) {
+                        try { _cache = JSON.parse(x.responseText) || {}; _online = true; }
+                        catch(e) {}
+                    }
+                    resolve();
+                };
+                x.onerror = function () { resolve(); };
+                x.send();
+            });
+        },
+
+        cleanup:            function () {},
+        getUsageInfo:       function () {
+            return { keys: Object.keys(_cache).length, percentage: 0,
+                     available: true, cloudBacked: _online };
+        },
+        _checkAvailability: function () { return true; },
+        _serverOnline:      function () { return _online; }
+    };
+
+}());
 
 // ============================================================================
 // DATE HANDLING UTILITIES

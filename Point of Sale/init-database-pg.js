@@ -160,6 +160,18 @@ async function initDatabase() {
     }
     console.log('✓ Demo products created');
 
+    // KV store for cloud-backed safeLocalStorage
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_kv_store (
+        company_id  TEXT        NOT NULL,
+        key         TEXT        NOT NULL,
+        value       JSONB,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (company_id, key)
+      )
+    `);
+    console.log('✓ KV store table ready');
+
     console.log('\n✅ Database initialization complete!');
 
   } catch (err) {

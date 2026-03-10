@@ -1046,3 +1046,36 @@ BEGIN
   ON CONFLICT (company_id, item_code) DO NOTHING;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- KV STORE TABLES — Added for cloud storage migration (no browser localStorage)
+-- All business data is stored here instead of browser localStorage.
+-- ============================================================================
+
+-- Global ecosystem KV store (frontend-ecosystem)
+CREATE TABLE IF NOT EXISTS app_kv_store (
+  company_id  TEXT        NOT NULL,
+  key         TEXT        NOT NULL,
+  value       JSONB,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (company_id, key)
+);
+
+-- POS module KV store (accounting-ecosystem frontend-pos)
+CREATE TABLE IF NOT EXISTS pos_kv_store (
+  company_id  TEXT        NOT NULL,
+  key         TEXT        NOT NULL,
+  value       JSONB,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (company_id, key)
+);
+
+-- Accounting module KV store (accounting-ecosystem frontend-accounting)
+-- Note: accounting_kv_store already existed; this is a safety guard
+CREATE TABLE IF NOT EXISTS accounting_kv_store (
+  company_id  TEXT        NOT NULL,
+  key         TEXT        NOT NULL,
+  value       JSONB,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (company_id, key)
+);

@@ -39,6 +39,8 @@ const employeesRoutes = require('./shared/routes/employees');
 const auditRoutes = require('./shared/routes/audit');
 const customersRoutes = require('./shared/routes/customers');
 const ecoClientsRoutes = require('./shared/routes/eco-clients');
+// Global KV store — all ecosystem frontend business data (NEVER in localStorage)
+const globalKvRoutes = require('./shared/routes/kv');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
@@ -144,7 +146,9 @@ app.use('/api/users', authenticateToken, usersRoutes);
 app.use('/api/employees', authenticateToken, employeesRoutes);
 app.use('/api/audit', authenticateToken, auditRoutes);
 app.use('/api/eco-clients', authenticateToken, ecoClientsRoutes);
-app.use('/api/customers', authenticateToken, customersRoutes); // R5 — requires auth
+app.use('/api/customers', authenticateToken, customersRoutes);
+// Global KV store — ecosystem-wide cloud persistence (NO browser localStorage for business data)
+app.use('/api/kv', globalKvRoutes);
 
 // ─── Top-level POS-related Routes (receipts, barcodes, reports, analytics) ──
 if (receiptsRoutes) {

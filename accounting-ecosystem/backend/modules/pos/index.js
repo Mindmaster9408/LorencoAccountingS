@@ -12,8 +12,12 @@ const categoriesRoutes = require('./routes/categories');
 const inventoryRoutes = require('./routes/inventory');
 const sessionsRoutes = require('./routes/sessions');
 const tillsRoutes = require('./routes/tills');
+const kvRoutes = require('./routes/kv');
 
 const router = express.Router();
+
+// Cloud KV store — all POS frontend business data stored here (NOT in localStorage)
+router.use('/kv', kvRoutes);
 
 router.use('/products', productsRoutes);
 router.use('/sales', salesRoutes);
