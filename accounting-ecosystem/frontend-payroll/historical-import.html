@@ -558,6 +558,37 @@
             return null;
         }
 
+        function findEmployeeByName(name) {
+            if (!name) return null;
+            // Try "LastName, FirstName" format (common in SA payslips)
+            var parts = name.split(',');
+            if (parts.length >= 2) {
+                var lastName  = parts[0].trim().toLowerCase();
+                var firstName = parts[1].trim().toLowerCase();
+                for (var i = 0; i < employees.length; i++) {
+                    if (employees[i].last_name.toLowerCase()  === lastName &&
+                        employees[i].first_name.toLowerCase() === firstName) return employees[i];
+                }
+                // Also try with spaces trimmed  
+                for (var i = 0; i < employees.length; i++) {
+                    if (employees[i].last_name.toLowerCase().indexOf(lastName) === 0 &&
+                        employees[i].first_name.toLowerCase().indexOf(firstName) === 0) return employees[i];
+                }
+            }
+            // Try "FirstName LastName" exact match
+            var nameLower = name.trim().toLowerCase();
+            for (var i = 0; i < employees.length; i++) {
+                var full = (employees[i].first_name + ' ' + employees[i].last_name).trim().toLowerCase();
+                if (full === nameLower) return employees[i];
+            }
+            // Partial: last name alone (only if >3 chars to avoid false matches)
+            for (var i = 0; i < employees.length; i++) {
+                var lastLower = employees[i].last_name.toLowerCase();
+                if (lastLower.length > 3 && nameLower.indexOf(lastLower) >= 0) return employees[i];
+            }
+            return null;
+        }
+
         // ========== TAB SWITCHING ==========
         function switchTab(tab) {
             var tabs = document.querySelectorAll('.top-tab');
@@ -994,8 +1025,16 @@
                                 if (pagesProcessed < numPages) {
                                     extractPage(pageNum + 1);
                                 } else {
-                                    var fullText = textChunks.join('\n');
-                                    var extracted = parsePayslipText(fullText);
+                                    // Each PDF page = one payslip; process independently
+                                    var extracted = [];
+                                    textChunks.forEach(function(pageText) {
+                                        if (pageText.trim().length < 30) return; // skip near-blank pages
+                                        parsePayslipText(pageText).forEach(function(r) { extracted.push(r); });
+                                    });
+                                    // Fallback: if nothing found per-page, try whole document merged
+                                    if (extracted.length === 0) {
+                                        extracted = parsePayslipText(textChunks.join('\n'));
+                                    }
                                     callback(extracted);
                                 }
                             });
@@ -1023,6 +1062,20 @@
             var empMatch = text.match(/Emp(?:loyee)?\s*(?:No|Number|#|Num)[:\s]*([A-Z0-9]+)/i);
             var empNumber = empMatch ? empMatch[1] : '';
             if (empNumber) valuesFound++;
+
+            // Employee name — "Payslip for LastName, FirstName" or "Name: xxx"
+            var employeeName = '';
+            var nameMatch1 = text.match(/Payslip\s+for\s+([A-Za-z][A-Za-z,'.\-\s]{1,60}?)(?=\s+(?:Period|ID\s+Number|Employee|Income|Job|\d{4}[\-\/]\d{2}))/i);
+            if (nameMatch1) {
+                employeeName = nameMatch1[1].trim();
+                if (!empNumber) valuesFound++;
+            } else {
+                var nameMatch2 = text.match(/(?:Employee\s+)?Name[:\s]+([A-Za-z][A-Za-z,'.\-\s]{2,60}?)(?=\s*(?:Period|ID|Emp|Job|\n|$))/i);
+                if (nameMatch2) {
+                    employeeName = nameMatch2[1].trim();
+                    if (!empNumber) valuesFound++;
+                }
+            }
 
             // Period
             var periodMatch = text.match(/(?:Pay\s*)?Period[:\s]*((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})/i);
@@ -1063,6 +1116,7 @@
 
             results.push({
                 employee_number: empNumber,
+                employee_name: employeeName,
                 period: period,
                 basic: basic,
                 gross: gross,
@@ -1126,11 +1180,15 @@
                 var confClass = row._valuesFound >= 3 ? 'confidence-high' : (row._valuesFound >= 1 ? 'confidence-medium' : 'confidence-low');
                 var confLabel = row._valuesFound >= 3 ? 'High' : (row._valuesFound >= 1 ? 'Medium' : 'Low');
 
-                // Try to auto-match employee
+                // Try to auto-match employee by number then by name
                 var matchedEmpId = '';
                 if (row.employee_number) {
                     var matchedEmp = findEmployeeByNumber(row.employee_number);
                     if (matchedEmp) matchedEmpId = matchedEmp.id;
+                }
+                if (!matchedEmpId && row.employee_name) {
+                    var matchedByName = findEmployeeByName(row.employee_name);
+                    if (matchedByName) matchedEmpId = matchedByName.id;
                 }
 
                 tableHtml += '<tr style="border-bottom:1px solid #eee;">';
