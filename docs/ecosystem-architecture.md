@@ -639,7 +639,7 @@ Separate Next.js deployment. Auth is `app/api/auth/login` — likely independent
 
 | # | Risk | Location | Impact | Action |
 |---|------|----------|--------|--------|
-| R1 | **JWT_SECRET defaults to `'change-this-secret'`** | `backend/middleware/auth.js` | Anyone can forge tokens in production if env not set | Set `JWT_SECRET` env var before first deploy |
+| R1 | ~~**JWT_SECRET defaults to `'change-this-secret'`**~~ ✅ **RESOLVED** — `server.js` now exits (`process.exit(1)`) if `NODE_ENV=production` and JWT_SECRET is default | `backend/server.js` | Anyone can forge tokens in production if env not set | ✅ Fixed |
 | R2 | **Two parallel payroll systems** — `Payroll/` (port 3131) and `accounting-ecosystem/frontend-payroll/` — both write to Supabase but different API paths (`/api/storage/` vs `/api/payroll/`) | `payroll_kv_store` vs payroll module tables | Data divergence, employees in both systems won't match | Define which is authoritative. Decommission legacy or migrate data |
 | R3 | **Two parallel POS systems** — `Point of Sale/` (port 8080, PostgreSQL) and `accounting-ecosystem/frontend-pos/` (Supabase) | Different databases | Sales data split across two DBs | Migrate legacy POS to ecosystem or clearly document boundary |
 
@@ -647,11 +647,11 @@ Separate Next.js deployment. Auth is `app/api/auth/login` — likely independent
 
 | # | Risk | Location | Impact | Action |
 |---|------|----------|--------|--------|
-| R4 | **`polyfills.js` copied to 6 folders** — updating master `shared/js/polyfills.js` does not propagate automatically | `shared/js/` + 6 copies | Browser bug fixes reach some apps but not others | Add a sync script or build step |
-| R5 | **`customers` route missing auth** | `backend/server.js` line `app.use('/api/customers', customersRoutes)` | Customer data accessible without a valid token | Add `authenticateToken` middleware to customers route |
+| R4 | ~~**`polyfills.js` copied to 6 folders**~~ ✅ **RESOLVED** — `scripts/sync-polyfills.sh` created; run after every update to `shared/js/polyfills.js` | `shared/js/` + 6 copies | Browser bug fixes reach some apps but not others | Run `bash scripts/sync-polyfills.sh` after each update |
+| R5 | ~~**`customers` route missing auth`**~~ ✅ **RESOLVED** — `authenticateToken` added to `/api/customers` | `backend/server.js` | Customer data accessible without a valid token | ✅ Fixed |
 | R6 | **Inter-company data stored in SEAN's supabase-store** | `backend/inter-company/routes.js` | If SEAN module is disabled, inter-company breaks entirely | Inter-company should have own data layer |
-| R7 | **Sean webapp auth isolation** | `sean-webapp/app/api/auth/` | Sean webapp may use different JWT secret → tokens not cross-compatible | Audit sean-webapp auth, check if it reads from same Supabase |
-| R8 | **Coaching DB can be separate** | `COACHING_DATABASE_URL` | Coaching data out of sync with main platform users | Confirm which DB coaching uses per environment |
+| R7 | ~~**Sean webapp auth isolation**~~ ✅ **RESOLVED (by design)** — `sean-webapp` uses **Prisma** (own PostgreSQL via `DATABASE_URL`), **email-only login** (no password), **httpOnly cookie sessions** (30 days), and a hardcoded super-user list. Completely isolated from ecosystem JWT. No fix needed. | `sean-webapp/app/api/auth/` | None — intentionally isolated; super-users only | No action required — document as separate system |
+| R8 | ~~**Coaching DB can be separate**~~ ✅ **RESOLVED (documented)** — `modules/coaching/db.js` uses `COACHING_DATABASE_URL \|\| DATABASE_URL`. If `DATABASE_URL` points to main Supabase DB, coaching shares the same DB. Set `COACHING_DATABASE_URL` separately only if you want coaching on a different DB. Both are valid — choose per-environment. | `COACHING_DATABASE_URL` | Coaching data isolated from main platform if separate DB chosen | Confirm env var strategy per environment (same DB = leave unset) |
 
 ### 🟢 Low / Monitored
 
@@ -668,19 +668,19 @@ Separate Next.js deployment. Auth is `app/api/auth/login` — likely independent
 
 ### Immediate (Before Next Release)
 
-- [ ] **R1** — Set `JWT_SECRET` in production env — verify all deployments have it
-- [ ] **R5** — Add `authenticateToken` to `/api/customers` route in `backend/server.js`
+- [x] **R1** — ✅ `server.js` exits with error if `JWT_SECRET` is default in production (`NODE_ENV=production`)
+- [x] **R5** — ✅ `authenticateToken` added to `/api/customers` route in `backend/server.js`
 
 ### Short-Term (This Sprint)
 
-- [ ] **R4** — Create `scripts/sync-polyfills.sh` to copy `shared/js/polyfills.js` to all app folders
-- [ ] **R2** — Document authoritative payroll system; add warning comment to `Payroll/server.js`
-- [ ] **R3** — Document authoritative POS system; add boundary notes
+- [x] **R4** — ✅ `scripts/sync-polyfills.sh` created — run after every `shared/js/polyfills.js` update
+- [x] **R2** — ✅ Deprecation banner added to `Payroll/server.js`
+- [x] **R3** — ✅ Deprecation banner added to `Point of Sale/server.js`
 
 ### Medium-Term
 
-- [ ] **R7** — Audit `sean-webapp/` auth — confirm JWT secret + Supabase tables it uses
-- [ ] **R8** — Confirm `COACHING_DATABASE_URL` strategy per environment
+- [x] **R7** — ✅ Audited: sean-webapp is fully isolated (Prisma, own DB, email-only auth, cookie sessions) — no action needed
+- [x] **R8** — ✅ Documented: coaching uses `COACHING_DATABASE_URL || DATABASE_URL` — choose per-environment
 - [ ] **R6** — Move inter-company data store out of SEAN dependency
 
 ### Long-Term

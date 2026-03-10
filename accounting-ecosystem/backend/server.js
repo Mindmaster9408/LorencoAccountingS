@@ -471,6 +471,18 @@ async function start() {
         console.warn('     Set ACCOUNTING_DATABASE_URL (Supabase direct connection) to enable auto-migration.');
       }
     }
+
+    // 4b. Auto-migrate payroll tables (runs on every startup, safe — uses IF NOT EXISTS)
+    if (payrollRoutes) {
+      try {
+        const { ensurePayrollSchema } = require('./config/payroll-schema');
+        const accountingDb = require('./modules/accounting/config/database');
+        await ensurePayrollSchema(accountingDb.pool);
+      } catch (migErr) {
+        console.warn('  ⚠️  Payroll schema migration skipped:', migErr.message);
+        console.warn('     Set DATABASE_URL (Supabase direct connection string, port 5432) to enable auto-migration.');
+      }
+    }
   }
 
   // 4. Display module status

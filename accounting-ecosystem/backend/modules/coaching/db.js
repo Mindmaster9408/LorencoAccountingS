@@ -1,8 +1,15 @@
 /**
  * Coaching Module — Database Connection
  * Uses a direct PostgreSQL pool (raw pg) for the coaching tables.
- * Set COACHING_DATABASE_URL in your .env to the Supabase direct connection string.
- * Get it from: Supabase dashboard → Settings → Database → Connection string (URI)
+ *
+ * Connection string strategy (COACHING_DATABASE_URL || DATABASE_URL):
+ *   - If both the coaching module and main ecosystem share the same Supabase DB,
+ *     leave COACHING_DATABASE_URL unset — it will fall back to DATABASE_URL.
+ *   - If coaching needs a separate PostgreSQL DB per environment, set
+ *     COACHING_DATABASE_URL explicitly to that connection string.
+ *   - Either way, the value must be the Supabase direct connection string
+ *     (port 5432) — NOT the REST API URL.
+ *   - Get it from: Supabase dashboard → Settings → Database → Connection string (URI)
  */
 const { Pool } = require('pg');
 

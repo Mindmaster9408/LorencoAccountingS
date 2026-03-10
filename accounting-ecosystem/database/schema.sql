@@ -618,6 +618,15 @@ CREATE TABLE IF NOT EXISTS payroll_historical (
   UNIQUE(company_id, employee_id, period_key)
 );
 
+-- KV store — frontend localStorage bridge (cloud-backed, survives browser clears)
+CREATE TABLE IF NOT EXISTS payroll_kv_store_eco (
+  company_id TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value      JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (company_id, key)
+);
+
 
 -- =============================================================================
 -- 4. ACCOUNTING MODULE — Lorenco Accounting
@@ -944,6 +953,7 @@ ALTER TABLE leave_balances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employee_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pay_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payroll_historical ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payroll_kv_store_eco ENABLE ROW LEVEL SECURITY;
 
 -- Accounting tables RLS
 ALTER TABLE chart_of_accounts ENABLE ROW LEVEL SECURITY;
