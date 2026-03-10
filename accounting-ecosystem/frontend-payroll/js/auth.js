@@ -118,7 +118,9 @@ const AUTH = (function() {
 
                     const session = this.getSession() || {};
                     session.company_id = companyId;
-                    session.company_name = result.company_name || '';
+                    session.company_name = result.company_name || (result.company && result.company.company_name) || '';
+                    // role comes back from the server — must update session so Permissions work
+                    if (result.role) session.role = result.role;
                     this.setSession(session);
 
                     return { success: true };

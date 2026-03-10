@@ -47,12 +47,13 @@ Each entry has:
 | # | Feature | Status | Depends on | Break conditions | Last verified |
 |---|---------|--------|------------|-----------------|---------------|
 | P10 | Pay period selector populates correctly | ✅ Verified | `employee-detail.html` `populatePeriods()`, `payruns_{companyId}` KV key | Changing period key format | commit `079930c` |
-| P11 | Payrun locked/finalized status persists | | `payslip_status_{companyId}_{empId}_{period}` KV key, `getPayslipStatusKey()`, `isPayrunLockedForPeriod()` | Changing status key format, moving to native localStorage | |
-| P12 | Request Unlock — manager auth via login API | | `employee-detail.html` `verifyManagerAuth()` → `POST /api/auth/login`, removes both `payslip_status_*` AND `emp_historical_*` keys | Re-introducing `AUTH.findUserByEmail()` (does NOT exist), storing returned token (overwrites session) | commit `079930c` |
+| P11 | Payrun locked/finalized status persists | ✅ Verified | `payslip_status_{companyId}_{empId}_{period}` KV key, `getPayslipStatusKey()`, `isPayrunLockedForPeriod()` | Changing status key format, moving to native localStorage | commit `278368e` |
+| P12 | Request Unlock — manager auth via login API | ✅ Fixed | `employee-detail.html` `verifyManagerAuth()` → `POST /api/auth/login`, removes both `payslip_status_*` AND `emp_historical_*` keys | Re-introducing `AUTH.findUserByEmail()` (does NOT exist), storing returned token (overwrites session) | commit `079930c` |
 | P20 | Calculate Payslip works | ✅ Verified | `employee-detail.html` `calculatePayslip()`, `js/payroll-engine.js` | Breaking payroll-engine ACTIONS/BRACKETS structure | commit `079930c` |
 | P21 | Payslip PDF download works | ✅ Verified | `employee-detail.html` `downloadPayslipPDF()` | Removing jsPDF script include, changing PDF element IDs | commit `079930c` |
 | P22 | Pay run works | ✅ Verified | `payruns.html`, `payruns_{companyId}` KV key | Changing period/status key format | commit `079930c` |
-| P23 | Finalize Payslip button visible and clickable | ✅ Fixed | `employee-detail.html` `updatePayslipUI()` — button rendered WITHOUT `data-permission` attr | **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered in `updatePayslipUI()` — `enforceUI()` will silently hide them. Permission already enforced inside `finalizePayslip()` | commit pending |
+| P23 | Finalize Payslip button visible and clickable | ✅ Fixed | `employee-detail.html` `updatePayslipUI()` — button rendered WITHOUT `data-permission` attr | **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered in `updatePayslipUI()` — `enforceUI()` will silently hide them. Permission already enforced inside `finalizePayslip()` | commit `278368e` |
+| P24 | Finalize permission works after company selection | ✅ Fixed | `js/auth.js` `selectCompany()` reads `result.role` from `/api/auth/select-company` and writes to session | `selectCompany()` not updating `session.role` leaves it null → all `Permissions.require()` calls fail | commit pending |
 
 ### TAX & PAYROLL CALCULATIONS
 
@@ -127,3 +128,4 @@ Safe to proceed? [ ] Yes — no overlap  [ ] Yes — protected by: _______  [ ] 
 5. **NEVER move `session`, `token`, `company`, `selectedCompanyId` out of `isLocalKey`** — breaks auth persistence (P18)
 6. **NEVER store business data (payroll records, transactions, customer records) in localStorage** — browser clear destroys it (P17)
 8. **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered dynamically in `updatePayslipUI()` — `enforceUI()` runs immediately after and silently hides elements it can't verify. Permission is already enforced inside `finalizePayslip()` and `unfinalizePayslip()` via `Permissions.require()` (P23)
+9. **`selectCompany()` in auth.js MUST update `session.role`** from `result.role` — the backend returns the correct role for the selected company; if not written to session, ALL `Permissions.require()` calls fail silently (P24)
