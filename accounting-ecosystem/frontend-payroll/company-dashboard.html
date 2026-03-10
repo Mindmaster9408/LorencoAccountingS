@@ -611,8 +611,9 @@
 
             // Set company info
             if (company) {
-                document.getElementById('company-name-header').textContent = company.name;
-                document.getElementById('emp-company-name-header').textContent = company.name;
+                var _cn = company.name || company.company_name || company.trading_name || 'Unnamed';
+                document.getElementById('company-name-header').textContent = _cn;
+                document.getElementById('emp-company-name-header').textContent = _cn;
             }
 
             // Update employee count from actual stored employees
@@ -640,7 +641,7 @@
                 companies.forEach(company => {
                     const div = document.createElement('div');
                     div.className = 'carousel-company';
-                    div.textContent = company.name;
+                    div.textContent = company.name || company.company_name || company.trading_name || 'Unnamed';
                     if (company.id === session.company_id) {
                         div.style.background = '#667eea';
                         div.style.color = 'white';

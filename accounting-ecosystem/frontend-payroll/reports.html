@@ -300,7 +300,7 @@
             const session = AUTH.getSession();
             currentCompanyId = session.company_id;
             const company = AUTH.getCompanyById(currentCompanyId);
-            document.getElementById('company-name-badge').textContent = company ? company.name : 'Unknown';
+            document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown';
             loadCompaniesCarousel();
             loadData();
         });
@@ -318,7 +318,7 @@
                 companies.forEach(company => {
                     const div = document.createElement('div');
                     div.className = 'carousel-company';
-                    div.textContent = company.name;
+                    div.textContent = company.name || company.company_name || company.trading_name || 'Unnamed';
                     if (company.id === session.company_id) {
                         div.style.background = '#667eea';
                         div.style.color = 'white';

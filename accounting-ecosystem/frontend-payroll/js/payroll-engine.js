@@ -40,6 +40,96 @@ const PayrollEngine = {
     MEDICAL_CREDIT_FIRST_DEP: 364,
     MEDICAL_CREDIT_ADDITIONAL: 246,
 
+    // ============================================================
+    // HISTORICAL SA TAX TABLES (auto-selected by pay period)
+    // Source: www.sars.gov.za — verify before each new tax year.
+    // Periods auto-resolve: e.g. '2023-07' → tax year '2023/2024'.
+    // SA tax year runs 1 March → last day of February.
+    // Admin can override the CURRENT year via Tax Config UI.
+    // ============================================================
+    HISTORICAL_TABLES: {
+
+        // --- 2021/2022 (1 Mar 2021 – 28 Feb 2022) ---
+        '2021/2022': {
+            BRACKETS: [
+                { min: 0,        max: 216200,   base: 0,       rate: 0.18 },
+                { min: 216201,   max: 337800,   base: 38916,   rate: 0.26 },
+                { min: 337801,   max: 467500,   base: 70532,   rate: 0.31 },
+                { min: 467501,   max: 613600,   base: 110739,  rate: 0.36 },
+                { min: 613601,   max: 782200,   base: 163335,  rate: 0.39 },
+                { min: 782201,   max: 1656600,  base: 229089,  rate: 0.41 },
+                { min: 1656601,  max: Infinity, base: 587593,  rate: 0.45 }
+            ],
+            PRIMARY_REBATE: 15714, SECONDARY_REBATE: 8613, TERTIARY_REBATE: 2871,
+            UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
+            MEDICAL_CREDIT_MAIN: 332, MEDICAL_CREDIT_FIRST_DEP: 332, MEDICAL_CREDIT_ADDITIONAL: 224
+        },
+
+        // --- 2022/2023 (1 Mar 2022 – 28 Feb 2023) ---
+        '2022/2023': {
+            BRACKETS: [
+                { min: 0,        max: 226000,   base: 0,       rate: 0.18 },
+                { min: 226001,   max: 353100,   base: 40680,   rate: 0.26 },
+                { min: 353101,   max: 488700,   base: 73726,   rate: 0.31 },
+                { min: 488701,   max: 641400,   base: 115762,  rate: 0.36 },
+                { min: 641401,   max: 817600,   base: 170734,  rate: 0.39 },
+                { min: 817601,   max: 1731600,  base: 239452,  rate: 0.41 },
+                { min: 1731601,  max: Infinity, base: 614192,  rate: 0.45 }
+            ],
+            PRIMARY_REBATE: 15714, SECONDARY_REBATE: 8613, TERTIARY_REBATE: 2871,
+            UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
+            MEDICAL_CREDIT_MAIN: 332, MEDICAL_CREDIT_FIRST_DEP: 332, MEDICAL_CREDIT_ADDITIONAL: 224
+        },
+
+        // --- 2023/2024 (1 Mar 2023 – 29 Feb 2024) ---
+        '2023/2024': {
+            BRACKETS: [
+                { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
+                { min: 237101,   max: 370500,   base: 42678,   rate: 0.26 },
+                { min: 370501,   max: 512800,   base: 77362,   rate: 0.31 },
+                { min: 512801,   max: 673000,   base: 121475,  rate: 0.36 },
+                { min: 673001,   max: 857900,   base: 179147,  rate: 0.39 },
+                { min: 857901,   max: 1817000,  base: 251258,  rate: 0.41 },
+                { min: 1817001,  max: Infinity, base: 644489,  rate: 0.45 }
+            ],
+            PRIMARY_REBATE: 16425, SECONDARY_REBATE: 9000, TERTIARY_REBATE: 2997,
+            UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
+            MEDICAL_CREDIT_MAIN: 347, MEDICAL_CREDIT_FIRST_DEP: 347, MEDICAL_CREDIT_ADDITIONAL: 234
+        },
+
+        // --- 2024/2025 (1 Mar 2024 – 28 Feb 2025) ---
+        '2024/2025': {
+            BRACKETS: [
+                { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
+                { min: 237101,   max: 370500,   base: 42678,   rate: 0.26 },
+                { min: 370501,   max: 512800,   base: 77362,   rate: 0.31 },
+                { min: 512801,   max: 673000,   base: 121475,  rate: 0.36 },
+                { min: 673001,   max: 857900,   base: 179147,  rate: 0.39 },
+                { min: 857901,   max: 1817000,  base: 251258,  rate: 0.41 },
+                { min: 1817001,  max: Infinity, base: 644489,  rate: 0.45 }
+            ],
+            PRIMARY_REBATE: 17235, SECONDARY_REBATE: 9444, TERTIARY_REBATE: 3145,
+            UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
+            MEDICAL_CREDIT_MAIN: 364, MEDICAL_CREDIT_FIRST_DEP: 364, MEDICAL_CREDIT_ADDITIONAL: 246
+        },
+
+        // --- 2025/2026 (1 Mar 2025 – 28 Feb 2026) — same brackets as 2024/2025 ---
+        '2025/2026': {
+            BRACKETS: [
+                { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
+                { min: 237101,   max: 370500,   base: 42678,   rate: 0.26 },
+                { min: 370501,   max: 512800,   base: 77362,   rate: 0.31 },
+                { min: 512801,   max: 673000,   base: 121475,  rate: 0.36 },
+                { min: 673001,   max: 857900,   base: 179147,  rate: 0.39 },
+                { min: 857901,   max: 1817000,  base: 251258,  rate: 0.41 },
+                { min: 1817001,  max: Infinity, base: 644489,  rate: 0.45 }
+            ],
+            PRIMARY_REBATE: 17235, SECONDARY_REBATE: 9444, TERTIARY_REBATE: 3145,
+            UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
+            MEDICAL_CREDIT_MAIN: 364, MEDICAL_CREDIT_FIRST_DEP: 364, MEDICAL_CREDIT_ADDITIONAL: 246
+        }
+    },
+
     // === TAX TABLE CONFIGURATION (Supabase KV override) ===
 
     /**
@@ -111,37 +201,45 @@ const PayrollEngine = {
     /**
      * Calculate monthly medical tax credit (Section 6A).
      * @param {number} numMembers - Total medical aid members (employee + dependents)
+     * @param {Object} [tables] - Optional period-specific tax tables (from getTablesForPeriod)
      * @returns {number} Monthly medical credit amount
      */
-    calculateMedicalCredit: function(numMembers) {
+    calculateMedicalCredit: function(numMembers, tables) {
         if (!numMembers || numMembers <= 0) return 0;
-        if (numMembers === 1) return this.MEDICAL_CREDIT_MAIN;
-        if (numMembers === 2) return this.MEDICAL_CREDIT_MAIN + this.MEDICAL_CREDIT_FIRST_DEP;
-        return this.MEDICAL_CREDIT_MAIN + this.MEDICAL_CREDIT_FIRST_DEP
-               + (numMembers - 2) * this.MEDICAL_CREDIT_ADDITIONAL;
+        var t = tables || this;
+        var main       = typeof t.MEDICAL_CREDIT_MAIN       === 'number' ? t.MEDICAL_CREDIT_MAIN       : this.MEDICAL_CREDIT_MAIN;
+        var firstDep   = typeof t.MEDICAL_CREDIT_FIRST_DEP  === 'number' ? t.MEDICAL_CREDIT_FIRST_DEP  : this.MEDICAL_CREDIT_FIRST_DEP;
+        var additional = typeof t.MEDICAL_CREDIT_ADDITIONAL === 'number' ? t.MEDICAL_CREDIT_ADDITIONAL : this.MEDICAL_CREDIT_ADDITIONAL;
+        if (numMembers === 1) return main;
+        if (numMembers === 2) return main + firstDep;
+        return main + firstDep + (numMembers - 2) * additional;
     },
 
     // === CORE CALCULATION FUNCTIONS ===
 
     /**
      * Calculate annual PAYE from annual taxable income.
-     * Pure function - no side effects.
+     * Pure function — uses dynamic brackets so Tax Config overrides and
+     * historical tables both take effect automatically.
      * @param {number} annualGross - Annual taxable income
      * @param {number} [age] - Employee age for secondary/tertiary rebates
+     * @param {Object} [tables] - Optional period-specific tax tables (from getTablesForPeriod)
      */
-    calculateAnnualPAYE: function(annualGross, age) {
+    calculateAnnualPAYE: function(annualGross, age, tables) {
         if (annualGross <= 0) return 0;
+        var t = tables || this;
+        var brackets = (t.BRACKETS && t.BRACKETS.length) ? t.BRACKETS : this.BRACKETS;
         var tax = 0;
-        if (annualGross <= 237100)       tax = annualGross * 0.18;
-        else if (annualGross <= 370500)  tax = 42678 + (annualGross - 237100) * 0.26;
-        else if (annualGross <= 512800)  tax = 77362 + (annualGross - 370500) * 0.31;
-        else if (annualGross <= 673000)  tax = 121475 + (annualGross - 512800) * 0.36;
-        else if (annualGross <= 857900)  tax = 179147 + (annualGross - 673000) * 0.39;
-        else if (annualGross <= 1817000) tax = 251258 + (annualGross - 857900) * 0.41;
-        else                             tax = 644489 + (annualGross - 1817000) * 0.45;
-        tax -= this.PRIMARY_REBATE;
-        if (age && age >= 65) tax -= this.SECONDARY_REBATE;
-        if (age && age >= 75) tax -= this.TERTIARY_REBATE;
+        for (var i = 0; i < brackets.length; i++) {
+            var b = brackets[i];
+            if (annualGross <= b.max) {
+                tax = b.base + (annualGross - b.min) * b.rate;
+                break;
+            }
+        }
+        tax -= (typeof t.PRIMARY_REBATE   === 'number' ? t.PRIMARY_REBATE   : this.PRIMARY_REBATE);
+        if (age && age >= 65) tax -= (typeof t.SECONDARY_REBATE === 'number' ? t.SECONDARY_REBATE : this.SECONDARY_REBATE);
+        if (age && age >= 75) tax -= (typeof t.TERTIARY_REBATE  === 'number' ? t.TERTIARY_REBATE  : this.TERTIARY_REBATE);
         return Math.max(tax, 0);
     },
 
@@ -150,21 +248,23 @@ const PayrollEngine = {
      * Annualizes, calculates annual tax, divides by 12.
      * @param {number} monthlyGross
      * @param {Object} [options] - { age, medicalMembers, taxDirective }
+     * @param {Object} [tables] - Optional period-specific tax tables (from getTablesForPeriod)
      */
-    calculateMonthlyPAYE: function(monthlyGross, options) {
+    calculateMonthlyPAYE: function(monthlyGross, options, tables) {
         options = options || {};
+        tables = tables || this;
 
         // Tax directive override: flat rate
         if (options.taxDirective && options.taxDirective > 0) {
             return this.r2(monthlyGross * (options.taxDirective / 100));
         }
 
-        var annualTax = this.calculateAnnualPAYE(monthlyGross * 12, options.age);
+        var annualTax = this.calculateAnnualPAYE(monthlyGross * 12, options.age, tables);
         var monthlyTax = annualTax / 12;
 
         // Subtract medical tax credits
         if (options.medicalMembers && options.medicalMembers > 0) {
-            monthlyTax -= this.calculateMedicalCredit(options.medicalMembers);
+            monthlyTax -= this.calculateMedicalCredit(options.medicalMembers, tables);
         }
 
         return this.r2(Math.max(monthlyTax, 0));
@@ -173,17 +273,65 @@ const PayrollEngine = {
     /**
      * Calculate monthly UIF contribution (employee portion).
      * 1% of gross, capped at R177.12/month.
+     * @param {Object} [tables] - Optional period-specific tax tables
      */
-    calculateUIF: function(monthlyGross) {
-        return this.r2(Math.min(monthlyGross * this.UIF_RATE, this.UIF_MONTHLY_CAP));
+    calculateUIF: function(monthlyGross, tables) {
+        var t = tables || this;
+        var rate = typeof t.UIF_RATE        === 'number' ? t.UIF_RATE        : this.UIF_RATE;
+        var cap  = typeof t.UIF_MONTHLY_CAP === 'number' ? t.UIF_MONTHLY_CAP : this.UIF_MONTHLY_CAP;
+        return this.r2(Math.min(monthlyGross * rate, cap));
     },
 
     /**
      * Calculate SDL (Skills Development Levy).
      * 1% of gross.
+     * @param {Object} [tables] - Optional period-specific tax tables
      */
-    calculateSDL: function(monthlyGross) {
-        return this.r2(monthlyGross * this.SDL_RATE);
+    calculateSDL: function(monthlyGross, tables) {
+        var t = tables || this;
+        var rate = typeof t.SDL_RATE === 'number' ? t.SDL_RATE : this.SDL_RATE;
+        return this.r2(monthlyGross * rate);
+    },
+
+    // === PERIOD-AWARE TAX TABLE SELECTION ===
+
+    /**
+     * Derive the SA tax year string for a given pay period.
+     * SA tax year runs 1 March → last day of February.
+     * Examples: '2025-01' → '2024/2025',  '2025-03' → '2025/2026'
+     * @param {string} periodStr - 'YYYY-MM' or 'YYYY-MM-DD'
+     * @returns {string} e.g. '2024/2025'
+     */
+    getTaxYearForPeriod: function(periodStr) {
+        if (!periodStr) return this.TAX_YEAR;
+        var parts = periodStr.split('-');
+        var year  = parseInt(parts[0], 10);
+        var month = parseInt(parts[1], 10);
+        if (isNaN(year) || isNaN(month)) return this.TAX_YEAR;
+        return month >= 3
+            ? year + '/' + (year + 1)
+            : (year - 1) + '/' + year;
+    },
+
+    /**
+     * Return the correct set of tax tables for a given pay period.
+     * Looks up HISTORICAL_TABLES by the SA tax year derived from the period.
+     * If the period is in the CURRENT tax year, returns `this` (so that any
+     * Tax Config UI override stored in Supabase KV applies automatically).
+     * Falls back gracefully to the most recent known table.
+     * @param {string} periodStr - 'YYYY-MM'
+     * @returns {Object} Tables object with BRACKETS, PRIMARY_REBATE, etc.
+     */
+    getTablesForPeriod: function(periodStr) {
+        if (!periodStr) return this;
+        var taxYear = this.getTaxYearForPeriod(periodStr);
+        // Current year → use `this` (may be overridden by loadTaxConfig KV data)
+        if (taxYear === this.TAX_YEAR) return this;
+        // Historical year → use hardcoded verified tables
+        if (this.HISTORICAL_TABLES[taxYear]) return this.HISTORICAL_TABLES[taxYear];
+        // Future or unknown year → use latest known tables as best estimate
+        var keys = Object.keys(this.HISTORICAL_TABLES).sort();
+        return this.HISTORICAL_TABLES[keys[keys.length - 1]] || this;
     },
 
     /**
@@ -211,9 +359,12 @@ const PayrollEngine = {
      * @param {Array} multiRate - Multi-rate entries { hours, hourly_rate }
      * @param {Array} shortTime - Short time entries { hours_missed }
      * @param {Object} [employeeOptions] - { age, medicalMembers, taxDirective }
+     * @param {string} [period] - Pay period 'YYYY-MM' — auto-selects correct tax year tables
      * @returns {Object} { gross, paye, uif, sdl, deductions, net, negativeNetPay, medicalCredit }
      */
-    calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions) {
+    calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period) {
+        // Select the correct tax tables for the period (auto-applies historical brackets)
+        var tables = period ? this.getTablesForPeriod(period) : this;
         var taxableGross = payrollData.basic_salary || 0;
         var nonTaxableIncome = 0;
 
@@ -263,9 +414,9 @@ const PayrollEngine = {
         var gross = taxableGross + nonTaxableIncome;
 
         var opts = employeeOptions || {};
-        var paye = PayrollEngine.calculateMonthlyPAYE(taxableGross, opts);
-        var uif = PayrollEngine.calculateUIF(gross);
-        var sdl = PayrollEngine.calculateSDL(gross);
+        var paye = PayrollEngine.calculateMonthlyPAYE(taxableGross, opts, tables);
+        var uif = PayrollEngine.calculateUIF(gross, tables);
+        var sdl = PayrollEngine.calculateSDL(gross, tables);
 
         // Other deductions (deduction-type regular_inputs and current inputs)
         var deductions = 0;

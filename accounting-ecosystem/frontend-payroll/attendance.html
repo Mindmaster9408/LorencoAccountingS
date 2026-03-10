@@ -393,7 +393,7 @@
             // Set company name
             const company = AUTH.getCompanyById(currentCompanyId);
             if (company) {
-                document.getElementById('company-name-header').textContent = company.name;
+                document.getElementById('company-name-header').textContent = company.name || company.company_name || company.trading_name || 'Unnamed';
             }
 
             // Load company carousel
@@ -414,7 +414,7 @@
                 companies.forEach(function(company) {
                     const div = document.createElement('div');
                     div.className = 'carousel-company';
-                    div.textContent = company.name;
+                    div.textContent = company.name || company.company_name || company.trading_name || 'Unnamed';
                     if (company.id === session.company_id) {
                         div.style.background = '#667eea';
                         div.style.color = 'white';

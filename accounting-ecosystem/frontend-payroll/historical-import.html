@@ -474,7 +474,7 @@
             var session = AUTH.getSession();
             currentCompanyId = session.company_id;
             var company = AUTH.getCompanyById(currentCompanyId);
-            document.getElementById('company-name-badge').textContent = company ? company.name : 'Unknown Company';
+            document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown Company';
             loadCompaniesCarousel();
             loadEmployees();
             setupDragDropZones();
@@ -495,7 +495,7 @@
                 companies.forEach(function(company) {
                     var div = document.createElement('div');
                     div.className = 'carousel-company';
-                    div.textContent = company.name;
+                    div.textContent = company.name || company.company_name || company.trading_name || 'Unnamed';
                     if (company.id === session.company_id) {
                         div.style.background = '#667eea';
                         div.style.color = 'white';
