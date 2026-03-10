@@ -539,6 +539,7 @@
                         <th>Employee #</th>
                         <th>Name</th>
                         <th>ID Number</th>
+                        <th>Tax Number</th>
                         <th>Position</th>
                         <th>Department</th>
                         <th>Payment Method</th>
@@ -547,7 +548,7 @@
                 </thead>
                 <tbody id="employee-list">
                     <tr>
-                        <td colspan="7" class="empty-message">Loading employees...</td>
+                        <td colspan="8" class="empty-message">Loading employees...</td>
                     </tr>
                 </tbody>
             </table>
@@ -584,6 +585,10 @@
                     <div class="form-group">
                         <label>ID Number</label>
                         <input type="text" id="id_number" maxlength="13">
+                    </div>
+                    <div class="form-group">
+                        <label class="required">Tax Number</label>
+                        <input type="text" id="tax_number" placeholder="e.g. 1234567890" maxlength="10" required>
                     </div>
                     <div class="form-group">
                         <label>Email</label>
@@ -802,7 +807,7 @@
         function displayEmployees() {
             let html = '';
             if (employees.length === 0) {
-                html = '<tr><td colspan="7" class="empty-message">No employees yet. Click "Add Employee" to get started.</td></tr>';
+                html = '<tr><td colspan="8" class="empty-message">No employees yet. Click "Add Employee" to get started.</td></tr>';
             } else {
                 employees.forEach(emp => {
                     html += `
@@ -810,6 +815,7 @@
                             <td><strong>${emp.employee_number}</strong></td>
                             <td>${emp.first_name} ${emp.last_name}</td>
                             <td>${emp.id_number || '-'}</td>
+                            <td>${emp.tax_number ? emp.tax_number : '<span style="color:#dc3545;font-weight:600;">⚠ Missing</span>'}</td>
                             <td>${emp.position || '-'}</td>
                             <td>${emp.department || '-'}</td>
                             <td>${emp.payment_method || 'EFT'}</td>
@@ -847,6 +853,7 @@
                 document.getElementById('first_name').value = emp.first_name || '';
                 document.getElementById('last_name').value = emp.last_name || '';
                 document.getElementById('id_number').value = emp.id_number || '';
+                document.getElementById('tax_number').value = emp.tax_number || '';
                 document.getElementById('email').value = emp.email || '';
                 document.getElementById('phone').value = emp.phone || '';
                 document.getElementById('job_title').value = emp.job_title || '';
@@ -881,6 +888,7 @@
                 first_name: document.getElementById('first_name').value,
                 last_name: document.getElementById('last_name').value,
                 id_number: document.getElementById('id_number').value || null,
+                tax_number: document.getElementById('tax_number').value.trim() || null,
                 email: document.getElementById('email').value || null,
                 phone: document.getElementById('phone').value || null,
                 job_title: document.getElementById('job_title').value || null,

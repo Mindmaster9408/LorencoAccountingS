@@ -287,6 +287,7 @@
                 <div class="info-item"><div class="info-label">Position</div><div class="info-value" id="empPosition">-</div></div>
                 <div class="info-item"><div class="info-label">Department</div><div class="info-value" id="empDepartment">-</div></div>
                 <div class="info-item"><div class="info-label">ID Number</div><div class="info-value" id="empIdNumber">-</div></div>
+                <div class="info-item"><div class="info-label">Tax Number</div><div class="info-value" id="empTaxNumber">-</div></div>
                 <div class="info-item"><div class="info-label">Date of Birth</div><div class="info-value" id="empDOB">-</div></div>
                 <div class="info-item"><div class="info-label">Payment Method</div><div class="info-value" id="empPayMethod">-</div></div>
             </div>
@@ -417,6 +418,7 @@
                         <h4 style="color: #667eea; margin-bottom: 10px;">Personal Information</h4>
                         <div class="info-item"><div class="info-label">Full Name</div><div class="info-value" id="editFullName">-</div></div>
                         <div class="info-item"><div class="info-label">ID Number</div><div class="info-value" id="editIdNumber">-</div></div>
+                        <div class="info-item"><div class="info-label">Tax Number</div><div class="info-value" id="editTaxNumber">-</div></div>
                         <div class="info-item"><div class="info-label">Email</div><div class="info-value" id="editEmail">-</div></div>
                         <div class="info-item"><div class="info-label">Phone</div><div class="info-value" id="editPhone">-</div></div>
                     </div>
@@ -661,6 +663,9 @@
                 <div class="form-group"><label>ID Number</label><input type="text" id="editIdNumberInput" maxlength="13"></div>
             </div>
             <div class="form-row">
+                <div class="form-group"><label class="required">Tax Number</label><input type="text" id="editTaxNumberInput" maxlength="10" required placeholder="e.g. 1234567890"></div>
+            </div>
+            <div class="form-row">
                 <div class="form-group"><label>Medical Aid Members</label><input type="number" id="editMedicalMembersInput" min="0" max="20" step="1" placeholder="0 = none"></div>
                 <div class="form-group"><label>Tax Directive (%)</label><input type="number" id="editTaxDirectiveInput" min="0" max="100" step="0.01" placeholder="0 = standard PAYE"></div>
             </div>
@@ -836,12 +841,14 @@
             document.getElementById('empPosition').textContent = currentEmployee.position || currentEmployee.job_title || '-';
             document.getElementById('empDepartment').textContent = currentEmployee.department || '-';
             document.getElementById('empIdNumber').textContent = currentEmployee.id_number || '-';
+            document.getElementById('empTaxNumber').textContent = currentEmployee.tax_number || '⚠ Missing';
             document.getElementById('empDOB').textContent = currentEmployee.id_number ? extractDOB(currentEmployee.id_number) : '-';
             document.getElementById('empPayMethod').textContent = currentEmployee.payment_method || 'EFT';
 
             // Edit Info tab
             document.getElementById('editFullName').textContent = currentEmployee.first_name + ' ' + currentEmployee.last_name;
             document.getElementById('editIdNumber').textContent = currentEmployee.id_number || '-';
+            document.getElementById('editTaxNumber').textContent = currentEmployee.tax_number || '⚠ Missing';
             document.getElementById('editEmail').textContent = currentEmployee.email || '-';
             document.getElementById('editPhone').textContent = currentEmployee.phone || '-';
             document.getElementById('editEmpNumber').textContent = currentEmployee.employee_number || '-';
@@ -1951,6 +1958,7 @@
             document.getElementById('editDateAppointedInput').value = e.date_appointed || '';
             document.getElementById('editPayMethodInput').value = e.payment_method || 'EFT';
             document.getElementById('editIdNumberInput').value = e.id_number || '';
+            document.getElementById('editTaxNumberInput').value = e.tax_number || '';
             document.getElementById('editMedicalMembersInput').value = e.medical_aid_members || '';
             document.getElementById('editTaxDirectiveInput').value = e.tax_directive || '';
             document.getElementById('editBankName').value = e.bank_name || '';
@@ -1970,6 +1978,9 @@
             currentEmployee.date_appointed = document.getElementById('editDateAppointedInput').value;
             currentEmployee.payment_method = document.getElementById('editPayMethodInput').value;
             currentEmployee.id_number = document.getElementById('editIdNumberInput').value.trim();
+            var taxNum = document.getElementById('editTaxNumberInput').value.trim();
+            if (!taxNum) { alert('Tax Number is required for all employees.'); return; }
+            currentEmployee.tax_number = taxNum;
             currentEmployee.medical_aid_members = parseInt(document.getElementById('editMedicalMembersInput').value) || 0;
             currentEmployee.tax_directive = parseFloat(document.getElementById('editTaxDirectiveInput').value) || 0;
             currentEmployee.bank_name = document.getElementById('editBankName').value.trim();
