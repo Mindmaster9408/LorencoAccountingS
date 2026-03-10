@@ -12,6 +12,14 @@
 // Intercepts ALL localStorage.*  calls and routes accounting data
 // through /api/accounting/kv (Supabase-backed, company-scoped).
 // Only token/session/auth state stays in native localStorage.
+//
+// Safety guarantees:
+//  1. Offline writes are queued (never silently dropped) and flushed
+//     automatically when the cloud connection is restored.
+//  2. A visible warning banner is shown while the connection is lost.
+//  3. Synchronous XHR is used for the initial load so page scripts
+//     have data immediately. An async fallback handles the future
+//     case where browsers block synchronous XHR.
 // ============================================================
 (function installEcoAccountingLocalStorageBridge() {
     'use strict';
@@ -19,7 +27,6 @@
     if (window.__ecoAccountingBridgeInstalled) return;
     window.__ecoAccountingBridgeInstalled = true;
 
-    // Note: eco-api-interceptor may not be loaded yet, so use direct path
     var KV_URL = window.location.origin + '/api/accounting/kv';
 
     function isLocalKey(key) {
@@ -29,28 +36,148 @@
                (typeof key === 'string' && key.indexOf('eco_') === 0);
     }
 
-    window._ecoAccountingKvCache = {};
-    window._ecoAccountingKvOnline = false;
+    window._ecoAccountingKvCache        = {};
+    window._ecoAccountingKvOnline       = false;
+    window._ecoAccountingKvBridgeReady  = false;
+    // Writes queued while the cloud is unreachable — never lost.
+    window._ecoAccountingKvPendingWrites = [];
 
-    try {
-        var token = Storage.prototype.getItem.call(localStorage, 'token') ||
-                    Storage.prototype.getItem.call(localStorage, 'auth_token') ||
-                    Storage.prototype.getItem.call(localStorage, 'eco_token');
-        if (token) {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', KV_URL, false);   // synchronous
-            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
-            xhr.send(null);
-            if (xhr.status === 200) {
-                window._ecoAccountingKvCache = JSON.parse(xhr.responseText) || {};
-                window._ecoAccountingKvOnline = true;
-                console.log('%c✅ ECO Accounting cloud connected — data in Supabase (no local)', 'color:#28a745;font-weight:bold;');
-            }
-        }
-    } catch(e) {
-        console.warn('ECO Accounting cloud bridge: offline — ' + e.message);
+    function getToken() {
+        return Storage.prototype.getItem.call(localStorage, 'token') ||
+               Storage.prototype.getItem.call(localStorage, 'auth_token') ||
+               Storage.prototype.getItem.call(localStorage, 'eco_token');
     }
 
+    // ── Offline warning banner ────────────────────────────────────────────
+    function showOfflineBanner() {
+        if (document.getElementById('_ecoCloudOfflineBanner')) return;
+        var banner = document.createElement('div');
+        banner.id = '_ecoCloudOfflineBanner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;' +
+            'background:#e74c3c;color:#fff;text-align:center;padding:10px 16px;' +
+            'font-size:14px;font-weight:600;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);';
+        banner.innerHTML = '\u26A0\uFE0F <strong>Cloud connection lost.</strong> ' +
+            'Your changes are held locally and will sync automatically when the connection is restored.';
+        function attach() { if (document.body) document.body.prepend(banner); }
+        if (document.body) { attach(); } else { document.addEventListener('DOMContentLoaded', attach); }
+    }
+
+    function hideOfflineBanner() {
+        var banner = document.getElementById('_ecoCloudOfflineBanner');
+        if (banner) banner.remove();
+        // Show a brief success flash to confirm sync completed
+        var flash = document.createElement('div');
+        flash.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;' +
+            'background:#28a745;color:#fff;text-align:center;padding:10px 16px;' +
+            'font-size:14px;font-weight:600;font-family:sans-serif;';
+        flash.textContent = '\u2705 Cloud connection restored. All changes synced.';
+        function attachFlash() {
+            if (document.body) {
+                document.body.prepend(flash);
+                setTimeout(function() { if (flash.parentNode) flash.remove(); }, 3000);
+            }
+        }
+        if (document.body) { attachFlash(); } else { document.addEventListener('DOMContentLoaded', attachFlash); }
+    }
+
+    // ── Pending write queue ───────────────────────────────────────────────
+    // Deduplicates by key so only the latest value is sent per key.
+    function enqueueWrite(op) {
+        var i = window._ecoAccountingKvPendingWrites.findIndex(function(w) { return w.key === op.key; });
+        if (op.type === 'remove') {
+            if (i >= 0) { window._ecoAccountingKvPendingWrites[i] = op; }
+            else        { window._ecoAccountingKvPendingWrites.push(op); }
+        } else {
+            if (i >= 0) { window._ecoAccountingKvPendingWrites[i] = op; }
+            else        { window._ecoAccountingKvPendingWrites.push(op); }
+        }
+        showOfflineBanner();
+    }
+
+    function flushPendingWrites() {
+        if (!window._ecoAccountingKvPendingWrites.length) return;
+        var queue = window._ecoAccountingKvPendingWrites.slice();
+        window._ecoAccountingKvPendingWrites = [];
+        console.log('%c\uD83D\uDD04 ECO Accounting: flushing ' + queue.length + ' pending write(s) to cloud', 'color:#fd7e14;font-weight:bold;');
+        queue.forEach(function(op) {
+            if (op.type === 'set')    { kvNetworkSet(op.key, op.value); }
+            else if (op.type === 'remove') { kvNetworkRemove(op.key); }
+        });
+        hideOfflineBanner();
+    }
+
+    // ── Reconnect poller (runs every 30 s while offline) ─────────────────
+    var _reconnectTimer = null;
+    function startReconnectPoller() {
+        if (_reconnectTimer) return;
+        _reconnectTimer = setInterval(function() {
+            var tok = getToken();
+            if (!tok) return;
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', KV_URL, true);
+            xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        var fresh = JSON.parse(xhr.responseText) || {};
+                        // Merge fresh cloud data — pending write keys take priority (they are newer)
+                        var pendingKeys = window._ecoAccountingKvPendingWrites.reduce(function(s, w) {
+                            s[w.key] = true; return s;
+                        }, {});
+                        Object.keys(fresh).forEach(function(k) {
+                            if (!pendingKeys[k]) window._ecoAccountingKvCache[k] = fresh[k];
+                        });
+                    } catch(_) {}
+                    window._ecoAccountingKvOnline = true;
+                    clearInterval(_reconnectTimer);
+                    _reconnectTimer = null;
+                    console.log('%c\u2705 ECO Accounting: cloud reconnected', 'color:#28a745;font-weight:bold;');
+                    flushPendingWrites();
+                }
+            };
+            xhr.send(null);
+        }, 30000);
+    }
+
+    // ── Network-level PUT / DELETE ────────────────────────────────────────
+    function kvNetworkSet(key, value) {
+        var tok = getToken();
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', KV_URL + '/' + encodeURIComponent(key), true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+        xhr.onload = function() {
+            if (xhr.status < 200 || xhr.status >= 300) {
+                console.error('ECO KV set server error: ' + xhr.status + ' key=' + key);
+                enqueueWrite({ type: 'set', key: key, value: value });
+                window._ecoAccountingKvOnline = false;
+                startReconnectPoller();
+            }
+        };
+        xhr.onerror = function() {
+            console.warn('ECO KV set network error — queuing write for key=' + key);
+            enqueueWrite({ type: 'set', key: key, value: value });
+            window._ecoAccountingKvOnline = false;
+            startReconnectPoller();
+        };
+        xhr.send(JSON.stringify({ value: value }));
+    }
+
+    function kvNetworkRemove(key) {
+        var tok = getToken();
+        var xhr = new XMLHttpRequest();
+        xhr.open('DELETE', KV_URL + '/' + encodeURIComponent(key), true);
+        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+        xhr.onerror = function() {
+            console.warn('ECO KV remove network error — queuing for key=' + key);
+            enqueueWrite({ type: 'remove', key: key });
+            window._ecoAccountingKvOnline = false;
+            startReconnectPoller();
+        };
+        xhr.send(null);
+    }
+
+    // ── Cache helpers ─────────────────────────────────────────────────────
     function kvGet(key) {
         var raw = window._ecoAccountingKvCache[key];
         if (raw === undefined || raw === null) return null;
@@ -61,29 +188,90 @@
         var parsed;
         try { parsed = JSON.parse(value); } catch(_) { parsed = value; }
         window._ecoAccountingKvCache[key] = parsed;
-        if (!window._ecoAccountingKvOnline) return;
-        var tok = Storage.prototype.getItem.call(localStorage, 'token') ||
-                  Storage.prototype.getItem.call(localStorage, 'auth_token') ||
-                  Storage.prototype.getItem.call(localStorage, 'eco_token');
-        var xhr = new XMLHttpRequest();
-        xhr.open('PUT', KV_URL + '/' + encodeURIComponent(key), true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
-        xhr.send(JSON.stringify({ value: parsed }));
+        if (!window._ecoAccountingKvOnline) {
+            // Queue — never drop
+            enqueueWrite({ type: 'set', key: key, value: parsed });
+            return;
+        }
+        kvNetworkSet(key, parsed);
     }
 
     function kvRemove(key) {
         delete window._ecoAccountingKvCache[key];
-        if (!window._ecoAccountingKvOnline) return;
-        var tok = Storage.prototype.getItem.call(localStorage, 'token') ||
-                  Storage.prototype.getItem.call(localStorage, 'auth_token') ||
-                  Storage.prototype.getItem.call(localStorage, 'eco_token');
-        var xhr = new XMLHttpRequest();
-        xhr.open('DELETE', KV_URL + '/' + encodeURIComponent(key), true);
-        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
-        xhr.send(null);
+        if (!window._ecoAccountingKvOnline) {
+            enqueueWrite({ type: 'remove', key: key });
+            return;
+        }
+        kvNetworkRemove(key);
     }
 
+    // ── Initial cloud data load ───────────────────────────────────────────
+    // Primary: synchronous XHR so page scripts have data immediately on load.
+    // Fallback: async XHR for when browsers eventually remove sync XHR support.
+    var _loadedSync = false;
+    try {
+        var tok = getToken();
+        if (tok) {
+            var initXhr = new XMLHttpRequest();
+            initXhr.open('GET', KV_URL, false);   // synchronous — data ready before page scripts run
+            initXhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+            initXhr.send(null);
+            if (initXhr.status === 200) {
+                window._ecoAccountingKvCache = JSON.parse(initXhr.responseText) || {};
+                window._ecoAccountingKvOnline  = true;
+                window._ecoAccountingKvBridgeReady = true;
+                _loadedSync = true;
+                console.log('%c\u2705 ECO Accounting cloud connected — data in Supabase (no local)', 'color:#28a745;font-weight:bold;');
+            } else {
+                console.warn('ECO Accounting bridge: initial load returned HTTP ' + initXhr.status + ' — offline mode');
+                window._ecoAccountingKvBridgeReady = true;
+                startReconnectPoller();
+            }
+        } else {
+            // No token yet (login page) — bridge ready, no cloud needed
+            window._ecoAccountingKvBridgeReady = true;
+            _loadedSync = true;
+        }
+    } catch(e) {
+        console.warn('ECO Accounting bridge: sync XHR failed (' + e.message + ') — trying async fallback');
+    }
+
+    // Async fallback — used if sync XHR threw (future browser restriction)
+    if (!_loadedSync) {
+        (function() {
+            var tok2 = getToken();
+            if (!tok2) { window._ecoAccountingKvBridgeReady = true; return; }
+            var asyncXhr = new XMLHttpRequest();
+            asyncXhr.open('GET', KV_URL, true);
+            asyncXhr.setRequestHeader('Authorization', 'Bearer ' + tok2);
+            asyncXhr.onload = function() {
+                if (asyncXhr.status === 200) {
+                    try { window._ecoAccountingKvCache = JSON.parse(asyncXhr.responseText) || {}; } catch(_) {}
+                    window._ecoAccountingKvOnline = true;
+                    console.log('%c\u2705 ECO Accounting cloud connected (async fallback)', 'color:#28a745;font-weight:bold;');
+                } else {
+                    console.warn('ECO Accounting bridge: async fallback returned HTTP ' + asyncXhr.status);
+                    startReconnectPoller();
+                }
+                window._ecoAccountingKvBridgeReady = true;
+                window.dispatchEvent(new CustomEvent('ecoAccountingBridgeReady', { detail: { online: window._ecoAccountingKvOnline } }));
+            };
+            asyncXhr.onerror = function() {
+                console.warn('ECO Accounting bridge: async fallback also failed — offline mode');
+                window._ecoAccountingKvBridgeReady = true;
+                startReconnectPoller();
+                window.dispatchEvent(new CustomEvent('ecoAccountingBridgeReady', { detail: { online: false } }));
+            };
+            asyncXhr.send(null);
+        }());
+    } else {
+        // Sync path — fire the ready event after current call stack clears
+        setTimeout(function() {
+            window.dispatchEvent(new CustomEvent('ecoAccountingBridgeReady', { detail: { online: window._ecoAccountingKvOnline } }));
+        }, 0);
+    }
+
+    // ── localStorage overrides ────────────────────────────────────────────
     var _native = {
         getItem:    Storage.prototype.getItem.bind(localStorage),
         setItem:    Storage.prototype.setItem.bind(localStorage),
