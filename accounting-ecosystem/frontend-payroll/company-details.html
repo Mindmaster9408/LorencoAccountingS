@@ -752,6 +752,33 @@
             safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Updated company details for ' + (companyData.name || 'Unknown'));
 
+            // Sync core fields to the backend (non-blocking — localStorage is primary)
+            (function() {
+                var token = safeLocalStorage.getItem('token');
+                if (!token || !currentCompanyId) return;
+                fetch('/api/companies/' + currentCompanyId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({
+                        company_name:        companyData.name,
+                        trading_name:        companyData.trading_name,
+                        registration_number: companyData.reg_number,
+                        vat_number:          companyData.tax_number,
+                        contact_email:       companyData.email,
+                        contact_phone:       companyData.phone,
+                        address: {
+                            street:      companyData.street,
+                            suburb:      companyData.suburb,
+                            city:        companyData.city,
+                            province:    companyData.province,
+                            postal_code: companyData.postal_code
+                        }
+                    })
+                }).catch(function(e) {
+                    console.warn('[CompanyDetails] API sync failed (data saved to localStorage):', e.message);
+                });
+            })();
+
             // Update company name in available companies cache
             try {
                 const cached = JSON.parse(safeLocalStorage.getItem('availableCompanies') || '[]');

@@ -761,6 +761,27 @@
                 summaryHtml += '<p style="color:#666; font-size:0.9rem; margin-bottom:15px;">Periods: ' + uniquePeriods.map(function(p) { return formatPeriod(p); }).join(', ') + '</p>';
             }
 
+            // PT-13: Warn when multiple periods are detected in a single upload
+            if (uniquePeriods.length > 1) {
+                summaryHtml += '<div style="background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#856404;">' +
+                    '<strong>&#9888; Multiple periods detected (' + uniquePeriods.length + '):</strong> ' +
+                    uniquePeriods.map(function(p) { return formatPeriod(p); }).join(', ') + '. ' +
+                    'For accuracy, import one period at a time so PAYE YTD calculations accumulate correctly.</div>';
+            }
+
+            // PT-11: List unrecognised employee numbers with a call-to-action
+            var unmatchedNums = preview
+                .filter(function(r) { return !r._empId; })
+                .map(function(r) { return r.employee_number; })
+                .filter(function(v, i, a) { return a.indexOf(v) === i; }); // unique
+            if (unmatchedNums.length > 0) {
+                summaryHtml += '<div style="background:#f8d7da; border:1px solid #f5c6cb; border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#721c24;">' +
+                    '<strong>&#10060; ' + unmatchedNums.length + ' unrecognised employee number(s):</strong> ' +
+                    unmatchedNums.map(function(n) { return '<code>' + n + '</code>'; }).join(', ') + '.' +
+                    ' <a href="employees.html" style="color:#721c24; font-weight:700;">Create these employees first</a>, then re-upload this file. ' +
+                    'These rows will be skipped during import.</div>';
+            }
+
             document.getElementById('csvPreviewSummary').innerHTML = summaryHtml;
 
             // Render table
@@ -821,14 +842,17 @@
                 validRows.forEach(function(row) {
                     var histKey = 'emp_historical_' + currentCompanyId + '_' + row._empId + '_' + row.period;
                     var histData = {
-                        basic: row.basic,
+                        basic_salary: row.basic,        // consistent with finalizePayslip format
                         gross: row.gross,
+                        taxableGross: row.gross,        // best approximation; enables YTD PAYE for future periods
                         paye: row.paye,
                         uif: row.uif,
                         sdl: row.sdl,
                         net: row.net,
                         allowances: row.allowances,
-                        deductions: row.deductions,
+                        deductions: row.deductions.length > 0
+                            ? row.deductions
+                            : [{ description: 'Total Deductions', amount: 0 }],
                         overtime_hours: row.overtime_hours,
                         overtime_rate: row.overtime_rate,
                         source: 'csv_import',

@@ -270,6 +270,109 @@ const PayrollEngine = {
         return this.r2(Math.max(monthlyTax, 0));
     },
 
+    // === YTD (RUN-TO-DATE) PAYE — SARS METHOD ===
+
+    /**
+     * Return the month number within the SA tax year (March = 1, Feb = 12).
+     * @param {string} period - 'YYYY-MM'
+     * @returns {number} 1-12
+     */
+    getMonthInTaxYear: function(period) {
+        var month = parseInt(period.split('-')[1], 10);
+        return month >= 3 ? month - 2 : month + 10;
+    },
+
+    /**
+     * Return all period strings from the start of the SA tax year up to
+     * (but NOT including) the given period.
+     * E.g. for '2025-05' returns ['2025-03', '2025-04'].
+     * @param {string} period - 'YYYY-MM'
+     * @returns {string[]}
+     */
+    getTaxYearPriorPeriods: function(period) {
+        var parts = period.split('-');
+        var year  = parseInt(parts[0], 10);
+        var month = parseInt(parts[1], 10);
+        // SA tax year starts in March; if month < 3, tax year started March prior year
+        var startYear = month >= 3 ? year : year - 1;
+        var periods = [];
+        var y = startYear, m = 3;
+        while (y < year || (y === year && m < month)) {
+            periods.push(y + '-' + String(m).padStart(2, '0'));
+            m++;
+            if (m > 12) { m = 1; y++; }
+        }
+        return periods;
+    },
+
+    /**
+     * Read prior-period finalized payslip snapshots from safeLocalStorage and
+     * return the year-to-date totals needed for the YTD PAYE calculation.
+     * @param {string} companyId
+     * @param {string} empId
+     * @param {string} period - 'YYYY-MM' (current period, NOT included)
+     * @returns {{ ytdTaxableGross: number, ytdPAYE: number }}
+     */
+    getYTDData: function(companyId, empId, period) {
+        var priorPeriods = this.getTaxYearPriorPeriods(period);
+        var ytdTaxableGross = 0;
+        var ytdPAYE = 0;
+        priorPeriods.forEach(function(p) {
+            var stored = safeLocalStorage.getItem('emp_historical_' + companyId + '_' + empId + '_' + p);
+            if (stored) {
+                try {
+                    var rec = JSON.parse(stored);
+                    // Use taxableGross if present (finalized records after this fix);
+                    // fall back to gross for pre-fix records (conservative – slightly
+                    // over-estimates, but self-corrects at year end via run-to-date method)
+                    ytdTaxableGross += typeof rec.taxableGross === 'number' ? rec.taxableGross : (rec.gross || 0);
+                    ytdPAYE += rec.paye || 0;
+                } catch(e) { /* ignore corrupt records */ }
+            }
+        });
+        return { ytdTaxableGross: ytdTaxableGross, ytdPAYE: ytdPAYE };
+    },
+
+    /**
+     * SARS run-to-date PAYE method (Section 7 of the PAYE Guide).
+     * Accumulates taxable income for elapsed months, projects to annual,
+     * determines the YTD tax liability, then subtracts PAYE already withheld.
+     * This corrects over/under-withheld PAYE caused by variable income so that
+     * by February the total PAYE withheld exactly equals the annual liability.
+     *
+     * @param {number} currentTaxableGross  - Taxable gross for the current month
+     * @param {number} ytdTaxableGross      - Sum of taxable gross for all prior months in the tax year
+     * @param {number} ytdPAYE              - Sum of PAYE withheld in all prior months
+     * @param {number} monthInTaxYear       - Current month number (March=1 … February=12)
+     * @param {Object} [options]            - { age, medicalMembers, taxDirective }
+     * @param {Object} [tables]             - Period-specific tax tables
+     * @returns {number} PAYE for the current month
+     */
+    calculateMonthlyPAYE_YTD: function(currentTaxableGross, ytdTaxableGross, ytdPAYE, monthInTaxYear, options, tables) {
+        options = options || {};
+        tables  = tables  || this;
+
+        // Tax directive: apply flat rate, no YTD step-up/down
+        if (options.taxDirective && options.taxDirective > 0) {
+            return this.r2(currentTaxableGross * (options.taxDirective / 100));
+        }
+
+        var accumulatedTaxable = ytdTaxableGross + currentTaxableGross;
+        // Project to annual income based on elapsed months
+        var annualEquivalent = monthInTaxYear > 0
+            ? accumulatedTaxable * (12 / monthInTaxYear)
+            : accumulatedTaxable * 12;
+
+        var annualPAYE   = this.calculateAnnualPAYE(annualEquivalent, options.age, tables);
+        var monthlyMed   = options.medicalMembers ? this.calculateMedicalCredit(options.medicalMembers, tables) : 0;
+
+        // Total YTD liability = annualPAYE × elapsed/12, minus all monthly medical credits
+        var ytdLiability = (annualPAYE * monthInTaxYear / 12) - (monthlyMed * monthInTaxYear);
+
+        // Current month PAYE = what still needs to be withheld (never negative)
+        return this.r2(Math.max(ytdLiability - ytdPAYE, 0));
+    },
+
     /**
      * Calculate monthly UIF contribution (employee portion).
      * 1% of gross, capped at R177.12/month.
@@ -360,9 +463,11 @@ const PayrollEngine = {
      * @param {Array} shortTime - Short time entries { hours_missed }
      * @param {Object} [employeeOptions] - { age, medicalMembers, taxDirective }
      * @param {string} [period] - Pay period 'YYYY-MM' — auto-selects correct tax year tables
-     * @returns {Object} { gross, paye, uif, sdl, deductions, net, negativeNetPay, medicalCredit }
+     * @param {Object} [ytdData] - YTD totals { ytdTaxableGross, ytdPAYE }; when provided the
+     *                             SARS run-to-date method is used for more accurate PAYE.
+     * @returns {Object} { gross, taxableGross, paye, uif, sdl, deductions, net, negativeNetPay, medicalCredit }
      */
-    calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period) {
+    calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData) {
         // Select the correct tax tables for the period (auto-applies historical brackets)
         var tables = period ? this.getTablesForPeriod(period) : this;
         var taxableGross = payrollData.basic_salary || 0;
@@ -414,7 +519,20 @@ const PayrollEngine = {
         var gross = taxableGross + nonTaxableIncome;
 
         var opts = employeeOptions || {};
-        var paye = PayrollEngine.calculateMonthlyPAYE(taxableGross, opts, tables);
+        var paye;
+        if (ytdData && period) {
+            var monthInTaxYear = PayrollEngine.getMonthInTaxYear(period);
+            paye = PayrollEngine.calculateMonthlyPAYE_YTD(
+                taxableGross,
+                ytdData.ytdTaxableGross || 0,
+                ytdData.ytdPAYE        || 0,
+                monthInTaxYear,
+                opts,
+                tables
+            );
+        } else {
+            paye = PayrollEngine.calculateMonthlyPAYE(taxableGross, opts, tables);
+        }
         var uif = PayrollEngine.calculateUIF(gross, tables);
         var sdl = PayrollEngine.calculateSDL(gross, tables);
 
@@ -518,7 +636,8 @@ const PayrollEngine = {
             ? await DataAccess.getShortTime(companyId, empId, period)
             : JSON.parse(safeLocalStorage.getItem('emp_short_time_' + companyId + '_' + empId + '_' + period) || '[]');
 
-        return this.calculateFromData(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions);
+        var ytdData = this.getYTDData(companyId, empId, period);
+        return this.calculateFromData(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData);
     },
 
     // === HISTORICAL DATA FUNCTIONS ===

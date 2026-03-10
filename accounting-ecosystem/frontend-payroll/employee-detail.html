@@ -982,7 +982,8 @@
             var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
             safeLocalStorage.setItem(histKey, JSON.stringify({
                 basic_salary: payrollData.basic_salary || 0,
-                gross: calc.gross, paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
+                gross: calc.gross, taxableGross: calc.taxableGross || calc.gross,
+                paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
                 deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
                 net: calc.net, source: 'finalized',
                 finalized_date: status.finalized_date, finalized_by: status.finalized_by
@@ -1479,7 +1480,8 @@
             }
 
             var calc = PayrollEngine.calculateFromData(
-                payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod
+                payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod,
+                PayrollEngine.getYTDData(currentCompanyId, currentEmpId, currentPeriod)
             );
 
             document.getElementById('totalGross').textContent = formatMoney(calc.gross);
@@ -1533,7 +1535,10 @@
                 if (currentEmployee.tax_directive) employeeOptions.taxDirective = parseFloat(currentEmployee.tax_directive) || 0;
             }
 
-            var calc = PayrollEngine.calculateFromData(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod);
+            var calc = PayrollEngine.calculateFromData(
+                payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod,
+                PayrollEngine.getYTDData(currentCompanyId, currentEmpId, currentPeriod)
+            );
 
             // Build itemized allowances list
             var allowances = [];
