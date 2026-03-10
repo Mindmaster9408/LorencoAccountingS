@@ -699,9 +699,9 @@
                             <input type="text" id="itemCode" required placeholder="e.g. BONUS01">
                         </div>
                         <div class="form-group">
-                            <label>IRP5 Code</label>
-                            <input type="text" id="irp5Code" placeholder="e.g. 3802" maxlength="4">
-                            <small style="color: #666;">See SARS IRP5/IT3(a) codes</small>
+                            <label>IRP5 Code <span style="color:#dc3545;">*</span></label>
+                            <input type="text" id="irp5Code" placeholder="e.g. 3802" maxlength="4" required>
+                            <small style="color: #666;">Required. <a href="https://www.sars.gov.za/types-of-tax/pay-as-you-earn/emp-annual-reconciliation/irp5-it3a-codes/" target="_blank" style="color:#667eea;">SARS IRP5 code reference ↗</a></small>
                         </div>
                     </div>
 
@@ -1129,6 +1129,14 @@
                 is_taxable: parseInt(document.getElementById('isTaxable').value) === 1,
                 affects_uif: parseInt(document.getElementById('affectsUif').value) === 1
             };
+
+            // IRP5 code is required
+            if (!itemData.irp5_code) {
+                errorDiv.textContent = 'IRP5 Code is required. Check the SARS IRP5/IT3(a) code list.';
+                errorDiv.style.display = 'block';
+                document.getElementById('irp5Code').focus();
+                return;
+            }
 
             // Check for duplicate item code (but allow same code when editing same item)
             const duplicate = currentItems.find(i => i.item_code === itemData.item_code && i.id !== itemData.id);

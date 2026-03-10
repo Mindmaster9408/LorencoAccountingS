@@ -52,8 +52,8 @@ Each entry has:
 | P20 | Calculate Payslip works | ✅ Verified | `employee-detail.html` `calculatePayslip()`, `js/payroll-engine.js` | Breaking payroll-engine ACTIONS/BRACKETS structure | commit `079930c` |
 | P21 | Payslip PDF download works | ✅ Verified | `employee-detail.html` `downloadPayslipPDF()` | Removing jsPDF script include, changing PDF element IDs | commit `079930c` |
 | P22 | Pay run works | ✅ Verified | `payruns.html`, `payruns_{companyId}` KV key | Changing period/status key format | commit `079930c` |
-| P23 | Finalize Payslip button visible and clickable | ✅ Fixed | `employee-detail.html` `updatePayslipUI()` — button rendered WITHOUT `data-permission` attr | **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered in `updatePayslipUI()` — `enforceUI()` will silently hide them. Permission already enforced inside `finalizePayslip()` | commit `278368e` |
-| P24 | Finalize permission works after company selection | ✅ Fixed | `js/auth.js` `selectCompany()` reads `result.role` from `/api/auth/select-company` and writes to session | `selectCompany()` not updating `session.role` leaves it null → all `Permissions.require()` calls fail | commit pending |
+| P23 | Finalize Payslip button visible and clickable | ✅ Verified | `employee-detail.html` `updatePayslipUI()` — button rendered WITHOUT `data-permission` attr | **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered in `updatePayslipUI()` — `enforceUI()` will silently hide them. Permission already enforced inside `finalizePayslip()` | commit `278368e` |
+| P24 | Finalize permission works after company selection | ✅ Verified | `js/auth.js` `selectCompany()` reads `result.role` from `/api/auth/select-company` and writes to session | `selectCompany()` not updating `session.role` leaves it null → all `Permissions.require()` calls fail | commit `383d91d` |
 
 ### TAX & PAYROLL CALCULATIONS
 
