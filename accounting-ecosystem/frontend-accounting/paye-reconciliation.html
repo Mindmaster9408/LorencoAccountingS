@@ -58,6 +58,105 @@
     .name-col { min-width: 200px; text-align: left; padding-left: 10px; background: #fff; position: sticky; left: 0; z-index: 5; }
   </style>
     <link rel="stylesheet" href="css/dark-theme.css">
+    <!-- ── PAYE Recon: restore Excel-like table colours after dark-theme reset ── -->
+    <style>
+        /* Body keeps the dark gradient from dark-theme; table gets light Excel look */
+        .recon-container {
+            background: #fff !important;
+        }
+        /* Header cells — blue with white text */
+        .recon-container th {
+            background: #4472c4 !important;
+            color: #fff !important;
+            border-color: #000 !important;
+            font-weight: bold !important;
+        }
+        /* Sticky corner: Month header — needs higher z-index than both sticky axes */
+        .recon-container th.name-col {
+            background: #4472c4 !important;
+            color: #fff !important;
+            z-index: 15 !important;
+            border-color: #000 !important;
+        }
+        /* All data cells — dark text, plain white default, black border */
+        .recon-container td {
+            background: #fff !important;
+            color: #000 !important;
+            border-color: #000 !important;
+        }
+        /* Sticky name column in body rows */
+        .recon-container td.name-col {
+            background: #fff !important;
+            color: #333 !important;
+            font-weight: 600 !important;
+        }
+        /* Inputs inside cells keep the light look */
+        .recon-container input[type="number"] {
+            background: transparent !important;
+            color: #000 !important;
+            border: none !important;
+        }
+        .recon-container td input:focus {
+            outline: 1px solid #0066cc !important;
+            background: #f0f8ff !important;
+        }
+        /* Readonly cells */
+        .recon-container td.readonly,
+        .recon-container td.readonly input {
+            background: #f0f0f0 !important;
+            color: #666 !important;
+        }
+        /* Employee expandable header rows */
+        .recon-container tr.employee-header td {
+            background: #d9e1f2 !important;
+            color: #1a237e !important;
+            font-weight: bold !important;
+        }
+        .recon-container tr.employee-header:hover td {
+            background: #c5cae9 !important;
+        }
+        /* Section sub-header rows (Income, Deductions labels) */
+        .recon-container tr.section-label td {
+            color: #fff !important;
+        }
+        /* Totals — yellow */
+        .recon-container tr.total-row td {
+            background: #fff2cc !important;
+            color: #000 !important;
+            font-weight: bold !important;
+        }
+        /* Netto — green */
+        .recon-container tr.netto-row td {
+            background: #c6e0b4 !important;
+            color: #000 !important;
+            font-weight: bold !important;
+        }
+        /* Variance — salmon */
+        .recon-container tr.variance-row td {
+            background: #fce4d6 !important;
+            color: #000 !important;
+            font-weight: bold !important;
+        }
+        /* Grand total — solid blue */
+        .recon-container tr.grand-total-row td {
+            background: #4472c4 !important;
+            color: #fff !important;
+            font-weight: bold !important;
+            font-size: 11px !important;
+        }
+        /* Kill the dark-theme row hover on this table (let per-row colours win) */
+        .recon-container tbody tr:hover td {
+            background: inherit !important;
+        }
+        /* Toolbar area on dark background stays readable */
+        .header-section { color: #fff !important; }
+        .header-section label { color: rgba(255,255,255,0.85) !important; }
+        .header-section select,
+        .header-section input { color: #000 !important; }
+        .status-badge.status-draft   { background: #e3f2fd !important; color: #1976d2 !important; }
+        .status-badge.status-approved { background: #c8e6c9 !important; color: #388e3c !important; }
+        .status-badge.status-locked  { background: #ffecb3 !important; color: #f57c00 !important; }
+    </style>
 
 <!--[if gte mso 9]><xml>
 <mso:CustomDocumentProperties>
