@@ -370,11 +370,11 @@
         window.addEventListener('load', function() {
             AUTH.requireAuth();
             var session = AUTH.getSession();
-            if (!session || !session.companyId) {
+            if (!session || !session.company_id) {
                 window.location.href = 'company-selection.html';
                 return;
             }
-            currentCompanyId = session.companyId;
+            currentCompanyId = session.company_id;
             loadCompanyName();
             loadCompaniesCarousel();
             loadData();
