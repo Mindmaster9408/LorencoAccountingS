@@ -15,11 +15,12 @@
 // RULE: NO business data is ever stored in browser localStorage.
 //       All business data lives in Supabase (cloud) only.
 //
-// How it works:
-//  1. Synchronous XHR preload at page load -> in-memory _cache.
-//  2. Reads  -> in-memory _cache (instant).
-//  3. Writes -> _cache immediately + async write-through to Supabase.
-//  4. Auth / session / UI preference keys -> native localStorage ONLY.
+// This script:
+//   1. Synchronously loads all KV data from Supabase at page-load.
+//   2. Provides window.safeLocalStorage (cloud-backed).
+//   3. Monkey-patches native localStorage.* so ANY direct call from
+//      any page script is also routed through cloud — no exceptions.
+//   4. Auth / session / UI preference keys stay in native localStorage.
 //
 // KV endpoint: /api/kv
 // ============================================================================
@@ -27,18 +28,30 @@
 (function () {
     'use strict';
 
+    if (window.__cloudStorageInstalled) return;
+    window.__cloudStorageInstalled = true;
+
     var KV = '/api/kv';
 
-    // Keys that STAY in native browser localStorage (auth/session/UI ONLY).
-    // EVERYTHING else -> Supabase. No exceptions.
+    // ── Save native localStorage references FIRST ────────────────────────────
+    // We MUST do this before any monkey-patching to avoid recursive calls.
+    var _nGet = Storage.prototype.getItem.bind(localStorage);
+    var _nSet = Storage.prototype.setItem.bind(localStorage);
+    var _nDel = Storage.prototype.removeItem.bind(localStorage);
+
+    // Keys that STAY in native browser localStorage (auth / session / UI only).
+    // EVERYTHING else goes to Supabase. No exceptions.
     var LOCAL_KEYS = {
-        token:1, paytime_token:1, session:1, user:1,
+        token:1, paytime_token:1, sean_token:1, auth_token:1, eco_token:1,
+        session:1, user:1, sean_user:1, current_user:1,
         eco_user:1, eco_companies:1, eco_company_name:1, eco_super_admin:1,
-        sso_source:1, activeCompanyId:1, demoMode:1, isSuperAdmin:1,
-        auth_token:1, coaching_app_current_user:1, coaching_app_admin_mode:1
+        sso_source:1, activeCompanyId:1, selectedCompanyId:1, company:1,
+        eco_client_id:1, demoMode:1, isSuperAdmin:1,
+        coaching_app_current_user:1, coaching_app_admin_mode:1
     };
     var LOCAL_PFX = ['theme','darkMode','dark_','sidebar',
-                     'viewMode','language','lang_','_lastVisit','cache_'];
+                     'viewMode','language','lang_','_lastVisit','cache_',
+                     'seanAI','notif'];
 
     function _isLocal(k) {
         if (LOCAL_KEYS[k]) return true;
@@ -50,18 +63,21 @@
     var _cache  = {};
     var _online = false;
 
+    // Use native refs so _tok never triggers monkey-patched recursion
     function _tok() {
         try {
-            return localStorage.getItem('token') ||
-                   localStorage.getItem('paytime_token') || '';
+            return _nGet('token') || _nGet('paytime_token') ||
+                   _nGet('sean_token') || '';
         } catch(e) { return ''; }
     }
 
-    // Synchronous preload (runs once at script-load time)
+    // ── Synchronous preload ───────────────────────────────────────────────────
+    // Runs once at page-load. Blocks until server responds so _cache is
+    // populated before any page script accesses data.
     (function _preload() {
         try {
             var tok = _tok();
-            if (!tok) return;                 // not yet logged in
+            if (!tok) return;                 // not yet logged in (login page)
             var xhr = new XMLHttpRequest();
             xhr.open('GET', KV, false);       // false = synchronous
             xhr.setRequestHeader('Content-Type',  'application/json');
@@ -75,8 +91,9 @@
                     'color:#667eea;font-weight:bold;'
                 );
             } else if (xhr.status === 401) {
-                try { localStorage.removeItem('token');   } catch(e) {}
-                try { localStorage.removeItem('session'); } catch(e) {}
+                // Expired token — clear it (use native refs to avoid recursion)
+                try { _nDel('token');   } catch(e) {}
+                try { _nDel('session'); } catch(e) {}
             }
         } catch(e) {
             console.warn('\u26a0\ufe0f  Cloud storage preload failed (Paytime ECOSYSTEM):', e.message);
@@ -106,11 +123,12 @@
         } catch(e) {}
     }
 
+    // ── safeLocalStorage (public API) ─────────────────────────────────────────
     window.safeLocalStorage = {
 
         setItem: function (key, value) {
             if (_isLocal(key)) {
-                try { localStorage.setItem(key, value); } catch(e) {}
+                try { _nSet(key, value); } catch(e) {}  // use native ref
                 return true;
             }
             var parsed;
@@ -123,7 +141,7 @@
 
         getItem: function (key) {
             if (_isLocal(key)) {
-                try { return localStorage.getItem(key); } catch(e) { return null; }
+                try { return _nGet(key); } catch(e) { return null; } // native ref
             }
             if (!Object.prototype.hasOwnProperty.call(_cache, key)) return null;
             var v = _cache[key];
@@ -134,7 +152,7 @@
 
         removeItem: function (key) {
             if (_isLocal(key)) {
-                try { localStorage.removeItem(key); } catch(e) {}
+                try { _nDel(key); } catch(e) {}  // native ref
                 return true;
             }
             delete _cache[key];
@@ -144,11 +162,12 @@
 
         clear: function () {
             Object.keys(LOCAL_KEYS).forEach(function (k) {
-                try { localStorage.removeItem(k); } catch(e) {}
+                try { _nDel(k); } catch(e) {}  // native ref
             });
             _cache = {};
         },
 
+        // Reload all company data from cloud (use after switching companies)
         reload: function () {
             return new Promise(function (resolve) {
                 var tok = _tok();
@@ -176,6 +195,24 @@
         _checkAvailability: function () { return true; },
         _serverOnline:      function () { return _online; }
     };
+
+    // ── Monkey-patch native localStorage ─────────────────────────────────────
+    // Intercepts ALL direct localStorage.getItem / setItem / removeItem calls
+    // made anywhere on the page and routes them through safeLocalStorage.
+    // This is the catch-all: pages that call localStorage.* directly are
+    // also protected — nothing touches native browser localStorage except
+    // auth/session keys.
+    try {
+        localStorage.getItem    = function(k) { return window.safeLocalStorage.getItem(k); };
+        localStorage.setItem    = function(k, v) { window.safeLocalStorage.setItem(k, v); };
+        localStorage.removeItem = function(k) { window.safeLocalStorage.removeItem(k); };
+        console.log('%c\ud83d\udd12 localStorage intercepted \u2014 all writes go to Supabase',
+                    'color:#48bb78;');
+    } catch(e) {
+        // Some browsers make localStorage properties read-only — that's fine,
+        // pages should use window.safeLocalStorage explicitly in that case.
+        console.warn('localStorage interception failed (read-only):', e.message);
+    }
 
 }());
 
