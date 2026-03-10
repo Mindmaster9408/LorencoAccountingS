@@ -1134,6 +1134,10 @@
                 multiRate.map(mr => '<div class="salary-item"><span class="salary-label">' + mr.description + ' - ' + mr.hours + 'hrs @ R' + parseFloat(mr.hourly_rate).toFixed(2) + '/hr</span><span><span class="salary-value">' + formatMoney(mr.hours * mr.hourly_rate) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteMultiRate(\'' + mr.id + '\')">x</button></span></div>').join('');
             Permissions.enforceUI();
         }
+        } catch(e) {
+            console.error('renderPayroll error:', e);
+        }
+        }
 
         // ========== BASIC SALARY ==========
         function editBasicSalary() {
