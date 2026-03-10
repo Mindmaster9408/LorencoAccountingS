@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VAT Management - Lorenco Accounting</title>
     <script src="js/navigation.js"></script>
+    <script src="js/polyfills.js"></script>
     <script src="js/ledger.js"></script>
     <!--
     ═══════════════════════════════════════════════════════════════════════════════
@@ -1790,8 +1791,7 @@
         }
 
         function formatDate(dateStr) {
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+            return window.formatDateDisplay(window.parseStandardDate(dateStr));
         }
 
         async function viewReconciliation(periodKey) {

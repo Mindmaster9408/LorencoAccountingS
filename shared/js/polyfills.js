@@ -379,6 +379,27 @@ window.formatTime = function(date) {
     return hours + ':' + minutes;
 };
 
+/**
+ * Format date as "DD Mon YYYY" (e.g., "10 Mar 2026")
+ * Safe cross-browser replacement for:
+ *   toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })
+ * Uses a hardcoded month table — no browser locale engine required.
+ * @param {Date|string} date
+ * @returns {string} e.g. "10 Mar 2026"
+ */
+window.formatDateDisplay = function(date) {
+    if (!date) return '';
+    if (!(date instanceof Date)) {
+        date = window.parseStandardDate(date);
+    }
+    if (!date || isNaN(date.getTime())) return '';
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var day = String(date.getDate()).padStart(2, '0');
+    var month = months[date.getMonth()];
+    var year = date.getFullYear();
+    return day + ' ' + month + ' ' + year;
+};
+
 // ============================================================================
 // JAVASCRIPT POLYFILLS
 // ============================================================================

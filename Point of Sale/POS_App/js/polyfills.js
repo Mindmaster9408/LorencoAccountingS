@@ -362,6 +362,44 @@ window.getTodayISO = function() {
     return window.formatDate(now, 'ISO');
 };
 
+/**
+ * Format time only (HH:MM)
+ * @param {Date|string} date
+ * @returns {string} HH:MM
+ */
+window.formatTime = function(date) {
+    if (!date) return '';
+    if (!(date instanceof Date)) {
+        date = window.parseStandardDate(date);
+    }
+    if (!date || isNaN(date.getTime())) return '';
+    
+    var hours = String(date.getHours()).padStart(2, '0');
+    var minutes = String(date.getMinutes()).padStart(2, '0');
+    return hours + ':' + minutes;
+};
+
+/**
+ * Format date as "DD Mon YYYY" (e.g., "10 Mar 2026")
+ * Safe cross-browser replacement for:
+ *   toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })
+ * Uses a hardcoded month table — no browser locale engine required.
+ * @param {Date|string} date
+ * @returns {string} e.g. "10 Mar 2026"
+ */
+window.formatDateDisplay = function(date) {
+    if (!date) return '';
+    if (!(date instanceof Date)) {
+        date = window.parseStandardDate(date);
+    }
+    if (!date || isNaN(date.getTime())) return '';
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var day = String(date.getDate()).padStart(2, '0');
+    var month = months[date.getMonth()];
+    var year = date.getFullYear();
+    return day + ' ' + month + ' ' + year;
+};
+
 // ============================================================================
 // JAVASCRIPT POLYFILLS
 // ============================================================================

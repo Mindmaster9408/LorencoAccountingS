@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cash Reconciliation - Lorenco Accounting</title>
   <script src="js/navigation.js"></script>
+  <script src="js/polyfills.js"></script>
   <script src="js/ledger.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -614,8 +615,7 @@
     }
 
     function formatDate(dateStr) {
-      const date = new Date(dateStr + 'T00:00:00');
-      return date.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+      return window.formatDateDisplay(window.parseStandardDate(dateStr));
     }
 
     // Initialize

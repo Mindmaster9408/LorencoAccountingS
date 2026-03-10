@@ -925,8 +925,8 @@
                     <tr>
                         <td><span class="invoice-number" onclick="viewInvoice(${invoice.id})">${invoice.number}</span></td>
                         <td>${invoice.customer}</td>
-                        <td>${new Date(invoice.date).toLocaleDateString()}</td>
-                        <td>${new Date(invoice.dueDate).toLocaleDateString()}</td>
+                        <td>${window.formatDate(window.parseStandardDate(invoice.date), 'ZA')}</td>
+                        <td>${window.formatDate(window.parseStandardDate(invoice.dueDate), 'ZA')}</td>
                         <td>R ${invoice.amount.toFixed(2)}</td>
                         <td>R ${invoice.paid.toFixed(2)}</td>
                         <td>R ${balance.toFixed(2)}</td>

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lorenco Accounting - Customer Receipts</title>
     <script src="js/navigation.js"></script>
+    <script src="js/polyfills.js"></script>
     <style>
         * {
             margin: 0;
@@ -824,7 +825,7 @@
                     <tr>
                         <td><span class="receipt-number" onclick="viewReceipt(${receipt.id})">${receipt.number}</span></td>
                         <td>${receipt.customer}</td>
-                        <td>${new Date(receipt.date).toLocaleDateString()}</td>
+                        <td>${window.formatDate(window.parseStandardDate(receipt.date), 'ZA')}</td>
                         <td>R ${receipt.amount.toFixed(2)}</td>
                         <td>R ${receipt.allocated.toFixed(2)}</td>
                         <td>R ${unallocated.toFixed(2)}</td>
@@ -883,7 +884,7 @@
                         <input type="checkbox" onchange="toggleInvoice(${invoice.id}, this.checked)">
                         <div class="invoice-info">
                             <div class="invoice-num">${invoice.number}</div>
-                            <div class="invoice-date">Due: ${new Date(invoice.date).toLocaleDateString()} • Balance: R ${invoice.balance.toFixed(2)}</div>
+                            <div class="invoice-date">Due: ${window.formatDate(window.parseStandardDate(invoice.date), 'ZA')} • Balance: R ${invoice.balance.toFixed(2)}</div>
                         </div>
                         <div>
                             <input type="number" class="allocation-input" id="alloc-${invoice.id}" 

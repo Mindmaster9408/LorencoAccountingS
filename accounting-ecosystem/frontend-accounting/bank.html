@@ -3209,8 +3209,9 @@ Click OK to simulate uploading a file.`;
         }
         
         function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            var d = window.parseStandardDate(dateString);
+            if (!d) return '';
+            return window.formatDate(d, 'ZA') + ' ' + window.formatTime(d);
         }
         
         function triggerFileUpload() {
