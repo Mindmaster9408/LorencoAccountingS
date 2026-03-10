@@ -46,8 +46,12 @@ const AUTH = (function() {
                     const companies = result.companies || [];
                     const selectedCompany = result.selectedCompany || null;
 
-                    // Store companies list for company-selection page
-                    safeLocalStorage.setItem('availableCompanies', JSON.stringify(companies));
+                    // Store companies list — normalize to always include a .name field
+                    // (server returns company_name; all pages rely on .name)
+                    const normalizedCompanies = companies.map(function(c) {
+                        return Object.assign({}, c, { name: c.name || c.company_name || c.trading_name || 'Unnamed' });
+                    });
+                    safeLocalStorage.setItem('availableCompanies', JSON.stringify(normalizedCompanies));
 
                     const session = {
                         user_id: user.id,
@@ -209,8 +213,11 @@ const AUTH = (function() {
             try {
                 const result = await apiRequest('GET', '/auth/companies');
                 const companies = result.companies || result.data || [];
-                safeLocalStorage.setItem('availableCompanies', JSON.stringify(companies));
-                return companies;
+                const normalized = companies.map(function(c) {
+                    return Object.assign({}, c, { name: c.name || c.company_name || c.trading_name || 'Unnamed' });
+                });
+                safeLocalStorage.setItem('availableCompanies', JSON.stringify(normalized));
+                return normalized;
             } catch(e) {
                 // Fall back to cached list from login
                 try {

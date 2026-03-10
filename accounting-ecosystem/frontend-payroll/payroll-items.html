@@ -596,6 +596,86 @@
                 </div>
                 <div id="employerContributionItems" class="items-grid"></div>
             </div>
+
+            <!-- TAX CONFIGURATION SECTION (super-admin only) -->
+            <div class="category-section" id="taxConfigSection" style="display:none;">
+                <div class="category-header">
+                    <div class="category-title">
+                        <div class="category-icon">📋</div>
+                        <div>
+                            <h2>Tax Configuration</h2>
+                            <p>Update SARS PAYE brackets, rebates &amp; credits each year (effective 1 March). Source: <strong>www.sars.gov.za</strong></p>
+                        </div>
+                    </div>
+                    <button class="btn btn-success" onclick="saveTaxConfiguration()">💾 Save Tax Tables</button>
+                </div>
+
+                <div style="padding: 20px 0;">
+                    <div id="taxYearBadge" style="margin-bottom:18px; font-size:13px; color:var(--text-muted,#888);"></div>
+
+                    <!-- Tax Brackets -->
+                    <h4 style="margin-bottom:12px; color:var(--accent-light,#667eea);">📊 Annual Tax Brackets</h4>
+                    <div style="overflow-x:auto;">
+                        <table id="taxBracketsTable" style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:24px;">
+                            <thead>
+                                <tr style="border-bottom:2px solid var(--border,#eee);">
+                                    <th style="padding:8px; text-align:left;">#</th>
+                                    <th style="padding:8px; text-align:right;">Min (R)</th>
+                                    <th style="padding:8px; text-align:right;">Max (R)</th>
+                                    <th style="padding:8px; text-align:right;">Base Tax (R)</th>
+                                    <th style="padding:8px; text-align:right;">Marginal Rate (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="taxBracketsBody"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Rebates & Credits -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Primary Rebate (R)</label>
+                            <input type="number" id="tcPrimary" step="1" min="0" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Secondary Rebate (&ge;65) (R)</label>
+                            <input type="number" id="tcSecondary" step="1" min="0" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Tertiary Rebate (&ge;75) (R)</label>
+                            <input type="number" id="tcTertiary" step="1" min="0" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">UIF Rate (employee %)</label>
+                            <input type="number" id="tcUifRate" step="0.001" min="0" max="1" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">UIF Monthly Cap (R)</label>
+                            <input type="number" id="tcUifCap" step="0.01" min="0" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">SDL Rate (%)</label>
+                            <input type="number" id="tcSdlRate" step="0.001" min="0" max="1" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Medical Credit — Main (R/mo)</label>
+                            <input type="number" id="tcMedMain" step="1" min="0" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Medical Credit — 1st Dep (R/mo)</label>
+                            <input type="number" id="tcMedFirst" step="1" min="0" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Medical Credit — Addl Dep (R/mo)</label>
+                            <input type="number" id="tcMedAddl" step="1" min="0" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Tax Year Label (e.g. 2026/2027)</label>
+                            <input type="text" id="tcTaxYear" maxlength="12" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                        </div>
+                    </div>
+                    <div id="taxSaveMsg" style="display:none; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -679,6 +759,7 @@
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/payroll-engine.js"></script>
     <script>
         let currentCompanyId = null;
         let currentItems = [];
@@ -692,6 +773,15 @@
             }
 
             currentCompanyId = session.company_id;
+            PayrollEngine.loadTaxConfig(); // Load Supabase-stored tax tables if set
+
+            // Show Tax Configuration section only for super_admin
+            if (session.is_super_admin || session.role === 'super_admin') {
+                var tcSection = document.getElementById('taxConfigSection');
+                if (tcSection) tcSection.style.display = '';
+                populateTaxConfigForm();
+            }
+
             loadPageData();
         });
 
@@ -1133,6 +1223,98 @@
 
             closeAddCompanyModal();
             location.reload();
+        }
+
+        // ─── TAX CONFIGURATION ─────────────────────────────────────────────────
+
+        function populateTaxConfigForm() {
+            var E = PayrollEngine;
+            document.getElementById('tcTaxYear').value  = E.TAX_YEAR;
+            document.getElementById('tcPrimary').value  = E.PRIMARY_REBATE;
+            document.getElementById('tcSecondary').value = E.SECONDARY_REBATE;
+            document.getElementById('tcTertiary').value = E.TERTIARY_REBATE;
+            document.getElementById('tcUifRate').value  = E.UIF_RATE;
+            document.getElementById('tcUifCap').value   = E.UIF_MONTHLY_CAP;
+            document.getElementById('tcSdlRate').value  = E.SDL_RATE;
+            document.getElementById('tcMedMain').value  = E.MEDICAL_CREDIT_MAIN;
+            document.getElementById('tcMedFirst').value = E.MEDICAL_CREDIT_FIRST_DEP;
+            document.getElementById('tcMedAddl').value  = E.MEDICAL_CREDIT_ADDITIONAL;
+
+            // Populate brackets table
+            var tbody = document.getElementById('taxBracketsBody');
+            tbody.innerHTML = E.BRACKETS.map(function(b, idx) {
+                var maxVal = b.max === Infinity ? '' : b.max;
+                return '<tr>' +
+                    '<td style="padding:7px 8px; opacity:0.6;">' + (idx+1) + '</td>' +
+                    '<td style="padding:7px 8px; text-align:right;"><input type="number" class="tax-bracket-min" data-idx="' + idx + '" value="' + b.min + '" style="width:110px; padding:5px; border:1px solid var(--border,#ccc); border-radius:5px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333); text-align:right;"></td>' +
+                    '<td style="padding:7px 8px; text-align:right;"><input type="number" class="tax-bracket-max" data-idx="' + idx + '" value="' + maxVal + '" placeholder="∞" style="width:110px; padding:5px; border:1px solid var(--border,#ccc); border-radius:5px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333); text-align:right;"></td>' +
+                    '<td style="padding:7px 8px; text-align:right;"><input type="number" class="tax-bracket-base" data-idx="' + idx + '" value="' + b.base + '" style="width:110px; padding:5px; border:1px solid var(--border,#ccc); border-radius:5px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333); text-align:right;"></td>' +
+                    '<td style="padding:7px 8px; text-align:right;"><input type="number" class="tax-bracket-rate" data-idx="' + idx + '" step="0.01" value="' + (b.rate * 100) + '" style="width:80px; padding:5px; border:1px solid var(--border,#ccc); border-radius:5px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333); text-align:right;"></td>' +
+                    '</tr>';
+            }).join('');
+
+            document.getElementById('taxYearBadge').textContent =
+                'Currently active: ' + E.TAX_YEAR + ' — Effective 1 March each year. Update after the SARS Budget Speech.';
+        }
+
+        function saveTaxConfiguration() {
+            var brackets = [];
+            var rows = document.querySelectorAll('#taxBracketsBody tr');
+            var valid = true;
+            rows.forEach(function(row, idx) {
+                var minV = parseFloat(row.querySelector('.tax-bracket-min').value);
+                var maxRaw = row.querySelector('.tax-bracket-max').value;
+                var maxV = maxRaw === '' || maxRaw === null ? Infinity : parseFloat(maxRaw);
+                var baseV = parseFloat(row.querySelector('.tax-bracket-base').value);
+                var rateV = parseFloat(row.querySelector('.tax-bracket-rate').value) / 100;
+                if (isNaN(minV) || isNaN(baseV) || isNaN(rateV)) { valid = false; }
+                brackets.push({ min: minV, max: maxV, base: baseV, rate: rateV });
+            });
+
+            if (!valid) {
+                showTaxMsg('error', '⚠️ Invalid values detected — please check all bracket fields.');
+                return;
+            }
+
+            var cfg = {
+                TAX_YEAR:                   document.getElementById('tcTaxYear').value.trim() || PayrollEngine.TAX_YEAR,
+                BRACKETS:                   brackets,
+                PRIMARY_REBATE:             parseFloat(document.getElementById('tcPrimary').value),
+                SECONDARY_REBATE:           parseFloat(document.getElementById('tcSecondary').value),
+                TERTIARY_REBATE:            parseFloat(document.getElementById('tcTertiary').value),
+                UIF_RATE:                   parseFloat(document.getElementById('tcUifRate').value),
+                UIF_MONTHLY_CAP:            parseFloat(document.getElementById('tcUifCap').value),
+                SDL_RATE:                   parseFloat(document.getElementById('tcSdlRate').value),
+                MEDICAL_CREDIT_MAIN:        parseFloat(document.getElementById('tcMedMain').value),
+                MEDICAL_CREDIT_FIRST_DEP:   parseFloat(document.getElementById('tcMedFirst').value),
+                MEDICAL_CREDIT_ADDITIONAL:  parseFloat(document.getElementById('tcMedAddl').value),
+            };
+
+            // Validate rebates are numbers
+            var nums = ['PRIMARY_REBATE','SECONDARY_REBATE','TERTIARY_REBATE','UIF_RATE',
+                        'UIF_MONTHLY_CAP','SDL_RATE','MEDICAL_CREDIT_MAIN',
+                        'MEDICAL_CREDIT_FIRST_DEP','MEDICAL_CREDIT_ADDITIONAL'];
+            for (var i = 0; i < nums.length; i++) {
+                if (isNaN(cfg[nums[i]])) { valid = false; }
+            }
+            if (!valid) {
+                showTaxMsg('error', '⚠️ Please fill in all fields with valid numbers.');
+                return;
+            }
+
+            PayrollEngine.saveTaxConfig(cfg);
+            AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated tax tables for ' + cfg.TAX_YEAR);
+            showTaxMsg('success', '✅ Tax tables saved for ' + cfg.TAX_YEAR + ' — all payroll calculations will use these values.');
+        }
+
+        function showTaxMsg(type, text) {
+            var el = document.getElementById('taxSaveMsg');
+            el.style.display = 'block';
+            el.style.background = type === 'success' ? '#d1fae5' : '#fee2e2';
+            el.style.color      = type === 'success' ? '#065f46' : '#991b1b';
+            el.style.border     = '1px solid ' + (type === 'success' ? '#6ee7b7' : '#fca5a5');
+            el.textContent = text;
+            setTimeout(function() { el.style.display = 'none'; }, 5000);
         }
     </script>
     <!-- Add Company Modal -->

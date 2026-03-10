@@ -1,12 +1,20 @@
 // ============================================================
 // PayrollEngine - Shared Payroll Calculation Module
-// South African PAYE 2024/2025 Tax Year
+// South African PAYE Tax Calculation
+// ============================================================
+// TAX TABLE UPDATE GUIDE (every 1 March):
+//   1. Go to Payroll → Payroll Items → Tax Configuration (super-admin)
+//   2. Enter new brackets/rebates from the SARS budget announcement
+//   3. Save — tables are stored in Supabase and override these defaults
+//   4. If you need to update code defaults, edit BRACKETS/REBATES below
+//      and update DEFAULT_TAX_YEAR.  Source: www.sars.gov.za
 // ============================================================
 
 const PayrollEngine = {
 
-    // === TAX CONSTANTS (SA 2024/2025) ===
-    TAX_YEAR: '2024/2025',
+    // === DEFAULT TAX CONSTANTS (SA 2025/2026 — same brackets as 2024/2025) ===
+    // Override via Tax Configuration in Payroll Items (stored in Supabase KV)
+    TAX_YEAR: '2025/2026',
 
     BRACKETS: [
         { min: 0,       max: 237100,   base: 0,      rate: 0.18 },
@@ -27,10 +35,52 @@ const PayrollEngine = {
     SDL_RATE: 0.01,
     HOURLY_DIVISOR: 173.33,
 
-    // Medical Tax Credits (Section 6A/6B) - 2024/2025
+    // Medical Tax Credits (Section 6A/6B) - 2025/2026
     MEDICAL_CREDIT_MAIN: 364,
     MEDICAL_CREDIT_FIRST_DEP: 364,
     MEDICAL_CREDIT_ADDITIONAL: 246,
+
+    // === TAX TABLE CONFIGURATION (Supabase KV override) ===
+
+    /**
+     * Load custom tax tables saved by a super-admin via the Tax Configuration
+     * UI in Payroll Items.  Call this once per page AFTER data-access.js / the
+     * KV bridge is active (i.e. inside window.addEventListener('load', ...)).
+     * Falls back to hardcoded defaults if nothing is stored.
+     */
+    loadTaxConfig: function() {
+        try {
+            var raw = typeof safeLocalStorage !== 'undefined'
+                ? safeLocalStorage.getItem('tax_config') : null;
+            if (!raw) return;
+            var cfg = JSON.parse(raw);
+            if (cfg.TAX_YEAR)           this.TAX_YEAR           = cfg.TAX_YEAR;
+            if (Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length)
+                                        this.BRACKETS           = cfg.BRACKETS;
+            if (typeof cfg.PRIMARY_REBATE   === 'number') this.PRIMARY_REBATE   = cfg.PRIMARY_REBATE;
+            if (typeof cfg.SECONDARY_REBATE === 'number') this.SECONDARY_REBATE = cfg.SECONDARY_REBATE;
+            if (typeof cfg.TERTIARY_REBATE  === 'number') this.TERTIARY_REBATE  = cfg.TERTIARY_REBATE;
+            if (typeof cfg.UIF_RATE         === 'number') this.UIF_RATE         = cfg.UIF_RATE;
+            if (typeof cfg.UIF_MONTHLY_CAP  === 'number') this.UIF_MONTHLY_CAP  = cfg.UIF_MONTHLY_CAP;
+            if (typeof cfg.SDL_RATE         === 'number') this.SDL_RATE         = cfg.SDL_RATE;
+            if (typeof cfg.MEDICAL_CREDIT_MAIN       === 'number') this.MEDICAL_CREDIT_MAIN       = cfg.MEDICAL_CREDIT_MAIN;
+            if (typeof cfg.MEDICAL_CREDIT_FIRST_DEP  === 'number') this.MEDICAL_CREDIT_FIRST_DEP  = cfg.MEDICAL_CREDIT_FIRST_DEP;
+            if (typeof cfg.MEDICAL_CREDIT_ADDITIONAL === 'number') this.MEDICAL_CREDIT_ADDITIONAL = cfg.MEDICAL_CREDIT_ADDITIONAL;
+            console.log('[PayrollEngine] Tax tables loaded from Supabase KV — Tax Year:', this.TAX_YEAR);
+        } catch(e) {
+            console.warn('[PayrollEngine] Could not load tax config from KV:', e.message);
+        }
+    },
+
+    /**
+     * Save current tax table values to Supabase KV store.
+     * Called by the Tax Configuration UI on payroll-items.html.
+     */
+    saveTaxConfig: function(cfg) {
+        if (typeof safeLocalStorage === 'undefined') return;
+        safeLocalStorage.setItem('tax_config', JSON.stringify(cfg));
+        this.loadTaxConfig(); // apply immediately
+    },
 
     // === UTILITY ===
 

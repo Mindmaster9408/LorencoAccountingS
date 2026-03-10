@@ -738,9 +738,17 @@
             
             // Use setTimeout to ensure DOM is fully ready (Edge compatibility)
             setTimeout(function() {
+                // Load custom tax tables from Supabase KV (super-admin can update annually)
+                PayrollEngine.loadTaxConfig();
                 loadEmployee();
                 loadEmployeeNav();
-                loadCompaniesCarousel();
+                // If coming via SSO, availableCompanies may be empty — fetch async then render
+                var cachedCos = AUTH.getCompaniesForUser();
+                if (cachedCos.length > 0) {
+                    loadCompaniesCarousel();
+                } else {
+                    AUTH.getCompanies().then(function() { loadCompaniesCarousel(); });
+                }
                 initPeriodSelect();
                 loadPayrollData();
                 loadLeaveData();
@@ -1088,7 +1096,11 @@
                 
                 var basicSalaryEl = document.getElementById('basicSalary');
                 if (basicSalaryEl) {
-                    basicSalaryEl.textContent = formatMoney(displaySalary);
+                    if (displaySalary === 0) {
+                        basicSalaryEl.innerHTML = '<span style="opacity:0.55;font-style:italic;font-size:12px;">Not set — click to add</span>';
+                    } else {
+                        basicSalaryEl.textContent = formatMoney(displaySalary);
+                    }
                 } else {
                     console.warn('basicSalary element not found');
                 }
