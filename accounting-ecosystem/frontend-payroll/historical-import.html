@@ -1114,15 +1114,26 @@
             var uif = extractAmount(['UIF\\s*Employee', 'UIF\\s*Contribution', 'UIF']);
             var net = extractAmount(['Net\\s*Pay', 'Nett\\s*Pay', 'Net\\s*Salary', 'Nett\\s*Salary', 'Take\\s*Home', 'Net', 'Nett']);
 
+            // ID number (SA 13-digit)
+            var idMatch = text.match(/ID\s*(?:Number|No|#)?[:\s]*(\d{13})/i);
+            var idNumber = idMatch ? idMatch[1] : '';
+
+            // Job title
+            var jobMatch = text.match(/Job\s*(?:Title|Position|Role)[:\s]+([A-Za-z][A-Za-z\s\/\-]{2,50}?)(?=\s*(?:Period|ID|Emp|Income|Employment|\d|$))/i);
+            var jobTitle = jobMatch ? jobMatch[1].trim() : '';
+
             results.push({
                 employee_number: empNumber,
                 employee_name: employeeName,
+                id_number: idNumber,
+                job_title: jobTitle,
                 period: period,
                 basic: basic,
                 gross: gross,
                 paye: paye,
                 uif: uif,
                 net: net,
+                _extraItems: [],
                 _valuesFound: valuesFound,
                 _error: null
             });
@@ -1162,16 +1173,17 @@
             summaryHtml += '</div>';
             document.getElementById('pdfResultsSummary').innerHTML = summaryHtml;
 
-            // Build employee options
-            var empOptions = '<option value="">-- Select --</option>';
+            // Build employee options (all employees + add new)
+            var empOptions = '<option value="">-- Select Employee --</option>';
             employees.forEach(function(emp) {
-                empOptions += '<option value="' + emp.id + '">' + emp.employee_number + ' - ' + emp.first_name + ' ' + emp.last_name + '</option>';
+                empOptions += '<option value="' + emp.id + '">' + (emp.employee_number ? emp.employee_number + ' - ' : '') + emp.first_name + ' ' + emp.last_name + '</option>';
             });
+            empOptions += '<option value="__add_new__">➕ Add New Employee...</option>';
 
-            // Render editable table
+            // Render editable table — one row per extracted payslip + extra items section
             var tableHtml = '<thead><tr style="background:linear-gradient(135deg, #667eea, #764ba2); color:white;">';
-            tableHtml += '<th style="padding:10px 8px;">File</th><th style="padding:10px 8px;">Confidence</th>';
-            tableHtml += '<th style="padding:10px 8px;">Employee</th><th style="padding:10px 8px;">Period</th>';
+            tableHtml += '<th style="padding:10px 8px;">File</th><th style="padding:10px 8px;">Conf</th>';
+            tableHtml += '<th style="padding:10px 8px; min-width:160px;">Employee</th><th style="padding:10px 8px;">Period</th>';
             tableHtml += '<th style="padding:10px 8px;">Basic</th><th style="padding:10px 8px;">Gross</th>';
             tableHtml += '<th style="padding:10px 8px;">PAYE</th><th style="padding:10px 8px;">UIF</th>';
             tableHtml += '<th style="padding:10px 8px;">Net</th></tr></thead><tbody>';
@@ -1180,33 +1192,165 @@
                 var confClass = row._valuesFound >= 3 ? 'confidence-high' : (row._valuesFound >= 1 ? 'confidence-medium' : 'confidence-low');
                 var confLabel = row._valuesFound >= 3 ? 'High' : (row._valuesFound >= 1 ? 'Medium' : 'Low');
 
-                // Try to auto-match employee by number then by name
+                // Auto-match employee
                 var matchedEmpId = '';
                 if (row.employee_number) {
-                    var matchedEmp = findEmployeeByNumber(row.employee_number);
-                    if (matchedEmp) matchedEmpId = matchedEmp.id;
+                    var me = findEmployeeByNumber(row.employee_number);
+                    if (me) matchedEmpId = me.id;
                 }
                 if (!matchedEmpId && row.employee_name) {
-                    var matchedByName = findEmployeeByName(row.employee_name);
-                    if (matchedByName) matchedEmpId = matchedByName.id;
+                    var mb = findEmployeeByName(row.employee_name);
+                    if (mb) matchedEmpId = mb.id;
                 }
 
+                // Build the select with correct option pre-selected
+                var selectHtml = '<select id="pdf_emp_' + idx + '" style="width:100%; padding:5px; border:1px solid #e0e0e0; border-radius:4px; font-size:12px;" onchange="onPdfEmpChange(' + idx + ', this)">'
+                    + empOptions.replace('value="' + matchedEmpId + '"', 'value="' + matchedEmpId + '" selected')
+                    + '</select>';
+                if (!matchedEmpId) {
+                    // Highlight unmatched rows
+                    selectHtml = '<div style="border:2px solid #dc3545; border-radius:6px;">' + selectHtml.replace('border:1px solid #e0e0e0;', 'border:none;') + '</div>';
+                    if (row.employee_name) {
+                        selectHtml = '<div style="font-size:10px; color:#dc3545; margin-bottom:3px;">Found: <em>' + row.employee_name + '</em> — not matched</div>' + selectHtml;
+                    }
+                }
+
+                // Extra items area (income lines to build gross)
+                var extraItemsHtml = '<tr id="pdf_extra_row_' + idx + '" style="background:#f8f9ff;">'
+                    + '<td colspan="9" style="padding:6px 12px;">'
+                    + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">'
+                    + '<span style="font-size:11px; color:#667eea; font-weight:700;">📋 Income items (to reach Gross)</span>'
+                    + '<button onclick="addPdfExtraItem(' + idx + ')" style="padding:2px 10px; font-size:11px; background:#667eea; color:white; border:none; border-radius:4px; cursor:pointer;">+ Add Item</button>'
+                    + '</div>'
+                    + '<div id="pdf_items_' + idx + '" style="display:flex; flex-wrap:wrap; gap:6px;"></div>'
+                    + '</td></tr>';
+
                 tableHtml += '<tr style="border-bottom:1px solid #eee;">';
-                tableHtml += '<td style="padding:8px; font-size:12px;" title="' + (row._filename || '') + '">' + (row._filename || 'PDF').substring(0, 20) + '</td>';
+                tableHtml += '<td style="padding:8px; font-size:11px;" title="' + (row._filename || '') + '">' + (row._filename || 'PDF').substring(0, 18) + '</td>';
                 tableHtml += '<td style="padding:8px;"><span class="confidence-badge ' + confClass + '">' + confLabel + ' (' + row._valuesFound + ')</span></td>';
-                tableHtml += '<td style="padding:8px;"><select id="pdf_emp_' + idx + '" style="width:100%; padding:5px; border:1px solid #e0e0e0; border-radius:4px; font-size:12px;">' + empOptions.replace('value="' + matchedEmpId + '"', 'value="' + matchedEmpId + '" selected') + '</select></td>';
+                tableHtml += '<td style="padding:8px;">' + selectHtml + '</td>';
                 tableHtml += '<td style="padding:8px;"><input type="text" class="pdf-input" id="pdf_period_' + idx + '" value="' + (row.period || '') + '" placeholder="YYYY-MM" style="width:90px;"></td>';
-                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_basic_' + idx + '" value="' + (row.basic !== null ? row.basic : '') + '" step="0.01"></td>';
-                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_gross_' + idx + '" value="' + (row.gross !== null ? row.gross : '') + '" step="0.01"></td>';
-                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_paye_' + idx + '" value="' + (row.paye !== null ? row.paye : '') + '" step="0.01"></td>';
-                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_uif_' + idx + '" value="' + (row.uif !== null ? row.uif : '') + '" step="0.01"></td>';
-                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_net_' + idx + '" value="' + (row.net !== null ? row.net : '') + '" step="0.01"></td>';
+                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_basic_' + idx + '" value="' + (row.basic !== null ? row.basic : '') + '" step="0.01" style="width:90px;"></td>';
+                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_gross_' + idx + '" value="' + (row.gross !== null ? row.gross : '') + '" step="0.01" style="width:90px;"></td>';
+                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_paye_' + idx + '" value="' + (row.paye !== null ? row.paye : '') + '" step="0.01" style="width:80px;"></td>';
+                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_uif_' + idx + '" value="' + (row.uif !== null ? row.uif : '') + '" step="0.01" style="width:70px;"></td>';
+                tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_net_' + idx + '" value="' + (row.net !== null ? row.net : '') + '" step="0.01" style="width:90px;"></td>';
                 tableHtml += '</tr>';
+                tableHtml += extraItemsHtml;
             });
 
             tableHtml += '</tbody>';
             document.getElementById('pdfResultsTable').innerHTML = tableHtml;
             document.getElementById('pdfResultsArea').style.display = 'block';
+        }
+
+        // Called when employee dropdown changes — intercept "Add New Employee"
+        function onPdfEmpChange(idx, selectEl) {
+            if (selectEl.value !== '__add_new__') return;
+            selectEl.value = ''; // reset while modal is open
+            var row = pdfExtractedRows[idx];
+            openQuickAddEmployee(row, idx);
+        }
+
+        // Quick-add employee modal (pre-filled from PDF data)
+        function openQuickAddEmployee(row, rowIdx) {
+            var nameParts = { first: '', last: '' };
+            if (row.employee_name) {
+                // "LastName, FirstName" format
+                if (row.employee_name.indexOf(',') >= 0) {
+                    var parts = row.employee_name.split(',');
+                    nameParts.last  = parts[0].trim();
+                    nameParts.first = (parts[1] || '').trim();
+                } else {
+                    // "FirstName LastName"
+                    var parts = row.employee_name.trim().split(/\s+/);
+                    nameParts.first = parts[0] || '';
+                    nameParts.last  = parts.slice(1).join(' ') || '';
+                }
+            }
+            document.getElementById('qaEmpFirst').value    = nameParts.first;
+            document.getElementById('qaEmpLast').value     = nameParts.last;
+            document.getElementById('qaEmpId').value       = row.id_number || '';
+            document.getElementById('qaEmpJob').value      = row.job_title || '';
+            document.getElementById('qaEmpEmpNo').value    = row.employee_number || '';
+            document.getElementById('qaEmpRowIdx').value   = rowIdx;
+            document.getElementById('qaEmpError').textContent = '';
+            document.getElementById('pdfQuickAddEmpModal').style.display = 'flex';
+        }
+        function closeQuickAddEmployee() {
+            document.getElementById('pdfQuickAddEmpModal').style.display = 'none';
+        }
+        function saveQuickAddEmployee() {
+            var first  = document.getElementById('qaEmpFirst').value.trim();
+            var last   = document.getElementById('qaEmpLast').value.trim();
+            var idNum  = document.getElementById('qaEmpId').value.trim();
+            var job    = document.getElementById('qaEmpJob').value.trim();
+            var empNo  = document.getElementById('qaEmpEmpNo').value.trim();
+            var rowIdx = parseInt(document.getElementById('qaEmpRowIdx').value);
+            var errEl  = document.getElementById('qaEmpError');
+            if (!first || !last) { errEl.textContent = 'First name and last name are required.'; return; }
+            // Auto-generate employee number if blank
+            if (!empNo) empNo = 'EMP-' + Math.random().toString(36).substr(2, 5).toUpperCase();
+            var newEmp = {
+                id: 'emp-' + Math.random().toString(36).substr(2, 9),
+                employee_number: empNo,
+                first_name: first,
+                last_name: last,
+                id_number: idNum || null,
+                job_title: job || null,
+                email: null, phone: null, department: null, position: null,
+                payment_method: 'bank_transfer',
+                bank_name: null, account_holder: null, account_number: null, branch_code: null,
+                date_appointed: null, medical_aid_members: 0, tax_directive: 0
+            };
+            employees.push(newEmp);
+            safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
+            closeQuickAddEmployee();
+            // Re-render so new employee appears in all dropdowns and gets selected for this row
+            renderPdfResults();
+            // Select the new employee in the correct row
+            setTimeout(function() {
+                var sel = document.getElementById('pdf_emp_' + rowIdx);
+                if (sel) sel.value = newEmp.id;
+            }, 50);
+        }
+
+        // Add an extra income item to a PDF row
+        function addPdfExtraItem(idx) {
+            var container = document.getElementById('pdf_items_' + idx);
+            if (!container) return;
+            var itemId = 'pdf_item_' + idx + '_' + Date.now();
+            var el = document.createElement('div');
+            el.id = itemId;
+            el.style.cssText = 'display:flex; align-items:center; gap:4px; background:#fff; border:1px solid #dde; border-radius:5px; padding:4px 7px;';
+            el.innerHTML = '<input type="text" placeholder="Description" style="width:120px; padding:3px 5px; border:1px solid #ccc; border-radius:3px; font-size:11px;">'
+                + ' <input type="number" placeholder="Amount" step="0.01" min="0" style="width:80px; padding:3px 5px; border:1px solid #ccc; border-radius:3px; font-size:11px; text-align:right;">'
+                + ' <button onclick="removePdfExtraItem(\'' + itemId + '\')" style="background:#dc3545; color:white; border:none; border-radius:3px; width:18px; height:18px; cursor:pointer; font-size:11px; line-height:1; padding:0;">×</button>';
+            container.appendChild(el);
+            // Auto-fill gross when amount changes
+            el.querySelector('input[type="number"]').addEventListener('change', function() { recalcPdfGross(idx); });
+        }
+        function removePdfExtraItem(itemId) {
+            var el = document.getElementById(itemId);
+            if (el) {
+                var idx = parseInt(itemId.split('_')[2]);
+                el.remove();
+                recalcPdfGross(idx);
+            }
+        }
+        function recalcPdfGross(idx) {
+            var container = document.getElementById('pdf_items_' + idx);
+            if (!container) return;
+            var total = 0;
+            container.querySelectorAll('input[type="number"]').forEach(function(inp) {
+                total += parseFloat(inp.value) || 0;
+            });
+            var basicVal = parseFloat(document.getElementById('pdf_basic_' + idx).value) || 0;
+            var calcGross = basicVal + total;
+            if (calcGross > 0) {
+                var grossEl = document.getElementById('pdf_gross_' + idx);
+                if (!grossEl.dataset.manuallyEdited) grossEl.value = calcGross.toFixed(2);
+            }
         }
 
         function confirmPdfImport() {
@@ -1241,6 +1385,19 @@
                     }
 
                     var histKey = 'emp_historical_' + currentCompanyId + '_' + empId + '_' + period;
+                    // Collect extra income items added by user
+                    var extraAllowances = [];
+                    var itemsContainer = document.getElementById('pdf_items_' + idx);
+                    if (itemsContainer) {
+                        itemsContainer.querySelectorAll('div').forEach(function(itemDiv) {
+                            var inputs = itemDiv.querySelectorAll('input');
+                            if (inputs.length >= 2) {
+                                var desc = inputs[0].value.trim();
+                                var amt  = parseFloat(inputs[1].value) || 0;
+                                if (desc && amt > 0) extraAllowances.push({ description: desc, amount: amt });
+                            }
+                        });
+                    }
                     var histData = {
                         basic: basic,
                         gross: gross,
@@ -1248,7 +1405,7 @@
                         uif: uif,
                         sdl: PayrollEngine.calculateSDL(gross),
                         net: net,
-                        allowances: [],
+                        allowances: extraAllowances,
                         deductions: [],
                         source: 'pdf_import',
                         imported_date: importTimestamp
@@ -1815,6 +1972,42 @@
             location.reload();
         }
     </script>
+
+    <!-- Quick-Add Employee Modal (from PDF import) -->
+    <div id="pdfQuickAddEmpModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); z-index:10000; align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:15px; padding:28px; max-width:460px; width:92%; box-shadow:0 10px 40px rgba(0,0,0,0.35);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h2 style="color:#667eea; margin:0; font-size:1.2rem;">➕ Add Employee</h2>
+                <button onclick="closeQuickAddEmployee()" style="background:#dc3545; color:white; border:none; border-radius:6px; padding:5px 12px; cursor:pointer;">✕ Close</button>
+            </div>
+            <p style="font-size:0.82rem; color:#888; margin:0 0 15px;">Details pre-filled from the PDF where possible. Complete and save to link this payslip.</p>
+            <input type="hidden" id="qaEmpRowIdx" value="">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:#555;">First Name *</label>
+                    <input type="text" id="qaEmpFirst" placeholder="e.g. Marinique" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box; margin-top:3px;">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:#555;">Last Name *</label>
+                    <input type="text" id="qaEmpLast" placeholder="e.g. Henriet" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box; margin-top:3px;">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:#555;">ID Number</label>
+                    <input type="text" id="qaEmpId" maxlength="13" placeholder="13-digit SA ID" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box; margin-top:3px;">
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:600; color:#555;">Employee Number</label>
+                    <input type="text" id="qaEmpEmpNo" placeholder="Auto-generated if blank" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box; margin-top:3px;">
+                </div>
+                <div style="grid-column:1/-1;">
+                    <label style="font-size:12px; font-weight:600; color:#555;">Job Title</label>
+                    <input type="text" id="qaEmpJob" placeholder="e.g. Locum Speech Pathologist" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box; margin-top:3px;">
+                </div>
+            </div>
+            <div id="qaEmpError" style="color:#dc3545; font-size:12px; margin-bottom:8px;"></div>
+            <button onclick="saveQuickAddEmployee()" style="width:100%; padding:12px; background:linear-gradient(135deg,#667eea,#764ba2); color:white; border:none; border-radius:8px; font-size:1rem; font-weight:700; cursor:pointer;">✓ Save Employee &amp; Link Payslip</button>
+        </div>
+    </div>
 
     <!-- Add Company Modal -->
     <div id="addCompanyModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
