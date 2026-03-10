@@ -314,6 +314,18 @@
         .badge-uif { background: #17a2b8; color: white; }
         .badge-no-uif { background: #e0e0e0; color: #666; }
         .badge-fixed { background: #667eea; color: white; }
+        .badge-variable { background: #fd7e14; color: white; }
+        .badge-variable-info { background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 12px 16px; margin-top: 14px; font-size: 13px; color: #856404; display: none; }
+        .monthly-behaviour-group { margin-top: 18px; }
+        .monthly-behaviour-group label.main-label { font-weight: 600; color: #555; font-size: 14px; display: block; margin-bottom: 8px; }
+        .behaviour-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .behaviour-option { border: 2px solid #e0e0e0; border-radius: 8px; padding: 12px 14px; cursor: pointer; transition: all 0.2s; }
+        .behaviour-option:hover { border-color: #667eea; background: #f8f9fa; }
+        .behaviour-option input[type=radio] { display: none; }
+        .behaviour-option.selected { border-color: #667eea; background: #f0f4ff; }
+        .behaviour-option.selected-variable { border-color: #fd7e14; background: #fff8f3; }
+        .behaviour-option-title { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+        .behaviour-option-desc { font-size: 12px; color: #888; line-height: 1.4; }
         .badge-percentage { background: #fd7e14; color: white; }
         .badge-balance { background: #20c997; color: white; }
         .badge-hours { background: #6610f2; color: white; }
@@ -746,6 +758,26 @@
                         </div>
                     </div>
 
+                    <!-- Monthly Behaviour -->
+                    <div class="monthly-behaviour-group">
+                        <label class="main-label">Monthly Behaviour *</label>
+                        <div class="behaviour-options">
+                            <label class="behaviour-option selected" id="opt-fixed" onclick="selectBehaviour('fixed')">
+                                <input type="radio" name="monthlyBehaviour" id="behaviourFixed" value="fixed" checked>
+                                <div class="behaviour-option-title">🔒 Fixed — Same every month</div>
+                                <div class="behaviour-option-desc">The amount is the same each pay run (e.g. Housing Allowance R 2 000/mo). Employees do not need to enter it.</div>
+                            </label>
+                            <label class="behaviour-option" id="opt-variable" onclick="selectBehaviour('variable')">
+                                <input type="radio" name="monthlyBehaviour" id="behaviourVariable" value="variable">
+                                <div class="behaviour-option-title">🔄 Variable — Changes each month</div>
+                                <div class="behaviour-option-desc">The amount differs per pay run (e.g. Commission). It will appear on every payslip but the value is entered at pay run time — can be R 0.</div>
+                            </label>
+                        </div>
+                        <div class="badge-variable-info" id="variableInfo">
+                            ⚠️ <strong>Variable item:</strong> This item will appear on every payslip. At pay run time, enter the actual amount for that month — even if it is R 0. The default amount you set here is only a suggestion.
+                        </div>
+                    </div>
+
                     <div style="margin-top: 30px; display: flex; gap: 10px; justify-content: flex-end;">
                         <button type="button" class="btn btn-secondary" onclick="closeItemModal()">Cancel</button>
                         <button type="submit" class="btn btn-success">Save</button>
@@ -1045,6 +1077,10 @@
                             <div class="item-detail-label">Tax & UIF</div>
                             <div class="item-detail-value">${taxBadge} ${uifBadge}</div>
                         </div>
+                        <div class="item-detail">
+                            <div class="item-detail-label">Monthly</div>
+                            <div class="item-detail-value">${getVariableBadge(item)}</div>
+                        </div>
                     </div>
                     <div class="item-actions">
                         <button class="btn-small btn-edit-small" data-permission="MANAGE_PAYROLL_ITEMS" onclick="editItem('${item.id}')">✏️ Edit</button>
@@ -1065,6 +1101,13 @@
             return badges[category] || category;
         }
 
+        function getVariableBadge(item) {
+            if (item.is_variable) {
+                return '<span class="badge badge-variable" title="Amount varies each month — entered at pay run time">🔄 Variable</span>';
+            }
+            return '<span class="badge" style="background:#e9ecef;color:#555;" title="Same amount every month">🔒 Fixed</span>';
+        }
+
         function getTypeName(type) {
             const names = {
                 'income': 'Income Item',
@@ -1083,6 +1126,7 @@
             document.getElementById('itemId').value = '';
             document.getElementById('itemType').value = type;
             document.getElementById('modalError').style.display = 'none';
+            selectBehaviour('fixed');
             document.getElementById('itemModal').classList.add('show');
         }
 
@@ -1106,8 +1150,28 @@
             document.getElementById('isTaxable').value = item.is_taxable ? '1' : '0';
             document.getElementById('affectsUif').value = item.affects_uif ? '1' : '0';
             document.getElementById('modalError').style.display = 'none';
+            selectBehaviour(item.is_variable ? 'variable' : 'fixed');
 
             document.getElementById('itemModal').classList.add('show');
+        }
+
+        function selectBehaviour(type) {
+            const optFixed    = document.getElementById('opt-fixed');
+            const optVariable = document.getElementById('opt-variable');
+            const info        = document.getElementById('variableInfo');
+            const radioFixed    = document.getElementById('behaviourFixed');
+            const radioVariable = document.getElementById('behaviourVariable');
+            if (type === 'variable') {
+                optFixed.className    = 'behaviour-option';
+                optVariable.className = 'behaviour-option selected-variable';
+                radioVariable.checked = true;
+                info.style.display = 'block';
+            } else {
+                optFixed.className    = 'behaviour-option selected';
+                optVariable.className = 'behaviour-option';
+                radioFixed.checked  = true;
+                info.style.display = 'none';
+            }
         }
 
         function saveItem(event) {
@@ -1128,7 +1192,8 @@
                 irp5_code: document.getElementById('irp5Code').value.trim() || null,
                 default_amount: parseFloat(document.getElementById('defaultAmount').value) || 0,
                 is_taxable: parseInt(document.getElementById('isTaxable').value) === 1,
-                affects_uif: parseInt(document.getElementById('affectsUif').value) === 1
+                affects_uif: parseInt(document.getElementById('affectsUif').value) === 1,
+                is_variable: document.getElementById('behaviourVariable').checked
             };
 
             // IRP5 code is required
