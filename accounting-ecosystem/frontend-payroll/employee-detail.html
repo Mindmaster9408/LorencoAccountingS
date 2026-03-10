@@ -315,7 +315,21 @@
         <div id="payroll-tab" class="tab-content active">
             <div class="card">
                 <h3 style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <span>Payroll for Period: <select id="payPeriod" onchange="loadPayrollData()" style="padding: 5px 10px; border: 2px solid #667eea; border-radius: 6px; font-size: 14px;"></select></span>
+                    <span style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        Payroll for Period:
+                        <select id="payPeriod" onchange="onPeriodChange()" style="padding: 5px 10px; border: 2px solid #667eea; border-radius: 6px; font-size: 14px;"></select>
+                        <span id="customPeriodPicker" style="display:none; align-items:center; gap:5px;">
+                            <select id="customPeriodMonth" style="padding:5px 8px; border:2px solid #f0a500; border-radius:6px; font-size:13px;">
+                                <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+                                <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+                                <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+                                <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+                            </select>
+                            <input type="number" id="customPeriodYear" min="2000" max="2099" placeholder="Year" style="width:72px; padding:5px 8px; border:2px solid #f0a500; border-radius:6px; font-size:13px;">
+                            <button onclick="applyCustomPeriod()" style="padding:5px 12px; background:#f0a500; color:white; border:none; border-radius:6px; font-size:13px; cursor:pointer; font-weight:700;">Go</button>
+                            <button onclick="cancelCustomPeriod()" style="padding:5px 8px; background:#aaa; color:white; border:none; border-radius:6px; font-size:13px; cursor:pointer;">✕</button>
+                        </span>
+                    </span>
                     <span id="finalizeBtn"></span>
                 </h3>
                 <div id="payslipStatusBar"></div>
@@ -909,16 +923,64 @@
         function initPeriodSelect() {
             const select = document.getElementById('payPeriod');
             const now = new Date();
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             for (let i = 0; i < 12; i++) {
                 const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
                 const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                 const opt = document.createElement('option');
                 opt.value = val;
                 opt.textContent = months[d.getMonth()] + ' ' + d.getFullYear();
                 select.appendChild(opt);
             }
+            // Sentinel option to trigger the custom period picker
+            const addOpt = document.createElement('option');
+            addOpt.value = '__custom__';
+            addOpt.textContent = '📅 Add older period...';
+            select.appendChild(addOpt);
             currentPeriod = select.value;
+        }
+
+        function onPeriodChange() {
+            var select = document.getElementById('payPeriod');
+            if (select.value === '__custom__') {
+                // Show the inline picker; pre-fill year with current year
+                document.getElementById('customPeriodYear').value = new Date().getFullYear();
+                document.getElementById('customPeriodPicker').style.display = 'flex';
+                // Don't call loadPayrollData yet
+                return;
+            }
+            document.getElementById('customPeriodPicker').style.display = 'none';
+            loadPayrollData();
+        }
+
+        function applyCustomPeriod() {
+            var month = document.getElementById('customPeriodMonth').value;
+            var year  = parseInt(document.getElementById('customPeriodYear').value);
+            if (!year || year < 2000 || year > 2099) { alert('Please enter a valid year (2000–2099)'); return; }
+            var val = year + '-' + month;
+            var select = document.getElementById('payPeriod');
+            // Add option if it doesn't exist yet
+            var existing = Array.from(select.options).find(function(o) { return o.value === val; });
+            if (!existing) {
+                var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                var newOpt = document.createElement('option');
+                newOpt.value = val;
+                newOpt.textContent = months[parseInt(month) - 1] + ' ' + year;
+                // Insert before the __custom__ sentinel
+                var sentinel = Array.from(select.options).find(function(o) { return o.value === '__custom__'; });
+                select.insertBefore(newOpt, sentinel);
+            }
+            select.value = val;
+            document.getElementById('customPeriodPicker').style.display = 'none';
+            loadPayrollData();
+        }
+
+        function cancelCustomPeriod() {
+            var select = document.getElementById('payPeriod');
+            // Revert to first real option
+            select.selectedIndex = 0;
+            document.getElementById('customPeriodPicker').style.display = 'none';
+            loadPayrollData();
         }
 
         // ========== STORAGE KEYS ==========
@@ -1070,6 +1132,7 @@
                     setTimeout(loadPayrollData, 100);
                     return;
                 }
+                if (periodSelect.value === '__custom__') return;
                 currentPeriod = periodSelect.value;
                 const stored = safeLocalStorage.getItem(getPayrollKey());
                 payrollData = stored ? JSON.parse(stored) : { basic_salary: 0, regular_inputs: [] };
