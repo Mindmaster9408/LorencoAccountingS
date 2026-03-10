@@ -21,6 +21,19 @@ Each entry has:
 
 ---
 
+## Admin Panel (`accounting-ecosystem/frontend-ecosystem/admin.html`)
+
+| # | Feature | Status | Depends on | Break conditions | Last verified |
+|---|---------|--------|------------|-----------------|---------------|
+| AD1 | Super-admin auth guard (redirect non-super-admins) | ✅ Implemented | `admin.html` `resolveIsSuperAdmin()` checks `eco_super_admin` localStorage + JWT `isSuperAdmin` claim | Removing the boot guard, or not setting `eco_super_admin` in super-admin login flow | commit `07ad526` |
+| AD2 | Client cards grouped by managing accounting firm | ✅ Implemented | `admin.html` `renderGrid()` groups by `company_id`, `companyMap` from `/api/companies` | Renaming `company_id` field on eco_clients, or API not returning company list | commit `07ad526` |
+| AD3 | Standard Package status badge on each card | ✅ Implemented | `admin.html` `buildCard()` `pkgHtml` section, `eco_clients.package_name`, `eco_clients.is_active` | Removing `package_name` column (migration 008 required) | commit `07ad526` |
+| AD4 | SEAN AI addon toggle per client | ✅ Implemented | `admin.html` `toggleAddon()` → PUT `/api/eco-clients/:id` with `{ addons }` → backend syncs to `companies.modules_enabled` | Migration 008 not run (no `addons` column), or removing Sean sync block in `eco-clients.js` PUT handler | commit `07ad526` |
+| AD5 | Paytime billing section (active employees, last billed, diff, Mark as Billed) | ✅ Implemented | `admin.html` `buildBillingSection()`, `/api/eco-clients/payroll-billing-summary` endpoint, `eco_clients.last_billed_*` columns | Migration 008 not run, or billing-summary route registered after `/:id` (would be intercepted) | commit `07ad526` |
+| AD6 | formatDate not defined error (fixed) | ✅ Fixed | `admin.html` inline polyfill fallback block after `js/polyfills.js` script tag | Removing the inline fallback and polyfills.js path not resolving | commit `07ad526` |
+
+---
+
 ## Payroll App (`accounting-ecosystem/frontend-payroll/`)
 
 ### AUTH & SESSION
@@ -53,8 +66,7 @@ Each entry has:
 | P21 | Payslip PDF download works | ✅ Verified | `employee-detail.html` `downloadPayslipPDF()` | Removing jsPDF script include, changing PDF element IDs | commit `079930c` |
 | P22 | Pay run works | ✅ Verified | `payruns.html`, `payruns_{companyId}` KV key | Changing period/status key format | commit `079930c` |
 | P23 | Finalize Payslip button visible and clickable | ✅ Verified | `employee-detail.html` `updatePayslipUI()` — button rendered WITHOUT `data-permission` attr | **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered in `updatePayslipUI()` — `enforceUI()` will silently hide them. Permission already enforced inside `finalizePayslip()` | commit `278368e` |
-| P24 | Finalize permission works after company selection | ✅ Verified | `js/auth.js` `selectCompany()` reads `result.role` from `/api/auth/select-company` and writes to session | `selectCompany()` not updating `session.role` leaves it null → all `Permissions.require()` calls fail | commit `383d91d` |
-
+| P24 | Finalize permission works after company selection | ✅ Verified | `js/auth.js` `selectCompany()` reads `result.role` from `/api/auth/select-company` and writes to session | `selectCompany()` not updating `session.role` leaves it null → all `Permissions.require()` calls fail | commit `383d91d` || P25 | Sean AI tab gated by company addon (PT-05) | ⚠️ Needs DB migration first | `payruns.html` `#sean-tab-btn` hidden by default; `js/auth.js` `selectCompany()` stores `session.modules_enabled`; `/api/auth/select-company` returns `company.modules_enabled`; `eco_clients.addons` synced to `companies.modules_enabled` via eco-clients PUT | Removing `modules_enabled` from `select-company` response, changing `session.modules_enabled` key name, or running without migration 008 | commit `07ad526` |
 ### TAX & PAYROLL CALCULATIONS
 
 | # | Feature | Status | Depends on | Break conditions | Last verified |
@@ -129,3 +141,5 @@ Safe to proceed? [ ] Yes — no overlap  [ ] Yes — protected by: _______  [ ] 
 6. **NEVER store business data (payroll records, transactions, customer records) in localStorage** — browser clear destroys it (P17)
 8. **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered dynamically in `updatePayslipUI()` — `enforceUI()` runs immediately after and silently hides elements it can't verify. Permission is already enforced inside `finalizePayslip()` and `unfinalizePayslip()` via `Permissions.require()` (P23)
 9. **`selectCompany()` in auth.js MUST update `session.role`** from `result.role` — the backend returns the correct role for the selected company; if not written to session, ALL `Permissions.require()` calls fail silently (P24)
+10. **NEVER reorder routes in `eco-clients.js`** such that `/:id` appears before `/payroll-billing-summary` or `/employee-counts` — the parameterised route intercepts named sub-paths (AD5)
+11. **Migration 008 MUST be run on Supabase before deploying** the admin panel or Paytime Sean gate — `addons`, `package_name`, `last_billed_*` columns don't exist without it (AD4, AD5)
