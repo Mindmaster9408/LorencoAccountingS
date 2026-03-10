@@ -158,6 +158,16 @@
         }
         .pdf-input:focus { outline: none; border-color: #667eea; background: #f0f4ff; }
 
+        /* INCOME ITEMS PER ROW */
+        .pdf-item-row { display:flex; align-items:center; gap:5px; background:#f7f0ff; border:1px solid #667eea; border-radius:6px; padding:5px 8px; margin-bottom:4px; }
+        .pdf-item-search { position:relative; flex:1; min-width:130px; }
+        .pdf-item-search .search-input { width:100%; padding:4px 7px; border:1px solid #b8b0e8; border-radius:4px; font-size:12px; background:#fff; color:#333; box-sizing:border-box; }
+        .pdf-item-search .search-input::placeholder { color:#bbb; }
+        .pdf-item-dropdown { position:absolute; top:100%; left:0; right:0; z-index:999; background:#fff; border:1px solid #667eea; border-top:none; border-radius:0 0 5px 5px; max-height:180px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.15); }
+        .pdf-item-opt { padding:5px 8px; font-size:12px; color:#333; cursor:pointer; white-space:nowrap; }
+        .pdf-item-opt:hover { background:#667eea; color:#fff; }
+        .pdf-item-amount { width:85px; padding:4px 6px; border:1px solid #b8b0e8; border-radius:4px; font-size:12px; text-align:right; background:#fff; color:#333; flex-shrink:0; }
+
         /* FORM CONTROLS */
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; color: #555; font-weight: 600; font-size: 14px; }
@@ -1052,6 +1062,118 @@
             }, 500);
         }
 
+        // ---- Income item helpers ----
+        var _pdfItemCtr = 0;
+
+        function getPayrollItemSuggestions() {
+            var suggestions = [];
+            try {
+                var stored = safeLocalStorage.getItem('payroll_items_' + currentCompanyId);
+                if (stored) {
+                    JSON.parse(stored).forEach(function(it) { if (it.item_name) suggestions.push(it.item_name); });
+                }
+            } catch(e) {}
+            var common = [
+                // Core Pay
+                'Basic Salary','Basic Pay','Overtime (1.5x)','Overtime (2x)','Short Time','Back Pay','Arrear Pay',
+                // Leave Pay
+                'Annual Leave Pay','Sick Leave Pay','Family Responsibility Leave Pay','Maternity Leave Pay','Unpaid Leave Deduction',
+                // Bonuses & Variable Pay
+                'Commission','Bonus','Annual Bonus','Performance Bonus','13th Cheque','Retention Bonus','Sign-on Bonus',
+                // Allowances
+                'Travel Allowance','Housing Allowance','Transport Allowance','Car Allowance','Cell Phone Allowance',
+                'Meal Allowance','Subsistence Allowance','Night Shift Allowance','Standby Allowance','Acting Allowance',
+                'Tool Allowance','Uniform Allowance','Internet Allowance','Study Allowance','Relocation Allowance',
+                'Entertainment Allowance','Reimbursement',
+                // Deductions – Employee
+                'UIF Employee','PAYE','Pension (Employee)','Medical Aid Employee','Provident Fund (Employee)',
+                'Retirement Annuity','Loan Deduction','Garnishee Order','Union Fee','Funeral Aid','Disability Insurance',
+                // Employer Contributions
+                'UIF Employer','Pension (Employer)','Medical Aid Employer','Provident Fund (Employer)',
+                'Group Life Insurance','SDL',
+                // Fringe Benefits
+                'Company Car Benefit','Fringe Benefit'
+            ];
+            common.forEach(function(c) { if (suggestions.indexOf(c) < 0) suggestions.push(c); });
+            return suggestions;
+        }
+
+        function addPdfExtraItem(idx) { addPdfExtraItemPrefilled(idx, '', ''); }
+
+        function addPdfExtraItemPrefilled(idx, descValue, amtValue) {
+            var container = document.getElementById('pdf_items_' + idx);
+            if (!container) return;
+            var itemId = 'pdf_item_' + idx + '_' + (++_pdfItemCtr);
+            var suggestions = getPayrollItemSuggestions();
+            var optsHtml = suggestions.map(function(s) {
+                return '<div class="pdf-item-opt" onmousedown="pdAutoSelect(event,\'' + itemId + '\')">' + s.replace(/</g,'&lt;') + '</div>';
+            }).join('');
+            var el = document.createElement('div');
+            el.id = itemId;
+            el.className = 'pdf-item-row';
+            el.innerHTML =
+                '<div class="pdf-item-search">'
+                + '<input type="text" class="search-input" value="' + (descValue || '').replace(/"/g,'&quot;') + '" placeholder="Type to search item..." oninput="pdFilterOpts(this)" onfocus="pdShowOpts(this)" onblur="pdHideOpts(this)">'
+                + '<div class="pdf-item-dropdown" style="display:none;">' + optsHtml + '</div>'
+                + '</div>'
+                + '<input type="number" class="pdf-item-amount" placeholder="Amount" step="0.01" min="0" value="' + (amtValue || '') + '">'
+                + '<button onclick="removePdfExtraItem(\'' + itemId + '\')" style="background:#dc3545;color:white;border:none;border-radius:3px;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1;padding:0;flex-shrink:0;">×</button>';
+            container.appendChild(el);
+            el.querySelector('.pdf-item-amount').addEventListener('change', function() { recalcPdfGross(idx); });
+            if (amtValue) recalcPdfGross(idx);
+        }
+
+        function pdShowOpts(input) {
+            pdFilterOpts(input);
+            var dd = input.parentNode.querySelector('.pdf-item-dropdown');
+            if (dd) dd.style.display = 'block';
+        }
+        function pdHideOpts(input) {
+            var dd = input.parentNode.querySelector('.pdf-item-dropdown');
+            if (dd) setTimeout(function() { dd.style.display = 'none'; }, 200);
+        }
+        function pdFilterOpts(input) {
+            var q = input.value.toLowerCase();
+            var dd = input.parentNode.querySelector('.pdf-item-dropdown');
+            if (!dd) return;
+            var anyVis = false;
+            dd.querySelectorAll('.pdf-item-opt').forEach(function(opt) {
+                var show = !q || opt.textContent.toLowerCase().indexOf(q) >= 0;
+                opt.style.display = show ? 'block' : 'none';
+                if (show) anyVis = true;
+            });
+            dd.style.display = anyVis ? 'block' : 'none';
+        }
+        function pdAutoSelect(e, itemId) {
+            e.preventDefault();
+            var row = document.getElementById(itemId);
+            if (!row) return;
+            var input = row.querySelector('.search-input');
+            var dd    = row.querySelector('.pdf-item-dropdown');
+            if (input) input.value = e.currentTarget.textContent;
+            if (dd) dd.style.display = 'none';
+        }
+        function removePdfExtraItem(itemId) {
+            var el = document.getElementById(itemId);
+            if (el) {
+                var idx = parseInt(itemId.split('_')[2]);
+                el.remove();
+                recalcPdfGross(idx);
+            }
+        }
+        function recalcPdfGross(idx) {
+            var container = document.getElementById('pdf_items_' + idx);
+            if (!container) return;
+            var total = 0;
+            container.querySelectorAll('.pdf-item-amount').forEach(function(inp) { total += parseFloat(inp.value) || 0; });
+            var basicVal = parseFloat(document.getElementById('pdf_basic_' + idx).value) || 0;
+            var calcGross = basicVal + total;
+            if (calcGross > 0) {
+                var grossEl = document.getElementById('pdf_gross_' + idx);
+                if (grossEl && !grossEl.dataset.manuallyEdited) grossEl.value = calcGross.toFixed(2);
+            }
+        }
+
         function renderPdfResults() {
             if (pdfExtractedRows.length === 0) {
                 alert('No data could be extracted from the uploaded PDFs.');
@@ -1109,11 +1231,29 @@
                 tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_uif_' + idx + '" value="' + (row.uif !== null ? row.uif : '') + '" step="0.01"></td>';
                 tableHtml += '<td style="padding:8px;"><input type="number" class="pdf-input" id="pdf_net_' + idx + '" value="' + (row.net !== null ? row.net : '') + '" step="0.01"></td>';
                 tableHtml += '</tr>';
+
+                // Extra income items area
+                tableHtml += '<tr id="pdf_extra_row_' + idx + '" style="background:#f8f9ff;">'
+                    + '<td colspan="9" style="padding:6px 12px;">'
+                    + '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">'
+                    + '<span style="font-size:11px; color:#667eea; font-weight:700;">📋 Income items (to reach Gross)</span>'
+                    + '<button onclick="addPdfExtraItem(' + idx + ')" style="padding:2px 10px; font-size:11px; background:#667eea; color:white; border:none; border-radius:4px; cursor:pointer;">+ Add Item</button>'
+                    + '</div>'
+                    + '<div id="pdf_items_' + idx + '" style="display:flex; flex-wrap:wrap; gap:6px;"></div>'
+                    + '</td></tr>';
             });
 
             tableHtml += '</tbody>';
             document.getElementById('pdfResultsTable').innerHTML = tableHtml;
             document.getElementById('pdfResultsArea').style.display = 'block';
+            // Pre-populate income items extracted from PDF
+            pdfExtractedRows.forEach(function(row, idx) {
+                if (row._extraItems && row._extraItems.length) {
+                    row._extraItems.forEach(function(item) {
+                        addPdfExtraItemPrefilled(idx, item.description, item.amount);
+                    });
+                }
+            });
         }
 
         function confirmPdfImport() {
@@ -1148,6 +1288,19 @@
                     }
 
                     var histKey = 'emp_historical_' + currentCompanyId + '_' + empId + '_' + period;
+                    // Collect extra income items added by user
+                    var extraAllowances = [];
+                    var itemsContainer = document.getElementById('pdf_items_' + idx);
+                    if (itemsContainer) {
+                        itemsContainer.querySelectorAll('div').forEach(function(itemDiv) {
+                            var inputs = itemDiv.querySelectorAll('input');
+                            if (inputs.length >= 2) {
+                                var desc = inputs[0].value.trim();
+                                var amt  = parseFloat(inputs[1].value) || 0;
+                                if (desc && amt > 0) extraAllowances.push({ description: desc, amount: amt });
+                            }
+                        });
+                    }
                     var histData = {
                         basic: basic,
                         gross: gross,
@@ -1155,7 +1308,7 @@
                         uif: uif,
                         sdl: PayrollEngine.calculateSDL(gross),
                         net: net,
-                        allowances: [],
+                        allowances: extraAllowances,
                         deductions: [],
                         source: 'pdf_import',
                         imported_date: importTimestamp

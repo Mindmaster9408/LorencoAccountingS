@@ -341,17 +341,17 @@
                         <label for="showAdditionalHours" style="margin: 0; cursor: pointer;">Pay for Additional Hours</label>
                     </div>
                     <div id="additionalHoursSection" style="display: none; margin-top: 15px;">
-                        <div class="section collapsible" onclick="toggleSection(this)">
+                        <div class="section">
                             <div class="section-title">⏰ Overtime <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); openAddOvertime()">+ Add</button></div>
-                            <div class="collapsed-content"><div id="overtimeList"></div></div>
+                            <div style="padding: 10px 0;"><div id="overtimeList"></div></div>
                         </div>
-                        <div class="section collapsible" onclick="toggleSection(this)" style="margin-top: 15px;">
+                        <div class="section" style="margin-top: 15px;">
                             <div class="section-title">⏱️ Short Time <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); openAddShortTime()">+ Add</button></div>
-                            <div class="collapsed-content"><div id="shortTimeList"></div></div>
+                            <div style="padding: 10px 0;"><div id="shortTimeList"></div></div>
                         </div>
-                        <div class="section collapsible" onclick="toggleSection(this)" style="margin-top: 15px;">
+                        <div class="section" style="margin-top: 15px;">
                             <div class="section-title">💵 Paid at Different Rate <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); openAddMultiRate()">+ Add</button></div>
-                            <div class="collapsed-content"><div id="multiRateList"></div></div>
+                            <div style="padding: 10px 0;"><div id="multiRateList"></div></div>
                         </div>
                     </div>
                 </div>
@@ -1191,6 +1191,15 @@
                     }
                 } else {
                     console.warn('currentInputsList element not found');
+                }
+
+                // Auto-show additional hours section if any items exist for this period
+                var hasOT = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').length > 0;
+                var hasST = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]').length > 0;
+                var hasMR = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]').length > 0;
+                if (hasOT || hasST || hasMR) {
+                    document.getElementById('showAdditionalHours').checked = true;
+                    document.getElementById('additionalHoursSection').style.display = 'block';
                 }
 
                 // Overtime

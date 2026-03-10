@@ -1358,10 +1358,28 @@
                     JSON.parse(stored).forEach(function(it) { if (it.item_name) suggestions.push(it.item_name); });
                 }
             } catch(e) {}
-            // Common SA payroll income items as fallback suggestions
-            var common = ['Commission','Overtime','Travel Allowance','Housing Allowance','Transport Allowance',
-                'Medical Aid','Pension','Bonus','13th Cheque','Reimbursement','Acting Allowance',
-                'Standby Allowance','Night Shift Allowance','Car Allowance','Tool Allowance'];
+            // Comprehensive SA payroll items
+            var common = [
+                // Core Pay
+                'Basic Salary','Basic Pay','Overtime (1.5x)','Overtime (2x)','Short Time','Back Pay','Arrear Pay',
+                // Leave Pay
+                'Annual Leave Pay','Sick Leave Pay','Family Responsibility Leave Pay','Maternity Leave Pay','Unpaid Leave Deduction',
+                // Bonuses & Variable Pay
+                'Commission','Bonus','Annual Bonus','Performance Bonus','13th Cheque','Retention Bonus','Sign-on Bonus',
+                // Allowances
+                'Travel Allowance','Housing Allowance','Transport Allowance','Car Allowance','Cell Phone Allowance',
+                'Meal Allowance','Subsistence Allowance','Night Shift Allowance','Standby Allowance','Acting Allowance',
+                'Tool Allowance','Uniform Allowance','Internet Allowance','Study Allowance','Relocation Allowance',
+                'Entertainment Allowance','Reimbursement',
+                // Deductions – Employee
+                'UIF Employee','PAYE','Pension (Employee)','Medical Aid Employee','Provident Fund (Employee)',
+                'Retirement Annuity','Loan Deduction','Garnishee Order','Union Fee','Funeral Aid','Disability Insurance',
+                // Employer Contributions
+                'UIF Employer','Pension (Employer)','Medical Aid Employer','Provident Fund (Employer)',
+                'Group Life Insurance','SDL',
+                // Fringe Benefits
+                'Company Car Benefit','Fringe Benefit'
+            ];
             common.forEach(function(c) { if (suggestions.indexOf(c) < 0) suggestions.push(c); });
             return suggestions;
         }
