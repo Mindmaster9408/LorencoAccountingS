@@ -121,6 +121,10 @@ const AUTH = (function() {
                     session.company_name = result.company_name || (result.company && result.company.company_name) || '';
                     // role comes back from the server — must update session so Permissions work
                     if (result.role) session.role = result.role;
+                    // Store modules_enabled so PT-05 Sean gate works
+                    if (result.company && result.company.modules_enabled) {
+                        session.modules_enabled = result.company.modules_enabled;
+                    }
                     this.setSession(session);
 
                     return { success: true };

@@ -385,7 +385,7 @@
             <div class="top-tabs">
                 <button class="top-tab active" onclick="switchTopTab('payslips')">📄 Payslips</button>
                 <button class="top-tab" onclick="switchTopTab('payruns')">💰 Payroll Runs</button>
-                <button class="top-tab" onclick="switchTopTab('sean')">🧠 SEAN Insights</button>
+                <button class="top-tab" id="sean-tab-btn" onclick="switchTopTab('sean')" style="display:none;">🧠 SEAN Insights</button>
             </div>
 
             <!-- PAYSLIPS TAB -->
@@ -659,6 +659,13 @@
             currentCompanyId = session.company_id;
             const company = AUTH.getCompanyById(currentCompanyId);
             document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown Company';
+
+            // PT-05: Sean tab only visible when this company has Sean activated
+            var modules = session.modules_enabled || (company && company.modules_enabled) || [];
+            if (modules.includes('sean')) {
+                document.getElementById('sean-tab-btn').style.display = '';
+            }
+
             loadCompaniesCarousel();
             loadEmployees();
             loadPayruns();

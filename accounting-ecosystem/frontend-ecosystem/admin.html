@@ -363,6 +363,85 @@
         .toast.show { transform: translateY(0); opacity: 1; }
         .toast.error { background: #ef4444; }
 
+        /* ── Accounting Practice Group Header ───────────────────────────── */
+        .firm-group { margin-bottom: 36px; }
+        .firm-group-header {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 14px; padding: 10px 16px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+        }
+        .firm-group-icon { font-size: 1.3rem; }
+        .firm-group-name { font-size: 0.98rem; font-weight: 700; }
+        .firm-group-count { font-size: 0.72rem; color: var(--text-muted); padding: 2px 8px; background: rgba(255,255,255,0.06); border-radius: 10px; }
+
+        /* ── Package / Addon rows ──────────────────────────────────────── */
+        .pkg-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 9px 12px; border-radius: 9px;
+            background: rgba(102,126,234,0.08);
+            border: 1px solid rgba(102,126,234,0.18);
+            margin-bottom: 6px;
+        }
+        .pkg-row .pkg-info { display: flex; align-items: center; gap: 8px; }
+        .pkg-row .pkg-icon { font-size: 1.1rem; }
+        .pkg-row .pkg-name { font-size: 0.8rem; font-weight: 700; color: #fff; }
+        .pkg-row .pkg-sub  { font-size: 0.65rem; color: var(--text-muted); }
+        .pkg-badge {
+            font-size: 0.65rem; font-weight: 700; padding: 2px 8px;
+            border-radius: 8px; text-transform: uppercase; letter-spacing: 0.3px;
+            background: rgba(16,185,129,0.2); color: #6ee7b7;
+            border: 1px solid rgba(16,185,129,0.25);
+        }
+        .pkg-badge.inactive { background: rgba(239,68,68,0.15); color: #fca5a5; border-color: rgba(239,68,68,0.25); }
+
+        .addon-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px; border-radius: 9px;
+            background: rgba(139,92,246,0.08);
+            border: 1px solid rgba(139,92,246,0.18);
+            margin-bottom: 6px;
+        }
+        .addon-row .addon-info { display: flex; align-items: center; gap: 8px; }
+        .addon-row .addon-name { font-size: 0.78rem; font-weight: 700; color: #c4b5fd; }
+        .addon-row .addon-sub  { font-size: 0.65rem; color: var(--text-muted); }
+
+        /* ── Paytime Billing Section ──────────────────────────────────── */
+        .billing-section {
+            margin-top: 12px; padding: 12px 14px;
+            background: rgba(16,185,129,0.06);
+            border: 1px solid rgba(16,185,129,0.14);
+            border-radius: 10px;
+        }
+        .billing-section-title {
+            font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.8px; color: #6ee7b7; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .billing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+        .billing-cell { text-align: center; }
+        .billing-cell .b-val {
+            font-size: 1.4rem; font-weight: 800;
+            background: linear-gradient(135deg,#fff,rgba(255,255,255,0.7));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            line-height: 1.1;
+        }
+        .billing-cell .b-val.up   { -webkit-text-fill-color: #34d399; }
+        .billing-cell .b-val.down { -webkit-text-fill-color: #f87171; }
+        .billing-cell .b-val.zero { -webkit-text-fill-color: rgba(255,255,255,0.4); }
+        .billing-cell .b-lbl { font-size: 0.63rem; color: var(--text-muted); margin-top: 2px; line-height: 1.2; }
+        .btn-mark-billed {
+            width: 100%; padding: 7px;
+            background: rgba(16,185,129,0.12);
+            border: 1px solid rgba(16,185,129,0.25);
+            color: #6ee7b7; border-radius: 8px;
+            font-size: 0.76rem; font-weight: 700;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .btn-mark-billed:hover { background: rgba(16,185,129,0.22); }
+        .btn-mark-billed:disabled { opacity: 0.4; cursor: not-allowed; }
+
         @media (max-width: 768px) {
             .main { padding: 20px 14px; }
             .clients-grid { grid-template-columns: 1fr; }
@@ -371,7 +450,26 @@
         }
     </style>
     <script src="js/polyfills.js"></script>
-</head>
+    <!-- Inline date fallbacks in case polyfills.js path resolves differently -->
+    <script>
+        if (typeof window.parseStandardDate !== 'function') {
+            window.parseStandardDate = function(s) {
+                if (!s) return new Date(NaN);
+                if (s instanceof Date) return s;
+                var clean = String(s).replace('T', ' ').replace('Z', '');
+                var parts = clean.split(/[\s\-\/]/);
+                if (parts.length >= 3) return new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+                return new Date(s);
+            };
+        }
+        if (typeof window.formatDate !== 'function') {
+            window.formatDate = function(d, fmt) {
+                if (!d || isNaN(d.getTime())) return '—';
+                if (fmt === 'ZA') return d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear();
+                return d.toISOString().slice(0,10);
+            };
+        }
+    </script>
 <body>
 
     <!-- Top Bar -->
@@ -469,66 +567,61 @@
     <script>
         const API_BASE = window.location.origin;
 
-        const APP_ICONS  = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖' };
-        const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI' };
+        const APP_ICONS  = { pos: '🛒', payroll: '💰', accounting: '📊' };
+        const APP_LABELS = { pos: 'Checkout Charlie', payroll: 'Lorenco Paytime', accounting: 'Lorenco Accounting' };
+        const APP_SUBS   = { pos: 'Point of Sale', payroll: 'Payroll', accounting: 'General Ledger' };
+
+        // Packages available — extensible for future tiers
+        const PACKAGES = [
+            { key: 'standard', label: 'Standard Package', icon: '📦', sub: 'Core platform access' }
+        ];
+        // Add-ons available
+        const ADDONS = [
+            { key: 'sean', label: 'SEAN AI Insights', icon: '🧠', sub: 'AI payroll & business insights' }
+        ];
 
         let allClients   = [];
-        let companyMap   = {}; // id -> company object
-        let employeeCounts = {}; // company_id -> active employee count
+        let companyMap   = {};
+        let billingSummary = {};
         let statusFilter = 'all';
         let appFilter    = 'all';
 
         // ── Auth Guard ──────────────────────────────────────────────────────
         const token = localStorage.getItem('eco_token');
-
-        // Check eco_super_admin flag; also decode JWT as fallback for existing sessions
-        // that may not have eco_super_admin set in localStorage.
         function resolveIsSuperAdmin() {
             if (localStorage.getItem('eco_super_admin') === 'true') return true;
             if (!token) return false;
-            try {
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                return !!payload.isSuperAdmin;
-            } catch (e) {
-                return false;
-            }
+            try { const p = JSON.parse(atob(token.split('.')[1])); return !!p.isSuperAdmin; } catch(e) { return false; }
         }
         const isSuperAdmin = resolveIsSuperAdmin();
 
         // ── Init ────────────────────────────────────────────────────────────
         async function init() {
-            // Render user badge
             try {
                 const user = JSON.parse(localStorage.getItem('eco_user'));
                 if (user) {
                     const name = user.fullName || user.username || user.email || 'Admin';
-                    document.getElementById('userAvatar').textContent =
-                        name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                    document.getElementById('userAvatar').textContent = name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
                     document.getElementById('userName').textContent = name;
                 }
-            } catch (e) {}
+            } catch(e) {}
 
-            // Load data in parallel
-            const [clientsRes, companiesRes, empRes] = await Promise.all([
+            const [clientsRes, companiesRes, billingRes] = await Promise.all([
                 fetch(`${API_BASE}/api/eco-clients?status=all`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_BASE}/api/companies`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_BASE}/api/eco-clients/employee-counts`, { headers: { 'Authorization': `Bearer ${token}` } }).catch(() => null)
+                fetch(`${API_BASE}/api/companies`,              { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API_BASE}/api/eco-clients/payroll-billing-summary`, { headers: { 'Authorization': `Bearer ${token}` } }).catch(() => null)
             ]);
 
-            // Build company map
             if (companiesRes.ok) {
                 const cData = await companiesRes.json();
                 (cData.companies || []).forEach(c => { companyMap[c.id] = c; });
-                populateCompanyFilter();
             }
 
-            // Load employee counts
-            if (empRes && empRes.ok) {
-                const empData = await empRes.json();
-                employeeCounts = empData.counts || {};
+            if (billingRes && billingRes.ok) {
+                const bData = await billingRes.json();
+                billingSummary = bData.summary || {};
             }
 
-            // Load clients
             if (clientsRes.ok) {
                 const data = await clientsRes.json();
                 allClients = data.clients || [];
@@ -540,256 +633,334 @@
             applyFilters();
         }
 
-        // ── Populate Company Filter ──────────────────────────────────────────
-        function populateCompanyFilter() {
-            const sel = document.getElementById('companyFilter');
-            const group = document.getElementById('companyFilterGroup');
-
-            // Collect unique managing companies seen in clients
-            const usedCompanyIds = new Set(allClients.map(c => c.company_id).filter(Boolean));
-            const managingCos = Object.values(companyMap).filter(c => usedCompanyIds.has(c.id));
-
-            if (managingCos.length > 1) {
-                managingCos.sort((a, b) => a.company_name.localeCompare(b.company_name)).forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.id;
-                    opt.textContent = c.trading_name || c.company_name;
-                    sel.appendChild(opt);
-                });
-                group.style.display = '';
-            }
-        }
-
         // ── Stats ───────────────────────────────────────────────────────────
         function renderStats() {
             document.getElementById('statTotal').textContent     = allClients.length;
-            document.getElementById('statActive').textContent    = allClients.filter(c => c.is_active).length;
-            document.getElementById('statInactive').textContent  = allClients.filter(c => !c.is_active).length;
-            document.getElementById('statPos').textContent       = allClients.filter(c => Array.isArray(c.apps) && c.apps.includes('pos')).length;
-            document.getElementById('statPayroll').textContent   = allClients.filter(c => Array.isArray(c.apps) && c.apps.includes('payroll')).length;
-            document.getElementById('statAccounting').textContent = allClients.filter(c => Array.isArray(c.apps) && c.apps.includes('accounting')).length;
-            document.getElementById('statSean').textContent      = allClients.filter(c => Array.isArray(c.apps) && c.apps.includes('sean')).length;
+            document.getElementById('statActive').textContent    = allClients.filter(c=>c.is_active).length;
+            document.getElementById('statInactive').textContent  = allClients.filter(c=>!c.is_active).length;
+            document.getElementById('statPos').textContent       = allClients.filter(c=>hasApp(c,'pos')).length;
+            document.getElementById('statPayroll').textContent   = allClients.filter(c=>hasApp(c,'payroll')).length;
+            document.getElementById('statAccounting').textContent= allClients.filter(c=>hasApp(c,'accounting')).length;
+            document.getElementById('statSean').textContent      = allClients.filter(c=>hasAddon(c,'sean')).length;
         }
+
+        function hasApp(c, key)   { return Array.isArray(c.apps)   && c.apps.includes(key); }
+        function hasAddon(c, key) { return Array.isArray(c.addons) && c.addons.includes(key); }
 
         // ── Filters ─────────────────────────────────────────────────────────
         function setStatusFilter(val, el) {
             statusFilter = val;
-            document.querySelectorAll('#fAll, #fActive, #fInactive').forEach(e => {
-                e.classList.remove('active', 'success', 'danger');
-            });
+            document.querySelectorAll('#fAll,#fActive,#fInactive').forEach(e => e.classList.remove('active','success','danger'));
             el.classList.add('active');
-            if (val === 'active') el.classList.add('success');
-            if (val === 'inactive') el.classList.add('danger');
+            if (val==='active')   el.classList.add('success');
+            if (val==='inactive') el.classList.add('danger');
             applyFilters();
         }
-
         function setAppFilter(val, el) {
             appFilter = val;
-            document.querySelectorAll('#faAll, #faPos, #faPayroll, #faAccounting, #faSean').forEach(e => {
-                e.classList.remove('active');
-            });
+            document.querySelectorAll('#faAll,#faPos,#faPayroll,#faAccounting,#faSean').forEach(e=>e.classList.remove('active'));
             el.classList.add('active');
             applyFilters();
         }
-
         function applyFilters() {
-            const search = (document.getElementById('searchInput').value || '').toLowerCase();
-            const coFilter = document.getElementById('companyFilter').value;
-
+            const search = (document.getElementById('searchInput').value||'').toLowerCase();
             let filtered = [...allClients];
-
-            // Status
-            if (statusFilter === 'active')   filtered = filtered.filter(c => c.is_active);
-            if (statusFilter === 'inactive') filtered = filtered.filter(c => !c.is_active);
-
-            // App
-            if (appFilter !== 'all') filtered = filtered.filter(c => Array.isArray(c.apps) && c.apps.includes(appFilter));
-
-            // Managing company
-            if (coFilter) filtered = filtered.filter(c => String(c.company_id) === coFilter);
-
-            // Search
-            if (search) {
-                filtered = filtered.filter(c =>
-                    (c.name || '').toLowerCase().includes(search) ||
-                    (c.email || '').toLowerCase().includes(search) ||
-                    (c.phone || '').includes(search) ||
-                    (c.id_number || '').includes(search)
-                );
-            }
-
+            if (statusFilter==='active')   filtered = filtered.filter(c=>c.is_active);
+            if (statusFilter==='inactive') filtered = filtered.filter(c=>!c.is_active);
+            if (appFilter==='sean')        filtered = filtered.filter(c=>hasAddon(c,'sean'));
+            else if (appFilter!=='all')    filtered = filtered.filter(c=>hasApp(c,appFilter));
+            if (search) filtered = filtered.filter(c =>
+                (c.name||'').toLowerCase().includes(search) ||
+                (c.email||'').toLowerCase().includes(search) ||
+                (c.phone||'').includes(search)
+            );
             document.getElementById('toolbarCount').textContent =
-                `${filtered.length} of ${allClients.length} client${allClients.length !== 1 ? 's' : ''}`;
-
+                `${filtered.length} of ${allClients.length} client${allClients.length!==1?'s':''}`;
             renderGrid(filtered);
         }
 
-        // ── Render Grid ──────────────────────────────────────────────────────
+        // ── Render Grid — grouped by managing firm ───────────────────────────
         function renderGrid(clients) {
             const grid = document.getElementById('clientsGrid');
-
             if (clients.length === 0) {
-                grid.innerHTML = `
-                    <div class="empty-state">
-                        <div class="icon">&#128100;</div>
-                        <p>No clients match the current filters.</p>
-                    </div>`;
+                grid.innerHTML = `<div class="empty-state"><div class="icon">👤</div><p>No clients match the current filters.</p></div>`;
                 return;
             }
 
-            grid.innerHTML = clients.map(c => buildCard(c)).join('');
+            // Group by company_id (managing accounting firm)
+            const groups = {};
+            clients.forEach(c => {
+                const key = c.company_id || 0;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(c);
+            });
+
+            let html = '';
+            Object.keys(groups).forEach(firmId => {
+                const firm = companyMap[firmId];
+                const firmName = firm ? (firm.trading_name || firm.company_name) : 'Unassigned';
+                const count = groups[firmId].length;
+                html += `
+                    <div class="firm-group" style="grid-column:1/-1;">
+                        <div class="firm-group-header">
+                            <span class="firm-group-icon">🏛️</span>
+                            <span class="firm-group-name">${esc(firmName)}</span>
+                            <span class="firm-group-count">${count} client${count!==1?'s':''}</span>
+                        </div>
+                        <div class="clients-grid" style="margin:0;">
+                            ${groups[firmId].map(c=>buildCard(c)).join('')}
+                        </div>
+                    </div>`;
+            });
+            grid.innerHTML = html;
         }
 
-        const ALL_APPS = [
-            { key: 'pos',        label: 'Checkout Charlie',   sub: 'Point of Sale',     icon: '🛒' },
-            { key: 'payroll',    label: 'Lorenco Paytime',    sub: 'Payroll',            icon: '💰' },
-            { key: 'accounting', label: 'Lorenco Accounting', sub: 'General Ledger',     icon: '📊' }
-        ];
-
+        // ── Build Card ───────────────────────────────────────────────────────
         function buildCard(c) {
-            const isBusiness    = c.client_type === 'business';
-            const isActive      = !!c.is_active;
-            const managingCo    = companyMap[c.company_id];
-            const managingName  = managingCo ? (managingCo.trading_name || managingCo.company_name) : 'Unknown';
-            const activeApps    = new Set(c.apps || []);
+            const isActive = !!c.is_active;
+            const isBusiness = c.client_type === 'business';
+            const dateStr = c.created_at ? formatDate(parseStandardDate(c.created_at), 'ZA') : '—';
 
-            const empCount = c.client_company_id ? (employeeCounts[c.client_company_id] || 0) : 0;
+            // ── Package section ──
+            const pkgName = c.package_name || 'standard';
+            const pkgActive = isActive;
+            const pkgHtml = PACKAGES.map(pkg => `
+                <div class="pkg-row">
+                    <div class="pkg-info">
+                        <span class="pkg-icon">${pkg.icon}</span>
+                        <div>
+                            <div class="pkg-name">${pkg.label}</div>
+                            <div class="pkg-sub">${pkg.sub}</div>
+                        </div>
+                    </div>
+                    <span class="pkg-badge ${pkgActive?'':'inactive'}">${pkgActive?'Active':'Inactive'}</span>
+                </div>`).join('');
 
-            const appsHtml = ALL_APPS.map(app => {
-                const on = activeApps.has(app.key);
-                const empBadge = (app.key === 'payroll' && on && empCount > 0)
-                    ? `<span class="app-emp-count">👥 ${empCount} employee${empCount !== 1 ? 's' : ''}</span>`
-                    : '';
+            // ── Add-ons section ──
+            const addonHtml = ADDONS.map(addon => {
+                const on = hasAddon(c, addon.key);
                 return `
+                <div class="addon-row">
+                    <div class="addon-info">
+                        <span style="font-size:1.1rem;">${addon.icon}</span>
+                        <div>
+                            <div class="addon-name">${addon.label}</div>
+                            <div class="addon-sub">${addon.sub}</div>
+                        </div>
+                    </div>
+                    <label class="app-toggle" title="${on?'Deactivate':'Activate'} ${addon.label}">
+                        <input type="checkbox" ${on?'checked':''} onchange="toggleAddon(${c.id},'${addon.key}',this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                </div>`;
+            }).join('');
+
+            // ── Apps section ──
+            const appsHtml = Object.entries(APP_LABELS).map(([key, label]) => {
+                const on = hasApp(c, key);
+                // Paytime: show billing sub-section
+                if (key === 'payroll' && on) {
+                    return `
                     <div class="app-row">
                         <div class="app-info">
-                            <span class="app-icon">${app.icon}</span>
+                            <span class="app-icon">${APP_ICONS[key]}</span>
                             <div>
-                                <div class="app-name">${app.label}${empBadge}</div>
-                                <div class="app-sub">${app.sub}</div>
+                                <div class="app-name">${label}</div>
+                                <div class="app-sub">${APP_SUBS[key]}</div>
                             </div>
                         </div>
                         <label class="app-toggle">
-                            <input type="checkbox" ${on ? 'checked' : ''}
-                                onchange="toggleApp(${c.id}, '${app.key}', this.checked)">
+                            <input type="checkbox" checked onchange="toggleApp(${c.id},'${key}',this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    ${buildBillingSection(c)}`;
+                }
+                return `
+                    <div class="app-row">
+                        <div class="app-info">
+                            <span class="app-icon">${APP_ICONS[key]}</span>
+                            <div>
+                                <div class="app-name">${label}</div>
+                                <div class="app-sub">${APP_SUBS[key]}</div>
+                            </div>
+                        </div>
+                        <label class="app-toggle">
+                            <input type="checkbox" ${on?'checked':''} onchange="toggleApp(${c.id},'${key}',this.checked)">
                             <span class="slider"></span>
                         </label>
                     </div>`;
             }).join('');
 
-            const dateStr = c.created_at
-                ? formatDate(parseStandardDate(c.created_at), 'ZA')
-                : '—';
-
             return `
-                <div class="client-card ${isActive ? '' : 'inactive'}" id="card-${c.id}">
+                <div class="client-card ${isActive?'':'inactive'}" id="card-${c.id}">
                     <div class="card-top">
                         <div class="card-identity">
-                            <div class="card-avatar ${isBusiness ? 'business' : ''}">
-                                ${isBusiness ? '🏢' : '👤'}
-                            </div>
+                            <div class="card-avatar ${isBusiness?'business':''}">${isBusiness?'🏢':'👤'}</div>
                             <div>
                                 <div class="card-name">${esc(c.name)}</div>
-                                <div class="card-managing">Managed by: <span>${esc(managingName)}</span></div>
+                                <div class="card-managing">Client ID: <span>${c.id}</span></div>
                             </div>
                         </div>
-                        <span class="status-badge ${isActive ? 'active' : 'inactive'}">
-                            ${isActive ? '● Active' : '○ Inactive'}
-                        </span>
+                        <span class="status-badge ${isActive?'active':'inactive'}">${isActive?'● Active':'○ Inactive'}</span>
                     </div>
 
-                    ${c.email ? `<div class="card-meta"><span class="icon">📧</span>${esc(c.email)}</div>` : ''}
-                    ${c.phone ? `<div class="card-meta"><span class="icon">📱</span>${esc(c.phone)}</div>` : ''}
-                    ${c.id_number ? `<div class="card-meta"><span class="icon">🪪</span>${esc(c.id_number)}</div>` : ''}
+                    ${c.email?`<div class="card-meta"><span class="icon">📧</span>${esc(c.email)}</div>`:''}
+                    ${c.phone?`<div class="card-meta"><span class="icon">📱</span>${esc(c.phone)}</div>`:''}
+
+                    <div class="card-section-label">Package</div>
+                    ${pkgHtml}
+
+                    <div class="card-section-label">Add-ons</div>
+                    ${addonHtml}
 
                     <div class="card-section-label">Apps</div>
                     <div>${appsHtml}</div>
 
                     <div class="card-footer">
-                        <span class="card-date">&#128197; Added ${dateStr}</span>
-                        <button
-                            class="btn-toggle ${isActive ? 'deactivate' : 'activate'}"
-                            id="btn-${c.id}"
-                            onclick="toggleClient(${c.id}, ${isActive})"
-                        >
-                            ${isActive ? '&#9940; Deactivate' : '&#10003; Activate'}
+                        <span class="card-date">📅 Added ${dateStr}</span>
+                        <button class="btn-toggle ${isActive?'deactivate':'activate'}"
+                            id="btn-${c.id}" onclick="toggleClient(${c.id},${isActive})">
+                            ${isActive?'⛔ Deactivate':'✓ Activate'}
                         </button>
                     </div>
                 </div>`;
+        }
+
+        // ── Paytime Billing Section ──────────────────────────────────────────
+        function buildBillingSection(c) {
+            if (!c.client_company_id) return '';
+
+            const bs = billingSummary[c.client_company_id] || {};
+            const currentEmp = bs.active_employees || 0;
+            const lastBilled = c.last_billed_employees || 0;
+            const lastPeriod = c.last_billed_period || '—';
+            const diff = currentEmp - lastBilled;
+            const diffClass = diff > 0 ? 'up' : diff < 0 ? 'down' : 'zero';
+            const diffPrefix = diff > 0 ? '+' : '';
+            const lastDateStr = c.last_billed_date ? formatDate(parseStandardDate(c.last_billed_date), 'ZA') : 'Never';
+
+            return `
+            <div class="billing-section" id="billing-${c.id}">
+                <div class="billing-section-title">💰 Paytime Billing</div>
+                <div class="billing-grid">
+                    <div class="billing-cell">
+                        <div class="b-val">${currentEmp}</div>
+                        <div class="b-lbl">Active employees<br>this month</div>
+                    </div>
+                    <div class="billing-cell">
+                        <div class="b-val">${lastBilled}</div>
+                        <div class="b-lbl">Last billed<br>${lastPeriod}</div>
+                    </div>
+                    <div class="billing-cell">
+                        <div class="b-val ${diffClass}">${diffPrefix}${diff}</div>
+                        <div class="b-lbl">Difference<br>vs last bill</div>
+                    </div>
+                </div>
+                <div style="font-size:0.63rem; color:var(--text-muted); margin-bottom:8px;">
+                    Last marked billed: ${lastDateStr}
+                </div>
+                <button class="btn-mark-billed" onclick="markAsBilled(${c.id},${currentEmp})">
+                    ✓ Mark ${currentEmp} employee${currentEmp!==1?'s':''} as Billed This Month
+                </button>
+            </div>`;
         }
 
         // ── Toggle Activate / Deactivate ─────────────────────────────────────
         async function toggleClient(clientId, currentlyActive) {
             const btn = document.getElementById(`btn-${clientId}`);
             if (!btn) return;
-
-            const newStatus = !currentlyActive;
-            const label     = newStatus ? 'Activating...' : 'Deactivating...';
-            btn.disabled    = true;
-            btn.textContent = label;
-
+            btn.disabled = true; btn.textContent = currentlyActive ? 'Deactivating...' : 'Activating...';
             try {
                 const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ is_active: newStatus })
+                    headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+                    body: JSON.stringify({ is_active: !currentlyActive })
                 });
-
-                if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.error || 'Failed to update client');
-                }
-
-                // Update local state
-                const idx = allClients.findIndex(c => c.id === clientId);
-                if (idx !== -1) allClients[idx].is_active = newStatus;
-
-                showToast(newStatus
-                    ? `✅ Client activated successfully`
-                    : `🚫 Client deactivated`
-                , !newStatus);
-
-                renderStats();
-                applyFilters();
-
-            } catch (err) {
-                showToast('❌ ' + err.message, true);
-                btn.disabled    = false;
-                btn.textContent = currentlyActive ? '⛔ Deactivate' : '✓ Activate';
+                if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+                const idx = allClients.findIndex(c=>c.id===clientId);
+                if (idx!==-1) allClients[idx].is_active = !currentlyActive;
+                showToast((!currentlyActive ? '✅ Client activated' : '🚫 Client deactivated'));
+                renderStats(); applyFilters();
+            } catch(err) {
+                showToast('❌ '+err.message, true);
+                btn.disabled=false; btn.textContent=currentlyActive?'⛔ Deactivate':'✓ Activate';
             }
         }
 
-        // ── Toggle individual app for a client ──────────────────────────────
+        // ── Toggle App ───────────────────────────────────────────────────────
         async function toggleApp(clientId, appKey, enable) {
-            const client = allClients.find(c => c.id === clientId);
+            const client = allClients.find(c=>c.id===clientId);
             if (!client) return;
+            const apps = new Set(client.apps||[]);
+            enable ? apps.add(appKey) : apps.delete(appKey);
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
+                    method:'PUT',
+                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                    body: JSON.stringify({ apps: [...apps] })
+                });
+                if (!res.ok) throw new Error((await res.json()).error||'Failed');
+                client.apps = [...apps];
+                showToast(`${enable?'✅':'🚫'} ${APP_LABELS[appKey]||appKey} ${enable?'activated':'deactivated'} for ${client.name}`);
+                renderStats(); applyFilters();
+            } catch(err) {
+                showToast('❌ '+err.message, true); applyFilters();
+            }
+        }
 
-            const currentApps = new Set(client.apps || []);
-            if (enable) currentApps.add(appKey);
-            else currentApps.delete(appKey);
+        // ── Toggle Addon ─────────────────────────────────────────────────────
+        async function toggleAddon(clientId, addonKey, enable) {
+            const client = allClients.find(c=>c.id===clientId);
+            if (!client) return;
+            const addons = new Set(client.addons||[]);
+            enable ? addons.add(addonKey) : addons.delete(addonKey);
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
+                    method:'PUT',
+                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                    body: JSON.stringify({ addons: [...addons] })
+                });
+                if (!res.ok) throw new Error((await res.json()).error||'Failed');
+                client.addons = [...addons];
+                const addonLabel = ADDONS.find(a=>a.key===addonKey)?.label || addonKey;
+                showToast(`${enable?'✅':'🚫'} ${addonLabel} ${enable?'activated':'deactivated'} for ${client.name}`);
+                renderStats(); applyFilters();
+            } catch(err) {
+                showToast('❌ '+err.message, true); applyFilters();
+            }
+        }
 
-            const newApps = [...currentApps];
+        // ── Mark as Billed ───────────────────────────────────────────────────
+        async function markAsBilled(clientId, empCount) {
+            const btn = document.querySelector(`#billing-${clientId} .btn-mark-billed`);
+            if (btn) { btn.disabled=true; btn.textContent='Saving...'; }
+
+            const now = new Date();
+            const period = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
 
             try {
                 const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ apps: newApps })
+                    method:'PUT',
+                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                    body: JSON.stringify({
+                        last_billed_employees: empCount,
+                        last_billed_period: period,
+                        last_billed_date: now.toISOString()
+                    })
                 });
-
-                if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.error || 'Failed to update apps');
+                if (!res.ok) throw new Error((await res.json()).error||'Failed');
+                const idx = allClients.findIndex(c=>c.id===clientId);
+                if (idx!==-1) {
+                    allClients[idx].last_billed_employees = empCount;
+                    allClients[idx].last_billed_period    = period;
+                    allClients[idx].last_billed_date      = now.toISOString();
                 }
-
-                // Update local state
-                client.apps = newApps;
-                showToast(`${enable ? '✅' : '🚫'} ${APP_LABELS[appKey] || appKey} ${enable ? 'activated' : 'deactivated'} for ${client.name}`);
-                renderStats();
+                showToast(`✅ Billed ${empCount} employee${empCount!==1?'s':''} for ${period}`);
                 applyFilters();
-            } catch (err) {
-                showToast('❌ ' + err.message, true);
-                applyFilters(); // re-render to reset toggle
+            } catch(err) {
+                showToast('❌ '+err.message, true);
+                if (btn) { btn.disabled=false; btn.textContent=`✓ Mark ${empCount} employee${empCount!==1?'s':''} as Billed This Month`; }
             }
         }
 
@@ -797,36 +968,32 @@
         function esc(str) {
             if (!str) return '';
             const d = document.createElement('div');
-            d.textContent = str;
-            return d.innerHTML;
+            d.textContent = str; return d.innerHTML;
         }
-
         function showToast(msg, isError) {
             const t = document.getElementById('toast');
             t.textContent = msg;
-            t.className   = 'toast show' + (isError ? ' error' : '');
-            setTimeout(() => { t.className = 'toast'; }, 3500);
+            t.className = 'toast show'+(isError?' error':'');
+            setTimeout(()=>{ t.className='toast'; }, 3500);
         }
-
         function logout() {
             ['eco_token','eco_user','eco_companies','eco_super_admin','token','user','company','sso_source']
-                .forEach(k => localStorage.removeItem(k));
-            window.location.href = '/';
+                .forEach(k=>localStorage.removeItem(k));
+            window.location.href='/';
         }
 
         // ── Boot ─────────────────────────────────────────────────────────────
-        // Only boot for verified super admins; redirect everyone else.
         if (!token || !isSuperAdmin) {
             window.location.href = '/dashboard';
         } else {
-        init().catch(err => {
-            document.getElementById('clientsGrid').innerHTML = `
-                <div class="empty-state">
-                    <div class="icon">⚠️</div>
-                    <p>Failed to load: ${err.message}</p>
-                </div>`;
-        });
-        } // end else (isSuperAdmin)
+            init().catch(err => {
+                document.getElementById('clientsGrid').innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">⚠️</div>
+                        <p>Failed to load: ${err.message}</p>
+                    </div>`;
+            });
+        }
     </script>
 </body>
 </html>

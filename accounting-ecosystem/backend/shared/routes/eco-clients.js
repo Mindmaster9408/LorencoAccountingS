@@ -299,6 +299,33 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/eco-clients/payroll-billing-summary
+ * Returns per-company active employee count + current-month finalized payslip count.
+ * Used by the super-admin billing panel.
+ * Returns { [client_company_id]: { active_employees, current_period } }
+ */
+router.get('/payroll-billing-summary', async (req, res) => {
+  try {
+    // Active employees per company
+    const { data: emps, error: empErr } = await supabase
+      .from('employees')
+      .select('company_id, is_active');
+    if (empErr) throw empErr;
+
+    const summary = {};
+    (emps || []).forEach(e => {
+      if (!summary[e.company_id]) summary[e.company_id] = { active_employees: 0 };
+      if (e.is_active) summary[e.company_id].active_employees++;
+    });
+
+    res.json({ summary });
+  } catch (err) {
+    console.error('payroll-billing-summary error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * GET /api/eco-clients/employee-counts
  * Returns { [client_company_id]: activeCount } for payroll invoicing
  */
@@ -489,7 +516,9 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Client not found' });
     }
 
-    const allowed = ['name', 'email', 'phone', 'id_number', 'address', 'client_type', 'apps', 'notes', 'is_active'];
+    const allowed = ['name', 'email', 'phone', 'id_number', 'address', 'client_type', 'apps', 'addons',
+                     'package_name', 'notes', 'is_active',
+                     'last_billed_employees', 'last_billed_period', 'last_billed_date'];
     const updates = { updated_at: new Date().toISOString() };
     const changedFields = [];
     allowed.forEach(key => {
@@ -524,6 +553,34 @@ router.put('/:id', async (req, res) => {
 
     // 2. Push field-level updates to already-linked app records
     const fieldSync = await syncUpdateToApps(updated, changedFields);
+
+    // 3. Sync Sean addon toggle → companies.modules_enabled for this client's company
+    if (changedFields.includes('addons') && updated.client_company_id) {
+      try {
+        const newAddons = updated.addons || [];
+        const oldAddons = old.addons || [];
+        const seanAdded   = newAddons.includes('sean') && !oldAddons.includes('sean');
+        const seanRemoved = !newAddons.includes('sean') && oldAddons.includes('sean');
+        if (seanAdded || seanRemoved) {
+          const { data: coData } = await supabase
+            .from('companies')
+            .select('modules_enabled')
+            .eq('id', updated.client_company_id)
+            .single();
+          if (coData) {
+            let mods = coData.modules_enabled || [];
+            if (seanAdded   && !mods.includes('sean')) mods = [...mods, 'sean'];
+            if (seanRemoved) mods = mods.filter(m => m !== 'sean');
+            await supabase
+              .from('companies')
+              .update({ modules_enabled: mods })
+              .eq('id', updated.client_company_id);
+          }
+        }
+      } catch (syncErr) {
+        console.error('[eco-clients] Sean addon sync to companies failed:', syncErr.message);
+      }
+    }
 
     const syncResult = {
       synced:  newRecordSync.synced,
