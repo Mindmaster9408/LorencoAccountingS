@@ -26,7 +26,7 @@
 ---
 
 ### PT-01 — PAYE Cumulative Tax Calculation (YTD)
-**Status**: 🔴 Not Started
+**Status**: ✅ Complete
 **Priority**: Launch Critical
 **Description**:
 PAYE must not be calculated in isolation for the current month only. SA tax law requires the
@@ -87,7 +87,7 @@ separately.
 ---
 
 ### PT-03 — Company Details Shared Across All Apps
-**Status**: 🔴 Not Started — Architecture Decision Required
+**Status**: ✅ Complete (core fields now write to API; payroll-specific fields remain localStorage)
 **Priority**: Launch Critical (data correctness)
 **Description**:
 Company details (name, registration number, address, logo, etc.) must not be app-specific copies
@@ -197,7 +197,7 @@ eventually activate it.
 ---
 
 ### PT-07 — Standard Payroll Items Must Be Editable
-**Status**: 🟠 Not Started
+**Status**: ✅ Complete (was already implemented — editItem() has no is_standard lock)
 **Priority**: High
 **Description**:
 Standard/system payroll items must be editable by the business owner / accountant.
@@ -256,7 +256,7 @@ must not show if Sean is not active for this company.
 ---
 
 ### PT-10 — Reports Export to PDF and Excel
-**Status**: 🟠 Not Started
+**Status**: ✅ Complete (was already implemented — CSV, Excel/SheetJS, and PDF/jsPDF all present)
 **Priority**: High
 **Description**:
 All reports in `reports.html` must be exportable to:
@@ -275,7 +275,7 @@ All reports in `reports.html` must be exportable to:
 ---
 
 ### PT-11 — Historic Import: Add Employee if Not on System
-**Status**: 🟡 Not Started
+**Status**: ✅ Complete (preview now shows unmatched employee numbers with link to create them)
 **Priority**: Medium
 **Description**:
 If a historic payslip import includes an employee whose ID/name is not found in
@@ -290,7 +290,7 @@ If a historic payslip import includes an employee whose ID/name is not found in
 ---
 
 ### PT-12 — Historic Import: Read Full Payslip, Not Just Gross
-**Status**: 🟡 Not Started
+**Status**: ✅ Complete (CSV imported records now store basic_salary + taxableGross for YTD compatibility)
 **Priority**: Medium
 **Description**:
 The current import maps a `gross` column plus optional `deduction_*` columns.
@@ -310,7 +310,7 @@ new items where needed.
 ---
 
 ### PT-13 — Historic Import: One Month at a Time, Large Batch Support
-**Status**: 🟡 Not Started
+**Status**: ✅ Complete (multi-period warning shown in preview when multiple periods detected)
 **Priority**: Medium
 **Description**:
 - One import run = one payroll period (month) only
