@@ -1517,6 +1517,23 @@ app.use((err, req, res, next) => {
 
 // Initialize database then start server
 initDatabase().then(() => {
+  // ⚠️  LEGACY STANDALONE POS SERVER — DEPRECATED
+  // This server (port 8080) uses its own PostgreSQL database and is LEGACY.
+  // The AUTHORITATIVE system is:
+  //   accounting-ecosystem/backend/ (port 3000)
+  //   → module: pos  (MODULE_POS_ENABLED=true)
+  //   → API:    /api/pos/*
+  //   → DB:     Supabase (not this PostgreSQL instance)
+  //
+  // DO NOT run both servers against different databases in production.
+  // All new POS development should target the ecosystem server.
+  // Migrate data from this PostgreSQL DB to Supabase before decommissioning.
+  console.log('╔═══════════════════════════════════════════════════════════════════╗');
+  console.log('║  ⚠️  LEGACY STANDALONE POS SERVER — DEPRECATED                    ║');
+  console.log('║  Authoritative system: accounting-ecosystem/backend/ (port 3000) ║');
+  console.log('║  Module: pos (MODULE_POS_ENABLED=true) → /api/pos/*              ║');
+  console.log('║  This server uses a separate PostgreSQL DB — NOT Supabase.        ║');
+  console.log('╚═══════════════════════════════════════════════════════════════════╝');
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`POS System Server running on port ${PORT}`);
     console.log(`API available at /api`);

@@ -429,6 +429,19 @@ async function start() {
   console.log('║        ACCOUNTING ECOSYSTEM — Starting Server           ║');
   console.log('╚══════════════════════════════════════════════════════════╝\n');
 
+  // 0. Security guard — reject default JWT_SECRET in production
+  const { JWT_SECRET } = require('./middleware/auth');
+  if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'change-this-secret') {
+    console.error('❌ FATAL SECURITY ERROR: JWT_SECRET is set to the default value.');
+    console.error('   Anyone can forge authentication tokens with this key.');
+    console.error('   Set a strong JWT_SECRET environment variable before deploying.');
+    process.exit(1);
+  }
+  if (JWT_SECRET === 'change-this-secret') {
+    console.warn('⚠️  WARNING: JWT_SECRET is using the insecure default value.');
+    console.warn('   Set JWT_SECRET in your .env file before deploying to production.\n');
+  }
+
   // 1. Test database connection (retries up to 5 times)
   console.log('🔌 Connecting to Supabase...');
   const connected = await checkConnection(5, 3000);

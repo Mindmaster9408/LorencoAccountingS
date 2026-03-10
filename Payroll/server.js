@@ -155,6 +155,23 @@ app.get('*', (req, res) => {
 // ── Start server ─────────────────────────────────────────────────────────────
 async function start() {
     console.log('');
+    console.log('  ╔══════════════════════════════════════════════════════════════════╗');
+    console.log('  ║  ⚠️  LEGACY STANDALONE SERVER — DEPRECATED                       ║');
+    console.log('  ║                                                                  ║');
+    console.log('  ║  This standalone Payroll server (port 3131) is the LEGACY app.  ║');
+    console.log('  ║  The AUTHORITATIVE system is:                                   ║');
+    console.log('  ║    accounting-ecosystem/backend/ (port 3000)                    ║');
+    console.log('  ║    → module: payroll  (MODULE_PAYROLL_ENABLED=true)             ║');
+    console.log('  ║    → API:    /api/payroll/*                                     ║');
+    console.log('  ║    → DB:     Supabase payroll_periods, payroll_transactions      ║');
+    console.log('  ║                                                                  ║');
+    console.log('  ║  This server uses a schemaless KV store (payroll_kv_store)      ║');
+    console.log('  ║  which is NOT compatible with the ecosystem payroll module.     ║');
+    console.log('  ║                                                                  ║');
+    console.log('  ║  DO NOT run both servers against the same Supabase instance.    ║');
+    console.log('  ║  Migrate to the ecosystem server before decommissioning this.   ║');
+    console.log('  ╚══════════════════════════════════════════════════════════════════╝');
+    console.log('');
     console.log('  ⏳ Connecting to Supabase...');
 
     const connected = await checkConnection();
