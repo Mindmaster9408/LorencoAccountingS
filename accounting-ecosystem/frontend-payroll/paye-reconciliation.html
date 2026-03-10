@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PAYE Reconciliation - Lorenco Paytime</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .wrapper { display: flex; gap: 20px; max-width: 1800px; margin: 0 auto; }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+            width: 300px; min-width: 260px; background: white; border-radius: 15px;
+            padding: 25px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            height: fit-content; position: sticky; top: 20px;
+        }
+        .sidebar-header { padding: 0 20px 20px; border-bottom: 2px solid #eee; }
+        .sidebar-title { color: #667eea; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+        .sidebar-section { margin-top: 20px; }
+        .sidebar-section-title {
+            padding: 10px 20px; color: #999; font-size: 0.75rem;
+            font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .sidebar-link {
+            display: block; padding: 12px 20px; color: #666; text-decoration: none;
+            transition: all 0.2s; border-left: 3px solid transparent; font-weight: 500;
+        }
+        .sidebar-link:hover  { background: #f8f9fa; color: #667eea; border-left-color: #667eea; }
+        .sidebar-link.active { background: #f0f4ff; color: #667eea; border-left-color: #667eea; font-weight: 600; }
+        .company-carousel { margin-top: 15px; padding: 15px 20px; border-top: 1px solid #eee; border-bottom: 1px solid #eee; }
+        .carousel-title { font-size: 0.85rem; font-weight: 600; color: #999; margin-bottom: 10px; text-transform: uppercase; }
+        .carousel-companies { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+        .carousel-company {
+            background: #f8f9fa; padding: 10px 12px; border-radius: 6px; font-size: 0.85rem;
+            color: #333; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .carousel-company:hover { background: #eee; border-color: #667eea; color: #667eea; }
+        .sidebar-actions { padding: 15px 20px; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .btn-sidebar { padding: 10px 15px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; text-align: center; }
+        .btn-switch { background: #667eea; color: white; }
+        .btn-switch:hover { background: #5568d3; }
+        .btn-logout { background: #eee; color: #333; }
+        .btn-logout:hover { background: #ddd; }
+
+        /* ── MAIN CONTENT ── */
+        .main-content {
+            flex: 1; background: white; border-radius: 15px; padding: 35px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-width: 0; overflow-x: auto;
+        }
+        .page-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid #eee; flex-wrap: wrap; gap: 12px;
+        }
+        .page-header h1 { color: #667eea; font-size: 1.8rem; }
+        .company-badge {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
+        }
+
+        /* ── FILTER BAR ── */
+        .filter-bar {
+            background: #f8f9fa; border-radius: 10px; padding: 18px 22px;
+            margin-bottom: 28px; display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap;
+            border: 1px solid #e0e0e0;
+        }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; }
+        .filter-group label { font-size: 12px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.4px; }
+        .filter-group select, .filter-group input {
+            padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 6px;
+            font-size: 14px; font-family: inherit; background: white;
+        }
+        .filter-group select:focus, .filter-group input:focus { outline: none; border-color: #667eea; }
+        .btn { padding: 9px 20px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; transition: all 0.2s; font-family: inherit; }
+        .btn:hover { transform: translateY(-1px); }
+        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .btn-success { background: linear-gradient(135deg, #28a745, #20c997); color: white; }
+        .btn-info    { background: linear-gradient(135deg, #17a2b8, #138496); color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+        /* ── SECTION CARDS ── */
+        .section-card {
+            border-radius: 12px; margin-bottom: 30px;
+            border: 1px solid #e0e0e0; overflow: hidden;
+        }
+        .section-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 14px 22px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .section-header h2 { font-size: 1rem; font-weight: 700; letter-spacing: 0.3px; }
+        .section-body { overflow-x: auto; }
+
+        /* ── RECON TABLES ── */
+        .recon-table {
+            width: 100%; border-collapse: collapse; font-size: 13px; min-width: 700px;
+        }
+        .recon-table th {
+            background: #1a1a2e; color: white; padding: 10px 14px;
+            text-align: left; font-weight: 600; white-space: nowrap; font-size: 12px;
+        }
+        .recon-table th.num { text-align: right; }
+        .recon-table td {
+            padding: 9px 14px; border-bottom: 1px solid #f0f0f0;
+            white-space: nowrap;
+        }
+        .recon-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .recon-table tr:hover td { background: #f8faff; }
+        .recon-table tr.total-row td {
+            background: #f0f4ff; font-weight: 700; border-top: 2px solid #667eea;
+        }
+        .recon-table tr.grand-total-row td {
+            background: linear-gradient(135deg, #667eea15, #764ba215);
+            font-weight: 700; border-top: 3px solid #667eea; font-size: 14px;
+        }
+
+        /* Employee breakdown */
+        .emp-header-row td {
+            background: #1a1a2e !important; color: white !important;
+            font-weight: 700; cursor: pointer; user-select: none;
+        }
+        .emp-header-row td:hover { background: #2d2d4e !important; }
+        .emp-header-row .toggle-icon { float: right; font-size: 11px; opacity: 0.8; }
+        .emp-data-row td { background: #fafafa; }
+        .emp-data-row.hidden { display: none; }
+        .emp-subtotal-row td { background: #fffbea !important; font-weight: 700; border-top: 1px solid #e8c900; }
+
+        /* Editable input cells */
+        .recon-table td input[type="number"] {
+            width: 100%; min-width: 90px; padding: 5px 8px;
+            border: 1px solid #ddd; border-radius: 4px;
+            font-size: 13px; font-family: inherit; text-align: right;
+            background: #fff; color: #333;
+        }
+        .recon-table td input[type="number"]:focus { outline: none; border-color: #667eea; background: #f0f4ff; }
+
+        /* Diff highlights */
+        .diff-zero    { color: #28a745; font-weight: 700; }
+        .diff-nonzero { color: #dc3545; font-weight: 700; background: #fff5f5; }
+        .diff-warn    { color: #fd7e14; font-weight: 700; background: #fff8f0; }
+
+        /* Summary cards */
+        .summary-row {
+            display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap;
+        }
+        .summary-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; padding: 18px 22px; border-radius: 10px; flex: 1; min-width: 160px;
+        }
+        .summary-card.green  { background: linear-gradient(135deg, #28a745, #20c997); }
+        .summary-card.orange { background: linear-gradient(135deg, #fd7e14, #ffc107); }
+        .summary-card.red    { background: linear-gradient(135deg, #dc3545, #c82333); }
+        .summary-card-label  { font-size: 0.72rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.5px; }
+        .summary-card-value  { font-size: 1.4rem; font-weight: 700; margin-top: 4px; }
+
+        /* Empty state */
+        .empty-state { text-align: center; padding: 50px 20px; color: #aaa; }
+        .empty-icon  { font-size: 2.5rem; margin-bottom: 12px; }
+        .empty-text  { font-size: 1rem; }
+        .empty-sub   { font-size: 0.85rem; color: #ccc; margin-top: 5px; }
+
+        /* Save status */
+        .save-status { font-size: 12px; color: #28a745; font-style: italic; margin-left: 10px; }
+
+        /* Print helpers */
+        @media print {
+            body { background: white; padding: 0; }
+            .sidebar, .filter-bar, .btn, .page-header .company-badge { display: none; }
+            .main-content { box-shadow: none; padding: 20px; }
+            .section-header { background: #1a1a2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+
+        @media (max-width: 1100px) {
+            .wrapper { flex-direction: column; }
+            .sidebar { width: 100%; position: relative; top: 0; }
+        }
+        @media (max-width: 768px) {
+            .main-content { padding: 20px; }
+            .page-header h1 { font-size: 1.4rem; }
+            .summary-row { flex-direction: column; }
+        }
+    </style>
+    <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/mobile-responsive.css">
+</head>
+<body>
+    <button id="mobile-hamburger" class="mobile-hamburger"><span style="font-size:20px;">&#9776;</span></button>
+    <div id="mobile-overlay" class="mobile-overlay"></div>
+
+    <div class="wrapper">
+        <!-- ═══ SIDEBAR ═══ -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">Menu</div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Navigation</div>
+                <a href="company-dashboard.html"    class="sidebar-link">📊 Dashboard</a>
+                <a href="employee-management.html"  class="sidebar-link">👥 Employees</a>
+                <a href="payruns.html"               class="sidebar-link">💵 Pay Runs</a>
+                <a href="payruns.html"               class="sidebar-link">📄 Payslips</a>
+                <a href="payroll-items.html"         class="sidebar-link">📋 Payroll Items</a>
+                <a href="attendance.html"            class="sidebar-link">&#x23F0; Attendance</a>
+                <a href="reports.html"               class="sidebar-link">📊 Reports</a>
+                <a href="paye-reconciliation.html"   class="sidebar-link active">🧾 PAYE Reconciliation</a>
+                <a href="historical-import.html"     class="sidebar-link">📥 Historical Import</a>
+                <a href="company-details.html"       class="sidebar-link">🏢 Company Details</a>
+            </div>
+            <div class="company-carousel">
+                <div class="carousel-title">Switch Company</div>
+                <div class="carousel-companies" id="companies-carousel"></div>
+            </div>
+            <div class="sidebar-actions">
+                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='/dashboard/dashboard.html'">🏠 Return to Ecosystem</button>
+                <button class="btn-sidebar btn-switch" onclick="window.location.href='company-selection.html'">← Return to Dashboard</button>
+                <button class="btn-sidebar btn-logout" onclick="handleLogout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <!-- ═══ MAIN CONTENT ═══ -->
+        <div class="main-content">
+            <div class="page-header">
+                <h1>🧾 PAYE Reconciliation</h1>
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <span class="company-badge" id="company-name-badge">Loading…</span>
+                    <button class="btn btn-info btn-sm" onclick="exportCSV()">📥 Export CSV</button>
+                    <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ Print</button>
+                </div>
+            </div>
+
+            <!-- FILTER BAR -->
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Tax Year</label>
+                    <select id="taxYearSelect" onchange="onTaxYearChange()">
+                        <option value="">— Select Tax Year —</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>View</label>
+                    <select id="viewSelect" onchange="renderAll()">
+                        <option value="all">All Sections</option>
+                        <option value="breakdown">Employee Breakdown</option>
+                        <option value="tables">Summary Tables Only</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="flex-direction:row;align-items:flex-end;gap:10px;">
+                    <button class="btn btn-primary" onclick="loadData()">🔄 Refresh</button>
+                    <span class="save-status" id="save-status"></span>
+                </div>
+            </div>
+
+            <!-- SUMMARY CARDS -->
+            <div class="summary-row" id="summary-cards" style="display:none;">
+                <div class="summary-card">
+                    <div class="summary-card-label">Total Gross Payroll</div>
+                    <div class="summary-card-value" id="sc-gross">R 0.00</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-card-label">Total PAYE (Calculated)</div>
+                    <div class="summary-card-value" id="sc-paye">R 0.00</div>
+                </div>
+                <div class="summary-card green">
+                    <div class="summary-card-label">Total UIF (Calculated)</div>
+                    <div class="summary-card-value" id="sc-uif">R 0.00</div>
+                </div>
+                <div class="summary-card orange">
+                    <div class="summary-card-label">Total SDL (Calculated)</div>
+                    <div class="summary-card-value" id="sc-sdl">R 0.00</div>
+                </div>
+                <div id="sc-diff-card" class="summary-card green">
+                    <div class="summary-card-label">Total SARS Diff</div>
+                    <div class="summary-card-value" id="sc-diff">R 0.00</div>
+                </div>
+            </div>
+
+            <!-- ── SECTION 1: EMPLOYEE BREAKDOWN ── -->
+            <div id="section-breakdown" class="section-card" style="display:none;">
+                <div class="section-header">
+                    <h2>📋 Section 1 — Employee Payroll Breakdown</h2>
+                    <span style="font-size:12px;opacity:0.85;">Click employee row to expand/collapse</span>
+                </div>
+                <div class="section-body">
+                    <div id="breakdown-container"></div>
+                </div>
+            </div>
+
+            <!-- ── SECTION 2: PAYROLL CALCULATED TOTALS ── -->
+            <div id="section-calc" class="section-card" style="display:none;">
+                <div class="section-header">
+                    <h2>📊 Section 2 — Payroll Calculated Totals (Auto)</h2>
+                    <span style="font-size:12px;opacity:0.85;">Read-only — from finalized payroll records</span>
+                </div>
+                <div class="section-body">
+                    <div id="calc-container"></div>
+                </div>
+            </div>
+
+            <!-- ── SECTION 3: SARS SUBMITTED VALUES ── -->
+            <div id="section-sars" class="section-card" style="display:none;">
+                <div class="section-header">
+                    <h2>📝 Section 3 — SARS Submitted Values</h2>
+                    <span style="font-size:12px;opacity:0.85;">Enter values as submitted to SARS — auto-saved</span>
+                </div>
+                <div class="section-body">
+                    <div id="sars-container"></div>
+                </div>
+            </div>
+
+            <!-- ── SECTION 4: BANK PAYMENTS ── -->
+            <div id="section-bank" class="section-card" style="display:none;">
+                <div class="section-header">
+                    <h2>🏦 Section 4 — Bank Payments</h2>
+                    <span style="font-size:12px;opacity:0.85;">Tax payments made to SARS via bank — auto-saved</span>
+                </div>
+                <div class="section-body">
+                    <div id="bank-container"></div>
+                </div>
+            </div>
+
+            <!-- ── SECTION 5: RECONCILIATION DIFFERENCES ── -->
+            <div id="section-recon" class="section-card" style="display:none;">
+                <div class="section-header">
+                    <h2>⚖️ Section 5 — Reconciliation Differences</h2>
+                    <span style="font-size:12px;opacity:0.85;">Calculated minus SARS submitted — red = discrepancy</span>
+                </div>
+                <div class="section-body">
+                    <div id="recon-container"></div>
+                </div>
+            </div>
+
+            <!-- EMPTY STATE -->
+            <div id="empty-state" class="empty-state">
+                <div class="empty-icon">🧾</div>
+                <div class="empty-text">Select a tax year to view the PAYE reconciliation</div>
+                <div class="empty-sub">Data is sourced from finalized payroll records</div>
+            </div>
+        </div><!-- /main-content -->
+    </div><!-- /wrapper -->
+
+    <script src="js/polyfills.js"></script>
+    <script src="js/payroll-engine.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/recon-service.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // ─── State ────────────────────────────────────────────────────────────
+        var currentCompanyId  = null;
+        var currentTaxYear    = null;
+        var allPeriods        = [];
+        var filteredPeriods   = [];
+        var employees         = [];
+        var payrollTotals     = {};
+        var empBreakdown      = [];
+        var sarsData          = {};
+        var bankData          = {};
+
+        var saveTimer = null;
+
+        // ─── Init ─────────────────────────────────────────────────────────────
+        window.addEventListener('load', function() {
+            AUTH.requireAuth();
+            var session = AUTH.getSession();
+            if (!session || !session.companyId) {
+                window.location.href = 'company-selection.html';
+                return;
+            }
+            currentCompanyId = session.companyId;
+            loadCompanyName();
+            loadCompaniesCarousel();
+            loadData();
+        });
+
+        function loadCompanyName() {
+            var session = AUTH.getSession();
+            var company = AUTH.getCompanyById ? AUTH.getCompanyById(currentCompanyId) : null;
+            var name = (company && company.name) ? company.name : (session.companyName || 'Company');
+            document.getElementById('company-name-badge').textContent = name;
+        }
+
+        function handleLogout() {
+            AUTH.logout ? AUTH.logout() : (AUTH.clearSession && AUTH.clearSession());
+            window.location.href = 'login.html';
+        }
+        window.handleLogout = handleLogout;
+
+        function loadCompaniesCarousel() {
+            try {
+                var companies = AUTH.getCompanies ? AUTH.getCompanies() : JSON.parse(safeLocalStorage.getItem('companies') || '[]');
+                var container = document.getElementById('companies-carousel');
+                container.innerHTML = '';
+                companies.forEach(function(c) {
+                    var div = document.createElement('div');
+                    div.className = 'carousel-company';
+                    div.textContent = c.name || c.id;
+                    div.title = c.name || '';
+                    div.onclick = function() {
+                        safeLocalStorage.setItem('selectedCompanyId', c.id);
+                        window.location.href = 'company-dashboard.html';
+                    };
+                    container.appendChild(div);
+                });
+            } catch(e) {}
+        }
+
+        // ─── Load Data ────────────────────────────────────────────────────────
+        function loadData() {
+            // Get employees
+            try {
+                employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
+            } catch(e) { employees = []; }
+
+            // Get all payroll periods
+            allPeriods = PayrollEngine.getHistoricalPeriods ? PayrollEngine.getHistoricalPeriods(currentCompanyId) : [];
+
+            // Populate tax year selector
+            var taxYears = ReconService.getTaxYears(allPeriods);
+            var select = document.getElementById('taxYearSelect');
+            var current = select.value;
+            select.innerHTML = '<option value="">— Select Tax Year —</option>';
+            taxYears.forEach(function(ty) {
+                var opt = document.createElement('option');
+                opt.value = ty;
+                opt.textContent = ty;
+                select.appendChild(opt);
+            });
+            // Keep selection or default to most recent
+            if (current && taxYears.indexOf(current) >= 0) {
+                select.value = current;
+            } else if (taxYears.length > 0) {
+                select.value = taxYears[taxYears.length - 1];
+            }
+            onTaxYearChange();
+        }
+        window.loadData = loadData;
+
+        function onTaxYearChange() {
+            currentTaxYear = document.getElementById('taxYearSelect').value;
+            if (!currentTaxYear) {
+                showEmptyState(true);
+                return;
+            }
+            showEmptyState(false);
+
+            filteredPeriods = ReconService.getPeriodsForTaxYear(allPeriods, currentTaxYear);
+
+            // Aggregate
+            payrollTotals = ReconService.buildPayrollTotals(currentCompanyId, employees, filteredPeriods);
+            empBreakdown  = ReconService.getEmployeeBreakdown(currentCompanyId, employees, filteredPeriods);
+            sarsData      = ReconService.loadSARSValues(currentCompanyId);
+            bankData      = ReconService.loadBankValues(currentCompanyId);
+
+            renderAll();
+        }
+        window.onTaxYearChange = onTaxYearChange;
+
+        function showEmptyState(show) {
+            document.getElementById('empty-state').style.display = show ? 'block' : 'none';
+            document.getElementById('summary-cards').style.display  = show ? 'none' : 'flex';
+            ['section-breakdown','section-calc','section-sars','section-bank','section-recon'].forEach(function(id) {
+                document.getElementById(id).style.display = show ? 'none' : 'block';
+            });
+        }
+
+        function renderAll() {
+            if (!currentTaxYear) return;
+            var view = document.getElementById('viewSelect').value;
+            var showBreak = (view === 'all' || view === 'breakdown');
+            var showTables = (view === 'all' || view === 'tables');
+
+            document.getElementById('section-breakdown').style.display = showBreak  ? 'block' : 'none';
+            document.getElementById('section-calc').style.display      = showTables ? 'block' : 'none';
+            document.getElementById('section-sars').style.display      = showTables ? 'block' : 'none';
+            document.getElementById('section-bank').style.display      = showTables ? 'block' : 'none';
+            document.getElementById('section-recon').style.display     = showTables ? 'block' : 'none';
+
+            renderSummaryCards();
+            if (showBreak)  renderBreakdown();
+            if (showTables) {
+                renderCalcTable();
+                renderSARSTable();
+                renderBankTable();
+                renderReconTable();
+            }
+        }
+        window.renderAll = renderAll;
+
+        // ─── Summary Cards ────────────────────────────────────────────────────
+        function renderSummaryCards() {
+            var totGross = 0, totPAYE = 0, totUIF = 0, totSDL = 0;
+            filteredPeriods.forEach(function(p) {
+                var t = payrollTotals[p] || {};
+                totGross += t.gross || 0;
+                totPAYE  += t.paye  || 0;
+                totUIF   += t.uif   || 0;
+                totSDL   += t.sdl   || 0;
+            });
+
+            var sarsTotals = _sumManualTable(sarsData, filteredPeriods);
+            var diff = ReconService.round2(totPAYE + totUIF + totSDL - (sarsTotals.paye + sarsTotals.uif + sarsTotals.sdl));
+
+            document.getElementById('sc-gross').textContent = fmt(totGross);
+            document.getElementById('sc-paye').textContent  = fmt(totPAYE);
+            document.getElementById('sc-uif').textContent   = fmt(totUIF);
+            document.getElementById('sc-sdl').textContent   = fmt(totSDL);
+            document.getElementById('sc-diff').textContent  = fmt(diff);
+
+            var diffCard = document.getElementById('sc-diff-card');
+            diffCard.className = 'summary-card ' + (diff === 0 ? 'green' : (Math.abs(diff) > 1000 ? 'red' : 'orange'));
+        }
+
+        // ─── Section 1: Employee Breakdown ───────────────────────────────────
+        function renderBreakdown() {
+            var container = document.getElementById('breakdown-container');
+            if (!empBreakdown || empBreakdown.length === 0) {
+                container.innerHTML = emptyHtml('No finalized payroll records found for this tax year.');
+                return;
+            }
+
+            var html = '<table class="recon-table">'
+                + '<thead><tr>'
+                + '<th>Employee</th>'
+                + '<th class="num">Month</th>'
+                + '<th class="num">Basic Salary</th>'
+                + '<th class="num">Overtime</th>'
+                + '<th class="num">Allowances</th>'
+                + '<th class="num">Bonus</th>'
+                + '<th class="num">Commission</th>'
+                + '<th class="num">Gross Income</th>'
+                + '<th class="num">PAYE</th>'
+                + '<th class="num">UIF</th>'
+                + '<th class="num">Pension Fund</th>'
+                + '<th class="num">Medical Aid</th>'
+                + '<th class="num">Garnishee</th>'
+                + '<th class="num">Other Ded.</th>'
+                + '<th class="num">Net Pay</th>'
+                + '<th class="num">Bank</th>'
+                + '<th class="num">Difference</th>'
+                + '</tr></thead><tbody>';
+
+            empBreakdown.forEach(function(item, idx) {
+                var emp  = item.emp;
+                var rows = item.rows;
+                var empName = emp.first_name + ' ' + emp.last_name;
+                var empNumber = emp.employee_number || '';
+
+                // Sub-totals
+                var sub = _zeroTotals();
+                rows.forEach(function(r) {
+                    sub.basic      += r.basic;
+                    sub.overtime   += r.overtime;
+                    sub.allowances += r.allowances;
+                    sub.bonus      += r.bonus;
+                    sub.commission += r.commission;
+                    sub.gross      += r.gross;
+                    sub.paye       += r.paye;
+                    sub.uif        += r.uif;
+                    sub.pension    += r.pension;
+                    sub.medical    += r.medical;
+                    sub.garnishee  += r.garnishee;
+                    sub.other      += r.otherDeductions;
+                    sub.net        += r.net;
+                    sub.bank       += r.bank;
+                    sub.diff       += r.diff;
+                });
+
+                // Employee header row
+                html += '<tr class="emp-header-row" onclick="toggleEmp(' + idx + ')" data-emp-idx="' + idx + '">'
+                    + '<td colspan="17">' + empName + ' <small style="opacity:0.6;">' + empNumber + '</small>'
+                    + '<span class="toggle-icon" id="emp-toggle-' + idx + '">▼</span></td></tr>';
+
+                // Data rows
+                rows.forEach(function(r) {
+                    html += '<tr class="emp-data-row" data-emp-group="' + idx + '">'
+                        + '<td style="padding-left:30px;">' + ReconService.formatPeriodLabel(r.period) + '</td>'
+                        + '<td class="num">' + ReconService.getMonthInTaxYear(r.period) + '</td>'
+                        + numTd(r.basic)
+                        + numTd(r.overtime)
+                        + numTd(r.allowances)
+                        + numTd(r.bonus)
+                        + numTd(r.commission)
+                        + numTd(r.gross)
+                        + numTd(r.paye)
+                        + numTd(r.uif)
+                        + numTd(r.pension)
+                        + numTd(r.medical)
+                        + numTd(r.garnishee)
+                        + numTd(r.otherDeductions)
+                        + numTd(r.net)
+                        + numTd(r.bank)
+                        + diffTd(r.diff)
+                        + '</tr>';
+                });
+
+                // Subtotal row
+                html += '<tr class="emp-subtotal-row" data-emp-group="' + idx + '">'
+                    + '<td colspan="2" style="padding-left:20px;"><strong>TOTAL — ' + empName + '</strong></td>'
+                    + numTdBold(sub.basic)
+                    + numTdBold(sub.overtime)
+                    + numTdBold(sub.allowances)
+                    + numTdBold(sub.bonus)
+                    + numTdBold(sub.commission)
+                    + numTdBold(sub.gross)
+                    + numTdBold(sub.paye)
+                    + numTdBold(sub.uif)
+                    + numTdBold(sub.pension)
+                    + numTdBold(sub.medical)
+                    + numTdBold(sub.garnishee)
+                    + numTdBold(sub.other)
+                    + numTdBold(sub.net)
+                    + numTdBold(sub.bank)
+                    + diffTd(sub.diff)
+                    + '</tr>';
+            });
+
+            // Grand Total
+            var gTotal = _zeroTotals();
+            empBreakdown.forEach(function(item) {
+                item.rows.forEach(function(r) {
+                    gTotal.basic      += r.basic;
+                    gTotal.overtime   += r.overtime;
+                    gTotal.allowances += r.allowances;
+                    gTotal.bonus      += r.bonus;
+                    gTotal.commission += r.commission;
+                    gTotal.gross      += r.gross;
+                    gTotal.paye       += r.paye;
+                    gTotal.uif        += r.uif;
+                    gTotal.pension    += r.pension;
+                    gTotal.medical    += r.medical;
+                    gTotal.garnishee  += r.garnishee;
+                    gTotal.other      += r.otherDeductions;
+                    gTotal.net        += r.net;
+                    gTotal.bank       += r.bank;
+                    gTotal.diff       += r.diff;
+                });
+            });
+            html += '<tr class="grand-total-row">'
+                + '<td colspan="2"><strong>GRAND TOTAL</strong></td>'
+                + numTdBold(gTotal.basic)
+                + numTdBold(gTotal.overtime)
+                + numTdBold(gTotal.allowances)
+                + numTdBold(gTotal.bonus)
+                + numTdBold(gTotal.commission)
+                + numTdBold(gTotal.gross)
+                + numTdBold(gTotal.paye)
+                + numTdBold(gTotal.uif)
+                + numTdBold(gTotal.pension)
+                + numTdBold(gTotal.medical)
+                + numTdBold(gTotal.garnishee)
+                + numTdBold(gTotal.other)
+                + numTdBold(gTotal.net)
+                + numTdBold(gTotal.bank)
+                + diffTd(gTotal.diff)
+                + '</tr>';
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        window.toggleEmp = function(idx) {
+            var rows = document.querySelectorAll('[data-emp-group="' + idx + '"]');
+            var toggle = document.getElementById('emp-toggle-' + idx);
+            var hidden = rows.length > 0 && rows[0].classList.contains('hidden');
+            rows.forEach(function(r) { r.classList.toggle('hidden', !hidden); });
+            if (toggle) toggle.textContent = hidden ? '▼' : '▶';
+        };
+
+        // ─── Section 2: Calculated Totals ────────────────────────────────────
+        function renderCalcTable() {
+            var container = document.getElementById('calc-container');
+            if (filteredPeriods.length === 0) { container.innerHTML = emptyHtml('No payroll data for this tax year.'); return; }
+
+            var totals = _zeroTotals();
+            var html = tableHeader(['Month', 'Gross Salary', 'PAYE', 'UIF', 'SDL', 'Total (PAYE+UIF+SDL)']);
+
+            filteredPeriods.forEach(function(p) {
+                var t = payrollTotals[p] || { gross:0, paye:0, uif:0, sdl:0, total:0 };
+                totals.gross += t.gross; totals.paye += t.paye; totals.uif += t.uif;
+                totals.sdl += t.sdl; totals.total += t.total;
+                html += '<tr>'
+                    + '<td>' + ReconService.formatPeriodLabel(p) + '</td>'
+                    + numTd(t.gross) + numTd(t.paye) + numTd(t.uif) + numTd(t.sdl) + numTd(t.total)
+                    + '</tr>';
+            });
+
+            html += '<tr class="grand-total-row">'
+                + '<td><strong>TOTAL</strong></td>'
+                + numTdBold(totals.gross) + numTdBold(totals.paye) + numTdBold(totals.uif)
+                + numTdBold(totals.sdl)  + numTdBold(ReconService.round2(totals.paye + totals.uif + totals.sdl))
+                + '</tr>';
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // ─── Section 3: SARS Submitted ───────────────────────────────────────
+        function renderSARSTable() {
+            var container = document.getElementById('sars-container');
+            if (filteredPeriods.length === 0) { container.innerHTML = emptyHtml('No periods to display.'); return; }
+
+            var html = tableHeader(['Month', 'PAYE', 'UIF', 'SDL', 'Total']);
+
+            filteredPeriods.forEach(function(p) {
+                var v = (sarsData[p] || { paye:0, uif:0, sdl:0 });
+                html += '<tr>'
+                    + '<td>' + ReconService.formatPeriodLabel(p) + '</td>'
+                    + inputTd('sars', p, 'paye', v.paye)
+                    + inputTd('sars', p, 'uif',  v.uif)
+                    + inputTd('sars', p, 'sdl',  v.sdl)
+                    + '<td class="num" id="sars-total-' + p.replace('-','_') + '">' + fmt((v.paye||0)+(v.uif||0)+(v.sdl||0)) + '</td>'
+                    + '</tr>';
+            });
+
+            var sarsTot = _sumManualTable(sarsData, filteredPeriods);
+            html += '<tr class="grand-total-row">'
+                + '<td><strong>TOTAL</strong></td>'
+                + '<td class="num" id="sars-grand-paye"><strong>' + fmt(sarsTot.paye) + '</strong></td>'
+                + '<td class="num" id="sars-grand-uif"><strong>' + fmt(sarsTot.uif) + '</strong></td>'
+                + '<td class="num" id="sars-grand-sdl"><strong>' + fmt(sarsTot.sdl) + '</strong></td>'
+                + '<td class="num" id="sars-grand-total"><strong>' + fmt(sarsTot.paye + sarsTot.uif + sarsTot.sdl) + '</strong></td>'
+                + '</tr>';
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // ─── Section 4: Bank Payments ─────────────────────────────────────────
+        function renderBankTable() {
+            var container = document.getElementById('bank-container');
+            if (filteredPeriods.length === 0) { container.innerHTML = emptyHtml('No periods to display.'); return; }
+
+            var html = tableHeader(['Month', 'PAYE', 'UIF', 'SDL', 'Total']);
+
+            filteredPeriods.forEach(function(p) {
+                var v = (bankData[p] || { paye:0, uif:0, sdl:0 });
+                html += '<tr>'
+                    + '<td>' + ReconService.formatPeriodLabel(p) + '</td>'
+                    + inputTd('bank', p, 'paye', v.paye)
+                    + inputTd('bank', p, 'uif',  v.uif)
+                    + inputTd('bank', p, 'sdl',  v.sdl)
+                    + '<td class="num" id="bank-total-' + p.replace('-','_') + '">' + fmt((v.paye||0)+(v.uif||0)+(v.sdl||0)) + '</td>'
+                    + '</tr>';
+            });
+
+            var bankTot = _sumManualTable(bankData, filteredPeriods);
+            html += '<tr class="grand-total-row">'
+                + '<td><strong>TOTAL</strong></td>'
+                + '<td class="num" id="bank-grand-paye"><strong>' + fmt(bankTot.paye) + '</strong></td>'
+                + '<td class="num" id="bank-grand-uif"><strong>' + fmt(bankTot.uif) + '</strong></td>'
+                + '<td class="num" id="bank-grand-sdl"><strong>' + fmt(bankTot.sdl) + '</strong></td>'
+                + '<td class="num" id="bank-grand-total"><strong>' + fmt(bankTot.paye + bankTot.uif + bankTot.sdl) + '</strong></td>'
+                + '</tr>';
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // ─── Section 5: Reconciliation Diffs ─────────────────────────────────
+        function renderReconTable() {
+            var container = document.getElementById('recon-container');
+            if (filteredPeriods.length === 0) { container.innerHTML = emptyHtml('No periods to display.'); return; }
+
+            var recon = ReconService.buildReconciliation(payrollTotals, sarsData, bankData);
+
+            var grandPD = 0, grandUD = 0, grandSD = 0;
+            var html = tableHeader(['Month',
+                'Calc PAYE', 'SARS PAYE', 'PAYE Diff',
+                'Calc UIF',  'SARS UIF',  'UIF Diff',
+                'Calc SDL',  'SARS SDL',  'SDL Diff',
+                'Total Diff'
+            ]);
+
+            filteredPeriods.forEach(function(p) {
+                var t  = payrollTotals[p]  || { paye:0, uif:0, sdl:0 };
+                var s  = (sarsData[p]       || { paye:0, uif:0, sdl:0 });
+                var r  = recon[p]           || { payeDiff:0, uifDiff:0, sdlDiff:0, totalDiff:0 };
+                grandPD += r.payeDiff; grandUD += r.uifDiff; grandSD += r.sdlDiff;
+
+                html += '<tr>'
+                    + '<td>' + ReconService.formatPeriodLabel(p) + '</td>'
+                    + numTd(t.paye) + numTd(s.paye) + diffTd(r.payeDiff)
+                    + numTd(t.uif)  + numTd(s.uif)  + diffTd(r.uifDiff)
+                    + numTd(t.sdl)  + numTd(s.sdl)  + diffTd(r.sdlDiff)
+                    + diffTd(r.totalDiff)
+                    + '</tr>';
+            });
+
+            var grandTotalDiff = ReconService.round2(grandPD + grandUD + grandSD);
+            html += '<tr class="grand-total-row">'
+                + '<td colspan="3"><strong>TOTAL DIFFERENCE</strong></td>'
+                + diffTd(grandPD)
+                + '<td class="num"></td><td class="num"></td>'
+                + diffTd(grandUD)
+                + '<td class="num"></td><td class="num"></td>'
+                + diffTd(grandSD)
+                + diffTd(grandTotalDiff)
+                + '</tr>';
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // ─── Input change & auto-save ─────────────────────────────────────────
+        document.addEventListener('input', function(e) {
+            var el = e.target;
+            if (el.tagName !== 'INPUT' || el.type !== 'number') return;
+            var table  = el.getAttribute('data-table');
+            var period = el.getAttribute('data-period');
+            var field  = el.getAttribute('data-field');
+            if (!table || !period || !field) return;
+
+            var val = parseFloat(el.value) || 0;
+            var targetData = (table === 'sars') ? sarsData : bankData;
+            if (!targetData[period]) targetData[period] = { paye: 0, uif: 0, sdl: 0 };
+            targetData[period][field] = ReconService.round2(val);
+
+            // Update row total
+            var pKey = period.replace('-', '_');
+            var rv = targetData[period];
+            var rowTotalEl = document.getElementById(table + '-total-' + pKey);
+            if (rowTotalEl) rowTotalEl.textContent = fmt(rv.paye + rv.uif + rv.sdl);
+
+            // Debounce save
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(function() {
+                if (table === 'sars') {
+                    ReconService.saveSARSValues(currentCompanyId, sarsData);
+                } else {
+                    ReconService.saveBankValues(currentCompanyId, bankData);
+                }
+                updateManualTotals(table);
+                renderReconTable();
+                renderSummaryCards();
+                showSaveStatus();
+            }, 600);
+        });
+
+        function updateManualTotals(table) {
+            var data   = (table === 'sars') ? sarsData : bankData;
+            var prefix = table;
+            var tot = _sumManualTable(data, filteredPeriods);
+            var gPAYE = document.getElementById(prefix + '-grand-paye');
+            var gUIF  = document.getElementById(prefix + '-grand-uif');
+            var gSDL  = document.getElementById(prefix + '-grand-sdl');
+            var gTot  = document.getElementById(prefix + '-grand-total');
+            if (gPAYE) gPAYE.innerHTML = '<strong>' + fmt(tot.paye)  + '</strong>';
+            if (gUIF)  gUIF.innerHTML  = '<strong>' + fmt(tot.uif)   + '</strong>';
+            if (gSDL)  gSDL.innerHTML  = '<strong>' + fmt(tot.sdl)   + '</strong>';
+            if (gTot)  gTot.innerHTML  = '<strong>' + fmt(tot.paye + tot.uif + tot.sdl) + '</strong>';
+        }
+
+        function showSaveStatus() {
+            var el = document.getElementById('save-status');
+            el.textContent = '✓ Saved';
+            setTimeout(function() { el.textContent = ''; }, 2500);
+        }
+
+        // ─── CSV Export ───────────────────────────────────────────────────────
+        window.exportCSV = function() {
+            if (!currentTaxYear || filteredPeriods.length === 0) { alert('Please select a tax year first.'); return; }
+            var recon = ReconService.buildReconciliation(payrollTotals, sarsData, bankData);
+            var rows = [['Month','Calc Gross','Calc PAYE','Calc UIF','Calc SDL','Calc Total','SARS PAYE','SARS UIF','SARS SDL','SARS Total','PAYE Diff','UIF Diff','SDL Diff','Total Diff']];
+            filteredPeriods.forEach(function(p) {
+                var t = payrollTotals[p] || { gross:0, paye:0, uif:0, sdl:0, total:0 };
+                var s = sarsData[p]      || { paye:0, uif:0, sdl:0 };
+                var r = recon[p]         || { payeDiff:0, uifDiff:0, sdlDiff:0, totalDiff:0 };
+                rows.push([
+                    ReconService.formatPeriodLabel(p),
+                    t.gross, t.paye, t.uif, t.sdl, t.total,
+                    s.paye, s.uif, s.sdl, ReconService.round2(s.paye+s.uif+s.sdl),
+                    r.payeDiff, r.uifDiff, r.sdlDiff, r.totalDiff
+                ]);
+            });
+            var csv = rows.map(function(r) { return r.map(function(c){ return '"'+c+'"'; }).join(','); }).join('\n');
+            var blob = new Blob([csv], { type: 'text/csv' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'PAYE_Recon_' + currentTaxYear.replace('/','-') + '.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        };
+
+        // ─── Helpers ─────────────────────────────────────────────────────────
+        function fmt(n) {
+            n = parseFloat(n) || 0;
+            return 'R\u00a0' + n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function numTd(n) { return '<td class="num">' + fmt(n) + '</td>'; }
+        function numTdBold(n) { return '<td class="num"><strong>' + fmt(n) + '</strong></td>'; }
+        function diffTd(n) {
+            n = ReconService.round2(n);
+            if (n === 0) return '<td class="num diff-zero">✓ ' + fmt(0) + '</td>';
+            var cls = Math.abs(n) > 500 ? 'diff-nonzero' : 'diff-warn';
+            return '<td class="num ' + cls + '">▲ ' + fmt(n) + '</td>';
+        }
+        function inputTd(tableId, period, field, val) {
+            val = parseFloat(val) || 0;
+            return '<td class="num">'
+                + '<input type="number" step="0.01" min="0" value="' + val.toFixed(2) + '"'
+                + ' data-table="' + tableId + '" data-period="' + period + '" data-field="' + field + '">'
+                + '</td>';
+        }
+        function tableHeader(cols) {
+            return '<table class="recon-table"><thead><tr>'
+                + cols.map(function(c, i) { return '<th' + (i > 0 ? ' class="num"' : '') + '>' + c + '</th>'; }).join('')
+                + '</tr></thead><tbody>';
+        }
+        function emptyHtml(msg) {
+            return '<div class="empty-state" style="padding:40px;">'
+                + '<div class="empty-icon">📭</div><div class="empty-text">' + msg + '</div></div>';
+        }
+        function _zeroTotals() {
+            return { basic:0, overtime:0, allowances:0, bonus:0, commission:0, gross:0,
+                     paye:0, uif:0, sdl:0, pension:0, medical:0, garnishee:0,
+                     other:0, net:0, bank:0, diff:0, total:0 };
+        }
+        function _sumManualTable(data, periods) {
+            var out = { paye: 0, uif: 0, sdl: 0 };
+            periods.forEach(function(p) {
+                var v = data[p] || { paye:0, uif:0, sdl:0 };
+                out.paye += parseFloat(v.paye) || 0;
+                out.uif  += parseFloat(v.uif)  || 0;
+                out.sdl  += parseFloat(v.sdl)  || 0;
+            });
+            out.paye = ReconService.round2(out.paye);
+            out.uif  = ReconService.round2(out.uif);
+            out.sdl  = ReconService.round2(out.sdl);
+            return out;
+        }
+    })();
+    </script>
+</body>
+</html>
