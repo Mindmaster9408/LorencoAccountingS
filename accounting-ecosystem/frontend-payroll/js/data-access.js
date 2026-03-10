@@ -516,7 +516,7 @@ var DataAccess = (function() {
 
     // Keys that must stay in native localStorage (auth state)
     function isLocalKey(key) {
-        return key === 'session' || key === 'token' ||
+        return key === 'session' || key === 'token' || key === 'company' || key === 'selectedCompanyId' ||
                (typeof key === 'string' && key.indexOf('cache_') === 0) ||
                (typeof key === 'string' && key.indexOf('eco_') === 0) ||
                key === 'availableCompanies' ||

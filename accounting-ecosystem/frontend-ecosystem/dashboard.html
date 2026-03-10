@@ -1611,20 +1611,20 @@
 
                 const data = await res.json();
 
-                // Store the app-specific token so the target app picks it up
+                // Store the app-specific token — but do NOT pre-select a company.
+                // Without a company in localStorage the app will show its own
+                // company/client selection page (e.g. payroll → company-selection.html).
                 localStorage.setItem('token', data.appToken);
                 localStorage.setItem('user', JSON.stringify(data.user));
-                if (data.company) {
-                    localStorage.setItem('company', JSON.stringify(data.company));
-                    localStorage.setItem('selectedCompanyId', data.company.id);
-                }
+                localStorage.removeItem('company');          // ensure no stale company
+                localStorage.removeItem('selectedCompanyId');
 
                 // Also store under app-specific keys for apps that use different storage
                 localStorage.setItem(`${appKey}_token`, data.appToken);
                 localStorage.setItem(`${appKey}_user`, JSON.stringify(data.user));
                 localStorage.setItem('sso_source', 'ecosystem');
 
-                // Navigate to the app
+                // Navigate to the app — index / entry page handles SSO pickup & routing
                 text.textContent = `Opening ${app.name}...`;
                 setTimeout(() => {
                     window.location.href = app.path;
