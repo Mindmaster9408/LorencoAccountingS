@@ -806,8 +806,31 @@
             const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             const employees = stored ? JSON.parse(stored) : [];
             currentEmployee = employees.find(e => e.id === currentEmpId);
-            if (!currentEmployee) { alert('Employee not found'); window.location.href = 'payruns.html'; return; }
 
+            // If not found locally OR missing key fields, fetch fresh from API
+            if (!currentEmployee || (!currentEmployee.id_number && !currentEmployee.job_title && !currentEmployee.position)) {
+                DataAccess.getEmployeeById(currentCompanyId, currentEmpId).then(function(emp) {
+                    if (!emp || !(emp.id || emp.employee_id)) {
+                        alert('Employee not found'); window.location.href = 'payruns.html'; return;
+                    }
+                    currentEmployee = emp;
+                    // Update cached list so next load is fast
+                    var fresh = employees.filter(function(e) { return e.id !== currentEmpId; });
+                    fresh.push(emp);
+                    safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(fresh));
+                    renderEmployeeDetails();
+                }).catch(function() {
+                    if (!currentEmployee) { alert('Employee not found'); window.location.href = 'payruns.html'; }
+                });
+                if (currentEmployee) renderEmployeeDetails(); // render what we have while API call is in flight
+                return;
+            }
+
+            renderEmployeeDetails();
+        }
+
+        function renderEmployeeDetails() {
+            if (!currentEmployee) return;
             document.getElementById('employeeName').textContent = currentEmployee.first_name + ' ' + currentEmployee.last_name;
             document.getElementById('empNumber').textContent = currentEmployee.employee_number || '-';
             document.getElementById('empPosition').textContent = currentEmployee.position || currentEmployee.job_title || '-';
