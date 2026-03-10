@@ -960,12 +960,12 @@
             } else if (psStatus.status === 'finalized') {
                 // Finalized but no pay run yet = can unfinalize freely
                 statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + formatDate(parseStandardDate(psStatus.finalized_date), 'ZA') + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
-                btnArea.innerHTML = '<button class="btn-unfinalize" data-permission="UNFINALIZE_PAYSLIP" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
+                btnArea.innerHTML = '<button class="btn-unfinalize" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
                 content.classList.add('locked-overlay');
             } else {
                 // Draft
                 statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 Draft — Finalize this payslip to include it in a pay run.</div>';
-                btnArea.innerHTML = '<button class="btn-finalize" data-permission="FINALIZE_PAYSLIP" onclick="finalizePayslip()">✓ Finalize Payslip</button>';
+                btnArea.innerHTML = '<button class="btn-finalize" onclick="finalizePayslip()">✓ Finalize Payslip</button>';
             }
             Permissions.enforceUI();
         }

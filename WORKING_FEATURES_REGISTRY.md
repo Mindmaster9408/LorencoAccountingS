@@ -37,25 +37,28 @@ Each entry has:
 
 | # | Feature | Status | Depends on | Break conditions | Last verified |
 |---|---------|--------|------------|-----------------|---------------|
-| P6 | Employee list loads on payruns.html | | `safeLocalStorage('employees_{companyId}')` KV key, `DataAccess.getEmployees()` | Changing the KV key name, routing `employees_` key to native storage instead of KV | |
-| P7 | Employee detail page loads (name, position, ID number, DOB) | | `employee-detail.html` `loadEmployee()` reads `employees_{companyId}` from KV, `renderEmployeeDetails()` | **NEVER call `DataAccess.getEmployeeById()` with string IDs** — backend rejects non-integer IDs → returns null → "Employee not found" redirect | commit `079930c` |
-| P8 | basic salary displays and shows "Not set" hint when 0 | | `employee-detail.html` `renderPayroll()`, `payrollData.basic_salary`, basic salary row HTML | Re-adding `data-permission` attribute to the salary row container div | commit `99be3e7` |
-| P9 | Basic salary edit modal opens (unlocked periods) | | `employee-detail.html` `editBasicSalary()`, `isPayrunLockedForPeriod()` | Adding `Permissions.require()` back inside `editBasicSalary()` — blocks users with null/wrong role | commit `079930c` |
+| P6 | Employee list loads on payruns.html | ✅ Verified | `safeLocalStorage('employees_{companyId}')` KV key, `DataAccess.getEmployees()` | Changing the KV key name, routing `employees_` key to native storage instead of KV | commit `079930c` |
+| P7 | Employee detail page loads (name, position, ID number, DOB) | ✅ Verified both browsers | `employee-detail.html` `loadEmployee()` reads `employees_{companyId}` from KV, `renderEmployeeDetails()` | **NEVER call `DataAccess.getEmployeeById()` with string IDs** — backend rejects non-integer IDs → returns null → "Employee not found" redirect | commit `079930c` |
+| P8 | basic salary displays and shows "Not set" hint when 0 | ✅ Verified | `employee-detail.html` `renderPayroll()`, `payrollData.basic_salary`, basic salary row HTML | Re-adding `data-permission` attribute to the salary row container div | commit `99be3e7` |
+| P9 | Basic salary edit modal opens (unlocked periods) | ✅ Verified | `employee-detail.html` `editBasicSalary()`, `isPayrunLockedForPeriod()` | Adding `Permissions.require()` back inside `editBasicSalary()` — blocks users with null/wrong role | commit `079930c` |
 
 ### PAYRUN & PERIOD MANAGEMENT
 
 | # | Feature | Status | Depends on | Break conditions | Last verified |
 |---|---------|--------|------------|-----------------|---------------|
-| P10 | Pay period selector populates correctly | | `employee-detail.html` `populatePeriods()`, `payruns_{companyId}` KV key | Changing period key format | |
+| P10 | Pay period selector populates correctly | ✅ Verified | `employee-detail.html` `populatePeriods()`, `payruns_{companyId}` KV key | Changing period key format | commit `079930c` |
 | P11 | Payrun locked/finalized status persists | | `payslip_status_{companyId}_{empId}_{period}` KV key, `getPayslipStatusKey()`, `isPayrunLockedForPeriod()` | Changing status key format, moving to native localStorage | |
 | P12 | Request Unlock — manager auth via login API | | `employee-detail.html` `verifyManagerAuth()` → `POST /api/auth/login`, removes both `payslip_status_*` AND `emp_historical_*` keys | Re-introducing `AUTH.findUserByEmail()` (does NOT exist), storing returned token (overwrites session) | commit `079930c` |
-| P13 | Locked payslip shows frozen snapshot (not live recalc) | | `emp_historical_{companyId}_{empId}_{period}` KV key, `updatePayslipUI()` frozen path | Removing the historical snapshot save on finalize | |
+| P20 | Calculate Payslip works | ✅ Verified | `employee-detail.html` `calculatePayslip()`, `js/payroll-engine.js` | Breaking payroll-engine ACTIONS/BRACKETS structure | commit `079930c` |
+| P21 | Payslip PDF download works | ✅ Verified | `employee-detail.html` `downloadPayslipPDF()` | Removing jsPDF script include, changing PDF element IDs | commit `079930c` |
+| P22 | Pay run works | ✅ Verified | `payruns.html`, `payruns_{companyId}` KV key | Changing period/status key format | commit `079930c` |
+| P23 | Finalize Payslip button visible and clickable | ✅ Fixed | `employee-detail.html` `updatePayslipUI()` — button rendered WITHOUT `data-permission` attr | **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered in `updatePayslipUI()` — `enforceUI()` will silently hide them. Permission already enforced inside `finalizePayslip()` | commit pending |
 
 ### TAX & PAYROLL CALCULATIONS
 
 | # | Feature | Status | Depends on | Break conditions | Last verified |
 |---|---------|--------|------------|-----------------|---------------|
-| P14 | PAYE calculated correctly for current period (2025/2026 tax year) | | `js/payroll-engine.js` `HISTORICAL_TABLES['2026']`, `calculateAnnualPAYE()`, `getTaxYearForPeriod()` | Changing bracket structure without updating all 5 years, hardcoding table index instead of using `getTablesForPeriod()` | commit `8f97e68` |
+| P14 | PAYE calculated correctly for current period (2025/2026 tax year) | ✅ Verified | `js/payroll-engine.js` `HISTORICAL_TABLES['2026']`, `calculateAnnualPAYE()`, `getTaxYearForPeriod()` | Changing bracket structure without updating all 5 years, hardcoding table index instead of using `getTablesForPeriod()` | commit `8f97e68` |
 | P15 | Historical periods use correct historical tax tables | | `js/payroll-engine.js` `HISTORICAL_TABLES`, `getTaxYearForPeriod(periodStr)` | Adding a period format that doesn't match `YYYY-MM` pattern | commit `8f97e68` |
 | P16 | UIF, SDL, rebates all calculated | | `js/payroll-engine.js` `calculateUIF()`, `calculateSDL()`, `calculateRebates()` | Changing `tables.REBATES` structure | |
 
@@ -123,4 +126,4 @@ Safe to proceed? [ ] Yes — no overlap  [ ] Yes — protected by: _______  [ ] 
 4. **NEVER store the unlock-flow login token** — it would overwrite the current user's session (P12)
 5. **NEVER move `session`, `token`, `company`, `selectedCompanyId` out of `isLocalKey`** — breaks auth persistence (P18)
 6. **NEVER store business data (payroll records, transactions, customer records) in localStorage** — browser clear destroys it (P17)
-7. **NEVER bind safeLocalStorage snapshot methods to `localStorage`** — breaks fallback/memory mode (P19)
+8. **NEVER add `data-permission` to Finalize/Unfinalize buttons** rendered dynamically in `updatePayslipUI()` — `enforceUI()` runs immediately after and silently hides elements it can't verify. Permission is already enforced inside `finalizePayslip()` and `unfinalizePayslip()` via `Permissions.require()` (P23)
