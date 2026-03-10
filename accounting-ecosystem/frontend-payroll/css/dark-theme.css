@@ -1477,3 +1477,17 @@ b[style*="color:#667eea"] {
     border-color: var(--accent) !important;
 }
 
+/* ── Page Header ─────────────────────────────────────────────────────────────── */
+/* The top white title card on every page — give it a dark surface in dark mode */
+.page-header {
+    background: rgba(255,255,255,0.06) !important;
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+}
+/* Keep h1 visible (was white-on-white because --text = #fff) */
+.page-header h1,
+.page-header .page-title {
+    color: var(--accent-light) !important;
+}
+

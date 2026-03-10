@@ -493,9 +493,8 @@
                 }
             } catch(e) { console.warn('Could not load company from API:', e); }
 
-            // 2. Merge with extended payroll details stored locally
-            const stored = safeLocalStorage.getItem(getStorageKey());
-            const extra = stored ? JSON.parse(stored) : {};
+            // 2. Merge with extended payroll details stored in cloud (DataAccess/Supabase)
+            const extra = DataAccess.getCompanyDetails(currentCompanyId);
 
             // Parse address from API if it's a JSON object
             const apiAddr = (typeof apiCompany.address === 'object' && apiCompany.address) ? apiCompany.address : {};
@@ -530,7 +529,7 @@
                 work_hours: extra.work_hours || '',
                 created_date: apiCompany.created_at ? formatDate(parseStandardDate(apiCompany.created_at), 'ZA') : '',
                 // Branding & Export
-                company_name: extra.company_name || extra.name || authCompany.name || '',
+                company_name: extra.company_name || extra.name || apiCompany.company_name || '',
                 address_line1: extra.address_line1 || '',
                 logo_data: extra.logo_data || '',
                 // Sage
@@ -749,11 +748,11 @@
             companyData.absa_user_code = document.getElementById('f-absa-code').value.trim();
             companyData.fnb_originator_code = document.getElementById('f-fnb-code').value.trim();
 
-            // Save extended details to localStorage
-            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+            // Save extended details to cloud (DataAccess/Supabase)
+            DataAccess.saveCompanyDetails(currentCompanyId, companyData);
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Updated company details for ' + (companyData.name || 'Unknown'));
 
-            // Sync core fields to the backend (non-blocking — localStorage is primary)
+            // Sync core fields to the backend (non-blocking)
             (function() {
                 var token = safeLocalStorage.getItem('token');
                 if (!token || !currentCompanyId) return;
@@ -806,7 +805,7 @@
             var reader = new FileReader();
             reader.onload = function(e) {
                 companyData.logo_data = e.target.result;
-                safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+                DataAccess.saveCompanyDetails(currentCompanyId, companyData);
                 AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Uploaded company logo');
                 updateLogoPreview();
                 alert('Logo uploaded successfully!');
@@ -818,7 +817,7 @@
             if (!companyData.logo_data) return;
             if (!confirm('Remove the company logo?')) return;
             companyData.logo_data = '';
-            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+            DataAccess.saveCompanyDetails(currentCompanyId, companyData);
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Removed company logo');
             updateLogoPreview();
         }

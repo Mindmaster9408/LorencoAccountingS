@@ -479,10 +479,9 @@
         function getStorageKey() { return 'company_details_' + currentCompanyId; }
 
         function loadCompanyDetails() {
-            // Merge AUTH company data with localStorage extended data
+            // Merge AUTH company data with cloud (DataAccess/Supabase) extended data
             const authCompany = AUTH.getCompanyById(currentCompanyId) || {};
-            const stored = safeLocalStorage.getItem(getStorageKey());
-            const extra = stored ? JSON.parse(stored) : {};
+            const extra = DataAccess.getCompanyDetails(currentCompanyId);
 
             companyData = {
                 name: extra.name || authCompany.name || '',
@@ -733,21 +732,22 @@
             companyData.absa_user_code = document.getElementById('f-absa-code').value.trim();
             companyData.fnb_originator_code = document.getElementById('f-fnb-code').value.trim();
 
-            // Save extended details to localStorage
-            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+            // Save extended details to cloud (DataAccess/Supabase)
+            DataAccess.saveCompanyDetails(currentCompanyId, companyData);
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Updated company details for ' + (companyData.name || 'Unknown'));
 
-            // Also update the company name in AUTH system if changed
+            // Also update the company name in AUTH system + cloud if changed
             const authCompany = AUTH.getCompanyById(currentCompanyId);
             if (authCompany && companyData.name) {
                 authCompany.name = companyData.name;
                 authCompany.email = companyData.email || authCompany.email;
-                // Update in registered companies localStorage
+                // Update in registered companies (cloud + local for auth.js compat)
                 const regCompanies = AUTH.getRegisteredCompanies();
                 const regIdx = regCompanies.findIndex(c => c.id === currentCompanyId);
                 if (regIdx !== -1) {
                     regCompanies[regIdx].name = companyData.name;
                     regCompanies[regIdx].email = companyData.email || regCompanies[regIdx].email;
+                    DataAccess.saveRegisteredCompanies(regCompanies);
                     safeLocalStorage.setItem('registered_companies', JSON.stringify(regCompanies));
                 }
             }
@@ -768,7 +768,7 @@
             var reader = new FileReader();
             reader.onload = function(e) {
                 companyData.logo_data = e.target.result;
-                safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+                DataAccess.saveCompanyDetails(currentCompanyId, companyData);
                 AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Uploaded company logo');
                 updateLogoPreview();
                 alert('Logo uploaded successfully!');
@@ -780,7 +780,7 @@
             if (!companyData.logo_data) return;
             if (!confirm('Remove the company logo?')) return;
             companyData.logo_data = '';
-            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(companyData));
+            DataAccess.saveCompanyDetails(currentCompanyId, companyData);
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Removed company logo');
             updateLogoPreview();
         }
