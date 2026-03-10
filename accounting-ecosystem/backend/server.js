@@ -144,7 +144,7 @@ app.use('/api/users', authenticateToken, usersRoutes);
 app.use('/api/employees', authenticateToken, employeesRoutes);
 app.use('/api/audit', authenticateToken, auditRoutes);
 app.use('/api/eco-clients', authenticateToken, ecoClientsRoutes);
-app.use('/api/customers', customersRoutes);
+app.use('/api/customers', authenticateToken, customersRoutes); // R5 — requires auth
 
 // ─── Top-level POS-related Routes (receipts, barcodes, reports, analytics) ──
 if (receiptsRoutes) {
