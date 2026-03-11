@@ -202,7 +202,7 @@ router.post('/register', async (req, res) => {
     const companyTradingName = practice?.trading_name || business?.trading_name || trading_name || companyName;
 
     // Determine the owner role based on account type
-    const ownerRole = account_type === 'accountant' ? 'business_owner' : 'business_owner';
+    const ownerRole = account_type === 'accountant' ? 'accountant' : 'business_owner';
 
     let mainUser;
 

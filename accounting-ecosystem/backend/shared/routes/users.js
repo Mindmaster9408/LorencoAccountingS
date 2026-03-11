@@ -107,25 +107,48 @@ router.get('/roles', (req, res) => {
 
 /**
  * GET /api/users/:id
+ * Only returns a user if they belong to the requesting user's current company.
  */
 router.get('/:id', requirePermission('USERS.VIEW'), async (req, res) => {
   try {
+    const targetUserId = parseInt(req.params.id);
+
+    // Verify the requested user is a member of the current company (unless super admin)
+    if (!req.user.isSuperAdmin) {
+      const { data: access } = await supabase
+        .from('user_company_access')
+        .select('id')
+        .eq('user_id', targetUserId)
+        .eq('company_id', req.companyId)
+        .eq('is_active', true)
+        .limit(1);
+
+      if (!access || access.length === 0) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
     const { data: user, error } = await supabase
       .from('users')
       .select('id, username, email, full_name, is_active, created_at, last_login_at')
-      .eq('id', req.params.id)
+      .eq('id', targetUserId)
       .single();
 
     if (error || !user) return res.status(404).json({ error: 'User not found' });
 
-    // Get company access info
-    const { data: access } = await supabase
+    // Get company access info (scoped to current company for non-admins)
+    const accessQ = supabase
       .from('user_company_access')
       .select('company_id, role, is_primary')
-      .eq('user_id', req.params.id)
+      .eq('user_id', targetUserId)
       .eq('is_active', true);
 
-    user.companies = access || [];
+    if (!req.user.isSuperAdmin) {
+      accessQ.eq('company_id', req.companyId);
+    }
+
+    const { data: accessRows } = await accessQ;
+    user.companies = accessRows || [];
 
     res.json({ user });
   } catch (err) {

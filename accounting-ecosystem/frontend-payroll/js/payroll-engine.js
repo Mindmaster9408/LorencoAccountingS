@@ -127,6 +127,22 @@ const PayrollEngine = {
             PRIMARY_REBATE: 17235, SECONDARY_REBATE: 9444, TERTIARY_REBATE: 3145,
             UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
             MEDICAL_CREDIT_MAIN: 364, MEDICAL_CREDIT_FIRST_DEP: 364, MEDICAL_CREDIT_ADDITIONAL: 246
+        },
+
+        // --- 2026/2027 (1 Mar 2026 – 28 Feb 2027) — verify from www.sars.gov.za after budget speech ---
+        '2026/2027': {
+            BRACKETS: [
+                { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
+                { min: 237101,   max: 370500,   base: 42678,   rate: 0.26 },
+                { min: 370501,   max: 512800,   base: 77362,   rate: 0.31 },
+                { min: 512801,   max: 673000,   base: 121475,  rate: 0.36 },
+                { min: 673001,   max: 857900,   base: 179147,  rate: 0.39 },
+                { min: 857901,   max: 1817000,  base: 251258,  rate: 0.41 },
+                { min: 1817001,  max: Infinity, base: 644489,  rate: 0.45 }
+            ],
+            PRIMARY_REBATE: 17235, SECONDARY_REBATE: 9444, TERTIARY_REBATE: 3145,
+            UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
+            MEDICAL_CREDIT_MAIN: 364, MEDICAL_CREDIT_FIRST_DEP: 364, MEDICAL_CREDIT_ADDITIONAL: 246
         }
     },
 

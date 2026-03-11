@@ -86,13 +86,32 @@ router.get('/search', async (req, res) => {
 
 /**
  * GET /api/companies/:id
+ * Super admins can fetch any company. Regular users can only fetch companies
+ * they are linked to via user_company_access.
  */
 router.get('/:id', async (req, res) => {
   try {
+    const companyId = parseInt(req.params.id);
+
+    // Non-super-admins must have a user_company_access row for this company
+    if (!req.user.isSuperAdmin) {
+      const { data: access } = await supabase
+        .from('user_company_access')
+        .select('id')
+        .eq('user_id', req.user.userId)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .limit(1);
+
+      if (!access || access.length === 0) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
     const { data, error } = await supabase
       .from('companies')
       .select('*')
-      .eq('id', req.params.id)
+      .eq('id', companyId)
       .single();
 
     if (error || !data) return res.status(404).json({ error: 'Company not found' });

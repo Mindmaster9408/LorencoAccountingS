@@ -617,14 +617,30 @@
                         <div class="category-icon">📋</div>
                         <div>
                             <h2>Tax Configuration</h2>
-                            <p>Update SARS PAYE brackets, rebates &amp; credits each year (effective 1 March). Source: <strong>www.sars.gov.za</strong></p>
+                            <p>Manage SARS PAYE tables per tax year (effective 1 March). Source: <strong>www.sars.gov.za</strong></p>
                         </div>
                     </div>
-                    <button class="btn btn-success" onclick="saveTaxConfiguration()">💾 Save Tax Tables</button>
+                    <button class="btn btn-success" onclick="addNewTaxYear()">+ Add Year</button>
                 </div>
 
                 <div style="padding: 20px 0;">
-                    <div id="taxYearBadge" style="margin-bottom:18px; font-size:13px; color:var(--text-muted,#888);"></div>
+                    <!-- Year Tabs -->
+                    <div id="taxYearTabs" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; align-items:center; border-bottom:2px solid var(--border,#eee); padding-bottom:14px;"></div>
+
+                    <!-- Active Year Banner -->
+                    <div id="taxActiveBanner" style="display:none; margin-bottom:14px; padding:10px 16px; border-radius:8px; font-size:13px;"></div>
+
+                    <!-- Lock / Action Bar -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+                        <div id="taxYearBadge" style="font-size:13px; color:var(--text-muted,#888);"></div>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <span id="taxLockBadge" style="display:none;"></span>
+                            <button id="btnSetActive" class="btn" style="background:#667eea; color:white; font-size:12px; padding:6px 14px;" onclick="setActiveCalculationYear()">✅ Set as Active Year</button>
+                            <button id="btnFinalize" class="btn btn-success" style="font-size:12px; padding:6px 14px;" onclick="finalizeTaxYear()">🔒 Finalize &amp; Lock</button>
+                            <button id="btnUnlock" class="btn" style="background:#f59e0b; color:white; border:none; font-size:12px; padding:6px 14px; display:none;" onclick="unlockTaxYear()">🔓 Unlock Year</button>
+                            <button id="btnSaveTax" class="btn btn-success" style="font-size:12px; padding:6px 14px;" onclick="saveTaxConfiguration()">💾 Save Tax Tables</button>
+                        </div>
+                    </div>
 
                     <!-- Tax Brackets -->
                     <h4 style="margin-bottom:12px; color:var(--accent-light,#667eea);">📊 Annual Tax Brackets</h4>
@@ -682,8 +698,8 @@
                             <input type="number" id="tcMedAddl" step="1" min="0" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
                         </div>
                         <div>
-                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Tax Year Label (e.g. 2026/2027)</label>
-                            <input type="text" id="tcTaxYear" maxlength="12" style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333);">
+                            <label style="display:block; font-size:12px; opacity:0.7; margin-bottom:4px;">Tax Year Label</label>
+                            <input type="text" id="tcTaxYear" maxlength="12" readonly style="width:100%; padding:8px; border:1px solid var(--border,#ccc); border-radius:6px; background:var(--surface-alt,#f8f9fa); color:var(--text,#333); opacity:0.7; cursor:not-allowed;">
                         </div>
                     </div>
                     <div id="taxSaveMsg" style="display:none; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
@@ -812,7 +828,7 @@
             if (session.is_super_admin || session.role === 'super_admin') {
                 var tcSection = document.getElementById('taxConfigSection');
                 if (tcSection) tcSection.style.display = '';
-                populateTaxConfigForm();
+                initTaxConfig();
             }
 
             loadPageData();
@@ -1354,53 +1370,63 @@
         }
 
         function saveTaxConfiguration() {
+            if (!currentEditingYear || !taxYearsData[currentEditingYear]) {
+                showTaxMsg('error', '⚠️ No tax year selected.');
+                return;
+            }
+            if (taxYearsData[currentEditingYear].is_finalized) {
+                showTaxMsg('error', '🔒 This year is finalized. Unlock it first to make changes.');
+                return;
+            }
+
             var brackets = [];
             var rows = document.querySelectorAll('#taxBracketsBody tr');
             var valid = true;
-            rows.forEach(function(row, idx) {
-                var minV = parseFloat(row.querySelector('.tax-bracket-min').value);
+            rows.forEach(function(row) {
+                var minV   = parseFloat(row.querySelector('.tax-bracket-min').value);
                 var maxRaw = row.querySelector('.tax-bracket-max').value;
-                var maxV = maxRaw === '' || maxRaw === null ? Infinity : parseFloat(maxRaw);
-                var baseV = parseFloat(row.querySelector('.tax-bracket-base').value);
-                var rateV = parseFloat(row.querySelector('.tax-bracket-rate').value) / 100;
+                var maxV   = (maxRaw === '' || maxRaw === null) ? Infinity : parseFloat(maxRaw);
+                var baseV  = parseFloat(row.querySelector('.tax-bracket-base').value);
+                var rateV  = parseFloat(row.querySelector('.tax-bracket-rate').value) / 100;
                 if (isNaN(minV) || isNaN(baseV) || isNaN(rateV)) { valid = false; }
                 brackets.push({ min: minV, max: maxV, base: baseV, rate: rateV });
             });
+            if (!valid) { showTaxMsg('error', '⚠️ Invalid values detected — please check all bracket fields.'); return; }
 
-            if (!valid) {
-                showTaxMsg('error', '⚠️ Invalid values detected — please check all bracket fields.');
-                return;
+            var primary   = parseFloat(document.getElementById('tcPrimary').value);
+            var secondary = parseFloat(document.getElementById('tcSecondary').value);
+            var tertiary  = parseFloat(document.getElementById('tcTertiary').value);
+            var uifRate   = parseFloat(document.getElementById('tcUifRate').value);
+            var uifCap    = parseFloat(document.getElementById('tcUifCap').value);
+            var sdlRate   = parseFloat(document.getElementById('tcSdlRate').value);
+            var medMain   = parseFloat(document.getElementById('tcMedMain').value);
+            var medFirst  = parseFloat(document.getElementById('tcMedFirst').value);
+            var medAddl   = parseFloat(document.getElementById('tcMedAddl').value);
+            if ([primary,secondary,tertiary,uifRate,uifCap,sdlRate,medMain,medFirst,medAddl].some(isNaN)) {
+                showTaxMsg('error', '⚠️ Please fill in all fields with valid numbers.'); return;
             }
 
-            var cfg = {
-                TAX_YEAR:                   document.getElementById('tcTaxYear').value.trim() || PayrollEngine.TAX_YEAR,
-                BRACKETS:                   brackets,
-                PRIMARY_REBATE:             parseFloat(document.getElementById('tcPrimary').value),
-                SECONDARY_REBATE:           parseFloat(document.getElementById('tcSecondary').value),
-                TERTIARY_REBATE:            parseFloat(document.getElementById('tcTertiary').value),
-                UIF_RATE:                   parseFloat(document.getElementById('tcUifRate').value),
-                UIF_MONTHLY_CAP:            parseFloat(document.getElementById('tcUifCap').value),
-                SDL_RATE:                   parseFloat(document.getElementById('tcSdlRate').value),
-                MEDICAL_CREDIT_MAIN:        parseFloat(document.getElementById('tcMedMain').value),
-                MEDICAL_CREDIT_FIRST_DEP:   parseFloat(document.getElementById('tcMedFirst').value),
-                MEDICAL_CREDIT_ADDITIONAL:  parseFloat(document.getElementById('tcMedAddl').value),
-            };
+            var yr = taxYearsData[currentEditingYear];
+            yr.brackets                  = brackets;
+            yr.primary_rebate            = primary;
+            yr.secondary_rebate          = secondary;
+            yr.tertiary_rebate           = tertiary;
+            yr.uif_rate                  = uifRate;
+            yr.uif_monthly_cap           = uifCap;
+            yr.sdl_rate                  = sdlRate;
+            yr.medical_credit_main       = medMain;
+            yr.medical_credit_first_dep  = medFirst;
+            yr.medical_credit_additional = medAddl;
+            saveTaxYearsToStorage();
 
-            // Validate rebates are numbers
-            var nums = ['PRIMARY_REBATE','SECONDARY_REBATE','TERTIARY_REBATE','UIF_RATE',
-                        'UIF_MONTHLY_CAP','SDL_RATE','MEDICAL_CREDIT_MAIN',
-                        'MEDICAL_CREDIT_FIRST_DEP','MEDICAL_CREDIT_ADDITIONAL'];
-            for (var i = 0; i < nums.length; i++) {
-                if (isNaN(cfg[nums[i]])) { valid = false; }
-            }
-            if (!valid) {
-                showTaxMsg('error', '⚠️ Please fill in all fields with valid numbers.');
-                return;
+            // If this is the active calculation year, push to PayrollEngine immediately
+            if (currentEditingYear === activeCalcYear) {
+                updatePayrollEngineFromYear(yr);
             }
 
-            PayrollEngine.saveTaxConfig(cfg);
-            AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated tax tables for ' + cfg.TAX_YEAR);
-            showTaxMsg('success', '✅ Tax tables saved for ' + cfg.TAX_YEAR + ' — all payroll calculations will use these values.');
+            AuditTrail.logUpdate(currentCompanyId || 'system', 'tax_tables', 'Saved tax tables for ' + currentEditingYear);
+            showTaxMsg('success', '✅ Tax tables saved for ' + currentEditingYear + '.' +
+                (currentEditingYear === activeCalcYear ? ' All payroll calculations now use these values.' : ' Set as active year to use for calculations.'));
         }
 
         function showTaxMsg(type, text) {
@@ -1411,6 +1437,315 @@
             el.style.border     = '1px solid ' + (type === 'success' ? '#6ee7b7' : '#fca5a5');
             el.textContent = text;
             setTimeout(function() { el.style.display = 'none'; }, 5000);
+        }
+
+        // ─── MULTI-YEAR TAX TABLE MANAGEMENT ──────────────────────────────────
+
+        var taxYearsData    = {};   // { 'YYYY/YYYY': { label, brackets, rebates..., is_finalized, is_active } }
+        var currentEditingYear = '';  // year whose data is showing in the form
+        var activeCalcYear  = '';   // year PayrollEngine uses for calculations
+        var TAX_YEARS_KEY   = 'tax_years_v2';
+
+        function saveTaxYearsToStorage() {
+            safeLocalStorage.setItem(TAX_YEARS_KEY, JSON.stringify({
+                years: taxYearsData,
+                active_year: activeCalcYear
+            }));
+        }
+
+        function initTaxConfig() {
+            // Load persisted years
+            var raw = safeLocalStorage.getItem(TAX_YEARS_KEY);
+            if (raw) {
+                try {
+                    var stored = JSON.parse(raw);
+                    taxYearsData   = stored.years       || {};
+                    activeCalcYear = stored.active_year || '';
+                } catch(e) { taxYearsData = {}; activeCalcYear = ''; }
+            }
+
+            // Bootstrap from HISTORICAL_TABLES when nothing is stored yet
+            if (Object.keys(taxYearsData).length === 0) {
+                var E = PayrollEngine;
+                Object.keys(E.HISTORICAL_TABLES).sort().forEach(function(label) {
+                    var ht = E.HISTORICAL_TABLES[label];
+                    taxYearsData[label] = {
+                        label: label,
+                        brackets: JSON.parse(JSON.stringify(ht.BRACKETS)),
+                        primary_rebate:            ht.PRIMARY_REBATE,
+                        secondary_rebate:          ht.SECONDARY_REBATE,
+                        tertiary_rebate:           ht.TERTIARY_REBATE,
+                        uif_rate:                  ht.UIF_RATE,
+                        uif_monthly_cap:           ht.UIF_MONTHLY_CAP,
+                        sdl_rate:                  ht.SDL_RATE,
+                        medical_credit_main:       ht.MEDICAL_CREDIT_MAIN,
+                        medical_credit_first_dep:  ht.MEDICAL_CREDIT_FIRST_DEP,
+                        medical_credit_additional: ht.MEDICAL_CREDIT_ADDITIONAL,
+                        is_finalized: label !== E.TAX_YEAR,  // older years pre-finalized
+                        is_active:    label === E.TAX_YEAR
+                    };
+                });
+                activeCalcYear = E.TAX_YEAR;
+                saveTaxYearsToStorage();
+            }
+
+            // Pick which year to show: active year, or most recent
+            var labels = Object.keys(taxYearsData).sort();
+            currentEditingYear = (activeCalcYear && taxYearsData[activeCalcYear])
+                ? activeCalcYear
+                : labels[labels.length - 1];
+
+            renderTaxYearTabs();
+            loadTaxYearIntoForm(currentEditingYear);
+        }
+
+        function renderTaxYearTabs() {
+            var container = document.getElementById('taxYearTabs');
+            if (!container) return;
+            var labels = Object.keys(taxYearsData).sort();
+            container.innerHTML = '';
+            labels.forEach(function(label) {
+                var yr         = taxYearsData[label];
+                var isSelected = label === currentEditingYear;
+                var isActive   = label === activeCalcYear;
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.style.cssText = 'padding:6px 16px; border-radius:20px; cursor:pointer; font-size:12px; font-weight:700;'
+                    + ' border:2px solid ' + (isSelected ? '#667eea' : '#ddd') + ';'
+                    + ' background:'       + (isSelected ? '#667eea' : 'white') + ';'
+                    + ' color:'            + (isSelected ? 'white'   : '#555') + ';'
+                    + ' transition:all 0.15s;';
+                btn.title = label + (yr.is_finalized ? ' — Finalized' : ' — Draft');
+                btn.textContent = label
+                    + (isActive      ? ' ✅' : '')
+                    + (yr.is_finalized ? ' 🔒' : '');
+                btn.onclick = (function(l) { return function() { switchToTaxYear(l); }; })(label);
+                container.appendChild(btn);
+            });
+        }
+
+        function switchToTaxYear(label) {
+            // Auto-save unsaved form edits for current (unlocked) year before switching
+            if (currentEditingYear && taxYearsData[currentEditingYear]
+                && !taxYearsData[currentEditingYear].is_finalized) {
+                captureFormIntoYear(currentEditingYear);
+                saveTaxYearsToStorage();
+            }
+            currentEditingYear = label;
+            renderTaxYearTabs();
+            loadTaxYearIntoForm(label);
+        }
+
+        function loadTaxYearIntoForm(label) {
+            var yr = taxYearsData[label];
+            if (!yr) return;
+            document.getElementById('tcTaxYear').value    = yr.label;
+            document.getElementById('tcPrimary').value    = yr.primary_rebate;
+            document.getElementById('tcSecondary').value  = yr.secondary_rebate;
+            document.getElementById('tcTertiary').value   = yr.tertiary_rebate;
+            document.getElementById('tcUifRate').value    = yr.uif_rate;
+            document.getElementById('tcUifCap').value     = yr.uif_monthly_cap;
+            document.getElementById('tcSdlRate').value    = yr.sdl_rate;
+            document.getElementById('tcMedMain').value    = yr.medical_credit_main;
+            document.getElementById('tcMedFirst').value   = yr.medical_credit_first_dep;
+            document.getElementById('tcMedAddl').value    = yr.medical_credit_additional;
+
+            // Render brackets
+            var tbody = document.getElementById('taxBracketsBody');
+            tbody.innerHTML = yr.brackets.map(function(b, idx) {
+                var maxVal = (b.max === Infinity || b.max === null || b.max === undefined || b.max > 9e14) ? '' : b.max;
+                var iStyle = 'width:110px;padding:5px;border:1px solid var(--border,#ccc);border-radius:5px;background:var(--surface-alt,#f8f9fa);color:var(--text,#333);text-align:right;';
+                return '<tr>'
+                    + '<td style="padding:7px 8px;opacity:0.6;">' + (idx + 1) + '</td>'
+                    + '<td style="padding:7px 8px;text-align:right;"><input type="number" class="tax-bracket-min" value="' + b.min + '" style="' + iStyle + '"></td>'
+                    + '<td style="padding:7px 8px;text-align:right;"><input type="number" class="tax-bracket-max" value="' + maxVal + '" placeholder="∞" style="' + iStyle + '"></td>'
+                    + '<td style="padding:7px 8px;text-align:right;"><input type="number" class="tax-bracket-base" value="' + b.base + '" style="' + iStyle + '"></td>'
+                    + '<td style="padding:7px 8px;text-align:right;"><input type="number" class="tax-bracket-rate" step="0.01" value="' + (b.rate * 100) + '" style="width:80px;padding:5px;border:1px solid var(--border,#ccc);border-radius:5px;background:var(--surface-alt,#f8f9fa);color:var(--text,#333);text-align:right;"></td>'
+                    + '</tr>';
+            }).join('');
+
+            // Update badge & active banner
+            var isActive = label === activeCalcYear;
+            document.getElementById('taxYearBadge').textContent = 'Editing: ' + label
+                + (isActive ? ' — Active calculation year' : ' — Not active for calculations');
+            var banner = document.getElementById('taxActiveBanner');
+            banner.style.display    = isActive ? 'block' : 'block';
+            banner.style.background = isActive ? '#d1fae5' : '#fef3c7';
+            banner.style.color      = isActive ? '#065f46' : '#92400e';
+            banner.style.border     = '1px solid ' + (isActive ? '#6ee7b7' : '#fbbf24');
+            banner.textContent      = isActive
+                ? '✅ This is the active tax year used for all payroll calculations.'
+                : '⚠️ This year is NOT currently active. Click "Set as Active Year" to use it for calculations.';
+
+            updateTaxLockState(yr.is_finalized);
+        }
+
+        function captureFormIntoYear(label) {
+            var yr = taxYearsData[label];
+            if (!yr) return;
+            var brackets = [];
+            var valid = true;
+            document.querySelectorAll('#taxBracketsBody tr').forEach(function(row) {
+                var minV   = parseFloat(row.querySelector('.tax-bracket-min').value);
+                var maxRaw = row.querySelector('.tax-bracket-max').value;
+                var maxV   = (maxRaw === '' || maxRaw === null) ? Infinity : parseFloat(maxRaw);
+                var baseV  = parseFloat(row.querySelector('.tax-bracket-base').value);
+                var rateV  = parseFloat(row.querySelector('.tax-bracket-rate').value) / 100;
+                if (isNaN(minV) || isNaN(baseV) || isNaN(rateV)) { valid = false; }
+                brackets.push({ min: minV, max: maxV, base: baseV, rate: rateV });
+            });
+            if (!valid) return;
+            yr.brackets = brackets;
+            var p; // helper for numeric parsing with fallback
+            p = parseFloat(document.getElementById('tcPrimary').value);   if (!isNaN(p)) yr.primary_rebate = p;
+            p = parseFloat(document.getElementById('tcSecondary').value); if (!isNaN(p)) yr.secondary_rebate = p;
+            p = parseFloat(document.getElementById('tcTertiary').value);  if (!isNaN(p)) yr.tertiary_rebate = p;
+            p = parseFloat(document.getElementById('tcUifRate').value);   if (!isNaN(p)) yr.uif_rate = p;
+            p = parseFloat(document.getElementById('tcUifCap').value);    if (!isNaN(p)) yr.uif_monthly_cap = p;
+            p = parseFloat(document.getElementById('tcSdlRate').value);   if (!isNaN(p)) yr.sdl_rate = p;
+            p = parseFloat(document.getElementById('tcMedMain').value);   if (!isNaN(p)) yr.medical_credit_main = p;
+            p = parseFloat(document.getElementById('tcMedFirst').value);  if (!isNaN(p)) yr.medical_credit_first_dep = p;
+            p = parseFloat(document.getElementById('tcMedAddl').value);   if (!isNaN(p)) yr.medical_credit_additional = p;
+        }
+
+        function updateTaxLockState(isLocked) {
+            var inputs = document.querySelectorAll(
+                '#taxBracketsBody input, #tcPrimary, #tcSecondary, #tcTertiary,'
+                + ' #tcUifRate, #tcUifCap, #tcSdlRate, #tcMedMain, #tcMedFirst, #tcMedAddl'
+            );
+            inputs.forEach(function(inp) {
+                inp.disabled      = isLocked;
+                inp.style.opacity = isLocked ? '0.55' : '1';
+                inp.style.cursor  = isLocked ? 'not-allowed' : '';
+            });
+
+            var lockBadge  = document.getElementById('taxLockBadge');
+            var btnFinalize = document.getElementById('btnFinalize');
+            var btnUnlock   = document.getElementById('btnUnlock');
+            var btnSave     = document.getElementById('btnSaveTax');
+
+            if (isLocked) {
+                lockBadge.style.cssText = 'display:inline-block;padding:4px 14px;border-radius:12px;'
+                    + 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-size:12px;font-weight:700;';
+                lockBadge.textContent = '🔒 Finalized — Read Only';
+            } else {
+                lockBadge.style.cssText = 'display:inline-block;padding:4px 14px;border-radius:12px;'
+                    + 'background:#fef9c3;color:#78350f;border:1px solid #fcd34d;font-size:12px;font-weight:700;';
+                lockBadge.textContent = '✏️ Draft — Editable';
+            }
+            if (btnFinalize) btnFinalize.style.display = isLocked ? 'none' : '';
+            if (btnUnlock)   btnUnlock.style.display   = isLocked ? '' : 'none';
+            if (btnSave)     btnSave.style.display      = isLocked ? 'none' : '';
+        }
+
+        function addNewTaxYear() {
+            var label = prompt('Enter tax year label (e.g. 2026/2027):', '');
+            if (!label) return;
+            label = label.trim();
+            if (!/^\d{4}\/\d{4}$/.test(label)) {
+                alert('Invalid format. Use YYYY/YYYY — e.g. 2026/2027'); return;
+            }
+            if (taxYearsData[label]) {
+                if (confirm(label + ' already exists. Switch to it?')) switchToTaxYear(label);
+                return;
+            }
+
+            var newYr;
+            // Use HISTORICAL_TABLES if available, else clone the currently displayed year
+            var ht = PayrollEngine.HISTORICAL_TABLES[label];
+            if (ht) {
+                newYr = {
+                    label:  label,
+                    brackets: JSON.parse(JSON.stringify(ht.BRACKETS)),
+                    primary_rebate:            ht.PRIMARY_REBATE,
+                    secondary_rebate:          ht.SECONDARY_REBATE,
+                    tertiary_rebate:           ht.TERTIARY_REBATE,
+                    uif_rate:                  ht.UIF_RATE,
+                    uif_monthly_cap:           ht.UIF_MONTHLY_CAP,
+                    sdl_rate:                  ht.SDL_RATE,
+                    medical_credit_main:       ht.MEDICAL_CREDIT_MAIN,
+                    medical_credit_first_dep:  ht.MEDICAL_CREDIT_FIRST_DEP,
+                    medical_credit_additional: ht.MEDICAL_CREDIT_ADDITIONAL,
+                    is_finalized: false,
+                    is_active:    false
+                };
+            } else {
+                // Clone current year as a starting template, reset finalized/active
+                var base = taxYearsData[currentEditingYear];
+                newYr = JSON.parse(JSON.stringify(base || {}));
+                newYr.label       = label;
+                newYr.is_finalized = false;
+                newYr.is_active    = false;
+            }
+            taxYearsData[label] = newYr;
+            saveTaxYearsToStorage();
+            switchToTaxYear(label);
+            showTaxMsg('success', '✅ Tax year ' + label + ' added. Update the brackets then Save and Finalize.');
+        }
+
+        function finalizeTaxYear() {
+            var yr = taxYearsData[currentEditingYear];
+            if (!yr) return;
+            if (!confirm('Finalize and lock ' + currentEditingYear + '?\n\nNo further edits will be allowed. You can unlock it later if needed.')) return;
+            captureFormIntoYear(currentEditingYear);
+            yr.is_finalized = true;
+            saveTaxYearsToStorage();
+            if (currentEditingYear === activeCalcYear) updatePayrollEngineFromYear(yr);
+            AuditTrail.logUpdate(currentCompanyId || 'system', 'tax_tables', 'Finalized tax year ' + currentEditingYear);
+            renderTaxYearTabs();
+            updateTaxLockState(true);
+            showTaxMsg('success', '🔒 ' + currentEditingYear + ' has been finalized and locked.');
+        }
+
+        function unlockTaxYear() {
+            var yr = taxYearsData[currentEditingYear];
+            if (!yr) return;
+            if (!confirm('Unlock ' + currentEditingYear + ' for editing?\n\nRe-finalize after making changes.')) return;
+            yr.is_finalized = false;
+            saveTaxYearsToStorage();
+            AuditTrail.logUpdate(currentCompanyId || 'system', 'tax_tables', 'Unlocked tax year ' + currentEditingYear);
+            renderTaxYearTabs();
+            updateTaxLockState(false);
+            showTaxMsg('success', '🔓 ' + currentEditingYear + ' is now unlocked for editing.');
+        }
+
+        function setActiveCalculationYear() {
+            if (!currentEditingYear) return;
+            if (currentEditingYear === activeCalcYear) {
+                showTaxMsg('success', '✅ ' + currentEditingYear + ' is already the active calculation year.'); return;
+            }
+            var yr = taxYearsData[currentEditingYear];
+            if (!yr.is_finalized) {
+                if (!confirm(currentEditingYear + ' is not yet finalized.\n\nBest practice is to finalize first. Set as active anyway?')) return;
+            }
+            activeCalcYear = currentEditingYear;
+            Object.keys(taxYearsData).forEach(function(k) {
+                taxYearsData[k].is_active = (k === activeCalcYear);
+            });
+            saveTaxYearsToStorage();
+            updatePayrollEngineFromYear(taxYearsData[activeCalcYear]);
+            AuditTrail.logUpdate(currentCompanyId || 'system', 'tax_tables', 'Set active calculation year to ' + activeCalcYear);
+            renderTaxYearTabs();
+            loadTaxYearIntoForm(currentEditingYear);  // refreshes banner
+            showTaxMsg('success', '✅ Active calculation year set to ' + activeCalcYear + '. All payroll calculations now use this year.');
+        }
+
+        function updatePayrollEngineFromYear(yr) {
+            PayrollEngine.saveTaxConfig({
+                TAX_YEAR:    yr.label,
+                BRACKETS:    yr.brackets.map(function(b) {
+                    return { min: b.min, max: (b.max === Infinity || b.max === '' || b.max === undefined || b.max === null || b.max > 9e14) ? Infinity : Number(b.max), base: b.base, rate: b.rate };
+                }),
+                PRIMARY_REBATE:            yr.primary_rebate,
+                SECONDARY_REBATE:          yr.secondary_rebate,
+                TERTIARY_REBATE:           yr.tertiary_rebate,
+                UIF_RATE:                  yr.uif_rate,
+                UIF_MONTHLY_CAP:           yr.uif_monthly_cap,
+                SDL_RATE:                  yr.sdl_rate,
+                MEDICAL_CREDIT_MAIN:       yr.medical_credit_main,
+                MEDICAL_CREDIT_FIRST_DEP:  yr.medical_credit_first_dep,
+                MEDICAL_CREDIT_ADDITIONAL: yr.medical_credit_additional
+            });
         }
     </script>
     <!-- Add Company Modal -->

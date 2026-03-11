@@ -211,6 +211,33 @@ router.get('/', async (req, res) => {
     // Super admins can pass ?status=all to see inactive clients too (admin control panel)
     const showAll = req.query.status === 'all' && req.user.isSuperAdmin;
 
+    // ── Resolve effective company filter ──────────────────────────────────────
+    // For non-admins: if a company_id param is supplied, verify they actually
+    // belong to that company — prevents enumeration of other firms' clients.
+    let effectiveCompanyId = req.companyId; // default: company from JWT
+
+    if (company_id) {
+      const requestedId = parseInt(company_id);
+      if (req.user.isSuperAdmin) {
+        // Super admins can scope to any company
+        effectiveCompanyId = requestedId;
+      } else {
+        // Regular users: verify they are a member of the requested company
+        const { data: access } = await supabase
+          .from('user_company_access')
+          .select('id')
+          .eq('user_id', req.user.userId)
+          .eq('company_id', requestedId)
+          .eq('is_active', true)
+          .limit(1);
+
+        if (!access || access.length === 0) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        effectiveCompanyId = requestedId;
+      }
+    }
+
     // ── 1. Fetch directly managed (owned) clients ──────────────────────────────
     let q = supabase
       .from('eco_clients')
@@ -221,10 +248,14 @@ router.get('/', async (req, res) => {
       q = q.eq('is_active', true);
     }
 
-    if (company_id) {
-      q = q.eq('company_id', parseInt(company_id));
-    } else if (!req.user.isSuperAdmin) {
-      q = q.eq('company_id', req.companyId);
+    if (!req.user.isSuperAdmin || effectiveCompanyId) {
+      if (req.user.isSuperAdmin && effectiveCompanyId) {
+        // Super admin scoped to a specific company
+        q = q.eq('company_id', effectiveCompanyId);
+      } else if (!req.user.isSuperAdmin) {
+        q = q.eq('company_id', effectiveCompanyId);
+      }
+      // Super admin with no company filter → returns all (no eq added)
     }
 
     if (client_type) {
@@ -356,18 +387,42 @@ router.get('/employee-counts', async (req, res) => {
 
 /**
  * GET /api/eco-clients/:id
- * Get a single client
+ * Get a single client. Only accessible to users whose company manages this client
+ * (or has shared access), or super admins.
  */
 router.get('/:id', async (req, res) => {
   try {
+    const clientId = parseInt(req.params.id);
+
     const { data: client, error } = await supabase
       .from('eco_clients')
       .select('*')
-      .eq('id', parseInt(req.params.id))
+      .eq('id', clientId)
       .single();
 
     if (error || !client) {
       return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Verify ownership: super admin, direct owner, or shared access
+    if (!req.user.isSuperAdmin) {
+      const isOwner = client.company_id === req.companyId;
+
+      let hasSharedAccess = false;
+      if (!isOwner) {
+        const { data: sharedRow } = await supabase
+          .from('eco_client_firm_access')
+          .select('id')
+          .eq('eco_client_id', clientId)
+          .eq('firm_company_id', req.companyId)
+          .eq('is_active', true)
+          .limit(1);
+        hasSharedAccess = !!(sharedRow && sharedRow.length > 0);
+      }
+
+      if (!isOwner && !hasSharedAccess) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
     // Fetch company name
