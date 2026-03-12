@@ -851,7 +851,7 @@
         const custs = LedgerSystem.getCustomers();
         custs.push({ id: 'CUST-DEMO-ABC', code: 'ABC001', name: 'ABC Corporation', type: 'company', isSystemCustomer: false, contact: 'John Smith', email: 'john@abccorp.co.za', phone: '+27 11 123 4567', vat: '4560123456', terms: 30, creditLimit: 100000, status: 'active', createdAt: new Date().toISOString() });
         custs.push({ id: 'CUST-DEMO-TECH', code: 'TEC001', name: 'Tech Solutions Ltd', type: 'company', isSystemCustomer: false, contact: 'David Wilson', email: 'david@techsolutions.co.za', phone: '+27 11 222 3333', vat: '4569876543', terms: 30, creditLimit: 150000, status: 'active', createdAt: new Date().toISOString() });
-        localStorage.setItem('lorenco_customers', JSON.stringify(custs));
+        safeLocalStorage.setItem('lorenco_customers', JSON.stringify(custs));
       }
 
       demoSales.forEach(sale => {

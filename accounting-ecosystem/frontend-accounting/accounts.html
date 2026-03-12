@@ -219,10 +219,10 @@
                 return;
             }
 
-            // Add to ledger system (localStorage)
-            const accounts = JSON.parse(localStorage.getItem('lorenco_custom_accounts') || '[]');
+            // Add to ledger system (safeLocalStorage → Supabase)
+            const accounts = JSON.parse(safeLocalStorage.getItem('lorenco_custom_accounts') || '[]');
             accounts.push({ code, name, type, category, vatApplicable });
-            localStorage.setItem('lorenco_custom_accounts', JSON.stringify(accounts));
+            safeLocalStorage.setItem('lorenco_custom_accounts', JSON.stringify(accounts));
             
             alert('Account added: ' + code + ' - ' + name);
             closeModal();

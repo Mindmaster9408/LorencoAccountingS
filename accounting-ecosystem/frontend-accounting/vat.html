@@ -1291,8 +1291,8 @@
 
         // Load VAT data from journals and populate reconciliation table
         function loadVATReconData() {
-            // Get journal entries from localStorage
-            const journals = JSON.parse(localStorage.getItem('journals') || '[]');
+            // Get journal entries from safeLocalStorage (cloud-backed via Supabase)
+            const journals = JSON.parse(safeLocalStorage.getItem('journals') || '[]');
             
             // Initialize data structure for VAT periods
             const vatPeriods = {

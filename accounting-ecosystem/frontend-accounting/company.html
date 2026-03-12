@@ -926,11 +926,11 @@
     // ========== Teach Sean Functions ==========
 
     function loadSeanKnowledge() {
-      const companyId = parseInt(localStorage.getItem('activeCompanyId')) || 1;
+      const companyId = parseInt(safeLocalStorage.getItem('activeCompanyId')) || 1;
       const storageKey = `seanKnowledge_${companyId}`;
 
       try {
-        const stored = localStorage.getItem(storageKey);
+        const stored = safeLocalStorage.getItem(storageKey);
         seanKnowledge = stored ? JSON.parse(stored) : [];
       } catch (err) {
         seanKnowledge = [];
@@ -940,9 +940,9 @@
     }
 
     function saveSeanKnowledge() {
-      const companyId = parseInt(localStorage.getItem('activeCompanyId')) || 1;
+      const companyId = parseInt(safeLocalStorage.getItem('activeCompanyId')) || 1;
       const storageKey = `seanKnowledge_${companyId}`;
-      localStorage.setItem(storageKey, JSON.stringify(seanKnowledge));
+      safeLocalStorage.setItem(storageKey, JSON.stringify(seanKnowledge));
     }
 
     function renderSeanKnowledge() {
@@ -1042,11 +1042,11 @@
     let integrations = {};
 
     function loadIntegrations() {
-      const companyId = parseInt(localStorage.getItem('activeCompanyId')) || 1;
+      const companyId = parseInt(safeLocalStorage.getItem('activeCompanyId')) || 1;
       const storageKey = `integrations_${companyId}`;
 
       try {
-        const stored = localStorage.getItem(storageKey);
+        const stored = safeLocalStorage.getItem(storageKey);
         integrations = stored ? JSON.parse(stored) : {};
       } catch (err) {
         integrations = {};
@@ -1056,9 +1056,9 @@
     }
 
     function saveIntegrations() {
-      const companyId = parseInt(localStorage.getItem('activeCompanyId')) || 1;
+      const companyId = parseInt(safeLocalStorage.getItem('activeCompanyId')) || 1;
       const storageKey = `integrations_${companyId}`;
-      localStorage.setItem(storageKey, JSON.stringify(integrations));
+      safeLocalStorage.setItem(storageKey, JSON.stringify(integrations));
     }
 
     function renderIntegrationStatus() {
@@ -1164,9 +1164,9 @@
     window.LorencoIntegrations = {
       // Get integration status
       getIntegrationStatus: function(integrationName) {
-        const companyId = parseInt(localStorage.getItem('activeCompanyId')) || 1;
+        const companyId = parseInt(safeLocalStorage.getItem('activeCompanyId')) || 1;
         const storageKey = `integrations_${companyId}`;
-        const stored = localStorage.getItem(storageKey);
+        const stored = safeLocalStorage.getItem(storageKey);
         const integs = stored ? JSON.parse(stored) : {};
         return integs[integrationName] || { connected: false };
       },

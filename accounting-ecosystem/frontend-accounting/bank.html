@@ -2346,11 +2346,11 @@ Click OK to simulate uploading a file.`;
         // ALLOCATION TRACKING
         // ===================================
 
-        // Store allocations in memory (and localStorage for persistence)
-        let transactionAllocations = JSON.parse(localStorage.getItem('lorenco_bank_allocations') || '{}');
+        // Store allocations in memory (and safeLocalStorage for persistence)
+        let transactionAllocations = JSON.parse(safeLocalStorage.getItem('lorenco_bank_allocations') || '{}');
 
         function saveAllocationsToStorage() {
-            localStorage.setItem('lorenco_bank_allocations', JSON.stringify(transactionAllocations));
+            safeLocalStorage.setItem('lorenco_bank_allocations', JSON.stringify(transactionAllocations));
         }
 
         function getTransactionData(id) {
@@ -2620,11 +2620,11 @@ Click OK to simulate uploading a file.`;
         // SEAN AI FUNCTIONS
         // ===================================
         
-        // Sean AI learning data (persisted in localStorage)
-        let seanLearning = JSON.parse(localStorage.getItem('lorenco_sean_learning') || '{}');
+        // Sean AI learning data (persisted in Supabase via safeLocalStorage)
+        let seanLearning = JSON.parse(safeLocalStorage.getItem('lorenco_sean_learning') || '{}');
         
         function saveSeanLearning() {
-            localStorage.setItem('lorenco_sean_learning', JSON.stringify(seanLearning));
+            safeLocalStorage.setItem('lorenco_sean_learning', JSON.stringify(seanLearning));
         }
         
         // Sean AI pattern matching rules for bank transaction classification
@@ -2953,7 +2953,7 @@ Click OK to simulate uploading a file.`;
         
         // Transaction review management
         let currentTab = 'new';
-        let reviewedTransactions = JSON.parse(localStorage.getItem('reviewedTransactions') || '[]');
+        let reviewedTransactions = JSON.parse(safeLocalStorage.getItem('reviewedTransactions') || '[]');
         
         function switchTab(tab, evt) {
             currentTab = tab;
@@ -3042,7 +3042,7 @@ Click OK to simulate uploading a file.`;
                 cb.checked = false;
             });
             
-            localStorage.setItem('reviewedTransactions', JSON.stringify(reviewedTransactions));
+            safeLocalStorage.setItem('reviewedTransactions', JSON.stringify(reviewedTransactions));
             switchTab('new'); // Refresh the current view
             
             alert(`${checked.length} transaction(s) marked as reviewed and moved to Reviewed tab.`);
@@ -3065,7 +3065,7 @@ Click OK to simulate uploading a file.`;
                 cb.checked = false;
             });
             
-            localStorage.setItem('reviewedTransactions', JSON.stringify(reviewedTransactions));
+            safeLocalStorage.setItem('reviewedTransactions', JSON.stringify(reviewedTransactions));
             switchTab('reviewed'); // Refresh the reviewed view
             
             alert(`${checked.length} transaction(s) moved back to New Transactions.`);
