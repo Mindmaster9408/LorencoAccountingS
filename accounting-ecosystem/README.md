@@ -92,6 +92,50 @@ When a new module/app is added (e.g. "HR", "Fleet", "CRM"), it **MUST**:
    └── login.html
    ```
 
+### 5. Cross-browser compatibility — ALL code must work in major browsers
+
+> **Rule: Every page must work correctly in Chrome, Firefox, Safari (iOS + macOS),
+> and Edge. This is non-negotiable and must be verified before any feature ships.**
+
+**Minimum browser targets:** Browsers released in the last 3 years.
+IE11 is explicitly NOT supported.
+
+**When writing JavaScript:**
+- Do NOT use optional chaining (`?.`) or nullish coalescing (`??`) — they require
+  a transpiler. Write explicit `if` checks instead.
+- Do NOT use `structuredClone()`, `Array.prototype.at()`, `String.replaceAll()`,
+  `Object.fromEntries()`, or `Array.flat/flatMap()` without checking `polyfills.js`
+  already covers them (it does for all the above).
+- `async/await` is acceptable — supported in all target browsers since 2017.
+- Always use `fetch()` through `data-access.js` or check that `polyfills.js` is
+  loaded first (it warns if fetch is absent).
+
+**When writing CSS:**
+- Always add `-webkit-` prefix alongside `backdrop-filter`:
+  ```css
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  ```
+- `display: flex` and `gap` require Chrome 84+, Safari 14.1+, Firefox 63+ — fine for target.
+- `display: grid` — same support range — fine, but test complex layouts.
+- `position: sticky` — fine; test on iOS Safari specifically.
+- CSS custom properties (`var(--x)`) — fine for all target browsers.
+
+**Verification checklist for every new page:**
+```
+□ Loads polyfills.js as first <script>
+□ Has <meta charset="UTF-8">
+□ Has <meta name="viewport" content="width=device-width, initial-scale=1.0">
+□ Tested in Chrome (latest)
+□ Tested in Firefox (latest)
+□ Tested in Safari (macOS latest + iOS latest)
+□ Tested in Edge (latest)
+□ No optional chaining / nullish coalescing without transpiler
+□ All backdrop-filter rules have -webkit- prefix
+□ Dark mode tested (dark-theme.css colors visible on all backgrounds)
+□ Mobile layout tested (320px min-width)
+```
+
 ---
 
 ## App Directory
