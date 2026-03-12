@@ -66,7 +66,7 @@ const PDFBranding = {
 
         doc.setFontSize(14);
         doc.setTextColor(102, 126, 234); // #667eea
-        doc.text(details.company_name || company.name || 'Company', textX, y + 7);
+        doc.text(details.company_name || details.name || (company && company.name) || 'Company', textX, y + 7);
 
         doc.setFontSize(7.5);
         doc.setTextColor(120, 120, 120);
@@ -234,8 +234,49 @@ const PDFBranding = {
 
     // ---- Helpers ----
     getCompanyDetails: function(companyId) {
-        var stored = safeLocalStorage.getItem('company_details_' + companyId);
-        return stored ? JSON.parse(stored) : {};
+        // 1. Try legacy localStorage key (standalone Payroll App)
+        try {
+            var stored = safeLocalStorage.getItem('company_details_' + companyId);
+            if (stored) {
+                var details = JSON.parse(stored);
+                if (details && (details.company_name || details.name)) return details;
+            }
+        } catch(e) {}
+
+        // 2. Try DataAccess cache key written by ecosystem data-access.js
+        try {
+            var apiCached = safeLocalStorage.getItem('cache_company_' + companyId);
+            if (apiCached) {
+                var apiData = JSON.parse(apiCached);
+                if (apiData && (apiData.company_name || apiData.name)) return apiData;
+            }
+        } catch(e) {}
+
+        // 3. Build minimal details from the auth companies cache
+        var result = {};
+        try {
+            if (typeof AUTH !== 'undefined' && AUTH.getCompanyById) {
+                var authCompany = AUTH.getCompanyById(companyId);
+                if (authCompany) {
+                    result.company_name = authCompany.company_name || authCompany.name || authCompany.trading_name || '';
+                    result.name = authCompany.name || authCompany.company_name || '';
+                    result.paye_ref = authCompany.paye_ref || '';
+                    result.uif_ref = authCompany.uif_ref || '';
+                    if (result.company_name || result.name) return result;
+                }
+            }
+        } catch(e) {}
+
+        // 4. Fallback: use session company name when IDs match
+        try {
+            var session = JSON.parse(safeLocalStorage.getItem('session') || '{}');
+            if (session && String(session.company_id) === String(companyId)) {
+                result.company_name = session.company_name || session.companyName || '';
+                result.name = result.company_name;
+            }
+        } catch(e) {}
+
+        return result;
     },
 
     formatPeriod: function(period) {

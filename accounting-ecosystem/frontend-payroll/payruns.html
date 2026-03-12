@@ -1494,7 +1494,7 @@
             const run = payruns.find(r => r.id === runId);
             if (!run) return;
             const groups = { EFT: [], Cash: [], Cheque: [] };
-            let overallGross = 0, overallPaye = 0, overallUif = 0, overallNet = 0;
+            let overallGross = 0, overallPaye = 0, overallUif = 0, overallSdl = 0, overallNet = 0;
             for (const emp of employees) {
                 // Only include finalized payslips in summary
                 const psStatus = getPayslipStatus(emp.id, run.period);
@@ -1504,10 +1504,19 @@
                 if (calc.gross <= 0) continue;
                 const method = emp.payment_method || 'EFT';
                 if (!groups[method]) groups[method] = [];
-                groups[method].push({ name: emp.first_name + ' ' + emp.last_name, number: emp.employee_number, gross: calc.gross, paye: calc.paye, uif: calc.uif, net: calc.net });
+                groups[method].push({
+                    name: emp.first_name + ' ' + emp.last_name,
+                    number: emp.employee_number,
+                    gross: calc.gross,
+                    paye: calc.paye,
+                    uif: calc.uif,
+                    sdl: calc.sdl || 0,
+                    net: calc.net
+                });
                 overallGross += calc.gross;
                 overallPaye += calc.paye;
                 overallUif += calc.uif;
+                overallSdl += calc.sdl || 0;
                 overallNet += calc.net;
             }
             let html = '<h3 style="margin-bottom: 20px;">Pay Run: ' + formatPeriod(run.period) + ' <span class="status-badge status-' + run.status + '">' + run.status + '</span></h3>';
@@ -1515,15 +1524,33 @@
                 const empList = groups[method];
                 if (!empList || empList.length === 0) continue;
                 const methodTotal = empList.reduce((sum, e) => sum + e.net, 0);
-                html += '<div class="summary-section"><h4>' + method + ' (' + empList.length + ' employee' + (empList.length > 1 ? 's' : '') + ') - Total: ' + formatMoney(methodTotal) + '</h4>' +
-                    '<table class="summary-table"><thead><tr><th>Employee</th><th>Emp #</th><th style="text-align:right;">Gross</th><th style="text-align:right;">Net</th></tr></thead><tbody>' +
-                    empList.map(e => '<tr><td>' + e.name + '</td><td>' + e.number + '</td><td style="text-align:right;">' + formatMoney(e.gross) + '</td><td style="text-align:right;">' + formatMoney(e.net) + '</td></tr>').join('') +
+                html += '<div class="summary-section"><h4>' + method + ' (' + empList.length + ' employee' + (empList.length > 1 ? 's' : '') + ') — Net: ' + formatMoney(methodTotal) + '</h4>' +
+                    '<table class="summary-table"><thead><tr>' +
+                    '<th>Employee</th><th>Emp #</th>' +
+                    '<th style="text-align:right;">Gross</th>' +
+                    '<th style="text-align:right;">PAYE</th>' +
+                    '<th style="text-align:right;">UIF</th>' +
+                    '<th style="text-align:right;">SDL</th>' +
+                    '<th style="text-align:right;">Net</th>' +
+                    '</tr></thead><tbody>' +
+                    empList.map(e =>
+                        '<tr>' +
+                        '<td>' + e.name + '</td>' +
+                        '<td>' + e.number + '</td>' +
+                        '<td style="text-align:right;">' + formatMoney(e.gross) + '</td>' +
+                        '<td style="text-align:right;">' + formatMoney(e.paye) + '</td>' +
+                        '<td style="text-align:right;">' + formatMoney(e.uif) + '</td>' +
+                        '<td style="text-align:right;">' + formatMoney(e.sdl) + '</td>' +
+                        '<td style="text-align:right;">' + formatMoney(e.net) + '</td>' +
+                        '</tr>'
+                    ).join('') +
                     '</tbody></table></div>';
             }
             html += '<div class="summary-totals"><h4>Overall Totals</h4>' +
                 '<div class="total-row-item"><span>Total Gross</span><strong>' + formatMoney(overallGross) + '</strong></div>' +
-                '<div class="total-row-item"><span>Total PAYE</span><strong>' + formatMoney(overallPaye) + '</strong></div>' +
-                '<div class="total-row-item"><span>Total UIF</span><strong>' + formatMoney(overallUif) + '</strong></div>' +
+                '<div class="total-row-item"><span>Total PAYE</span><strong><a href="#" title="View per-employee PAYE breakdown" style="color:inherit;text-decoration:underline dotted;cursor:pointer;" onclick="event.preventDefault();closeModal(\'summaryModal\');previewEMP201(\'' + runId + '\')">' + formatMoney(overallPaye) + '</a></strong></div>' +
+                '<div class="total-row-item"><span>Total UIF</span><strong><a href="#" title="View per-employee UIF breakdown" style="color:inherit;text-decoration:underline dotted;cursor:pointer;" onclick="event.preventDefault();closeModal(\'summaryModal\');previewUIF(\'' + runId + '\')">' + formatMoney(overallUif) + '</a></strong></div>' +
+                '<div class="total-row-item"><span>Total SDL</span><strong>' + formatMoney(overallSdl) + '</strong></div>' +
                 '<div class="total-row-item net"><span>Total Net</span><strong>' + formatMoney(overallNet) + '</strong></div></div>';
             document.getElementById('summary-content').innerHTML = html;
             document.getElementById('summaryModal').classList.add('show');

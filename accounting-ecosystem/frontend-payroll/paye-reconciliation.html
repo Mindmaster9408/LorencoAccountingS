@@ -569,23 +569,37 @@
         }
         window.handleLogout = handleLogout;
 
+        function _renderCarousel(companies) {
+            var container = document.getElementById('companies-carousel');
+            if (!container) return;
+            container.innerHTML = '';
+            (companies || []).forEach(function(c) {
+                var div = document.createElement('div');
+                div.className = 'carousel-company';
+                div.textContent = c.name || c.id;
+                div.title = c.name || '';
+                div.onclick = function() {
+                    safeLocalStorage.setItem('selectedCompanyId', c.id);
+                    window.location.href = 'company-dashboard.html';
+                };
+                container.appendChild(div);
+            });
+        }
+
         function loadCompaniesCarousel() {
-            try {
-                var companies = AUTH.getCompanies ? AUTH.getCompanies() : JSON.parse(safeLocalStorage.getItem('companies') || '[]');
-                var container = document.getElementById('companies-carousel');
-                container.innerHTML = '';
-                companies.forEach(function(c) {
-                    var div = document.createElement('div');
-                    div.className = 'carousel-company';
-                    div.textContent = c.name || c.id;
-                    div.title = c.name || '';
-                    div.onclick = function() {
-                        safeLocalStorage.setItem('selectedCompanyId', c.id);
-                        window.location.href = 'company-dashboard.html';
-                    };
-                    container.appendChild(div);
-                });
-            } catch(e) {}
+            // Render immediately from sync cache to avoid blank sidebar on load
+            var cached = AUTH.getCompaniesForUser ? AUTH.getCompaniesForUser() : [];
+            if (!cached.length) {
+                try { cached = JSON.parse(safeLocalStorage.getItem('companies') || '[]'); } catch(e) {}
+            }
+            _renderCarousel(cached);
+
+            // Async refresh from API and re-render with up-to-date list
+            if (AUTH.getCompanies) {
+                AUTH.getCompanies().then(function(refreshed) {
+                    _renderCarousel(refreshed);
+                }).catch(function() {});
+            }
         }
 
         // ─── Load Data ────────────────────────────────────────────────────────
