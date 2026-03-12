@@ -359,14 +359,52 @@
                 <!-- PAYROLL SUMMARY -->
                 <div class="card" style="margin-top: 20px; background: linear-gradient(135deg, #f0f4ff 0%, #e8eaf6 100%);">
                     <h3>💰 Payroll Summary</h3>
-                    <table>
-                        <tr><td><strong>Gross Salary:</strong></td><td style="text-align: right;"><strong id="totalGross">R 0.00</strong></td></tr>
-                        <tr><td>PAYE:</td><td style="text-align: right;" id="totalPAYE">R 0.00</td></tr>
-                        <tr id="medicalCreditRow" style="display: none;"><td>Medical Tax Credit:</td><td style="text-align: right; color: #28a745;" id="totalMedicalCredit">- R 0.00</td></tr>
-                        <tr><td>UIF:</td><td style="text-align: right;" id="totalUIF">R 0.00</td></tr>
-                        <tr><td>Deductions:</td><td style="text-align: right;" id="totalDeductions">R 0.00</td></tr>
-                        <tr class="total-row"><td><strong>NET SALARY:</strong></td><td style="text-align: right;"><strong id="totalNet" style="font-size: 18px; color: #28a745;">R 0.00</strong></td></tr>
+                    <!-- INCOME section -->
+                    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #3949ab; border-bottom: 1px solid #c5cae9; padding-bottom: 3px; margin-bottom: 4px;">Income</div>
+                    <table style="width: 100%; font-size: 14px;">
+                        <tr><td style="padding: 3px 0;">Basic Salary</td><td style="text-align: right;" id="detailBasicSalary">R 0.00</td></tr>
+                        <tbody id="detailOvertimeRows"></tbody>
+                        <tbody id="detailMultiRateRows"></tbody>
+                        <tbody id="detailShortTimeRows"></tbody>
                     </table>
+                    <!-- ALLOWANCES section (hidden until there are any) -->
+                    <div id="detailAllowancesSection" style="display: none;">
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #3949ab; border-bottom: 1px solid #c5cae9; padding-bottom: 3px; margin-top: 10px; margin-bottom: 4px;">Allowances</div>
+                        <table style="width: 100%; font-size: 14px;"><tbody id="detailAllowanceRows"></tbody></table>
+                    </div>
+                    <!-- GROSS TOTAL -->
+                    <table style="width: 100%; margin-top: 8px;">
+                        <tr style="border-top: 2px solid #3949ab;">
+                            <td style="padding: 5px 0;"><strong>Gross Salary:</strong></td>
+                            <td style="text-align: right; padding: 5px 0;"><strong id="totalGross">R 0.00</strong></td>
+                        </tr>
+                    </table>
+                    <!-- DEDUCTIONS section -->
+                    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #b71c1c; border-bottom: 1px solid #ef9a9a; padding-bottom: 3px; margin-top: 10px; margin-bottom: 4px;">Deductions</div>
+                    <table style="width: 100%; font-size: 14px;">
+                        <tr onclick="showPayeBreakdown()" style="cursor: pointer;" title="Click to see how PAYE is calculated">
+                            <td style="padding: 3px 0;">PAYE <span style="color: #3949ab; font-size: 11px; font-weight: 600;">▼ view</span></td>
+                            <td style="text-align: right;" id="totalPAYE">R 0.00</td>
+                        </tr>
+                        <tr id="medicalCreditRow" style="display: none;">
+                            <td style="padding: 3px 0; color: #28a745;">Medical Tax Credit</td>
+                            <td style="text-align: right; color: #28a745;" id="totalMedicalCredit">- R 0.00</td>
+                        </tr>
+                        <tr onclick="showUifBreakdown()" style="cursor: pointer;" title="Click to see how UIF is calculated">
+                            <td style="padding: 3px 0;">UIF <span style="color: #3949ab; font-size: 11px; font-weight: 600;">▼ view</span></td>
+                            <td style="text-align: right;" id="totalUIF">R 0.00</td>
+                        </tr>
+                        <tbody id="detailCustomDeductionRows"></tbody>
+                    </table>
+                    <!-- NET TOTAL -->
+                    <table style="width: 100%; margin-top: 8px;">
+                        <tr class="total-row" style="border-top: 2px solid #3949ab;">
+                            <td style="padding: 6px 0;"><strong>NET SALARY:</strong></td>
+                            <td style="text-align: right; padding: 6px 0;"><strong id="totalNet" style="font-size: 18px; color: #28a745;">R 0.00</strong></td>
+                        </tr>
+                    </table>
+                    <!-- Hidden compat span kept for JS that sets totalDeductions -->
+                    <span id="totalDeductions" style="display: none;"></span>
                     <button class="btn btn-success" style="width: 100%; margin-top: 15px;" onclick="calculatePayslip()">Calculate Payslip</button>
                     <div id="payslipActions" style="display: none; margin-top: 10px; gap: 10px;">
                         <button class="btn" style="flex: 1;" onclick="previewPayslip()">Preview Payslip</button>
@@ -682,6 +720,28 @@
             <div class="form-group"><label>Manager Email</label><input type="email" id="authEmail" class="auth-input" placeholder="manager@company.com"></div>
             <div class="form-group"><label>Manager Password</label><input type="password" id="authPassword" class="auth-input" placeholder="Password"></div>
             <button class="btn btn-success" style="width:100%;" onclick="verifyManagerAuth()">Authorize & Unlock</button>
+        </div>
+    </div>
+
+    <!-- PAYE Calculation Breakdown Modal -->
+    <div id="payeBreakdownModal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3>📊 PAYE Calculation</h3>
+                <button class="btn btn-danger btn-sm" onclick="document.getElementById('payeBreakdownModal').classList.remove('show')">Close</button>
+            </div>
+            <div id="payeBreakdownContent" style="margin-top: 15px; font-size: 14px;"></div>
+        </div>
+    </div>
+
+    <!-- UIF Calculation Breakdown Modal -->
+    <div id="uifBreakdownModal" class="modal">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3>📊 UIF Calculation</h3>
+                <button class="btn btn-danger btn-sm" onclick="document.getElementById('uifBreakdownModal').classList.remove('show')">Close</button>
+            </div>
+            <div id="uifBreakdownContent" style="margin-top: 15px; font-size: 14px;"></div>
         </div>
     </div>
 
@@ -1111,6 +1171,11 @@
                 
                 renderPayroll();
                 updatePayslipUI();
+                // Auto-populate summary totals if a historical/imported snapshot exists
+                var autoHistKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+                if (safeLocalStorage.getItem(autoHistKey)) {
+                    calculatePayslip();
+                }
             } catch(e) {
                 console.error('Error loading payroll data:', e);
                 // Retry once on error (Edge timing issue)
@@ -1146,7 +1211,8 @@
                 if (frozen) { 
                     try { 
                         var snap = JSON.parse(frozen); 
-                        if (snap && snap.basic_salary !== undefined) displaySalary = snap.basic_salary; 
+                        // Support both 'basic_salary' (finalized) and 'basic' (csv import) field names
+                        if (snap) { displaySalary = snap.basic_salary !== undefined ? snap.basic_salary : (snap.basic !== undefined ? snap.basic : displaySalary); }
                     } catch(e) { 
                         console.warn('Error parsing frozen data:', e); 
                     } 
@@ -1486,6 +1552,30 @@
                     document.getElementById('totalNet').style.color = '#28a745';
                     document.getElementById('negativeNetWarning').style.display = 'none';
                     document.getElementById('payslipActions').style.display = 'flex';
+
+                    // Itemized breakdown – frozen snapshot
+                    var snapBasic = snap.basic_salary !== undefined ? snap.basic_salary : (snap.basic || 0);
+                    document.getElementById('detailBasicSalary').textContent = formatMoney(snapBasic);
+                    var snapHourly = snapBasic ? snapBasic / 173.33 : 0;
+                    var otSnapHTML = '';
+                    if (snap.overtime_hours && parseFloat(snap.overtime_hours) > 0) {
+                        var otRate = snap.overtime_rate || 1.5;
+                        otSnapHTML = '<tr><td style="padding:3px 0;">Overtime (' + snap.overtime_hours + 'h × ' + otRate + 'x)</td><td style="text-align:right;">' + formatMoney(parseFloat(snap.overtime_hours) * snapHourly * otRate) + '</td></tr>';
+                    }
+                    document.getElementById('detailOvertimeRows').innerHTML = otSnapHTML;
+                    document.getElementById('detailMultiRateRows').innerHTML = '';
+                    document.getElementById('detailShortTimeRows').innerHTML = '';
+                    var snapAllowHTML = (snap.allowances || []).map(function(a) {
+                        return '<tr><td style="padding:3px 0;">' + (a.description || 'Allowance') + '</td><td style="text-align:right;">' + formatMoney(a.amount) + '</td></tr>';
+                    }).join('');
+                    document.getElementById('detailAllowancesSection').style.display = snapAllowHTML ? '' : 'none';
+                    document.getElementById('detailAllowanceRows').innerHTML = snapAllowHTML;
+                    document.getElementById('detailCustomDeductionRows').innerHTML = (snap.deductions || []).map(function(d) {
+                        return '<tr><td style="padding:3px 0;">' + (d.description || 'Deduction') + '</td><td style="text-align:right;">' + formatMoney(d.amount) + '</td></tr>';
+                    }).join('');
+                    window._lastPayeBreakdown = { paye: calc.paye, isSnapshot: true };
+                    window._lastUifBreakdown = { gross: calc.gross, uif: calc.uif, isSnapshot: true };
+
                     return calc;
                 } catch(e) { /* fall through to live calculation */ }
             }
@@ -1540,6 +1630,121 @@
                 warningEl.style.display = 'none';
             }
 
+            // === Itemized breakdown – live calculation ===
+            var liveBasic = payrollData.basic_salary || 0;
+            document.getElementById('detailBasicSalary').textContent = formatMoney(liveBasic);
+            var liveHourly = liveBasic ? liveBasic / PayrollEngine.HOURLY_DIVISOR : 0;
+
+            // Overtime rows
+            var otLiveHTML = '';
+            (overtime || []).forEach(function(ot) {
+                var hrs = parseFloat(ot.hours) || 0;
+                var mult = parseFloat(ot.rate_multiplier) || 1.5;
+                if (hrs > 0) {
+                    otLiveHTML += '<tr><td style="padding:3px 0;">Overtime (' + hrs + 'h \u00d7 ' + mult + 'x)</td><td style="text-align:right;">' + formatMoney(hrs * liveHourly * mult) + '</td></tr>';
+                }
+            });
+            document.getElementById('detailOvertimeRows').innerHTML = otLiveHTML;
+
+            // Multi-rate rows
+            var mrLiveHTML = '';
+            (multiRate || []).forEach(function(mr) {
+                var mhrs = parseFloat(mr.hours) || 0;
+                var mrate = parseFloat(mr.hourly_rate) || 0;
+                if (mhrs > 0) {
+                    var desc = mr.description || ('Hours @ R' + mrate.toFixed(2) + '/h');
+                    mrLiveHTML += '<tr><td style="padding:3px 0;">' + desc + ' (' + mhrs + 'h)</td><td style="text-align:right;">' + formatMoney(mhrs * mrate) + '</td></tr>';
+                }
+            });
+            document.getElementById('detailMultiRateRows').innerHTML = mrLiveHTML;
+
+            // Short-time rows
+            var stLiveHTML = '';
+            (shortTime || []).forEach(function(st) {
+                var missed = parseFloat(st.hours_missed) || 0;
+                if (missed > 0) {
+                    stLiveHTML += '<tr><td style="padding:3px 0; color:#dc3545;">Short Time (' + missed + 'h deducted)</td><td style="text-align:right; color:#dc3545;">\u2212' + formatMoney(missed * liveHourly) + '</td></tr>';
+                }
+            });
+            document.getElementById('detailShortTimeRows').innerHTML = stLiveHTML;
+
+            // Allowance rows (non-deduction regular_inputs + currentInputs)
+            var allAllowHTML = '';
+            (payrollData.regular_inputs || []).forEach(function(ri) {
+                if (ri.type !== 'deduction') {
+                    allAllowHTML += '<tr><td style="padding:3px 0;">' + (ri.description || ri.label || 'Allowance') + '</td><td style="text-align:right;">' + formatMoney(ri.amount) + '</td></tr>';
+                }
+            });
+            (currentInputs || []).forEach(function(ci) {
+                if (ci.type !== 'deduction') {
+                    allAllowHTML += '<tr><td style="padding:3px 0;">' + (ci.description || ci.label || 'Allowance') + '</td><td style="text-align:right;">' + formatMoney(ci.amount) + '</td></tr>';
+                }
+            });
+            document.getElementById('detailAllowancesSection').style.display = allAllowHTML ? '' : 'none';
+            document.getElementById('detailAllowanceRows').innerHTML = allAllowHTML;
+
+            // Custom deduction rows
+            var custDedHTML = '';
+            (payrollData.regular_inputs || []).forEach(function(ri) {
+                if (ri.type === 'deduction') {
+                    custDedHTML += '<tr><td style="padding:3px 0;">' + (ri.description || ri.label || 'Deduction') + '</td><td style="text-align:right;">' + formatMoney(ri.amount) + '</td></tr>';
+                }
+            });
+            (currentInputs || []).forEach(function(ci) {
+                if (ci.type === 'deduction') {
+                    custDedHTML += '<tr><td style="padding:3px 0;">' + (ci.description || ci.label || 'Deduction') + '</td><td style="text-align:right;">' + formatMoney(ci.amount) + '</td></tr>';
+                }
+            });
+            document.getElementById('detailCustomDeductionRows').innerHTML = custDedHTML;
+
+            // Compute taxable gross for PAYE breakdown (mirrors calculateFromData logic)
+            var taxableGrossForBD = liveBasic;
+            (payrollData.regular_inputs || []).forEach(function(ri) {
+                if (ri.type !== 'deduction' && ri.is_taxable !== false) taxableGrossForBD += parseFloat(ri.amount) || 0;
+            });
+            (currentInputs || []).forEach(function(ci) {
+                if (ci.type !== 'deduction' && ci.is_taxable !== false) taxableGrossForBD += parseFloat(ci.amount) || 0;
+            });
+            (overtime || []).forEach(function(ot) {
+                taxableGrossForBD += (parseFloat(ot.hours) || 0) * liveHourly * (parseFloat(ot.rate_multiplier) || 1.5);
+            });
+            (multiRate || []).forEach(function(mr) {
+                taxableGrossForBD += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
+            });
+            (shortTime || []).forEach(function(st) {
+                taxableGrossForBD -= (parseFloat(st.hours_missed) || 0) * liveHourly;
+            });
+            if (taxableGrossForBD < 0) taxableGrossForBD = 0;
+            var annualGrossForBD = taxableGrossForBD * 12;
+            var bracketInfo = PayrollEngine.getTaxBracket(annualGrossForBD);
+            var primaryRebate = PayrollEngine.PRIMARY_REBATE;
+            var secondaryRebate = (employeeOptions.age >= 65) ? PayrollEngine.SECONDARY_REBATE : 0;
+            var tertiaryRebate = (employeeOptions.age >= 75) ? PayrollEngine.TERTIARY_REBATE : 0;
+            var annualTaxRaw = bracketInfo.bracket.base + (annualGrossForBD - bracketInfo.bracket.min) * bracketInfo.bracket.rate;
+            var annualTaxAfterRebate = Math.max(annualTaxRaw - primaryRebate - secondaryRebate - tertiaryRebate, 0);
+            window._lastPayeBreakdown = {
+                monthlyGross: taxableGrossForBD,
+                annualGross: annualGrossForBD,
+                bracket: bracketInfo,
+                annualTaxRaw: annualTaxRaw,
+                primaryRebate: primaryRebate,
+                secondaryRebate: secondaryRebate,
+                tertiaryRebate: tertiaryRebate,
+                annualTaxAfterRebate: annualTaxAfterRebate,
+                monthlyBeforeCredit: annualTaxAfterRebate / 12,
+                medicalCredit: calc.medicalCredit,
+                finalPAYE: calc.paye,
+                taxDirective: employeeOptions.taxDirective || 0,
+                isSnapshot: false
+            };
+            window._lastUifBreakdown = {
+                gross: calc.gross,
+                onePercent: PayrollEngine.r2(calc.gross * 0.01),
+                cap: PayrollEngine.UIF_MONTHLY_CAP,
+                uif: calc.uif,
+                isSnapshot: false
+            };
+
             // Trigger narrative generation
             generateNarrative(calc.gross, calc.paye, calc.uif, calc.deductions, calc.net);
 
@@ -1548,8 +1753,109 @@
             return calc;
         }
 
+        // ========== PAYE & UIF BREAKDOWN POPUPS ==========
+        function showPayeBreakdown() {
+            var bd = window._lastPayeBreakdown;
+            if (!bd) return;
+            var modal = document.getElementById('payeBreakdownModal');
+            var content = document.getElementById('payeBreakdownContent');
+            var rows = '';
+
+            if (bd.isSnapshot) {
+                rows = '<p style="color:#666; margin-bottom:10px;">This payslip was imported or finalized — live recalculation is not available.</p>' +
+                    '<table style="width:100%; font-size:14px;"><tr style="border-top:2px solid #3949ab; font-weight:bold;"><td style="padding:6px 0;">PAYE</td><td style="text-align:right;">' + formatMoney(bd.paye) + '</td></tr></table>';
+            } else if (bd.taxDirective > 0) {
+                rows = '<table style="width:100%; font-size:14px;">' +
+                    '<tr><td style="padding:4px 0;">Monthly Gross (Taxable)</td><td style="text-align:right;">' + formatMoney(bd.monthlyGross) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0;">Tax Directive Rate</td><td style="text-align:right;">' + bd.taxDirective + '%</td></tr>' +
+                    '<tr style="border-top:2px solid #3949ab; font-weight:bold;"><td style="padding:6px 0;">PAYE</td><td style="text-align:right;">' + formatMoney(bd.finalPAYE) + '</td></tr>' +
+                    '</table>';
+            } else {
+                var b = bd.bracket.bracket;
+                var maxLabel = (b.max === Infinity) ? 'and above' : formatMoney(b.max);
+                var bracketLabel = 'Bracket ' + bd.bracket.index + ' (' + formatMoney(b.min) + ' \u2013 ' + maxLabel + ')';
+                var excessAmt = bd.annualGross - b.min;
+                var excessTax = bd.annualTaxRaw - b.base;
+                rows = '<table style="width:100%; font-size:14px; border-collapse:collapse;">' +
+                    '<tr><td style="padding:4px 0;">Monthly Gross (Taxable)</td><td style="text-align:right;">' + formatMoney(bd.monthlyGross) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0;">Annual Gross (\u00d7 12)</td><td style="text-align:right;">' + formatMoney(bd.annualGross) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0; color:#3949ab;">' + bracketLabel + '</td><td></td></tr>' +
+                    '<tr><td style="padding:4px 0 4px 12px;">Base tax on bracket</td><td style="text-align:right;">' + formatMoney(b.base) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0 4px 12px;">+ ' + (b.rate * 100).toFixed(0) + '% on ' + formatMoney(excessAmt) + '</td><td style="text-align:right;">' + formatMoney(excessTax) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0; font-weight:600;">Annual Tax</td><td style="text-align:right; font-weight:600;">' + formatMoney(bd.annualTaxRaw) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0; color:#28a745;">\u2212 Primary Rebate</td><td style="text-align:right; color:#28a745;">\u2212 ' + formatMoney(bd.primaryRebate) + '</td></tr>';
+                if (bd.secondaryRebate > 0) {
+                    rows += '<tr><td style="padding:4px 0; color:#28a745;">\u2212 Secondary Rebate (age 65+)</td><td style="text-align:right; color:#28a745;">\u2212 ' + formatMoney(bd.secondaryRebate) + '</td></tr>';
+                }
+                if (bd.tertiaryRebate > 0) {
+                    rows += '<tr><td style="padding:4px 0; color:#28a745;">\u2212 Tertiary Rebate (age 75+)</td><td style="text-align:right; color:#28a745;">\u2212 ' + formatMoney(bd.tertiaryRebate) + '</td></tr>';
+                }
+                rows += '<tr><td style="padding:4px 0;">Annual Tax after Rebates</td><td style="text-align:right;">' + formatMoney(bd.annualTaxAfterRebate) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0;">Monthly PAYE (\u00f7 12)</td><td style="text-align:right;">' + formatMoney(bd.monthlyBeforeCredit) + '</td></tr>';
+                if (bd.medicalCredit > 0) {
+                    rows += '<tr><td style="padding:4px 0; color:#28a745;">\u2212 Medical Tax Credit</td><td style="text-align:right; color:#28a745;">\u2212 ' + formatMoney(bd.medicalCredit) + '</td></tr>';
+                }
+                rows += '<tr style="border-top:2px solid #3949ab; font-weight:bold;"><td style="padding:6px 0;">PAYE</td><td style="text-align:right;">' + formatMoney(bd.finalPAYE) + '</td></tr>' +
+                    '</table>';
+            }
+            content.innerHTML = rows;
+            modal.classList.add('show');
+        }
+
+        function showUifBreakdown() {
+            var bd = window._lastUifBreakdown;
+            if (!bd) return;
+            var modal = document.getElementById('uifBreakdownModal');
+            var content = document.getElementById('uifBreakdownContent');
+            var rows = '';
+
+            if (bd.isSnapshot) {
+                rows = '<p style="color:#666; margin-bottom:10px;">This payslip was imported or finalized — live recalculation is not available.</p>' +
+                    '<table style="width:100%; font-size:14px;"><tr style="border-top:2px solid #3949ab; font-weight:bold;"><td style="padding:6px 0;">UIF</td><td style="text-align:right;">' + formatMoney(bd.uif) + '</td></tr></table>';
+            } else {
+                var cappedNote = bd.onePercent > bd.cap ? ' (capped)' : '';
+                rows = '<table style="width:100%; font-size:14px; border-collapse:collapse;">' +
+                    '<tr><td style="padding:4px 0;">Monthly Gross</td><td style="text-align:right;">' + formatMoney(bd.gross) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0;">\u00d7 1% (UIF rate)</td><td style="text-align:right;">' + formatMoney(bd.onePercent) + '</td></tr>' +
+                    '<tr><td style="padding:4px 0; color:#3949ab;">Monthly Cap</td><td style="text-align:right; color:#3949ab;">' + formatMoney(bd.cap) + '</td></tr>' +
+                    '<tr style="border-top:2px solid #3949ab; font-weight:bold;"><td style="padding:6px 0;">UIF = min(1%, cap)' + cappedNote + '</td><td style="text-align:right;">' + formatMoney(bd.uif) + '</td></tr>' +
+                    '</table>';
+            }
+            content.innerHTML = rows;
+            modal.classList.add('show');
+        }
+
         // ========== PAYSLIP PREVIEW & PDF EXPORT ==========
         function getPayslipData() {
+            // If a historical/imported snapshot exists, use it for the payslip
+            var histPDFKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+            var frozenPDFRaw = safeLocalStorage.getItem(histPDFKey);
+            if (frozenPDFRaw) {
+                try {
+                    var snapPDF = JSON.parse(frozenPDFRaw);
+                    var pdfAllowances = [];
+                    if (Array.isArray(snapPDF.allowances)) {
+                        snapPDF.allowances.forEach(function(a) { pdfAllowances.push({ description: a.description, amount: a.amount }); });
+                    }
+                    var pdfDeductions = [];
+                    if (Array.isArray(snapPDF.deductions)) {
+                        snapPDF.deductions.forEach(function(d) { pdfDeductions.push({ description: d.description, amount: d.amount }); });
+                    }
+                    var pdfExtraDeductions = pdfDeductions.reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0);
+                    var basicAmt = snapPDF.basic_salary !== undefined ? snapPDF.basic_salary : (snapPDF.basic || 0);
+                    var hourlyRate = basicAmt ? basicAmt / 173.33 : 0;
+                    var overtimeAmt = (snapPDF.overtime_hours || 0) * hourlyRate * (snapPDF.overtime_rate || 1.5);
+                    var pdfCalc = {
+                        gross: snapPDF.gross || 0, paye: snapPDF.paye || 0, uif: snapPDF.uif || 0,
+                        sdl: snapPDF.sdl || 0, deductions: pdfExtraDeductions, net: snapPDF.net || 0,
+                        medicalCredit: 0, basicSalary: basicAmt,
+                        allowances: pdfAllowances, deductionsList: pdfDeductions,
+                        overtimeAmount: overtimeAmt, totalDeductions: pdfExtraDeductions
+                    };
+                    return { calc: pdfCalc, employee: currentEmployee, period: currentPeriod, companyId: currentCompanyId };
+                } catch(e) { /* fall through to live calculation */ }
+            }
+
             var currentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
             var overtime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
             var multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');

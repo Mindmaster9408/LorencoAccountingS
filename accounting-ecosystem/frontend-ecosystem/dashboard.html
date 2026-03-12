@@ -423,6 +423,11 @@
             font-size: 0.9rem;
             font-family: inherit;
             transition: border-color 0.2s;
+            color-scheme: dark;
+        }
+        .form-field select option {
+            background: #1a1535;
+            color: #fff;
         }
         .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
             outline: none;
@@ -913,6 +918,7 @@
                             <select id="acType" onchange="onClientTypeChange()">
                                 <option value="individual">👤 Individual</option>
                                 <option value="business">🏢 Business / Company</option>
+                                <option value="practice">🏛️ Accounting Practice</option>
                             </select>
                         </div>
                     </div>
@@ -1742,9 +1748,24 @@
             if (type === 'business') {
                 label.textContent = 'Company Name *';
                 input.placeholder = 'e.g. Green Valley School';
+            } else if (type === 'practice') {
+                label.textContent = 'Practice Name *';
+                input.placeholder = 'e.g. Smith & Partners Inc.';
             } else {
                 label.textContent = 'Full Name *';
                 input.placeholder = 'e.g. John Smith';
+            }
+            // SEAN AI is only for individual clients — hide for companies & practices
+            const seanCheck = document.querySelector('#acApps .app-check input[value="sean"]');
+            if (seanCheck) {
+                const seanLabel = seanCheck.closest('.app-check');
+                if (type === 'individual') {
+                    seanLabel.style.display = '';
+                } else {
+                    seanLabel.style.display = 'none';
+                    seanCheck.checked = false;
+                    seanLabel.classList.remove('checked');
+                }
             }
         }
 
@@ -1985,9 +2006,17 @@
             editingClientId = clientId;
             document.getElementById('editAppsClientName').textContent = client.name;
 
+            // SEAN AI is only for individual clients
+            const isIndividual = (client.client_type || '').toLowerCase() === 'individual';
+
             // Set checkboxes
             document.querySelectorAll('#editAppsCheckboxes .app-check').forEach(label => {
                 const cb = label.querySelector('input');
+                if (cb.value === 'sean') {
+                    label.style.display = isIndividual ? '' : 'none';
+                    if (!isIndividual) { cb.checked = false; label.classList.remove('checked'); }
+                    return;
+                }
                 const isLinked = client.apps && client.apps.includes(cb.value);
                 cb.checked = isLinked;
                 label.classList.toggle('checked', isLinked);
@@ -2289,8 +2318,7 @@
         const DEMO_APPS = [
             { key: 'pos',        name: 'Checkout Charlie', subtitle: 'Point of Sale',      icon: '&#128722;', color: '#667eea' },
             { key: 'payroll',    name: 'Lorenco Paytime',  subtitle: 'Payroll Management',  icon: '&#128176;', color: '#f093fb' },
-            { key: 'accounting', name: 'Lorenco Accounting', subtitle: 'General Ledger',    icon: '&#128200;', color: '#4facfe' },
-            { key: 'sean',       name: 'SEAN AI',          subtitle: 'Smart Assistant',     icon: '&#129302;', color: '#43e97b' }
+            { key: 'accounting', name: 'Lorenco Accounting', subtitle: 'General Ledger',    icon: '&#128200;', color: '#4facfe' }
         ];
 
         function getDemos() {
