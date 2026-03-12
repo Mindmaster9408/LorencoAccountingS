@@ -34,7 +34,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { authenticateToken, requireSuperAdmin, requirePermission } = require('../middleware/auth');
-const IRP5Learning = require('../irp5-learning');
+const IRP5Learning = require('./irp5-learning');
 
 // All routes in this file require a valid JWT
 router.use(authenticateToken);
