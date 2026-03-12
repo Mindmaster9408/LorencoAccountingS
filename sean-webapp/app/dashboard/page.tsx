@@ -100,6 +100,9 @@ export default function DashboardPage() {
               <Link href="/allocations" className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition">
                 Allocations
               </Link>
+              <Link href="/paytime" className="px-4 py-2 bg-indigo-500/80 hover:bg-indigo-500 rounded-lg transition font-medium">
+                Paytime IRP5
+              </Link>
             </div>
           </div>
         </div>

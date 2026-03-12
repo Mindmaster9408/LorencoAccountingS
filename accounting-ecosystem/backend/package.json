@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "schema": "node -e \"const fs=require('fs'); console.log(fs.readFileSync('./database/schema.sql','utf8'));\""
+    "schema": "node -e \"const fs=require('fs'); console.log(fs.readFileSync('./database/schema.sql','utf8'));\"",
+    "test": "jest --testPathPatterns=tests/ --runInBand",
+    "test:watch": "jest --testPathPatterns=tests/ --runInBand --watch"
   },
   "keywords": [
     "pos",
@@ -42,6 +44,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "jest": "^30.3.0",
     "nodemon": "^3.0.1"
   }
 }

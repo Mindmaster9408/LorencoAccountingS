@@ -723,4 +723,9 @@ router.get('/import/:importId', async (req, res) => {
   }
 });
 
+// ─── Mount Paytime IRP5 Learning Routes ─────────────────────────────────────
+// All routes prefixed with /paytime (so full path: /api/sean/paytime/...)
+const irp5Routes = require('./irp5-routes');
+router.use('/paytime', irp5Routes);
+
 module.exports = router;
