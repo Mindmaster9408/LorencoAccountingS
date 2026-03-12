@@ -1,4 +1,0 @@
-{
-  "start_command": "node backend/server.js",
-  "cache_dependencies": true
-}
