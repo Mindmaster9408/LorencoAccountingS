@@ -100,27 +100,160 @@
         }
     }());
 
+    // ── Offline write queue ────────────────────────────────────────────────────
+    // Writes are NEVER dropped. When the cloud is unreachable, operations are
+    // queued here and automatically replayed when the connection returns.
+    var _pendingWrites = [];   // { type:'set'|'remove', key, value }
+
+    function _enqueue(op) {
+        var i = _pendingWrites.findIndex(function(w) { return w.key === op.key; });
+        if (i >= 0) { _pendingWrites[i] = op; } else { _pendingWrites.push(op); }
+        _showOfflineBanner();
+    }
+
+    function _flushQueue() {
+        if (!_pendingWrites.length) return;
+        var queue = _pendingWrites.slice();
+        _pendingWrites = [];
+        console.log('%c\uD83D\uDD04 Paytime ACCOUNTING: flushing ' + queue.length + ' pending write(s) to cloud', 'color:#fd7e14;font-weight:bold;');
+        queue.forEach(function(op) {
+            if      (op.type === 'set')    { _netSet(op.key, op.value); }
+            else if (op.type === 'remove') { _netDel(op.key); }
+        });
+        _hideOfflineBanner();
+    }
+
+    // ── Offline banner ─────────────────────────────────────────────────────────
+    function _showOfflineBanner() {
+        if (document.getElementById('_acctOfflineBanner')) return;
+        var b = document.createElement('div');
+        b.id = '_acctOfflineBanner';
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#e74c3c;' +
+            'color:#fff;text-align:center;padding:10px 16px;font-size:14px;font-weight:600;' +
+            'font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);';
+        b.innerHTML = '\u26A0\uFE0F <strong>Cloud connection lost.</strong> ' +
+            'Changes are held locally and will sync automatically when restored.';
+        function _att() { if (document.body) document.body.prepend(b); }
+        if (document.body) { _att(); } else { document.addEventListener('DOMContentLoaded', _att); }
+    }
+
+    function _hideOfflineBanner() {
+        var b = document.getElementById('_acctOfflineBanner');
+        if (b) b.remove();
+        var f = document.createElement('div');
+        f.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#28a745;' +
+            'color:#fff;text-align:center;padding:10px 16px;font-size:14px;font-weight:600;font-family:sans-serif;';
+        f.textContent = '\u2705 Cloud connection restored. All changes synced.';
+        function _attF() {
+            if (!document.body) return;
+            document.body.prepend(f);
+            setTimeout(function() { if (f.parentNode) f.remove(); }, 3000);
+        }
+        if (document.body) { _attF(); } else { document.addEventListener('DOMContentLoaded', _attF); }
+    }
+
+    // ── Reconnect poller (every 30 s while offline) ───────────────────────────
+    var _reconnTimer = null;
+    function _startReconnect() {
+        if (_reconnTimer) return;
+        _reconnTimer = setInterval(function() {
+            var tok = _tok();
+            if (!tok) return;
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', KV, true);
+            xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        var fresh = JSON.parse(xhr.responseText) || {};
+                        var pendingKeys = _pendingWrites.reduce(function(s,w) { s[w.key]=true; return s; }, {});
+                        Object.keys(fresh).forEach(function(k) {
+                            if (!pendingKeys[k]) _cache[k] = fresh[k];
+                        });
+                    } catch(_) {}
+                    _online = true;
+                    clearInterval(_reconnTimer);
+                    _reconnTimer = null;
+                    console.log('%c\u2705 Paytime ACCOUNTING: cloud reconnected', 'color:#28a745;font-weight:bold;');
+                    _flushQueue();
+                }
+            };
+            xhr.send(null);
+        }, 30000);
+    }
+
+    // ── Network-level PUT / DELETE ─────────────────────────────────────────────
+    function _netSet(key, val) {
+        var x = new XMLHttpRequest();
+        x.open('PUT', KV + '/' + encodeURIComponent(key), true);
+        x.setRequestHeader('Content-Type', 'application/json');
+        var t = _tok();
+        if (t) x.setRequestHeader('Authorization', 'Bearer ' + t);
+        x.onload = function() {
+            if (x.status < 200 || x.status >= 300) {
+                console.error('Cloud write server error ' + x.status + ' key=' + key);
+                _enqueue({ type: 'set', key: key, value: val });
+                _online = false;
+                _startReconnect();
+            }
+        };
+        x.onerror = function() {
+            console.warn('Cloud write network error — queuing key=' + key);
+            _enqueue({ type: 'set', key: key, value: val });
+            _online = false;
+            _startReconnect();
+        };
+        x.send(JSON.stringify({ value: val }));
+    }
+
+    function _netDel(key) {
+        var x = new XMLHttpRequest();
+        x.open('DELETE', KV + '/' + encodeURIComponent(key), true);
+        var t = _tok();
+        if (t) x.setRequestHeader('Authorization', 'Bearer ' + t);
+        x.onerror = function() {
+            _enqueue({ type: 'remove', key: key });
+            _online = false;
+            _startReconnect();
+        };
+        x.send(null);
+    }
+
     function _cloudSet(key, val) {
-        if (!_online) return;
-        try {
-            var x = new XMLHttpRequest();
-            x.open('PUT', KV + '/' + encodeURIComponent(key), true);
-            x.setRequestHeader('Content-Type', 'application/json');
-            var t = _tok();
-            if (t) x.setRequestHeader('Authorization', 'Bearer ' + t);
-            x.send(JSON.stringify({ value: val }));
-        } catch(e) { console.warn('Cloud write failed:', key, e.message); }
+        if (!_online) { _enqueue({ type: 'set',    key: key, value: val }); return; }
+        _netSet(key, val);
     }
 
     function _cloudDel(key) {
-        if (!_online) return;
+        if (!_online) { _enqueue({ type: 'remove', key: key }); return; }
+        _netDel(key);
+    }
+
+    // ── Per-company key namespacing ───────────────────────────────────────────
+    // ARCHITECTURE RULE: Every business data key is transparently prefixed with
+    // "acct_<companyId>_" so each company's data is fully isolated in the KV
+    // store — exactly the same model as Paytime (payroll) uses.
+    //
+    // Pages do NOT need to know about this; they simply call
+    //   safeLocalStorage.setItem('journals', ...) and the storage layer
+    //   silently writes "acct_<companyId>_journals" to Supabase.
+    //
+    // The active company id is read from native localStorage (LOCAL_KEYS) where
+    // the auth layer stores it on login / company-switch.
+    function _companyId() {
         try {
-            var x = new XMLHttpRequest();
-            x.open('DELETE', KV + '/' + encodeURIComponent(key), true);
-            var t = _tok();
-            if (t) x.setRequestHeader('Authorization', 'Bearer ' + t);
-            x.send();
-        } catch(e) {}
+            return _nGet('activeCompanyId') || _nGet('selectedCompanyId') || '';
+        } catch(e) { return ''; }
+    }
+
+    // Returns the full namespaced key for business-data writes/reads.
+    // Local (auth/UI) keys are returned unchanged.
+    function _nsKey(k) {
+        if (_isLocal(k)) return k;
+        var cid = _companyId();
+        if (!cid) return k;                       // not yet logged in
+        var pfx = 'acct_' + cid + '_';
+        return k.indexOf(pfx) === 0 ? k : pfx + k;   // avoid double-prefix
     }
 
     // ── safeLocalStorage (public API) ─────────────────────────────────────────
@@ -131,11 +264,12 @@
                 try { _nSet(key, value); } catch(e) {}  // use native ref
                 return true;
             }
+            var nsKey = _nsKey(key);
             var parsed;
             try { parsed = (typeof value === 'string') ? JSON.parse(value) : value; }
             catch(e) { parsed = value; }
-            _cache[key] = parsed;
-            _cloudSet(key, parsed);
+            _cache[nsKey] = parsed;
+            _cloudSet(nsKey, parsed);
             return true;
         },
 
@@ -143,8 +277,9 @@
             if (_isLocal(key)) {
                 try { return _nGet(key); } catch(e) { return null; } // native ref
             }
-            if (!Object.prototype.hasOwnProperty.call(_cache, key)) return null;
-            var v = _cache[key];
+            var nsKey = _nsKey(key);
+            if (!Object.prototype.hasOwnProperty.call(_cache, nsKey)) return null;
+            var v = _cache[nsKey];
             if (v === null || v === undefined) return null;
             if (typeof v === 'string') return v;
             return JSON.stringify(v);
@@ -155,8 +290,9 @@
                 try { _nDel(key); } catch(e) {}  // native ref
                 return true;
             }
-            delete _cache[key];
-            _cloudDel(key);
+            var nsKey = _nsKey(key);
+            delete _cache[nsKey];
+            _cloudDel(nsKey);
             return true;
         },
 
@@ -164,7 +300,11 @@
             Object.keys(LOCAL_KEYS).forEach(function (k) {
                 try { _nDel(k); } catch(e) {}  // native ref
             });
-            _cache = {};
+            // Only wipe keys belonging to the current company
+            var pfx = 'acct_' + _companyId() + '_';
+            Object.keys(_cache).forEach(function(k) {
+                if (k.indexOf(pfx) === 0) delete _cache[k];
+            });
         },
 
         // Reload all company data from cloud (use after switching companies)
@@ -187,6 +327,14 @@
             });
         },
 
+        // ── Enumeration — iterates only current company's keys ────────────────
+        // Allows patterns like: for (var i = 0; i < safeLocalStorage.length; i++)
+        key: function (i) {
+            var pfx  = 'acct_' + _companyId() + '_';
+            var keys = Object.keys(_cache).filter(function(k) { return k.indexOf(pfx) === 0; });
+            return (i >= 0 && i < keys.length) ? keys[i].slice(pfx.length) : null;
+        },
+
         cleanup:            function () {},
         getUsageInfo:       function () {
             return { keys: Object.keys(_cache).length, percentage: 0,
@@ -195,6 +343,15 @@
         _checkAvailability: function () { return true; },
         _serverOnline:      function () { return _online; }
     };
+
+    // Expose .length as live count of current company's keys
+    Object.defineProperty(window.safeLocalStorage, 'length', {
+        get: function () {
+            var pfx = 'acct_' + _companyId() + '_';
+            return Object.keys(_cache).filter(function(k) { return k.indexOf(pfx) === 0; }).length;
+        },
+        configurable: true
+    });
 
     // ── Monkey-patch native localStorage ─────────────────────────────────────
     // Intercepts ALL direct localStorage.getItem / setItem / removeItem calls

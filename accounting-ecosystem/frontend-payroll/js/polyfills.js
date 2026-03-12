@@ -193,8 +193,23 @@
                      available: true, cloudBacked: _online };
         },
         _checkAvailability: function () { return true; },
-        _serverOnline:      function () { return _online; }
+        _serverOnline:      function () { return _online; },
+
+        // ── Enumeration (needed by PayrollEngine.getHistoricalPeriods) ────────
+        // safeLocalStorage stores payroll data in _cache (cloud-backed).
+        // .length and .key(i) allow code written for native localStorage iteration
+        // to work transparently over the cloud-backed cache.
+        key: function (i) {
+            var keys = Object.keys(_cache);
+            return (i >= 0 && i < keys.length) ? keys[i] : null;
+        }
     };
+
+    // Expose .length as a live getter over _cache keys
+    Object.defineProperty(window.safeLocalStorage, 'length', {
+        get: function () { return Object.keys(_cache).length; },
+        configurable: true
+    });
 
     // ── Monkey-patch native localStorage ─────────────────────────────────────
     // Intercepts ALL direct localStorage.getItem / setItem / removeItem calls

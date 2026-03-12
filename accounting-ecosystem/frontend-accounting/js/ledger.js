@@ -24,8 +24,26 @@
 (function installEcoAccountingLocalStorageBridge() {
     'use strict';
 
-    if (window.__ecoAccountingBridgeInstalled) return;
-    window.__ecoAccountingBridgeInstalled = true;
+    // ── Defer to polyfills.js when it already owns the storage bridge ─────────
+    // polyfills.js is the authoritative Supabase-backed, per-company-isolated
+    // storage layer for this app. It sets window.__cloudStorageInstalled = true
+    // and monkey-patches localStorage.* with full company-id namespacing,
+    // offline write queue, and reconnect polling.
+    //
+    // If polyfills.js loaded first (the correct order on every page), this
+    // entire bridge is a no-op. If somehow this script loads first, the bridge
+    // installs as a fallback and polyfills.js will replace it when it loads.
+    if (window.__cloudStorageInstalled) {
+        // polyfills.js is already in charge — nothing to do.
+        window._ecoAccountingKvOnline      = !!(window.safeLocalStorage && window.safeLocalStorage._serverOnline());
+        window._ecoAccountingKvCache       = {};   // unused; kept for compat
+        window._ecoAccountingKvBridgeReady = true;
+        setTimeout(function() {
+            window.dispatchEvent(new CustomEvent('ecoAccountingBridgeReady',
+                { detail: { online: window._ecoAccountingKvOnline } }));
+        }, 0);
+        return;
+    }
 
     var KV_URL = window.location.origin + '/api/accounting/kv';
 

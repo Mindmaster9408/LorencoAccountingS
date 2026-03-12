@@ -169,6 +169,50 @@
         /* Save status */
         .save-status { font-size: 12px; color: #28a745; font-style: italic; margin-left: 10px; }
 
+        /* ── YEAR STATUS GRID ── */
+        .year-status-grid { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; }
+        .year-status-card {
+            border-radius: 10px; padding: 14px 20px; min-width: 145px;
+            cursor: pointer; transition: all 0.2s; border: 2px solid #e0e0e0;
+            background: #f8f9fa; text-align: center; user-select: none;
+        }
+        .year-status-card:hover { border-color: #667eea; background: #f0f4ff; }
+        .year-status-card.active { border-color: #667eea; background: #f0f4ff; box-shadow: 0 2px 8px rgba(102,126,234,0.25); }
+        .year-status-card.fin { background: linear-gradient(135deg, #d4edda, #c3e6cb); border-color: #28a745; }
+        .year-status-card.fin.active { box-shadow: 0 2px 8px rgba(40,167,69,0.3); }
+        .year-status-label { font-weight: 700; font-size: 1rem; color: #333; }
+        .year-status-state { font-size: 0.72rem; margin-top: 5px; font-weight: 600; }
+        .year-status-state.pending   { color: #fd7e14; }
+        .year-status-state.finalized { color: #28a745; }
+        .year-status-state.empty     { color: #bbb; }
+
+        /* Finalized banner */
+        .fin-banner {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white; padding: 14px 22px; border-radius: 8px;
+            margin-bottom: 22px; display: flex; align-items: center;
+            justify-content: space-between; gap: 12px; flex-wrap: wrap;
+        }
+        .fin-banner-text { font-weight: 700; font-size: 0.95rem; }
+        .fin-banner-sub  { font-size: 0.8rem; opacity: 0.88; margin-top: 3px; }
+        .btn-finalize   { background: linear-gradient(135deg, #28a745, #20c997); color: white; }
+        .btn-finalize:hover { opacity: 0.9; }
+        .btn-finalize:disabled { background: #aaa; cursor: not-allowed; transform: none; }
+        .btn-unfinalize { background: rgba(255,255,255,0.25); border: 2px solid rgba(255,255,255,0.6); color: white; }
+        .btn-unfinalize:hover { background: rgba(255,255,255,0.4); }
+
+        /* Locked inputs */
+        .inputs-locked .recon-table input[type="number"] {
+            background: #f0f0f0 !important; color: #aaa !important;
+            cursor: not-allowed !important; pointer-events: none !important;
+            border-color: #ddd !important;
+        }
+        .fin-section-badge {
+            background: rgba(255,255,255,0.2); border-radius: 12px;
+            padding: 2px 10px; font-size: 11px; font-weight: 700;
+            border: 1px solid rgba(255,255,255,0.4);
+        }
+
         /* Print helpers */
         @media print {
             body { background: white; padding: 0; }
@@ -253,8 +297,21 @@
                 </div>
                 <div class="filter-group" style="flex-direction:row;align-items:flex-end;gap:10px;">
                     <button class="btn btn-primary" onclick="loadData()">🔄 Refresh</button>
+                    <button id="btn-finalize" class="btn btn-finalize" onclick="handleFinalize()" style="display:none;">🔒 Finalize Year</button>
                     <span class="save-status" id="save-status"></span>
                 </div>
+            </div>
+
+            <!-- YEAR STATUS GRID -->
+            <div id="year-status-grid" class="year-status-grid" style="display:none;"></div>
+
+            <!-- FINALIZED BANNER -->
+            <div id="fin-banner" class="fin-banner" style="display:none;">
+                <div>
+                    <div class="fin-banner-text">🔒 This tax year has been finalized</div>
+                    <div class="fin-banner-sub" id="fin-banner-sub"></div>
+                </div>
+                <button class="btn btn-sm btn-unfinalize" onclick="handleFinalize()">🔓 Unfinalize</button>
             </div>
 
             <!-- SUMMARY CARDS -->
@@ -363,6 +420,7 @@
         var empBreakdown      = [];
         var sarsData          = {};
         var bankData          = {};
+        var finalizedData     = {};   // { "2024/2025": { date: '...', user: '...' } }
 
         var saveTimer = null;
 
@@ -379,6 +437,124 @@
             loadCompaniesCarousel();
             loadData();
         });
+
+        // ─── Finalization helpers ─────────────────────────────────────────────
+        function _finalKey() { return 'recon_final_' + currentCompanyId; }
+
+        function loadFinalized() {
+            try {
+                finalizedData = JSON.parse(safeLocalStorage.getItem(_finalKey()) || '{}');
+            } catch(e) { finalizedData = {}; }
+        }
+
+        function saveFinalized() {
+            safeLocalStorage.setItem(_finalKey(), JSON.stringify(finalizedData));
+        }
+
+        function isFinalized(taxYear) {
+            return !!(finalizedData[taxYear] && finalizedData[taxYear].finalized);
+        }
+
+        // Called by both Finalize and Unfinalize buttons
+        window.handleFinalize = function() {
+            if (!currentTaxYear) return;
+            if (isFinalized(currentTaxYear)) {
+                // Unfinalize
+                if (!confirm('Remove the finalized status from ' + currentTaxYear + '? This allows editing again.')) return;
+                delete finalizedData[currentTaxYear];
+            } else {
+                // Finalize
+                if (!confirm('Finalize the PAYE Reconciliation for ' + currentTaxYear + '?\n\nInputs will be locked and this year will be marked as complete.')) return;
+                var session = AUTH.getSession ? AUTH.getSession() : {};
+                finalizedData[currentTaxYear] = {
+                    finalized: true,
+                    date: new Date().toISOString(),
+                    user: session.email || session.name || 'Unknown'
+                };
+            }
+            saveFinalized();
+            renderYearGrid();
+            updateFinalizeUI();
+            applyFinalizedLock();
+            showSaveStatus();
+        };
+
+        // Render the top year-status cards
+        function renderYearGrid() {
+            var grid = document.getElementById('year-status-grid');
+            var allYears = ReconService.getTaxYears(allPeriods);
+            if (allYears.length === 0) { grid.style.display = 'none'; return; }
+            grid.style.display = 'flex';
+            grid.innerHTML = '';
+            allYears.forEach(function(ty) {
+                var fin  = isFinalized(ty);
+                var active = (ty === currentTaxYear);
+                var card = document.createElement('div');
+                card.className = 'year-status-card' + (fin ? ' fin' : '') + (active ? ' active' : '');
+                var stateLabel = fin
+                    ? ('✓ Finalized<br><span style="font-size:0.68rem;opacity:0.8;">' + new Date(finalizedData[ty].date).toLocaleDateString('en-ZA') + '</span>')
+                    : '● Pending';
+                var stateClass = fin ? 'finalized' : 'pending';
+                card.innerHTML = '<div class="year-status-label">' + ty + '</div>'
+                    + '<div class="year-status-state ' + stateClass + '">' + stateLabel + '</div>';
+                card.onclick = (function(year) {
+                    return function() {
+                        var sel = document.getElementById('taxYearSelect');
+                        sel.value = year;
+                        onTaxYearChange();
+                    };
+                })(ty);
+                grid.appendChild(card);
+            });
+        }
+
+        // Update finalize button and banner to match current year state
+        function updateFinalizeUI() {
+            var btn    = document.getElementById('btn-finalize');
+            var banner = document.getElementById('fin-banner');
+            var sub    = document.getElementById('fin-banner-sub');
+            if (!currentTaxYear) {
+                btn.style.display = 'none';
+                banner.style.display = 'none';
+                return;
+            }
+            btn.style.display = '';
+            if (isFinalized(currentTaxYear)) {
+                var fd = finalizedData[currentTaxYear];
+                btn.textContent = '🔒 Finalized';
+                btn.classList.add('btn-finalize');
+                btn.disabled = true;
+                banner.style.display = 'flex';
+                sub.textContent = 'Finalized on ' + new Date(fd.date).toLocaleString('en-ZA') + '  •  By: ' + fd.user;
+            } else {
+                btn.textContent = '🔒 Finalize Year';
+                btn.disabled = false;
+                banner.style.display = 'none';
+            }
+        }
+
+        // Lock / unlock SARS + Bank inputs based on finalization state
+        function applyFinalizedLock() {
+            var locked = currentTaxYear && isFinalized(currentTaxYear);
+            ['section-sars', 'section-bank'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                if (locked) {
+                    el.classList.add('inputs-locked');
+                    // Update section header badge
+                    var h2 = el.querySelector('.section-header h2');
+                    if (h2 && !h2.querySelector('.fin-section-badge')) {
+                        h2.innerHTML += ' <span class="fin-section-badge">🔒 Locked</span>';
+                    }
+                } else {
+                    el.classList.remove('inputs-locked');
+                    var h2 = el.querySelector('.section-header h2');
+                    if (h2) {
+                        h2.innerHTML = h2.innerHTML.replace(/<span class="fin-section-badge">[^<]*<\/span>/g, '');
+                    }
+                }
+            });
+        }
 
         function loadCompanyName() {
             var session = AUTH.getSession();
@@ -419,8 +595,9 @@
                 employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
             } catch(e) { employees = []; }
 
-            // Get all payroll periods
+            // Get all payroll periods and finalization state
             allPeriods = PayrollEngine.getHistoricalPeriods ? PayrollEngine.getHistoricalPeriods(currentCompanyId) : [];
+            loadFinalized();
 
             // Populate tax year selector
             var taxYears = ReconService.getTaxYears(allPeriods);
@@ -430,7 +607,7 @@
             taxYears.forEach(function(ty) {
                 var opt = document.createElement('option');
                 opt.value = ty;
-                opt.textContent = ty;
+                opt.textContent = ty + (isFinalized(ty) ? ' ✓' : '');
                 select.appendChild(opt);
             });
             // Keep selection or default to most recent
@@ -439,14 +616,24 @@
             } else if (taxYears.length > 0) {
                 select.value = taxYears[taxYears.length - 1];
             }
+
+            renderYearGrid();
             onTaxYearChange();
         }
         window.loadData = loadData;
 
         function onTaxYearChange() {
             currentTaxYear = document.getElementById('taxYearSelect').value;
+
+            // Highlight active year card
+            document.querySelectorAll('.year-status-card').forEach(function(card) {
+                card.classList.toggle('active', card.querySelector('.year-status-label') &&
+                    card.querySelector('.year-status-label').textContent === currentTaxYear);
+            });
+
             if (!currentTaxYear) {
                 showEmptyState(true);
+                updateFinalizeUI();
                 return;
             }
             showEmptyState(false);
@@ -459,7 +646,9 @@
             sarsData      = ReconService.loadSARSValues(currentCompanyId);
             bankData      = ReconService.loadBankValues(currentCompanyId);
 
+            updateFinalizeUI();
             renderAll();
+            applyFinalizedLock();
         }
         window.onTaxYearChange = onTaxYearChange;
 
@@ -815,6 +1004,11 @@
             var period = el.getAttribute('data-period');
             var field  = el.getAttribute('data-field');
             if (!table || !period || !field) return;
+            // Block edits when year is finalized
+            if (currentTaxYear && isFinalized(currentTaxYear)) {
+                e.preventDefault();
+                return;
+            }
 
             var val = parseFloat(el.value) || 0;
             var targetData = (table === 'sars') ? sarsData : bankData;

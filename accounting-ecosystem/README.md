@@ -2,7 +2,99 @@
 
 Unified modular backend and frontends for the Lorenco business suite.
 
-## Architecture
+---
+
+## ══════════════════════════════════════════════════════
+## ARCHITECTURAL PRINCIPLES — READ BEFORE BUILDING ANY APP
+## ══════════════════════════════════════════════════════
+
+These rules apply to **every** app in this ecosystem (current and future),
+excluding the Sean AI webapp and the Coaching app which have their own models.
+
+### 1. Supabase-first — NEVER browser localStorage for business data
+
+> **Rule: All business data lives in Supabase. Browser localStorage is reserved
+> for auth tokens and UI preferences ONLY.**
+
+Every frontend app MUST load `js/polyfills.js` as its **first** `<script>` tag.
+This script:
+- Intercepts `localStorage.*` calls so nothing is accidentally stored locally.
+- Provides `window.safeLocalStorage` — a cloud-backed storage API that
+  transparently writes all business data to Supabase via the `/api/<module>/kv` endpoint.
+- Stores only auth tokens (`token`, `session`, etc.) and UI preferences
+  (`theme`, `darkMode`, etc.) in native browser localStorage.
+
+**When building a new app:**
+```js
+// ✅ CORRECT — cloud-backed, Supabase-stored
+safeLocalStorage.setItem('invoices', JSON.stringify(data));
+
+// ❌ WRONG — data stays in the browser, lost on logout or different device
+localStorage.setItem('invoices', JSON.stringify(data));
+```
+
+### 2. Per-client isolation — every company's data is fully separated
+
+> **Rule: Each company (client) has its own isolated data namespace. No two
+> companies can ever see each other's data.**
+
+Each app achieves this differently but the result is the same:
+
+| App | Isolation method |
+|-----|-----------------|
+| **Paytime (Payroll)** | All storage keys prefixed with `company_id` (e.g. `employees_<uuid>`) |
+| **Accounting** | `polyfills.js` auto-prefixes all keys with `acct_<companyId>_` |
+| **POS (Checkout Charlie)** | All data goes via REST API; backend enforces `company_id` row-level security |
+| **New apps** | Must follow one of the above two patterns — see §4 |
+
+The user selects a company at login → `activeCompanyId` is stored in localStorage
+(a LOCAL_KEY) → all subsequent data operations are scoped to that company_id automatically.
+
+### 3. Auth model
+
+All apps use JWT authentication against `/api/auth/*`:
+- Login → receive JWT + company list → store JWT in native localStorage
+- Every API call carries `Authorization: Bearer <token>`
+- Backend middleware (`backend/middleware/auth.js`) validates the JWT and
+  attaches `req.user` + `req.companyId` to every request
+- Frontend `js/auth.js` provides `AUTH.requireAuth()`, `AUTH.getSession()`,
+  `AUTH.logout()`
+
+### 4. Rules for building a new app in this ecosystem
+
+When a new module/app is added (e.g. "HR", "Fleet", "CRM"), it **MUST**:
+
+1. **Start with Supabase tables** — design the schema in `database/schema.sql`
+   with `company_id` foreign key on every business table before writing any frontend code.
+
+2. **Create a backend module** in `backend/modules/<name>/` with:
+   - A KV endpoint: `GET/PUT/DELETE /api/<name>/kv` (same pattern as payroll/accounting)
+   - All business routes scoped to `req.companyId`
+
+3. **Copy `polyfills.js`** from an existing app (payroll or accounting) as the
+   base and update the `KV` constant to `/api/<name>/kv`.
+
+4. **Load `polyfills.js` first** on every HTML page — before any other script.
+
+5. **Never** use raw `localStorage` for business data — ever.
+   The monkey-patch in `polyfills.js` will catch most accidental uses,
+   but be intentional: always use `safeLocalStorage.*`.
+
+6. **App structure template:**
+   ```
+   frontend-<name>/
+   ├── js/
+   │   ├── polyfills.js   ← copy from payroll, update KV constant
+   │   ├── auth.js        ← copy from payroll (shared auth model)
+   │   └── <feature>.js
+   ├── css/
+   ├── index.html         ← first script: <script src="js/polyfills.js">
+   └── login.html
+   ```
+
+---
+
+## App Directory
 
 ```
 accounting-ecosystem/
@@ -25,9 +117,11 @@ accounting-ecosystem/
 │   └── modules/
 │       ├── pos/                # Checkout Charlie POS
 │       ├── payroll/            # Lorenco Paytime Payroll
-│       └── accounting/         # General Accounting (placeholder)
-├── frontend-pos/               # POS frontend (single-page app)
-├── frontend-payroll/           # Payroll frontend (multi-page app)
+│       └── accounting/         # General Accounting
+├── frontend-pos/               # POS — API-driven, Supabase-backed
+├── frontend-payroll/           # Payroll — KV-backed, per-company keyed
+├── frontend-accounting/        # Accounting — KV-backed, auto-namespaced
+├── frontend-ecosystem/         # Ecosystem navigator/dashboard
 ├── database/
 │   └── schema.sql              # Unified Supabase schema
 └── .env.example                # Environment template
@@ -35,11 +129,11 @@ accounting-ecosystem/
 
 ## Modules
 
-| Module | Name | Status | Route Prefix |
-|--------|------|--------|-------------|
-| POS | Checkout Charlie | **Active** | `/api/pos/*` |
-| Payroll | Lorenco Paytime | Disabled | `/api/payroll/*` |
-| Accounting | General Ledger | Disabled | `/api/accounting/*` |
+| Module | Name | Route Prefix | Storage |
+|--------|------|-------------|---------|
+| POS | Checkout Charlie | `/api/pos/*` | Supabase tables via REST API |
+| Payroll | Lorenco Paytime | `/api/payroll/*` | Supabase KV, keys prefixed `company_id` |
+| Accounting | General Ledger | `/api/accounting/*` | Supabase KV, keys auto-prefixed `acct_<cid>_` |
 
 Modules are enabled/disabled via environment variables. Disabled modules return 403 for all routes.
 
