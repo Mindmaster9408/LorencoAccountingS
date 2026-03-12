@@ -33,7 +33,7 @@
 const express = require('express');
 const router  = express.Router();
 
-const { authenticateToken, requireSuperAdmin, requirePermission } = require('../../middleware/auth');
+const { authenticateToken, requireSuperAdmin, requirePermission } = require('../middleware/auth');
 const IRP5Learning = require('../irp5-learning');
 
 // All routes in this file require a valid JWT
@@ -327,7 +327,7 @@ router.get('/log', requireSuperAdmin, async (req, res) => {
 // ─── Helper — inline Supabase access ─────────────────────────────────────────
 
 function supabaseQuery() {
-  const { supabase } = require('../../config/database');
+  const { supabase } = require('../config/database');
   return supabase;
 }
 
