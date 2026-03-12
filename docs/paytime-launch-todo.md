@@ -381,7 +381,82 @@ Architecture/Confirmation needed:
   PT-06  Sean background learning
   PT-14  Sean architecture
   PT-15  Superuser Sean activation control
+  SEAN-01  Learning Event Capture
+  SEAN-02  Knowledge Store
+  SEAN-03  Proposal Engine
+  SEAN-04  Approval Workflow UI
+  SEAN-05  Propagation Engine
+  SEAN-06  Exception Reporter
+  SEAN-07  Audit Trail
 ```
+
+---
+
+## SECTION — Sean IRP5 Learning System (Future Build)
+
+**Status**: ⛔ Not started — build only when explicitly instructed  
+**Priority**: 🔵 Architecture  
+**Governed by**: `CLAUDE.md` Part B (Rules B1–B11)  
+**Starting use case**: Paytime payroll items → IRP5 code alignment across clients
+
+These items must be built in the order listed. Do not build any component unless explicitly asked.
+
+---
+
+### SEAN-01 — Learning Event Capture
+**Status**: ⛔ Not started  
+**Description**: Backend API endpoint that records an IRP5 code change event whenever a payroll item's IRP5 code is inserted or changed in Paytime.  
+**Data to capture**: client/company, payroll item name, item category, previous IRP5 code, new IRP5 code, whether user-set, user identity, timestamp, standardization candidate flag.  
+**Target**: `sean_learning_events` table in Supabase.
+
+---
+
+### SEAN-02 — Knowledge Store
+**Status**: ⛔ Not started  
+**Description**: Structured storage of learned standard mappings. Maps item meaning → IRP5 code with confidence scores (based on how many clients use the same code) and source counts.  
+**Target**: `sean_knowledge` table in Supabase.  
+**Rule**: Must be keyed on item *meaning* (normalized), not raw item name — "Commission", "Comm.", "Monthly Commission" all map to the same meaning.
+
+---
+
+### SEAN-03 — Proposal Engine
+**Status**: ⛔ Not started  
+**Description**: Query engine that, for a given approved mapping, finds all companies where that payroll item exists AND the IRP5 code is null/blank/missing.  
+**Output**: Two lists — (1) clients eligible for propagation (missing code), (2) clients with a conflicting existing code (exceptions, must not be auto-updated).  
+**Rule**: Both lists must always be presented together. Never show only the eligible list.
+
+---
+
+### SEAN-04 — Approval Workflow UI
+**Status**: ⛔ Not started  
+**Description**: Super-admin UI for reviewing Sean's proposed mappings. Shows the proposed standard mapping, the list of missing-code clients, and the exception list with their existing codes.  
+**Authorized users only**: Super-admin role required.  
+**Actions**: Approve propagation for missing-code clients | Skip | View exceptions separately.  
+**Rule**: Approval may only trigger propagation for missing-code clients. Exception clients are excluded regardless of the approval action.
+
+---
+
+### SEAN-05 — Propagation Engine
+**Status**: ⛔ Not started  
+**Description**: Applies approved mappings to missing-code clients only.  
+**Hard rule before every write**: Verify the target IRP5 code field is still null/blank at write time (race condition guard). If it has been populated since the proposal was generated, skip that client and log the skip.  
+**Rule**: Must never overwrite an existing populated IRP5 code under any circumstances.
+
+---
+
+### SEAN-06 — Exception Reporter
+**Status**: ⛔ Not started  
+**Description**: Surfaces clients with conflicting existing IRP5 codes as a separate review list. Each exception shows: client name, payroll item name, existing IRP5 code, Sean's suggested standard code.  
+**Rule**: These clients must be reviewed individually through a separate deliberate process — they are never auto-updated.
+
+---
+
+### SEAN-07 — Audit Trail
+**Status**: ⛔ Not started  
+**Description**: Records every propagation action.  
+**Data to capture**: what item mapping was applied, which client was updated, who the authorizing super-admin was, timestamp, previous value (null), new value written.  
+**Target**: `sean_propagation_log` table in Supabase.  
+**Rule**: Every write by the Propagation Engine must produce an audit log entry. No silent changes.
 
 ---
 
