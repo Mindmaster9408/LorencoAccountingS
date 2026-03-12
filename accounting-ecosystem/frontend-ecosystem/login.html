@@ -1126,7 +1126,8 @@
 
                 localStorage.setItem('eco_token', data.token);
                 localStorage.setItem('eco_user', JSON.stringify(data.user));
-                if (data.companies) localStorage.setItem('eco_companies', JSON.stringify(data.companies));
+                // Always overwrite eco_companies — never leave stale data from a previous session
+                localStorage.setItem('eco_companies', JSON.stringify(data.companies || []));
                 if (data.user?.isSuperAdmin) localStorage.setItem('eco_super_admin', 'true');
                 else localStorage.removeItem('eco_super_admin');
                 window.location.href = '/dashboard';

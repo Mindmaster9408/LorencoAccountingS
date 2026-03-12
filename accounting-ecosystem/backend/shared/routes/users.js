@@ -27,21 +27,49 @@ router.get('/', requirePermission('USERS.VIEW'), async (req, res) => {
   try {
     const companyId = req.companyId;
 
-    const { data, error } = await supabase
-      .from('user_company_access')
-      .select(`
-        role, is_primary,
-        users:user_id (id, username, email, full_name, is_active, created_at, last_login_at)
-      `)
-      .eq('company_id', companyId)
-      .eq('is_active', true);
+    const [accessResult, appAccessResult, clientAccessResult] = await Promise.all([
+      supabase
+        .from('user_company_access')
+        .select(`
+          role, is_primary,
+          users:user_id (id, username, email, full_name, is_active, created_at, last_login_at)
+        `)
+        .eq('company_id', companyId)
+        .eq('is_active', true),
+      supabase
+        .from('user_app_access')
+        .select('user_id, app_key')
+        .eq('company_id', companyId),
+      supabase
+        .from('user_client_access')
+        .select('user_id, eco_client_id')
+        .eq('company_id', companyId),
+    ]);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (accessResult.error) return res.status(500).json({ error: accessResult.error.message });
 
-    const users = (data || []).filter(d => d.users).map(d => ({
+    // Build a map: userId -> app_key[]
+    const appsByUser = {};
+    for (const row of (appAccessResult.data || [])) {
+      if (!appsByUser[row.user_id]) appsByUser[row.user_id] = [];
+      appsByUser[row.user_id].push(row.app_key);
+    }
+
+    // Build a map: userId -> eco_client_id[]
+    const clientsByUser = {};
+    for (const row of (clientAccessResult.data || [])) {
+      if (!clientsByUser[row.user_id]) clientsByUser[row.user_id] = [];
+      clientsByUser[row.user_id].push(row.eco_client_id);
+    }
+
+    const users = (accessResult.data || []).filter(d => d.users).map(d => ({
       ...d.users,
       role: d.role,
       is_primary: d.is_primary,
+      // apps[] is null when no explicit restriction is set (means: access all company apps)
+      apps: appsByUser[d.users.id] || null,
+      // clients[] is null when no explicit restriction is set (means: access all company clients)
+      clients: clientsByUser[d.users.id] || null,
     }));
 
     res.json({ users });
@@ -158,11 +186,11 @@ router.get('/:id', requirePermission('USERS.VIEW'), async (req, res) => {
 
 /**
  * POST /api/users
- * Create a new user and link to current company
+ * Create a new user and link to current company, with optional per-user app access.
  */
 router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
   try {
-    const { username, email, password, full_name, role } = req.body;
+    const { username, email, password, full_name, role, apps } = req.body;
 
     if (!username || !email || !password || !full_name || !role) {
       return res.status(400).json({ error: 'username, email, password, full_name, and role are required' });
@@ -203,8 +231,26 @@ router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
       is_active: true
     });
 
+    // If specific apps were provided, record per-user app access.
+    // An empty array means "no apps" (fully restricted).
+    // Null / undefined means "use company defaults" (no restriction recorded).
+    if (Array.isArray(apps)) {
+      const VALID_APPS = ['pos', 'payroll', 'accounting', 'sean', 'coaching'];
+      const appRows = apps
+        .filter(a => VALID_APPS.includes(a))
+        .map(a => ({
+          user_id: newUser.id,
+          company_id: req.companyId,
+          app_key: a,
+          granted_by: req.user.userId,
+        }));
+      if (appRows.length > 0) {
+        await supabase.from('user_app_access').insert(appRows);
+      }
+    }
+
     await auditFromReq(req, 'CREATE', 'user', newUser.id, {
-      newValue: { username, email, full_name, role }
+      newValue: { username, email, full_name, role, apps: apps || null }
     });
 
     res.status(201).json({
@@ -213,7 +259,8 @@ router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
         username: newUser.username,
         email: newUser.email,
         full_name: newUser.full_name,
-        role
+        role,
+        apps: apps || null,
       }
     });
   } catch (err) {
@@ -266,6 +313,33 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
         .update({ role })
         .eq('user_id', userId)
         .eq('company_id', req.companyId);
+    }
+
+    // Update per-user app access if apps[] was provided in the request.
+    // apps: null/undefined = leave unchanged
+    // apps: []             = remove all restrictions (or set empty — meaning blocked from all)
+    // apps: ['pos',...]    = replace existing grants with this new set
+    const { apps } = req.body;
+    if (Array.isArray(apps)) {
+      // Delete existing app access rows for this user+company
+      await supabase
+        .from('user_app_access')
+        .delete()
+        .eq('user_id', userId)
+        .eq('company_id', req.companyId);
+
+      const VALID_APPS = ['pos', 'payroll', 'accounting', 'sean', 'coaching'];
+      const appRows = apps
+        .filter(a => VALID_APPS.includes(a))
+        .map(a => ({
+          user_id: parseInt(userId),
+          company_id: req.companyId,
+          app_key: a,
+          granted_by: req.user.userId,
+        }));
+      if (appRows.length > 0) {
+        await supabase.from('user_app_access').insert(appRows);
+      }
     }
 
     // Update company assignments if provided
@@ -367,6 +441,57 @@ router.put('/:id/password', async (req, res) => {
 
     res.json({ success: true, message: 'Password updated' });
   } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/users/:id/client-access
+ * Replace per-user eco_client grants for the current company.
+ *   clients: null/undefined = remove all restrictions (unrestricted)
+ *   clients: []             = block all clients
+ *   clients: [id, ...]      = only those eco_client_ids are visible
+ */
+router.put('/:id/client-access', requirePermission('USERS.EDIT'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const companyId = req.companyId;
+    const { clients } = req.body;
+
+    // Always clear existing grants first (replace semantics)
+    await supabase
+      .from('user_client_access')
+      .delete()
+      .eq('user_id', userId)
+      .eq('company_id', companyId);
+
+    if (Array.isArray(clients) && clients.length > 0) {
+      const rows = clients
+        .map(id => parseInt(id))
+        .filter(id => !isNaN(id))
+        .map(eco_client_id => ({
+          user_id: userId,
+          company_id: companyId,
+          eco_client_id,
+          granted_by: req.user.userId,
+        }));
+
+      if (rows.length > 0) {
+        const { error } = await supabase.from('user_client_access').insert(rows);
+        if (error) return res.status(500).json({ error: error.message });
+      }
+    }
+
+    await auditFromReq(req, 'UPDATE', 'user_client_access', userId, {
+      metadata: { clients: clients || null, company_id: companyId }
+    });
+
+    res.json({
+      success: true,
+      clients: Array.isArray(clients) && clients.length > 0 ? clients : null
+    });
+  } catch (err) {
+    console.error('PUT client-access error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

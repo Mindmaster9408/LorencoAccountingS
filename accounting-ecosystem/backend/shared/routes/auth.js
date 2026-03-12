@@ -82,50 +82,34 @@ router.post('/login', async (req, res) => {
     */
 
     // Get user's accessible companies
+    // SECURITY FIX: All users — including super admins — use user_company_access.
+    // This prevents auto-created eco_client sub-companies from appearing in
+    // the login response / company selector for any role.
     const isSuperAdmin = !!user.is_super_admin;
-    let companies, compError;
 
-    if (isSuperAdmin) {
-      // Super admins get ALL companies
-      const result = await supabase
-        .from('companies')
-        .select('id, company_name, trading_name, modules_enabled')
-        .eq('is_active', true)
-        .order('company_name');
-      companies = result.data ? result.data.map(c => ({
-        companies: c,
-        company_id: c.id,
-        role: 'super_admin',
-        is_primary: true
-      })) : [];
-      compError = result.error;
-    } else {
-      const result = await supabase
-        .from('user_company_access')
-        .select(`
-          company_id,
-          role,
-          is_primary,
-          companies:company_id (id, company_name, trading_name, modules_enabled)
-        `)
-        .eq('user_id', user.id)
-        .eq('is_active', true);
-      companies = result.data;
-      compError = result.error;
-    }
+    const { data: accessRows, error: compError } = await supabase
+      .from('user_company_access')
+      .select(`
+        company_id,
+        role,
+        is_primary,
+        companies:company_id (id, company_name, trading_name, modules_enabled)
+      `)
+      .eq('user_id', user.id)
+      .eq('is_active', true);
 
     if (compError) {
       console.error('Error fetching companies:', compError.message);
     }
 
-    const companyList = (companies || [])
+    const companyList = (accessRows || [])
       .filter(c => c.companies)
       .map(c => ({
         id: c.companies.id,
         company_name: c.companies.company_name,
         trading_name: c.companies.trading_name,
         modules_enabled: c.companies.modules_enabled,
-        role: c.role,
+        role: isSuperAdmin ? 'super_admin' : c.role,
         is_primary: c.is_primary
       }))
       .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
@@ -201,8 +185,12 @@ router.post('/register', async (req, res) => {
     const companyName = practice?.name || business?.name || company_name;
     const companyTradingName = practice?.trading_name || business?.trading_name || trading_name || companyName;
 
-    // Determine the owner role based on account type
-    const ownerRole = account_type === 'accountant' ? 'accountant' : 'business_owner';
+    // The first user who creates a company is always the owner of that company.
+    // They must have 'business_owner' role regardless of their account_type, so they
+    // can manage users, see client management, and pass canManageRole checks.
+    // 'account_type' describes the TYPE of organisation being set up — not the
+    // first user's access level within it.  Staff they add later can have any role.
+    const ownerRole = 'business_owner';
 
     let mainUser;
 
@@ -482,56 +470,39 @@ router.get('/me', authenticateToken, async (req, res) => {
  */
 router.get('/companies', authenticateToken, async (req, res) => {
   try {
-    // Check if user is super admin
     const isSuperAdmin = req.user.isSuperAdmin;
 
+    // SECURITY FIX: All users — including super admins — receive only the companies
+    // they are explicitly linked to via user_company_access.  This prevents
+    // auto-created eco_client sub-companies (orphan rows with no user_company_access)
+    // from leaking into the company selector for any user role.
+    // Super admins who need full company access should use the admin panel (/admin).
     let list;
 
-    if (isSuperAdmin) {
-      // Super admins see ALL active companies
-      const { data: allCompanies, error } = await supabase
-        .from('companies')
-        .select('id, company_name, trading_name, modules_enabled')
-        .eq('is_active', true)
-        .order('company_name');
+    const { data: accessRows, error } = await supabase
+      .from('user_company_access')
+      .select(`
+        company_id, role, is_primary,
+        companies:company_id (id, company_name, trading_name, modules_enabled)
+      `)
+      .eq('user_id', req.user.userId)
+      .eq('is_active', true);
 
-      if (error) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-
-      list = (allCompanies || []).map(c => ({
-        id: c.id,
-        company_name: c.company_name,
-        trading_name: c.trading_name,
-        modules_enabled: c.modules_enabled,
-        role: 'super_admin',
-        is_primary: false,
-      }));
-    } else {
-      const { data: companies, error } = await supabase
-        .from('user_company_access')
-        .select(`
-          company_id, role, is_primary,
-          companies:company_id (id, company_name, trading_name, modules_enabled)
-        `)
-        .eq('user_id', req.user.userId)
-        .eq('is_active', true);
-
-      if (error) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-
-      list = (companies || [])
-        .filter(c => c.companies)
-        .map(c => ({
-          id: c.companies.id,
-          company_name: c.companies.company_name,
-          trading_name: c.companies.trading_name,
-          modules_enabled: c.companies.modules_enabled,
-          role: c.role,
-          is_primary: c.is_primary,
-        }));
+    if (error) {
+      return res.status(500).json({ error: 'Database error' });
     }
+
+    list = (accessRows || [])
+      .filter(r => r.companies)
+      .map(r => ({
+        id: r.companies.id,
+        company_name: r.companies.company_name,
+        trading_name: r.companies.trading_name,
+        modules_enabled: r.companies.modules_enabled,
+        // Super admins always surface as 'super_admin' in the role field for UI rendering
+        role: isSuperAdmin ? 'super_admin' : r.role,
+        is_primary: r.is_primary,
+      }));
 
     res.json({ companies: list });
   } catch (err) {
@@ -592,12 +563,55 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
         .eq('user_id', user.id)
         .eq('company_id', resolvedCompanyId)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
       if (!access) {
-        return res.status(403).json({ error: 'You do not have access to this company' });
+        // No direct company membership — check if the target company is a client company
+        // managed by a practice the user belongs to.  This lets accountants / business
+        // owners SSO into a client's isolated company without needing a direct
+        // user_company_access row for that client company.
+        //
+        // SECURITY FIX: restrict the eco_clients lookup to practices the user actually
+        // belongs to.  Without this filter any eco_client in the system could satisfy
+        // the chain, potentially granting access to a client owned by a DIFFERENT firm.
+        const { data: userPractices } = await supabase
+          .from('user_company_access')
+          .select('company_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+        const practiceIds = (userPractices || []).map(r => r.company_id);
+
+        const { data: ecoClient } = practiceIds.length > 0
+          ? await supabase
+              .from('eco_clients')
+              .select('id, company_id')
+              .eq('client_company_id', resolvedCompanyId)
+              .in('company_id', practiceIds)   // Only eco_clients managed by THIS user's own firms
+              .eq('is_active', true)
+              .maybeSingle()
+          : { data: null };
+
+        if (ecoClient) {
+          const { data: practiceAccess } = await supabase
+            .from('user_company_access')
+            .select('role')
+            .eq('user_id', user.id)
+            .eq('company_id', ecoClient.company_id)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          const ALLOWED_CROSS_ROLES = ['business_owner', 'accountant', 'super_admin', 'store_manager'];
+          if (!practiceAccess || !ALLOWED_CROSS_ROLES.includes(practiceAccess.role)) {
+            return res.status(403).json({ error: 'You do not have access to this company' });
+          }
+          // Use the user's role from their managing practice
+          role = practiceAccess.role;
+        } else {
+          return res.status(403).json({ error: 'You do not have access to this company' });
+        }
+      } else {
+        role = access.role;
       }
-      role = access.role;
     } else {
       const { data: accessList } = await supabase
         .from('user_company_access')
@@ -624,6 +638,28 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
     }
     if (!company) {
       return res.status(400).json({ error: 'No active company found. Please create or join a company first.' });
+    }
+
+    // Per-user app access gate — mirrors module-check.js Tier 3.
+    // If the user has explicit app grants for this (user, company) pair,
+    // the requested targetApp must be in that set.
+    // Zero rows = unrestricted (backward-compatible default).
+    if (!user.is_super_admin && resolvedCompanyId) {
+      const { data: appRows } = await supabase
+        .from('user_app_access')
+        .select('app_key')
+        .eq('user_id', user.id)
+        .eq('company_id', resolvedCompanyId);
+
+      if (appRows && appRows.length > 0) {
+        const grantedApps = appRows.map(r => r.app_key);
+        if (!grantedApps.includes(targetApp)) {
+          return res.status(403).json({
+            error: `You do not have access to the ${targetApp} app. Contact your administrator.`,
+            module: targetApp,
+          });
+        }
+      }
     }
 
     const appToken = jwt.sign({

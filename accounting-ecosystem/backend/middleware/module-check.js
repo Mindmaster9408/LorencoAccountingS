@@ -40,6 +40,30 @@ function requireModule(moduleKey) {
       }
     }
 
+    // 3. Per-user app access check (level 3 of the 3-tier gate).
+    // Super admins are exempt.  If the user has ANY rows in user_app_access
+    // for their (userId, companyId) pair, then the requested app must be in
+    // those rows.  Zero rows means "unrestricted" (default: no restriction set).
+    if (req.user?.userId && req.companyId && !req.user?.isSuperAdmin) {
+      const { data: appRows, error: appErr } = await supabase
+        .from('user_app_access')
+        .select('app_key')
+        .eq('user_id', req.user.userId)
+        .eq('company_id', req.companyId);
+
+      if (!appErr && appRows && appRows.length > 0) {
+        const grantedApps = appRows.map(r => r.app_key);
+        if (!grantedApps.includes(moduleKey)) {
+          return res.status(403).json({
+            error: 'App access not granted',
+            module: moduleKey,
+            message: `You do not have access to the ${modules[moduleKey]?.name || moduleKey} app. Contact your administrator.`
+          });
+        }
+      }
+      // Zero rows → no restriction recorded → allow through
+    }
+
     next();
   };
 }

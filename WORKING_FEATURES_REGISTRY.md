@@ -21,6 +21,38 @@ Each entry has:
 
 ---
 
+## Ecosystem Dashboard (`accounting-ecosystem/frontend-ecosystem/`)
+
+### PERMISSION ARCHITECTURE
+
+| # | Feature | Status | Depends on | Break conditions | Last verified |
+|---|---------|--------|------------|-----------------|---------------|
+| EC1 | First-user of a new company always gets `business_owner` role | ✅ Fixed | `auth.js` POST /api/auth/register — `ownerRole = 'business_owner'` always | Re-introducing ternary that reads `account_type` for the role assignment | March 12 2026 |
+| EC2 | Per-user app access gate (3-tier) | ✅ Implemented | `module-check.js` `requireModule()` Tier 3, `user_app_access` table (migration 009) | Removing the Tier 3 block from `requireModule`, or not running migration 009 | March 12 2026 |
+| EC3 | SSO launch blocked if user lacks app access | ✅ Implemented | `auth.js` POST /api/auth/sso-launch, `user_app_access` query before jwt.sign | Removing the app-gate block added above the `jwt.sign` call | March 12 2026 |
+| EC4 | Accountant can SSO into client company without direct membership | ✅ Implemented | `auth.js` sso-launch eco_client chain: practice membership → eco_clients → client_company_id | Removing the eco_client fallback block, or changing `.maybeSingle()` back to `.single()` (throws on null) | March 12 2026 |
+| EC5 | Per-user client visibility filter | ✅ Implemented | `eco-clients.js` GET / per-user filter, `user_client_access` table (migration 010) | Removing the filter block, or not running migration 010 | March 12 2026 |
+| EC6 | `GET /api/users` returns `apps[]` and `clients[]` per user | ✅ Implemented | `users.js` Promise.all([accessResult, appAccessResult, clientAccessResult]) | Removing clientAccessResult from the parallel query, or removing `clients:` from the map | March 12 2026 |
+| EC7 | `PUT /api/users/:id/client-access` replaces client grants | ✅ Implemented | `users.js` PUT /:id/client-access route | Reordering routes so DELETE /:id/company-access is registered before this (it won't be reached) | March 12 2026 |
+| EC8 | Dashboard: app chips + client chips shown per user in Team tab | ✅ Implemented | `dashboard.html` `loadPracticeUsers()` — `appChips` var, `clientChips` var | Removing `clients` from the users API response, changing the JSON key from `clients` to anything else | March 12 2026 |
+| EC9 | Dashboard: "Apps" button opens prompt to change app access | ✅ Implemented | `dashboard.html` `changeUserApps()` → PUT /api/users/:id `{ apps }` | Changing the PUT body key from `apps` to another name | March 12 2026 |
+| EC10 | Dashboard: "Clients" button opens modal to restrict client visibility | ✅ Implemented | `dashboard.html` `changeUserClients()` + `saveUserClients()` → PUT /api/users/:id/client-access | Changing the endpoint path, or removing `eco_client_id` from `user_client_access` table | March 12 2026 |
+| EC11 | Client Management section hidden from low-privilege roles | ✅ Implemented | `dashboard.html` `CLIENT_MGMT_ROLES` check — visible to `business_owner`, `super_admin`, `store_manager`, `accountant` | Adding new roles to the ecosystem without adding them to `CLIENT_MGMT_ROLES` if visibility is intended | March 12 2026 |
+
+---
+
+## Paytime Payroll — Employee Tax Numbers (`accounting-ecosystem/frontend-payroll/`)
+
+| # | Feature | Status | Depends on | Break conditions | Last verified |
+|---|---------|--------|------------|-----------------|---------------|
+| PT1 | Tax number required on Add/Edit Employee (company-dashboard) | ✅ Fixed | `company-dashboard.html` `#tax_number` input (`required`), `saveEmployee()` collects it, `editEmployee()` populates it | Removing the `required` attribute from the input, or removing `tax_number` from the `newEmployee` object | March 12 2026 |
+| PT2 | UIF number on Add/Edit Employee (company-dashboard) | ✅ Added | `company-dashboard.html` `#uif_number` input, `saveEmployee()`, `editEmployee()` | Removing the field | March 12 2026 |
+| PT3 | Tax number required on Add/Edit Employee (employee-management) | ✅ Already existed | `employee-management.html` `#tax_number` input, `required` attribute | Removing `required` | — |
+| PT4 | UIF number on Add/Edit Employee (employee-management) | ✅ Added | `employee-management.html` `#uif_number` input, `editEmployee()`, `saveEmployee()` | Removing the field | March 12 2026 |
+| PT5 | Backend rejects employee creation without tax_number | ✅ Fixed | `employees.js` POST — `if (!tax_number) return 400` after `full_name` check | Removing or reordering the validation block | March 12 2026 |
+
+---
+
 ## Admin Panel (`accounting-ecosystem/frontend-ecosystem/admin.html`)
 
 | # | Feature | Status | Depends on | Break conditions | Last verified |
@@ -143,3 +175,8 @@ Safe to proceed? [ ] Yes — no overlap  [ ] Yes — protected by: _______  [ ] 
 9. **`selectCompany()` in auth.js MUST update `session.role`** from `result.role` — the backend returns the correct role for the selected company; if not written to session, ALL `Permissions.require()` calls fail silently (P24)
 10. **NEVER reorder routes in `eco-clients.js`** such that `/:id` appears before `/payroll-billing-summary` or `/employee-counts` — the parameterised route intercepts named sub-paths (AD5)
 11. **Migration 008 MUST be run on Supabase before deploying** the admin panel or Paytime Sean gate — `addons`, `package_name`, `last_billed_*` columns don't exist without it (AD4, AD5)
+12. **Migration 009 MUST be run before user app-restriction features are used** — `user_app_access` table must exist for Tier 3 gate and SSO gate to work (EC2, EC3)
+13. **Migration 010 MUST be run before client-restriction features are used** — `user_client_access` table must exist for `PUT /api/users/:id/client-access` and eco-clients filter (EC5, EC7)
+14. **NEVER remove `clients:` from the `users.js` GET / map result** — dashboard `loadPracticeUsers` depends on it to render client chips (EC6, EC8)
+15. **NEVER use `.single()` in the SSO accountant cross-company chain** — if the user has no direct company access, the result is null and `.single()` throws; use `.maybeSingle()` (EC4)
+16. **NEVER remove tax_number required validation from `POST /api/employees`** — employees without tax numbers break PAYE compliance (PT5)

@@ -292,6 +292,7 @@ router.get('/', async (req, res) => {
             .from('eco_clients')
             .select('*')
             .in('id', newIds)
+            .neq('company_id', effectiveCompanyId)  // defensive: never include own-firm clients via shared path
             .order('name');
 
           if (!showAll) sharedQ = sharedQ.eq('is_active', true);
@@ -303,6 +304,24 @@ router.get('/', async (req, res) => {
           }
         }
       }
+    }
+
+    // ── 3. Per-user client access filter ─────────────────────────────────────
+    // If the user has ANY rows in user_client_access for (user_id, company_id),
+    // filter to only those clients.  Zero rows = unrestricted (backward-compat).
+    // Super admins and explicit company_id query params bypass this filter.
+    if (!req.user.isSuperAdmin && req.user.userId && effectiveCompanyId && !company_id) {
+      const { data: userClientRows } = await supabase
+        .from('user_client_access')
+        .select('eco_client_id')
+        .eq('user_id', req.user.userId)
+        .eq('company_id', effectiveCompanyId);
+
+      if (userClientRows && userClientRows.length > 0) {
+        const allowedIds = new Set(userClientRows.map(r => r.eco_client_id));
+        results = results.filter(c => allowedIds.has(c.id));
+      }
+      // Zero rows: no restriction, all clients remain visible
     }
 
     let filtered = results;

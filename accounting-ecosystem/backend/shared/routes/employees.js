@@ -87,6 +87,9 @@ router.post('/', requirePermission('EMPLOYEES.CREATE'), async (req, res) => {
     if (!full_name) {
       return res.status(400).json({ error: 'full_name is required' });
     }
+    if (!tax_number) {
+      return res.status(400).json({ error: 'tax_number is required — all employees must have a SARS tax reference number for PAYE compliance' });
+    }
 
     const { data, error } = await supabase
       .from('employees')

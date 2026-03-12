@@ -559,6 +559,14 @@
                         <label style="display: block; margin-bottom: 5px; color: #555; font-weight: 600; font-size: 14px;">Tax Directive (%)</label>
                         <input type="number" id="tax_directive" min="0" max="100" step="0.01" placeholder="0 = standard PAYE" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px;">
                     </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: #555; font-weight: 600; font-size: 14px;">Tax Number <span style="color: #dc3545;">*</span></label>
+                        <input type="text" id="tax_number" maxlength="10" placeholder="e.g. 1234567890" required style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: #555; font-weight: 600; font-size: 14px;">UIF Number</label>
+                        <input type="text" id="uif_number" maxlength="20" placeholder="e.g. UF123456" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px;">
+                    </div>
                 </div>
 
                 <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
@@ -788,6 +796,8 @@
                 document.getElementById('date_appointed').value = emp.date_appointed || '';
                 document.getElementById('medical_aid_members').value = emp.medical_aid_members || '';
                 document.getElementById('tax_directive').value = emp.tax_directive || '';
+                document.getElementById('tax_number').value = emp.tax_number || '';
+                document.getElementById('uif_number').value = emp.uif_number || '';
                 document.getElementById('employeeModal').style.display = 'flex';
             }
         }
@@ -821,7 +831,9 @@
                 branch_code: document.getElementById('branch_code').value || null,
                 date_appointed: document.getElementById('date_appointed').value || null,
                 medical_aid_members: parseInt(document.getElementById('medical_aid_members').value) || 0,
-                tax_directive: parseFloat(document.getElementById('tax_directive').value) || 0
+                tax_directive: parseFloat(document.getElementById('tax_directive').value) || 0,
+                tax_number: document.getElementById('tax_number').value.trim() || null,
+                uif_number: document.getElementById('uif_number').value.trim() || null
             };
 
             if (isEdit) {

@@ -74,6 +74,29 @@ if `DATABASE_URL` / `ACCOUNTING_DATABASE_URL` is set.
 
 ---
 
+### ⚠️ Ecosystem Permission Migrations — REQUIRED Before Live
+
+The following migrations are **not** in the main `schema.sql` and must be run separately
+before the ecosystem permission system works correctly.
+
+Run in order in **Supabase Dashboard → SQL Editor**:
+
+#### Migration 009 — Per-User App Access Gate
+**File:** `accounting-ecosystem/database/009_user_app_access.sql`  
+**Purpose:** Creates `user_app_access` table — controls which ecosystem apps each user can access.  
+**When to run:** Before any user app restriction features are used.  
+**Status indicator:** If module cards on the ecosystem dashboard show for all users regardless of settings, this migration is missing.
+
+#### Migration 010 — Per-User Client Visibility Scoping
+**File:** `accounting-ecosystem/database/010_user_client_access.sql`  
+**Purpose:** Creates `user_client_access` table — restricts which eco-clients (shared companies) a user can see and manage.  
+**When to run:** Before assigning client restrictions to practice users.  
+**Status indicator:** If the "Clients" button in the ecosystem user management panel is missing or errors on save, this migration is missing.
+
+> **Important:** Both migrations must be run **before** launch if the ecosystem dashboard is enabled. They are safe to run even if no restrictions are configured — zero rows = unrestricted access (default open).
+
+---
+
 ## ✅ Step 4 — Enable Payroll for Your Company (in Supabase DB)
 
 There's a two-layer module gate:
@@ -238,6 +261,11 @@ WHERE uca.company_id = <your_company_id>;
 - [x] Offline write queue with reconnect poller and banner
 - [x] Dark mode PAYE recon table — color visibility fixed (2026-03-12)
 - [x] `backdrop-filter` webkit prefix added to `dark-theme.css` (Safari fix, 2026-03-12)
+- [x] Migration 009 (`user_app_access`) — created + types verified + run in Supabase (2026-03-12)
+- [x] Migration 010 (`user_client_access`) — created, **must be run in Supabase before launch**
+- [x] Tax number + UIF number fields restored in Add Employee modal (`company-dashboard.html`, `employee-management.html`)
+- [x] Backend `employees.js` now validates `tax_number` as required field
+- [x] Ecosystem permission architecture — 4-tier access control fully implemented (app access, client access, SSO gate, per-user scoping)
 
 ---
 
