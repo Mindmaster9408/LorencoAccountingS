@@ -1491,3 +1491,118 @@ b[style*="color:#667eea"] {
     color: var(--accent-light) !important;
 }
 
+
+/* ── PAYE Reconciliation — Filter bar, year cards, recon tables ─────────────── */
+
+/* Filter bar */
+.filter-bar {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+}
+.filter-group label {
+    color: var(--text-muted) !important;
+}
+.filter-group select,
+.filter-group input[type="text"],
+.filter-group input[type="number"] {
+    background: rgba(255,255,255,0.08) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.filter-group select:focus,
+.filter-group input:focus {
+    border-color: var(--accent) !important;
+    background: rgba(255,255,255,0.12) !important;
+}
+
+/* Year status grid */
+.year-status-card {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border-strong) !important;
+}
+.year-status-card:hover {
+    background: rgba(255,255,255,0.10) !important;
+    border-color: var(--accent) !important;
+}
+.year-status-card.active {
+    background: rgba(16,185,129,0.15) !important;
+    border-color: var(--accent) !important;
+}
+.year-status-card.fin {
+    background: rgba(40,167,69,0.18) !important;
+    border-color: rgba(40,167,69,0.6) !important;
+}
+.year-status-label {
+    color: var(--text) !important;
+}
+.year-status-state.pending   { color: #fbbf24 !important; }
+.year-status-state.finalized { color: var(--accent-light) !important; }
+.year-status-state.empty     { color: var(--text-muted) !important; }
+
+/* Recon table — base cells */
+.recon-table td {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+    background: transparent !important;
+}
+.recon-table tr:hover td {
+    background: rgba(255,255,255,0.06) !important;
+}
+
+/* Employee header rows — already dark, ensure contrast */
+.emp-header-row td {
+    background: rgba(26,26,46,0.95) !important;
+    color: #fff !important;
+    border-bottom-color: var(--border-strong) !important;
+}
+.emp-header-row td:hover {
+    background: rgba(45,45,78,0.95) !important;
+}
+
+/* Employee data rows — was #fafafa (invisible white-on-white) */
+.emp-data-row td {
+    background: rgba(255,255,255,0.04) !important;
+    color: var(--text) !important;
+}
+
+/* Employee subtotal rows — was #fffbea yellow (invisible white-on-yellow) */
+.emp-subtotal-row td {
+    background: rgba(251,191,36,0.12) !important;
+    color: #fde68a !important;
+    border-top-color: rgba(251,191,36,0.35) !important;
+}
+
+/* Year / period total rows */
+.recon-table tr.total-row td {
+    background: rgba(102,126,234,0.18) !important;
+    color: var(--text) !important;
+    border-top-color: var(--accent) !important;
+}
+
+/* Grand total row */
+.recon-table tr.grand-total-row td {
+    background: rgba(102,126,234,0.22) !important;
+    color: var(--text) !important;
+    border-top-color: #667eea !important;
+}
+
+/* Editable number inputs inside table */
+.recon-table td input[type="number"] {
+    background: rgba(255,255,255,0.08) !important;
+    color: var(--text) !important;
+    border-color: var(--border-strong) !important;
+}
+.recon-table td input[type="number"]:focus {
+    background: rgba(255,255,255,0.14) !important;
+    border-color: var(--accent) !important;
+}
+.inputs-locked .recon-table input[type="number"] {
+    background: rgba(255,255,255,0.04) !important;
+    color: rgba(255,255,255,0.3) !important;
+    border-color: var(--border) !important;
+}
+
+/* Diff highlighting — keep readable on dark */
+.diff-zero    { color: var(--accent-light) !important; background: transparent !important; }
+.diff-nonzero { color: #fca5a5 !important; background: rgba(239,68,68,0.15) !important; }
+.diff-warn    { color: #fbbf24 !important; background: rgba(251,191,36,0.12) !important; }
