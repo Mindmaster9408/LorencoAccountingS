@@ -264,10 +264,10 @@ select option {
 
 /* ── Modals ─────────────────────────────────────────────────────────────────── */
 .modal-overlay,
-.overlay {
+.overlay,
+.modal {
     background: rgba(15,12,41,0.85) !important;
 }
-.modal,
 .modal-content,
 .modal-box {
     background: #1e1b3a !important;
@@ -464,12 +464,17 @@ a:hover {
     color: var(--accent-light) !important;
 }
 .att-tab {
-    color: var(--text-muted) !important;
-    background: transparent !important;
+    color: var(--text-secondary) !important;
+    background: rgba(255,255,255,0.08) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+}
+.att-tab:hover {
+    background: rgba(255,255,255,0.13) !important;
 }
 .att-tab.active {
-    background: var(--surface) !important;
+    background: rgba(255,255,255,0.18) !important;
     color: var(--text) !important;
+    border-color: transparent !important;
 }
 .att-tab-content {
     background: var(--surface) !important;
