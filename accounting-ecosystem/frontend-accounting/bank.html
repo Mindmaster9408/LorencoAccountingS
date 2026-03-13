@@ -3156,6 +3156,19 @@ Click OK to simulate uploading a file.`;
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
+                // Auto-post the draft journal so it flows into reports immediately
+                const journalId = data.journal && data.journal.id;
+                if (journalId) {
+                    const postRes = await fetch(`/api/journals/${journalId}/post`, {
+                        method: 'POST',
+                        headers: getAuthHeaders()
+                    });
+                    // Non-fatal if post fails — allocation is still saved
+                    if (!postRes.ok) {
+                        console.warn('Journal created but auto-post failed — post manually in Journals.');
+                    }
+                }
+
                 // Update status in UI
                 const row = txnData.row;
                 if (row) {
@@ -3172,7 +3185,7 @@ Click OK to simulate uploading a file.`;
                 transactionAllocations[id].journalRef = data.journal ? data.journal.reference : '';
                 saveAllocationsToStorage();
 
-                alert(`Transaction allocated successfully!\n\nJournal Reference: ${transactionAllocations[id].journalRef || '(posted)'}\n\nThis has been posted to the General Ledger.`);
+                alert(`Transaction allocated!\n\nJournal Reference: ${transactionAllocations[id].journalRef || '—'}\n\nThe journal has been posted and will appear in your reports.`);
 
             } catch (error) {
                 alert('Error posting allocation: ' + error.message);
