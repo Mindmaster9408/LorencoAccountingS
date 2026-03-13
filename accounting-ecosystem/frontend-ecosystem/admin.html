@@ -704,9 +704,17 @@
                 allClients = [];
             }
 
-            // Default: expand all account holder groups
-            const firmIds = new Set(allClients.map(c => c.company_id || 0));
-            firmIds.forEach(id => expandedHolders.add(id));
+            // Default: expand all account holder groups.
+            // Source: companyMap (all companies) minus client_company_id data silos —
+            // this ensures newly added practices with zero clients are still expanded/visible.
+            const clientCompanyIdSet = new Set(
+                allClients.filter(c => c.client_company_id).map(c => Number(c.client_company_id))
+            );
+            Object.keys(companyMap).forEach(id => {
+                if (!clientCompanyIdSet.has(Number(id))) {
+                    expandedHolders.add(Number(id));
+                }
+            });
 
             renderStats();
             applyFilters();
@@ -772,30 +780,52 @@
 
         // ── Render Account Holder Groups ──────────────────────────────────────
         function renderPanel(clients) {
-            const panel = document.getElementById('controlPanel');
+            const panel  = document.getElementById('controlPanel');
+            const search = (document.getElementById('searchInput').value || '').toLowerCase();
+            const isFiltered = statusFilter !== 'all' || appFilter !== 'all' || !!search;
 
-            if (clients.length === 0) {
-                panel.innerHTML = `<div class="empty-state"><div class="icon">&#128100;</div><p>No clients match the current filters.</p></div>`;
-                return;
-            }
-
-            // Group by managing firm (company_id)
-            const groups = {};
-            clients.forEach(c => {
-                const key = c.company_id || 0;
-                if (!groups[key]) groups[key] = [];
-                groups[key].push(c);
-            });
+            // Identify account holders: all companies that are NOT client_company_id data silos.
+            // This ensures newly created practices (with zero clients) always appear on the
+            // default "All" view, regardless of whether they have any eco-clients yet.
+            const clientCompanyIdSet = new Set(
+                allClients.filter(c => c.client_company_id).map(c => Number(c.client_company_id))
+            );
+            const accountHolderIds = Object.keys(companyMap)
+                .map(Number)
+                .filter(id => !clientCompanyIdSet.has(id));
 
             let html = '';
-            Object.keys(groups).forEach(firmId => {
+            let renderedCount = 0;
+
+            accountHolderIds.forEach(firmId => {
+                // Clients from the filtered list belonging to this account holder
+                const firmClients = clients.filter(c => Number(c.company_id) === firmId);
+
                 const firm     = companyMap[firmId];
                 const firmName = firm ? (firm.trading_name || firm.company_name) : 'Unassigned';
-                const firmType = firm ? (firm.account_holder_type || detectFirmType(firmName)) : 'platform';
-                html += buildHolderGroup(parseInt(firmId), firmName, firmType, groups[firmId]);
+
+                // When a filter/search is active, hide account holders that have no matching
+                // clients UNLESS the account holder name itself matches the search term.
+                if (isFiltered && firmClients.length === 0) {
+                    const nameMatch = search && firmName.toLowerCase().includes(search);
+                    if (!nameMatch) return;
+                }
+
+                const firmType = firm
+                    ? (firm.account_holder_type || detectFirmType(firmName))
+                    : 'platform';
+
+                html += buildHolderGroup(firmId, firmName, firmType, firmClients);
+                renderedCount++;
             });
 
-            panel.innerHTML = html;
+            if (renderedCount === 0) {
+                panel.innerHTML = isFiltered
+                    ? `<div class="empty-state"><div class="icon">&#128100;</div><p>No clients match the current filters.</p></div>`
+                    : `<div class="empty-state"><div class="icon">&#128100;</div><p>No account holders on the platform yet.</p></div>`;
+            } else {
+                panel.innerHTML = html;
+            }
         }
 
         // Simple heuristic for firm type — can be replaced by a proper DB column later
@@ -813,9 +843,11 @@
 
         // ── Build Account Holder Group ────────────────────────────────────────
         function buildHolderGroup(firmId, firmName, firmType, clients) {
-            const isExpanded = expandedHolders.has(firmId);
-            const count      = clients.length;
-            const clientsHtml = clients.map(c => buildClientCard(c)).join('');
+            const isExpanded  = expandedHolders.has(firmId);
+            const count       = clients.length;
+            const clientsHtml = count > 0
+                ? clients.map(c => buildClientCard(c)).join('')
+                : `<div style="padding:16px 20px;color:var(--text-muted);font-size:0.85rem;font-style:italic;">No clients yet.</div>`;
 
             return `
             <div class="holder-group" id="holder-${firmId}">
