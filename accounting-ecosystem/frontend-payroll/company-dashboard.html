@@ -455,6 +455,7 @@
                                 <th>Employee #</th>
                                 <th>Name</th>
                                 <th>ID Number</th>
+                                <th>Tax Number</th>
                                 <th>Position</th>
                                 <th>Department</th>
                                 <th>Payment Method</th>
@@ -463,7 +464,7 @@
                         </thead>
                         <tbody id="employee-list">
                             <tr>
-                                <td colspan="7" style="text-align: center; padding: 40px; color: #999;">No employees yet. Click "Add Employee" to get started.</td>
+                                <td colspan="8" style="text-align: center; padding: 40px; color: #999;">No employees yet. Click "Add Employee" to get started.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -739,7 +740,7 @@
         function displayEmployees() {
             let html = '';
             if (employees.length === 0) {
-                html = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">No employees yet. Click "Add Employee" to get started.</td></tr>';
+                html = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">No employees yet. Click "Add Employee" to get started.</td></tr>';
             } else {
                 employees.forEach(emp => {
                     html += `
@@ -747,6 +748,7 @@
                             <td><strong>${emp.employee_number}</strong></td>
                             <td>${emp.first_name} ${emp.last_name}</td>
                             <td>${emp.id_number || '-'}</td>
+                            <td>${emp.tax_number ? emp.tax_number : '<span style="color:#dc3545;font-weight:600;">⚠ Missing</span>'}</td>
                             <td>${emp.position || '-'}</td>
                             <td>${emp.department || '-'}</td>
                             <td>${emp.payment_method || 'EFT'}</td>

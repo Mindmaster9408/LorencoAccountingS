@@ -2514,6 +2514,13 @@
                                 ? `<span style="font-size:0.72rem;color:#fca5a5;">No app access</span>`
                                 : u.apps.map(a => `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:0.7rem;font-weight:700;${APP_CHIP_STYLE[a] || ''}">${APP_ICONS_U[a] || ''} ${a}</span>`).join(' ');
 
+                        // clients null = unrestricted (all clients), clients [] = no access, clients [...] = specific
+                        const clientChips = u.clients === null
+                            ? `<span style="font-size:0.72rem;color:var(--text-muted);font-style:italic;">All clients</span>`
+                            : u.clients.length === 0
+                                ? `<span style="font-size:0.72rem;color:#fca5a5;">No client access</span>`
+                                : `<span style="font-size:0.72rem;color:#fbbf24;font-weight:600;">${u.clients.length} client${u.clients.length !== 1 ? 's' : ''} assigned</span>`;
+
                         return `
                         <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 16px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;">
                             <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;margin-top:2px;">${initials}</div>
