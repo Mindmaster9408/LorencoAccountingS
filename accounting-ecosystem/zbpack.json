@@ -1,5 +1,0 @@
-{
-  "install_command": "npm install && cd backend && npm install --production",
-  "start_command": "node backend/server.js",
-  "cache_dependencies": true
-}
