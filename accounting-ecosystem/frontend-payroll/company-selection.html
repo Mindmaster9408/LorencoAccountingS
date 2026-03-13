@@ -42,7 +42,7 @@
         .header-right {
             display: flex;
             align-items: center;
-            gap: 20px;
+            gap: 12px;
         }
 
         .user-info {
@@ -58,6 +58,25 @@
             color: #333;
             display: block;
             font-size: 1.1rem;
+        }
+
+        .btn-back-eco {
+            padding: 10px 18px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .btn-back-eco:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
         }
 
         .btn-logout {
@@ -93,16 +112,35 @@
             box-shadow: 0 4px 15px rgba(161,140,209,0.4);
         }
 
+        /* ── Section labels ─────────────────────────────────────────────── */
+        .section-label {
+            grid-column: 1 / -1;
+            color: rgba(255,255,255,0.9);
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-top: 6px;
+            margin-bottom: -6px;
+            padding-left: 4px;
+        }
+
+        .section-label:first-child {
+            margin-top: 0;
+        }
+
+        /* ── Grid ───────────────────────────────────────────────────────── */
         .content {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            grid-auto-rows: 1fr;  /* all rows same height */
+            grid-auto-rows: 1fr;
             gap: 25px;
             max-width: 1200px;
             margin: 0 auto;
             align-items: stretch;
         }
 
+        /* ── Company / Client cards ─────────────────────────────────────── */
         .company-card {
             background: white;
             border-radius: 15px;
@@ -112,7 +150,7 @@
             cursor: pointer;
             border: 2px solid transparent;
             display: flex;
-            flex-direction: column;  /* stack content vertically */
+            flex-direction: column;
         }
 
         .company-card:hover {
@@ -121,11 +159,45 @@
             border-color: #667eea;
         }
 
+        .company-card.client-card:hover {
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+            border-color: #10b981;
+        }
+
+        .card-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
         .company-name {
             font-size: 1.3rem;
             font-weight: bold;
             color: #333;
-            margin-bottom: 10px;
+        }
+
+        .badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+            flex-shrink: 0;
+            margin-left: 8px;
+            margin-top: 3px;
+        }
+
+        .badge-client {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-company {
+            background: #ede9fe;
+            color: #5b21b6;
         }
 
         .company-email {
@@ -139,7 +211,7 @@
             border-top: 1px solid #eee;
             padding-top: 15px;
             margin-top: 15px;
-            flex: 1;  /* pushes the select button to the card bottom */
+            flex: 1;
         }
 
         .detail-row {
@@ -169,9 +241,13 @@
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 20px;  /* consistent gap above button */
+            margin-top: 20px;
             transition: transform 0.2s;
-            flex-shrink: 0;  /* never compress the button */
+            flex-shrink: 0;
+        }
+
+        .select-btn.client-btn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         }
 
         .select-btn:hover {
@@ -210,12 +286,17 @@
             text-decoration: none;
             border-radius: 8px;
             font-weight: 600;
-            cursor: pointer;
         }
 
-        .empty-state a:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        .loading-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            color: #667eea;
+            font-size: 1.1rem;
         }
 
         @media (max-width: 768px) {
@@ -232,11 +313,12 @@
             .header-right {
                 width: 100%;
                 justify-content: center;
-                flex-direction: column;
+                flex-wrap: wrap;
             }
 
             .user-info {
                 text-align: center;
+                width: 100%;
             }
 
             .content {
@@ -250,141 +332,248 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Select Your Company</h1>
+            <h1>Select Company</h1>
             <div class="header-right">
                 <div class="user-info">
                     <p>Welcome,</p>
                     <strong id="user-name"></strong>
                     <p id="user-role" style="font-size: 0.9rem; color: #999;"></p>
                 </div>
+                <button class="btn-back-eco" onclick="goBackToEco()">&#8592; Back to Ecosystem</button>
                 <a href="users.html" class="btn-users" id="usersBtn" style="display: none;">👤 Users</a>
                 <button class="btn-logout" onclick="handleLogout()">Logout</button>
             </div>
         </div>
 
         <div class="content" id="companies-container">
-            <!-- Companies will be loaded here -->
+            <div class="loading-state">Loading companies and clients...</div>
         </div>
     </div>
 
     <script src="js/polyfills.js"></script>
+    <script src="js/update-check.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
     <script>
-        let availableCompanies = [];
+        var availableCompanies = [];
+        var availableClients   = [];
 
-        // Check authentication
+        // Detect which app we are serving — used for eco-client filtering.
+        // This page lives in frontend-payroll so the target is always 'payroll'.
+        var TARGET_APP = 'payroll';
+
         window.addEventListener('load', function() {
-            const session = AUTH.getSession();
+            var session = AUTH.getSession();
             if (!session) {
                 window.location.href = 'login.html';
                 return;
             }
 
-            // Set user info
             document.getElementById('user-name').textContent = session.name || session.email;
-            const roleLabels = {
-                super_admin: 'Super Admin',
+            var roleLabels = {
+                super_admin:    'Super Admin',
                 business_owner: 'Business Owner',
-                accountant: 'Accountant',
-                manager: 'Manager',
-                admin: 'Admin'
+                accountant:     'Accountant',
+                manager:        'Manager',
+                admin:          'Admin'
             };
             document.getElementById('user-role').textContent = roleLabels[session.role] || session.role || '';
 
-            // Show Users button for authorized roles
-            const allowedRoles = ['super_admin', 'admin', 'manager', 'business_owner'];
+            var allowedRoles = ['super_admin', 'admin', 'manager', 'business_owner'];
             if (allowedRoles.includes(session.role) || session.is_super_admin) {
                 document.getElementById('usersBtn').style.display = '';
             }
 
-            // Load user's companies
-            loadCompanies();
+            loadAll();
         });
 
-        async function loadCompanies() {
-            // Try API first, fall back to cached list from login
+        function goBackToEco() {
+            window.location.href = '/dashboard/';
+        }
+
+        async function loadAll() {
+            // Run both fetches in parallel for speed.
+            await Promise.all([loadDirectCompanies(), loadEcoClients()]);
+            renderAll();
+        }
+
+        async function loadDirectCompanies() {
             try {
-                const apiCompanies = await AUTH.getCompanies();
+                var apiCompanies = await AUTH.getCompanies();
                 if (apiCompanies && apiCompanies.length > 0) {
                     availableCompanies = apiCompanies;
                 } else {
-                    availableCompanies = AUTH.getCompaniesForUser();
+                    availableCompanies = AUTH.getCompaniesForUser ? AUTH.getCompaniesForUser() : [];
                 }
             } catch(e) {
-                availableCompanies = AUTH.getCompaniesForUser();
+                availableCompanies = AUTH.getCompaniesForUser ? AUTH.getCompaniesForUser() : [];
             }
-            renderCompanies();
         }
 
-        function renderCompanies() {
-            const container = document.getElementById('companies-container');
-            const session = AUTH.getSession();
+        async function loadEcoClients() {
+            try {
+                var token = safeLocalStorage.getItem('token');
+                var resp = await fetch('/api/eco-clients?app=' + TARGET_APP, {
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (resp.ok) {
+                    var data = await resp.json();
+                    // Only include clients that have a client_company_id to SSO into.
+                    availableClients = (data.clients || []).filter(function(c) {
+                        return c.client_company_id || c.company_id;
+                    });
+                }
+            } catch(e) {
+                console.warn('Could not load eco-clients:', e.message);
+            }
+        }
+
+        function renderAll() {
+            var container = document.getElementById('companies-container');
+            var session   = AUTH.getSession();
             container.innerHTML = '';
 
-            // Super admins see all companies; regular users see only companies with payroll enabled
-            const isSuperAdmin = session && (session.is_super_admin || session.role === 'super_admin');
-            const payrollCompanies = isSuperAdmin
+            var isSuperAdmin = session && (session.is_super_admin || session.role === 'super_admin');
+
+            // Filter direct companies — super admins see all; others need app module enabled.
+            var filteredCompanies = isSuperAdmin
                 ? availableCompanies
                 : availableCompanies.filter(function(c) {
                     var mods = c.modules_enabled || [];
-                    return mods.includes('payroll');
+                    return mods.includes(TARGET_APP);
                 });
 
-            if (payrollCompanies.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <h2>No Companies Available</h2>
-                        <p>You don't have any companies yet. Add a company from the Ecosystem Dashboard to get started.</p>
-                        <a href="/">Go to Ecosystem</a>
-                    </div>
-                `;
+            // Build a set of client_company_ids already covered by direct access,
+            // so we don't show duplicates.
+            var directCompanyIds = new Set(filteredCompanies.map(function(c) {
+                return c.id || c.company_id;
+            }));
+
+            var filteredClients = availableClients.filter(function(c) {
+                var cid = c.client_company_id || c.company_id;
+                return !directCompanyIds.has(cid);
+            });
+
+            var hasAnything = filteredCompanies.length > 0 || filteredClients.length > 0;
+
+            if (!hasAnything) {
+                container.innerHTML =
+                    '<div class="empty-state">' +
+                    '  <h2>No Companies Available</h2>' +
+                    '  <p>You don\'t have any companies or clients with Paytime enabled yet.<br>' +
+                    '     Enable the Payroll app on a client from the Ecosystem Dashboard.</p>' +
+                    '  <a href="javascript:void(0)" onclick="goBackToEco()">Go to Ecosystem</a>' +
+                    '</div>';
                 return;
             }
 
-            payrollCompanies.forEach(company => {
-                const companyName = company.company_name || company.trading_name || company.name || 'Unnamed';
-                const companyId = company.id || company.company_id;
-                const card = document.createElement('div');
-                card.className = 'company-card';
-                card.innerHTML = `
-                    <div class="company-name">${companyName}</div>
-                    <div class="company-email">${company.trading_name || ''}</div>
-                    <div class="company-details">
-                        <div class="detail-row">
-                            <span class="detail-label">Role:</span>
-                            <span class="detail-value">${company.role || 'member'}</span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">Modules:</span>
-                            <span class="detail-value">${(company.modules_enabled || []).join(', ') || 'none'}</span>
-                        </div>
-                    </div>
-                    <button class="select-btn" onclick="selectCompany(${companyId})">Select Company</button>
-                `;
-                container.appendChild(card);
-            });
+            // ── Section: Your Companies ───────────────────────────────────
+            if (filteredCompanies.length > 0) {
+                var companyLabel = document.createElement('div');
+                companyLabel.className = 'section-label';
+                companyLabel.textContent = 'Your Companies';
+                container.appendChild(companyLabel);
 
-            // Add "+ Add Company" card — redirects to Ecosystem Dashboard
+                filteredCompanies.forEach(function(company) {
+                    var companyId   = company.id || company.company_id;
+                    var companyName = company.company_name || company.trading_name || company.name || 'Unnamed';
+                    var card        = buildCompanyCard(companyName, company.trading_name || '', company.role || 'member',
+                                                       company.modules_enabled || [], false, companyId);
+                    container.appendChild(card);
+                });
+            }
+
+            // ── Section: Managed Clients ──────────────────────────────────
+            if (filteredClients.length > 0) {
+                var clientLabel = document.createElement('div');
+                clientLabel.className = 'section-label';
+                clientLabel.textContent = 'Managed Clients';
+                container.appendChild(clientLabel);
+
+                filteredClients.forEach(function(client) {
+                    var companyId = client.client_company_id || client.company_id;
+                    var apps      = Array.isArray(client.apps) ? client.apps.join(', ') : (client.apps || '');
+                    var card      = buildClientCard(client.name || 'Unnamed Client', client.email || '',
+                                                    client.client_type || 'client', apps, companyId);
+                    container.appendChild(card);
+                });
+            }
+
+            // ── Add company card (goes to ecosystem) ──────────────────────
             var addCard = document.createElement('div');
             addCard.className = 'company-card';
             addCard.style.cssText = 'border: 2px dashed #10b981; align-items: center; justify-content: center; text-align: center;';
-            addCard.onclick = function() { window.location.href = '/dashboard/'; };
-            addCard.innerHTML = '<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;">' +
-                '<div style="font-size: 3rem; color: #10b981; margin-bottom: 10px;">+</div>' +
-                '<div style="font-size: 1.1rem; font-weight: 600; color: #10b981;">Add Company</div>' +
-                '<div style="font-size: 0.85rem; color: #999; margin-top: 5px;">Go to Ecosystem Dashboard</div>' +
+            addCard.onclick = function() { goBackToEco(); };
+            addCard.innerHTML =
+                '<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;">' +
+                '  <div style="font-size: 3rem; color: #10b981; margin-bottom: 10px;">+</div>' +
+                '  <div style="font-size: 1.1rem; font-weight: 600; color: #10b981;">Add Company / Client</div>' +
+                '  <div style="font-size: 0.85rem; color: #999; margin-top: 5px;">Go to Ecosystem Dashboard</div>' +
                 '</div>';
             container.appendChild(addCard);
         }
 
+        function buildCompanyCard(name, subtitle, role, modules, isClient, companyId) {
+            var card = document.createElement('div');
+            card.className = 'company-card';
+            card.innerHTML =
+                '<div class="card-header-row">' +
+                '  <div class="company-name">' + escHtml(name) + '</div>' +
+                '  <span class="badge badge-company">Company</span>' +
+                '</div>' +
+                (subtitle ? '<div class="company-email">' + escHtml(subtitle) + '</div>' : '') +
+                '<div class="company-details">' +
+                '  <div class="detail-row">' +
+                '    <span class="detail-label">Role:</span>' +
+                '    <span class="detail-value">' + escHtml(role) + '</span>' +
+                '  </div>' +
+                '  <div class="detail-row">' +
+                '    <span class="detail-label">Modules:</span>' +
+                '    <span class="detail-value">' + escHtml(modules.join(', ') || 'none') + '</span>' +
+                '  </div>' +
+                '</div>' +
+                '<button class="select-btn" onclick="event.stopPropagation(); selectCompany(' + companyId + ')">Select Company</button>';
+            card.onclick = function() { selectCompany(companyId); };
+            return card;
+        }
+
+        function buildClientCard(name, email, clientType, apps, companyId) {
+            var card = document.createElement('div');
+            card.className = 'company-card client-card';
+            card.innerHTML =
+                '<div class="card-header-row">' +
+                '  <div class="company-name">' + escHtml(name) + '</div>' +
+                '  <span class="badge badge-client">Client</span>' +
+                '</div>' +
+                (email ? '<div class="company-email">' + escHtml(email) + '</div>' : '') +
+                '<div class="company-details">' +
+                '  <div class="detail-row">' +
+                '    <span class="detail-label">Type:</span>' +
+                '    <span class="detail-value">' + escHtml(clientType || 'client') + '</span>' +
+                '  </div>' +
+                '  <div class="detail-row">' +
+                '    <span class="detail-label">Apps:</span>' +
+                '    <span class="detail-value">' + escHtml(apps || 'payroll') + '</span>' +
+                '  </div>' +
+                '</div>' +
+                '<button class="select-btn client-btn" onclick="event.stopPropagation(); selectCompany(' + companyId + ')">Open in Paytime</button>';
+            card.onclick = function() { selectCompany(companyId); };
+            return card;
+        }
+
+        function escHtml(str) {
+            return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
         async function selectCompany(companyId) {
-            // Call API to get a proper JWT with company context
-            const result = await AUTH.selectCompany(companyId);
+            var result = await AUTH.selectCompany(companyId);
             if (result.success) {
-                const session = AUTH.getSession();
+                var session = AUTH.getSession();
                 session.company_id = companyId;
                 session.role = result.role || session.role;
                 AUTH.setSession(session);
