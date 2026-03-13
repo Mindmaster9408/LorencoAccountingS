@@ -639,4 +639,98 @@ router.delete('/attachments/:attachmentId', authenticate, hasPermission('bank.ma
   }
 });
 
+/**
+ * DELETE /api/bank/transactions/:id
+ * Delete a bank transaction.
+ * Rules:
+ *   - Status 'reconciled'  → always blocked (must reverse reconciliation first)
+ *   - Status 'matched'     → blocked unless ?force=1  (leaves journal entry orphaned — caller's responsibility)
+ *   - Attachments are deleted from disk and DB before the transaction row is removed.
+ */
+router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), async (req, res) => {
+  const { id } = req.params;
+  const forceDelete = req.query.force === '1';
+  const client = await db.getClient();
+
+  try {
+    await client.query('BEGIN');
+
+    // Fetch and ownership-check the transaction
+    const txnResult = await client.query(
+      `SELECT * FROM bank_transactions WHERE id = $1 AND company_id = $2`,
+      [id, req.user.companyId]
+    );
+
+    if (txnResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    const txn = txnResult.rows[0];
+
+    if (txn.status === 'reconciled') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        error: 'Cannot delete a reconciled transaction. Reverse the reconciliation first.',
+        code: 'RECONCILED'
+      });
+    }
+
+    if (txn.status === 'matched' && !forceDelete) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Transaction is allocated to a journal entry. Add ?force=1 to confirm deletion.',
+        code: 'ALLOCATED',
+        journalRef: txn.matched_entity_id
+      });
+    }
+
+    // Delete attachments from disk first, then DB
+    const attachResult = await client.query(
+      `SELECT * FROM bank_transaction_attachments WHERE transaction_id = $1`,
+      [id]
+    );
+
+    for (const att of attachResult.rows) {
+      if (att.file_path && fs.existsSync(att.file_path)) {
+        try { fs.unlinkSync(att.file_path); } catch (_) { /* non-fatal */ }
+      }
+    }
+
+    await client.query(
+      `DELETE FROM bank_transaction_attachments WHERE transaction_id = $1`,
+      [id]
+    );
+
+    // Delete the transaction
+    await client.query(
+      `DELETE FROM bank_transactions WHERE id = $1 AND company_id = $2`,
+      [id, req.user.companyId]
+    );
+
+    await AuditLogger.logUserAction(
+      req,
+      'DELETE',
+      'BANK_TRANSACTION',
+      id,
+      { description: txn.description, amount: txn.amount, status: txn.status, date: txn.date },
+      null,
+      forceDelete && txn.status === 'matched'
+        ? 'Bank transaction force-deleted (was allocated to journal)'
+        : 'Bank transaction deleted'
+    );
+
+    await client.query('COMMIT');
+
+    res.json({ success: true, message: 'Transaction deleted' });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting bank transaction:', error);
+    res.status(500).json({ error: 'Failed to delete transaction' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

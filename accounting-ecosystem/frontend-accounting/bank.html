@@ -531,8 +531,8 @@
         .transactions-table th:nth-child(5) { width: 105px; } /* Money In */
         .transactions-table th:nth-child(6) { width: 105px; } /* Money Out */
         .transactions-table th:nth-child(7) { width: 105px; } /* Balance */
-        .transactions-table th:nth-child(8) { width: 135px; } /* Transaction Type */
-        .transactions-table th:nth-child(9) { width: 150px; } /* Account */
+        .transactions-table th:nth-child(8) { width: 185px; } /* Transaction Type */
+        .transactions-table th:nth-child(9) { width: 210px; } /* Account */
         .transactions-table th:nth-child(10) { width: 95px; } /* Status */
         .transactions-table th:nth-child(11) { width: 55px; }  /* Upload */
         .transactions-table th:nth-child(12) { width: 95px; } /* Attachments */
@@ -724,7 +724,10 @@
             font-size: 12px;
             color: #202124;
             background: white;
-            min-width: 160px;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             cursor: pointer;
             transition: all 0.2s;
         }
@@ -738,8 +741,75 @@
         .allocation-select:hover {
             border-color: #0066cc;
         }
-        
-        .upload-link {
+
+        /* ── Manual Transaction Entry Row ──────────────────────────────── */
+        .manual-entry-row {
+            background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);
+            border-top: 2px solid #0066cc;
+            border-bottom: 2px solid #c5d9f0;
+        }
+        .manual-entry-row td {
+            padding: 8px 6px;
+            vertical-align: middle;
+        }
+        .manual-entry-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #0066cc;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .manual-input {
+            padding: 5px 7px;
+            border: 1px solid #b3cef0;
+            border-radius: 5px;
+            font-size: 12px;
+            width: 100%;
+            box-sizing: border-box;
+            background: white;
+            color: #202124;
+        }
+        .manual-input:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0,102,204,0.15);
+        }
+        .manual-input.error {
+            border-color: #d32f2f;
+            background: #fff5f5;
+        }
+        .manual-input:disabled {
+            background: #f5f5f5;
+            color: #aaa;
+            cursor: not-allowed;
+        }
+        .btn-manual-save {
+            padding: 6px 14px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 6px;
+            transition: background 0.2s;
+        }
+        .btn-manual-save:hover { background: #0052a3; }
+        .btn-manual-cancel {
+            padding: 6px 12px;
+            background: white;
+            color: #5f6368;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-manual-cancel:hover { border-color: #0066cc; color: #0066cc; }
+
+
             color: #0066cc;
             text-decoration: none;
             font-size: 26px;
@@ -1471,6 +1541,51 @@
                     </tr>
                 </thead>
                 <tbody id="transactionsBody">
+                    <!-- ── Manual Transaction Entry Row ────────────────────────── -->
+                    <tr class="manual-entry-row" id="manualEntryRow">
+                        <td style="text-align:center; padding:8px 4px;">
+                            <span class="manual-entry-label">NEW</span>
+                        </td>
+                        <td>
+                            <input type="date" id="manualDate" class="manual-input">
+                        </td>
+                        <td>
+                            <input type="text" id="manualDesc" class="manual-input" placeholder="Description *">
+                        </td>
+                        <td>
+                            <input type="text" id="manualRef" class="manual-input" placeholder="Reference">
+                        </td>
+                        <td>
+                            <input type="number" id="manualMoneyIn" class="manual-input" placeholder="0.00" min="0" step="0.01" oninput="validateManualAmounts('in')">
+                        </td>
+                        <td>
+                            <input type="number" id="manualMoneyOut" class="manual-input" placeholder="0.00" min="0" step="0.01" oninput="validateManualAmounts('out')">
+                        </td>
+                        <td style="color:#aaa; text-align:center; font-size:12px;">—</td>
+                        <td>
+                            <select class="allocation-select" id="manualType" onchange="updateManualAccountOptions()">
+                                <option value="">Select Type...</option>
+                                <option value="customer">Customer Payment</option>
+                                <option value="supplier">Supplier Payment</option>
+                                <option value="transfer">Transfer</option>
+                                <option value="vat">VAT Payment</option>
+                                <option value="account">Account</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select class="allocation-select" id="manualAccount">
+                                <option value="">Select Account...</option>
+                            </select>
+                        </td>
+                        <td>
+                            <span class="status-badge status-unmatched" style="font-size:10px; padding:3px 8px;">Unmatched</span>
+                        </td>
+                        <td colspan="4" style="text-align:left; padding-left:8px;">
+                            <button class="btn-manual-save" onclick="saveManualTransaction()">&#8853; Save</button>
+                            <button class="btn-manual-cancel" onclick="cancelManualEntry()">Cancel</button>
+                        </td>
+                    </tr>
+                    <!-- ─────────────────────────────────────────────────────────── -->
                     <tr>
                         <td><input type="checkbox" class="checkbox" onchange="updateBulkActions()"></td>
                         <td class="transaction-date">14 Jan 2026</td>
@@ -2355,7 +2470,7 @@ Click OK to simulate uploading a file.`;
 
         function getTransactionData(id) {
             // Get transaction data from the row
-            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row)');
+            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
             let targetRow = null;
 
             rows.forEach(row => {
@@ -2591,7 +2706,7 @@ Click OK to simulate uploading a file.`;
 
         // Add allocate buttons to action cells
         function addAllocateButtons() {
-            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row)');
+            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
             rows.forEach((row, index) => {
                 const actionCell = row.querySelector('td:has(.action-btn)');
                 if (actionCell && !actionCell.querySelector('.allocate-btn')) {
@@ -2938,17 +3053,336 @@ Click OK to simulate uploading a file.`;
             const count = document.querySelectorAll('.transactions-table tbody .checkbox:checked').length;
             alert(`Match ${count} selected transactions`);
         }
-        
+
         function bulkReconcile() {
             const count = document.querySelectorAll('.transactions-table tbody .checkbox:checked').length;
             alert(`Reconcile ${count} selected transactions`);
         }
-        
-        function bulkDelete() {
-            const count = document.querySelectorAll('.transactions-table tbody .checkbox:checked').length;
-            if (confirm(`Delete ${count} selected transactions?`)) {
-                alert('Transactions deleted');
+
+        // ===================================
+        // MANUAL TRANSACTION ENTRY
+        // ===================================
+
+        let _manualTxnSeq = 0;
+
+        // Set today's date as default when the page loads
+        document.addEventListener('DOMContentLoaded', function () {
+            var mdEl = document.getElementById('manualDate');
+            if (mdEl) mdEl.value = new Date().toISOString().split('T')[0];
+        });
+
+        /** XSS-safe HTML escaping for user-supplied strings inserted into innerHTML. */
+        function escapeHtml(str) {
+            var d = document.createElement('div');
+            d.appendChild(document.createTextNode(str || ''));
+            return d.innerHTML;
+        }
+
+        /**
+         * Rebuilds the Account dropdown in the manual entry row whenever
+         * the Transaction Type changes.  Delegates to updateAccountOptions()
+         * which already handles all type → account group mappings.
+         */
+        function updateManualAccountOptions() {
+            var typeSelect    = document.getElementById('manualType');
+            var accountSelect = document.getElementById('manualAccount');
+            if (!typeSelect || !accountSelect) return;
+            // Build a minimal "row-like" object so we can reuse updateAccountOptions()
+            var fakeRow = {
+                querySelectorAll: function () { return [null, accountSelect]; }
+            };
+            updateAccountOptions(fakeRow, typeSelect.value, 0);
+        }
+
+        /**
+         * Ensures only Money In OR Money Out can have a value at one time.
+         * @param {string} changed  'in' | 'out'
+         */
+        function validateManualAmounts(changed) {
+            var inEl  = document.getElementById('manualMoneyIn');
+            var outEl = document.getElementById('manualMoneyOut');
+            if (!inEl || !outEl) return;
+            if (changed === 'in') {
+                if (parseFloat(inEl.value) > 0) {
+                    outEl.value    = '';
+                    outEl.disabled = true;
+                } else {
+                    outEl.disabled = false;
+                }
+            } else {
+                if (parseFloat(outEl.value) > 0) {
+                    inEl.value    = '';
+                    inEl.disabled = true;
+                } else {
+                    inEl.disabled = false;
+                }
             }
+        }
+
+        function saveManualTransaction() {
+            var dateEl    = document.getElementById('manualDate');
+            var descEl    = document.getElementById('manualDesc');
+            var refEl     = document.getElementById('manualRef');
+            var inEl      = document.getElementById('manualMoneyIn');
+            var outEl     = document.getElementById('manualMoneyOut');
+            var typeEl    = document.getElementById('manualType');
+            var accountEl = document.getElementById('manualAccount');
+
+            // Clear previous error states
+            [dateEl, descEl, inEl, outEl].forEach(function (el) {
+                if (el) el.classList.remove('error');
+            });
+
+            // Validate description
+            if (!descEl.value.trim()) {
+                descEl.classList.add('error');
+                descEl.focus();
+                return;
+            }
+
+            var moneyIn  = parseFloat(inEl.value)  || 0;
+            var moneyOut = parseFloat(outEl.value) || 0;
+
+            if (moneyIn <= 0 && moneyOut <= 0) {
+                inEl.classList.add('error');
+                outEl.classList.add('error');
+                alert('Please enter a Money In or Money Out amount.');
+                return;
+            }
+            if (moneyIn > 0 && moneyOut > 0) {
+                inEl.classList.add('error');
+                outEl.classList.add('error');
+                alert('Enter either Money In or Money Out \u2014 not both.');
+                return;
+            }
+
+            // Generate unique row ID
+            var id = 'm' + Date.now() + (++_manualTxnSeq);
+
+            // Format date for display ("14 Jan 2026")
+            var dateVal   = dateEl.value || new Date().toISOString().split('T')[0];
+            var dp        = dateVal.split('-');
+            var months    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            var dispDate  = parseInt(dp[2], 10) + ' ' + months[parseInt(dp[1], 10) - 1] + ' ' + dp[0];
+
+            var desc        = descEl.value.trim();
+            var ref         = refEl.value.trim();
+            var type        = typeEl.value;
+            var accountCode = accountEl.value;
+            var accountText = accountEl.options[accountEl.selectedIndex]
+                              ? accountEl.options[accountEl.selectedIndex].text : '';
+
+            var fmt = function (n) {
+                return 'R\u00a0' + n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
+
+            // Build money-in / money-out cells
+            var moneyInCell  = moneyIn  > 0
+                ? '<td class="transaction-amount amount-in">' + fmt(moneyIn)  + '</td><td>-</td>'
+                : '<td>-</td><td class="transaction-amount amount-out">' + fmt(moneyOut) + '</td>';
+
+            // Preserve current account dropdown options with correct selected state
+            var accountOptHtml = '<option value="">Select Account\u2026</option>';
+            Array.from(accountEl.options).forEach(function (opt) {
+                if (opt.value === '') return; // skip already-added placeholder
+                accountOptHtml += '<option value="' + escapeHtml(opt.value) + '"'
+                    + (opt.value === accountCode ? ' selected' : '') + '>'
+                    + escapeHtml(opt.text) + '</option>';
+            });
+
+            var rowHtml = '<tr data-manual="true">'
+                + '<td><input type="checkbox" class="checkbox" data-txn-id="txn-' + id + '" onchange="updateBulkActions()"></td>'
+                + '<td class="transaction-date">' + escapeHtml(dispDate) + '</td>'
+                + '<td>'
+                +   '<div class="transaction-description">' + escapeHtml(desc) + '</div>'
+                +   (ref ? '<div class="transaction-reference">' + escapeHtml(ref) + '</div>' : '')
+                + '</td>'
+                + '<td>' + escapeHtml(ref) + '</td>'
+                + moneyInCell
+                + '<td>\u2014</td>'
+                + '<td>'
+                +   '<select class="allocation-select" onchange="updateAllocation(this,\'' + id + '\')">'
+                +     '<option value="">Select Type\u2026</option>'
+                +     '<option value="customer"' + (type==='customer'?' selected':'') + '>Customer Payment</option>'
+                +     '<option value="supplier"' + (type==='supplier'?' selected':'') + '>Supplier Payment</option>'
+                +     '<option value="transfer"' + (type==='transfer'?' selected':'') + '>Transfer</option>'
+                +     '<option value="vat"'      + (type==='vat'     ?' selected':'') + '>VAT Payment</option>'
+                +     '<option value="account"'  + (type==='account' ?' selected':'') + '>Account</option>'
+                +   '</select>'
+                + '</td>'
+                + '<td>'
+                +   '<select class="allocation-select" onchange="updateAccount(this,\'' + id + '\')">'
+                +     accountOptHtml
+                +   '</select>'
+                + '</td>'
+                + '<td><span class="status-badge status-unmatched">Unmatched</span></td>'
+                + '<td>'
+                +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents">'
+                +     '&#128206;<span class="file-count" id="fileCount' + id + '" style="display:none;">0</span>'
+                +   '</a>'
+                + '</td>'
+                + '<td><button class="action-btn" onclick="showAttachments(\'' + id + '\')" style="padding:6px 12px;">&#128196; <span id="attachCount' + id + '">0</span></button></td>'
+                + '<td><button class="action-btn" onclick="viewTransaction(\'' + id + '\')">View</button></td>'
+                + '<td class="ai-column">'
+                +   '<button class="ai-btn" onclick="toggleAISuggestion(\'' + id + '\', this)">'
+                +     '<span>\uD83E\uDD16</span> AI'
+                +   '</button>'
+                + '</td>'
+                + '</tr>'
+                + '<tr class="ai-suggestion-row" id="aiRow' + id + '">'
+                + '<td colspan="14">'
+                +   '<div class="ai-suggestion-content">'
+                +     '<div class="ai-suggestion-header">\uD83E\uDD16 Sean AI Analysis</div>'
+                +     '<div class="ai-decision"><em>Click to analyze\u2026</em></div>'
+                +   '</div>'
+                + '</td>'
+                + '</tr>';
+
+            // Insert immediately after the manual entry form row
+            var formRow = document.getElementById('manualEntryRow');
+            formRow.insertAdjacentHTML('afterend', rowHtml);
+
+            // Store allocation record
+            if (accountCode) {
+                transactionAllocations[id] = {
+                    type: type, accountCode: accountCode,
+                    accountName: accountText, posted: false, journalRef: ''
+                };
+                saveAllocationsToStorage();
+            }
+
+            // Persist to safeLocalStorage
+            var stored = JSON.parse(safeLocalStorage.getItem('bank_manual_transactions') || '[]');
+            stored.unshift({
+                id: id, date: dateVal, description: desc, reference: ref,
+                moneyIn: moneyIn, moneyOut: moneyOut,
+                type: type, accountCode: accountCode, accountName: accountText,
+                status: 'unmatched', createdAt: new Date().toISOString()
+            });
+            safeLocalStorage.setItem('bank_manual_transactions', JSON.stringify(stored));
+
+            cancelManualEntry();
+        }
+
+        /** Resets all manual entry fields back to their empty/default state. */
+        function cancelManualEntry() {
+            var fields = ['manualDesc', 'manualRef', 'manualMoneyIn', 'manualMoneyOut'];
+            fields.forEach(function (fid) {
+                var el = document.getElementById(fid);
+                if (el) { el.value = ''; el.disabled = false; el.classList.remove('error'); }
+            });
+            var typeEl = document.getElementById('manualType');
+            if (typeEl) typeEl.value = '';
+            var accountEl = document.getElementById('manualAccount');
+            if (accountEl) accountEl.innerHTML = '<option value="">Select Account\u2026</option>';
+            var dateEl = document.getElementById('manualDate');
+            if (dateEl) dateEl.value = new Date().toISOString().split('T')[0];
+        }
+
+        // ===================================
+        // DELETE SELECTED TRANSACTIONS
+        // ===================================
+
+        /**
+         * Shows a custom confirmation modal before deleting.
+         * @param {number}   count      Total transactions to delete
+         * @param {number}   warnCount  Of those, how many are already allocated (matched)
+         * @param {Function} onConfirm  Called if user confirms
+         */
+        function showDeleteConfirmModal(count, warnCount, onConfirm) {
+            var existing = document.getElementById('deleteConfirmModal');
+            if (existing) existing.remove();
+
+            var warnHtml = '';
+            if (warnCount > 0) {
+                warnHtml = '<div style="background:#fff8e1;border:1px solid #ffd600;border-radius:8px;padding:12px;margin:14px 0;font-size:13px;">'
+                    + '\u26A0\uFE0F <strong>' + warnCount + ' allocated transaction(s)</strong> have journal entries assigned. '
+                    + 'Deleting will leave those journal entries without a linked bank transaction.'
+                    + '</div>';
+            }
+
+            var modal = document.createElement('div');
+            modal.id = 'deleteConfirmModal';
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            modal.innerHTML = '<div style="background:white;border-radius:12px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+                + '<h3 style="margin:0 0 10px;color:#202124;font-size:18px;">Delete Transactions</h3>'
+                + '<p style="color:#5f6368;margin:0 0 4px;">You are about to permanently delete <strong>' + count + ' transaction(s)</strong>.</p>'
+                + '<p style="color:#5f6368;font-size:13px;margin:0;">This action cannot be undone.</p>'
+                + warnHtml
+                + '<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">'
+                +   '<button onclick="document.getElementById(\'deleteConfirmModal\').remove()" '
+                +     'style="padding:10px 20px;border:1px solid #e0e0e0;border-radius:8px;background:white;cursor:pointer;font-size:14px;">Cancel</button>'
+                +   '<button id="confirmDeleteBtn" '
+                +     'style="padding:10px 20px;border:none;border-radius:8px;background:#d32f2f;color:white;cursor:pointer;font-size:14px;font-weight:600;">Delete</button>'
+                + '</div>'
+                + '</div>';
+
+            document.body.appendChild(modal);
+
+            document.getElementById('confirmDeleteBtn').onclick = function () {
+                modal.remove();
+                onConfirm();
+            };
+        }
+
+        function bulkDelete() {
+            // Collect checked transaction rows (excludes manual entry row and AI rows via selector)
+            var checkedBoxes = Array.from(
+                document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row) .checkbox:checked')
+            );
+            var selectedRows = checkedBoxes.map(function (cb) { return cb.closest('tr'); });
+
+            if (selectedRows.length === 0) {
+                alert('No transactions selected.');
+                return;
+            }
+
+            // Safety checks on status
+            var reconciledRows = selectedRows.filter(function (row) {
+                return row.querySelector('.status-reconciled');
+            });
+            var matchedRows = selectedRows.filter(function (row) {
+                return row.querySelector('.status-matched');
+            });
+
+            if (reconciledRows.length > 0) {
+                alert('Cannot delete: ' + reconciledRows.length + ' selected transaction(s) are already reconciled.\n\nReconciled transactions cannot be deleted. Reverse the reconciliation first.');
+                return;
+            }
+
+            showDeleteConfirmModal(selectedRows.length, matchedRows.length, function () {
+                selectedRows.forEach(function (row) {
+                    // Remove paired AI suggestion row
+                    var next = row.nextElementSibling;
+                    if (next && next.classList.contains('ai-suggestion-row')) {
+                        next.remove();
+                    }
+                    // Clean up allocation state
+                    var cb = row.querySelector('.checkbox');
+                    if (cb && cb.dataset.txnId) {
+                        var txnId = cb.dataset.txnId.replace('txn-', '');
+                        delete transactionAllocations[txnId];
+                    }
+                    row.remove();
+                });
+
+                saveAllocationsToStorage();
+                updateBulkActions();
+
+                // Remove any deleted manual transactions from persistent storage
+                var stored = JSON.parse(safeLocalStorage.getItem('bank_manual_transactions') || '[]');
+                if (stored.length > 0) {
+                    var deletedIds = selectedRows.map(function (row) {
+                        var cb = row.querySelector('.checkbox');
+                        var raw = cb ? (cb.dataset.txnId || '').replace('txn-', '') : '';
+                        return raw.startsWith('m') ? raw : null;
+                    }).filter(Boolean);
+                    if (deletedIds.length > 0) {
+                        stored = stored.filter(function (t) { return !deletedIds.includes(t.id); });
+                        safeLocalStorage.setItem('bank_manual_transactions', JSON.stringify(stored));
+                    }
+                }
+            });
         }
         
         // Transaction review management
@@ -2970,7 +3404,7 @@ Click OK to simulate uploading a file.`;
             }
             
             // Get all transaction rows (not AI suggestion rows)
-            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row)');
+            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
             const table = document.querySelector('.transactions-table');
             
             // Update button visibility
@@ -3072,7 +3506,7 @@ Click OK to simulate uploading a file.`;
         }
         
         function updateCounts() {
-            const allRows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row)');
+            const allRows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
             let newCount = 0;
             let reviewedCount = 0;
             
@@ -3093,7 +3527,7 @@ Click OK to simulate uploading a file.`;
         
         // Initialize transaction IDs on page load
         document.addEventListener('DOMContentLoaded', function() {
-            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row)');
+            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
             rows.forEach((row, index) => {
                 const checkbox = row.querySelector('.checkbox');
                 if (checkbox && !checkbox.dataset.txnId) {
@@ -3106,7 +3540,7 @@ Click OK to simulate uploading a file.`;
         // Search functionality
         document.getElementById('searchInput').addEventListener('input', function(e) {
             const searchTerm = e.target.value.toLowerCase();
-            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row)');
+            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
             
             rows.forEach(row => {
                 const text = row.textContent.toLowerCase();
