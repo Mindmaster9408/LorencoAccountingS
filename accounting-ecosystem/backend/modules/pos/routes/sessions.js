@@ -94,6 +94,9 @@ router.post('/open', async (req, res) => {
     if (!till_id || opening_balance === undefined) {
       return res.status(400).json({ error: 'till_id and opening_balance are required' });
     }
+    if (opening_balance < 0) {
+      return res.status(400).json({ error: 'opening_balance cannot be negative' });
+    }
 
     // Check if user already has an open session
     const { data: existing } = await supabase

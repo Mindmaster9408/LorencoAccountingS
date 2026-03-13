@@ -71,6 +71,10 @@ router.post('/', requirePermission('CUSTOMERS.CREATE'), async (req, res) => {
 
     if (!name) return res.status(400).json({ error: 'name is required' });
 
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
     const customerNumber = `C-${Date.now().toString(36).toUpperCase()}`;
 
     const { data, error } = await supabase
@@ -127,6 +131,111 @@ router.put('/:id', requirePermission('CUSTOMERS.EDIT'), async (req, res) => {
 
     await auditFromReq(req, 'UPDATE', 'customer', req.params.id, { module: 'pos', newValue: data });
     res.json({ customer: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/customers/:id/account
+ * Get a customer's account balance and transaction history.
+ * Used for credit account customers who have an outstanding balance.
+ */
+router.get('/:id/account', requirePermission('CUSTOMERS.VIEW'), async (req, res) => {
+  try {
+    const { data: customer, error: custErr } = await supabase
+      .from('customers')
+      .select('id, name, current_balance, credit_limit')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (custErr || !customer) return res.status(404).json({ error: 'Customer not found' });
+
+    const { data: transactions, error: txErr } = await supabase
+      .from('customer_account_transactions')
+      .select('*')
+      .eq('company_id', req.companyId)
+      .eq('customer_id', req.params.id)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (txErr) return res.status(500).json({ error: txErr.message });
+
+    res.json({
+      customer,
+      balance:      customer.current_balance || 0,
+      transactions: transactions || [],
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/pos/customers/:id/account/payment
+ * Record a payment against a customer's outstanding account balance.
+ *
+ * Body: { amount, payment_method, reference, notes }
+ */
+router.post('/:id/account/payment', requirePermission('SALES.CREATE'), async (req, res) => {
+  try {
+    const { amount, payment_method, reference, notes } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+
+    const { data: customer, error: custErr } = await supabase
+      .from('customers')
+      .select('id, name, current_balance')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (custErr || !customer) return res.status(404).json({ error: 'Customer not found' });
+
+    const currentBalance = customer.current_balance || 0;
+    const newBalance     = Math.max(0, currentBalance - amount);
+
+    // Update customer balance
+    await supabase
+      .from('customers')
+      .update({ current_balance: newBalance, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId);
+
+    // Record account transaction
+    const { data: tx, error: txErr } = await supabase
+      .from('customer_account_transactions')
+      .insert({
+        company_id:    req.companyId,
+        customer_id:   parseInt(req.params.id),
+        sale_id:       null,
+        type:          'payment',
+        amount:        -amount,           // negative = money coming in (reduces balance)
+        balance_after: newBalance,
+        reference:     reference || null,
+        notes:         notes || `Payment via ${payment_method || 'cash'}`,
+        created_by:    req.user.userId,
+      })
+      .select()
+      .single();
+
+    if (txErr) return res.status(500).json({ error: txErr.message });
+
+    await auditFromReq(req, 'UPDATE', 'customer_account', req.params.id, {
+      module:   'pos',
+      oldValue: currentBalance,
+      newValue: newBalance,
+      metadata: { payment_amount: amount, payment_method, reference },
+    });
+
+    res.status(201).json({
+      transaction:  tx,
+      old_balance:  currentBalance,
+      new_balance:  newBalance,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

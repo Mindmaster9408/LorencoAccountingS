@@ -6,8 +6,22 @@ const AuditLogger = require('../services/auditLogger');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const PdfStatementImportService = require('../../../sean/pdf-statement-import-service');
 
 const router = express.Router();
+
+// ─── Multer: memory storage for PDF parsing (buffer only, no disk write) ────
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (req, file, cb) => {
+    const isPdf =
+      file.mimetype === 'application/pdf' ||
+      path.extname(file.originalname).toLowerCase() === '.pdf';
+    if (isPdf) return cb(null, true);
+    cb(new Error('Only PDF files are accepted for PDF import'));
+  }
+});
 
 // Configure multer for file uploads
 const uploadDir = path.join(__dirname, '../../../uploads/accounting/bank_attachments');
@@ -262,6 +276,146 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
     await client.query('ROLLBACK');
     console.error('Error importing bank transactions:', error);
     res.status(500).json({ error: 'Failed to import bank transactions' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * POST /api/bank/import/pdf
+ * Parse a PDF bank statement and return structured transactions for review.
+ * Does NOT write to the database — user must confirm via POST /api/bank/import.
+ *
+ * Request: multipart/form-data
+ *   file         — PDF bank statement
+ *   bankAccountId — (form field, optional) for duplicate detection
+ *
+ * Response 200:
+ *   { success, bank, parserId, parserConfidence, isGenericFallback,
+ *     accountNumber, statementPeriod, transactions, duplicateCount,
+ *     warnings, skippedLines }
+ */
+router.post('/import/pdf',
+  authenticate,
+  hasPermission('bank.import'),
+  pdfUpload.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No PDF file uploaded' });
+      }
+
+      const bankAccountId = req.body.bankAccountId
+        ? parseInt(req.body.bankAccountId, 10)
+        : null;
+
+      // If bankAccountId provided, verify it belongs to this company before
+      // using it for duplicate detection queries
+      let verifiedBankAccountId = null;
+      if (bankAccountId) {
+        const check = await db.query(
+          'SELECT id FROM bank_accounts WHERE id = $1 AND company_id = $2',
+          [bankAccountId, req.user.companyId]
+        );
+        if (check.rows.length > 0) verifiedBankAccountId = bankAccountId;
+      }
+
+      // For duplicate detection we need a DB client
+      const dbClient = verifiedBankAccountId ? await db.getClient() : null;
+      try {
+        const result = await PdfStatementImportService.parsePdf(
+          req.file.buffer,
+          req.file.originalname,
+          { dbClient, bankAccountId: verifiedBankAccountId }
+        );
+
+        if (!result.success) {
+          return res.status(422).json({
+            error: result.error,
+            isPdfScanned: result.isPdfScanned,
+            warnings: result.warnings
+          });
+        }
+
+        await AuditLogger.logUserAction(
+          req,
+          'PARSE',
+          'PDF_STATEMENT',
+          verifiedBankAccountId,
+          null,
+          {
+            filename: req.file.originalname,
+            bank: result.bank,
+            parserId: result.parserId,
+            confidence: result.parserConfidence,
+            transactionCount: result.transactions.length
+          },
+          'PDF bank statement parsed for review'
+        );
+
+        return res.json(result);
+      } finally {
+        if (dbClient) dbClient.release();
+      }
+    } catch (err) {
+      console.error('PDF import error:', err);
+      // Multer file-type error
+      if (err.message && err.message.includes('Only PDF files')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: 'Failed to process PDF statement' });
+    }
+  }
+);
+
+/**
+ * POST /api/bank/transactions
+ * Create a single manual bank transaction
+ */
+router.post('/transactions', authenticate, hasPermission('bank.manage'), async (req, res) => {
+  const client = await db.getClient();
+  try {
+    const { bankAccountId, date, description, reference, amount, balance } = req.body;
+
+    if (!bankAccountId) return res.status(400).json({ error: 'bankAccountId is required' });
+    if (!date) return res.status(400).json({ error: 'date is required' });
+    if (!description || !description.trim()) return res.status(400).json({ error: 'description is required' });
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount)) return res.status(400).json({ error: 'amount must be a valid number' });
+
+    await client.query('BEGIN');
+
+    const accountCheck = await client.query(
+      'SELECT id FROM bank_accounts WHERE id = $1 AND company_id = $2',
+      [bankAccountId, req.user.companyId]
+    );
+    if (accountCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Bank account not found or does not belong to this company' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO bank_transactions
+       (company_id, bank_account_id, date, description, amount, balance, reference, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'unmatched')
+       RETURNING *`,
+      [req.user.companyId, bankAccountId, date, description.trim(),
+       parsedAmount, balance != null ? parseFloat(balance) : null, reference || null]
+    );
+
+    await AuditLogger.logUserAction(
+      req, 'CREATE', 'BANK_TRANSACTION', result.rows[0].id,
+      null, { description: description.trim(), amount: parsedAmount },
+      'Manual bank transaction created'
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ transaction: result.rows[0] });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error creating bank transaction:', error);
+    res.status(500).json({ error: 'Failed to create bank transaction' });
   } finally {
     client.release();
   }

@@ -534,6 +534,16 @@ async function start() {
         console.warn('     Set DATABASE_URL (Supabase direct connection string, port 5432) to enable auto-migration.');
       }
     }
+
+    // 4c. Auto-migrate POS tables (runs on every startup, safe — uses IF NOT EXISTS)
+    try {
+      const { ensurePosSchema } = require('./config/pos-schema');
+      const accountingDb = require('./modules/accounting/config/database');
+      await ensurePosSchema(accountingDb.pool);
+    } catch (migErr) {
+      console.warn('  ⚠️  POS schema migration skipped:', migErr.message);
+      console.warn('     Set DATABASE_URL (Supabase direct connection string, port 5432) to enable auto-migration.');
+    }
   }
 
   // 4. Display module status

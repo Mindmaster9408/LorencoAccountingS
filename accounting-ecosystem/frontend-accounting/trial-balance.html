@@ -6,7 +6,6 @@
     <title>Trial Balance - Lorenco Accounting</title>
     <script src="js/navigation.js"></script>
     <script src="js/polyfills.js"></script>
-    <script src="js/ledger.js"></script>
     <style>
         * {
             margin: 0;
@@ -397,31 +396,17 @@
         
         <div class="report-controls">
             <div class="control-group">
-                <label>As At Date</label>
-                <input type="date" id="asAtDate" value="2026-01-14">
+                <label>From Date</label>
+                <input type="date" id="tbFromDate">
             </div>
             <div class="control-group">
-                <label>Account Type</label>
-                <select>
-                    <option>All Accounts</option>
-                    <option>Assets</option>
-                    <option>Liabilities</option>
-                    <option>Equity</option>
-                    <option>Income</option>
-                    <option>Expenses</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label>Show Zero Balances</label>
-                <select>
-                    <option>No</option>
-                    <option>Yes</option>
-                </select>
+                <label>To Date</label>
+                <input type="date" id="tbToDate">
             </div>
             <button class="btn-primary" onclick="generateReport()">Generate Report</button>
-            <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
-            <button class="btn-secondary" onclick="exportExcel()">Export Excel</button>
+            <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
         </div>
+        <div id="tbError" style="display:none;background:#fce4ec;color:#c62828;padding:10px 16px;border-radius:8px;margin:0 0 12px;font-weight:600;font-size:13px;"></div>
         
         <div class="report-card">
             <div class="report-header">
@@ -645,166 +630,122 @@
     </div>
     
     <script>
-        let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
+        const token = localStorage.getItem('token');
+        if (!token) window.location.href = '/';
 
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
-        }
+        function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+        function fmtAmt(n) { if (!n || n === 0) return '-'; return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-        // User info display handled by navigation.js
+        // Set default dates: current month
+        (function() {
+            const now = new Date();
+            const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0');
+            document.getElementById('tbFromDate').value = `${y}-${m}-01`;
+            document.getElementById('tbToDate').value = now.toISOString().slice(0, 10);
+        })();
 
-        // ===================================
-        // TRIAL BALANCE FUNCTIONS
-        // ===================================
+        let lastResult = null;
 
-        function formatCurrency(amount) {
-            if (amount === 0) return '-';
-            return 'R ' + Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
+        async function generateReport() {
+            const fromDate = document.getElementById('tbFromDate').value;
+            const toDate   = document.getElementById('tbToDate').value;
+            const errEl    = document.getElementById('tbError');
+            errEl.style.display = 'none';
 
-        function loadTrialBalance() {
+            if (!fromDate || !toDate) { errEl.textContent = 'Please select From Date and To Date.'; errEl.style.display = 'block'; return; }
+
             const tbody = document.getElementById('trialBalanceBody');
-            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:#9aa0a6">Loading…</td></tr>';
 
-            // Get trial balance from ledger
-            const tb = LedgerSystem.getTrialBalance();
+            try {
+                const res = await fetch(`/api/reports/trial-balance?fromDate=${fromDate}&toDate=${toDate}`, { headers: authH() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                lastResult = data;
+                renderTrialBalance(data);
 
-            // Check if there's any data
-            if (tb.accounts.length === 0) {
-                // Keep demo data if no real data exists
-                console.log('No ledger data found, keeping demo data');
-                return;
+                // Update report header date
+                const hdr = document.querySelector('.report-header p');
+                if (hdr) hdr.textContent = `Trial Balance — ${fromDate} to ${toDate}`;
+            } catch (err) {
+                errEl.textContent = 'Failed to generate report: ' + err.message;
+                errEl.style.display = 'block';
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:#d32f2f">Error loading report.</td></tr>';
             }
+        }
 
-            // Group accounts by type
+        function renderTrialBalance(data) {
+            const tbody = document.getElementById('trialBalanceBody');
             const groups = {
-                asset: { label: 'ASSETS', accounts: [] },
-                liability: { label: 'LIABILITIES', accounts: [] },
-                equity: { label: 'EQUITY', accounts: [] },
-                income: { label: 'INCOME', accounts: [] },
-                expense: { label: 'EXPENSES', accounts: [] }
+                asset:     { label: 'ASSETS',      accounts: [] },
+                liability: { label: 'LIABILITIES',  accounts: [] },
+                equity:    { label: 'EQUITY',       accounts: [] },
+                income:    { label: 'INCOME',       accounts: [] },
+                expense:   { label: 'EXPENSES',     accounts: [] }
             };
 
-            tb.accounts.forEach(acc => {
-                if (groups[acc.type]) {
-                    groups[acc.type].accounts.push(acc);
-                }
+            (data.accounts || []).forEach(acc => {
+                if (groups[acc.type]) groups[acc.type].accounts.push(acc);
             });
 
-            // Build HTML
             let html = '';
-
-            Object.entries(groups).forEach(([type, group]) => {
-                if (group.accounts.length > 0) {
-                    html += `<tr class="section-header"><td colspan="4">${group.label}</td></tr>`;
-
-                    group.accounts.forEach(acc => {
-                        // Determine debit/credit display based on account type
-                        let debitDisplay = '-';
-                        let creditDisplay = '-';
-
-                        if (type === 'asset' || type === 'expense') {
-                            // Normal debit balance
-                            if (acc.balance > 0) {
-                                debitDisplay = formatCurrency(acc.balance);
-                            } else if (acc.balance < 0) {
-                                creditDisplay = formatCurrency(acc.balance);
-                            }
-                        } else {
-                            // Normal credit balance (liability, equity, income)
-                            if (acc.balance > 0) {
-                                creditDisplay = formatCurrency(acc.balance);
-                            } else if (acc.balance < 0) {
-                                debitDisplay = formatCurrency(acc.balance);
-                            }
-                        }
-
-                        html += `
-                            <tr>
-                                <td>${acc.code}</td>
-                                <td>${acc.name}</td>
-                                <td class="amount">${debitDisplay}</td>
-                                <td class="amount">${creditDisplay}</td>
-                            </tr>
-                        `;
-                    });
-
-                    html += `<tr><td colspan="4" style="height: 10px;"></td></tr>`;
-                }
+            Object.values(groups).forEach(group => {
+                if (!group.accounts.length) return;
+                html += `<tr class="section-header"><td colspan="4">${group.label}</td></tr>`;
+                group.accounts.forEach(acc => {
+                    const isDebitNormal = acc.type === 'asset' || acc.type === 'expense';
+                    const bal = parseFloat(acc.balance || 0);
+                    const dr = (isDebitNormal ? (bal > 0 ? bal : 0) : (bal < 0 ? -bal : 0));
+                    const cr = (isDebitNormal ? (bal < 0 ? -bal : 0) : (bal > 0 ? bal : 0));
+                    html += `<tr>
+                        <td>${acc.code}</td>
+                        <td>${acc.name}</td>
+                        <td class="amount">${dr ? fmtAmt(dr) : '-'}</td>
+                        <td class="amount">${cr ? fmtAmt(cr) : '-'}</td>
+                    </tr>`;
+                });
+                html += '<tr><td colspan="4" style="height:10px"></td></tr>';
             });
 
-            // Add totals
-            html += `
-                <tr class="grand-total">
-                    <td colspan="2"><strong>TOTAL</strong></td>
-                    <td class="amount"><strong>${formatCurrency(tb.totalDebit)}</strong></td>
-                    <td class="amount"><strong>${formatCurrency(tb.totalCredit)}</strong></td>
-                </tr>
-            `;
+            const s = data.summary || {};
+            const totalDr = parseFloat(s.total ? s.total.debit : 0);
+            const totalCr = parseFloat(s.total ? s.total.credit : 0);
+            html += `<tr class="grand-total">
+                <td colspan="2"><strong>TOTAL</strong></td>
+                <td class="amount"><strong>${fmtAmt(totalDr)}</strong></td>
+                <td class="amount"><strong>${fmtAmt(totalCr)}</strong></td>
+            </tr>`;
 
-            // Check balance
-            if (!tb.isBalanced) {
-                html += `
-                    <tr style="background: #fff4e6;">
-                        <td colspan="4" style="color: #ea4335; font-weight: 600; text-align: center; padding: 15px;">
-                            ⚠️ Warning: Trial Balance is out of balance by R ${Math.abs(tb.totalDebit - tb.totalCredit).toFixed(2)}
-                        </td>
-                    </tr>
-                `;
+            if (!data.isBalanced) {
+                html += `<tr style="background:#fff4e6"><td colspan="4" style="color:#ea4335;font-weight:600;text-align:center;padding:15px">
+                    ⚠️ Warning: Trial Balance is out of balance by R ${Math.abs(totalDr - totalCr).toFixed(2)}
+                </td></tr>`;
             }
 
             tbody.innerHTML = html;
         }
 
-        function generateReport() {
-            loadTrialBalance();
-            alert('Trial Balance refreshed from ledger data.');
-        }
-
-        function exportPDF() {
-            alert('Exporting report to PDF...\n\nIn production, this would generate a PDF document.');
-        }
-
         function exportExcel() {
-            // Export to CSV (basic Excel-compatible format)
-            const tb = LedgerSystem.getTrialBalance();
-
+            if (!lastResult) { alert('Generate the report first.'); return; }
             let csv = 'Account Code,Account Name,Debit,Credit\n';
-            tb.accounts.forEach(acc => {
-                let debit = '', credit = '';
-                if (acc.type === 'asset' || acc.type === 'expense') {
-                    debit = acc.balance > 0 ? acc.balance.toFixed(2) : '';
-                    credit = acc.balance < 0 ? Math.abs(acc.balance).toFixed(2) : '';
-                } else {
-                    credit = acc.balance > 0 ? acc.balance.toFixed(2) : '';
-                    debit = acc.balance < 0 ? Math.abs(acc.balance).toFixed(2) : '';
-                }
-                csv += `"${acc.code}","${acc.name}",${debit},${credit}\n`;
+            (lastResult.accounts || []).forEach(acc => {
+                const isDebitNormal = acc.type === 'asset' || acc.type === 'expense';
+                const bal = parseFloat(acc.balance || 0);
+                const dr = isDebitNormal ? (bal > 0 ? bal : 0) : (bal < 0 ? -bal : 0);
+                const cr = isDebitNormal ? (bal < 0 ? -bal : 0) : (bal > 0 ? bal : 0);
+                csv += `"${acc.code}","${acc.name}",${dr ? dr.toFixed(2) : ''},${cr ? cr.toFixed(2) : ''}\n`;
             });
-            csv += `"TOTAL","",${tb.totalDebit.toFixed(2)},${tb.totalCredit.toFixed(2)}\n`;
-
-            // Download
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'trial-balance.csv';
+            const s = lastResult.summary || {};
+            csv += `"TOTAL","",${(s.total ? s.total.debit : 0).toFixed(2)},${(s.total ? s.total.credit : 0).toFixed(2)}\n`;
+            const a = Object.assign(document.createElement('a'), {
+                href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+                download: 'trial-balance.csv'
+            });
             a.click();
-            window.URL.revokeObjectURL(url);
         }
 
-        // Load trial balance on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check if LedgerSystem is available and has data
-            if (typeof LedgerSystem !== 'undefined') {
-                const journals = LedgerSystem.getJournals();
-                if (journals.length > 0) {
-                    loadTrialBalance();
-                }
-            }
-        });
+        // Auto-load on page ready
+        document.addEventListener('DOMContentLoaded', generateReport);
     </script>
 </body>
 </html>

@@ -6,7 +6,6 @@
     <title>Balance Sheet - Lorenco Accounting</title>
     <script src="js/navigation.js"></script>
     <script src="js/polyfills.js"></script>
-    <script src="js/ledger.js"></script>
     <style>
         * {
             margin: 0;
@@ -398,28 +397,16 @@
         <div class="report-controls">
             <div class="control-group">
                 <label>As At Date</label>
-                <input type="date" id="asAtDate" value="2026-01-14">
+                <input type="date" id="bsAsAtDate">
             </div>
             <div class="control-group">
-                <label>Comparison</label>
-                <select>
-                    <option>None</option>
-                    <option>Previous Month</option>
-                    <option>Previous Year</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label>Layout</label>
-                <select>
-                    <option>Standard</option>
-                    <option>Detailed</option>
-                    <option>Summary</option>
-                </select>
+                <label>Year Start (P&amp;L from)</label>
+                <input type="date" id="bsFromDate">
             </div>
             <button class="btn-primary" onclick="generateReport()">Generate Report</button>
-            <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
-            <button class="btn-secondary" onclick="exportExcel()">Export Excel</button>
+            <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
         </div>
+        <div id="bsError" style="display:none;background:#fce4ec;color:#c62828;padding:10px 16px;border-radius:8px;margin:0 0 12px;font-weight:600;font-size:13px;"></div>
         
         <div class="report-card">
             <div class="report-header">
@@ -578,167 +565,114 @@
     </div>
     
     <script>
-        let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
+        const token = localStorage.getItem('token');
+        if (!token) window.location.href = '/';
 
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
-        }
+        function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+        function fmtAmt(n) { if (!n || n === 0) return '-'; return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-        // User info display handled by navigation.js
+        // Set default dates: today as asOfDate, year start as fromDate
+        (function() {
+            const now = new Date();
+            const today = now.toISOString().slice(0, 10);
+            document.getElementById('bsAsAtDate').value = today;
+            document.getElementById('bsFromDate').value = `${now.getFullYear()}-01-01`;
+        })();
 
-        // ===================================
-        // BALANCE SHEET FUNCTIONS
-        // ===================================
+        let lastResult = null;
 
-        function formatCurrency(amount) {
-            if (amount === 0) return '-';
-            return 'R ' + Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
+        async function generateReport() {
+            const asOfDate = document.getElementById('bsAsAtDate').value;
+            const fromDate = document.getElementById('bsFromDate').value;
+            const errEl = document.getElementById('bsError');
+            errEl.style.display = 'none';
 
-        function loadBalanceSheet() {
+            if (!asOfDate) { errEl.textContent = 'Please select an As At Date.'; errEl.style.display = 'block'; return; }
+
             const tbody = document.getElementById('bsBody');
-            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:30px;color:#9aa0a6">Loading…</td></tr>';
 
-            // Get balance sheet from ledger
-            const bs = LedgerSystem.getBalanceSheet();
+            try {
+                let url = `/api/reports/balance-sheet?asOfDate=${asOfDate}`;
+                if (fromDate) url += `&fromDate=${fromDate}`;
+                const res = await fetch(url, { headers: authH() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                lastResult = data;
+                renderBalanceSheet(data);
 
-            // Check if there's any data
-            if (bs.assets.current.accounts.length === 0 && bs.liabilities.current.accounts.length === 0) {
-                console.log('No ledger data found, keeping demo data');
-                return;
+                const hdr = document.querySelector('.report-header p');
+                if (hdr) hdr.textContent = `Balance Sheet — As at ${asOfDate}`;
+            } catch (err) {
+                errEl.textContent = 'Failed to generate report: ' + err.message;
+                errEl.style.display = 'block';
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:30px;color:#d32f2f">Error loading report.</td></tr>';
             }
+        }
 
+        function renderBalanceSheet(data) {
+            const tbody = document.getElementById('bsBody');
             let html = '';
 
-            // ASSETS Section
+            // ── ASSETS ──────────────────────────────────────────────────────
             html += '<tr class="section-header"><td colspan="2">ASSETS</td></tr>';
-
-            // Current Assets
-            if (bs.assets.current.accounts.length > 0) {
-                html += '<tr class="section-header" style="background: rgba(0,102,204,0.03); font-weight: 600;"><td colspan="2">Current Assets</td></tr>';
-                bs.assets.current.accounts.forEach(acc => {
-                    html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
-                });
-                html += `<tr class="section-total"><td class="indent-1"><strong>Total Current Assets</strong></td><td class="amount"><strong>${formatCurrency(bs.assets.current.total)}</strong></td></tr>`;
-            }
-
-            // Non-Current Assets
-            if (bs.assets.nonCurrent.accounts.length > 0) {
-                html += '<tr class="section-header" style="background: rgba(0,102,204,0.03); font-weight: 600;"><td colspan="2">Non-Current Assets</td></tr>';
-                bs.assets.nonCurrent.accounts.forEach(acc => {
-                    html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
-                });
-                html += `<tr class="section-total"><td class="indent-1"><strong>Total Non-Current Assets</strong></td><td class="amount"><strong>${formatCurrency(bs.assets.nonCurrent.total)}</strong></td></tr>`;
-            }
-
-            // Total Assets
-            html += `<tr class="section-total" style="background: rgba(0,102,204,0.15);"><td><strong>TOTAL ASSETS</strong></td><td class="amount"><strong>${formatCurrency(bs.assets.total)}</strong></td></tr>`;
-
-            html += '<tr><td colspan="2" style="height: 20px;"></td></tr>';
-
-            // LIABILITIES Section
-            html += '<tr class="section-header"><td colspan="2">LIABILITIES</td></tr>';
-
-            // Current Liabilities
-            if (bs.liabilities.current.accounts.length > 0) {
-                html += '<tr class="section-header" style="background: rgba(0,102,204,0.03); font-weight: 600;"><td colspan="2">Current Liabilities</td></tr>';
-                bs.liabilities.current.accounts.forEach(acc => {
-                    html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
-                });
-                html += `<tr class="section-total"><td class="indent-1"><strong>Total Current Liabilities</strong></td><td class="amount"><strong>${formatCurrency(bs.liabilities.current.total)}</strong></td></tr>`;
-            }
-
-            // Non-Current Liabilities
-            if (bs.liabilities.nonCurrent.accounts.length > 0) {
-                html += '<tr class="section-header" style="background: rgba(0,102,204,0.03); font-weight: 600;"><td colspan="2">Non-Current Liabilities</td></tr>';
-                bs.liabilities.nonCurrent.accounts.forEach(acc => {
-                    html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
-                });
-                html += `<tr class="section-total"><td class="indent-1"><strong>Total Non-Current Liabilities</strong></td><td class="amount"><strong>${formatCurrency(bs.liabilities.nonCurrent.total)}</strong></td></tr>`;
-            }
-
-            // Total Liabilities
-            html += `<tr class="section-total" style="background: rgba(220,53,69,0.1);"><td><strong>TOTAL LIABILITIES</strong></td><td class="amount"><strong>${formatCurrency(bs.liabilities.total)}</strong></td></tr>`;
-
-            html += '<tr><td colspan="2" style="height: 20px;"></td></tr>';
-
-            // EQUITY Section
-            html += '<tr class="section-header"><td colspan="2">EQUITY</td></tr>';
-            bs.equity.accounts.forEach(acc => {
-                html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
+            (data.assets || []).forEach(acc => {
+                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
             });
-            // Retained Earnings (from P&L)
-            if (bs.equity.retainedEarnings !== 0) {
-                html += `<tr><td class="indent-1">Current Year Earnings</td><td class="amount">${formatCurrency(bs.equity.retainedEarnings)}</td></tr>`;
+            html += `<tr class="section-total" style="background:rgba(0,102,204,0.15)"><td><strong>TOTAL ASSETS</strong></td><td class="amount"><strong>${fmtAmt(data.totals.assets)}</strong></td></tr>`;
+            html += '<tr><td colspan="2" style="height:20px"></td></tr>';
+
+            // ── LIABILITIES ──────────────────────────────────────────────────
+            html += '<tr class="section-header"><td colspan="2">LIABILITIES</td></tr>';
+            (data.liabilities || []).forEach(acc => {
+                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
+            });
+            html += `<tr class="section-total" style="background:rgba(220,53,69,0.1)"><td><strong>TOTAL LIABILITIES</strong></td><td class="amount"><strong>${fmtAmt(data.totals.liabilities)}</strong></td></tr>`;
+            html += '<tr><td colspan="2" style="height:20px"></td></tr>';
+
+            // ── EQUITY ───────────────────────────────────────────────────────
+            html += '<tr class="section-header"><td colspan="2">EQUITY</td></tr>';
+            (data.equity || []).forEach(acc => {
+                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
+            });
+            if (data.currentYearEarnings !== 0) {
+                html += `<tr><td class="indent-1">Current Year Earnings</td><td class="amount">${fmtAmt(data.currentYearEarnings)}</td></tr>`;
             }
-            html += `<tr class="section-total" style="background: rgba(52,168,83,0.1);"><td><strong>TOTAL EQUITY</strong></td><td class="amount"><strong>${formatCurrency(bs.equity.total)}</strong></td></tr>`;
+            html += `<tr class="section-total" style="background:rgba(52,168,83,0.1)"><td><strong>TOTAL EQUITY</strong></td><td class="amount"><strong>${fmtAmt(data.totals.equity)}</strong></td></tr>`;
+            html += '<tr><td colspan="2" style="height:15px"></td></tr>';
 
-            html += '<tr><td colspan="2" style="height: 15px;"></td></tr>';
+            // ── TOTAL L + E ──────────────────────────────────────────────────
+            html += `<tr class="grand-total"><td><strong>TOTAL LIABILITIES + EQUITY</strong></td><td class="amount"><strong>${fmtAmt(data.totals.liabilitiesAndEquity)}</strong></td></tr>`;
 
-            // TOTAL LIABILITIES + EQUITY
-            html += `<tr class="grand-total"><td><strong>TOTAL LIABILITIES + EQUITY</strong></td><td class="amount"><strong>${formatCurrency(bs.totalLiabilitiesAndEquity)}</strong></td></tr>`;
-
-            // Balance check
-            if (!bs.isBalanced) {
-                html += `<tr style="background: #fff4e6;"><td colspan="2" style="color: #ea4335; font-weight: 600; text-align: center; padding: 15px;">
-                    ⚠️ Warning: Balance Sheet is out of balance by R ${Math.abs(bs.assets.total - bs.totalLiabilitiesAndEquity).toFixed(2)}
+            if (!data.isBalanced) {
+                const diff = Math.abs(data.totals.assets - data.totals.liabilitiesAndEquity);
+                html += `<tr style="background:#fff4e6"><td colspan="2" style="color:#ea4335;font-weight:600;text-align:center;padding:15px">
+                    ⚠️ Warning: Balance Sheet is out of balance by R ${diff.toFixed(2)}
                 </td></tr>`;
             }
 
             tbody.innerHTML = html;
         }
 
-        function generateReport() {
-            loadBalanceSheet();
-            alert('Balance Sheet refreshed from ledger data.');
-        }
-
-        function exportPDF() {
-            alert('Exporting report to PDF...\n\nIn production, this would generate a PDF document.');
-        }
-
         function exportExcel() {
-            const bs = LedgerSystem.getBalanceSheet();
-
-            let csv = 'Account,Amount\n';
-            csv += 'ASSETS,\n';
-            csv += 'Current Assets,\n';
-            bs.assets.current.accounts.forEach(acc => {
-                csv += `"${acc.name}",${acc.balance.toFixed(2)}\n`;
+            if (!lastResult) { alert('Generate the report first.'); return; }
+            let csv = 'Section,Account,Amount\n';
+            (lastResult.assets || []).forEach(a => { csv += `"ASSETS","${a.code} — ${a.name}",${a.balance.toFixed(2)}\n`; });
+            csv += `"ASSETS","TOTAL ASSETS",${lastResult.totals.assets.toFixed(2)}\n`;
+            (lastResult.liabilities || []).forEach(a => { csv += `"LIABILITIES","${a.code} — ${a.name}",${a.balance.toFixed(2)}\n`; });
+            csv += `"LIABILITIES","TOTAL LIABILITIES",${lastResult.totals.liabilities.toFixed(2)}\n`;
+            (lastResult.equity || []).forEach(a => { csv += `"EQUITY","${a.code} — ${a.name}",${a.balance.toFixed(2)}\n`; });
+            csv += `"EQUITY","Current Year Earnings",${(lastResult.currentYearEarnings || 0).toFixed(2)}\n`;
+            csv += `"EQUITY","TOTAL EQUITY",${lastResult.totals.equity.toFixed(2)}\n`;
+            csv += `"","TOTAL LIABILITIES + EQUITY",${lastResult.totals.liabilitiesAndEquity.toFixed(2)}\n`;
+            const a = Object.assign(document.createElement('a'), {
+                href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+                download: 'balance-sheet.csv'
             });
-            csv += `"Total Current Assets",${bs.assets.current.total.toFixed(2)}\n`;
-            csv += 'Non-Current Assets,\n';
-            bs.assets.nonCurrent.accounts.forEach(acc => {
-                csv += `"${acc.name}",${acc.balance.toFixed(2)}\n`;
-            });
-            csv += `"Total Non-Current Assets",${bs.assets.nonCurrent.total.toFixed(2)}\n`;
-            csv += `"TOTAL ASSETS",${bs.assets.total.toFixed(2)}\n`;
-            csv += 'LIABILITIES,\n';
-            csv += `"Total Liabilities",${bs.liabilities.total.toFixed(2)}\n`;
-            csv += 'EQUITY,\n';
-            csv += `"Total Equity",${bs.equity.total.toFixed(2)}\n`;
-            csv += `"TOTAL LIABILITIES + EQUITY",${bs.totalLiabilitiesAndEquity.toFixed(2)}\n`;
-
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'balance-sheet.csv';
             a.click();
-            window.URL.revokeObjectURL(url);
         }
 
-        // Load balance sheet on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof LedgerSystem !== 'undefined') {
-                const journals = LedgerSystem.getJournals();
-                if (journals.length > 0) {
-                    loadBalanceSheet();
-                }
-            }
-        });
+        document.addEventListener('DOMContentLoaded', generateReport);
     </script>
 </body>
 </html>

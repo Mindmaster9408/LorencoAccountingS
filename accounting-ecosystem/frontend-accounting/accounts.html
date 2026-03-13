@@ -6,230 +6,328 @@
     <title>Chart of Accounts - Lorenco Accounting</title>
     <script src="js/navigation.js"></script>
     <script src="js/polyfills.js"></script>
-    <script src="js/ledger.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8f9fa;
-        }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; }
         .main-content { padding: 30px; max-width: 1400px; margin: 0 auto; }
         .page-header { margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
         .page-header h1 { font-size: 24px; color: #202124; }
         .page-header p { color: #5f6368; margin-top: 4px; }
-        .btn-primary {
-            padding: 10px 20px; background: linear-gradient(135deg, #0066cc, #0099ff);
-            color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px;
-            box-shadow: 0 2px 8px rgba(0,102,204,0.3); transition: all 0.2s;
-        }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,102,204,0.4); }
-        .filter-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-        .filter-bar select, .filter-bar input {
-            padding: 8px 14px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px;
-        }
-        .section {
-            background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            border: 1px solid #e8eaed; overflow: hidden;
-        }
+        .btn-primary { padding: 10px 20px; background: linear-gradient(135deg, #0066cc, #0099ff); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; box-shadow: 0 2px 8px rgba(0,102,204,0.3); transition: all 0.2s; }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-secondary { padding: 10px 20px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .filter-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .filter-bar select, .filter-bar input { padding: 8px 14px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; }
+        .section { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid #e8eaed; overflow: hidden; }
         table { width: 100%; border-collapse: collapse; }
-        th {
-            background: #f8f9fa; padding: 14px 16px; text-align: left; font-weight: 600;
-            color: #5f6368; font-size: 13px; border-bottom: 2px solid #e8eaed;
-        }
+        th { background: #f8f9fa; padding: 14px 16px; text-align: left; font-weight: 600; color: #5f6368; font-size: 13px; border-bottom: 2px solid #e8eaed; }
         td { padding: 12px 16px; border-bottom: 1px solid #f5f5f5; font-size: 13px; color: #202124; }
         tr:hover { background: #f0f8ff; }
-        .type-badge {
-            display: inline-block; padding: 3px 10px; border-radius: 12px;
-            font-size: 11px; font-weight: 600; text-transform: uppercase;
-        }
-        .type-asset { background: #e3f2fd; color: #1565c0; }
+        .type-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        .type-asset     { background: #e3f2fd; color: #1565c0; }
         .type-liability { background: #fce4ec; color: #c62828; }
-        .type-equity { background: #e8f5e9; color: #2e7d32; }
-        .type-income { background: #f3e5f5; color: #6a1b9a; }
-        .type-expense { background: #fff3e0; color: #e65100; }
-        .system-badge { background: #e0e0e0; color: #616161; font-size: 10px; padding: 2px 8px; border-radius: 8px; }
-        .modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center;
-        }
+        .type-equity    { background: #e8f5e9; color: #2e7d32; }
+        .type-income    { background: #f3e5f5; color: #6a1b9a; }
+        .type-expense   { background: #fff3e0; color: #e65100; }
+        .system-badge   { background: #e0e0e0; color: #616161; font-size: 10px; padding: 2px 8px; border-radius: 8px; margin-left: 6px; }
+        .inactive-badge { background: #f5f5f5; color: #9aa0a6; font-size: 10px; padding: 2px 8px; border-radius: 8px; margin-left: 6px; }
+        .action-btn { padding: 4px 10px; border: 1px solid #e0e0e0; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; background: white; }
+        .action-btn:hover { background: #f0f8ff; border-color: #0066cc; color: #0066cc; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; }
         .modal-overlay.show { display: flex; }
-        .modal {
-            background: white; border-radius: 12px; padding: 30px; width: 500px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        .modal h2 { margin-bottom: 20px; font-size: 20px; }
-        .form-group { margin-bottom: 16px; }
+        .modal { background: white; border-radius: 12px; padding: 30px; width: 480px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .modal h2 { margin-bottom: 20px; font-size: 18px; }
+        .form-group { margin-bottom: 14px; }
         .form-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 13px; color: #333; }
-        .form-group input, .form-group select {
-            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
-        }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .form-group input:read-only { background: #f8f9fa; color: #5f6368; }
         .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-        .btn-secondary { padding: 10px 20px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .modal-error { background: #fce4ec; color: #c62828; padding: 10px; border-radius: 6px; margin-top: 12px; font-size: 13px; display: none; }
+
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 25px; }
         .stat-item { background: white; padding: 16px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); text-align: center; }
-        .stat-item .count { font-size: 28px; font-weight: 700; color: #0066cc; }
+        .stat-item .count { font-size: 26px; font-weight: 700; color: #0066cc; }
         .stat-item .label { font-size: 12px; color: #5f6368; margin-top: 4px; }
+        .error-banner { background: #fce4ec; color: #c62828; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; font-weight: 600; display: none; }
+        .loading-row td { text-align: center; padding: 40px; color: #9aa0a6; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 </head>
 <body>
 
-    <div class="main-content">
-        <div class="page-header">
-            <div>
-                <h1>Chart of Accounts</h1>
-                <p>Manage your general ledger accounts</p>
-            </div>
-            <button class="btn-primary" onclick="showAddModal()">+ New Account</button>
+<div class="main-content">
+    <div class="page-header">
+        <div>
+            <h1>Chart of Accounts</h1>
+            <p>Manage your general ledger accounts</p>
         </div>
+        <button class="btn-primary" onclick="showCreateModal()">+ New Account</button>
+    </div>
 
-        <div class="stats" id="accountStats"></div>
+    <div class="stats" id="accountStats"></div>
 
-        <div class="filter-bar">
-            <select id="filterType" onchange="renderAccounts()">
-                <option value="">All Types</option>
-                <option value="asset">Assets</option>
-                <option value="liability">Liabilities</option>
+    <div id="errorBanner" class="error-banner"></div>
+
+    <div class="filter-bar">
+        <select id="filterType" onchange="applyFilters()">
+            <option value="">All Types</option>
+            <option value="asset">Assets</option>
+            <option value="liability">Liabilities</option>
+            <option value="equity">Equity</option>
+            <option value="income">Income</option>
+            <option value="expense">Expenses</option>
+        </select>
+        <select id="filterActive" onchange="loadAccounts()">
+            <option value="active">Active Only</option>
+            <option value="all">All (inc. inactive)</option>
+        </select>
+        <input type="text" id="searchInput" placeholder="Search code or name…" oninput="applyFilters()">
+    </div>
+
+    <div class="section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Account Name</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="accountsBody">
+                <tr class="loading-row"><td colspan="5">Loading…</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create / Edit Modal -->
+<div class="modal-overlay" id="accountModal">
+    <div class="modal">
+        <h2 id="modalTitle">New Account</h2>
+
+        <div class="form-group">
+            <label>Account Code *</label>
+            <input type="text" id="accCode" placeholder="e.g. 6100">
+        </div>
+        <div class="form-group">
+            <label>Account Name *</label>
+            <input type="text" id="accName" placeholder="e.g. Travel Expenses">
+        </div>
+        <div class="form-group">
+            <label>Type *</label>
+            <select id="accType">
+                <option value="asset">Asset</option>
+                <option value="liability">Liability</option>
                 <option value="equity">Equity</option>
                 <option value="income">Income</option>
-                <option value="expense">Expenses</option>
+                <option value="expense">Expense</option>
             </select>
-            <input type="text" id="searchInput" placeholder="Search accounts..." oninput="renderAccounts()">
+        </div>
+        <div class="form-group">
+            <label>Description</label>
+            <textarea id="accDesc" rows="2" placeholder="Optional description"></textarea>
+        </div>
+        <div class="form-group" id="isActiveGroup" style="display:none">
+            <label>Status</label>
+            <select id="accActive">
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+            </select>
         </div>
 
-        <div class="section">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Code</th>
-                        <th>Account Name</th>
-                        <th>Type</th>
-                        <th>Category</th>
-                        <th>VAT</th>
-                        <th>Balance</th>
-                    </tr>
-                </thead>
-                <tbody id="accountsBody"></tbody>
-            </table>
-        </div>
-    </div>
+        <div class="modal-error" id="modalError"></div>
 
-    <div class="modal-overlay" id="addModal">
-        <div class="modal">
-            <h2 id="modalTitle">Add New Account</h2>
-            <div class="form-group">
-                <label>Account Code</label>
-                <input type="text" id="accCode" placeholder="e.g. 6100">
-            </div>
-            <div class="form-group">
-                <label>Account Name</label>
-                <input type="text" id="accName" placeholder="e.g. Travel Expenses">
-            </div>
-            <div class="form-group">
-                <label>Type</label>
-                <select id="accType">
-                    <option value="asset">Asset</option>
-                    <option value="liability">Liability</option>
-                    <option value="equity">Equity</option>
-                    <option value="income">Income</option>
-                    <option value="expense">Expense</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Category</label>
-                <input type="text" id="accCategory" placeholder="e.g. Operating Expenses">
-            </div>
-            <div class="form-group">
-                <label>VAT Applicable</label>
-                <select id="accVat">
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                </select>
-            </div>
-            <div class="modal-actions">
-                <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-                <button class="btn-primary" onclick="saveAccount()">Save Account</button>
-            </div>
+        <div class="modal-actions">
+            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn-primary" id="saveAccountBtn" onclick="saveAccount()">Save Account</button>
         </div>
     </div>
+</div>
 
-    <script>
-        function renderAccounts() {
-            const accounts = LedgerSystem.getAllAccounts();
-            const filter = document.getElementById('filterType').value;
-            const search = document.getElementById('searchInput').value.toLowerCase();
-            
-            let filtered = accounts;
-            if (filter) filtered = filtered.filter(a => a.type === filter);
-            if (search) filtered = filtered.filter(a => 
-                a.name.toLowerCase().includes(search) || a.code.includes(search)
-            );
+<script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/';
+    function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+    function showError(msg) { const el = document.getElementById('errorBanner'); el.textContent = msg; el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 8000); }
 
-            // Get trial balance for balances
-            const tb = LedgerSystem.getTrialBalance();
+    let allAccounts = [];
+    let editingId   = null;
 
-            const tbody = document.getElementById('accountsBody');
-            tbody.innerHTML = filtered.map(acc => {
-                const tbEntry = tb.find(t => t.code === acc.code);
-                const balance = tbEntry ? (tbEntry.debit - tbEntry.credit) : 0;
-                const displayBalance = Math.abs(balance).toLocaleString('en-ZA', { style: 'currency', currency: 'ZAR' });
-                return `<tr>
-                    <td><strong>${acc.code}</strong></td>
-                    <td>${acc.name} ${acc.system ? '<span class="system-badge">SYSTEM</span>' : ''}</td>
-                    <td><span class="type-badge type-${acc.type}">${acc.type}</span></td>
-                    <td>${acc.category}</td>
-                    <td>${acc.vatApplicable ? '✓ 15%' : '—'}</td>
-                    <td style="text-align: right; font-weight: 600;">${balance !== 0 ? displayBalance : '—'}</td>
-                </tr>`;
-            }).join('');
+    // ── Load ─────────────────────────────────────────────────────────────────
+    async function loadAccounts() {
+        const showAll = document.getElementById('filterActive').value === 'all';
+        const params  = showAll ? '?includeInactive=true' : '';
 
-            // Update stats
-            const stats = document.getElementById('accountStats');
-            const types = ['asset', 'liability', 'equity', 'income', 'expense'];
-            stats.innerHTML = types.map(t => 
-                `<div class="stat-item"><div class="count">${accounts.filter(a => a.type === t).length}</div><div class="label">${t.charAt(0).toUpperCase() + t.slice(1)} Accounts</div></div>`
-            ).join('');
+        document.getElementById('accountsBody').innerHTML = '<tr class="loading-row"><td colspan="5">Loading…</td></tr>';
+
+        try {
+            const res  = await fetch('/api/accounts' + params, { headers: authH() });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            allAccounts = data.accounts || [];
+            applyFilters();
+        } catch (err) {
+            document.getElementById('accountsBody').innerHTML =
+                `<tr class="loading-row"><td colspan="5" style="color:#d32f2f">Failed to load accounts: ${err.message}</td></tr>`;
+        }
+    }
+
+    // ── Filter + Render ───────────────────────────────────────────────────────
+    function applyFilters() {
+        const type   = document.getElementById('filterType').value;
+        const search = document.getElementById('searchInput').value.toLowerCase();
+
+        let filtered = allAccounts;
+        if (type)   filtered = filtered.filter(a => a.type === type);
+        if (search) filtered = filtered.filter(a =>
+            a.code.toLowerCase().includes(search) || a.name.toLowerCase().includes(search)
+        );
+
+        renderAccounts(filtered);
+    }
+
+    const TYPE_LABELS = { asset: 'Asset', liability: 'Liability', equity: 'Equity', income: 'Income', expense: 'Expense' };
+
+    function renderAccounts(list) {
+        // Stats
+        const types = ['asset', 'liability', 'equity', 'income', 'expense'];
+        document.getElementById('accountStats').innerHTML = types.map(t => {
+            const count = allAccounts.filter(a => a.type === t).length;
+            return `<div class="stat-item"><div class="count">${count}</div><div class="label">${TYPE_LABELS[t]} Accounts</div></div>`;
+        }).join('');
+
+        const tbody = document.getElementById('accountsBody');
+        if (!list.length) {
+            tbody.innerHTML = '<tr class="loading-row"><td colspan="5">No accounts found.</td></tr>';
+            return;
         }
 
-        function showAddModal() {
-            document.getElementById('addModal').classList.add('show');
-            document.getElementById('modalTitle').textContent = 'Add New Account';
-        }
+        tbody.innerHTML = list.map(acc => {
+            const nameBadges =
+                (acc.is_system  ? '<span class="system-badge">SYSTEM</span>' : '') +
+                (!acc.is_active ? '<span class="inactive-badge">INACTIVE</span>' : '');
 
-        function closeModal() {
-            document.getElementById('addModal').classList.remove('show');
-        }
+            const editBtn = !acc.is_system
+                ? `<button class="action-btn" onclick="showEditModal(${acc.id})">Edit</button>`
+                : '';
 
-        function saveAccount() {
-            const code = document.getElementById('accCode').value.trim();
-            const name = document.getElementById('accName').value.trim();
-            const type = document.getElementById('accType').value;
-            const category = document.getElementById('accCategory').value.trim();
-            const vatApplicable = document.getElementById('accVat').value === 'true';
+            return `<tr>
+                <td><strong>${esc(acc.code)}</strong></td>
+                <td>${esc(acc.name)}${nameBadges}</td>
+                <td><span class="type-badge type-${acc.type}">${acc.type}</span></td>
+                <td style="color:#5f6368">${esc(acc.description || '')}</td>
+                <td>${editBtn}</td>
+            </tr>`;
+        }).join('');
+    }
 
-            if (!code || !name) {
-                alert('Please fill in account code and name');
-                return;
+    // ── Create Modal ──────────────────────────────────────────────────────────
+    function showCreateModal() {
+        editingId = null;
+        document.getElementById('modalTitle').textContent    = 'New Account';
+        document.getElementById('accCode').value             = '';
+        document.getElementById('accCode').readOnly          = false;
+        document.getElementById('accName').value             = '';
+        document.getElementById('accType').value             = 'expense';
+        document.getElementById('accType').disabled          = false;
+        document.getElementById('accDesc').value             = '';
+        document.getElementById('isActiveGroup').style.display = 'none';
+        document.getElementById('modalError').style.display  = 'none';
+        document.getElementById('saveAccountBtn').textContent = 'Save Account';
+        document.getElementById('accountModal').classList.add('show');
+    }
+
+    // ── Edit Modal ────────────────────────────────────────────────────────────
+    function showEditModal(id) {
+        const acc = allAccounts.find(a => a.id === id);
+        if (!acc) return;
+
+        editingId = id;
+        document.getElementById('modalTitle').textContent   = 'Edit Account';
+        document.getElementById('accCode').value            = acc.code;
+        document.getElementById('accCode').readOnly         = true;
+        document.getElementById('accName').value            = acc.name;
+        document.getElementById('accType').value            = acc.type;
+        document.getElementById('accType').disabled         = true;
+        document.getElementById('accDesc').value            = acc.description || '';
+        document.getElementById('accActive').value          = acc.is_active ? 'true' : 'false';
+        document.getElementById('isActiveGroup').style.display = 'block';
+        document.getElementById('modalError').style.display = 'none';
+        document.getElementById('saveAccountBtn').textContent = 'Update Account';
+        document.getElementById('accountModal').classList.add('show');
+    }
+
+    function closeModal() {
+        document.getElementById('accountModal').classList.remove('show');
+        document.getElementById('accType').disabled = false;
+        editingId = null;
+    }
+
+    // ── Save ──────────────────────────────────────────────────────────────────
+    async function saveAccount() {
+        const name = document.getElementById('accName').value.trim();
+        const desc = document.getElementById('accDesc').value.trim();
+        const errEl = document.getElementById('modalError');
+        errEl.style.display = 'none';
+
+        const btn = document.getElementById('saveAccountBtn');
+        btn.disabled = true;
+
+        try {
+            let res, data;
+
+            if (editingId) {
+                // Edit: only name, description, isActive can change
+                const isActive = document.getElementById('accActive').value === 'true';
+                if (!name) { errEl.textContent = 'Account name is required.'; errEl.style.display = 'block'; return; }
+                res  = await fetch(`/api/accounts/${editingId}`, {
+                    method: 'PUT',
+                    headers: authH(),
+                    body: JSON.stringify({ name, description: desc || null, isActive })
+                });
+                data = await res.json();
+            } else {
+                // Create
+                const code = document.getElementById('accCode').value.trim();
+                const type = document.getElementById('accType').value;
+                if (!code || !name) { errEl.textContent = 'Code and name are required.'; errEl.style.display = 'block'; return; }
+                res  = await fetch('/api/accounts', {
+                    method: 'POST',
+                    headers: authH(),
+                    body: JSON.stringify({ code, name, type, description: desc || null })
+                });
+                data = await res.json();
             }
 
-            // Check for duplicate code
-            const existing = LedgerSystem.getAccount(code);
-            if (existing) {
-                alert('Account code already exists: ' + code);
-                return;
-            }
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
-            // Add to ledger system (safeLocalStorage → Supabase)
-            const accounts = JSON.parse(safeLocalStorage.getItem('lorenco_custom_accounts') || '[]');
-            accounts.push({ code, name, type, category, vatApplicable });
-            safeLocalStorage.setItem('lorenco_custom_accounts', JSON.stringify(accounts));
-            
-            alert('Account added: ' + code + ' - ' + name);
             closeModal();
-            renderAccounts();
-        }
+            await loadAccounts();
 
-        renderAccounts();
-    </script>
+        } catch (err) {
+            errEl.textContent = err.message;
+            errEl.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // ── Utils ─────────────────────────────────────────────────────────────────
+    function esc(s) {
+        if (!s) return '';
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    document.getElementById('accountModal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    loadAccounts();
+</script>
 </body>
 </html>

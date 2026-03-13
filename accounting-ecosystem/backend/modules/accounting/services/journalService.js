@@ -141,6 +141,75 @@ class JournalService {
   }
 
   /**
+   * Update a draft journal's header and lines.
+   * Only draft journals may be edited.
+   */
+  static async updateDraftJournal(client, journalId, companyId, { date, reference, description, lines, updatedByUserId }) {
+    // Fetch and guard
+    const journalResult = await client.query(
+      'SELECT * FROM journals WHERE id = $1 AND company_id = $2',
+      [journalId, companyId]
+    );
+
+    if (journalResult.rows.length === 0) {
+      throw new Error('Journal not found');
+    }
+
+    const journal = journalResult.rows[0];
+
+    if (journal.status !== 'draft') {
+      throw new Error(`Cannot edit a journal with status: ${journal.status}. Only draft journals may be edited.`);
+    }
+
+    // Validate lines
+    const lineValidation = this.validateLines(lines);
+    if (!lineValidation.valid) {
+      throw new Error(lineValidation.message);
+    }
+
+    const balanceValidation = this.validateBalance(lines);
+    if (!balanceValidation.valid) {
+      throw new Error(balanceValidation.message);
+    }
+
+    // Check period lock for the new date
+    const isLocked = await this.isPeriodLocked(companyId, date);
+    if (isLocked) {
+      throw new Error('Cannot move journal into a locked period');
+    }
+
+    // Update header
+    await client.query(
+      `UPDATE journals
+       SET date = $1, reference = $2, description = $3, updated_at = NOW()
+       WHERE id = $4`,
+      [date, reference || null, description, journalId]
+    );
+
+    // Replace lines: delete all existing, re-insert
+    await client.query('DELETE FROM journal_lines WHERE journal_id = $1', [journalId]);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      await client.query(
+        `INSERT INTO journal_lines (journal_id, account_id, line_number, description, debit, credit, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          journalId,
+          line.accountId,
+          i + 1,
+          line.description || null,
+          line.debit || 0,
+          line.credit || 0,
+          line.metadata ? JSON.stringify(line.metadata) : null
+        ]
+      );
+    }
+
+    return { ...journal, date, reference: reference || null, description };
+  }
+
+  /**
    * Post a journal (make it permanent in the ledger)
    */
   static async postJournal(client, journalId, companyId, postedByUserId) {

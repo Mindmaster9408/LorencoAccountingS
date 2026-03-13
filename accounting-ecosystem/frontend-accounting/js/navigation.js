@@ -108,15 +108,6 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage.includes('items') ? 'active' : ''}">
-        <a href="/accounting/items.html">Items</a>
-        <div class="dropdown">
-          <a href="/accounting/items.html">All Items</a>
-          <a href="/accounting/items.html">Products</a>
-          <a href="/accounting/items.html">Services</a>
-          <a href="/accounting/items.html">New Item</a>
-        </div>
-      </div>
 
       <div class="nav-item ${currentPage.includes('bank') ? 'active' : ''}">
         <a href="/accounting/bank.html">Banking</a>
@@ -151,7 +142,7 @@ function createNavigation() {
           <div class="dropdown-header">Analysis</div>
           <a href="/accounting/sales-analysis.html">Sales Analysis</a>
           <a href="/accounting/purchase-analysis.html">Purchase Analysis</a>
-          <a href="/accounting/vat-return.html">VAT Return</a>
+          <a href="/accounting/vat.html">VAT Reconciliation</a>
           <a href="/accounting/aged-debtors.html">Aged Debtors</a>
           <a href="/accounting/aged-creditors.html">Aged Creditors</a>
         </div>
@@ -163,9 +154,9 @@ function createNavigation() {
           <div class="dropdown-header">PAYE</div>
           <a href="/accounting/paye.html">PAYE Overview</a>
           <a href="/accounting/paye-reconciliation.html">PAYE Reconciliation</a>
+          <a href="/accounting/paye-config.html">PAYE Configuration</a>
           <div class="dropdown-header">VAT</div>
-          <a href="/accounting/vat.html">VAT Returns</a>
-          <a href="/accounting/vat-return.html">VAT Report</a>
+          <a href="/accounting/vat.html">VAT Reconciliation</a>
         </div>
       </div>
 

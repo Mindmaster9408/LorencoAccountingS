@@ -147,6 +147,60 @@ router.post('/', authenticate, hasPermission('journal.create'), async (req, res)
 });
 
 /**
+ * PUT /api/journals/:id
+ * Edit a draft journal (header + lines replaced atomically)
+ */
+router.put('/:id', authenticate, hasPermission('journal.create'), async (req, res) => {
+  const client = await db.getClient();
+
+  try {
+    const { date, reference, description, lines } = req.body;
+
+    if (!date || !description || !lines) {
+      return res.status(400).json({ error: 'Date, description, and lines are required' });
+    }
+
+    // Capture before-state for audit
+    const beforeJournal = await JournalService.getJournalWithLines(req.params.id, req.user.companyId);
+    if (!beforeJournal) {
+      return res.status(404).json({ error: 'Journal not found' });
+    }
+
+    await client.query('BEGIN');
+
+    await JournalService.updateDraftJournal(client, req.params.id, req.user.companyId, {
+      date,
+      reference,
+      description,
+      lines,
+      updatedByUserId: req.user.id
+    });
+
+    await AuditLogger.logUserAction(
+      req,
+      'UPDATE',
+      'JOURNAL',
+      req.params.id,
+      { date: beforeJournal.date, reference: beforeJournal.reference, description: beforeJournal.description, lineCount: beforeJournal.lines.length },
+      { date, reference, description, lineCount: lines.length },
+      'Draft journal updated'
+    );
+
+    await client.query('COMMIT');
+
+    const updatedJournal = await JournalService.getJournalWithLines(req.params.id, req.user.companyId);
+    res.json(updatedJournal);
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error updating journal:', error);
+    res.status(400).json({ error: error.message || 'Failed to update journal' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
  * POST /api/journals/:id/post
  * Post a draft journal
  */

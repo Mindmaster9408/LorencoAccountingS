@@ -76,6 +76,11 @@ async function ensureAccountingSchema(pool) {
       )
     `);
 
+    // ── 3b. Add is_system column to accounts (safe on existing tables) ─────────
+    await client.query(
+      `ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT false`
+    );
+
     // ── 4. Journal Headers ────────────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS journals (

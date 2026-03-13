@@ -6,7 +6,6 @@
     <title>Profit & Loss Report - Lorenco Accounting</title>
     <script src="js/navigation.js"></script>
     <script src="js/polyfills.js"></script>
-    <script src="js/ledger.js"></script>
     <style>
         * {
             margin: 0;
@@ -410,27 +409,11 @@
                 <label>Date To</label>
                 <input type="date" id="dateTo" value="2026-01-14">
             </div>
-            <div class="control-group">
-                <label>Comparison</label>
-                <select>
-                    <option>None</option>
-                    <option>Previous Period</option>
-                    <option>Previous Year</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label>Layout</label>
-                <select>
-                    <option>Standard</option>
-                    <option>Detailed</option>
-                    <option>Summary</option>
-                </select>
-            </div>
             <button class="btn-primary" onclick="generateReport()">Generate Report</button>
-            <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
-            <button class="btn-secondary" onclick="exportExcel()">Export Excel</button>
+            <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
             <button class="btn-secondary" onclick="window.location.href='paye-reconciliation.html'" style="background: #28a745;">PAYE Reconciliation</button>
         </div>
+        <div id="plError" style="display:none;background:#fce4ec;color:#c62828;padding:10px 16px;border-radius:8px;margin:0 0 12px;font-weight:600;font-size:13px;"></div>
         
         <div class="report-card">
             <div class="report-header">
@@ -542,143 +525,92 @@
     </div>
     
     <script>
-        let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
+        const token = localStorage.getItem('token');
+        if (!token) window.location.href = '/';
 
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
-        }
+        function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+        function fmtAmt(n) { if (!n || n === 0) return '-'; return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-        // User info display and logout handled by navigation.js
+        // Default: current year
+        (function() {
+            const now = new Date();
+            document.getElementById('dateFrom').value = `${now.getFullYear()}-01-01`;
+            document.getElementById('dateTo').value = now.toISOString().slice(0, 10);
+        })();
 
-        // ===================================
-        // PROFIT & LOSS FUNCTIONS
-        // ===================================
+        let lastResult = null;
 
-        function formatCurrency(amount) {
-            if (amount === 0) return '-';
-            return 'R ' + Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
+        async function generateReport() {
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate   = document.getElementById('dateTo').value;
+            const errEl    = document.getElementById('plError');
+            errEl.style.display = 'none';
 
-        function loadProfitAndLoss() {
+            if (!fromDate || !toDate) { errEl.textContent = 'Please select Date From and Date To.'; errEl.style.display = 'block'; return; }
+
             const tbody = document.getElementById('plBody');
-            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:30px;color:#9aa0a6">Loading…</td></tr>';
 
-            // Get P&L from ledger
-            const pl = LedgerSystem.getProfitAndLoss();
+            try {
+                const res = await fetch(`/api/reports/profit-loss?fromDate=${fromDate}&toDate=${toDate}`, { headers: authH() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                lastResult = data;
+                renderPL(data);
 
-            // Check if there's any data
-            if (pl.revenue.accounts.length === 0 && pl.operatingExpenses.accounts.length === 0) {
-                console.log('No ledger data found, keeping demo data');
-                return;
+                const hdr = document.querySelector('.report-header p');
+                if (hdr) hdr.textContent = `Profit & Loss Report — ${fromDate} to ${toDate}`;
+            } catch (err) {
+                errEl.textContent = 'Failed to generate report: ' + err.message;
+                errEl.style.display = 'block';
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:30px;color:#d32f2f">Error loading report.</td></tr>';
             }
+        }
 
+        function renderPL(data) {
+            const tbody = document.getElementById('plBody');
             let html = '';
 
-            // INCOME Section
+            // INCOME
             html += '<tr class="section-header"><td colspan="2">INCOME</td></tr>';
-            pl.revenue.accounts.forEach(acc => {
-                html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
+            (data.income || []).forEach(acc => {
+                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
             });
-            html += `<tr class="section-total"><td><strong>Total Income</strong></td><td class="amount"><strong>${formatCurrency(pl.revenue.total)}</strong></td></tr>`;
+            html += `<tr class="section-total"><td><strong>Total Income</strong></td><td class="amount"><strong>${fmtAmt(data.totals.income)}</strong></td></tr>`;
+            html += '<tr><td colspan="2" style="height:15px"></td></tr>';
 
-            html += '<tr><td colspan="2" style="height: 15px;"></td></tr>';
-
-            // COST OF SALES Section
-            if (pl.costOfSales.accounts.length > 0) {
-                html += '<tr class="section-header"><td colspan="2">COST OF SALES</td></tr>';
-                pl.costOfSales.accounts.forEach(acc => {
-                    html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
-                });
-                html += `<tr class="section-total"><td><strong>Total Cost of Sales</strong></td><td class="amount"><strong>${formatCurrency(pl.costOfSales.total)}</strong></td></tr>`;
-
-                // GROSS PROFIT
-                const grossProfitClass = pl.grossProfit >= 0 ? 'positive' : 'negative';
-                html += `<tr class="section-total" style="background: rgba(0,102,204,0.12);">
-                    <td><strong>GROSS PROFIT</strong></td>
-                    <td class="amount ${grossProfitClass}"><strong>${formatCurrency(pl.grossProfit)}</strong></td>
-                </tr>`;
-
-                html += '<tr><td colspan="2" style="height: 15px;"></td></tr>';
-            }
-
-            // OPERATING EXPENSES Section
-            if (pl.operatingExpenses.accounts.length > 0) {
-                html += '<tr class="section-header"><td colspan="2">OPERATING EXPENSES</td></tr>';
-                pl.operatingExpenses.accounts.forEach(acc => {
-                    html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
-                });
-                html += `<tr class="section-total"><td><strong>Total Operating Expenses</strong></td><td class="amount"><strong>${formatCurrency(pl.operatingExpenses.total)}</strong></td></tr>`;
-
-                html += '<tr><td colspan="2" style="height: 15px;"></td></tr>';
-            }
-
-            // FINANCE COSTS Section (if any)
-            if (pl.financeExpenses.accounts.length > 0) {
-                html += '<tr class="section-header"><td colspan="2">FINANCE COSTS</td></tr>';
-                pl.financeExpenses.accounts.forEach(acc => {
-                    html += `<tr><td class="indent-1">${acc.name}</td><td class="amount">${formatCurrency(acc.balance)}</td></tr>`;
-                });
-                html += `<tr class="section-total"><td><strong>Total Finance Costs</strong></td><td class="amount"><strong>${formatCurrency(pl.financeExpenses.total)}</strong></td></tr>`;
-
-                html += '<tr><td colspan="2" style="height: 15px;"></td></tr>';
-            }
+            // EXPENSES
+            html += '<tr class="section-header"><td colspan="2">EXPENSES</td></tr>';
+            (data.expense || []).forEach(acc => {
+                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
+            });
+            html += `<tr class="section-total"><td><strong>Total Expenses</strong></td><td class="amount"><strong>${fmtAmt(data.totals.expense)}</strong></td></tr>`;
+            html += '<tr><td colspan="2" style="height:15px"></td></tr>';
 
             // NET PROFIT
-            const netProfitClass = pl.netProfit >= 0 ? 'positive' : 'negative';
-            html += `<tr class="grand-total">
-                <td><strong>NET PROFIT</strong></td>
-                <td class="amount ${netProfitClass}"><strong>${formatCurrency(pl.netProfit)}</strong></td>
-            </tr>`;
+            const np = data.totals.netProfit || 0;
+            const cls = np >= 0 ? 'positive' : 'negative';
+            html += `<tr class="grand-total"><td><strong>NET ${np >= 0 ? 'PROFIT' : 'LOSS'}</strong></td><td class="amount ${cls}"><strong>${fmtAmt(np)}</strong></td></tr>`;
 
             tbody.innerHTML = html;
         }
 
-        function generateReport() {
-            loadProfitAndLoss();
-            alert('Profit & Loss refreshed from ledger data.');
-        }
-
-        function exportPDF() {
-            alert('Exporting report to PDF...\n\nIn production, this would generate a PDF document.');
-        }
-
         function exportExcel() {
-            const pl = LedgerSystem.getProfitAndLoss();
-
-            let csv = 'Account,Amount\n';
-            csv += 'INCOME,\n';
-            pl.revenue.accounts.forEach(acc => {
-                csv += `"${acc.name}",${acc.balance.toFixed(2)}\n`;
+            if (!lastResult) { alert('Generate the report first.'); return; }
+            let csv = 'Section,Account,Amount\n';
+            (lastResult.income || []).forEach(a => { csv += `"INCOME","${a.code} — ${a.name}",${a.balance.toFixed(2)}\n`; });
+            csv += `"INCOME","Total Income",${(lastResult.totals.income || 0).toFixed(2)}\n`;
+            (lastResult.expense || []).forEach(a => { csv += `"EXPENSES","${a.code} — ${a.name}",${a.balance.toFixed(2)}\n`; });
+            csv += `"EXPENSES","Total Expenses",${(lastResult.totals.expense || 0).toFixed(2)}\n`;
+            csv += `"","NET PROFIT",${(lastResult.totals.netProfit || 0).toFixed(2)}\n`;
+            const a = Object.assign(document.createElement('a'), {
+                href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+                download: 'profit-and-loss.csv'
             });
-            csv += `"Total Income",${pl.revenue.total.toFixed(2)}\n`;
-            csv += `"GROSS PROFIT",${pl.grossProfit.toFixed(2)}\n`;
-            csv += 'OPERATING EXPENSES,\n';
-            pl.operatingExpenses.accounts.forEach(acc => {
-                csv += `"${acc.name}",${acc.balance.toFixed(2)}\n`;
-            });
-            csv += `"Total Operating Expenses",${pl.operatingExpenses.total.toFixed(2)}\n`;
-            csv += `"NET PROFIT",${pl.netProfit.toFixed(2)}\n`;
-
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'profit-and-loss.csv';
             a.click();
-            window.URL.revokeObjectURL(url);
         }
 
-        // Load P&L on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof LedgerSystem !== 'undefined') {
-                const journals = LedgerSystem.getJournals();
-                if (journals.length > 0) {
-                    loadProfitAndLoss();
-                }
-            }
-        });
+        document.addEventListener('DOMContentLoaded', generateReport);
     </script>
 </body>
 </html>

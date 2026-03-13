@@ -158,3 +158,113 @@ These functions assume the run is finalized and has employee data. If a user som
 
 ### Follow-up: Company details not synced to `company_details_<id>` key
 Company-details.html (ecosystem) only saves to API, not to `company_details_<id>` localStorage. The pdf-branding fix handles this via the fallback chain. But if someone opens the standalone Payroll App after using the ecosystem, they'd have empty company details. This is a cross-app data sync issue that's lower priority.
+
+---
+
+---
+
+# SESSION HANDOFF — 2026-03-13 (Evening: Accounting Frontend Wiring Sprint)
+
+## What Was Changed
+
+### journals.html — Complete rewrite (LedgerSystem → real API)
+- List: `GET /api/journals` with status/source/date/search filters + stats
+- Detail view: `GET /api/journals/:id` — all lines shown in slide-out panel
+- Create draft: `POST /api/journals` with balanced line validation
+- Edit draft: `PUT /api/journals/:id` — modal pre-populated from API
+- Post from modal or table: `POST /api/journals/:id/post`
+- Delete draft: `DELETE /api/journals/:id`
+- Reverse posted: `POST /api/journals/:id/reverse` with reason capture
+- Account dropdown from `GET /api/accounts` (cached)
+- Removed `js/ledger.js` include. No LedgerSystem references remain.
+
+### accounts.html — Complete rewrite (LedgerSystem → real API)
+- List: `GET /api/accounts` — active-only default; toggle for all including inactive
+- Filter by type (asset/liability/equity/income/expense) + text search
+- Create: `POST /api/accounts` — code, name, type, description
+- Edit non-system: `PUT /api/accounts/:id` — name, description, isActive only
+- System accounts show SYSTEM badge, no Edit button (403 from API enforces this)
+- Removed mock `category` and `vat_applicable` fields (don't exist in real schema)
+- Removed all localStorage writes for account data
+
+### bank.html — Targeted fixes (LedgerSystem allocation removed)
+- `window._allLedgerAccounts` loaded from `GET /api/accounts` at DOMContentLoaded
+- `updateAccountOptions()` uses real accounts cache instead of `LedgerSystem.getAllAccounts()`
+- `updateAccount()` now stores `accountId` (DB integer) alongside `accountCode`
+- `allocateTransaction()` made async; calls `POST /api/bank/transactions/:id/allocate`
+  - Creates real double-entry journal (bank side handled automatically by API)
+  - Transaction status updates to 'matched' in DB
+  - Draft journal visible in journals.html
+- Removed LedgerSystem VAT auto-calculation (no `vat_applicable` in real schema)
+- All `LedgerSystem.*` references eliminated from bank.html
+
+### Pages Verified Already Wired (no changes needed)
+- `balance-sheet.html` → `GET /api/reports/balance-sheet` ✅
+- `trial-balance.html` → `GET /api/reports/trial-balance` ✅
+- `reports.html` (P&L) → `GET /api/reports/profit-loss` ✅
+
+---
+
+## What Was NOT Changed (needs backend work first)
+
+| Page | Still On LedgerSystem | Reason |
+|---|---|---|
+| `cash-reconciliation.html` | `getPOSDailyTotals`, `getPOSSales`, `settlePOSDay` | Needs POS-accounting bridge API |
+| `vat.html` | `getVatReport`, `getJournals` | Needs `GET /api/reports/vat` + `vat_applicable` column |
+| `customers.html` (accounting) | `getPOSSales`, `getCustomers`, `postPOSSale` | Needs POS-accounting bridge API |
+| `company.html` `AccountingIntegration` | `postBankAllocation`, `getAllAccounts` | Internal SDK used by POS/payroll push — getAccounts() already has null-check, returns `[]` safely |
+
+---
+
+## Key Follow-Up Risks
+
+```
+FOLLOW-UP NOTE
+- Area: bank.html allocation
+- Dependency: bank_accounts.ledger_account_id must be set for allocation to work
+- Confirmed: API returns 400 with clear error if missing
+- Risk: If existing bank accounts have no ledger_account_id, all allocations fail
+- Action needed: Bank account setup UI should allow mapping ledger_account_id
+```
+
+```
+FOLLOW-UP NOTE
+- Area: bank.html allocation — draft vs posted
+- Current: allocateTransaction() creates a DRAFT journal (then needs manual post)
+- Risk: Users may not know to post the draft — it won't appear in reports until posted
+- Recommended: Consider auto-posting (add POST /journals/:id/post call after allocate) or UX prompt
+```
+
+```
+FOLLOW-UP NOTE
+- Area: vat.html
+- Dependency: Need GET /api/reports/vat?fromDate=&toDate= endpoint
+- Also need: is_system flag on known VAT accounts (VAT Output/Input), or a vat_applicable column on accounts
+- Risk: vat.html shows nothing (has null-check for LedgerSystem, gracefully degrades)
+```
+
+---
+
+## Testing Required
+
+### journals.html
+- [ ] Create balanced journal → creates draft
+- [ ] Post from modal → status = posted
+- [ ] Post from table "Post" button → confirm + post
+- [ ] Edit draft → lines change
+- [ ] Delete draft → removed from list
+- [ ] Reverse posted → reason required, new reversal journal created
+- [ ] Unbalanced journal → error shown, submit blocked
+
+### accounts.html
+- [ ] Active accounts load on page open
+- [ ] Toggle to All shows inactive
+- [ ] Create account — duplicate code → server error shown
+- [ ] Edit name/description/active status
+- [ ] System accounts cannot be edited (server 403)
+
+### bank.html allocation
+- [ ] Account dropdown shows real accounts
+- [ ] Allocate → creates draft journal in DB
+- [ ] New journal appears in journals.html with source=bank
+- [ ] Error message shown if bank account has no ledger account linked

@@ -285,4 +285,198 @@ router.get('/bank-reconciliation', authenticate, hasPermission('report.view'), a
   }
 });
 
+/**
+ * GET /api/reports/balance-sheet
+ * Balance sheet as of a given date.
+ * Includes net income from income/expense accounts as "Current Year Earnings" within equity.
+ *
+ * Query params:
+ *   asOfDate  (required)  YYYY-MM-DD — balance sheet date
+ *   fromDate  (optional)  YYYY-MM-DD — start of current year for net income calculation.
+ *                         If omitted, net income is calculated from all time.
+ */
+router.get('/balance-sheet', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { asOfDate, fromDate } = req.query;
+
+    if (!asOfDate) {
+      return res.status(400).json({ error: 'asOfDate is required' });
+    }
+
+    const companyId = req.user.companyId;
+
+    // ── Balance sheet accounts (asset / liability / equity) ─────────────────
+    const bsResult = await db.query(
+      `SELECT
+         a.id, a.code, a.name, a.type, a.parent_id,
+         COALESCE(SUM(jl.debit), 0)  AS total_debit,
+         COALESCE(SUM(jl.credit), 0) AS total_credit
+       FROM accounts a
+       LEFT JOIN journal_lines jl ON a.id = jl.account_id
+       LEFT JOIN journals j ON jl.journal_id = j.id
+       WHERE a.company_id = $1
+         AND a.is_active = true
+         AND a.type IN ('asset', 'liability', 'equity')
+         AND (j.id IS NULL OR (j.status = 'posted' AND j.date <= $2))
+       GROUP BY a.id, a.code, a.name, a.type, a.parent_id
+       ORDER BY a.type, a.code`,
+      [companyId, asOfDate]
+    );
+
+    // ── Net income from P&L accounts (becomes Current Year Earnings) ─────────
+    const plParams = [companyId, asOfDate];
+    let plDateClause = 'j.date <= $2';
+    if (fromDate) {
+      plDateClause = 'j.date BETWEEN $3 AND $2';
+      plParams.push(fromDate);
+    }
+
+    const plResult = await db.query(
+      `SELECT
+         a.type,
+         COALESCE(SUM(jl.debit), 0)  AS total_debit,
+         COALESCE(SUM(jl.credit), 0) AS total_credit
+       FROM accounts a
+       LEFT JOIN journal_lines jl ON a.id = jl.account_id
+       LEFT JOIN journals j ON jl.journal_id = j.id
+       WHERE a.company_id = $1
+         AND a.is_active = true
+         AND a.type IN ('income', 'expense')
+         AND (j.id IS NULL OR (j.status = 'posted' AND ${plDateClause}))
+       GROUP BY a.type`,
+      plParams
+    );
+
+    // Net income: income credits - income debits - expense debits + expense credits
+    let totalIncome = 0;
+    let totalExpense = 0;
+    for (const row of plResult.rows) {
+      if (row.type === 'income') {
+        totalIncome = parseFloat(row.total_credit) - parseFloat(row.total_debit);
+      } else if (row.type === 'expense') {
+        totalExpense = parseFloat(row.total_debit) - parseFloat(row.total_credit);
+      }
+    }
+    const netIncome = totalIncome - totalExpense;
+
+    // ── Build grouped output ─────────────────────────────────────────────────
+    const assets = [];
+    const liabilities = [];
+    const equity = [];
+
+    for (const row of bsResult.rows) {
+      const debit  = parseFloat(row.total_debit);
+      const credit = parseFloat(row.total_credit);
+      const entry = {
+        id: row.id, code: row.code, name: row.name,
+        type: row.type, parent_id: row.parent_id,
+        total_debit: debit, total_credit: credit,
+        balance: row.type === 'asset' ? (debit - credit) : (credit - debit)
+      };
+      if (row.type === 'asset')     assets.push(entry);
+      else if (row.type === 'liability') liabilities.push(entry);
+      else                          equity.push(entry);
+    }
+
+    const totalAssets      = assets.reduce((s, a) => s + a.balance, 0);
+    const totalLiabilities = liabilities.reduce((s, a) => s + a.balance, 0);
+    const totalEquity      = equity.reduce((s, a) => s + a.balance, 0) + netIncome;
+
+    res.json({
+      asOfDate,
+      fromDate: fromDate || null,
+      assets,
+      liabilities,
+      equity,
+      currentYearEarnings: netIncome,
+      totals: {
+        assets:      totalAssets,
+        liabilities: totalLiabilities,
+        equity:      totalEquity,
+        liabilitiesAndEquity: totalLiabilities + totalEquity
+      },
+      isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
+    });
+
+  } catch (error) {
+    console.error('Error generating balance sheet:', error);
+    res.status(500).json({ error: 'Failed to generate balance sheet' });
+  }
+});
+
+/**
+ * GET /api/reports/profit-loss
+ * Income statement (P&L) for a period.
+ *
+ * Query params:
+ *   fromDate  (required)  YYYY-MM-DD
+ *   toDate    (required)  YYYY-MM-DD
+ */
+router.get('/profit-loss', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate } = req.query;
+
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ error: 'fromDate and toDate are required' });
+    }
+
+    const companyId = req.user.companyId;
+
+    const result = await db.query(
+      `SELECT
+         a.id, a.code, a.name, a.type, a.parent_id,
+         COALESCE(SUM(jl.debit), 0)  AS total_debit,
+         COALESCE(SUM(jl.credit), 0) AS total_credit
+       FROM accounts a
+       LEFT JOIN journal_lines jl ON a.id = jl.account_id
+       LEFT JOIN journals j ON jl.journal_id = j.id
+       WHERE a.company_id = $1
+         AND a.is_active = true
+         AND a.type IN ('income', 'expense')
+         AND (j.id IS NULL OR (j.status = 'posted' AND j.date BETWEEN $2 AND $3))
+       GROUP BY a.id, a.code, a.name, a.type, a.parent_id
+       ORDER BY a.type, a.code`,
+      [companyId, fromDate, toDate]
+    );
+
+    const incomeAccounts  = [];
+    const expenseAccounts = [];
+
+    for (const row of result.rows) {
+      const debit  = parseFloat(row.total_debit);
+      const credit = parseFloat(row.total_credit);
+      const entry = {
+        id: row.id, code: row.code, name: row.name,
+        type: row.type, parent_id: row.parent_id,
+        total_debit: debit, total_credit: credit,
+        // income: credit is positive; expense: debit is positive
+        balance: row.type === 'income' ? (credit - debit) : (debit - credit)
+      };
+      if (row.type === 'income')  incomeAccounts.push(entry);
+      else                        expenseAccounts.push(entry);
+    }
+
+    const totalIncome  = incomeAccounts.reduce((s, a) => s + a.balance, 0);
+    const totalExpense = expenseAccounts.reduce((s, a) => s + a.balance, 0);
+    const netProfit    = totalIncome - totalExpense;
+
+    res.json({
+      fromDate,
+      toDate,
+      income:  incomeAccounts,
+      expense: expenseAccounts,
+      totals: {
+        income:    totalIncome,
+        expense:   totalExpense,
+        netProfit
+      },
+      isProfitable: netProfit >= 0
+    });
+
+  } catch (error) {
+    console.error('Error generating profit & loss:', error);
+    res.status(500).json({ error: 'Failed to generate profit & loss report' });
+  }
+});
+
 module.exports = router;

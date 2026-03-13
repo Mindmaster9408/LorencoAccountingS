@@ -6,293 +6,598 @@
     <title>Journal Entries - Lorenco Accounting</title>
     <script src="js/navigation.js"></script>
     <script src="js/polyfills.js"></script>
-    <script src="js/ledger.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8f9fa;
-        }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; }
         .main-content { padding: 30px; max-width: 1400px; margin: 0 auto; }
         .page-header { margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
         .page-header h1 { font-size: 24px; color: #202124; }
         .page-header p { color: #5f6368; margin-top: 4px; }
-        .btn-primary {
-            padding: 10px 20px; background: linear-gradient(135deg, #0066cc, #0099ff);
-            color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px;
-            box-shadow: 0 2px 8px rgba(0,102,204,0.3); transition: all 0.2s;
-        }
-        .btn-primary:hover { transform: translateY(-2px); }
+        .btn-primary { padding: 10px 20px; background: linear-gradient(135deg, #0066cc, #0099ff); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; box-shadow: 0 2px 8px rgba(0,102,204,0.3); transition: all 0.2s; }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-secondary { padding: 10px 20px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .btn-success { padding: 10px 20px; background: #2e7d32; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .btn-danger { padding: 8px 14px; background: #ef5350; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; }
         .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .stat-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
         .stat-card h3 { color: #9aa0a6; font-size: 12px; text-transform: uppercase; margin-bottom: 8px; }
         .stat-card .value { font-size: 28px; font-weight: 700; color: #0066cc; }
-        .filter-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-        .filter-bar select, .filter-bar input {
-            padding: 8px 14px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px;
-        }
-        .section {
-            background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            border: 1px solid #e8eaed; overflow: hidden; margin-bottom: 20px;
-        }
+        .filter-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .filter-bar select, .filter-bar input { padding: 8px 14px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; }
+        .section { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid #e8eaed; overflow: hidden; margin-bottom: 20px; }
         table { width: 100%; border-collapse: collapse; }
-        th {
-            background: #f8f9fa; padding: 14px 16px; text-align: left; font-weight: 600;
-            color: #5f6368; font-size: 13px; border-bottom: 2px solid #e8eaed;
-        }
+        th { background: #f8f9fa; padding: 14px 16px; text-align: left; font-weight: 600; color: #5f6368; font-size: 13px; border-bottom: 2px solid #e8eaed; }
         td { padding: 12px 16px; border-bottom: 1px solid #f5f5f5; font-size: 13px; }
         tr:hover { background: #f0f8ff; }
-        .badge {
-            display: inline-block; padding: 4px 10px; border-radius: 12px;
-            font-size: 11px; font-weight: 600; text-transform: uppercase;
-        }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
         .badge-posted { background: #e8f5e9; color: #2e7d32; }
         .badge-draft { background: #fff3e0; color: #e65100; }
         .badge-reversed { background: #fce4ec; color: #c62828; }
         .source-badge { background: #e3f2fd; color: #1565c0; font-size: 10px; padding: 2px 8px; border-radius: 8px; }
-        .modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center;
-        }
+        .action-btn { padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; font-size: 11px; font-weight: 600; color: #333; margin-right: 4px; }
+        .action-btn:hover { background: #f0f0f0; }
+        .action-btn.edit { color: #0066cc; border-color: #0066cc; }
+        .action-btn.post-btn { color: #2e7d32; border-color: #2e7d32; }
+        .action-btn.del { color: #d32f2f; border-color: #d32f2f; }
+
+        /* Modal */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; }
         .modal-overlay.show { display: flex; }
-        .modal {
-            background: white; border-radius: 12px; padding: 30px; width: 700px; max-height: 90vh; overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        .modal h2 { margin-bottom: 20px; }
+        .modal { background: white; border-radius: 12px; padding: 30px; width: 760px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .modal h2 { margin-bottom: 20px; color: #202124; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 12px; margin-bottom: 14px; }
         .form-group { margin-bottom: 14px; }
-        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 13px; }
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
-        }
-        .line-items { margin: 15px 0; }
-        .line-item { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
-        .line-item input, .line-item select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
-        .btn-remove { background: #ef5350; color: white; border: none; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
-        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-        .btn-secondary { padding: 10px 20px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; }
-        .balance-check { padding: 10px; border-radius: 6px; margin-top: 10px; font-weight: 600; font-size: 13px; text-align: right; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 13px; color: #333; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .line-header { display: grid; grid-template-columns: 2.5fr 1.5fr 1fr 1fr 30px; gap: 8px; font-weight: 600; font-size: 12px; color: #5f6368; margin-bottom: 4px; padding: 0 4px; }
+        .line-item { display: grid; grid-template-columns: 2.5fr 1.5fr 1fr 1fr 30px; gap: 8px; margin-bottom: 8px; align-items: center; }
+        .line-item input, .line-item select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 100%; }
+        .btn-remove-line { background: none; border: none; color: #ef5350; cursor: pointer; font-size: 16px; font-weight: 700; padding: 0 4px; }
+        .balance-check { padding: 10px 14px; border-radius: 6px; margin: 10px 0; font-weight: 600; font-size: 13px; text-align: right; }
         .balanced { background: #e8f5e9; color: #2e7d32; }
         .unbalanced { background: #fce4ec; color: #c62828; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+        /* Detail panel */
+        .detail-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 2000; align-items: center; justify-content: center; }
+        .detail-overlay.show { display: flex; }
+        .detail-panel { background: white; border-radius: 12px; padding: 30px; width: 700px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .detail-panel h2 { margin-bottom: 6px; font-size: 18px; }
+        .detail-meta { color: #5f6368; font-size: 13px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; }
+        .detail-lines table { margin-top: 12px; }
+        .detail-lines th { font-size: 12px; padding: 10px 12px; }
+        .detail-lines td { font-size: 13px; padding: 10px 12px; }
+        .detail-total { background: #f8f9fa; font-weight: 700; }
+
+        .loading-row td { text-align: center; padding: 40px; color: #9aa0a6; }
+        .error-banner { background: #fce4ec; color: #c62828; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; font-weight: 600; display: none; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 </head>
 <body>
 
-    <div class="main-content">
-        <div class="page-header">
-            <div>
-                <h1>Journal Entries</h1>
-                <p>Record and manage double-entry journal transactions</p>
+<div class="main-content">
+    <div class="page-header">
+        <div>
+            <h1>Journal Entries</h1>
+            <p>Record and manage double-entry journal transactions</p>
+        </div>
+        <button class="btn-primary" onclick="showNewJournalModal()">+ New Journal Entry</button>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <h3>Total Journals</h3>
+            <div class="value" id="totalJournals">—</div>
+        </div>
+        <div class="stat-card">
+            <h3>Posted</h3>
+            <div class="value" id="postedJournals">—</div>
+        </div>
+        <div class="stat-card">
+            <h3>Draft</h3>
+            <div class="value" id="draftJournals">—</div>
+        </div>
+    </div>
+
+    <div id="errorBanner" class="error-banner"></div>
+
+    <div class="filter-bar">
+        <select id="filterStatus" onchange="loadJournals()">
+            <option value="">All Status</option>
+            <option value="posted">Posted</option>
+            <option value="draft">Draft</option>
+            <option value="reversed">Reversed</option>
+        </select>
+        <select id="filterSource" onchange="loadJournals()">
+            <option value="">All Sources</option>
+            <option value="manual">Manual</option>
+            <option value="bank">Bank</option>
+            <option value="pos">POS</option>
+            <option value="payroll">Payroll</option>
+        </select>
+        <input type="date" id="filterFrom" placeholder="From date" onchange="loadJournals()">
+        <input type="date" id="filterTo" placeholder="To date" onchange="loadJournals()">
+        <input type="text" id="searchJournals" placeholder="Search description / reference…" oninput="debounceLoad()">
+    </div>
+
+    <div class="section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                    <th style="text-align:right">Debit</th>
+                    <th style="text-align:right">Credit</th>
+                    <th>Status</th>
+                    <th>Source</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="journalsBody">
+                <tr class="loading-row"><td colspan="8">Loading…</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create / Edit Modal -->
+<div class="modal-overlay" id="journalModal">
+    <div class="modal">
+        <h2 id="modalTitle">New Journal Entry</h2>
+        <div class="form-row">
+            <div class="form-group" style="margin-bottom:0">
+                <label>Date *</label>
+                <input type="date" id="jnlDate">
             </div>
-            <button class="btn-primary" onclick="showNewJournalModal()">+ New Journal Entry</button>
+            <div class="form-group" style="margin-bottom:0">
+                <label>Reference</label>
+                <input type="text" id="jnlRef" placeholder="JNL-001">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+                <label>Description *</label>
+                <input type="text" id="jnlDesc" placeholder="Journal description">
+            </div>
         </div>
 
-        <div class="stats">
-            <div class="stat-card">
-                <h3>Total Journals</h3>
-                <div class="value" id="totalJournals">0</div>
-            </div>
-            <div class="stat-card">
-                <h3>Posted</h3>
-                <div class="value" id="postedJournals">0</div>
-            </div>
-            <div class="stat-card">
-                <h3>Draft</h3>
-                <div class="value" id="draftJournals">0</div>
-            </div>
+        <h3 style="margin: 20px 0 8px; font-size: 14px;">Line Items</h3>
+        <div class="line-header">
+            <span>Account</span><span>Description</span><span>Debit (R)</span><span>Credit (R)</span><span></span>
         </div>
+        <div id="journalLines"></div>
+        <button class="btn-secondary" onclick="addJournalLine()" style="font-size: 12px; padding: 6px 14px; margin-top: 4px;">+ Add Line</button>
 
-        <div class="filter-bar">
-            <select id="filterStatus" onchange="renderJournals()">
-                <option value="">All Status</option>
-                <option value="posted">Posted</option>
-                <option value="draft">Draft</option>
-            </select>
-            <select id="filterSource" onchange="renderJournals()">
-                <option value="">All Sources</option>
-                <option value="MANUAL">Manual</option>
-                <option value="BANK">Bank</option>
-                <option value="POS">POS</option>
-                <option value="AI">AI</option>
-            </select>
-            <input type="text" id="searchJournals" placeholder="Search journals..." oninput="renderJournals()">
+        <div class="balance-check unbalanced" id="balanceCheck">Debits: R 0.00 | Credits: R 0.00</div>
+
+        <div class="modal-actions">
+            <button class="btn-secondary" onclick="closeJournalModal()">Cancel</button>
+            <button class="btn-secondary" onclick="saveJournal('draft')" id="saveDraftBtn">Save as Draft</button>
+            <button class="btn-primary" onclick="saveJournal('posted')" id="savePostBtn">Save &amp; Post</button>
         </div>
+    </div>
+</div>
 
-        <div class="section">
+<!-- Detail / View Modal -->
+<div class="detail-overlay" id="detailOverlay">
+    <div class="detail-panel">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+            <h2 id="detailRef">—</h2>
+            <button class="btn-secondary" onclick="closeDetailPanel()" style="padding:6px 14px;font-size:12px;">Close</button>
+        </div>
+        <div class="detail-meta" id="detailMeta"></div>
+        <div class="detail-lines">
             <table>
                 <thead>
                     <tr>
-                        <th>Date</th>
-                        <th>Reference</th>
+                        <th>Account</th>
                         <th>Description</th>
-                        <th>Debit</th>
-                        <th>Credit</th>
-                        <th>Status</th>
-                        <th>Source</th>
-                        <th>Lines</th>
+                        <th style="text-align:right">Debit</th>
+                        <th style="text-align:right">Credit</th>
                     </tr>
                 </thead>
-                <tbody id="journalsBody"></tbody>
+                <tbody id="detailLines"></tbody>
             </table>
         </div>
+        <div id="detailActions" style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;"></div>
     </div>
+</div>
 
-    <div class="modal-overlay" id="journalModal">
-        <div class="modal">
-            <h2>New Journal Entry</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
-                <div class="form-group">
-                    <label>Date</label>
-                    <input type="date" id="jnlDate">
-                </div>
-                <div class="form-group">
-                    <label>Reference</label>
-                    <input type="text" id="jnlRef" placeholder="JNL-001">
-                </div>
-                <div class="form-group">
-                    <label>Description</label>
-                    <input type="text" id="jnlDesc" placeholder="Journal description">
-                </div>
-            </div>
-            
-            <h3 style="margin: 15px 0 10px; font-size: 14px;">Line Items</h3>
-            <div class="line-items">
-                <div class="line-item" style="font-weight: 600; font-size: 12px; color: #5f6368;">
-                    <span>Account</span><span>Description</span><span>Debit (R)</span><span>Credit (R)</span><span></span>
-                </div>
-                <div id="journalLines"></div>
-            </div>
-            <button class="btn-secondary" onclick="addJournalLine()" style="font-size: 12px; padding: 6px 12px;">+ Add Line</button>
-            
-            <div class="balance-check" id="balanceCheck">Debits: R 0.00 | Credits: R 0.00</div>
-            
-            <div class="modal-actions">
-                <button class="btn-secondary" onclick="closeJournalModal()">Cancel</button>
-                <button class="btn-primary" onclick="postJournal()">Post Journal</button>
-            </div>
-        </div>
-    </div>
+<script>
+    const token = localStorage.getItem('token');
+    function authHeaders(isJson = true) {
+        const h = { 'Authorization': 'Bearer ' + token };
+        if (isJson) h['Content-Type'] = 'application/json';
+        return h;
+    }
+    function fmt(n) { return 'R ' + Math.abs(parseFloat(n) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function showError(msg) {
+        const el = document.getElementById('errorBanner');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 8000);
+    }
 
-    <script>
-        let lineCount = 0;
+    // ── Accounts cache ───────────────────────────────────────────────────────
+    let accountsCache = [];
 
-        function renderJournals() {
-            const journals = LedgerSystem.getJournals();
-            const filterStatus = document.getElementById('filterStatus').value;
-            const filterSource = document.getElementById('filterSource').value;
-            const search = document.getElementById('searchJournals').value.toLowerCase();
+    async function loadAccounts() {
+        if (accountsCache.length) return accountsCache;
+        try {
+            const res = await fetch('/api/accounts?isActive=true&limit=500', { headers: authHeaders() });
+            if (!res.ok) return [];
+            const data = await res.json();
+            accountsCache = data.accounts || [];
+        } catch (_) { accountsCache = []; }
+        return accountsCache;
+    }
 
-            let filtered = journals;
-            if (filterStatus) filtered = filtered.filter(j => j.status === filterStatus);
-            if (filterSource) filtered = filtered.filter(j => j.sourceType === filterSource);
-            if (search) filtered = filtered.filter(j => 
-                (j.description || '').toLowerCase().includes(search) || 
-                (j.reference || '').toLowerCase().includes(search)
-            );
+    function accountOptions(selectedId) {
+        return '<option value="">Select account…</option>' +
+            accountsCache.map(a =>
+                `<option value="${a.id}" ${a.id == selectedId ? 'selected' : ''}>${a.code} — ${a.name}</option>`
+            ).join('');
+    }
 
-            // Sort by date descending
-            filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // ── Load journals ────────────────────────────────────────────────────────
+    let debounceTimer;
+    function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(loadJournals, 350); }
 
-            const tbody = document.getElementById('journalsBody');
-            if (filtered.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">No journal entries found. Click "+ New Journal Entry" to create one.</td></tr>';
-            } else {
-                tbody.innerHTML = filtered.map(j => {
-                    const totalDebit = (j.lines || []).reduce((s, l) => s + (l.debit || 0), 0);
-                    const totalCredit = (j.lines || []).reduce((s, l) => s + (l.credit || 0), 0);
-                    return `<tr>
-                        <td>${j.date}</td>
-                        <td><strong>${j.reference || '—'}</strong></td>
-                        <td>${j.description}</td>
-                        <td style="text-align: right;">R ${totalDebit.toFixed(2)}</td>
-                        <td style="text-align: right;">R ${totalCredit.toFixed(2)}</td>
-                        <td><span class="badge badge-${j.status}">${j.status}</span></td>
-                        <td><span class="source-badge">${j.sourceType || 'MANUAL'}</span></td>
-                        <td>${(j.lines || []).length}</td>
-                    </tr>`;
-                }).join('');
+    async function loadJournals() {
+        const tbody = document.getElementById('journalsBody');
+        tbody.innerHTML = '<tr class="loading-row"><td colspan="8">Loading…</td></tr>';
+
+        const params = new URLSearchParams();
+        const status = document.getElementById('filterStatus').value;
+        const source = document.getElementById('filterSource').value;
+        const from   = document.getElementById('filterFrom').value;
+        const to     = document.getElementById('filterTo').value;
+        const search = document.getElementById('searchJournals').value.trim();
+
+        if (status) params.append('status', status);
+        if (source) params.append('sourceType', source);
+        if (from)   params.append('fromDate', from);
+        if (to)     params.append('toDate', to);
+        params.append('limit', '200');
+
+        try {
+            const res = await fetch('/api/journals?' + params, { headers: authHeaders() });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            let journals = data.journals || [];
+
+            if (search) {
+                const q = search.toLowerCase();
+                journals = journals.filter(j =>
+                    (j.description || '').toLowerCase().includes(q) ||
+                    (j.reference || '').toLowerCase().includes(q)
+                );
             }
 
-            // Stats
-            document.getElementById('totalJournals').textContent = journals.length;
-            document.getElementById('postedJournals').textContent = journals.filter(j => j.status === 'posted').length;
-            document.getElementById('draftJournals').textContent = journals.filter(j => j.status === 'draft').length;
+            renderJournals(journals);
+        } catch (err) {
+            tbody.innerHTML = '<tr class="loading-row"><td colspan="8" style="color:#d32f2f">Failed to load journals. ' + err.message + '</td></tr>';
+        }
+    }
+
+    function renderJournals(journals) {
+        const tbody = document.getElementById('journalsBody');
+
+        document.getElementById('totalJournals').textContent  = journals.length;
+        document.getElementById('postedJournals').textContent  = journals.filter(j => j.status === 'posted').length;
+        document.getElementById('draftJournals').textContent   = journals.filter(j => j.status === 'draft').length;
+
+        if (journals.length === 0) {
+            tbody.innerHTML = '<tr class="loading-row"><td colspan="8">No journal entries found.</td></tr>';
+            return;
         }
 
-        function showNewJournalModal() {
-            document.getElementById('journalModal').classList.add('show');
-            document.getElementById('jnlDate').value = new Date().toISOString().split('T')[0];
-            document.getElementById('jnlRef').value = 'JNL-' + String(LedgerSystem.getJournals().length + 1).padStart(3, '0');
+        tbody.innerHTML = journals.map(j => {
+            const debit  = parseFloat(j.total_debit  || 0);
+            const credit = parseFloat(j.total_credit || 0);
+
+            const actions = [];
+            actions.push(`<button class="action-btn" onclick="viewJournal(${j.id})" title="View">View</button>`);
+            if (j.status === 'draft') {
+                actions.push(`<button class="action-btn edit" onclick="editJournal(${j.id})" title="Edit">Edit</button>`);
+                actions.push(`<button class="action-btn post-btn" onclick="postJournal(${j.id})" title="Post">Post</button>`);
+                actions.push(`<button class="action-btn del" onclick="deleteJournal(${j.id})" title="Delete">Delete</button>`);
+            }
+            if (j.status === 'posted') {
+                actions.push(`<button class="action-btn del" onclick="reverseJournal(${j.id})" title="Reverse" style="color:#7b1fa2;border-color:#7b1fa2">Reverse</button>`);
+            }
+
+            return `<tr>
+                <td>${j.date ? j.date.slice(0, 10) : '—'}</td>
+                <td><strong>${j.reference || '—'}</strong></td>
+                <td>${j.description || ''}</td>
+                <td style="text-align:right">${debit ? fmt(debit) : '—'}</td>
+                <td style="text-align:right">${credit ? fmt(credit) : '—'}</td>
+                <td><span class="badge badge-${j.status}">${j.status}</span></td>
+                <td><span class="source-badge">${j.source_type || 'manual'}</span></td>
+                <td>${actions.join('')}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ── Create / Edit modal ──────────────────────────────────────────────────
+    let editingJournalId = null;
+    let lineSeq = 0;
+
+    async function showNewJournalModal() {
+        await loadAccounts();
+        editingJournalId = null;
+        document.getElementById('modalTitle').textContent = 'New Journal Entry';
+        document.getElementById('jnlDate').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('jnlRef').value = '';
+        document.getElementById('jnlDesc').value = '';
+        document.getElementById('journalLines').innerHTML = '';
+        lineSeq = 0;
+        addJournalLine();
+        addJournalLine();
+        updateBalance();
+        document.getElementById('saveDraftBtn').style.display = '';
+        document.getElementById('savePostBtn').textContent = 'Save & Post';
+        document.getElementById('journalModal').classList.add('show');
+    }
+
+    async function editJournal(id) {
+        await loadAccounts();
+        try {
+            const res = await fetch('/api/journals/' + id, { headers: authHeaders() });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const j = await res.json();
+
+            editingJournalId = id;
+            document.getElementById('modalTitle').textContent = 'Edit Draft Journal';
+            document.getElementById('jnlDate').value = (j.date || '').slice(0, 10);
+            document.getElementById('jnlRef').value = j.reference || '';
+            document.getElementById('jnlDesc').value = j.description || '';
             document.getElementById('journalLines').innerHTML = '';
-            lineCount = 0;
-            addJournalLine();
-            addJournalLine();
-        }
+            lineSeq = 0;
 
-        function closeJournalModal() {
-            document.getElementById('journalModal').classList.remove('show');
-        }
-
-        function addJournalLine() {
-            lineCount++;
-            const accounts = LedgerSystem.getAllAccounts();
-            const options = accounts.map(a => `<option value="${a.code}">${a.code} - ${a.name}</option>`).join('');
-            const html = `<div class="line-item" id="line${lineCount}">
-                <select onchange="updateBalance()"><option value="">Select account...</option>${options}</select>
-                <input type="text" placeholder="Line description">
-                <input type="number" step="0.01" min="0" placeholder="0.00" onchange="updateBalance()" class="debit-input">
-                <input type="number" step="0.01" min="0" placeholder="0.00" onchange="updateBalance()" class="credit-input">
-                <button class="btn-remove" onclick="removeLine(${lineCount})">✕</button>
-            </div>`;
-            document.getElementById('journalLines').insertAdjacentHTML('beforeend', html);
-        }
-
-        function removeLine(id) {
-            const el = document.getElementById('line' + id);
-            if (el) el.remove();
-            updateBalance();
-        }
-
-        function updateBalance() {
-            const debits = Array.from(document.querySelectorAll('.debit-input')).reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
-            const credits = Array.from(document.querySelectorAll('.credit-input')).reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
-            const el = document.getElementById('balanceCheck');
-            el.textContent = `Debits: R ${debits.toFixed(2)} | Credits: R ${credits.toFixed(2)} | ${Math.abs(debits - credits) < 0.01 ? '✓ Balanced' : '✗ Unbalanced: R ' + Math.abs(debits - credits).toFixed(2)}`;
-            el.className = 'balance-check ' + (Math.abs(debits - credits) < 0.01 ? 'balanced' : 'unbalanced');
-        }
-
-        function postJournal() {
-            const date = document.getElementById('jnlDate').value;
-            const reference = document.getElementById('jnlRef').value;
-            const description = document.getElementById('jnlDesc').value;
-            if (!date || !description) { alert('Please fill in date and description'); return; }
-
-            const lineEls = document.querySelectorAll('#journalLines .line-item');
-            const lines = [];
-            lineEls.forEach(el => {
-                const account = el.querySelector('select').value;
-                const desc = el.querySelectorAll('input')[0].value;
-                const debit = parseFloat(el.querySelectorAll('input')[1].value) || 0;
-                const credit = parseFloat(el.querySelectorAll('input')[2].value) || 0;
-                if (account && (debit > 0 || credit > 0)) {
-                    lines.push({ accountCode: account, description: desc, debit, credit });
-                }
+            (j.lines || []).forEach(line => {
+                addJournalLine({
+                    accountId: line.account_id,
+                    description: line.description || '',
+                    debit: parseFloat(line.debit) || 0,
+                    credit: parseFloat(line.credit) || 0
+                });
             });
-
-            if (lines.length < 2) { alert('A journal entry needs at least 2 lines'); return; }
-
-            try {
-                LedgerSystem.postJournal({ date, reference, description, sourceType: 'MANUAL', lines });
-                alert('Journal posted successfully!');
-                closeJournalModal();
-                renderJournals();
-            } catch (err) {
-                alert('Error: ' + err.message);
-            }
+            updateBalance();
+            document.getElementById('saveDraftBtn').style.display = '';
+            document.getElementById('savePostBtn').textContent = 'Save & Post';
+            document.getElementById('journalModal').classList.add('show');
+        } catch (err) {
+            showError('Could not load journal: ' + err.message);
         }
+    }
 
-        renderJournals();
-    </script>
+    function closeJournalModal() {
+        document.getElementById('journalModal').classList.remove('show');
+        editingJournalId = null;
+    }
+
+    function addJournalLine(prefill = null) {
+        lineSeq++;
+        const id = lineSeq;
+        const opts = accountOptions(prefill ? prefill.accountId : null);
+        const debitVal  = prefill ? (prefill.debit  || '') : '';
+        const creditVal = prefill ? (prefill.credit || '') : '';
+        const descVal   = prefill ? (prefill.description || '') : '';
+
+        const html = `<div class="line-item" id="jline${id}">
+            <select onchange="updateBalance()">${opts}</select>
+            <input type="text" placeholder="Line description" value="${descVal.replace(/"/g, '&quot;')}">
+            <input type="number" step="0.01" min="0" placeholder="0.00" value="${debitVal}" oninput="updateBalance()" class="debit-input">
+            <input type="number" step="0.01" min="0" placeholder="0.00" value="${creditVal}" oninput="updateBalance()" class="credit-input">
+            <button class="btn-remove-line" onclick="removeLine(${id})" title="Remove line">✕</button>
+        </div>`;
+        document.getElementById('journalLines').insertAdjacentHTML('beforeend', html);
+        updateBalance();
+    }
+
+    function removeLine(id) {
+        const el = document.getElementById('jline' + id);
+        if (el) el.remove();
+        updateBalance();
+    }
+
+    function updateBalance() {
+        const debits  = Array.from(document.querySelectorAll('.debit-input')).reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
+        const credits = Array.from(document.querySelectorAll('.credit-input')).reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
+        const diff = Math.abs(debits - credits);
+        const el = document.getElementById('balanceCheck');
+        const balanced = diff < 0.01;
+        el.className = 'balance-check ' + (balanced ? 'balanced' : 'unbalanced');
+        el.textContent = `Debits: R ${debits.toFixed(2)} | Credits: R ${credits.toFixed(2)} | ${balanced ? '✓ Balanced' : '✗ Out of balance: R ' + diff.toFixed(2)}`;
+    }
+
+    function collectLines() {
+        const lineEls = document.querySelectorAll('#journalLines .line-item');
+        const lines = [];
+        lineEls.forEach(el => {
+            const accountId = el.querySelector('select').value;
+            const desc   = el.querySelectorAll('input')[0].value.trim();
+            const debit  = parseFloat(el.querySelectorAll('input')[1].value) || 0;
+            const credit = parseFloat(el.querySelectorAll('input')[2].value) || 0;
+            if (accountId && (debit > 0 || credit > 0)) {
+                lines.push({ accountId: parseInt(accountId), description: desc || null, debit, credit });
+            }
+        });
+        return lines;
+    }
+
+    async function saveJournal(mode) {
+        const date = document.getElementById('jnlDate').value;
+        const reference = document.getElementById('jnlRef').value.trim();
+        const description = document.getElementById('jnlDesc').value.trim();
+
+        if (!date || !description) { alert('Date and description are required.'); return; }
+
+        const lines = collectLines();
+        if (lines.length < 2) { alert('A journal entry needs at least 2 lines.'); return; }
+
+        const saveBtn = document.getElementById(mode === 'draft' ? 'saveDraftBtn' : 'savePostBtn');
+        const origText = saveBtn.textContent;
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+
+        try {
+            let journalId = editingJournalId;
+
+            if (editingJournalId) {
+                // Update existing draft
+                const res = await fetch('/api/journals/' + editingJournalId, {
+                    method: 'PUT',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ date, reference: reference || null, description, lines })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            } else {
+                // Create new draft
+                const res = await fetch('/api/journals', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ date, reference: reference || null, description, lines })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                journalId = data.id;
+            }
+
+            // If mode is 'posted', post the draft immediately
+            if (mode === 'posted') {
+                const res = await fetch('/api/journals/' + journalId + '/post', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            }
+
+            closeJournalModal();
+            await loadJournals();
+
+        } catch (err) {
+            showError(err.message);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = origText;
+        }
+    }
+
+    // ── Post a draft from the table row ─────────────────────────────────────
+    async function postJournal(id) {
+        if (!confirm('Post this journal? Posted journals cannot be edited.')) return;
+        try {
+            const res = await fetch('/api/journals/' + id + '/post', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            await loadJournals();
+        } catch (err) {
+            showError('Post failed: ' + err.message);
+        }
+    }
+
+    // ── Delete a draft ───────────────────────────────────────────────────────
+    async function deleteJournal(id) {
+        if (!confirm('Delete this draft journal? This cannot be undone.')) return;
+        try {
+            const res = await fetch('/api/journals/' + id, { method: 'DELETE', headers: authHeaders() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            await loadJournals();
+        } catch (err) {
+            showError('Delete failed: ' + err.message);
+        }
+    }
+
+    // ── Reverse a posted journal ─────────────────────────────────────────────
+    async function reverseJournal(id) {
+        const reason = prompt('Enter reason for reversal:');
+        if (!reason || !reason.trim()) return;
+        try {
+            const res = await fetch('/api/journals/' + id + '/reverse', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ reason: reason.trim() })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            await loadJournals();
+        } catch (err) {
+            showError('Reversal failed: ' + err.message);
+        }
+    }
+
+    // ── View journal detail ──────────────────────────────────────────────────
+    async function viewJournal(id) {
+        try {
+            const res = await fetch('/api/journals/' + id, { headers: authHeaders() });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const j = await res.json();
+
+            document.getElementById('detailRef').textContent = j.reference || ('Journal #' + j.id);
+            document.getElementById('detailMeta').innerHTML =
+                `<span>Date: <strong>${(j.date || '').slice(0,10)}</strong></span>` +
+                `<span>Status: <span class="badge badge-${j.status}">${j.status}</span></span>` +
+                `<span>Source: <span class="source-badge">${j.source_type || 'manual'}</span></span>` +
+                (j.description ? `<span style="flex:1">${j.description}</span>` : '');
+
+            const lines = j.lines || [];
+            const totalDebit  = lines.reduce((s, l) => s + parseFloat(l.debit || 0), 0);
+            const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
+
+            document.getElementById('detailLines').innerHTML =
+                lines.map(l => `<tr>
+                    <td><strong>${l.account_code || ''}</strong> ${l.account_name || ''}</td>
+                    <td>${l.description || ''}</td>
+                    <td style="text-align:right">${parseFloat(l.debit) > 0 ? fmt(l.debit) : '—'}</td>
+                    <td style="text-align:right">${parseFloat(l.credit) > 0 ? fmt(l.credit) : '—'}</td>
+                </tr>`).join('') +
+                `<tr class="detail-total">
+                    <td colspan="2">Total</td>
+                    <td style="text-align:right">${fmt(totalDebit)}</td>
+                    <td style="text-align:right">${fmt(totalCredit)}</td>
+                </tr>`;
+
+            // Detail actions
+            const acts = [];
+            if (j.status === 'draft') {
+                acts.push(`<button class="btn-secondary" onclick="closeDetailPanel();editJournal(${j.id})">Edit</button>`);
+                acts.push(`<button class="btn-success" onclick="closeDetailPanel();postJournal(${j.id})">Post</button>`);
+                acts.push(`<button class="btn-danger" onclick="closeDetailPanel();deleteJournal(${j.id})">Delete</button>`);
+            }
+            if (j.status === 'posted') {
+                acts.push(`<button class="btn-secondary" onclick="closeDetailPanel();reverseJournal(${j.id})">Reverse</button>`);
+            }
+            document.getElementById('detailActions').innerHTML = acts.join('');
+
+            document.getElementById('detailOverlay').classList.add('show');
+        } catch (err) {
+            showError('Could not load journal: ' + err.message);
+        }
+    }
+
+    function closeDetailPanel() {
+        document.getElementById('detailOverlay').classList.remove('show');
+    }
+
+    // Click outside to close detail
+    document.getElementById('detailOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeDetailPanel();
+    });
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    loadJournals();
+</script>
 </body>
 </html>

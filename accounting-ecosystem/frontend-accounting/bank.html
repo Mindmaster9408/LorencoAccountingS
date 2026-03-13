@@ -1397,6 +1397,127 @@
             font-size: 14px;
         }
 
+        /* ── Import type toggle (CSV vs PDF) ── */
+        .import-type-toggle {
+            display: flex;
+            gap: 0;
+            border: 1px solid #e8eaed;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .import-type-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #5f6368;
+            transition: all 0.2s;
+        }
+
+        .import-type-btn.active {
+            background: #0066cc;
+            color: white;
+        }
+
+        .import-type-btn:first-child {
+            border-right: 1px solid #e8eaed;
+        }
+
+        /* ── PDF parse status ── */
+        .pdf-parse-status {
+            padding: 20px;
+            background: #f0f4ff;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .pdf-parse-status .status-icon {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+
+        /* ── PDF review table ── */
+        .pdf-review-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-bottom: 15px;
+        }
+
+        .pdf-review-table th {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 2px solid #e8eaed;
+            font-weight: 600;
+            color: #3c4043;
+        }
+
+        .pdf-review-table td {
+            padding: 7px 12px;
+            border-bottom: 1px solid #f1f3f4;
+        }
+
+        .pdf-review-table tr.is-duplicate {
+            background: #fff8e1;
+        }
+
+        .duplicate-badge {
+            font-size: 10px;
+            background: #ff9800;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 6px;
+            white-space: nowrap;
+        }
+
+        .pdf-warning-banner {
+            background: #fff8e1;
+            border: 1px solid #f9a825;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+
+        .pdf-warning-banner ul {
+            margin: 6px 0 0 20px;
+        }
+
+        .pdf-detected-bank {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #e6f4ea;
+            border: 1px solid #34a853;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e7e34;
+            margin-bottom: 15px;
+        }
+
+        .pdf-generic-warning {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #fff8e1;
+            border: 1px solid #f9a825;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 13px;
+            color: #b06000;
+            margin-bottom: 15px;
+        }
+
         .file-info {
             display: flex;
             align-items: center;
@@ -1447,22 +1568,8 @@
         
         <div class="bank-accounts-section">
             <h2 style="margin-bottom: 15px; font-size: 16px; color: #202124;">Bank Accounts</h2>
-            <div class="bank-accounts-grid">
-                <div class="bank-account-card active" onclick="selectAccount(this)">
-                    <div class="account-name">Business Current Account</div>
-                    <div class="account-number">****1234</div>
-                    <div class="account-balance">R 45,230.50</div>
-                </div>
-                <div class="bank-account-card" onclick="selectAccount(this)">
-                    <div class="account-name">Savings Account</div>
-                    <div class="account-number">****5678</div>
-                    <div class="account-balance">R 120,450.00</div>
-                </div>
-                <div class="bank-account-card" onclick="selectAccount(this)">
-                    <div class="account-name">Petty Cash</div>
-                    <div class="account-number">CASH-001</div>
-                    <div class="account-balance">R 2,500.00</div>
-                </div>
+            <div class="bank-accounts-grid" id="bankAccountsList">
+                <div style="color:#5f6368; font-size:14px; padding:12px 0; grid-column:1/-1;">Loading bank accounts…</div>
             </div>
         </div>
         
@@ -1585,362 +1692,6 @@
                             <button class="btn-manual-cancel" onclick="cancelManualEntry()">Cancel</button>
                         </td>
                     </tr>
-                    <!-- ─────────────────────────────────────────────────────────── -->
-                    <tr>
-                        <td><input type="checkbox" class="checkbox" onchange="updateBulkActions()"></td>
-                        <td class="transaction-date">14 Jan 2026</td>
-                        <td>
-                            <div class="transaction-description">Client Payment - ABC Corp</div>
-                            <div class="transaction-reference">INV-2026-001</div>
-                        </td>
-                        <td>PYMT123456</td>
-                        <td class="transaction-amount amount-in">R 15,500.00</td>
-                        <td>-</td>
-                        <td>R 45,230.50</td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAllocation(this, 1)">
-                                <option value="">Select Type...</option>
-                                <option value="customer" selected>Customer Payment</option>
-                                <option value="supplier">Supplier Payment</option>
-                                <option value="transfer">Transfer</option>
-                                <option value="vat">VAT Payment</option>
-                                <option value="account">Account</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAccount(this, 1)">
-                                <option value="">Select Account...</option>
-                                <optgroup label="Assets">
-                                    <option value="1000">1000 - Bank Current</option>
-                                    <option value="1100">1100 - Accounts Receivable</option>
-                                    <option value="1200">1200 - Inventory</option>
-                                </optgroup>
-                                <optgroup label="Liabilities">
-                                    <option value="2000">2000 - Accounts Payable</option>
-                                    <option value="2100">2100 - VAT Payable</option>
-                                </optgroup>
-                                <optgroup label="Income">
-                                    <option value="4000" selected>4000 - Sales Revenue</option>
-                                    <option value="4100">4100 - Service Revenue</option>
-                                </optgroup>
-                                <optgroup label="Expenses">
-                                    <option value="5000">5000 - Cost of Sales</option>
-                                    <option value="6000">6000 - Operating Expenses</option>
-                                    <option value="6100">6100 - Utilities</option>
-                                    <option value="6200">6200 - Office Supplies</option>
-                                </optgroup>
-                            </select>
-                        </td>
-                        <td><span class="status-badge status-matched">Matched</span></td>
-                        <td>
-                            <a class="upload-link" id="uploadLink1" href="#" onclick="openUploadModal(1); return false;" title="Upload documents">
-                                📎<span class="file-count" id="fileCount1" style="display:none;">0</span>
-                            </a>
-                        </td>
-                        <td>
-                            <button class="action-btn" onclick="showAttachments(1)" style="padding: 6px 12px;">
-                                📄 <span id="attachCount1">0</span>
-                            </button>
-                        </td>
-                        <td><button class="action-btn" onclick="viewTransaction(1)">View</button></td>
-                        <td class="ai-column">
-                            <button class="ai-btn" onclick="toggleAISuggestion(1, this)">
-                                <span>🤖</span> AI
-                            </button>
-                        </td>
-                    </tr>
-                    <tr class="ai-suggestion-row" id="aiRow1">
-                        <td colspan="14">
-                            <div class="ai-suggestion-content">
-                                <div class="ai-suggestion-header">🤖 Sean AI Analysis</div>
-                                <div class="ai-decision"><em>Click to analyze...</em></div>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><input type="checkbox" class="checkbox" onchange="updateBulkActions()"></td>
-                        <td class="transaction-date">13 Jan 2026</td>
-                        <td>
-                            <div class="transaction-description">Office Supplies</div>
-                            <div class="transaction-reference">PO-456</div>
-                        </td>
-                        <td>DD789012</td>
-                        <td>-</td>
-                        <td class="transaction-amount amount-out">R 2,350.00</td>
-                        <td>R 29,730.50</td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAllocation(this, 2)">
-                                <option value="" selected>Select Type...</option>
-                                <option value="customer">Customer Payment</option>
-                                <option value="supplier">Supplier Payment</option>
-                                <option value="transfer">Transfer</option>
-                                <option value="vat">VAT Payment</option>
-                                <option value="account">Account</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAccount(this, 2)">
-                                <option value="" selected>Select Account...</option>
-                                <optgroup label="Assets">
-                                    <option value="1000">1000 - Bank Current</option>
-                                    <option value="1100">1100 - Accounts Receivable</option>
-                                    <option value="1200">1200 - Inventory</option>
-                                </optgroup>
-                                <optgroup label="Liabilities">
-                                    <option value="2000">2000 - Accounts Payable</option>
-                                    <option value="2100">2100 - VAT Payable</option>
-                                </optgroup>
-                                <optgroup label="Income">
-                                    <option value="4000">4000 - Sales Revenue</option>
-                                    <option value="4100">4100 - Service Revenue</option>
-                                </optgroup>
-                                <optgroup label="Expenses">
-                                    <option value="5000">5000 - Cost of Sales</option>
-                                    <option value="6000">6000 - Operating Expenses</option>
-                                    <option value="6100">6100 - Utilities</option>
-                                    <option value="6200">6200 - Office Supplies</option>
-                                </optgroup>
-                            </select>
-                        </td>
-                        <td><span class="status-badge status-unmatched">Unmatched</span></td>
-                        <td>
-                            <a class="upload-link" id="uploadLink2" href="#" onclick="openUploadModal(2); return false;" title="Upload documents">
-                                📎<span class="file-count" id="fileCount2" style="display:none;">0</span>
-                            </a>
-                        </td>
-                        <td>
-                            <button class="action-btn" onclick="showAttachments(2)" style="padding: 6px 12px;">
-                                📄 <span id="attachCount2">0</span>
-                            </button>
-                        </td>
-                        <td><button class="action-btn" onclick="allocateTransaction(2)">Allocate</button></td>
-                        <td class="ai-column">
-                            <button class="ai-btn" onclick="toggleAISuggestion(2, this)">
-                                <span>🤖</span> AI
-                            </button>
-                        </td>
-                    </tr>
-                    <tr class="ai-suggestion-row" id="aiRow2">
-                        <td colspan="14">
-                            <div class="ai-suggestion-content">
-                                <div class="ai-suggestion-header">🤖 Sean AI Analysis</div>
-                                <div class="ai-decision"><em>Click to analyze...</em></div>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><input type="checkbox" class="checkbox" onchange="updateBulkActions()"></td>
-                        <td class="transaction-date">12 Jan 2026</td>
-                        <td>
-                            <div class="transaction-description">Salary Payment - John Doe</div>
-                            <div class="transaction-reference">SAL-001-2026</div>
-                        </td>
-                        <td>TRAN345678</td>
-                        <td>-</td>
-                        <td class="transaction-amount amount-out">R 18,500.00</td>
-                        <td>R 32,080.50</td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAllocation(this, 3)">
-                                <option value="">Select Type...</option>
-                                <option value="customer">Customer Payment</option>
-                                <option value="supplier" selected>Supplier Payment</option>
-                                <option value="transfer">Transfer</option>
-                                <option value="vat">VAT Payment</option>
-                                <option value="other">Other</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAccount(this, 3)">
-                                <option value="">Select Account...</option>
-                                <optgroup label="Assets">
-                                    <option value="1000">1000 - Bank Current</option>
-                                    <option value="1100">1100 - Accounts Receivable</option>
-                                    <option value="1200">1200 - Inventory</option>
-                                </optgroup>
-                                <optgroup label="Liabilities">
-                                    <option value="2000">2000 - Accounts Payable</option>
-                                    <option value="2100">2100 - VAT Payable</option>
-                                </optgroup>
-                                <optgroup label="Income">
-                                    <option value="4000">4000 - Sales Revenue</option>
-                                    <option value="4100">4100 - Service Revenue</option>
-                                </optgroup>
-                                <optgroup label="Expenses">
-                                    <option value="5000">5000 - Cost of Sales</option>
-                                    <option value="6000" selected>6000 - Operating Expenses</option>
-                                    <option value="6100">6100 - Utilities</option>
-                                    <option value="6200">6200 - Office Supplies</option>
-                                </optgroup>
-                            </select>
-                        </td>
-                        <td><span class="status-badge status-reconciled">Reconciled</span></td>
-                        <td>
-                            <a class="upload-link" id="uploadLink3" href="#" onclick="openUploadModal(3); return false;" title="Upload documents">
-                                📎<span class="file-count" id="fileCount3" style="display:none;">0</span>
-                            </a>
-                        </td>
-                        <td>
-                            <button class="action-btn" onclick="showAttachments(3)" style="padding: 6px 12px;">
-                                📄 <span id="attachCount3">0</span>
-                            </button>
-                        </td>
-                        <td><button class="action-btn" onclick="viewTransaction(3)">View</button></td>
-                        <td class="ai-column">
-                            <button class="ai-btn" onclick="toggleAISuggestion(3, this)">
-                                <span>🤖</span> AI
-                            </button>
-                        </td>
-                    </tr>
-                    <tr class="ai-suggestion-row" id="aiRow3">
-                        <td colspan="14">
-                            <div class="ai-suggestion-content">
-                                <div class="ai-suggestion-header">🤖 Sean AI Analysis</div>
-                                <div class="ai-decision"><em>Click to analyze...</em></div>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><input type="checkbox" class="checkbox" onchange="updateBulkActions()"></td>
-                        <td class="transaction-date">11 Jan 2026</td>
-                        <td>
-                            <div class="transaction-description">Service Revenue - XYZ Ltd</div>
-                            <div class="transaction-reference">INV-2026-002</div>
-                        </td>
-                        <td>PYMT987654</td>
-                        <td class="transaction-amount amount-in">R 32,000.00</td>
-                        <td>-</td>
-                        <td>R 50,580.50</td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAllocation(this, 4)">
-                                <option value="">Select Type...</option>
-                                <option value="customer" selected>Customer Payment</option>
-                                <option value="supplier">Supplier Payment</option>
-                                <option value="transfer">Transfer</option>
-                                <option value="vat">VAT Payment</option>
-                                <option value="other">Other</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAccount(this, 4)">
-                                <option value="">Select Account...</option>
-                                <optgroup label="Assets">
-                                    <option value="1000">1000 - Bank Current</option>
-                                    <option value="1100">1100 - Accounts Receivable</option>
-                                    <option value="1200">1200 - Inventory</option>
-                                </optgroup>
-                                <optgroup label="Liabilities">
-                                    <option value="2000">2000 - Accounts Payable</option>
-                                    <option value="2100">2100 - VAT Payable</option>
-                                </optgroup>
-                                <optgroup label="Income">
-                                    <option value="4000">4000 - Sales Revenue</option>
-                                    <option value="4100" selected>4100 - Service Revenue</option>
-                                </optgroup>
-                                <optgroup label="Expenses">
-                                    <option value="5000">5000 - Cost of Sales</option>
-                                    <option value="6000">6000 - Operating Expenses</option>
-                                    <option value="6100">6100 - Utilities</option>
-                                    <option value="6200">6200 - Office Supplies</option>
-                                </optgroup>
-                            </select>
-                        </td>
-                        <td><span class="status-badge status-matched">Matched</span></td>
-                        <td>
-                            <a class="upload-link" id="uploadLink4" href="#" onclick="openUploadModal(4); return false;" title="Upload documents">
-                                📎<span class="file-count" id="fileCount4" style="display:none;">0</span>
-                            </a>
-                        </td>
-                        <td>
-                            <button class="action-btn" onclick="showAttachments(4)" style="padding: 6px 12px;">
-                                📄 <span id="attachCount4">0</span>
-                            </button>
-                        </td>
-                        <td><button class="action-btn" onclick="viewTransaction(4)">View</button></td>
-                        <td class="ai-column">
-                            <button class="ai-btn" onclick="toggleAISuggestion(4, this)">
-                                <span>🤖</span> AI
-                            </button>
-                        </td>
-                    </tr>
-                    <tr class="ai-suggestion-row" id="aiRow4">
-                        <td colspan="14">
-                            <div class="ai-suggestion-content">
-                                <div class="ai-suggestion-header">🤖 Sean AI Analysis</div>
-                                <div class="ai-decision"><em>Click to analyze...</em></div>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><input type="checkbox" class="checkbox" onchange="updateBulkActions()"></td>
-                        <td class="transaction-date">10 Jan 2026</td>
-                        <td>
-                            <div class="transaction-description">Utility Bill - Electricity</div>
-                            <div class="transaction-reference"></div>
-                        </td>
-                        <td>DD456789</td>
-                        <td>-</td>
-                        <td class="transaction-amount amount-out">R 3,250.00</td>
-                        <td>R 18,580.50</td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAllocation(this, 5)">
-                                <option value="">Select Type...</option>
-                                <option value="customer">Customer Payment</option>
-                                <option value="supplier" selected>Supplier Payment</option>
-                                <option value="transfer">Transfer</option>
-                                <option value="vat">VAT Payment</option>
-                                <option value="other">Other</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="allocation-select" onchange="updateAccount(this, 5)">
-                                <option value="">Select Account...</option>
-                                <optgroup label="Assets">
-                                    <option value="1000">1000 - Bank Current</option>
-                                    <option value="1100">1100 - Accounts Receivable</option>
-                                    <option value="1200">1200 - Inventory</option>
-                                </optgroup>
-                                <optgroup label="Liabilities">
-                                    <option value="2000">2000 - Accounts Payable</option>
-                                    <option value="2100">2100 - VAT Payable</option>
-                                </optgroup>
-                                <optgroup label="Income">
-                                    <option value="4000">4000 - Sales Revenue</option>
-                                    <option value="4100">4100 - Service Revenue</option>
-                                </optgroup>
-                                <optgroup label="Expenses">
-                                    <option value="5000">5000 - Cost of Sales</option>
-                                    <option value="6000">6000 - Operating Expenses</option>
-                                    <option value="6100" selected>6100 - Utilities</option>
-                                    <option value="6200">6200 - Office Supplies</option>
-                                </optgroup>
-                            </select>
-                        </td>
-                        <td><span class="status-badge status-unmatched">Unmatched</span></td>
-                        <td>
-                            <a class="upload-link" id="uploadLink5" href="#" onclick="openUploadModal(5); return false;" title="Upload documents">
-                                📎<span class="file-count" id="fileCount5" style="display:none;">0</span>
-                            </a>
-                        </td>
-                        <td>
-                            <button class="action-btn" onclick="showAttachments(5)" style="padding: 6px 12px;">
-                                📄 <span id="attachCount5">0</span>
-                            </button>
-                        </td>
-                        <td><button class="action-btn" onclick="allocateTransaction(5)">Allocate</button></td>
-                        <td class="ai-column">
-                            <button class="ai-btn" onclick="toggleAISuggestion(5, this)">
-                                <span>🤖</span> AI
-                            </button>
-                        </td>
-                    </tr>
-                    <tr class="ai-suggestion-row" id="aiRow5">
-                        <td colspan="14">
-                            <div class="ai-suggestion-content">
-                                <div class="ai-suggestion-header">🤖 Sean AI Analysis</div>
-                                <div class="ai-decision"><em>Click to analyze...</em></div>
-                            </div>
-                        </td>
-                    </tr>
                 </tbody>
             </table>
             
@@ -1956,21 +1707,37 @@
     
     <script>
         const API_URL = '/api/accounting';
-        
-        // Check authentication - Demo Mode
+
+        // ── Auth & company context ───────────────────────────────────────────
         let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
-        
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
+        let user  = JSON.parse(localStorage.getItem('user') || '{}');
+
+        if (!token) { window.location.href = '/'; }
+
+        /** Returns Authorization header object for all fetch calls. */
+        function getAuthHeaders() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
         }
-        
-        // User info display handled by navigation.js
-        
-        // Sean AI is always enabled for demo
+
+        /** Reads companyId directly from the JWT payload. */
+        function getCompanyId() {
+            if (!token) return null;
+            try { return JSON.parse(atob(token.split('.')[1])).companyId; }
+            catch (_) { return null; }
+        }
+
+        /** Returns a company-scoped localStorage key to prevent cross-client bleed. */
+        function storageKey(key) {
+            const cid = getCompanyId();
+            return cid ? ('company_' + cid + '_' + key) : key;
+        }
+
+        // Currently selected bank account (null = all accounts)
+        let selectedBankAccountId = null;
+        let bankAccountsData = [];
+
         localStorage.setItem('seanAIEnabled', 'true');
-        
+
         // Store uploaded files for each transaction
         const transactionFiles = {};
         
@@ -2031,18 +1798,11 @@ Click OK to simulate uploading a file.`;
             }
         }
 
-        function selectAccount(card) {
-            // Remove active from all cards
+        function selectAccount(card, accountId) {
             document.querySelectorAll('.bank-account-card').forEach(c => c.classList.remove('active'));
-            // Add active to clicked card
             card.classList.add('active');
-            
-            // Get account name
-            const accountName = card.querySelector('.account-name').textContent;
-            console.log('Selected account:', accountName);
-            
-            // In real implementation, this would reload transactions for the selected account
-            alert(`Switched to ${accountName}\n\nIn the full version, transactions would reload for this account.`);
+            selectedBankAccountId = accountId || null;
+            loadTransactions();
         }
         
         function selectAll(checkbox) {
@@ -2066,13 +1826,474 @@ Click OK to simulate uploading a file.`;
         }
         
         function applyFilters() {
-            alert('Filters applied! This would filter the transactions based on selected criteria.');
+            loadTransactions();
+        }
+
+        // ── API: load bank accounts ──────────────────────────────────────────
+        async function loadBankAccounts() {
+            const grid = document.getElementById('bankAccountsList');
+            if (!grid) return;
+            try {
+                const res = await fetch('/api/bank/accounts', { headers: getAuthHeaders() });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                bankAccountsData = data.bankAccounts || [];
+
+                if (!bankAccountsData.length) {
+                    grid.innerHTML = '<div style="color:#5f6368;font-size:14px;padding:12px 0;grid-column:1/-1;">No bank accounts set up yet. Add a bank account in Settings to get started.</div>';
+                    return;
+                }
+
+                // Auto-select first account on initial load
+                if (!selectedBankAccountId) {
+                    selectedBankAccountId = bankAccountsData[0].id;
+                }
+
+                grid.innerHTML = bankAccountsData.map(acct => `
+                    <div class="bank-account-card${acct.id === selectedBankAccountId ? ' active' : ''}"
+                         onclick="selectAccount(this, ${acct.id})">
+                        <div class="account-name">${escapeHtml(acct.name)}</div>
+                        <div class="account-number">${acct.account_number_masked ? escapeHtml(acct.account_number_masked) : (acct.bank_name ? escapeHtml(acct.bank_name) : '—')}</div>
+                        <div class="account-balance" id="acctBal${acct.id}">—</div>
+                    </div>
+                `).join('');
+
+                // Populate the bank-account select in the PDF import modal
+                if (typeof loadBankAccountsForPdfImport === 'function') loadBankAccountsForPdfImport();
+
+            } catch (err) {
+                console.error('loadBankAccounts error:', err);
+                if (grid) grid.innerHTML = '<div style="color:#ea4335;font-size:14px;padding:12px 0;grid-column:1/-1;">Failed to load bank accounts. Please refresh.</div>';
+            }
+        }
+
+        // ── Helpers ─────────────────────────────────────────────────────────
+        function formatDisplayDate(isoDate) {
+            if (!isoDate) return '—';
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const d = new Date(isoDate + 'T00:00:00');
+            return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+        }
+
+        function formatAmount(num) {
+            if (num == null) return '—';
+            return 'R\u00a0' + Math.abs(num).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function statusBadgeHtml(status) {
+            const cls = { unmatched: 'status-unmatched', matched: 'status-matched', reconciled: 'status-reconciled' }[status] || 'status-unmatched';
+            const label = { unmatched: 'Unmatched', matched: 'Matched', reconciled: 'Reconciled' }[status] || status;
+            return `<span class="status-badge ${cls}">${label}</span>`;
+        }
+
+        // ── API: load transactions ───────────────────────────────────────────
+        async function loadTransactions() {
+            const tbody = document.getElementById('transactionsBody');
+            if (!tbody) return;
+
+            // Clear non-entry rows and show loading state
+            Array.from(tbody.querySelectorAll('tr:not(#manualEntryRow)')).forEach(r => r.remove());
+            tbody.insertAdjacentHTML('beforeend',
+                '<tr id="txnLoadingRow"><td colspan="14" style="text-align:center;padding:30px;color:#5f6368;font-style:italic;">Loading transactions…</td></tr>');
+
+            try {
+                const params = new URLSearchParams();
+                if (selectedBankAccountId) params.set('bankAccountId', selectedBankAccountId);
+                const from = document.getElementById('dateFrom')?.value;
+                const to   = document.getElementById('dateTo')?.value;
+                const status = document.getElementById('statusFilter')?.value;
+                if (from)   params.set('fromDate', from);
+                if (to)     params.set('toDate', to);
+                if (status) params.set('status', status);
+                params.set('limit', '200');
+
+                const res = await fetch('/api/bank/transactions?' + params, { headers: getAuthHeaders() });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                const txns = data.transactions || [];
+
+                // Remove loading row
+                document.getElementById('txnLoadingRow')?.remove();
+
+                if (!txns.length) {
+                    tbody.insertAdjacentHTML('beforeend',
+                        '<tr id="noTxnRow"><td colspan="14" style="text-align:center;padding:40px;color:#5f6368;">No transactions found for the selected filters.</td></tr>');
+                    return;
+                }
+
+                // Type filter (client-side — API returns all)
+                const typeFilter = document.getElementById('typeFilter')?.value;
+
+                const rowsHtml = txns
+                    .filter(txn => {
+                        if (typeFilter === 'in')  return txn.amount > 0;
+                        if (typeFilter === 'out') return txn.amount < 0;
+                        return true;
+                    })
+                    .map(txn => {
+                        const isIn    = txn.amount >= 0;
+                        const inCell  = isIn  ? `<td class="transaction-amount amount-in">${formatAmount(txn.amount)}</td><td>—</td>` : '<td>—</td>';
+                        const outCell = !isIn ? `<td>—</td><td class="transaction-amount amount-out">${formatAmount(txn.amount)}</td>` : '<td>—</td>';
+                        const bal     = txn.balance != null ? formatAmount(txn.balance) : '—';
+                        return `
+                        <tr data-txn-id="${txn.id}">
+                            <td><input type="checkbox" class="checkbox" data-txn-id="txn-${txn.id}" onchange="updateBulkActions()"></td>
+                            <td class="transaction-date">${formatDisplayDate(txn.date)}</td>
+                            <td>
+                                <div class="transaction-description">${escapeHtml(txn.description || '')}</div>
+                                ${txn.reference ? `<div class="transaction-reference">${escapeHtml(txn.reference)}</div>` : ''}
+                            </td>
+                            <td>${txn.reference ? escapeHtml(txn.reference) : '—'}</td>
+                            ${inCell}
+                            ${outCell}
+                            <td>${bal}</td>
+                            <td>
+                                <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')">
+                                    <option value="">Select Type…</option>
+                                    <option value="customer">Customer Payment</option>
+                                    <option value="supplier">Supplier Payment</option>
+                                    <option value="transfer">Transfer</option>
+                                    <option value="vat">VAT Payment</option>
+                                    <option value="account">Account</option>
+                                </select>
+                            </td>
+                            <td>
+                                <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')">
+                                    <option value="">Select Account…</option>
+                                </select>
+                            </td>
+                            <td>${statusBadgeHtml(txn.status)}</td>
+                            <td>
+                                <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">
+                                    &#128206;<span class="file-count" id="fileCount${txn.id}" style="display:none;">0</span>
+                                </a>
+                            </td>
+                            <td><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:6px 12px;">&#128196; <span id="attachCount${txn.id}">0</span></button></td>
+                            <td><button class="action-btn" onclick="viewTransaction('${txn.id}')">View</button></td>
+                            <td class="ai-column">
+                                <button class="ai-btn" onclick="toggleAISuggestion('${txn.id}', this)">
+                                    <span>&#129302;</span> AI
+                                </button>
+                            </td>
+                        </tr>
+                        <tr class="ai-suggestion-row" id="aiRow${txn.id}">
+                            <td colspan="14">
+                                <div class="ai-suggestion-content">
+                                    <div class="ai-suggestion-header">&#129302; Sean AI Analysis</div>
+                                    <div class="ai-decision"><em>Click to analyze…</em></div>
+                                </div>
+                            </td>
+                        </tr>`;
+                    }).join('');
+
+                tbody.insertAdjacentHTML('beforeend', rowsHtml);
+
+                // Update balance display on account cards
+                if (txns.length && selectedBankAccountId) {
+                    const latest = txns[0]; // already ordered date DESC
+                    if (latest.balance != null) {
+                        const balEl = document.getElementById('acctBal' + selectedBankAccountId);
+                        if (balEl) balEl.textContent = formatAmount(latest.balance);
+                    }
+                }
+
+            } catch (err) {
+                console.error('loadTransactions error:', err);
+                document.getElementById('txnLoadingRow')?.remove();
+                tbody.insertAdjacentHTML('beforeend',
+                    '<tr><td colspan="14" style="text-align:center;padding:30px;color:#ea4335;">Failed to load transactions. Please refresh the page.</td></tr>');
+            }
         }
         
         function importStatement() {
             document.getElementById('importModal').classList.add('show');
             resetImportWizard();
         }
+
+        // ===================================
+        // IMPORT MODE (CSV vs PDF)
+        // ===================================
+
+        let importMode = 'csv';  // 'csv' | 'pdf'
+        let pdfParseResult = null;
+
+        function switchImportMode(mode) {
+            importMode = mode;
+            document.getElementById('importTypeCSV').classList.toggle('active', mode === 'csv');
+            document.getElementById('importTypePDF').classList.toggle('active', mode === 'pdf');
+            document.getElementById('csvImportSection').style.display = mode === 'csv' ? 'block' : 'none';
+            document.getElementById('pdfImportSection').style.display = mode === 'pdf' ? 'block' : 'none';
+            const step2Label = document.getElementById('step2Label');
+            if (step2Label) step2Label.textContent = mode === 'pdf' ? 'Review' : 'Map Columns';
+            const nextBtn = document.getElementById('step1NextBtn');
+            if (nextBtn) nextBtn.textContent = mode === 'pdf' ? 'Parse PDF →' : 'Next: Map Columns →';
+            // Populate bank accounts list when switching to PDF
+            if (mode === 'pdf') loadBankAccountsForPdfImport();
+        }
+
+        async function loadBankAccountsForPdfImport() {
+            const sel = document.getElementById('pdfBankAccountSelect');
+            if (!sel) return;
+            // Clear existing options except placeholder
+            while (sel.options.length > 1) sel.remove(1);
+            // Use already-loaded bankAccountsData if available, otherwise fetch
+            const accounts = bankAccountsData.length ? bankAccountsData : await (async () => {
+                try {
+                    const r = await fetch('/api/bank/accounts', { headers: { 'Authorization': 'Bearer ' + token } });
+                    return r.ok ? (await r.json()).bankAccounts || [] : [];
+                } catch (_) { return []; }
+            })();
+            accounts.forEach(acct => {
+                const opt = document.createElement('option');
+                opt.value = acct.id;
+                opt.textContent = acct.name + (acct.bank_name ? ' (' + acct.bank_name + ')' : '');
+                sel.appendChild(opt);
+            });
+            // Pre-select the currently active account
+            if (selectedBankAccountId) sel.value = selectedBankAccountId;
+        }
+
+        // ===================================
+        // PDF IMPORT FUNCTIONS
+        // ===================================
+
+        function triggerPdfUpload() {
+            document.getElementById('pdfFileInput').click();
+        }
+
+        function handlePdfFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const ext = file.name.toLowerCase().split('.').pop();
+            if (ext !== 'pdf' && file.type !== 'application/pdf') {
+                alert('Please select a PDF file.');
+                return;
+            }
+            importData.file = file;
+            document.getElementById('pdfUploadArea').style.display = 'none';
+            document.getElementById('pdfFileInfo').style.display = 'flex';
+            document.getElementById('pdfFileName').textContent = file.name;
+            document.getElementById('pdfFileMeta').textContent = formatFileSize(file.size) + ' • PDF Statement';
+        }
+
+        function removePdfFile() {
+            importData.file = null;
+            pdfParseResult = null;
+            document.getElementById('pdfFileInput').value = '';
+            document.getElementById('pdfFileInfo').style.display = 'none';
+            document.getElementById('pdfUploadArea').style.display = 'block';
+            document.getElementById('pdfParseStatus').style.display = 'none';
+        }
+
+        async function goToStep2Pdf() {
+            const bankAccountId = document.getElementById('pdfBankAccountSelect').value;
+            if (!bankAccountId) {
+                alert('Please select a bank account before importing.');
+                return;
+            }
+            if (!importData.file) {
+                alert('Please upload a PDF file first.');
+                return;
+            }
+
+            // Show parsing status
+            document.getElementById('pdfParseStatus').style.display = 'block';
+            document.getElementById('pdfParseStatusText').textContent = 'Parsing PDF statement... please wait.';
+            document.getElementById('step1NextBtn').disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('file', importData.file);
+                formData.append('bankAccountId', bankAccountId);
+
+                const resp = await fetch('/api/bank/import/pdf', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: formData
+                });
+
+                const result = await resp.json();
+
+                if (!resp.ok || !result.success) {
+                    document.getElementById('pdfParseStatusText').textContent =
+                        '❌ ' + (result.error || 'Failed to parse PDF.');
+                    document.getElementById('step1NextBtn').disabled = false;
+                    return;
+                }
+
+                pdfParseResult = result;
+                pdfParseResult._bankAccountId = parseInt(bankAccountId, 10);
+
+                // Move to review step
+                document.getElementById('importStep1').style.display = 'none';
+                document.getElementById('importStep2Pdf').style.display = 'block';
+                updateStepIndicators(2);
+                renderPdfReview(result);
+
+            } catch (err) {
+                document.getElementById('pdfParseStatusText').textContent =
+                    '❌ Network error. Please try again.';
+            } finally {
+                document.getElementById('step1NextBtn').disabled = false;
+                document.getElementById('pdfParseStatus').style.display = 'none';
+            }
+        }
+
+        function renderPdfReview(result) {
+            // Bank detection badge
+            const bankEl = document.getElementById('pdfBankDetected');
+            if (result.isGenericFallback) {
+                bankEl.innerHTML = `<div class="pdf-generic-warning">⚠️ Bank not identified — generic parser used. Review carefully before importing.</div>`;
+            } else {
+                bankEl.innerHTML = `<div class="pdf-detected-bank">✓ ${result.bank} detected (${(result.parserConfidence * 100).toFixed(0)}% confidence)</div>`;
+            }
+
+            // Warnings
+            const filteredWarnings = (result.warnings || []).filter(w =>
+                !w.startsWith('Generic parser: detected layout')
+            );
+            const warnBanner = document.getElementById('pdfWarningBanner');
+            const warnList = document.getElementById('pdfWarningList');
+            if (filteredWarnings.length > 0) {
+                warnList.innerHTML = filteredWarnings.slice(0, 8).map(w => `<li>${w}</li>`).join('');
+                warnBanner.style.display = 'block';
+            } else {
+                warnBanner.style.display = 'none';
+            }
+
+            // Count
+            const txns = result.transactions || [];
+            document.getElementById('pdfTxnCount').textContent =
+                txns.length + ' transaction' + (txns.length !== 1 ? 's' : '') +
+                (result.skippedLines > 0 ? ` (${result.skippedLines} lines skipped)` : '');
+
+            // Duplicate info
+            const dupInfo = document.getElementById('pdfDuplicateInfo');
+            if (result.duplicateCount > 0) {
+                document.getElementById('pdfDuplicateCount').textContent = result.duplicateCount;
+                dupInfo.style.display = 'block';
+            } else {
+                dupInfo.style.display = 'none';
+            }
+
+            // Build table
+            const tbody = document.getElementById('pdfReviewBody');
+            if (txns.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 30px; color:#9aa0a6;">No transactions were extracted from this PDF.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = txns.map((t, i) => {
+                const moneyIn = t.moneyIn != null ? 'R ' + t.moneyIn.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) : '';
+                const moneyOut = t.moneyOut != null ? 'R ' + t.moneyOut.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) : '';
+                const balance = t.balance != null ? 'R ' + t.balance.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) : '';
+                const dupBadge = t.isDuplicate ? '<span class="duplicate-badge">DUPLICATE</span>' : '';
+                return `
+                    <tr class="${t.isDuplicate ? 'is-duplicate' : ''}">
+                        <td><input type="checkbox" class="pdf-txn-check" data-index="${i}" ${t.isDuplicate ? '' : 'checked'} style="cursor:pointer;"></td>
+                        <td>${t.date}</td>
+                        <td>${escapeHtml(t.description)}${dupBadge}</td>
+                        <td style="color:#34a853; white-space:nowrap;">${moneyIn}</td>
+                        <td style="color:#ea4335; white-space:nowrap;">${moneyOut}</td>
+                        <td style="color:#5f6368; white-space:nowrap;">${balance}</td>
+                    </tr>`;
+            }).join('');
+
+            // Select all checkbox reflects state
+            document.getElementById('pdfSelectAll').checked =
+                txns.every((t, i) => !t.isDuplicate);
+        }
+
+        function pdfToggleSelectAll(checkbox) {
+            document.querySelectorAll('.pdf-txn-check').forEach(cb => {
+                cb.checked = checkbox.checked;
+            });
+        }
+
+        function goBackToPdfStep1() {
+            document.getElementById('importStep2Pdf').style.display = 'none';
+            document.getElementById('importStep1').style.display = 'block';
+            updateStepIndicators(1);
+        }
+
+        function pdfGoToConfirm() {
+            const selected = Array.from(document.querySelectorAll('.pdf-txn-check:checked'));
+            if (selected.length === 0) {
+                alert('No transactions selected. Please select at least one transaction to import.');
+                return;
+            }
+
+            // Build summary from selected transactions
+            const txns = pdfParseResult.transactions;
+            const selectedTxns = selected.map(cb => txns[parseInt(cb.dataset.index, 10)]);
+
+            let totalIn = 0, totalOut = 0;
+            selectedTxns.forEach(t => {
+                if (t.moneyIn) totalIn += t.moneyIn;
+                if (t.moneyOut) totalOut += t.moneyOut;
+            });
+
+            document.getElementById('summaryTransactions').textContent = selectedTxns.length;
+            document.getElementById('summaryMoneyIn').textContent = 'R ' + totalIn.toLocaleString('en-ZA', { minimumFractionDigits: 2 });
+            document.getElementById('summaryMoneyOut').textContent = 'R ' + totalOut.toLocaleString('en-ZA', { minimumFractionDigits: 2 });
+            document.getElementById('summaryNet').textContent = 'R ' + (totalIn - totalOut).toLocaleString('en-ZA', { minimumFractionDigits: 2 });
+
+            // Store selected for final import
+            pdfParseResult._selectedTransactions = selectedTxns;
+
+            document.getElementById('importStep2Pdf').style.display = 'none';
+            document.getElementById('importStep3').style.display = 'block';
+            updateStepIndicators(3);
+        }
+
+        async function completePdfImport() {
+            const result = pdfParseResult;
+            if (!result || !result._selectedTransactions) return;
+
+            const bankAccountId = result._bankAccountId;
+            const transactions = result._selectedTransactions.map(t => ({
+                date: t.date,
+                description: t.description,
+                amount: t.amount,
+                balance: t.balance,
+                reference: t.reference || null,
+                externalId: t.externalId
+            }));
+
+            const importBtn = document.querySelector('#importStep3 .btn-primary');
+            if (importBtn) { importBtn.disabled = true; importBtn.textContent = 'Importing...'; }
+
+            try {
+                const resp = await fetch('/api/bank/import', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ bankAccountId, transactions })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    alert('Import failed: ' + (data.error || 'Unknown error'));
+                    return;
+                }
+
+                alert(`✅ Import complete!\n\n${data.imported} transaction(s) imported successfully.`);
+                closeImportModal();
+                // Switch the selected account to the imported one so the user sees the new transactions
+                selectedBankAccountId = bankAccountId;
+                await loadBankAccounts();
+                await loadTransactions();
+            } catch (err) {
+                alert('Network error during import. Please try again.');
+            } finally {
+                if (importBtn) { importBtn.disabled = false; importBtn.textContent = 'Import Transactions'; }
+            }
+        }
+
+
 
         // ===================================
         // CSV IMPORT FUNCTIONS
@@ -2126,13 +2347,30 @@ Click OK to simulate uploading a file.`;
 
         function resetImportWizard() {
             importData = { file: null, rows: [], headers: [], mapping: {}, bankFormat: 'custom' };
+            pdfParseResult = null;
+            // Reset mode to CSV
+            importMode = 'csv';
+            document.getElementById('importTypeCSV').classList.add('active');
+            document.getElementById('importTypePDF').classList.remove('active');
+            document.getElementById('csvImportSection').style.display = 'block';
+            document.getElementById('pdfImportSection').style.display = 'none';
+            const step2Label = document.getElementById('step2Label');
+            if (step2Label) step2Label.textContent = 'Map Columns';
+            const nextBtn = document.getElementById('step1NextBtn');
+            if (nextBtn) { nextBtn.textContent = 'Next: Map Columns →'; nextBtn.disabled = false; }
             document.getElementById('importStep1').style.display = 'block';
             document.getElementById('importStep2').style.display = 'none';
+            document.getElementById('importStep2Pdf').style.display = 'none';
             document.getElementById('importStep3').style.display = 'none';
             updateStepIndicators(1);
             document.getElementById('csvFileInput').value = '';
             document.getElementById('csvFileInfo').style.display = 'none';
             document.getElementById('csvUploadArea').style.display = 'block';
+            // Reset PDF file state
+            document.getElementById('pdfFileInput').value = '';
+            document.getElementById('pdfFileInfo').style.display = 'none';
+            document.getElementById('pdfUploadArea').style.display = 'block';
+            document.getElementById('pdfParseStatus').style.display = 'none';
         }
 
         function updateStepIndicators(step) {
@@ -2233,6 +2471,12 @@ Click OK to simulate uploading a file.`;
         }
 
         function goToStep2() {
+            // Branch on import mode
+            if (importMode === 'pdf') {
+                goToStep2Pdf();
+                return;
+            }
+
             if (!importData.file || importData.rows.length === 0) {
                 alert('Please upload a CSV file first.');
                 return;
@@ -2403,21 +2647,130 @@ Click OK to simulate uploading a file.`;
 
         function goBackToStep2() {
             document.getElementById('importStep3').style.display = 'none';
-            document.getElementById('importStep2').style.display = 'block';
+            if (importMode === 'pdf') {
+                document.getElementById('importStep2Pdf').style.display = 'block';
+            } else {
+                document.getElementById('importStep2').style.display = 'block';
+            }
             updateStepIndicators(2);
         }
 
-        function completeImport() {
+        async function completeImport() {
+            // PDF mode uses its own import function
+            if (importMode === 'pdf') {
+                completePdfImport();
+                return;
+            }
+
+            if (!selectedBankAccountId) {
+                alert('Please select a bank account before importing.');
+                return;
+            }
+
             const skipDuplicates = document.getElementById('skipDuplicates').checked;
-            const autoCategories = document.getElementById('autoCategories').checked;
+            const mapping  = importData.mapping;
+            const rows     = importData.rows;
 
-            // In production, this would send to the API
-            alert(`Import Complete!\n\n${importData.rows.length} transactions imported successfully.\n\nOptions:\n- Skip Duplicates: ${skipDuplicates ? 'Yes' : 'No'}\n- Auto-categorize: ${autoCategories ? 'Yes' : 'No'}\n\nIn production, this would POST to: /api/bank/import`);
+            if (!rows.length) {
+                alert('No transactions to import.');
+                return;
+            }
 
-            closeImportModal();
+            // Build transaction objects from CSV rows
+            const months = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+            function parseDate(raw) {
+                if (!raw) return null;
+                let s = raw.trim();
+                // DD/MM/YYYY or DD-MM-YYYY
+                let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+                if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+                // YYYY/MM/DD or YYYY-MM-DD
+                m = s.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})$/);
+                if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+                // DD Mon YYYY
+                m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/);
+                if (m) { const mo = months[m[2].toLowerCase()]; if (mo) return `${m[3]}-${String(mo).padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
+                return null;
+            }
+            function parseAmt(raw) {
+                if (!raw && raw !== 0) return null;
+                let s = String(raw).replace(/[R\s]/g, '').replace(/,/g, '');
+                const neg = s.endsWith('-') || s.startsWith('-');
+                s = s.replace(/^-|-$/, '');
+                const v = parseFloat(s);
+                return isNaN(v) ? null : (neg ? -v : v);
+            }
 
-            // Optionally reload page to show new transactions
-            // location.reload();
+            const transactions = rows.map((row, i) => {
+                const date = parseDate(mapping.date !== '' ? row[mapping.date] : null);
+                const description = mapping.description !== '' ? (row[mapping.description] || '').trim() : '';
+                const reference   = mapping.reference   !== '' ? (row[mapping.reference]   || '').trim() : null;
+                const balance     = mapping.balance     !== '' ? parseAmt(row[mapping.balance])   : null;
+
+                let amount = null;
+                if (mapping.amount !== '') {
+                    amount = parseAmt(row[mapping.amount]);
+                } else {
+                    const credit = mapping.credit !== '' ? parseAmt(row[mapping.credit]) : null;
+                    const debit  = mapping.debit  !== '' ? parseAmt(row[mapping.debit])  : null;
+                    if (credit != null && credit > 0) amount =  credit;
+                    else if (debit != null && debit > 0) amount = -debit;
+                }
+
+                if (!date || !description || amount == null) return null; // skip invalid rows
+
+                return { date, description, reference: reference || null, amount, balance, externalId: null };
+            }).filter(Boolean);
+
+            if (!transactions.length) {
+                alert('No valid transactions could be parsed from this file. Check column mapping.');
+                return;
+            }
+
+            const importBtn = document.querySelector('#importStep3 .btn-primary');
+            if (importBtn) { importBtn.disabled = true; importBtn.textContent = 'Importing…'; }
+
+            try {
+                const res = await fetch('/api/bank/import', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ bankAccountId: selectedBankAccountId, transactions })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+                closeImportModal();
+                await loadTransactions();
+                alert(`Imported ${data.imported} transaction(s) successfully.${skipDuplicates && data.imported < transactions.length ? '\n\nDuplicates were skipped.' : ''}`);
+
+            } catch (err) {
+                console.error('completeImport error:', err);
+                alert('Import failed: ' + err.message);
+            } finally {
+                if (importBtn) { importBtn.disabled = false; importBtn.textContent = 'Import Transactions'; }
+            }
+        }
+
+        // PDF drag and drop
+        const pdfUploadArea = document.getElementById('pdfUploadArea');
+        if (pdfUploadArea) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev =>
+                pdfUploadArea.addEventListener(ev, preventDefaults, false)
+            );
+            ['dragenter', 'dragover'].forEach(ev =>
+                pdfUploadArea.addEventListener(ev, () => pdfUploadArea.classList.add('drag-over'))
+            );
+            ['dragleave', 'drop'].forEach(ev =>
+                pdfUploadArea.addEventListener(ev, () => pdfUploadArea.classList.remove('drag-over'))
+            );
+            pdfUploadArea.addEventListener('drop', (e) => {
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const fi = document.getElementById('pdfFileInput');
+                    fi.files = files;
+                    handlePdfFile({ target: fi });
+                }
+            });
         }
 
         // CSV drag and drop
@@ -2462,10 +2815,10 @@ Click OK to simulate uploading a file.`;
         // ===================================
 
         // Store allocations in memory (and safeLocalStorage for persistence)
-        let transactionAllocations = JSON.parse(safeLocalStorage.getItem('lorenco_bank_allocations') || '{}');
+        let transactionAllocations = JSON.parse(safeLocalStorage.getItem(storageKey('bank_allocations')) || '{}');
 
         function saveAllocationsToStorage() {
-            safeLocalStorage.setItem('lorenco_bank_allocations', JSON.stringify(transactionAllocations));
+            safeLocalStorage.setItem(storageKey('bank_allocations'), JSON.stringify(transactionAllocations));
         }
 
         function getTransactionData(id) {
@@ -2546,8 +2899,8 @@ Click OK to simulate uploading a file.`;
             const accountSelect = row.querySelectorAll('.allocation-select')[1];
             if (!accountSelect) return;
 
-            // Get all accounts from ledger
-            const accounts = LedgerSystem.getAllAccounts();
+            // Get accounts from cache
+            const accounts = window._allLedgerAccounts || [];
 
             // Build options based on type
             let html = '<option value="">Select Account...</option>';
@@ -2619,18 +2972,13 @@ Click OK to simulate uploading a file.`;
             }
             transactionAllocations[id].accountCode = accountCode;
             transactionAllocations[id].accountName = accountText;
+            // Store real account ID for API allocation
+            const foundAccount = (window._allLedgerAccounts || []).find(a => a.code === accountCode);
+            transactionAllocations[id].accountId = foundAccount ? foundAccount.id : null;
             saveAllocationsToStorage();
-
-            // Check if VAT applicable and show indicator
-            if (accountCode) {
-                const account = LedgerSystem.getAccount(accountCode);
-                if (account && account.vatApplicable) {
-                    console.log(`Account ${accountCode} is VAT applicable`);
-                }
-            }
         }
 
-        function allocateTransaction(id) {
+        async function allocateTransaction(id) {
             const allocation = transactionAllocations[id];
 
             if (!allocation || !allocation.accountCode) {
@@ -2644,37 +2992,34 @@ Click OK to simulate uploading a file.`;
                 return;
             }
 
-            // Check if VAT should be auto-calculated
-            const account = LedgerSystem.getAccount(allocation.accountCode);
-            const includeVat = account && account.vatApplicable;
-
-            // Show confirmation with VAT breakdown
+            // Show confirmation
             let message = `Allocate transaction to ${allocation.accountName}?\n\n`;
             message += `Amount: R ${Math.abs(txnData.amount).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}\n`;
             message += `Date: ${txnData.date}\n`;
-            message += `Description: ${txnData.description}\n\n`;
-
-            if (includeVat) {
-                const vatCalc = LedgerSystem.calculateVatFromInclusive(Math.abs(txnData.amount));
-                message += `VAT will be auto-calculated:\n`;
-                message += `  Exclusive: R ${vatCalc.exclusive.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}\n`;
-                message += `  VAT (15%): R ${vatCalc.vat.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}\n`;
-            }
+            message += `Description: ${txnData.description}\n`;
 
             if (!confirm(message)) {
                 return;
             }
 
             try {
-                // Post to ledger
-                const journal = LedgerSystem.postBankAllocation({
-                    date: txnData.date,
-                    description: txnData.description,
-                    amount: txnData.amount,
-                    accountCode: allocation.accountCode,
-                    includeVat: includeVat,
-                    bankAccountCode: '1000'
+                // Require a real account ID (from chart of accounts)
+                if (!allocation.accountId) {
+                    alert('Could not find this account in the chart of accounts.\nPlease refresh the page and try again.');
+                    return;
+                }
+
+                // Call the real allocation API — handles double-entry journal automatically
+                const res = await fetch(`/api/bank/transactions/${id}/allocate`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        lines: [{ accountId: allocation.accountId, amount: Math.abs(txnData.amount) }],
+                        description: txnData.description
+                    })
                 });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
                 // Update status in UI
                 const row = txnData.row;
@@ -2684,19 +3029,15 @@ Click OK to simulate uploading a file.`;
                         statusCell.className = 'status-badge status-matched';
                         statusCell.textContent = 'Allocated';
                     }
-
-                    // Disable the selects
-                    row.querySelectorAll('.allocation-select').forEach(sel => {
-                        sel.disabled = true;
-                    });
+                    row.querySelectorAll('.allocation-select').forEach(sel => { sel.disabled = true; });
                 }
 
                 // Mark allocation as posted
                 transactionAllocations[id].posted = true;
-                transactionAllocations[id].journalRef = journal.reference;
+                transactionAllocations[id].journalRef = data.journal ? data.journal.reference : '';
                 saveAllocationsToStorage();
 
-                alert(`Transaction allocated successfully!\n\nJournal Reference: ${journal.reference}\n\nThis has been posted to the General Ledger and will appear in reports.`);
+                alert(`Transaction allocated successfully!\n\nJournal Reference: ${transactionAllocations[id].journalRef || '(posted)'}\n\nThis has been posted to the General Ledger.`);
 
             } catch (error) {
                 alert('Error posting allocation: ' + error.message);
@@ -2725,10 +3066,29 @@ Click OK to simulate uploading a file.`;
             });
         }
 
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            // Add allocate buttons after a short delay
-            setTimeout(addAllocateButtons, 100);
+        // ─── Chart of accounts cache (used by allocation dropdowns) ──────────────
+        window._allLedgerAccounts = [];
+
+        async function loadChartOfAccounts() {
+            if (window._allLedgerAccounts.length) return;
+            try {
+                const res = await fetch('/api/accounts', { headers: getAuthHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                window._allLedgerAccounts = data.accounts || [];
+            } catch (_) {}
+        }
+
+        // Initialize on page load — clear any hardcoded rows and load real company data
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Immediately remove any hardcoded demo rows
+            const tbody = document.getElementById('transactionsBody');
+            if (tbody) {
+                Array.from(tbody.querySelectorAll('tr:not(#manualEntryRow)')).forEach(r => r.remove());
+            }
+            // Load chart of accounts, bank accounts, then transactions in parallel
+            await Promise.all([loadChartOfAccounts(), loadBankAccounts()]);
+            await loadTransactions();
         });
         
         // ===================================
@@ -2736,17 +3096,17 @@ Click OK to simulate uploading a file.`;
         // ===================================
         
         // Sean AI learning data (persisted in Supabase via safeLocalStorage)
-        let seanLearning = JSON.parse(safeLocalStorage.getItem('lorenco_sean_learning') || '{}');
-        
+        let seanLearning = JSON.parse(safeLocalStorage.getItem(storageKey('sean_learning')) || '{}');
+
         function saveSeanLearning() {
-            safeLocalStorage.setItem('lorenco_sean_learning', JSON.stringify(seanLearning));
+            safeLocalStorage.setItem(storageKey('sean_learning'), JSON.stringify(seanLearning));
         }
         
         // Sean AI pattern matching rules for bank transaction classification
         function seanAnalyzeTransaction(txnData) {
             const desc = (txnData.description || '').toLowerCase();
             const amount = txnData.amount || 0;
-            const accounts = LedgerSystem ? LedgerSystem.getAllAccounts() : [];
+            const accounts = window._allLedgerAccounts || [];
             
             // Check Sean's learned overrides first
             for (const [key, learning] of Object.entries(seanLearning)) {
@@ -2865,7 +3225,7 @@ Click OK to simulate uploading a file.`;
             const learnedBadge = suggestion.source === 'learned' ? ' <span style="background:#9b59b6;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">Learned</span>' : '';
             
             // Get all accounts for the override dropdowns  
-            const accounts = LedgerSystem ? LedgerSystem.getAllAccounts() : [];
+            const accounts = window._allLedgerAccounts || [];
             const accountsByCategory = {};
             accounts.forEach(a => {
                 const cat = a.category || a.type || 'Other';
@@ -3119,7 +3479,7 @@ Click OK to simulate uploading a file.`;
             }
         }
 
-        function saveManualTransaction() {
+        async function saveManualTransaction() {
             var dateEl    = document.getElementById('manualDate');
             var descEl    = document.getElementById('manualDesc');
             var refEl     = document.getElementById('manualRef');
@@ -3238,30 +3598,43 @@ Click OK to simulate uploading a file.`;
                 + '</td>'
                 + '</tr>';
 
-            // Insert immediately after the manual entry form row
-            var formRow = document.getElementById('manualEntryRow');
-            formRow.insertAdjacentHTML('afterend', rowHtml);
-
-            // Store allocation record
-            if (accountCode) {
-                transactionAllocations[id] = {
-                    type: type, accountCode: accountCode,
-                    accountName: accountText, posted: false, journalRef: ''
-                };
-                saveAllocationsToStorage();
+            // ── POST to API ──────────────────────────────────────────────────
+            if (!selectedBankAccountId) {
+                alert('Please select a bank account first (click one of the account cards above).');
+                return;
             }
 
-            // Persist to safeLocalStorage
-            var stored = JSON.parse(safeLocalStorage.getItem('bank_manual_transactions') || '[]');
-            stored.unshift({
-                id: id, date: dateVal, description: desc, reference: ref,
-                moneyIn: moneyIn, moneyOut: moneyOut,
-                type: type, accountCode: accountCode, accountName: accountText,
-                status: 'unmatched', createdAt: new Date().toISOString()
-            });
-            safeLocalStorage.setItem('bank_manual_transactions', JSON.stringify(stored));
+            var saveBtn = document.querySelector('.btn-manual-save');
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
 
-            cancelManualEntry();
+            try {
+                var apiAmount = moneyIn > 0 ? moneyIn : -moneyOut;
+                var res = await fetch('/api/bank/transactions', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        bankAccountId: selectedBankAccountId,
+                        date: dateVal,
+                        description: desc,
+                        reference: ref || null,
+                        amount: apiAmount
+                    })
+                });
+
+                if (!res.ok) {
+                    var err = await res.json().catch(() => ({}));
+                    throw new Error(err.error || ('HTTP ' + res.status));
+                }
+
+                cancelManualEntry();
+                await loadTransactions(); // Reload from server — shows correct company data
+
+            } catch (saveErr) {
+                console.error('saveManualTransaction error:', saveErr);
+                alert('Failed to save transaction: ' + saveErr.message);
+            } finally {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '\u2295 Save'; }
+            }
         }
 
         /** Resets all manual entry fields back to their empty/default state. */
@@ -3370,7 +3743,7 @@ Click OK to simulate uploading a file.`;
                 updateBulkActions();
 
                 // Remove any deleted manual transactions from persistent storage
-                var stored = JSON.parse(safeLocalStorage.getItem('bank_manual_transactions') || '[]');
+                var stored = JSON.parse(safeLocalStorage.getItem(storageKey('bank_manual_transactions')) || '[]');
                 if (stored.length > 0) {
                     var deletedIds = selectedRows.map(function (row) {
                         var cb = row.querySelector('.checkbox');
@@ -3379,7 +3752,7 @@ Click OK to simulate uploading a file.`;
                     }).filter(Boolean);
                     if (deletedIds.length > 0) {
                         stored = stored.filter(function (t) { return !deletedIds.includes(t.id); });
-                        safeLocalStorage.setItem('bank_manual_transactions', JSON.stringify(stored));
+                        safeLocalStorage.setItem(storageKey('bank_manual_transactions'), JSON.stringify(stored));
                     }
                 }
             });
@@ -3387,7 +3760,7 @@ Click OK to simulate uploading a file.`;
         
         // Transaction review management
         let currentTab = 'new';
-        let reviewedTransactions = JSON.parse(safeLocalStorage.getItem('reviewedTransactions') || '[]');
+        let reviewedTransactions = JSON.parse(safeLocalStorage.getItem(storageKey('reviewedTransactions')) || '[]');
         
         function switchTab(tab, evt) {
             currentTab = tab;
@@ -3476,7 +3849,7 @@ Click OK to simulate uploading a file.`;
                 cb.checked = false;
             });
             
-            safeLocalStorage.setItem('reviewedTransactions', JSON.stringify(reviewedTransactions));
+            safeLocalStorage.setItem(storageKey('reviewedTransactions'), JSON.stringify(reviewedTransactions));
             switchTab('new'); // Refresh the current view
             
             alert(`${checked.length} transaction(s) marked as reviewed and moved to Reviewed tab.`);
@@ -3499,7 +3872,7 @@ Click OK to simulate uploading a file.`;
                 cb.checked = false;
             });
             
-            safeLocalStorage.setItem('reviewedTransactions', JSON.stringify(reviewedTransactions));
+            safeLocalStorage.setItem(storageKey('reviewedTransactions'), JSON.stringify(reviewedTransactions));
             switchTab('reviewed'); // Refresh the reviewed view
             
             alert(`${checked.length} transaction(s) moved back to New Transactions.`);
@@ -3744,7 +4117,7 @@ Click OK to simulate uploading a file.`;
                     </div>
                     <div class="import-step">
                         <span class="step-number">2</span>
-                        <span>Map Columns</span>
+                        <span id="step2Label">Map Columns</span>
                     </div>
                     <div class="import-step">
                         <span class="step-number">3</span>
@@ -3754,40 +4127,95 @@ Click OK to simulate uploading a file.`;
 
                 <!-- Step 1: Upload -->
                 <div id="importStep1" class="import-content">
-                    <div class="bank-format-select">
-                        <label>Bank Format (Optional)</label>
-                        <select id="bankFormatSelect" onchange="onBankFormatChange()">
-                            <option value="custom">Custom / Other Bank</option>
-                            <option value="fnb">FNB (First National Bank)</option>
-                            <option value="standard">Standard Bank</option>
-                            <option value="absa">ABSA</option>
-                            <option value="nedbank">Nedbank</option>
-                            <option value="capitec">Capitec Bank</option>
-                        </select>
-                        <small style="color: #5f6368; display: block; margin-top: 5px;">Select your bank to auto-map columns, or choose Custom to manually map.</small>
+
+                    <!-- Import type toggle: CSV vs PDF -->
+                    <div class="import-type-toggle">
+                        <button id="importTypeCSV" class="import-type-btn active" onclick="switchImportMode('csv')">
+                            📊 CSV / Excel
+                        </button>
+                        <button id="importTypePDF" class="import-type-btn" onclick="switchImportMode('pdf')">
+                            📋 PDF Statement
+                        </button>
                     </div>
 
-                    <div id="csvUploadArea" class="upload-area" onclick="triggerCsvUpload()">
-                        <div class="upload-icon">📄</div>
-                        <div><strong>Click to upload</strong> or drag and drop</div>
-                        <div style="font-size: 12px; color: #5f6368; margin-top: 5px;">
-                            CSV files only (exported from your bank)
+                    <!-- CSV section -->
+                    <div id="csvImportSection">
+                        <div class="bank-format-select">
+                            <label>Bank Format (Optional)</label>
+                            <select id="bankFormatSelect" onchange="onBankFormatChange()">
+                                <option value="custom">Custom / Other Bank</option>
+                                <option value="fnb">FNB (First National Bank)</option>
+                                <option value="standard">Standard Bank</option>
+                                <option value="absa">ABSA</option>
+                                <option value="nedbank">Nedbank</option>
+                                <option value="capitec">Capitec Bank</option>
+                            </select>
+                            <small style="color: #5f6368; display: block; margin-top: 5px;">Select your bank to auto-map columns, or choose Custom to manually map.</small>
+                        </div>
+
+                        <div id="csvUploadArea" class="upload-area" onclick="triggerCsvUpload()">
+                            <div class="upload-icon">📄</div>
+                            <div><strong>Click to upload</strong> or drag and drop</div>
+                            <div style="font-size: 12px; color: #5f6368; margin-top: 5px;">
+                                CSV files only (exported from your bank)
+                            </div>
+                        </div>
+                        <input type="file" id="csvFileInput" style="display: none;" onchange="handleCsvFile(event)" accept=".csv">
+
+                        <div id="csvFileInfo" class="file-info" style="display: none;">
+                            <div class="file-info-icon">📄</div>
+                            <div class="file-info-details">
+                                <div class="file-info-name" id="csvFileName"></div>
+                                <div class="file-info-meta" id="csvFileMeta"></div>
+                            </div>
+                            <span class="file-info-remove" onclick="removeCsvFile()" title="Remove file">×</span>
                         </div>
                     </div>
-                    <input type="file" id="csvFileInput" style="display: none;" onchange="handleCsvFile(event)" accept=".csv">
 
-                    <div id="csvFileInfo" class="file-info" style="display: none;">
-                        <div class="file-info-icon">📄</div>
-                        <div class="file-info-details">
-                            <div class="file-info-name" id="csvFileName"></div>
-                            <div class="file-info-meta" id="csvFileMeta"></div>
+                    <!-- PDF section -->
+                    <div id="pdfImportSection" style="display: none;">
+                        <div class="bank-format-select">
+                            <label>Bank Account</label>
+                            <select id="pdfBankAccountSelect">
+                                <option value="">-- Select bank account --</option>
+                            </select>
+                            <small style="color: #5f6368; display: block; margin-top: 5px;">
+                                Select which bank account this statement belongs to. Required for import.
+                            </small>
                         </div>
-                        <span class="file-info-remove" onclick="removeCsvFile()" title="Remove file">×</span>
+                        <div style="background: #e6f3ff; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #0066cc;">
+                            <strong>Supported banks:</strong> FNB, ABSA, Standard Bank, Nedbank, Capitec.
+                            Only <strong>text-based PDFs</strong> are supported (not scanned/image PDFs).
+                            Export your statement as a PDF from your bank's online portal.
+                        </div>
+
+                        <div id="pdfUploadArea" class="upload-area" onclick="triggerPdfUpload()">
+                            <div class="upload-icon">📋</div>
+                            <div><strong>Click to upload</strong> or drag and drop</div>
+                            <div style="font-size: 12px; color: #5f6368; margin-top: 5px;">
+                                PDF bank statement (max 20 MB)
+                            </div>
+                        </div>
+                        <input type="file" id="pdfFileInput" style="display: none;" onchange="handlePdfFile(event)" accept=".pdf,application/pdf">
+
+                        <div id="pdfFileInfo" class="file-info" style="display: none;">
+                            <div class="file-info-icon">📋</div>
+                            <div class="file-info-details">
+                                <div class="file-info-name" id="pdfFileName"></div>
+                                <div class="file-info-meta" id="pdfFileMeta"></div>
+                            </div>
+                            <span class="file-info-remove" onclick="removePdfFile()" title="Remove file">×</span>
+                        </div>
+
+                        <div id="pdfParseStatus" style="display: none;" class="pdf-parse-status">
+                            <div class="status-icon">⏳</div>
+                            <div id="pdfParseStatusText">Parsing PDF statement...</div>
+                        </div>
                     </div>
 
                     <div class="import-actions">
                         <button class="btn-secondary" onclick="closeImportModal()">Cancel</button>
-                        <button class="btn-primary" onclick="goToStep2()">Next: Map Columns →</button>
+                        <button class="btn-primary" id="step1NextBtn" onclick="goToStep2()">Next: Map Columns →</button>
                     </div>
                 </div>
 
@@ -3846,6 +4274,49 @@ Click OK to simulate uploading a file.`;
                     <div class="import-actions">
                         <button class="btn-secondary" onclick="goBackToStep1()">← Back</button>
                         <button class="btn-primary" onclick="goToStep3()">Next: Confirm Import →</button>
+                    </div>
+                </div>
+
+                <!-- Step 2 PDF: Review parsed transactions -->
+                <div id="importStep2Pdf" class="import-content" style="display: none;">
+                    <div id="pdfBankDetected" style="margin-bottom: 15px;"></div>
+
+                    <div id="pdfWarningBanner" style="display: none;" class="pdf-warning-banner">
+                        <strong>⚠️ Parser Warnings</strong>
+                        <ul id="pdfWarningList"></ul>
+                    </div>
+
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                        <h3 style="margin: 0;">Review Parsed Transactions</h3>
+                        <span id="pdfTxnCount" style="font-size: 13px; color: #5f6368;"></span>
+                    </div>
+
+                    <div style="overflow-x: auto; max-height: 380px; overflow-y: auto; border: 1px solid #e8eaed; border-radius: 8px;">
+                        <table class="pdf-review-table">
+                            <thead style="position: sticky; top: 0; z-index: 1;">
+                                <tr>
+                                    <th>
+                                        <input type="checkbox" id="pdfSelectAll" onchange="pdfToggleSelectAll(this)"
+                                               title="Select / deselect all" style="cursor:pointer;">
+                                    </th>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Money In</th>
+                                    <th>Money Out</th>
+                                    <th>Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pdfReviewBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="pdfDuplicateInfo" style="display:none; margin-top: 10px; font-size: 13px; color: #b06000;">
+                        ⚠️ <span id="pdfDuplicateCount"></span> likely duplicate(s) detected (highlighted). Deselect them to skip.
+                    </div>
+
+                    <div class="import-actions">
+                        <button class="btn-secondary" onclick="goBackToPdfStep1()">← Back</button>
+                        <button class="btn-primary" onclick="pdfGoToConfirm()">Next: Confirm Import →</button>
                     </div>
                 </div>
 
