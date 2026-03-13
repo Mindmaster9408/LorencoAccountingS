@@ -1567,7 +1567,10 @@
         </div>
         
         <div class="bank-accounts-section">
-            <h2 style="margin-bottom: 15px; font-size: 16px; color: #202124;">Bank Accounts</h2>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h2 style="font-size:16px; color:#202124;">Bank Accounts</h2>
+                <button class="btn-primary" style="font-size:12px; padding:7px 14px;" onclick="showAddBankModal()">+ Add Account</button>
+            </div>
             <div class="bank-accounts-grid" id="bankAccountsList">
                 <div style="color:#5f6368; font-size:14px; padding:12px 0; grid-column:1/-1;">Loading bank accounts…</div>
             </div>
@@ -1849,14 +1852,23 @@ Click OK to simulate uploading a file.`;
                     selectedBankAccountId = bankAccountsData[0].id;
                 }
 
-                grid.innerHTML = bankAccountsData.map(acct => `
+                grid.innerHTML = bankAccountsData.map(acct => {
+                    const ledgerLabel = acct.ledger_account_id
+                        ? `<div style="font-size:11px;color:#0066cc;margin-top:4px;">🔗 ${escapeHtml(acct.ledger_account_code || '')} — ${escapeHtml(acct.ledger_account_name || '')}</div>`
+                        : `<div style="font-size:11px;color:#e65100;margin-top:4px;">⚠️ No ledger account linked</div>`;
+                    return `
                     <div class="bank-account-card${acct.id === selectedBankAccountId ? ' active' : ''}"
                          onclick="selectAccount(this, ${acct.id})">
-                        <div class="account-name">${escapeHtml(acct.name)}</div>
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                            <div class="account-name">${escapeHtml(acct.name)}</div>
+                            <button onclick="event.stopPropagation();showEditBankModal(${acct.id})"
+                                style="background:none;border:1px solid #e0e0e0;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;color:#5f6368;">Edit</button>
+                        </div>
                         <div class="account-number">${acct.account_number_masked ? escapeHtml(acct.account_number_masked) : (acct.bank_name ? escapeHtml(acct.bank_name) : '—')}</div>
+                        ${ledgerLabel}
                         <div class="account-balance" id="acctBal${acct.id}">—</div>
-                    </div>
-                `).join('');
+                    </div>`;
+                }).join('');
 
                 // Populate the bank-account select in the PDF import modal
                 if (typeof loadBankAccountsForPdfImport === 'function') loadBankAccountsForPdfImport();
@@ -1864,6 +1876,129 @@ Click OK to simulate uploading a file.`;
             } catch (err) {
                 console.error('loadBankAccounts error:', err);
                 if (grid) grid.innerHTML = '<div style="color:#ea4335;font-size:14px;padding:12px 0;grid-column:1/-1;">Failed to load bank accounts. Please refresh.</div>';
+            }
+        }
+
+        // ── Bank Account Management ──────────────────────────────────────────
+        let _editingBankAcctId = null;
+
+        function _populateLedgerDropdown(selectedId) {
+            const sel = document.getElementById('baLedgerAccount');
+            sel.innerHTML = '<option value="">— Select ledger account —</option>';
+            const accts = window._allLedgerAccounts || [];
+            if (!accts.length) {
+                // Accounts not loaded yet — load now and retry
+                loadChartOfAccounts().then(() => _populateLedgerDropdown(selectedId));
+                return;
+            }
+            accts.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.code + ' — ' + a.name;
+                if (a.id == selectedId) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        function showAddBankModal() {
+            _editingBankAcctId = null;
+            document.getElementById('bankModalTitle').textContent = 'Add Bank Account';
+            document.getElementById('baBankName').value        = '';
+            document.getElementById('baBankProvider').value    = '';
+            document.getElementById('baAcctNum').value         = '';
+            document.getElementById('baOpeningBalance').value  = '0';
+            document.getElementById('baOpeningDate').value     = new Date().toISOString().slice(0, 10);
+            document.getElementById('baOpeningBalanceGroup').style.display = '';
+            document.getElementById('baOpeningDateGroup').style.display    = '';
+            document.getElementById('baIsActiveGroup').style.display       = 'none';
+            document.getElementById('bankModalError').style.display        = 'none';
+            document.getElementById('saveBankAccountBtn').textContent      = 'Save Account';
+            _populateLedgerDropdown(null);
+            document.getElementById('bankAccountModal').classList.add('show');
+        }
+
+        function showEditBankModal(id) {
+            const acct = bankAccountsData.find(a => a.id === id);
+            if (!acct) return;
+            _editingBankAcctId = id;
+            document.getElementById('bankModalTitle').textContent     = 'Edit Bank Account';
+            document.getElementById('baBankName').value               = acct.name || '';
+            document.getElementById('baBankProvider').value           = acct.bank_name || '';
+            document.getElementById('baAcctNum').value                = acct.account_number_masked || '';
+            document.getElementById('baIsActive').value               = acct.is_active ? 'true' : 'false';
+            document.getElementById('baOpeningBalanceGroup').style.display = 'none';
+            document.getElementById('baOpeningDateGroup').style.display    = 'none';
+            document.getElementById('baIsActiveGroup').style.display       = '';
+            document.getElementById('bankModalError').style.display        = 'none';
+            document.getElementById('saveBankAccountBtn').textContent      = 'Update Account';
+            _populateLedgerDropdown(acct.ledger_account_id);
+            document.getElementById('bankAccountModal').classList.add('show');
+        }
+
+        function closeBankAccountModal() {
+            document.getElementById('bankAccountModal').classList.remove('show');
+            _editingBankAcctId = null;
+        }
+
+        async function saveBankAccount() {
+            const name       = document.getElementById('baBankName').value.trim();
+            const bankName   = document.getElementById('baBankProvider').value.trim();
+            const acctNum    = document.getElementById('baAcctNum').value.trim();
+            const ledgerId   = document.getElementById('baLedgerAccount').value || null;
+            const errEl      = document.getElementById('bankModalError');
+            const btn        = document.getElementById('saveBankAccountBtn');
+            errEl.style.display = 'none';
+
+            if (!name) {
+                errEl.textContent = 'Account name is required.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            btn.disabled = true;
+
+            try {
+                let res, data;
+                if (_editingBankAcctId) {
+                    const isActive = document.getElementById('baIsActive').value === 'true';
+                    res = await fetch(`/api/bank/accounts/${_editingBankAcctId}`, {
+                        method: 'PUT',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({
+                            name,
+                            bankName:             bankName  || null,
+                            accountNumberMasked:  acctNum   || null,
+                            ledgerAccountId:      ledgerId  ? parseInt(ledgerId) : null,
+                            isActive
+                        })
+                    });
+                } else {
+                    const openingBalance = parseFloat(document.getElementById('baOpeningBalance').value) || 0;
+                    const openingDate    = document.getElementById('baOpeningDate').value || null;
+                    res = await fetch('/api/bank/accounts', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({
+                            name,
+                            bankName:             bankName  || null,
+                            accountNumberMasked:  acctNum   || null,
+                            ledgerAccountId:      ledgerId  ? parseInt(ledgerId) : null,
+                            openingBalance,
+                            openingBalanceDate:   openingDate
+                        })
+                    });
+                }
+                data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+                closeBankAccountModal();
+                await loadBankAccounts();
+
+            } catch (err) {
+                errEl.textContent = err.message;
+                errEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
             }
         }
 
@@ -4101,6 +4236,57 @@ Click OK to simulate uploading a file.`;
         });
     </script>
     
+    <!-- Bank Account Create / Edit Modal -->
+    <div id="bankAccountModal" class="modal-overlay" onclick="if(event.target===this)closeBankAccountModal()">
+        <div class="modal" style="width:480px;">
+            <h2 id="bankModalTitle" style="margin-bottom:20px;font-size:18px;">Add Bank Account</h2>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div style="grid-column:1/-1;">
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;">Account Name *</label>
+                    <input type="text" id="baBankName" placeholder="e.g. FNB Business Current" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;">Bank</label>
+                    <input type="text" id="baBankProvider" placeholder="e.g. FNB" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;">Account Number</label>
+                    <input type="text" id="baAcctNum" placeholder="e.g. ****1234" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                </div>
+                <div style="grid-column:1/-1;">
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;">Linked Ledger Account</label>
+                    <select id="baLedgerAccount" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                        <option value="">— Select ledger account —</option>
+                    </select>
+                    <div style="font-size:11px;color:#5f6368;margin-top:4px;">Required for bank transaction allocation to work.</div>
+                </div>
+                <div id="baOpeningBalanceGroup">
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;">Opening Balance (R)</label>
+                    <input type="number" id="baOpeningBalance" value="0" step="0.01" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                </div>
+                <div id="baOpeningDateGroup">
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;">Opening Balance Date</label>
+                    <input type="date" id="baOpeningDate" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                </div>
+                <div id="baIsActiveGroup" style="display:none;grid-column:1/-1;">
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;">Status</label>
+                    <select id="baIsActive" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="bankModalError" style="display:none;background:#fce4ec;color:#c62828;padding:10px;border-radius:6px;margin-top:12px;font-size:13px;"></div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+                <button onclick="closeBankAccountModal()" style="padding:10px 20px;background:#f5f5f5;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;">Cancel</button>
+                <button id="saveBankAccountBtn" onclick="saveBankAccount()" class="btn-primary">Save Account</button>
+            </div>
+        </div>
+    </div>
+
     <!-- CSV Import Modal -->
     <div id="importModal" class="modal-overlay" onclick="if(event.target === this) closeImportModal()">
         <div class="modal import-modal">

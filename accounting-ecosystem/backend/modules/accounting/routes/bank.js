@@ -143,6 +143,94 @@ router.post('/accounts', authenticate, hasPermission('bank.manage'), async (req,
 });
 
 /**
+ * PUT /api/bank/accounts/:id
+ * Update a bank account (name, bankName, accountNumberMasked, ledgerAccountId, isActive)
+ */
+router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (req, res) => {
+  const client = await db.getClient();
+
+  try {
+    const { name, bankName, accountNumberMasked, ledgerAccountId, isActive } = req.body;
+
+    await client.query('BEGIN');
+
+    const existing = await client.query(
+      'SELECT * FROM bank_accounts WHERE id = $1 AND company_id = $2',
+      [req.params.id, req.user.companyId]
+    );
+
+    if (existing.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Bank account not found' });
+    }
+
+    const before = existing.rows[0];
+
+    // If ledgerAccountId provided, verify it belongs to this company
+    if (ledgerAccountId !== undefined && ledgerAccountId !== null) {
+      const acctCheck = await client.query(
+        'SELECT id FROM accounts WHERE id = $1 AND company_id = $2',
+        [ledgerAccountId, req.user.companyId]
+      );
+      if (acctCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Ledger account not found' });
+      }
+    }
+
+    const result = await client.query(
+      `UPDATE bank_accounts
+       SET name                  = COALESCE($1, name),
+           bank_name             = COALESCE($2, bank_name),
+           account_number_masked = COALESCE($3, account_number_masked),
+           ledger_account_id     = $4,
+           is_active             = COALESCE($5, is_active)
+       WHERE id = $6 AND company_id = $7
+       RETURNING *`,
+      [
+        name              || null,
+        bankName          !== undefined ? bankName          : null,
+        accountNumberMasked !== undefined ? accountNumberMasked : null,
+        ledgerAccountId   !== undefined ? ledgerAccountId   : before.ledger_account_id,
+        isActive          !== undefined ? isActive          : null,
+        req.params.id,
+        req.user.companyId
+      ]
+    );
+
+    await AuditLogger.logUserAction(
+      req,
+      'UPDATE',
+      'BANK_ACCOUNT',
+      before.id,
+      { name: before.name, ledgerAccountId: before.ledger_account_id },
+      { name: result.rows[0].name, ledgerAccountId: result.rows[0].ledger_account_id },
+      'Bank account updated'
+    );
+
+    await client.query('COMMIT');
+
+    // Return with joined ledger account info
+    const full = await db.query(
+      `SELECT ba.*, a.code as ledger_account_code, a.name as ledger_account_name
+       FROM bank_accounts ba
+       LEFT JOIN accounts a ON ba.ledger_account_id = a.id
+       WHERE ba.id = $1`,
+      [req.params.id]
+    );
+
+    res.json(full.rows[0]);
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error updating bank account:', error);
+    res.status(500).json({ error: 'Failed to update bank account' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
  * GET /api/bank/transactions
  * List bank transactions
  */
