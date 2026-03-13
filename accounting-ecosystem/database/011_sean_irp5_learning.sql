@@ -165,6 +165,7 @@ ALTER TABLE sean_learning_events           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sean_irp5_propagation_log      ENABLE ROW LEVEL SECURITY;
 
 -- Company staff can see their own learning events
+DROP POLICY IF EXISTS sle_company_isolation ON sean_learning_events;
 CREATE POLICY sle_company_isolation ON sean_learning_events
   FOR SELECT
   USING (
@@ -172,6 +173,7 @@ CREATE POLICY sle_company_isolation ON sean_learning_events
   );
 
 -- Company staff can see their own propagation log entries
+DROP POLICY IF EXISTS sipl_company_isolation ON sean_irp5_propagation_log;
 CREATE POLICY sipl_company_isolation ON sean_irp5_propagation_log
   FOR SELECT
   USING (
