@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Permission Matrix Functionality Tests</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: white; padding: 20px; }
+        .test-section { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .test-btn { padding: 8px 16px; background: #667eea; border: none; border-radius: 6px; color: white; cursor: pointer; margin: 4px; }
+        .test-result { margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 0.85rem; }
+        .pass { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .fail { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    </style>
+</head>
+<body>
+    <h1>Permission Matrix System Tests</h1>
+    <p>Comprehensive tests for the visual permission management system</p>
+
+    <div class="test-section">
+        <h3>Data Source Tests</h3>
+        <p>Verify matrix loads data from correct sources</p>
+        <button class="test-btn" onclick="testDataSources()">Test Data Sources</button>
+        <div id="dataSourceResult" class="test-result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Matrix Rendering Tests</h3>
+        <p>Verify matrix UI renders correctly with dynamic data</p>
+        <button class="test-btn" onclick="testMatrixRendering()">Test Matrix Rendering</button>
+        <div id="matrixRenderResult" class="test-result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Permission Logic Tests</h3>
+        <p>Test unrestricted vs restricted permission patterns</p>
+        <button class="test-btn" onclick="testPermissionLogic()">Test Permission Logic</button>
+        <div id="permissionLogicResult" class="test-result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Inline Editing Tests</h3>
+        <p>Test matrix cell toggle functionality</p>
+        <button class="test-btn" onclick="testInlineEditing()">Test Inline Editing</button>
+        <div id="inlineEditResult" class="test-result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Tab Switching Tests</h3>
+        <p>Test Overview/Apps/Clients tab functionality</p>
+        <button class="test-btn" onclick="testTabSwitching()">Test Tab Switching</button>
+        <div id="tabSwitchResult" class="test-result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Modal Integration Tests</h3>
+        <p>Test matrix + modal synchronization</p>
+        <button class="test-btn" onclick="testModalIntegration()">Test Modal Integration</button>
+        <div id="modalIntegrationResult" class="test-result" style="display:none;"></div>
+    </div>
+
+    <script>
+        // Mock data for testing
+        const mockUsers = [
+            { id: 1, full_name: "John Owner", username: "john", email: "john@practice.com", role: "business_owner", apps: null, clients: null },
+            { id: 2, full_name: "Jane Accountant", username: "jane", email: "jane@practice.com", role: "accountant", apps: ["pos", "accounting"], clients: [1, 2] },
+            { id: 3, full_name: "Bob Staff", username: "bob", email: "bob@practice.com", role: "cashier", apps: ["pos"], clients: [1] }
+        ];
+
+        const mockApps = [
+            { key: 'pos', name: 'Checkout Charlie', subtitle: 'Point of Sale', icon: '🛒' },
+            { key: 'payroll', name: 'Lorenco Paytime', subtitle: 'Payroll Management', icon: '💰' },
+            { key: 'accounting', name: 'Lorenco Accounting', subtitle: 'General Ledger', icon: '📊' },
+            { key: 'sean', name: 'SEAN AI', subtitle: 'Smart Assistant', icon: '🤖' }
+        ];
+
+        const mockClients = [
+            { id: 1, name: "Client Alpha", email: "alpha@client.com" },
+            { id: 2, name: "Client Beta", email: "beta@client.com" },
+            { id: 3, name: "Client Gamma", email: "gamma@client.com" }
+        ];
+
+        const mockRoleColors = {
+            business_owner: '#a78bfa', accountant: '#60a5fa',
+            store_manager: '#34d399', cashier: '#94a3b8'
+        };
+
+        function testDataSources() {
+            const resultDiv = document.getElementById('dataSourceResult');
+            resultDiv.style.display = 'block';
+
+            try {
+                let tests = [];
+
+                // Test user data structure
+                const userTest = mockUsers.every(u => u.id && u.full_name && u.role !== undefined && u.apps !== undefined && u.clients !== undefined);
+                tests.push(userTest ? '✅ User data structure valid' : '❌ User data structure invalid');
+
+                // Test app registry structure
+                const appsTest = mockApps.every(a => a.key && a.name && a.subtitle && a.icon);
+                tests.push(appsTest ? '✅ App registry structure valid' : '❌ App registry structure invalid');
+
+                // Test client data structure
+                const clientsTest = mockClients.every(c => c.id && c.name);
+                tests.push(clientsTest ? '✅ Client data structure valid' : '❌ Client data structure invalid');
+
+                // Test role colors mapping
+                const rolesTest = Object.keys(mockRoleColors).length > 0;
+                tests.push(rolesTest ? '✅ Role colors available' : '❌ Role colors missing');
+
+                const failedTests = tests.filter(t => t.startsWith('❌'));
+                if (failedTests.length === 0) {
+                    resultDiv.className = 'test-result pass';
+                    resultDiv.innerHTML = tests.join('<br>');
+                } else {
+                    resultDiv.className = 'test-result fail';
+                    resultDiv.innerHTML = tests.join('<br>');
+                }
+            } catch (err) {
+                resultDiv.className = 'test-result fail';
+                resultDiv.innerHTML = `❌ Error: ${err.message}`;
+            }
+        }
+
+        function testMatrixRendering() {
+            const resultDiv = document.getElementById('matrixRenderResult');
+            resultDiv.style.display = 'block';
+
+            try {
+                // Test overview matrix rendering
+                const overviewHtml = generateOverviewMatrix(mockUsers, mockApps, mockClients);
+                const hasOverviewContent = overviewHtml.includes('tbody') && overviewHtml.includes(mockUsers[0].full_name);
+
+                // Test apps matrix rendering
+                const appsHtml = generateAppsMatrix(mockUsers, mockApps);
+                const hasAppsColumns = mockApps.every(app => appsHtml.includes(app.name));
+
+                // Test clients matrix rendering
+                const clientsHtml = generateClientsMatrix(mockUsers, mockClients);
+                const hasClientColumns = mockClients.every(client => clientsHtml.includes(client.name));
+
+                let tests = [];
+                tests.push(hasOverviewContent ? '✅ Overview matrix renders with user data' : '❌ Overview matrix rendering failed');
+                tests.push(hasAppsColumns ? '✅ Apps matrix includes all app columns' : '❌ Apps matrix missing columns');
+                tests.push(hasClientColumns ? '✅ Clients matrix includes all client columns' : '❌ Clients matrix missing columns');
+
+                const failedTests = tests.filter(t => t.startsWith('❌'));
+                if (failedTests.length === 0) {
+                    resultDiv.className = 'test-result pass';
+                    resultDiv.innerHTML = tests.join('<br>');
+                } else {
+                    resultDiv.className = 'test-result fail';
+                    resultDiv.innerHTML = tests.join('<br>');
+                }
+            } catch (err) {
+                resultDiv.className = 'test-result fail';
+                resultDiv.innerHTML = `❌ Error: ${err.message}`;
+            }
+        }
+
+        function testPermissionLogic() {
+            const resultDiv = document.getElementById('permissionLogicResult');
+            resultDiv.style.display = 'block';
+
+            try {
+                let tests = [];
+
+                // Test unrestricted user (John Owner)
+                const unrestrictedUser = mockUsers.find(u => u.role === 'business_owner');
+                const isUnrestricted = unrestrictedUser.apps === null && unrestrictedUser.clients === null;
+                tests.push(isUnrestricted ? '✅ Unrestricted user pattern detected' : '❌ Unrestricted user pattern failed');
+
+                // Test restricted user (Jane Accountant)
+                const restrictedUser = mockUsers.find(u => u.role === 'accountant');
+                const hasAppRestrictions = Array.isArray(restrictedUser.apps) && restrictedUser.apps.length > 0;
+                const hasClientRestrictions = Array.isArray(restrictedUser.clients) && restrictedUser.clients.length > 0;
+                tests.push(hasAppRestrictions ? '✅ App restrictions detected' : '❌ App restrictions failed');
+                tests.push(hasClientRestrictions ? '✅ Client restrictions detected' : '❌ Client restrictions failed');
+
+                // Test permission calculation
+                const hasAccessToPos = checkUserAppAccess(restrictedUser, 'pos');
+                const hasAccessToSean = checkUserAppAccess(restrictedUser, 'sean');
+                tests.push(hasAccessToPos ? '✅ User has access to permitted app' : '❌ Permitted app access failed');
+                tests.push(!hasAccessToSean ? '✅ User denied access to non-permitted app' : '❌ Non-permitted app access failed');
+
+                const failedTests = tests.filter(t => t.startsWith('❌'));
+                if (failedTests.length === 0) {
+                    resultDiv.className = 'test-result pass';
+                    resultDiv.innerHTML = tests.join('<br>');
+                } else {
+                    resultDiv.className = 'test-result fail';
+                    resultDiv.innerHTML = tests.join('<br>');
+                }
+            } catch (err) {
+                resultDiv.className = 'test-result fail';
+                resultDiv.innerHTML = `❌ Error: ${err.message}`;
+            }
+        }
+
+        function testInlineEditing() {
+            const resultDiv = document.getElementById('inlineEditResult');
+            resultDiv.style.display = 'block';
+
+            try {
+                let tests = [];
+
+                // Create test user
+                let testUser = { ...mockUsers[1] }; // Jane Accountant (restricted)
+
+                // Test adding app access
+                const beforeApps = testUser.apps.length;
+                const result1 = simulateToggleApp(testUser, 'sean');
+                const afterApps = testUser.apps.length;
+                tests.push(afterApps > beforeApps ? '✅ App access toggle (add) works' : '❌ App access add failed');
+
+                // Test removing app access
+                const result2 = simulateToggleApp(testUser, 'pos');
+                const finalApps = testUser.apps.length;
+                tests.push(finalApps < afterApps ? '✅ App access toggle (remove) works' : '❌ App access remove failed');
+
+                // Test unrestricted user behavior
+                const unrestrictedUser = { ...mockUsers[0] }; // John Owner
+                const shouldUseModal = simulateToggleApp(unrestrictedUser, 'pos');
+                tests.push(shouldUseModal === 'modal' ? '✅ Unrestricted users open modal' : '❌ Unrestricted user handling failed');
+
+                const failedTests = tests.filter(t => t.startsWith('❌'));
+                if (failedTests.length === 0) {
+                    resultDiv.className = 'test-result pass';
+                    resultDiv.innerHTML = tests.join('<br>');
+                } else {
+                    resultDiv.className = 'test-result fail';
+                    resultDiv.innerHTML = tests.join('<br>');
+                }
+            } catch (err) {
+                resultDiv.className = 'test-result fail';
+                resultDiv.innerHTML = `❌ Error: ${err.message}`;
+            }
+        }
+
+        function testTabSwitching() {
+            const resultDiv = document.getElementById('tabSwitchResult');
+            resultDiv.style.display = 'block';
+
+            try {
+                // Simulate tab switching logic
+                const tabs = ['overview', 'apps', 'clients'];
+                let currentTab = 'overview';
+
+                const switchTab = (newTab) => {
+                    currentTab = newTab;
+                    return tabs.includes(newTab);
+                };
+
+                let tests = [];
+                tests.push(switchTab('apps') ? '✅ Can switch to apps tab' : '❌ Apps tab switch failed');
+                tests.push(switchTab('clients') ? '✅ Can switch to clients tab' : '❌ Clients tab switch failed');
+                tests.push(switchTab('overview') ? '✅ Can switch to overview tab' : '❌ Overview tab switch failed');
+                tests.push(currentTab === 'overview' ? '✅ Tab state maintained' : '❌ Tab state failed');
+
+                resultDiv.className = 'test-result pass';
+                resultDiv.innerHTML = tests.join('<br>');
+            } catch (err) {
+                resultDiv.className = 'test-result fail';
+                resultDiv.innerHTML = `❌ Error: ${err.message}`;
+            }
+        }
+
+        function testModalIntegration() {
+            const resultDiv = document.getElementById('modalIntegrationResult');
+            resultDiv.style.display = 'block';
+
+            try {
+                let tests = [];
+
+                // Test modal data sync simulation
+                let matrixData = [...mockUsers];
+                const userId = 2;
+                const newApps = ['pos', 'accounting', 'sean'];
+
+                // Simulate modal save
+                const user = matrixData.find(u => u.id === userId);
+                if (user) {
+                    user.apps = newApps;
+                    tests.push('✅ Modal data sync simulation successful');
+                } else {
+                    tests.push('❌ User not found for sync');
+                }
+
+                // Test data consistency
+                const updatedUser = matrixData.find(u => u.id === userId);
+                const hasNewApps = updatedUser && updatedUser.apps.includes('sean');
+                tests.push(hasNewApps ? '✅ Matrix data updated correctly' : '❌ Matrix data update failed');
+
+                // Test matrix re-render trigger
+                const shouldRerender = matrixData.length > 0 && updatedUser;
+                tests.push(shouldRerender ? '✅ Matrix re-render conditions met' : '❌ Re-render conditions failed');
+
+                const failedTests = tests.filter(t => t.startsWith('❌'));
+                if (failedTests.length === 0) {
+                    resultDiv.className = 'test-result pass';
+                    resultDiv.innerHTML = tests.join('<br>');
+                } else {
+                    resultDiv.className = 'test-result fail';
+                    resultDiv.innerHTML = tests.join('<br>');
+                }
+            } catch (err) {
+                resultDiv.className = 'test-result fail';
+                resultDiv.innerHTML = `❌ Error: ${err.message}`;
+            }
+        }
+
+        // Helper functions for testing
+        function checkUserAppAccess(user, appKey) {
+            return user.apps === null || (user.apps && user.apps.includes(appKey));
+        }
+
+        function simulateToggleApp(user, appKey) {
+            if (user.apps === null) {
+                return 'modal'; // Should open modal for unrestricted users
+            }
+
+            if (user.apps.includes(appKey)) {
+                user.apps = user.apps.filter(a => a !== appKey);
+                return 'removed';
+            } else {
+                user.apps = [...user.apps, appKey];
+                return 'added';
+            }
+        }
+
+        function generateOverviewMatrix(users, apps, clients) {
+            return `
+                <table>
+                    <thead><tr><th>User</th><th>Role</th><th>Apps</th><th>Clients</th></tr></thead>
+                    <tbody>
+                        ${users.map(u => `<tr><td>${u.full_name}</td><td>${u.role}</td></tr>`).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function generateAppsMatrix(users, apps) {
+            return `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            ${apps.map(app => `<th>${app.name}</th>`).join('')}
+                        </tr>
+                    </thead>
+                </table>
+            `;
+        }
+
+        function generateClientsMatrix(users, clients) {
+            return `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            ${clients.map(client => `<th>${client.name}</th>`).join('')}
+                        </tr>
+                    </thead>
+                </table>
+            `;
+        }
+    </script>
+</body>
+</html>

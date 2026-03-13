@@ -3399,8 +3399,19 @@
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 try {
-                    const registration = await navigator.serviceWorker.register('/service-worker.js');
+                    // Register at /pos/service-worker.js with explicit /pos/ scope.
+                    // The server injects BUILD_VERSION into the file so browsers
+                    // detect a changed SW on every deployment and invalidate caches.
+                    const registration = await navigator.serviceWorker.register(
+                        '/pos/service-worker.js',
+                        { scope: '/pos/' }
+                    );
                     console.log('[ServiceWorker] Registered:', registration.scope);
+
+                    // Wire up update banner (shows "New version available" on SW update)
+                    if (typeof initSWUpdateCheck === 'function') {
+                        initSWUpdateCheck(registration);
+                    }
 
                     // Listen for sync messages from service worker
                     navigator.serviceWorker.addEventListener('message', (event) => {
@@ -9366,5 +9377,8 @@
             }
         }
     </script>
+
+    <!-- Update detection: shows a non-blocking banner when a new deployment is available -->
+    <script src="js/update-check.js" defer></script>
 </body>
 </html>

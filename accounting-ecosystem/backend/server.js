@@ -15,7 +15,14 @@
 
 // Load environment variables FIRST
 const path = require('path');
+const fs   = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+// ─── Build Version ────────────────────────────────────────────────────────────
+// Each Zeabur redeploy starts a fresh container → new timestamp → new SW bytes
+// → browsers detect the updated service worker → caches invalidated automatically.
+// Override with BUILD_VERSION env var for deterministic versioning in CI/CD.
+const BUILD_VERSION = process.env.BUILD_VERSION || Date.now().toString(36);
 
 const express = require('express');
 const cors = require('cors');
@@ -25,6 +32,14 @@ const morgan = require('morgan');
 // ─── Config ──────────────────────────────────────────────────────────────────
 const { supabase, checkConnection, ensureDefaultCompany } = require('./config/database');
 const { isModuleEnabled, getEnabledModules, getAllModules } = require('./config/modules');
+const fs = require('fs');
+
+// ─── Build Version ────────────────────────────────────────────────────────────
+// Used for service worker cache invalidation and frontend version detection.
+// Set BUILD_VERSION env var in Zeabur to a unique value per deployment (e.g. git
+// commit SHA). Falls back to startup timestamp — guarantees every container
+// restart generates a fresh version, which is the correct behaviour.
+const BUILD_VERSION = process.env.BUILD_VERSION || Date.now().toString(36);
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 const { authenticateToken } = require('./middleware/auth');
@@ -125,7 +140,7 @@ app.get('/api/health', async (req, res) => {
   res.status(dbOk ? 200 : 503).json({
     status: dbOk ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
+    version: BUILD_VERSION,
     database: dbOk ? 'connected' : 'disconnected',
     modules: enabledModules.map(m => m.key),
     uptime: Math.floor(process.uptime())
@@ -137,6 +152,18 @@ app.get('/api/modules', (req, res) => {
     modules: getAllModules(),
     enabled: getEnabledModules().map(m => m.key)
   });
+});
+
+/**
+ * GET /api/version
+ * Returns the running build version for client-side update detection.
+ * Served with no-cache so clients always get the current server version.
+ * Frontend pages poll this endpoint periodically; if the version changes
+ * it means a new deployment has occurred and the UI shows an update banner.
+ */
+app.get('/api/version', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.json({ version: BUILD_VERSION, timestamp: new Date().toISOString() });
 });
 
 // ─── Shared Routes (always active) ──────────────────────────────────────────
@@ -263,62 +290,96 @@ if (coachingRoutes) {
   console.log('  ⬜ Coaching module — disabled (set COACHING_DATABASE_URL to enable)');
 }
 
-// ─── Static File Serving (optional — for serving frontends) ──────────────────
+// ─── Static File Serving ─────────────────────────────────────────────────────
 
-// Ecosystem frontend (main login + dashboard) — served at root
 const ecosystemFrontendPath = path.join(__dirname, '..', 'frontend-ecosystem');
-const posFrontendPath = path.join(__dirname, '..', 'frontend-pos');
-const payrollFrontendPath = path.join(__dirname, '..', 'frontend-payroll');
-const seanFrontendPath = path.join(__dirname, '..', 'frontend-sean');
+const posFrontendPath       = path.join(__dirname, '..', 'frontend-pos');
+const payrollFrontendPath   = path.join(__dirname, '..', 'frontend-payroll');
+const seanFrontendPath      = path.join(__dirname, '..', 'frontend-sean');
 const accountingFrontendPath = path.join(__dirname, '..', 'frontend-accounting');
-const coachingFrontendPath = path.join(__dirname, '..', 'frontend-coaching');
+const coachingFrontendPath  = path.join(__dirname, '..', 'frontend-coaching');
 
-// Ecosystem dashboard route
-app.use('/dashboard', express.static(ecosystemFrontendPath));
-app.get('/dashboard', (req, res) => {
-  res.sendFile(path.join(ecosystemFrontendPath, 'dashboard.html'));
-});
+// ── Cache-Control helper ──────────────────────────────────────────────────────
+// HTML files: never cache — browser must always revalidate on navigation.
+// Other assets (CSS, JS, images): short cache (1 hour) with ETag for efficiency.
+// This ensures users always get fresh HTML after a deployment without needing
+// to manually clear cache or hard-refresh.
+const staticOptions = {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+    } else {
+      // Assets without build-time hashes: 1 hour cache with ETag revalidation
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+  }
+};
 
-// Super Admin control panel (superusers only — enforced client-side + token-side)
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(ecosystemFrontendPath, 'admin.html'));
-});
+// Helper: send an HTML file with no-cache headers (for named route sendFile calls)
+function sendHtml(res, filePath) {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(filePath);
+}
 
-// Client detail / edit page
-app.get('/client/:id', (req, res) => {
-  res.sendFile(path.join(ecosystemFrontendPath, 'client-detail.html'));
-});
+// ── Service Worker dynamic serving ───────────────────────────────────────────
+// Service worker files are served with BUILD_VERSION injected.
+// The __BUILD_VERSION__ placeholder in each SW file is replaced at request time
+// with the running BUILD_VERSION string. This guarantees the SW file bytes change
+// on every new deployment — the browser detects this and triggers the SW update
+// lifecycle (install → waiting → activate), invalidating stale caches.
+// These routes MUST be registered before express.static for the same path.
+function serveSW(res, swPath) {
+  try {
+    const content = fs.readFileSync(swPath, 'utf8').replace(/__BUILD_VERSION__/g, BUILD_VERSION);
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.send(content);
+  } catch (err) {
+    console.warn('[SW] Service worker file not found:', swPath);
+    res.status(404).send('// Service worker not found');
+  }
+}
+app.get('/pos/service-worker.js',     (req, res) => serveSW(res, path.join(posFrontendPath,     'service-worker.js')));
+app.get('/payroll/service-worker.js', (req, res) => serveSW(res, path.join(payrollFrontendPath, 'service-worker.js')));
 
-// App frontends
-app.use('/pos', express.static(posFrontendPath));
-app.use('/payroll', express.static(payrollFrontendPath));
-app.use('/sean', express.static(seanFrontendPath));
-app.use('/accounting', express.static(accountingFrontendPath));
-app.use('/coaching', express.static(coachingFrontendPath));
+// ── Ecosystem frontend (dashboard, admin, login) ──────────────────────────────
+app.use('/dashboard', express.static(ecosystemFrontendPath, staticOptions));
+app.get('/dashboard', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'dashboard.html')));
+
+app.get('/admin',     (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'admin.html')));
+app.get('/client/:id', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'client-detail.html')));
+
+// ── App frontends ─────────────────────────────────────────────────────────────
+app.use('/pos',        express.static(posFrontendPath,       staticOptions));
+app.use('/payroll',    express.static(payrollFrontendPath,   staticOptions));
+app.use('/sean',       express.static(seanFrontendPath,      staticOptions));
+app.use('/accounting', express.static(accountingFrontendPath, staticOptions));
+app.use('/coaching',   express.static(coachingFrontendPath,  staticOptions));
 
 // Coaching: multi-page app (has login.html, index.html, admin.html, etc.)
 app.get('/coaching', (req, res) => {
-  res.sendFile(path.join(coachingFrontendPath, 'login.html'));
+  sendHtml(res, path.join(coachingFrontendPath, 'login.html'));
 });
 app.get('/coaching/*', (req, res) => {
-  const fs = require('fs');
   const requestedFile = req.path.replace('/coaching/', '');
   const filePath = path.join(coachingFrontendPath, requestedFile);
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-    return res.sendFile(filePath);
+    return sendHtml(res, filePath);
   }
   if (fs.existsSync(filePath + '.html')) {
-    return res.sendFile(filePath + '.html');
+    return sendHtml(res, filePath + '.html');
   }
-  res.sendFile(path.join(coachingFrontendPath, 'index.html'));
+  sendHtml(res, path.join(coachingFrontendPath, 'index.html'));
 });
 
-// SPA fallback for frontend routes
+// SPA / MPA fallbacks — always served with no-cache headers
 app.get('/pos/*', (req, res) => {
   const indexPath = path.join(posFrontendPath, 'index.html');
-  const fs = require('fs');
   if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
+    sendHtml(res, indexPath);
   } else {
     res.status(404).json({ error: 'POS frontend not found' });
   }
@@ -326,9 +387,8 @@ app.get('/pos/*', (req, res) => {
 
 app.get('/payroll/*', (req, res) => {
   const indexPath = path.join(payrollFrontendPath, 'index.html');
-  const fs = require('fs');
   if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
+    sendHtml(res, indexPath);
   } else {
     res.status(404).json({ error: 'Payroll frontend not found' });
   }
@@ -336,37 +396,32 @@ app.get('/payroll/*', (req, res) => {
 
 app.get('/sean/*', (req, res) => {
   const indexPath = path.join(seanFrontendPath, 'index.html');
-  const fs = require('fs');
   if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
+    sendHtml(res, indexPath);
   } else {
     res.status(404).json({ error: 'SEAN frontend not found' });
   }
 });
 
-// Accounting: multi-page frontend (Lorenco Accounting has 30+ HTML pages)
+// Accounting: multi-page frontend (30+ HTML pages)
 app.get('/accounting', (req, res) => {
-  res.sendFile(path.join(accountingFrontendPath, 'dashboard.html'));
+  sendHtml(res, path.join(accountingFrontendPath, 'dashboard.html'));
 });
 app.get('/accounting/*', (req, res) => {
-  const fs = require('fs');
   const requestedFile = req.path.replace('/accounting/', '');
   const filePath = path.join(accountingFrontendPath, requestedFile);
-  // Try exact path first
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-    return res.sendFile(filePath);
+    return sendHtml(res, filePath);
   }
-  // Try adding .html extension
   if (fs.existsSync(filePath + '.html')) {
-    return res.sendFile(filePath + '.html');
+    return sendHtml(res, filePath + '.html');
   }
-  // Fallback to dashboard
-  res.sendFile(path.join(accountingFrontendPath, 'dashboard.html'));
+  sendHtml(res, path.join(accountingFrontendPath, 'dashboard.html'));
 });
 
 // ─── Root — Ecosystem Login Page ─────────────────────────────────────────────
 app.get('/', (req, res) => {
-  res.sendFile(path.join(ecosystemFrontendPath, 'login.html'));
+  sendHtml(res, path.join(ecosystemFrontendPath, 'login.html'));
 });
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────

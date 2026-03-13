@@ -768,6 +768,7 @@
         }
     </style>
     <script src="js/polyfills.js"></script>
+    <script src="js/update-check.js"></script>
 </head>
 <body>
 
@@ -1123,6 +1124,7 @@
                 <div style="display:flex;gap:4px;margin-bottom:24px;background:rgba(255,255,255,0.04);border-radius:12px;padding:4px;">
                     <button id="tabBtnDetails" onclick="switchPracticeTab('details'); loadPracticeDetails();" style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);">&#9998; Details</button>
                     <button id="tabBtnUsers"   onclick="switchPracticeTab('users')"   style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;">&#128100; Team / Users</button>
+                    <button id="tabBtnMatrix"  onclick="switchPracticeTab('matrix')"  style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);">&#128295; Permission Matrix</button>
                     <button id="tabBtnDemos"   onclick="switchPracticeTab('demos')"   style="flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);">&#127918; App Demos</button>
                 </div>
 
@@ -1243,6 +1245,72 @@
                                 <button type="submit" class="btn-form save" id="auSaveBtn">Add User to Practice</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+
+                <!-- ── Permission Matrix Tab ── -->
+                <div id="tabMatrix" style="display:none;">
+                    <!-- Matrix Sub-tabs -->
+                    <div style="display:flex;gap:4px;margin-bottom:20px;background:rgba(255,255,255,0.04);border-radius:8px;padding:2px;">
+                        <button id="matrixTabOverview" onclick="switchMatrixTab('overview')" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;">📊 Overview</button>
+                        <button id="matrixTabApps" onclick="switchMatrixTab('apps')" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);">🚀 Apps Matrix</button>
+                        <button id="matrixTabClients" onclick="switchMatrixTab('clients')" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);">👥 Clients Matrix</button>
+                    </div>
+
+                    <!-- Overview Matrix -->
+                    <div id="matrixOverview">
+                        <div style="margin-bottom:16px;">
+                            <div style="color:#fff;font-size:0.95rem;font-weight:700;margin-bottom:4px;">Permission Overview</div>
+                            <div style="color:rgba(255,255,255,0.6);font-size:0.8rem;">Quick summary of user roles and access patterns across the practice.</div>
+                        </div>
+
+                        <!-- Permission Summary Cards -->
+                        <div id="permissionSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px;">
+                            <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:12px;">
+                                <div style="color:#60a5fa;font-size:0.75rem;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Total Users</div>
+                                <div id="totalUsersCount" style="color:#fff;font-size:1.2rem;font-weight:700;">-</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:12px;">
+                                <div style="color:#6ee7b7;font-size:0.75rem;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Unrestricted Users</div>
+                                <div id="unrestrictedUsersCount" style="color:#fff;font-size:1.2rem;font-weight:700;">-</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:12px;">
+                                <div style="color:#fbbf24;font-size:0.75rem;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Active Apps</div>
+                                <div id="activeAppsCount" style="color:#fff;font-size:1.2rem;font-weight:700;">-</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:12px;">
+                                <div style="color:#a78bfa;font-size:0.75rem;font-weight:600;text-transform:uppercase;margin-bottom:4px;">Total Clients</div>
+                                <div id="totalClientsCount" style="color:#fff;font-size:1.2rem;font-weight:700;">-</div>
+                            </div>
+                        </div>
+
+                        <!-- User Overview Table -->
+                        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+                            <div style="padding:12px 16px;background:rgba(255,255,255,0.04);border-bottom:1px solid var(--border);font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">User Permission Summary</div>
+                            <div id="userOverviewTable" style="min-height:200px;max-height:400px;overflow-y:auto;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Apps Matrix -->
+                    <div id="matrixApps" style="display:none;">
+                        <div style="margin-bottom:16px;">
+                            <div style="color:#fff;font-size:0.95rem;font-weight:700;margin-bottom:4px;">Apps Permission Matrix</div>
+                            <div style="color:rgba(255,255,255,0.6);font-size:0.8rem;">Manage user access to ecosystem applications. Click cells to toggle access.</div>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+                            <div id="appsMatrix" style="overflow-x:auto;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Clients Matrix -->
+                    <div id="matrixClients" style="display:none;">
+                        <div style="margin-bottom:16px;">
+                            <div style="color:#fff;font-size:0.95rem;font-weight:700;margin-bottom:4px;">Client Access Matrix</div>
+                            <div style="color:rgba(255,255,255,0.6);font-size:0.8rem;">Manage user access to practice clients. Click cells to toggle access.</div>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+                            <div id="clientsMatrix" style="overflow-x:auto;"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -2330,18 +2398,389 @@
         function switchPracticeTab(tab) {
             document.getElementById('tabDetails').style.display = tab === 'details' ? '' : 'none';
             document.getElementById('tabUsers').style.display   = tab === 'users'   ? '' : 'none';
+            document.getElementById('tabMatrix').style.display  = tab === 'matrix'  ? '' : 'none';
             document.getElementById('tabDemos').style.display   = tab === 'demos'   ? '' : 'none';
 
             const detailBtn = document.getElementById('tabBtnDetails');
             const usersBtn  = document.getElementById('tabBtnUsers');
+            const matrixBtn = document.getElementById('tabBtnMatrix');
             const demosBtn  = document.getElementById('tabBtnDemos');
             const baseStyle = 'flex:1;padding:9px;border:none;border-radius:9px;font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;';
             detailBtn.style.cssText = baseStyle + (tab === 'details' ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
             usersBtn.style.cssText  = baseStyle + (tab === 'users'   ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
+            matrixBtn.style.cssText = baseStyle + (tab === 'matrix'  ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
             demosBtn.style.cssText  = baseStyle + (tab === 'demos'   ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
 
             if (tab === 'users') loadPracticeUsers();
+            if (tab === 'matrix') loadPermissionMatrix();
             if (tab === 'demos') renderDemosTab();
+        }
+
+        // ── Permission Matrix System ──
+
+        let matrixUsers = [];
+        let matrixClients = [];
+        let currentMatrixTab = 'overview';
+
+        async function loadPermissionMatrix() {
+            try {
+                const token = localStorage.getItem('eco_token');
+
+                // Load users and clients data in parallel
+                const [usersRes, clientsRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_BASE}/api/eco-clients`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+
+                const usersData = await usersRes.json();
+                const clientsData = await clientsRes.json();
+
+                matrixUsers = usersData.users || [];
+                matrixClients = clientsData.clients || [];
+
+                renderPermissionMatrix();
+            } catch (err) {
+                console.error('Failed to load permission matrix:', err);
+                showToast('Failed to load permission matrix: ' + err.message, true);
+            }
+        }
+
+        function switchMatrixTab(tab) {
+            currentMatrixTab = tab;
+
+            // Update tab buttons
+            const overviewBtn = document.getElementById('matrixTabOverview');
+            const appsBtn = document.getElementById('matrixTabApps');
+            const clientsBtn = document.getElementById('matrixTabClients');
+            const activeStyle = 'flex:1;padding:8px 12px;border:none;border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;';
+            const inactiveStyle = 'flex:1;padding:8px 12px;border:none;border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.5);';
+
+            overviewBtn.style.cssText = tab === 'overview' ? activeStyle : inactiveStyle;
+            appsBtn.style.cssText = tab === 'apps' ? activeStyle : inactiveStyle;
+            clientsBtn.style.cssText = tab === 'clients' ? activeStyle : inactiveStyle;
+
+            // Show/hide tab content
+            document.getElementById('matrixOverview').style.display = tab === 'overview' ? '' : 'none';
+            document.getElementById('matrixApps').style.display = tab === 'apps' ? '' : 'none';
+            document.getElementById('matrixClients').style.display = tab === 'clients' ? '' : 'none';
+
+            // Render appropriate content
+            if (tab === 'overview') renderOverviewMatrix();
+            if (tab === 'apps') renderAppsMatrix();
+            if (tab === 'clients') renderClientsMatrix();
+        }
+
+        function renderPermissionMatrix() {
+            // Default to overview tab on first load
+            switchMatrixTab('overview');
+        }
+
+        function renderOverviewMatrix() {
+            // Calculate summary statistics
+            const totalUsers = matrixUsers.length;
+            const unrestrictedUsers = matrixUsers.filter(u => u.apps === null && u.clients === null).length;
+            const activeApps = APP_DEFS.length;
+            const totalClients = matrixClients.length;
+
+            // Update summary cards
+            document.getElementById('totalUsersCount').textContent = totalUsers;
+            document.getElementById('unrestrictedUsersCount').textContent = unrestrictedUsers;
+            document.getElementById('activeAppsCount').textContent = activeApps;
+            document.getElementById('totalClientsCount').textContent = totalClients;
+
+            // Render user overview table
+            const overviewTable = document.getElementById('userOverviewTable');
+            if (matrixUsers.length === 0) {
+                overviewTable.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:24px;text-align:center;">No users found</div>';
+                return;
+            }
+
+            const tableHtml = `
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr style="color:var(--text-muted);font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
+                            <th style="padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);">User</th>
+                            <th style="padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);">Role</th>
+                            <th style="padding:12px 16px;text-align:center;border-bottom:1px solid var(--border);">Apps</th>
+                            <th style="padding:12px 16px;text-align:center;border-bottom:1px solid var(--border);">Clients</th>
+                            <th style="padding:12px 16px;text-align:center;border-bottom:1px solid var(--border);">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${matrixUsers.map(user => {
+                            const roleColor = ROLE_COLORS[user.role] || '#94a3b8';
+                            const initials = (user.full_name || user.username || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+
+                            const appsStatus = user.apps === null
+                                ? '<span style="color:#6ee7b7;font-size:0.75rem;">All apps</span>'
+                                : user.apps.length === 0
+                                    ? '<span style="color:#fca5a5;font-size:0.75rem;">No access</span>'
+                                    : `<span style="color:#60a5fa;font-size:0.75rem;">${user.apps.length} apps</span>`;
+
+                            const clientsStatus = user.clients === null
+                                ? '<span style="color:#6ee7b7;font-size:0.75rem;">All clients</span>'
+                                : user.clients.length === 0
+                                    ? '<span style="color:#fca5a5;font-size:0.75rem;">No access</span>'
+                                    : `<span style="color:#fbbf24;font-size:0.75rem;">${user.clients.length} clients</span>`;
+
+                            const isUnrestricted = user.apps === null && user.clients === null;
+                            const statusBadge = isUnrestricted
+                                ? '<span style="background:rgba(110,231,183,0.2);color:#6ee7b7;padding:2px 8px;border-radius:12px;font-size:0.7rem;font-weight:600;">Unrestricted</span>'
+                                : '<span style="background:rgba(251,191,36,0.2);color:#fbbf24;padding:2px 8px;border-radius:12px;font-size:0.7rem;font-weight:600;">Restricted</span>';
+
+                            return `
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                                    <td style="padding:12px 16px;">
+                                        <div style="display:flex;align-items:center;gap:10px;">
+                                            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${initials}</div>
+                                            <div>
+                                                <div style="color:#fff;font-size:0.85rem;font-weight:600;">${escHtml(user.full_name || user.username)}</div>
+                                                <div style="color:var(--text-muted);font-size:0.75rem;">${escHtml(user.email || '')}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style="padding:12px 16px;">
+                                        <span style="color:${roleColor};font-size:0.8rem;font-weight:600;">${(user.role || 'user').replace(/_/g,' ')}</span>
+                                    </td>
+                                    <td style="padding:12px 16px;text-align:center;">${appsStatus}</td>
+                                    <td style="padding:12px 16px;text-align:center;">${clientsStatus}</td>
+                                    <td style="padding:12px 16px;text-align:center;">${statusBadge}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            overviewTable.innerHTML = tableHtml;
+        }
+
+        function renderAppsMatrix() {
+            const appsMatrix = document.getElementById('appsMatrix');
+
+            if (matrixUsers.length === 0) {
+                appsMatrix.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:24px;text-align:center;">No users found</div>';
+                return;
+            }
+
+            // Create apps matrix table
+            const matrixHtml = `
+                <table style="width:100%;border-collapse:collapse;min-width:${600 + (APP_DEFS.length * 100)}px;">
+                    <thead>
+                        <tr style="color:var(--text-muted);font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;position:sticky;top:0;background:#1a1a2e;z-index:10;">
+                            <th style="padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);position:sticky;left:0;background:#1a1a2e;min-width:200px;">User</th>
+                            <th style="padding:12px 16px;text-align:center;border-bottom:1px solid var(--border);position:sticky;left:200px;background:#1a1a2e;min-width:120px;">Role</th>
+                            ${APP_DEFS.map(app => `
+                                <th style="padding:12px 16px;text-align:center;border-bottom:1px solid var(--border);min-width:100px;">
+                                    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                                        <span style="font-size:1.1rem;">${app.icon}</span>
+                                        <span style="font-size:0.7rem;">${app.name.replace(/\s+/g, ' ')}</span>
+                                    </div>
+                                </th>
+                            `).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${matrixUsers.map(user => {
+                            const roleColor = ROLE_COLORS[user.role] || '#94a3b8';
+                            const initials = (user.full_name || user.username || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+
+                            return `
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                                    <td style="padding:12px 16px;position:sticky;left:0;background:#1a1a2e;border-right:1px solid var(--border);">
+                                        <div style="display:flex;align-items:center;gap:10px;">
+                                            <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">${initials}</div>
+                                            <div style="min-width:0;">
+                                                <div style="color:#fff;font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(user.full_name || user.username)}</div>
+                                                <div style="color:var(--text-muted);font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(user.email || '')}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style="padding:12px 16px;text-align:center;position:sticky;left:200px;background:#1a1a2e;border-right:1px solid var(--border);">
+                                        <span style="color:${roleColor};font-size:0.75rem;font-weight:600;">${(user.role || 'user').replace(/_/g,' ')}</span>
+                                    </td>
+                                    ${APP_DEFS.map(app => {
+                                        const hasAccess = user.apps === null || (user.apps && user.apps.includes(app.key));
+                                        const isUnrestricted = user.apps === null;
+
+                                        return `
+                                            <td style="padding:12px 16px;text-align:center;" onclick="toggleUserAppAccess(${user.id}, '${app.key}')">
+                                                ${isUnrestricted ?
+                                                    '<div style="color:#6ee7b7;cursor:pointer;font-size:0.7rem;font-weight:600;background:rgba(110,231,183,0.1);padding:4px 8px;border-radius:6px;">All</div>' :
+                                                    hasAccess ?
+                                                        '<div style="color:#60a5fa;cursor:pointer;font-size:1.2rem;" title="Access granted">✓</div>' :
+                                                        '<div style="color:var(--text-muted);cursor:pointer;font-size:1.2rem;" title="No access">○</div>'
+                                                }
+                                            </td>
+                                        `;
+                                    }).join('')}
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            appsMatrix.innerHTML = matrixHtml;
+        }
+
+        function renderClientsMatrix() {
+            const clientsMatrix = document.getElementById('clientsMatrix');
+
+            if (matrixUsers.length === 0 || matrixClients.length === 0) {
+                clientsMatrix.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:24px;text-align:center;">No users or clients found</div>';
+                return;
+            }
+
+            // Create clients matrix table
+            const matrixHtml = `
+                <table style="width:100%;border-collapse:collapse;min-width:${400 + (matrixClients.length * 120)}px;">
+                    <thead>
+                        <tr style="color:var(--text-muted);font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;position:sticky;top:0;background:#1a1a2e;z-index:10;">
+                            <th style="padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);position:sticky;left:0;background:#1a1a2e;min-width:200px;">User</th>
+                            <th style="padding:12px 16px;text-align:center;border-bottom:1px solid var(--border);position:sticky;left:200px;background:#1a1a2e;min-width:120px;">Role</th>
+                            ${matrixClients.map(client => `
+                                <th style="padding:12px 16px;text-align:center;border-bottom:1px solid var(--border);min-width:120px;">
+                                    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                                        <span style="font-size:0.75rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;">${escHtml(client.name)}</span>
+                                        ${client.email ? `<span style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;">${escHtml(client.email)}</span>` : ''}
+                                    </div>
+                                </th>
+                            `).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${matrixUsers.map(user => {
+                            const roleColor = ROLE_COLORS[user.role] || '#94a3b8';
+                            const initials = (user.full_name || user.username || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+
+                            return `
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                                    <td style="padding:12px 16px;position:sticky;left:0;background:#1a1a2e;border-right:1px solid var(--border);">
+                                        <div style="display:flex;align-items:center;gap:10px;">
+                                            <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">${initials}</div>
+                                            <div style="min-width:0;">
+                                                <div style="color:#fff;font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(user.full_name || user.username)}</div>
+                                                <div style="color:var(--text-muted);font-size:0.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(user.email || '')}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style="padding:12px 16px;text-align:center;position:sticky;left:200px;background:#1a1a2e;border-right:1px solid var(--border);">
+                                        <span style="color:${roleColor};font-size:0.75rem;font-weight:600;">${(user.role || 'user').replace(/_/g,' ')}</span>
+                                    </td>
+                                    ${matrixClients.map(client => {
+                                        const hasAccess = user.clients === null || (user.clients && user.clients.includes(client.id));
+                                        const isUnrestricted = user.clients === null;
+
+                                        return `
+                                            <td style="padding:12px 16px;text-align:center;" onclick="toggleUserClientAccess(${user.id}, ${client.id})">
+                                                ${isUnrestricted ?
+                                                    '<div style="color:#6ee7b7;cursor:pointer;font-size:0.7rem;font-weight:600;background:rgba(110,231,183,0.1);padding:4px 8px;border-radius:6px;">All</div>' :
+                                                    hasAccess ?
+                                                        '<div style="color:#fbbf24;cursor:pointer;font-size:1.2rem;" title="Access granted">✓</div>' :
+                                                        '<div style="color:var(--text-muted);cursor:pointer;font-size:1.2rem;" title="No access">○</div>'
+                                                }
+                                            </td>
+                                        `;
+                                    }).join('')}
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            clientsMatrix.innerHTML = matrixHtml;
+        }
+
+        // ── Matrix Inline Editing Functions ──
+
+        async function toggleUserAppAccess(userId, appKey) {
+            const user = matrixUsers.find(u => u.id === userId);
+            if (!user) return;
+
+            // Can't directly modify unrestricted users - use modal for that
+            if (user.apps === null) {
+                changeUserApps(userId, user.full_name || user.username, user.apps);
+                return;
+            }
+
+            const token = localStorage.getItem('eco_token');
+            const currentApps = user.apps || [];
+            let newApps;
+
+            if (currentApps.includes(appKey)) {
+                // Remove app
+                newApps = currentApps.filter(a => a !== appKey);
+            } else {
+                // Add app
+                newApps = [...currentApps, appKey];
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/users/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ apps: newApps })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.error || 'Failed to update app access');
+                }
+
+                // Update local data and re-render
+                user.apps = newApps;
+                renderAppsMatrix();
+                showToast(`${user.full_name || user.username}'s ${appKey} access updated`);
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            }
+        }
+
+        async function toggleUserClientAccess(userId, clientId) {
+            const user = matrixUsers.find(u => u.id === userId);
+            if (!user) return;
+
+            // Can't directly modify unrestricted users - use modal for that
+            if (user.clients === null) {
+                changeUserClients(userId, user.full_name || user.username, user.clients);
+                return;
+            }
+
+            const token = localStorage.getItem('eco_token');
+            const currentClients = user.clients || [];
+            let newClients;
+
+            if (currentClients.includes(clientId)) {
+                // Remove client
+                newClients = currentClients.filter(c => c !== clientId);
+            } else {
+                // Add client
+                newClients = [...currentClients, clientId];
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/users/${userId}/client-access`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ clients: newClients })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.error || 'Failed to update client access');
+                }
+
+                // Update local data and re-render
+                user.clients = newClients;
+                renderClientsMatrix();
+
+                const client = matrixClients.find(c => c.id === clientId);
+                showToast(`${user.full_name || user.username}'s access to ${client?.name || 'client'} updated`);
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            }
         }
 
         // ── Demo Management ──
@@ -2637,6 +3076,14 @@
                 showToast(`${name} can now access: ${msg}`);
                 document.getElementById('appAccessModal').remove();
                 await loadPracticeUsers();
+                // Refresh matrix data if matrix tab is active
+                if (currentMatrixTab && matrixUsers.length > 0) {
+                    const user = matrixUsers.find(u => u.id === parseInt(userId));
+                    if (user) {
+                        user.apps = apps;
+                        renderPermissionMatrix();
+                    }
+                }
             } catch (err) {
                 showToast('❌ ' + err.message, true);
             }
@@ -2731,6 +3178,14 @@
                 showToast(`${name} can now access: ${msg}`);
                 document.getElementById('clientAccessModal').remove();
                 await loadPracticeUsers();
+                // Refresh matrix data if matrix tab is active
+                if (currentMatrixTab && matrixUsers.length > 0) {
+                    const user = matrixUsers.find(u => u.id === parseInt(userId));
+                    if (user) {
+                        user.clients = clients;
+                        renderPermissionMatrix();
+                    }
+                }
             } catch (err) {
                 showToast('\u274c ' + err.message, true);
             }
@@ -2854,6 +3309,14 @@
                 showToast(`${name}'s role updated to ${selectedRole.value.replace(/_/g, ' ')}`);
                 document.getElementById('roleAccessModal').remove();
                 await loadPracticeUsers();
+                // Refresh matrix data if matrix tab is active
+                if (currentMatrixTab && matrixUsers.length > 0) {
+                    const user = matrixUsers.find(u => u.id === parseInt(userId));
+                    if (user) {
+                        user.role = selectedRole.value;
+                        renderPermissionMatrix();
+                    }
+                }
             } catch (err) {
                 showToast('❌ ' + err.message, true);
             }

@@ -1,20 +1,35 @@
 /**
  * ============================================================================
- * Service Worker — Lorenco Paytime (Offline-First PWA)
+ * Service Worker — Lorenco Paytime (Offline-Capable PWA)
  * ============================================================================
- * Strategy:
- *   Static assets  → Cache-first (serve instantly, refresh in background)
- *   GET API calls  → Network-first, cache fallback (always try fresh data)
- *   POST/PUT/PATCH → Network only; if offline, queue for background sync
+ * Cache strategy:
+ *   HTML navigation  → Network-first (always fetch fresh pages when online)
+ *   Static assets    → Network-first (always fresh when online)
+ *   GET API calls    → Network-first, cache fallback (always try fresh data)
+ *   POST/PUT/PATCH   → Network only; offline → queue for background sync
+ *
+ * Why network-first for HTML/static:
+ *   After each deployment the server returns updated files. Cache-first would
+ *   serve stale HTML/CSS/JS until the user manually hard-refreshed. Network-
+ *   first ensures users always get the deployed version when online, while the
+ *   cache is still available as an offline fallback.
+ *
+ * Cache invalidation:
+ *   __BUILD_VERSION__ is replaced at request time by the Express server with
+ *   the running BUILD_VERSION (env var or startup timestamp). This guarantees
+ *   the SW file bytes change on every deployment → browser detects new SW →
+ *   installs and activates → old version caches are deleted automatically.
  * ============================================================================
  */
 
-const CACHE_VERSION = 'paytime-v1';
+const CACHE_VERSION = 'paytime-__BUILD_VERSION__';
 const STATIC_CACHE  = `${CACHE_VERSION}-static`;
 const API_CACHE     = `${CACHE_VERSION}-api`;
 const SYNC_QUEUE    = 'paytime-sync-queue';
 
-// ── Static files to precache ───────────────────────────────────────────────
+// ── Static files to cache for offline fallback ─────────────────────────────
+// These are cached after the first network fetch (not pre-fetched on install)
+// so install never fails due to missing files during the initial deployment.
 const STATIC_FILES = [
   '/payroll/',
   '/payroll/index.html',
@@ -44,7 +59,7 @@ const STATIC_FILES = [
   '/payroll/js/payroll-items-helper.js',
 ];
 
-// ── API routes to cache on first fetch ────────────────────────────────────
+// ── API routes to cache on first successful fetch ──────────────────────────
 const CACHEABLE_API = [
   '/api/payroll/employees',
   '/api/payroll/periods',
@@ -54,32 +69,53 @@ const CACHEABLE_API = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
-// INSTALL — precache static shell
+// INSTALL — warm up the static shell into the NEW versioned cache
+// Does not call skipWaiting here — let the update notification flow control
+// when the new SW takes over (after user acknowledges the update banner).
 // ─────────────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
-  console.log('[Paytime SW] Installing...');
+  console.log('[Paytime SW] Installing version:', CACHE_VERSION);
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(cache => cache.addAll(STATIC_FILES).catch(err => {
-        // Non-fatal — some assets may not exist yet; ignore individual failures
-        console.warn('[Paytime SW] Some static files not cached:', err);
+        // Non-fatal — assets may not exist on first deploy; SW still installs
+        console.warn('[Paytime SW] Some static files not pre-cached:', err);
       }))
+      // skipWaiting immediately: new SW takes over existing tabs so they get
+      // the update banner. This is safe because our fetch strategy is
+      // network-first — no risk of mixed old/new assets mid-session.
       .then(() => self.skipWaiting())
   );
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// ACTIVATE — remove stale caches
+// ACTIVATE — delete ALL old paytime caches, then claim all clients.
+// Notifies open tabs that a new version is now active.
 // ─────────────────────────────────────────────────────────────────────────
 self.addEventListener('activate', event => {
-  console.log('[Paytime SW] Activating...');
+  console.log('[Paytime SW] Activating version:', CACHE_VERSION);
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(k => k.startsWith('paytime-') && k !== STATIC_CACHE && k !== API_CACHE)
-            .map(k => { console.log('[Paytime SW] Deleting old cache:', k); return caches.delete(k); })
-      )
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(
+        keys
+          .filter(k => k.startsWith('paytime-') && k !== STATIC_CACHE && k !== API_CACHE)
+          .map(k => {
+            console.log('[Paytime SW] Deleting stale cache:', k);
+            return caches.delete(k);
+          })
+      ))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then(clients => {
+        // Notify all open tabs that a new version has activated.
+        // The update-check.js utility in each page listens for this message
+        // and shows the "New version available" banner.
+        clients.forEach(c => c.postMessage({
+          type:    'SW_UPDATED',
+          version: CACHE_VERSION
+        }));
+        console.log(`[Paytime SW] Notified ${clients.length} client(s) of update`);
+      })
   );
 });
 
@@ -93,28 +129,40 @@ self.addEventListener('fetch', event => {
   // Only handle same-origin requests
   if (url.origin !== self.location.origin) return;
 
-  // API requests
+  // Never intercept SW update checks or the version endpoint
+  if (url.pathname === '/payroll/service-worker.js' || url.pathname === '/api/version') return;
+
+  // API requests: network-first, cache fallback, offline queue for writes
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(handleApiRequest(request));
     return;
   }
 
-  // Static / navigation — cache-first, network fallback
+  // Static / navigation: network-first when online, cache fallback when offline
   event.respondWith(handleStaticRequest(request));
 });
 
-// ── Cache-first for static assets ─────────────────────────────────────────
+// ── Network-first for static assets and HTML navigation ───────────────────
+// Always fetches from network when online — users always see the deployed
+// version of any page immediately. Cache is used only when offline.
 async function handleStaticRequest(request) {
-  const cached = await caches.match(request);
-  if (cached) {
-    // Refresh cache in background without blocking response
-    refreshCache(request);
-    return cached;
-  }
   try {
-    return await refreshCache(request);
+    const response = await fetch(request);
+    // Cache successful responses for offline fallback
+    if (response.ok) {
+      const cache = await caches.open(STATIC_CACHE);
+      cache.put(request, response.clone());
+    }
+    return response;
   } catch {
-    // Offline and not cached — serve index.html for navigations
+    // Network failed — serve from cache (offline mode)
+    const cached = await caches.match(request);
+    if (cached) {
+      console.log('[Paytime SW] Offline — serving from cache:', request.url);
+      return cached;
+    }
+
+    // Nothing cached either — degrade gracefully
     if (request.mode === 'navigate') {
       const shell = await caches.match('/payroll/index.html');
       return shell || new Response('Lorenco Paytime is offline. Please try again when connected.', {
@@ -126,16 +174,7 @@ async function handleStaticRequest(request) {
   }
 }
 
-async function refreshCache(request) {
-  const response = await fetch(request);
-  if (response.ok) {
-    const cache = await caches.open(STATIC_CACHE);
-    cache.put(request, response.clone());
-  }
-  return response;
-}
-
-// ── Network-first for API GET; queue writes when offline ──────────────────
+// ── Network-first for API GET; cache fallback; queue writes offline ────────
 async function handleApiRequest(request) {
   const url = new URL(request.url);
 
@@ -151,8 +190,6 @@ async function handleApiRequest(request) {
       console.log('[Paytime SW] Offline — serving cached API:', url.pathname);
       const cached = await caches.match(request);
       if (cached) return cached;
-
-      // Return empty-but-valid shape so the UI doesn't crash
       return offlineFallback(url.pathname);
     }
   }
@@ -163,14 +200,14 @@ async function handleApiRequest(request) {
   } catch {
     await queueRequest(request);
     return new Response(JSON.stringify({
-      queued: true,
+      queued:  true,
       offline: true,
       message: 'Saved offline — will sync automatically when internet returns'
     }), { status: 202, headers: { 'Content-Type': 'application/json' } });
   }
 }
 
-// Return a safe empty payload so pages degrade gracefully
+// Return a safe empty payload so pages degrade gracefully offline
 function offlineFallback(pathname) {
   const body = { offline: true, message: 'Showing cached data — you are offline' };
   if (pathname.includes('employees'))  body.employees  = [];
@@ -179,7 +216,7 @@ function offlineFallback(pathname) {
   if (pathname.includes('items'))      body.items       = [];
   if (pathname.includes('companies'))  body.companies   = [];
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status:  200,
     headers: { 'Content-Type': 'application/json', 'X-Paytime-Offline': 'true' }
   });
 }
@@ -191,9 +228,9 @@ async function queueRequest(request) {
   try {
     const body   = await request.clone().text();
     const entry  = {
-      url:     request.url,
-      method:  request.method,
-      headers: Object.fromEntries(request.headers.entries()),
+      url:       request.url,
+      method:    request.method,
+      headers:   Object.fromEntries(request.headers.entries()),
       body,
       timestamp: Date.now()
     };
@@ -210,7 +247,7 @@ async function queueRequest(request) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// BACKGROUND SYNC — flush queued requests when online
+// BACKGROUND SYNC — flush queued requests when back online
 // ─────────────────────────────────────────────────────────────────────────
 self.addEventListener('sync', event => {
   if (event.tag === 'paytime-sync') {
@@ -235,7 +272,7 @@ async function flushQueue() {
       if (!res.ok) remaining.push(entry);
       else console.log('[Paytime SW] Synced:', entry.method, entry.url);
     } catch {
-      remaining.push(entry); // still offline, keep in queue
+      remaining.push(entry); // still offline — keep in queue
     }
   }
 
@@ -247,9 +284,11 @@ async function flushQueue() {
     await cache.delete('queue');
   }
 
-  // Tell all open tabs that sync is done
   const clients = await self.clients.matchAll({ includeUncontrolled: true });
-  clients.forEach(c => c.postMessage({ type: 'PAYTIME_SYNC_DONE', synced: stored.length - remaining.length }));
+  clients.forEach(c => c.postMessage({
+    type:   'PAYTIME_SYNC_DONE',
+    synced: stored.length - remaining.length
+  }));
   console.log(`[Paytime SW] Sync complete — ${stored.length - remaining.length} requests synced`);
 }
 
