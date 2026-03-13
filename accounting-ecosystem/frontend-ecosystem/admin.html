@@ -73,6 +73,13 @@
         }
         .btn-back:hover  { background: var(--surface-hover); }
         .btn-logout:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+        .btn-permissions {
+            padding: 7px 14px; border-radius: 8px; font-size: 0.78rem;
+            cursor: pointer; transition: all 0.2s;
+            border: 1px solid rgba(102,126,234,0.35);
+            background: rgba(102,126,234,0.12); color: #a5b4fc;
+        }
+        .btn-permissions:hover { background: rgba(102,126,234,0.22); border-color: rgba(102,126,234,0.55); }
 
         /* ── Main ── */
         .main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
@@ -318,8 +325,6 @@
             padding: 9px 16px; display: flex; align-items: center; gap: 10px;
             transition: background 0.15s;
         }
-        .app-row.app-expandable .app-row-header { cursor: pointer; }
-        .app-row.app-expandable .app-row-header:hover { background: rgba(255,255,255,0.04); }
 
         .app-row-icon { font-size: 1rem; width: 22px; text-align: center; flex-shrink: 0; }
         .app-row-label { flex: 1; min-width: 0; }
@@ -333,87 +338,52 @@
         .app-status-chip.chip-inactive { background: rgba(255,255,255,0.06); color: var(--text-muted); }
 
         .app-toggle-wrap { flex-shrink: 0; }
-        .app-expand-arrow { font-size: 0.65rem; color: var(--text-muted); flex-shrink: 0; transition: transform 0.2s; }
-        .app-expand-arrow.open { transform: rotate(180deg); }
 
-        /* ── App Expanded Content ── */
-        .app-expanded {
-            display: none; background: rgba(0,0,0,0.22);
-            border-top: 1px solid var(--border); padding: 14px 16px;
-        }
-        .app-expanded.visible { display: block; }
-
-        .aec-section { margin-bottom: 13px; }
-        .aec-section:last-child { margin-bottom: 0; }
-        .aec-label {
-            font-size: 0.65rem; font-weight: 700; letter-spacing: 0.07em;
-            text-transform: uppercase; color: var(--text-muted); margin-bottom: 7px;
+        /* Employee count pill shown inline in the app row */
+        .app-emp-pill {
+            font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; flex-shrink: 0;
+            background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: #6ee7b7;
         }
 
-        /* Package chip */
-        .pkg-chip {
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 6px 12px; border-radius: 8px;
-            background: rgba(102,126,234,0.1); border: 1px solid rgba(102,126,234,0.18);
-            font-size: 0.78rem; color: var(--accent);
+        /* ── Inline Paytime billing block (always visible below active Paytime row) ── */
+        .billing-inline {
+            background: rgba(16,185,129,0.04);
+            border-top: 1px solid rgba(16,185,129,0.1);
+            padding: 10px 16px 10px 50px;
         }
-        .pkg-chip-sub { font-size: 0.66rem; color: var(--text-muted); margin-top: 2px; display: block; }
-
-        /* Add-on rows */
-        .addon-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 8px 11px; border-radius: 9px;
-            background: rgba(139,92,246,0.07); border: 1px solid rgba(139,92,246,0.15);
-            margin-bottom: 6px;
-        }
-        .addon-row:last-child { margin-bottom: 0; }
-        .addon-info { display: flex; align-items: center; gap: 8px; }
-        .addon-name { font-size: 0.78rem; font-weight: 700; color: #c4b5fd; }
-        .addon-sub  { font-size: 0.65rem; color: var(--text-muted); }
-
-        /* Billing block */
-        .billing-block {
-            padding: 12px 14px;
-            background: rgba(16,185,129,0.05);
-            border: 1px solid rgba(16,185,129,0.13);
-            border-radius: 10px;
-        }
-        .billing-title {
-            font-size: 0.67rem; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 0.07em; color: #6ee7b7; margin-bottom: 10px;
-            display: flex; align-items: center; gap: 6px;
-        }
-        .billing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
-        .billing-cell { text-align: center; }
-        .b-val {
-            font-size: 1.4rem; font-weight: 800;
+        .billing-inline-stats { display: flex; align-items: center; gap: 22px; }
+        .bi-stat { display: flex; flex-direction: column; align-items: center; min-width: 38px; }
+        .bi-val {
+            font-size: 1.15rem; font-weight: 800; line-height: 1.2;
             background: linear-gradient(135deg, #fff, rgba(255,255,255,0.7));
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            line-height: 1.1;
         }
-        .b-val.bv-up   { -webkit-text-fill-color: #34d399; }
-        .b-val.bv-down { -webkit-text-fill-color: #f87171; }
-        .b-val.bv-zero { -webkit-text-fill-color: rgba(255,255,255,0.35); }
-        .b-lbl { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; line-height: 1.25; }
-        .billing-note { font-size: 0.62rem; color: var(--text-muted); margin-bottom: 8px; }
-        .billing-first { font-size: 0.75rem; color: var(--warning); margin-bottom: 8px; padding: 6px 10px; background: rgba(245,158,11,0.07); border-radius: 7px; border: 1px solid rgba(245,158,11,0.15); }
-
-        .btn-mark-billed {
-            width: 100%; padding: 7px;
+        .bi-val.bv-up   { -webkit-text-fill-color: #34d399; }
+        .bi-val.bv-down { -webkit-text-fill-color: #f87171; }
+        .bi-val.bv-zero { -webkit-text-fill-color: rgba(255,255,255,0.3); }
+        .bi-lbl { font-size: 0.6rem; color: var(--text-muted); margin-top: 2px; text-align: center; line-height: 1.3; white-space: nowrap; }
+        .bi-first { font-size: 0.63rem; color: var(--warning); margin-top: 6px; }
+        .bi-last  { font-size: 0.62rem; color: var(--text-muted); margin-top: 5px; }
+        .billing-inline-empty { font-size: 0.72rem; color: var(--text-muted); padding: 6px 16px 10px 50px; }
+        .btn-mark-billed-sm {
+            margin-left: auto; padding: 5px 12px; white-space: nowrap;
             background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.22);
-            color: #6ee7b7; border-radius: 8px;
-            font-size: 0.75rem; font-weight: 700;
+            color: #6ee7b7; border-radius: 7px; font-size: 0.7rem; font-weight: 700;
             cursor: pointer; transition: all 0.2s;
         }
-        .btn-mark-billed:hover { background: rgba(16,185,129,0.2); }
-        .btn-mark-billed:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-mark-billed-sm:hover { background: rgba(16,185,129,0.2); }
+        .btn-mark-billed-sm:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        /* ── pkg/addon section in card ── */
-        .card-section-label {
-            font-size: 0.65rem; font-weight: 700; letter-spacing: 0.07em;
-            text-transform: uppercase; color: var(--text-muted);
-            padding: 8px 14px 4px;
+        /* ── SEAN add-on sub-row (always visible below active app that has SEAN) ── */
+        .sean-sub-row {
+            display: flex; align-items: center; gap: 9px;
+            padding: 7px 16px 7px 50px;
+            background: rgba(139,92,246,0.05);
+            border-top: 1px solid rgba(139,92,246,0.1);
         }
+        .sean-sub-info { flex: 1; min-width: 0; }
+        .sean-sub-name { font-size: 0.75rem; font-weight: 600; color: #c4b5fd; }
+        .sean-sub-sub  { font-size: 0.63rem; color: var(--text-muted); }
 
         @media (max-width: 768px) {
             .main { padding: 20px 14px; }
@@ -459,6 +429,7 @@
                 <div class="user-avatar" id="userAvatar"></div>
                 <span class="user-name" id="userName"></span>
             </div>
+            <button class="btn-permissions" onclick="window.location.href='/dashboard#permissions'">&#128274; Users &amp; Permissions</button>
             <button class="btn-back" onclick="window.location.href='/dashboard'">&#8592; Dashboard</button>
             <button class="btn-logout" onclick="logout()">Sign Out</button>
         </div>
@@ -647,14 +618,15 @@
         ];
 
         // ── State ────────────────────────────────────────────────────────────
-        let allClients       = [];
-        let companyMap       = {};
-        let billingSummary   = {};   // { [company_id]: { active_employees: N } }
-        let billingByClient  = {};   // { [eco_client_id]: N } — primary source
-        let statusFilter     = 'all';
-        let appFilter        = 'all';
-        let expandedHolders  = new Set();  // Set<firmId> — expanded account holder groups
-        let expandedApp      = {};         // { [clientId]: appKey } — one per client
+        let allClients         = [];
+        let companyMap         = {};
+        let managingCompanyIds = new Set(); // companies that appear as eco_client.company_id
+        let billingSummary     = {};   // { [company_id]: { active_employees: N } }
+        let billingByClient    = {};   // { [eco_client_id]: N } — primary source
+        let statusFilter       = 'all';
+        let appFilter          = 'all';
+        let expandedHolders    = new Set();  // Set<firmId> — expanded account holder groups
+        let expandedApp        = {};         // { [clientId]: appKey } — one per client
 
         // ── Auth Guard ───────────────────────────────────────────────────────
         const token = localStorage.getItem('eco_token');
@@ -704,15 +676,25 @@
                 allClients = [];
             }
 
-            // Default: expand all account holder groups.
-            // Source: companyMap (all companies) minus client_company_id data silos —
-            // this ensures newly added practices with zero clients are still expanded/visible.
+            // Build set of companies that actively manage at least one eco-client.
+            // Used to distinguish real accounting practices from orphan/legacy company records.
+            managingCompanyIds = new Set(
+                allClients.filter(c => c.company_id).map(c => Number(c.company_id))
+            );
+
+            // Default: expand all real account holder groups.
+            // A company is a real account holder if it is NOT a client_company_id data silo
+            // AND either manages eco-clients OR has modules enabled.
             const clientCompanyIdSet = new Set(
                 allClients.filter(c => c.client_company_id).map(c => Number(c.client_company_id))
             );
             Object.keys(companyMap).forEach(id => {
-                if (!clientCompanyIdSet.has(Number(id))) {
-                    expandedHolders.add(Number(id));
+                const numId  = Number(id);
+                if (clientCompanyIdSet.has(numId)) return;
+                const co      = companyMap[numId];
+                const modules = Array.isArray(co && co.modules_enabled) ? co.modules_enabled : [];
+                if (managingCompanyIds.has(numId) || modules.length > 0) {
+                    expandedHolders.add(numId);
                 }
             });
 
@@ -784,15 +766,21 @@
             const search = (document.getElementById('searchInput').value || '').toLowerCase();
             const isFiltered = statusFilter !== 'all' || appFilter !== 'all' || !!search;
 
-            // Identify account holders: all companies that are NOT client_company_id data silos.
-            // This ensures newly created practices (with zero clients) always appear on the
-            // default "All" view, regardless of whether they have any eco-clients yet.
+            // Identify account holders: companies not used as client_company_id data silos,
+            // AND that either manage eco-clients OR have modules enabled.
+            // This prevents orphan/legacy company records from appearing as fake account holders
+            // while still showing real practices that have zero clients (if modules_enabled is set).
             const clientCompanyIdSet = new Set(
                 allClients.filter(c => c.client_company_id).map(c => Number(c.client_company_id))
             );
             const accountHolderIds = Object.keys(companyMap)
                 .map(Number)
-                .filter(id => !clientCompanyIdSet.has(id));
+                .filter(id => {
+                    if (clientCompanyIdSet.has(id)) return false;  // exclude data silos
+                    const co      = companyMap[id];
+                    const modules = Array.isArray(co && co.modules_enabled) ? co.modules_enabled : [];
+                    return managingCompanyIds.has(id) || modules.length > 0;
+                });
 
             let html = '';
             let renderedCount = 0;
@@ -921,13 +909,9 @@
             </div>`;
         }
 
-        // ── Build App Row ─────────────────────────────────────────────────────
-        // Every app from APP_REGISTRY appears under every client.
-        // Active apps are expandable (one at a time per client).
-        // Inactive apps are shown but not expandable.
+        // ── Build App Row (flat — detail always visible, no expand/collapse) ─
         function buildAppRow(c, appDef) {
-            const isActive   = hasApp(c, appDef.key);
-            const isExpanded = expandedApp[c.id] === appDef.key;
+            const isActive = hasApp(c, appDef.key);
 
             const statusChip = isActive
                 ? `<span class="app-status-chip chip-active">Active</span>`
@@ -942,178 +926,100 @@
                     </label>
                 </div>`;
 
-            const expandArrow = isActive
-                ? `<span class="app-expand-arrow ${isExpanded ? 'open' : ''}">&#9660;</span>`
-                : '';
+            // Employee count pill inline in the header row for active Paytime
+            let empPill = '';
+            if (isActive && appDef.billingMetric === 'employees') {
+                const emp = billingByClient[c.id] !== undefined
+                    ? billingByClient[c.id]
+                    : ((billingSummary[c.client_company_id] || {}).active_employees || 0);
+                empPill = `<span class="app-emp-pill">&#128100; ${emp} emp</span>`;
+            }
 
-            const headerClick = isActive
-                ? `onclick="toggleAppExpand(${c.id}, '${appDef.key}')"` : '';
+            const billingSection = isActive && appDef.billingMetric === 'employees'
+                ? buildPaytimeBillingInline(c) : '';
 
-            const expandedContent = isActive && isExpanded
-                ? `<div class="app-expanded visible" id="appexp-${c.id}-${appDef.key}">${buildAppExpandedContent(c, appDef)}</div>`
-                : `<div class="app-expanded" id="appexp-${c.id}-${appDef.key}">${isActive ? buildAppExpandedContent(c, appDef) : ''}</div>`;
+            const seanSection = isActive && appDef.seanAddonKey
+                ? buildSeanAddonRow(c, appDef) : '';
 
             return `
-            <div class="app-row ${isActive ? 'app-expandable' : ''}" id="approw-${c.id}-${appDef.key}">
-                <div class="app-row-header" ${headerClick}>
+            <div class="app-row" id="approw-${c.id}-${appDef.key}">
+                <div class="app-row-header">
                     <span class="app-row-icon">${appDef.icon}</span>
                     <div class="app-row-label">
                         <div class="app-row-name">${appDef.name}</div>
                         <div class="app-row-sub">${appDef.subtitle}</div>
                     </div>
                     ${statusChip}
+                    ${empPill}
                     ${toggleHtml}
-                    ${expandArrow}
                 </div>
-                ${expandedContent}
+                ${billingSection}
+                ${seanSection}
             </div>`;
         }
 
-        // ── Toggle App Expand (one per client) ────────────────────────────────
-        function toggleAppExpand(clientId, appKey) {
-            const currently = expandedApp[clientId];
-
-            // Collapse all apps for this client
-            APP_REGISTRY.forEach(appDef => {
-                const el = document.getElementById(`appexp-${clientId}-${appDef.key}`);
-                const arrow = document.querySelector(`#approw-${clientId}-${appDef.key} .app-expand-arrow`);
-                if (el)    el.classList.remove('visible');
-                if (arrow) arrow.classList.remove('open');
-            });
-
-            if (currently === appKey) {
-                // Was open — now collapsed
-                delete expandedApp[clientId];
-            } else {
-                // Open this app
-                expandedApp[clientId] = appKey;
-                const el = document.getElementById(`appexp-${clientId}-${appKey}`);
-                const arrow = document.querySelector(`#approw-${clientId}-${appKey} .app-expand-arrow`);
-                if (el)    el.classList.add('visible');
-                if (arrow) arrow.classList.add('open');
-            }
-        }
-
-        // ── Build App Expanded Content ────────────────────────────────────────
-        function buildAppExpandedContent(c, appDef) {
-            const pkgName = c.package_name || 'standard';
-            const pkg     = PACKAGES.find(p => p.key === pkgName) || PACKAGES[0];
-
-            let html = '';
-
-            // 1. Package
-            html += `
-            <div class="aec-section">
-                <div class="aec-label">Package</div>
-                <div class="pkg-chip">${pkg.icon}&nbsp;${esc(pkg.label)}</div>
-                <span class="pkg-chip-sub">${esc(pkg.sub)}</span>
-            </div>`;
-
-            // 2. Add-ons (app-specific Sean)
-            if (appDef.seanAddonKey) {
-                const seanOn = hasAddon(c, appDef.seanAddonKey);
-                html += `
-                <div class="aec-section">
-                    <div class="aec-label">Add-ons</div>
-                    <div class="addon-row">
-                        <div class="addon-info">
-                            <span style="font-size:1.1rem;">&#129302;</span>
-                            <div>
-                                <div class="addon-name">${appDef.seanAddonLabel}</div>
-                                <div class="addon-sub">${appDef.seanAddonSub || 'AI insights add-on'}</div>
-                            </div>
-                        </div>
-                        <label class="app-toggle" title="${seanOn ? 'Deactivate' : 'Activate'} SEAN">
-                            <input type="checkbox" ${seanOn ? 'checked' : ''}
-                                onchange="toggleAddon(${c.id}, '${appDef.seanAddonKey}', this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>`;
+        // ── Paytime billing detail (always visible below active Paytime row) ──
+        function buildPaytimeBillingInline(c) {
+            if (!c.client_company_id && billingByClient[c.id] === undefined) {
+                return `<div class="billing-inline-empty">No Paytime company linked yet.</div>`;
             }
 
-            // 3. Billing block (app-specific)
-            if (appDef.billingMetric === 'employees') {
-                html += `
-                <div class="aec-section">
-                    <div class="aec-label">Billing</div>
-                    ${buildPaytimeBillingBlock(c)}
-                </div>`;
-            } else if (appDef.billingMetric === null && appDef.key !== 'pos') {
-                // Placeholder for future billing metrics
-                html += `
-                <div class="aec-section">
-                    <div class="aec-label">Billing</div>
-                    <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 0;">
-                        Billing metric for ${esc(appDef.name)} — coming soon.
-                    </div>
-                </div>`;
-            }
-
-            return html;
-        }
-
-        // ── Paytime Billing Block ─────────────────────────────────────────────
-        // Employee count uses eco_client_id-based lookup first (most accurate),
-        // then falls back to client_company_id-based lookup.
-        //
-        // This fixes the "Anine shows 0" bug where the company_id stored on the
-        // employee record did not match the eco_client.client_company_id because
-        // the employee was created before or outside of the eco_client sync flow.
-        //
-        // Billing formulas:
-        //   current_active  = all active employees for this client in Paytime
-        //   last_billed     = employee count from last billing snapshot
-        //   difference      = current_active - last_billed
-        //   if difference > 0: new employees to bill this cycle
-        //   if difference < 0: employees left (credit, show as-is — no auto-clamp)
-        //   if no last bill:   first-billing state (clearly shown)
-        function buildPaytimeBillingBlock(c) {
-            if (!c.client_company_id && !billingByClient[c.id]) {
-                return `<div style="font-size:0.74rem;color:var(--text-muted);">No Paytime company linked yet.</div>`;
-            }
-
-            // Primary: by eco_client_id. Fallback: by client_company_id.
-            const currentEmp =
-                billingByClient[c.id] !== undefined
-                    ? billingByClient[c.id]
-                    : ((billingSummary[c.client_company_id] || {}).active_employees || 0);
+            const currentEmp = billingByClient[c.id] !== undefined
+                ? billingByClient[c.id]
+                : ((billingSummary[c.client_company_id] || {}).active_employees || 0);
 
             const isFirstBill = !c.last_billed_period;
             const lastBilled  = c.last_billed_employees || 0;
-            const lastPeriod  = c.last_billed_period    || '—';
+            const lastPeriod  = c.last_billed_period || '—';
             const diff        = currentEmp - lastBilled;
             const diffClass   = diff > 0 ? 'bv-up' : diff < 0 ? 'bv-down' : 'bv-zero';
             const diffPrefix  = diff > 0 ? '+' : '';
             const lastDateStr = c.last_billed_date
                 ? formatDate(parseStandardDate(c.last_billed_date), 'ZA') : 'Never';
 
-            const firstBillNote = isFirstBill
-                ? `<div class="billing-first">&#9432; First billing cycle — no previous bill recorded.</div>`
-                : '';
+            const noteHtml = isFirstBill
+                ? `<div class="bi-first">&#9432; First billing cycle — no previous bill recorded.</div>`
+                : `<div class="bi-last">Last marked billed: ${lastDateStr}</div>`;
 
             return `
-            <div class="billing-block" id="billing-${c.id}">
-                <div class="billing-title">&#128176; Paytime Billing</div>
-                ${firstBillNote}
-                <div class="billing-grid">
-                    <div class="billing-cell">
-                        <div class="b-val">${currentEmp}</div>
-                        <div class="b-lbl">Active employees<br>on system</div>
+            <div class="billing-inline" id="billing-${c.id}">
+                <div class="billing-inline-stats">
+                    <div class="bi-stat">
+                        <span class="bi-val">${currentEmp}</span>
+                        <span class="bi-lbl">Active<br>employees</span>
                     </div>
-                    <div class="billing-cell">
-                        <div class="b-val">${isFirstBill ? '—' : lastBilled}</div>
-                        <div class="b-lbl">Last billed<br>${lastPeriod}</div>
+                    <div class="bi-stat">
+                        <span class="bi-val">${isFirstBill ? '—' : lastBilled}</span>
+                        <span class="bi-lbl">Last billed<br>${isFirstBill ? '' : lastPeriod}</span>
                     </div>
-                    <div class="billing-cell">
-                        <div class="b-val ${isFirstBill ? 'bv-zero' : diffClass}">${isFirstBill ? '—' : (diffPrefix + diff)}</div>
-                        <div class="b-lbl">Difference<br>vs last bill</div>
+                    <div class="bi-stat">
+                        <span class="bi-val ${isFirstBill ? 'bv-zero' : diffClass}">${isFirstBill ? '—' : (diffPrefix + diff)}</span>
+                        <span class="bi-lbl">Diff vs<br>last bill</span>
                     </div>
+                    <button class="btn-mark-billed-sm" id="billbtn-${c.id}"
+                        onclick="markAsBilled(${c.id}, ${currentEmp})">
+                        &#10003; Mark ${currentEmp} billed
+                    </button>
                 </div>
-                <div class="billing-note">Last marked billed: ${lastDateStr}</div>
-                <button class="btn-mark-billed" onclick="markAsBilled(${c.id}, ${currentEmp})">
-                    &#10003; Mark ${currentEmp} employee${currentEmp !== 1 ? 's' : ''} as Billed This Month
-                </button>
+                ${noteHtml}
+            </div>`;
+        }
+
+        // ── SEAN add-on sub-row (always visible below active app with SEAN) ──
+        function buildSeanAddonRow(c, appDef) {
+            const seanOn = hasAddon(c, appDef.seanAddonKey);
+            return `
+            <div class="sean-sub-row">
+                <span style="font-size:1rem;flex-shrink:0;">&#129302;</span>
+                <div class="sean-sub-info">
+                    <div class="sean-sub-name">${appDef.seanAddonLabel}</div>
+                    <div class="sean-sub-sub">${appDef.seanAddonSub || 'AI insights add-on'}</div>
+                </div>
+                <label class="app-toggle" title="${seanOn ? 'Deactivate' : 'Activate'} SEAN">
+                    <input type="checkbox" ${seanOn ? 'checked' : ''}
+                        onchange="toggleAddon(${c.id}, '${appDef.seanAddonKey}', this.checked)">
+                    <span class="slider"></span>
+                </label>
             </div>`;
         }
 
@@ -1192,7 +1098,7 @@
 
         // ── Mark as Billed ────────────────────────────────────────────────────
         async function markAsBilled(clientId, empCount) {
-            const btn = document.querySelector(`#billing-${clientId} .btn-mark-billed`);
+            const btn = document.getElementById(`billbtn-${clientId}`);
             if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
 
             const now    = new Date();
