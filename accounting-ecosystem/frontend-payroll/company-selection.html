@@ -114,29 +114,29 @@
 
         /* ── Section labels ─────────────────────────────────────────────── */
         .section-label {
-            grid-column: 1 / -1;
             color: rgba(255,255,255,0.9);
             font-size: 0.85rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            margin-top: 6px;
-            margin-bottom: -6px;
             padding-left: 4px;
+            margin-bottom: -10px;
         }
 
-        .section-label:first-child {
-            margin-top: 0;
-        }
-
-        /* ── Grid ───────────────────────────────────────────────────────── */
+        /* ── Outer container ────────────────────────────────────────────── */
         .content {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            grid-auto-rows: 1fr;
+            display: flex;
+            flex-direction: column;
             gap: 25px;
             max-width: 1200px;
             margin: 0 auto;
+        }
+
+        /* ── Card grid inside each section ──────────────────────────────── */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
             align-items: stretch;
         }
 
@@ -259,7 +259,6 @@
         }
 
         .empty-state {
-            grid-column: 1 / -1;
             text-align: center;
             padding: 60px 20px;
             background: white;
@@ -289,7 +288,6 @@
         }
 
         .loading-state {
-            grid-column: 1 / -1;
             text-align: center;
             padding: 60px 20px;
             background: white;
@@ -321,7 +319,7 @@
                 width: 100%;
             }
 
-            .content {
+            .cards-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -474,37 +472,56 @@
 
             // ── Section: Your Companies ───────────────────────────────────
             if (filteredCompanies.length > 0) {
+                var companySection = document.createElement('div');
+
                 var companyLabel = document.createElement('div');
                 companyLabel.className = 'section-label';
                 companyLabel.textContent = 'Your Companies';
-                container.appendChild(companyLabel);
+                companySection.appendChild(companyLabel);
+
+                var companyGrid = document.createElement('div');
+                companyGrid.className = 'cards-grid';
 
                 filteredCompanies.forEach(function(company) {
                     var companyId   = company.id || company.company_id;
                     var companyName = company.company_name || company.trading_name || company.name || 'Unnamed';
                     var card        = buildCompanyCard(companyName, company.trading_name || '', company.role || 'member',
                                                        company.modules_enabled || [], false, companyId);
-                    container.appendChild(card);
+                    companyGrid.appendChild(card);
                 });
+
+                companySection.appendChild(companyGrid);
+                container.appendChild(companySection);
             }
 
             // ── Section: Managed Clients ──────────────────────────────────
             if (filteredClients.length > 0) {
+                var clientSection = document.createElement('div');
+
                 var clientLabel = document.createElement('div');
                 clientLabel.className = 'section-label';
                 clientLabel.textContent = 'Managed Clients';
-                container.appendChild(clientLabel);
+                clientSection.appendChild(clientLabel);
+
+                var clientGrid = document.createElement('div');
+                clientGrid.className = 'cards-grid';
 
                 filteredClients.forEach(function(client) {
                     var companyId = client.client_company_id || client.company_id;
                     var apps      = Array.isArray(client.apps) ? client.apps.join(', ') : (client.apps || '');
                     var card      = buildClientCard(client.name || 'Unnamed Client', client.email || '',
                                                     client.client_type || 'client', apps, companyId);
-                    container.appendChild(card);
+                    clientGrid.appendChild(card);
                 });
+
+                clientSection.appendChild(clientGrid);
+                container.appendChild(clientSection);
             }
 
             // ── Add company card (goes to ecosystem) ──────────────────────
+            var addGrid = document.createElement('div');
+            addGrid.className = 'cards-grid';
+
             var addCard = document.createElement('div');
             addCard.className = 'company-card';
             addCard.style.cssText = 'border: 2px dashed #10b981; align-items: center; justify-content: center; text-align: center;';
@@ -515,7 +532,9 @@
                 '  <div style="font-size: 1.1rem; font-weight: 600; color: #10b981;">Add Company / Client</div>' +
                 '  <div style="font-size: 0.85rem; color: #999; margin-top: 5px;">Go to Ecosystem Dashboard</div>' +
                 '</div>';
-            container.appendChild(addCard);
+
+            addGrid.appendChild(addCard);
+            container.appendChild(addGrid);
         }
 
         function buildCompanyCard(name, subtitle, role, modules, isClient, companyId) {
