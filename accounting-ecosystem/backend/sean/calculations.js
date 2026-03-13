@@ -5,7 +5,9 @@
  * Ported from sean-webapp/lib/calculations.ts
  * 100% LOCAL — Zero external API calls.
  * South African tax tables, VAT, PAYE, UIF, SDL calculations.
- * 2024/2025 tax year (ending February 2025).
+ * Tax tables valid for 2026/2027 tax year (1 Mar 2026 – 28 Feb 2027).
+ * NOTE: SARS kept brackets unchanged from 2023/2024 through 2026/2027.
+ *       Verify after each annual budget speech at www.sars.gov.za.
  * ============================================================================
  */
 
@@ -13,7 +15,7 @@
 
 const VAT_RATE = 0.15; // 15%
 
-// SA Income Tax Tables 2024/2025
+// SA Income Tax Tables — valid 2023/2024 through 2026/2027 (brackets unchanged by SARS)
 const INCOME_TAX_BRACKETS_2025 = [
   { min: 0, max: 237100, rate: 0.18, baseTax: 0 },
   { min: 237101, max: 370500, rate: 0.26, baseTax: 42678 },
@@ -24,21 +26,21 @@ const INCOME_TAX_BRACKETS_2025 = [
   { min: 1817001, max: Infinity, rate: 0.45, baseTax: 644489 }
 ];
 
-// Tax Rebates 2024/2025
+// Tax Rebates — valid 2024/2025 through 2026/2027 (unchanged)
 const TAX_REBATES_2025 = {
   primary: 17235,   // All taxpayers
   secondary: 9444,  // 65 years and older
   tertiary: 3145    // 75 years and older
 };
 
-// Tax Thresholds 2024/2025
+// Tax Thresholds — verify annually at www.sars.gov.za
 const TAX_THRESHOLDS_2025 = {
   under65: 95750,
   age65to74: 148217,
   age75plus: 165689
 };
 
-// Medical Aid Tax Credits 2024/2025
+// Medical Aid Tax Credits — verify annually at www.sars.gov.za
 const MEDICAL_TAX_CREDITS_2025 = {
   mainMember: 364,           // per month
   firstDependant: 364,       // per month

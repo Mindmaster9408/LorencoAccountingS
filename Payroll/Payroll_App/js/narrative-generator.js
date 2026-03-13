@@ -208,7 +208,7 @@ const NarrativeGenerator = {
             category: 'Statutory Deductions',
             name: 'PAYE (Pay As You Earn)',
             amount: calc.paye,
-            description: 'Income tax withheld based on South African 2024/25 tax brackets. This is paid to SARS on your behalf.',
+            description: 'Income tax withheld based on South African 2026/27 tax brackets. This is paid to SARS on your behalf.',
             type: 'deduction'
         });
 

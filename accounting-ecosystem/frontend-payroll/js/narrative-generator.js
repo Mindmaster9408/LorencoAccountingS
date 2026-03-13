@@ -12,7 +12,7 @@ const NarrativeGenerator = {
             summary: this.generateSummary(currentCalc),
             comparison: this.generateComparison(currentCalc, previousCalc, payrollData, period),
             breakdown: this.generateBreakdown(currentCalc, payrollData, period),
-            taxExplanation: this.generateTaxExplanation(currentCalc),
+            taxExplanation: this.generateTaxExplanation(currentCalc, period),
             conclusion: this.generateConclusion(currentCalc, employee),
             timestamp: new Date().toISOString()
         };
@@ -164,6 +164,11 @@ const NarrativeGenerator = {
 
     // ---- Breakdown ----
     generateBreakdown: function(calc, payrollData, period) {
+        var _taxYearRaw = (typeof PayrollEngine !== 'undefined')
+            ? PayrollEngine.getTaxYearForPeriod(period) : '';
+        var _taxYearDisplay = _taxYearRaw
+            ? _taxYearRaw.replace(/(\d{4})\/(\d{4})/, function(m, y1, y2) { return y1 + '/' + y2.slice(2); })
+            : '';
         var items = [];
 
         // Earnings
@@ -208,7 +213,7 @@ const NarrativeGenerator = {
             category: 'Statutory Deductions',
             name: 'PAYE (Pay As You Earn)',
             amount: calc.paye,
-            description: 'Income tax withheld based on South African 2024/25 tax brackets. This is paid to SARS on your behalf.',
+            description: 'Income tax withheld based on South African ' + (_taxYearDisplay || 'current') + ' tax brackets. This is paid to SARS on your behalf.',
             type: 'deduction'
         });
 
@@ -239,31 +244,59 @@ const NarrativeGenerator = {
     },
 
     // ---- Tax Explanation ----
-    generateTaxExplanation: function(calc) {
+    generateTaxExplanation: function(calc, period) {
         var annualGross = calc.gross * 12;
+        var tables = (typeof PayrollEngine !== 'undefined')
+            ? PayrollEngine.getTablesForPeriod(period)
+            : null;
+        var taxYear = (typeof PayrollEngine !== 'undefined')
+            ? PayrollEngine.getTaxYearForPeriod(period)
+            : PayrollEngine && PayrollEngine.TAX_YEAR;
+
+        // Format tax year as e.g. "2026/27" for display
+        var taxYearDisplay = taxYear
+            ? taxYear.replace(/(\d{4})\/(\d{4})/, function(m, y1, y2) {
+                return y1 + '/' + y2.slice(2);
+              })
+            : '';
+
+        // Determine marginal bracket from PayrollEngine tables (single source of truth)
         var bracket = '';
         var rate = '';
+        var primaryRebate = 17235;
+        var uifCap = 177.12;
 
-        if (annualGross <= 237100) {
-            bracket = 'R0 - R237,100'; rate = '18%';
-        } else if (annualGross <= 370500) {
-            bracket = 'R237,101 - R370,500'; rate = '26%';
-        } else if (annualGross <= 512800) {
-            bracket = 'R370,501 - R512,800'; rate = '31%';
-        } else if (annualGross <= 673000) {
-            bracket = 'R512,801 - R673,000'; rate = '36%';
-        } else if (annualGross <= 857900) {
-            bracket = 'R673,001 - R857,900'; rate = '39%';
-        } else if (annualGross <= 1817000) {
-            bracket = 'R857,901 - R1,817,000'; rate = '41%';
+        if (tables && tables.BRACKETS) {
+            primaryRebate = tables.PRIMARY_REBATE || primaryRebate;
+            uifCap = (tables.UIF_MONTHLY_CAP !== undefined) ? tables.UIF_MONTHLY_CAP : uifCap;
+            var brackets = tables.BRACKETS;
+            for (var i = 0; i < brackets.length; i++) {
+                if (annualGross <= brackets[i].max) {
+                    var b = brackets[i];
+                    var minFmt = b.min === 0 ? 'R0' : 'R' + b.min.toLocaleString('en-ZA');
+                    var maxFmt = b.max === Infinity ? 'Above R' + brackets[i - 1].max.toLocaleString('en-ZA') : 'R' + b.max.toLocaleString('en-ZA');
+                    bracket = b.max === Infinity
+                        ? 'Above R' + brackets[brackets.length - 2].max.toLocaleString('en-ZA')
+                        : minFmt + ' - ' + maxFmt;
+                    rate = Math.round(b.rate * 100) + '%';
+                    break;
+                }
+            }
         } else {
-            bracket = 'Above R1,817,000'; rate = '45%';
+            // Fallback if PayrollEngine not loaded
+            if (annualGross <= 237100) { bracket = 'R0 - R237,100'; rate = '18%'; }
+            else if (annualGross <= 370500) { bracket = 'R237,101 - R370,500'; rate = '26%'; }
+            else if (annualGross <= 512800) { bracket = 'R370,501 - R512,800'; rate = '31%'; }
+            else if (annualGross <= 673000) { bracket = 'R512,801 - R673,000'; rate = '36%'; }
+            else if (annualGross <= 857900) { bracket = 'R673,001 - R857,900'; rate = '39%'; }
+            else if (annualGross <= 1817000) { bracket = 'R857,901 - R1,817,000'; rate = '41%'; }
+            else { bracket = 'Above R1,817,000'; rate = '45%'; }
         }
 
         var text = 'Based on your monthly gross of ' + this.formatMoney(calc.gross) + ', your annualized income is ' + this.formatMoney(annualGross) + '. ';
         text += 'Your marginal tax rate is ' + rate + ' (bracket: ' + bracket + '). ';
-        text += 'A primary rebate of R17,235 is applied annually, reducing your effective tax. ';
-        text += 'Your UIF contribution is 1% of gross' + (calc.uif >= 177.12 ? ', capped at the maximum of R177.12 per month' : '') + '.';
+        text += 'A primary rebate of ' + this.formatMoney(primaryRebate) + ' is applied annually, reducing your effective tax. ';
+        text += 'Your UIF contribution is 1% of gross' + (calc.uif >= uifCap ? ', capped at the maximum of ' + this.formatMoney(uifCap) + ' per month' : '') + '.';
 
         return text;
     },

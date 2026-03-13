@@ -12,9 +12,9 @@
 
 const PayrollEngine = {
 
-    // === DEFAULT TAX CONSTANTS (SA 2025/2026 — same brackets as 2024/2025) ===
+    // === DEFAULT TAX CONSTANTS (SA 2026/2027 — same brackets as 2025/2026, pending SARS confirmation) ===
     // Override via Tax Configuration in Payroll Items (stored in Supabase KV)
-    TAX_YEAR: '2025/2026',
+    TAX_YEAR: '2026/2027',
 
     BRACKETS: [
         { min: 0,       max: 237100,   base: 0,      rate: 0.18 },

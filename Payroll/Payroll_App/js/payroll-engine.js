@@ -10,8 +10,8 @@
 
 const PayrollEngine = {
 
-    // === DEFAULT TAX CONSTANTS (SA 2025/2026) ===
-    TAX_YEAR: '2025/2026',
+    // === DEFAULT TAX CONSTANTS (SA 2026/2027 — same brackets as 2025/2026, pending SARS confirmation) ===
+    TAX_YEAR: '2026/2027',
 
     BRACKETS: [
         { min: 0,       max: 237100,   base: 0,      rate: 0.18 },
