@@ -1,0 +1,41 @@
+# ============================================================================
+# .dockerignore — Lorenco Ecosystem Docker Build Context Filter
+# ============================================================================
+# Build context = accounting-ecosystem/ (Zeabur service root)
+# This file keeps the build context clean: no secrets, no node_modules,
+# no dev artifacts sent to Docker daemon.
+# ============================================================================
+
+# Dependencies — installed inside Docker by RUN npm install, never from context
+**/node_modules
+
+# Secrets — NEVER in a Docker image
+.env
+.env.*
+.env.local
+backend/.env
+backend/.env.*
+
+# Git metadata
+.git
+.gitignore
+
+# Logs
+*.log
+npm-debug.log*
+**/logs
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temp / Claude working files
+tmpclaude-*
+*.tmp
+
+# Test files — not needed in production runtime
+backend/tests/
+
+# Dev tooling
+.browserslistrc

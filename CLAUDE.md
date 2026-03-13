@@ -14,6 +14,7 @@
 4. [Part B — Sean Controlled Learning and Global Propagation Model](#4-part-b--sean-controlled-learning-and-global-propagation-model)
 5. [Format Standards](#5-format-standards)
 6. [Implementation Readiness Standards](#6-implementation-readiness-standards)
+7. [Part C — Zeabur Deployment Rules (PERMANENT — NEVER VIOLATE)](#7-part-c--zeabur-deployment-rules)
 
 ---
 
@@ -498,6 +499,101 @@ Before shipping any feature:
 
 ---
 
+## 7. PART C — ZEABUR DEPLOYMENT RULES
+
+> **These rules are permanent and non-negotiable. Violating any one of them will break the production build.**
+> Root-caused and hard-won through a full debugging session (March 2026). Do not undo any of this.
+
+---
+
+### RULE C1 — NEVER CREATE zbpack.json IN accounting-ecosystem/
+
+**`accounting-ecosystem/zbpack.json` must never exist.**
+
+When zbpack.json is present, Zeabur ignores the custom Dockerfile entirely and auto-generates its own. The auto-generated Dockerfile uses `COPY accounting-ecosystem/backend/ ./` — but the Docker build context IS `accounting-ecosystem/`, so this path does not exist. Every build fails with:
+
+```
+"/accounting-ecosystem/backend": not found
+```
+
+Zeabur also caches its generated Dockerfile. Once cached, no code push can break it — only a Zeabur dashboard cache clear can recover.
+
+**HARD RULE: zbpack.json must not exist in accounting-ecosystem/. If it is ever created for any reason, the build will silently break on the next cache invalidation.**
+
+---
+
+### RULE C2 — THE DOCKERFILE IS THE ONLY BUILD CONFIGURATION
+
+The single source of truth for the Zeabur build is:
+
+**`accounting-ecosystem/Dockerfile`**
+
+This file must always exist. It must not be deleted. It is the only thing that tells Zeabur how to build the app.
+
+The `.dockerignore` at `accounting-ecosystem/.dockerignore` must also always exist. Without it, `COPY . .` would send `node_modules` into the build context, causing corruption.
+
+---
+
+### RULE C3 — DOCKERFILE STRUCTURE RULES (NEVER CHANGE WITHOUT UNDERSTANDING)
+
+The Dockerfile uses this pattern:
+```
+WORKDIR /app
+COPY backend/package*.json backend/
+RUN cd backend && npm install --production
+COPY . .
+CMD ["node", "backend/server.js"]
+```
+
+**Why WORKDIR /app:**
+`server.js` uses `path.join(__dirname, '..', 'frontend-*')`. `__dirname` = `/app/backend`. The `..` resolves to `/app` where all `frontend-*/` directories exist. Any WORKDIR other than `/app` breaks frontend serving.
+
+**Why `COPY . .` (not explicit per-directory):**
+`COPY . .` copies everything from `accounting-ecosystem/` (the build context) into `/app/`. This is future-proof — new `frontend-xyz/` directories are automatically included without changing the Dockerfile. The `.dockerignore` prevents `node_modules`, `.env`, and other non-runtime files from entering the build context.
+
+**Why `npm install --production`:**
+Excludes `jest`, `nodemon`, and other devDependencies. Keeps the production image lean.
+
+---
+
+### RULE C4 — ZEABUR DASHBOARD SETTINGS (MUST MATCH)
+
+The Zeabur service must be configured as follows:
+
+| Setting | Required Value |
+|---|---|
+| Root Directory | `accounting-ecosystem` |
+| Build from | Dockerfile (automatic when zbpack.json is absent) |
+
+**Root Directory must be `accounting-ecosystem/` — NOT `accounting-ecosystem/backend/`.**
+If set to `accounting-ecosystem/backend/`, Zeabur generates a Dockerfile expecting repo-root build context paths, which do not exist in the `accounting-ecosystem/` build context.
+
+---
+
+### RULE C5 — IF ZEABUR BUILD FAILS WITH "not found" AGAIN
+
+The failure mode `"/accounting-ecosystem/backend": not found` means one of two things:
+
+1. **`zbpack.json` was re-added** → Delete it. Push. Done.
+2. **Zeabur's build cache is stuck on a stale generated Dockerfile** → Go to Zeabur dashboard → service → Redeploy without cache (clear build cache). Also verify Root Directory = `accounting-ecosystem`.
+
+No other code changes are needed. The Dockerfile is correct.
+
+---
+
+### RULE C6 — ZEABUR DEPLOYMENT CHECKLIST
+
+Before any commit that touches `accounting-ecosystem/`:
+
+- [ ] `accounting-ecosystem/zbpack.json` does NOT exist
+- [ ] `accounting-ecosystem/Dockerfile` exists and has not been deleted
+- [ ] `accounting-ecosystem/.dockerignore` exists
+- [ ] `WORKDIR /app` is in the Dockerfile
+- [ ] `CMD ["node", "backend/server.js"]` is in the Dockerfile
+- [ ] Zeabur Root Directory is set to `accounting-ecosystem` in dashboard
+
+---
+
 ## RELATED DOCUMENTS
 
 | Document | Purpose |
@@ -510,5 +606,5 @@ Before shipping any feature:
 
 ---
 
-*This file is the single source of truth for how Claude must operate in this repository.  
+*This file is the single source of truth for how Claude must operate in this repository.
 All rules here are permanent operating standards. No session may override them without updating this file first.*
