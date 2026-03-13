@@ -1715,13 +1715,24 @@
 
                 const data = await res.json();
 
-                // Store the app-specific token — but do NOT pre-select a company.
-                // Without a company in localStorage the app will show its own
-                // company/client selection page (e.g. payroll → company-selection.html).
+                // Store the app-specific token and user
                 localStorage.setItem('token', data.appToken);
                 localStorage.setItem('user', JSON.stringify(data.user));
-                localStorage.removeItem('company');          // ensure no stale company
-                localStorage.removeItem('selectedCompanyId');
+                localStorage.removeItem('company');   // no stale company object
+
+                // Set company context keys that the accounting app reads on load.
+                // The accounting app uses activeCompanyId (set here) to scope every
+                // query and the KV-store namespace. Without this it defaults to ID 1.
+                const _ssoCo   = data.company || null;
+                const _ssoSelf = (selectedCompany && selectedCompany.id) ? selectedCompany : null;
+                const _cSrc    = _ssoCo || _ssoSelf;
+                if (_cSrc) {
+                    const cid   = String(_cSrc.id);
+                    const cname = _cSrc.trading_name || _cSrc.company_name || _cSrc.name || '';
+                    localStorage.setItem('activeCompanyId',   cid);
+                    localStorage.setItem('selectedCompanyId', cid);
+                    localStorage.setItem('eco_company_name',  cname);
+                }
 
                 // Also store under app-specific keys for apps that use different storage
                 localStorage.setItem(`${appKey}_token`, data.appToken);
@@ -1779,8 +1790,12 @@
                 localStorage.setItem('token', data.appToken);
                 localStorage.setItem('user', JSON.stringify(data.user));
                 if (data.company) {
-                    localStorage.setItem('company', JSON.stringify(data.company));
-                    localStorage.setItem('selectedCompanyId', data.company.id);
+                    const cid   = String(data.company.id);
+                    const cname = data.company.trading_name || data.company.company_name || data.company.name || '';
+                    localStorage.setItem('company',           JSON.stringify(data.company));
+                    localStorage.setItem('selectedCompanyId', cid);
+                    localStorage.setItem('activeCompanyId',   cid);
+                    localStorage.setItem('eco_company_name',  cname);
                 }
                 localStorage.setItem(`${appKey}_token`, data.appToken);
                 localStorage.setItem(`${appKey}_user`, JSON.stringify(data.user));

@@ -297,23 +297,34 @@ The `serveSW()` helper is already defined in `server.js` — just add the route.
 | `frontend-ecosystem/dashboard.html` | Added update-check.js |
 | `frontend-ecosystem/admin.html` | Added update-check.js |
 | `frontend-ecosystem/login.html` | Added update-check.js |
-| `frontend-payroll/index.html` | Added update-check.js + `initSWUpdateCheck` call |
+| `frontend-payroll/index.html` | Added update-check.js + `initSWUpdateCheck` call after SW registration |
 | `frontend-payroll/login.html` | Added update-check.js |
-| `frontend-pos/index.html` | Fixed SW registration path to `/pos/service-worker.js`, added `initSWUpdateCheck`, added update-check.js |
-| `frontend-pos/js/update-check.js` | New — copy of shared update banner utility for POS |
+| `frontend-payroll/company-dashboard.html` | Added update-check.js |
+| `frontend-payroll/company-selection.html` | Added update-check.js |
+| `frontend-payroll/payruns.html` | Added update-check.js |
+| `frontend-payroll/employee-management.html` | Added update-check.js |
+| `frontend-payroll/employee-detail.html` | Added update-check.js |
+| `frontend-payroll/attendance.html` | Added update-check.js |
+| `frontend-payroll/payroll-items.html` | Added update-check.js |
+| `frontend-payroll/reports.html` | Added update-check.js |
+| `frontend-payroll/company-details.html` | Added update-check.js |
+| `frontend-payroll/paye-reconciliation.html` | Added update-check.js |
+| `frontend-payroll/historical-import.html` | Added update-check.js |
+| `frontend-payroll/users.html` | Added update-check.js |
+| `frontend-payroll/super-admin-dashboard.html` | Added update-check.js |
+| `frontend-payroll/test-suite.html` | Added update-check.js |
+| `frontend-payroll/payroll-test.html` | Added update-check.js |
+| `frontend-pos/index.html` | update-check.js and `initSWUpdateCheck` already in place |
 
 ---
 
 ## FOLLOW-UP NOTES
 
 ```
-FOLLOW-UP NOTE 1 — Remaining payroll HTML pages
-- Area: frontend-payroll (18 pages without update-check.js)
-- Dependency: update-check.js needs to be included in each page for banner support
-- Confirmed now: Core fix (network-first SW) works without the banner in all pages
-- Not yet confirmed: Banner visibility in pages other than index.html / login.html
-- Risk if wrong: Low — users get fresh content automatically; banner is enhancement only
-- Recommended next check: Add update-check.js to all payroll HTML pages next sprint
+FOLLOW-UP NOTE 1 — Remaining payroll HTML pages [RESOLVED March 2026]
+- update-check.js added to all 17 payroll HTML pages
+- initSWUpdateCheck(reg) wired up in index.html after SW registration
+- Update banner is now active across every payroll page
 
 FOLLOW-UP NOTE 2 — Explicit BUILD_VERSION in Zeabur
 - Area: Zeabur deployment environment variables
@@ -334,11 +345,7 @@ FOLLOW-UP NOTE 3 — POS CSS/JS stale-while-revalidate
 - Recommended next check: Monitor after next deployment; if CSS/JS staleness
   causes issues, change POS static strategy to network-first as well
 
-FOLLOW-UP NOTE 4 — Remaining payroll HTML pages (non-index)
-- Area: frontend-payroll (pages other than index.html and login.html)
-- Dependency: update-check.js needs adding to remaining ~16 payroll HTML pages for banner support
-- Confirmed now: Core fix (network-first SW) works in all pages without the banner
-- Not yet confirmed: Banner shown in company-dashboard.html, payruns.html, employee-management.html, etc.
-- Risk if wrong: Low — fresh content is fetched automatically; banner is UX enhancement only
-- Recommended next check: Add update-check.js to all remaining payroll HTML pages next sprint
+FOLLOW-UP NOTE 4 — POS initSWUpdateCheck [RESOLVED — already in place]
+- POS index.html already had update-check.js included and initSWUpdateCheck(registration) called
+  after SW registration at the time this note was written. No further action required.
 ```

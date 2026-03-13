@@ -240,9 +240,22 @@
     //
     // The active company id is read from native localStorage (LOCAL_KEYS) where
     // the auth layer stores it on login / company-switch.
+    // Decode companyId from a JWT token string (no external deps, pure base64).
+    function _jwtCompanyId() {
+        try {
+            var tok = _tok();
+            if (!tok) return '';
+            var parts = tok.split('.');
+            if (parts.length !== 3) return '';
+            var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            var payload = JSON.parse(atob(b64));
+            return payload.companyId ? String(payload.companyId) : '';
+        } catch(e) { return ''; }
+    }
+
     function _companyId() {
         try {
-            return _nGet('activeCompanyId') || _nGet('selectedCompanyId') || '';
+            return _nGet('activeCompanyId') || _nGet('selectedCompanyId') || _jwtCompanyId() || '';
         } catch(e) { return ''; }
     }
 

@@ -845,15 +845,6 @@
         { date: '2026-01-20', time: '16:30:00', paymentMethod: 'account', description: 'Monthly order - Tech Solutions', total: 4500.00, customerId: 'CUST-DEMO-TECH' }
       ];
 
-      // Add demo customers to LedgerSystem if needed
-      const existingCustomers = LedgerSystem.getCustomers();
-      if (!existingCustomers.find(c => c.id === 'CUST-DEMO-ABC')) {
-        const custs = LedgerSystem.getCustomers();
-        custs.push({ id: 'CUST-DEMO-ABC', code: 'ABC001', name: 'ABC Corporation', type: 'company', isSystemCustomer: false, contact: 'John Smith', email: 'john@abccorp.co.za', phone: '+27 11 123 4567', vat: '4560123456', terms: 30, creditLimit: 100000, status: 'active', createdAt: new Date().toISOString() });
-        custs.push({ id: 'CUST-DEMO-TECH', code: 'TEC001', name: 'Tech Solutions Ltd', type: 'company', isSystemCustomer: false, contact: 'David Wilson', email: 'david@techsolutions.co.za', phone: '+27 11 222 3333', vat: '4569876543', terms: 30, creditLimit: 150000, status: 'active', createdAt: new Date().toISOString() });
-        safeLocalStorage.setItem('lorenco_customers', JSON.stringify(custs));
-      }
-
       demoSales.forEach(sale => {
         try {
           LedgerSystem.postPOSSale(sale);

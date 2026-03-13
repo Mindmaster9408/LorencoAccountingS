@@ -1238,11 +1238,11 @@
             <h1>🛒 Checkout Charlie</h1>
             <div class="form-group">
                 <label>Username or Email</label>
-                <input type="text" id="loginUsername" value="demo" autofocus>
+                <input type="text" id="loginUsername" placeholder="Username or email" autofocus>
             </div>
             <div class="form-group">
                 <label>Password</label>
-                <input type="password" id="loginPassword" value="demo123">
+                <input type="password" id="loginPassword" placeholder="Password">
             </div>
             <button class="btn btn-primary" style="width: 100%;" onclick="login()">Login</button>
             <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
@@ -3239,6 +3239,38 @@
             });
         }
 
+        // Clear products + customers caches when the active company changes.
+        // Prevents a previous company's cached data showing offline for a new company.
+        async function checkAndClearStaleCaches() {
+            if (!db || !currentCompanyId) return;
+            try {
+                const storedCtx = await new Promise(resolve => {
+                    const tx = db.transaction('sessionData', 'readonly');
+                    const req = tx.objectStore('sessionData').get('companyContext');
+                    req.onsuccess = () => resolve(req.result ? req.result.value : null);
+                    req.onerror = () => resolve(null);
+                });
+
+                if (storedCtx && storedCtx !== String(currentCompanyId)) {
+                    // Company changed — wipe stale cached data
+                    await new Promise((resolve) => {
+                        const tx = db.transaction(['products', 'customers'], 'readwrite');
+                        tx.objectStore('products').clear();
+                        tx.objectStore('customers').clear();
+                        tx.oncomplete = resolve;
+                        tx.onerror = resolve; // non-fatal
+                    });
+                    console.log('[POS] Cleared stale IndexedDB caches — company changed from', storedCtx, 'to', currentCompanyId);
+                }
+
+                // Persist current company context
+                const saveTx = db.transaction('sessionData', 'readwrite');
+                saveTx.objectStore('sessionData').put({ key: 'companyContext', value: String(currentCompanyId) });
+            } catch (e) {
+                console.warn('[POS] Cache context check failed (non-fatal):', e);
+            }
+        }
+
         // Save offline sale
         async function saveOfflineSale(saleData) {
             if (!db) return null;
@@ -3470,6 +3502,45 @@
                     }
                 }
             }
+
+            // ── Resume Existing Session on Refresh ──
+            // After SSO, the sso_source flag is cleared. On subsequent page loads (refresh,
+            // back-navigation) the token + company are still in localStorage — resume them
+            // so the user doesn't land on the login screen with demo credentials.
+            const existingToken = localStorage.getItem('token');
+            const existingUser  = localStorage.getItem('user');
+            if (existingToken && existingUser) {
+                try {
+                    const payload = JSON.parse(atob(existingToken.split('.')[1]));
+                    const expired = payload.exp && (payload.exp * 1000 < Date.now());
+                    if (!expired && payload.companyId) {
+                        token       = existingToken;
+                        currentUser = JSON.parse(existingUser);
+
+                        const storedCompany = localStorage.getItem('company');
+                        const company = storedCompany ? JSON.parse(storedCompany) : null;
+                        if (company && company.id) {
+                            currentCompanyId   = company.id;
+                            selectedCompanyId  = company.id;
+                            currentCompanyName = company.company_name || company.trading_name || 'Company';
+                            userRole           = company.role || payload.role || 'cashier';
+                        } else {
+                            currentCompanyId  = payload.companyId;
+                            selectedCompanyId = payload.companyId;
+                            userRole          = payload.role || 'cashier';
+                        }
+
+                        console.log('[POS] Resuming session — user:', currentUser.fullName, 'company:', currentCompanyName || currentCompanyId);
+                        completeLogin();
+                        return;
+                    }
+                } catch (_) { /* invalid token — fall through to login screen */ }
+
+                // Token expired or corrupt — clean up so login form starts fresh
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                localStorage.removeItem('company');
+            }
         });
 
         // ========== END OFFLINE FUNCTIONALITY ==========
@@ -3609,13 +3680,17 @@
             }
         }
 
-        function completeLogin() {
+        async function completeLogin() {
             document.getElementById('userName').textContent = currentUser.fullName + (userRole ? ` (${userRole.replace('_', ' ')})` : '');
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('mainApp').style.display = 'block';
 
             // Apply role-based visibility
             applyRoleBasedVisibility();
+
+            // Clear IndexedDB caches if the active company has changed (prevents showing a previous
+            // company's products when the user goes offline immediately after switching clients)
+            await checkAndClearStaleCaches();
 
             loadProducts();
             checkSession();

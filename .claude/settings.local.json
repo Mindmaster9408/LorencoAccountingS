@@ -12,7 +12,10 @@
       "Bash(ls /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-payroll/*.html)",
       "Bash(grep -l \"eco_clients\\\\|eco_client_firm_access\" /workspaces/LorencoAccountingS/accounting-ecosystem/database/*.sql)",
       "Bash(grep -B 5 -A 20 \"eco_client_firm_access\" /workspaces/LorencoAccountingS/accounting-ecosystem/database/*.sql)",
-      "Bash(grep -n \"fetch.*version\\\\|checkUpdate\\\\|checkForUpdates\\\\|reloadApp\\\\|forceReload\" accounting-ecosystem/frontend-ecosystem/*.html accounting-ecosystem/frontend-payroll/*.html accounting-ecosystem/frontend-pos/index.html)"
+      "Bash(grep -n \"fetch.*version\\\\|checkUpdate\\\\|checkForUpdates\\\\|reloadApp\\\\|forceReload\" accounting-ecosystem/frontend-ecosystem/*.html accounting-ecosystem/frontend-payroll/*.html accounting-ecosystem/frontend-pos/index.html)",
+      "Bash(node --check /workspaces/LorencoAccountingS/accounting-ecosystem/backend/server.js)",
+      "Bash(grep -v \"^commit\\\\|^Author\\\\|^Date\\\\|^feat\\\\|^$\\\\|ROOT\\\\|THREE\\\\|API\\\\|GET\\\\|Three\\\\|Account\\\\|Expan\\\\|super\\\\|comp\\\\|eco\\\\|COMP\\\\|REWRITE\\\\|COMPL\\\\|auth\\\\|page\\\\|^  \\\\|^\\\\t\")",
+      "Bash(node /tmp/check-load.js)"
     ]
   }
 }

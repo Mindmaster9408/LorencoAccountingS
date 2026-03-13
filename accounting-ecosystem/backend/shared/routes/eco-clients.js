@@ -350,43 +350,52 @@ router.get('/', async (req, res) => {
 
 /**
  * GET /api/eco-clients/payroll-billing-summary
- * Returns per-company active employee count for the super-admin billing panel.
+ * Returns per-client active employee count for the super-admin billing panel.
  *
- * Returns two indexes:
- *   summary       — { [company_id]:    { active_employees: N } }  (legacy, by client company)
- *   by_client_id  — { [eco_client_id]: N }                        (preferred — avoids company_id mismatch)
+ * Billing rule: ALL active employees on the system for that client.
  *
- * The by_client_id index is the authoritative source for billing counts because it matches
- * employees directly to their eco_client record, bypassing any company_id mapping issues
- * that can occur for clients created before migration 005 (which added client_company_id).
+ * Resolution order (handles both new and legacy employee records):
+ *   1. eco_client_id on the employee record  (set for employees created after migration 005)
+ *   2. company_id → client_company_id lookup (fallback for employees created before migration 005)
  *
- * Billing rule: count ALL active employees for the client, regardless of payrun state.
+ * Returns:
+ *   by_client_id  — { [eco_client_id]: N }             (authoritative — always correct)
+ *   summary       — { [company_id]: { active_employees: N } }  (legacy, kept for compat)
  */
 router.get('/payroll-billing-summary', async (req, res) => {
   try {
-    // Fetch all employees — both indexes in one query
-    const { data: emps, error: empErr } = await supabase
-      .from('employees')
-      .select('company_id, eco_client_id, is_active');
-    if (empErr) throw empErr;
+    // Fetch employees AND eco_clients in parallel
+    const [empsResult, clientsResult] = await Promise.all([
+      supabase.from('employees').select('company_id, eco_client_id, is_active'),
+      supabase.from('eco_clients').select('id, client_company_id')
+    ]);
+    if (empsResult.error) throw empsResult.error;
+    if (clientsResult.error) throw clientsResult.error;
 
-    // Index 1: by company_id (legacy, used as fallback)
-    const summary = {};
-    // Index 2: by eco_client_id (preferred — immune to company_id mismatch)
-    const byClientId = {};
+    // Build reverse map: client_company_id → eco_client.id
+    // Used to resolve employees that have company_id but no eco_client_id
+    // (i.e. employees created before migration 005 added eco_client_id)
+    const companyToClientId = {};
+    (clientsResult.data || []).forEach(c => {
+      if (c.client_company_id) companyToClientId[c.client_company_id] = c.id;
+    });
 
-    (emps || []).forEach(e => {
+    const byClientId = {};  // { [eco_client_id]: count }  — authoritative
+    const summary    = {};  // { [company_id]: { active_employees: N } }  — legacy fallback
+
+    (empsResult.data || []).forEach(e => {
       if (!e.is_active) return;
 
-      // company_id index
+      // Resolve to eco_client_id — use direct column first, then company mapping
+      const clientId = e.eco_client_id || companyToClientId[e.company_id];
+      if (clientId) {
+        byClientId[clientId] = (byClientId[clientId] || 0) + 1;
+      }
+
+      // Legacy company_id index (retained for backward compatibility)
       if (e.company_id) {
         if (!summary[e.company_id]) summary[e.company_id] = { active_employees: 0 };
         summary[e.company_id].active_employees++;
-      }
-
-      // eco_client_id index (only populated if eco_client_id column exists and is set)
-      if (e.eco_client_id) {
-        byClientId[e.eco_client_id] = (byClientId[e.eco_client_id] || 0) + 1;
       }
     });
 

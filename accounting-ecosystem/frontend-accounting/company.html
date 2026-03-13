@@ -665,19 +665,18 @@
           throw new Error('Failed to load companies');
         }
       } catch (err) {
-        console.warn('Failed to load companies, using demo data');
-        companies = [
-          { id: 1, name: 'THEKSTRA BAKKERT (Pty) Ltd', regNumber: '2020/123456/07', isActive: true },
-          { id: 2, name: 'ABC Trading CC', regNumber: 'CK2018/012345/23', isActive: true },
-          { id: 3, name: 'XYZ Consulting', regNumber: '2022/654321/07', isActive: false }
-        ];
+        console.error('Failed to load companies:', err);
+        companies = [];
+        showAlert('Could not load company list. Please refresh or re-login.', 'error');
       }
       renderCompanyList();
     }
 
     function renderCompanyList() {
       const container = document.getElementById('companyList');
-      const activeCompanyId = parseInt(localStorage.getItem('activeCompanyId')) || 1;
+      const activeCompanyId = parseInt(localStorage.getItem('activeCompanyId'))
+                           || parseInt(localStorage.getItem('selectedCompanyId'))
+                           || null;
 
       let html = '';
       companies.forEach(company => {
@@ -724,35 +723,8 @@
           throw new Error('Failed to load company details');
         }
       } catch (err) {
-        console.warn('Failed to load company details, using demo data');
-        // Demo data
-        const demoData = {
-          name: (currentCompany && currentCompany.name) || 'THEKSTRA BAKKERT (Pty) Ltd',
-          tradingAs: '',
-          regNumber: (currentCompany && currentCompany.regNumber) || '2020/123456/07',
-          companyType: 'pty_ltd',
-          incomeTaxNo: '9012345678',
-          vatNumber: '4012345678',
-          payeRef: '7012345678',
-          uifRef: 'U012345678',
-          sdlRef: 'L012345678',
-          coidNumber: '',
-          yearEnd: '02',
-          vatPeriod: 'bi-monthly',
-          physicalAddress: '123 Main Road\nSandton',
-          city: 'Johannesburg',
-          postalCode: '2196',
-          postalAddress: '',
-          phone: '011 123 4567',
-          email: 'info@thekstra.co.za',
-          website: '',
-          bankName: 'fnb',
-          branchCode: '250655',
-          accountNumber: '62012345678',
-          accountType: 'cheque',
-          accountHolder: 'THEKSTRA BAKKERT PTY LTD'
-        };
-        populateForm(demoData);
+        console.error('Failed to load company details:', err);
+        showAlert('Could not load company details. Please refresh or re-login.', 'error');
       }
     }
 
@@ -784,15 +756,20 @@
     }
 
     function loadCurrentCompany() {
-      const activeCompanyId = parseInt(localStorage.getItem('activeCompanyId')) || 1;
-      currentCompany = companies.find(c => c.id === activeCompanyId) || companies[0];
+      const activeCompanyId = parseInt(localStorage.getItem('activeCompanyId'))
+                           || parseInt(localStorage.getItem('selectedCompanyId'))
+                           || null;
+      currentCompany = (activeCompanyId && companies.find(c => c.id === activeCompanyId)) || companies[0] || null;
       if (currentCompany) {
         loadCompanyDetails(currentCompany.id);
       }
     }
 
     async function saveCompany() {
-      const companyId = parseInt(localStorage.getItem('activeCompanyId')) || 1;
+      const companyId = parseInt(localStorage.getItem('activeCompanyId'))
+                     || parseInt(localStorage.getItem('selectedCompanyId'))
+                     || null;
+      if (!companyId) { showAlert('No company selected. Please select a company first.', 'error'); return; }
 
       const data = {
         name: document.getElementById('companyName').value,

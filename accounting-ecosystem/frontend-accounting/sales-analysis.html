@@ -427,7 +427,8 @@
         
         <div class="report-card">
             <div class="report-header">
-                <h2>Demo Company Ltd</h2>
+                <h2 id="reportCompanyName"></h2>
+                <script>var _rcn=document.getElementById('reportCompanyName');if(_rcn)_rcn.textContent=localStorage.getItem('eco_company_name')||'My Company';</script>
                 <p>Sales Analysis - 01 January 2026 to 14 January 2026</p>
             </div>
             

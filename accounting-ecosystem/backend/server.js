@@ -33,12 +33,6 @@ const morgan = require('morgan');
 const { supabase, checkConnection, ensureDefaultCompany } = require('./config/database');
 const { isModuleEnabled, getEnabledModules, getAllModules } = require('./config/modules');
 
-// ─── Build Version ────────────────────────────────────────────────────────────
-// Used for service worker cache invalidation and frontend version detection.
-// Set BUILD_VERSION env var in Zeabur to a unique value per deployment (e.g. git
-// commit SHA). Falls back to startup timestamp — guarantees every container
-// restart generates a fresh version, which is the correct behaviour.
-
 // ─── Middleware ──────────────────────────────────────────────────────────────
 const { authenticateToken } = require('./middleware/auth');
 const { auditMiddleware } = require('./middleware/audit');

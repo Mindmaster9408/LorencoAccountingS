@@ -170,7 +170,8 @@
   <div class="content">
   <div class="header-section">
     <h1>PAYE Reconciliation</h1>
-    <div class="company-name" id="companyName">THEKSTRA BAKKERT (Pty) Ltd</div>
+    <div class="company-name" id="companyName"></div>
+    <script>var _prcn=document.getElementById('companyName');if(_prcn)_prcn.textContent=localStorage.getItem('eco_company_name')||'My Company';</script>
     <div class="period-info">Salary Variantities: <span id="periodDates">2025-03 - 2026-02</span></div>
     <div style="margin-top: 10px;">
       Status: <span class="status-badge status-draft" id="statusBadge">DRAFT</span>

@@ -30,17 +30,17 @@
         <div class="page-header"><h1>My Profile</h1></div>
         <div class="section">
             <div class="avatar-section">
-                <div class="avatar-large" id="profileAvatar">D</div>
-                <h3 id="profileName">Demo User</h3>
+                <div class="avatar-large" id="profileAvatar">?</div>
+                <h3 id="profileName">Loading...</h3>
                 <p style="color: #5f6368;" id="profileRole">Administrator</p>
             </div>
             <div class="form-row">
-                <div class="form-group"><label>First Name</label><input type="text" id="firstName" value="Demo"></div>
-                <div class="form-group"><label>Last Name</label><input type="text" id="lastName" value="User"></div>
+                <div class="form-group"><label>First Name</label><input type="text" id="firstName" value=""></div>
+                <div class="form-group"><label>Last Name</label><input type="text" id="lastName" value=""></div>
             </div>
-            <div class="form-group"><label>Email</label><input type="email" id="email" value="demo@lorenco.com" disabled></div>
-            <div class="form-group"><label>Role</label><input type="text" id="role" value="Admin" disabled></div>
-            <div class="form-group"><label>Company</label><input type="text" id="company" value="Demo Company Ltd" disabled></div>
+            <div class="form-group"><label>Email</label><input type="email" id="email" value="" disabled></div>
+            <div class="form-group"><label>Role</label><input type="text" id="role" value="" disabled></div>
+            <div class="form-group"><label>Company</label><input type="text" id="company" value="" disabled></div>
             <button class="btn-primary" onclick="saveProfile()">Save Changes</button>
         </div>
         <div class="section">
@@ -52,16 +52,19 @@
         </div>
     </div>
     <script>
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        document.getElementById('profileAvatar').textContent = (user.firstName || 'D')[0].toUpperCase();
-        document.getElementById('profileName').textContent = `${user.firstName || 'Demo'} ${user.lastName || 'User'}`;
-        document.getElementById('profileRole').textContent = user.role || 'Admin';
-        document.getElementById('firstName').value = user.firstName || 'Demo';
-        document.getElementById('lastName').value = user.lastName || 'User';
-        document.getElementById('email').value = user.email || 'demo@lorenco.com';
-        document.getElementById('role').value = user.role || 'Admin';
-        document.getElementById('company').value = user.companyName || 'Demo Company Ltd';
-        
+        const user = JSON.parse(localStorage.getItem('user') || localStorage.getItem('eco_user') || '{}');
+        const _compName = localStorage.getItem('eco_company_name') || '';
+        const _firstName = user.firstName || user.first_name || '';
+        const _lastName  = user.lastName  || user.last_name  || '';
+        document.getElementById('profileAvatar').textContent = (_firstName || user.email || '?')[0].toUpperCase();
+        document.getElementById('profileName').textContent = (_firstName + ' ' + _lastName).trim() || user.email || 'My Profile';
+        document.getElementById('profileRole').textContent = user.role || 'User';
+        document.getElementById('firstName').value = _firstName;
+        document.getElementById('lastName').value  = _lastName;
+        document.getElementById('email').value   = user.email || '';
+        document.getElementById('role').value    = user.role  || '';
+        document.getElementById('company').value = user.companyName || user.company_name || _compName;
+
         function saveProfile() {
             user.firstName = document.getElementById('firstName').value;
             user.lastName = document.getElementById('lastName').value;

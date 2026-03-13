@@ -159,6 +159,8 @@
                 navigator.serviceWorker.register('/payroll/service-worker.js', { scope: '/payroll/' })
                     .then(reg => {
                         console.log('[Paytime] Service worker registered, scope:', reg.scope);
+                        // Wire up update banner
+                        if (typeof initSWUpdateCheck === 'function') initSWUpdateCheck(reg);
                         // Listen for sync-done messages
                         navigator.serviceWorker.addEventListener('message', e => {
                             if (e.data?.type === 'PAYTIME_SYNC_DONE') {
