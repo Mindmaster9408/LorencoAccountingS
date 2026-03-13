@@ -46,411 +46,384 @@
         .topbar-left { display: flex; align-items: center; gap: 14px; }
         .topbar-logo {
             width: 36px; height: 36px;
-            background: linear-gradient(135deg, #ef4444, #b91c1c);
+            background: linear-gradient(135deg, #ef4444, #dc2626);
             border-radius: 10px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 18px;
+            font-size: 1.1rem; color: white; font-weight: 800;
         }
-        .topbar-title { font-size: 1.1rem; font-weight: 700; }
+        .topbar-title { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
         .topbar-subtitle {
-            font-size: 0.72rem;
-            color: #fca5a5;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            padding: 3px 8px;
-            background: rgba(239,68,68,0.15);
-            border: 1px solid rgba(239,68,68,0.25);
-            border-radius: 6px;
+            font-size: 0.72rem; color: var(--text-muted);
+            background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.2);
+            padding: 2px 8px; border-radius: 20px; color: #fca5a5;
         }
-        .topbar-right { display: flex; align-items: center; gap: 12px; }
-        .user-badge {
-            display: flex; align-items: center; gap: 8px;
-            padding: 5px 12px 5px 6px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 30px;
-        }
+        .topbar-right { display: flex; align-items: center; gap: 10px; }
+        .user-badge { display: flex; align-items: center; gap: 8px; }
         .user-avatar {
-            width: 28px; height: 28px;
-            background: linear-gradient(135deg, #ef4444, #b91c1c);
-            border-radius: 50%;
+            width: 32px; height: 32px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), #764ba2);
             display: flex; align-items: center; justify-content: center;
-            font-size: 11px; font-weight: 700;
+            font-size: 0.72rem; font-weight: 700;
         }
-        .user-name { font-size: 0.82rem; font-weight: 600; }
+        .user-name { font-size: 0.82rem; color: var(--text-muted); }
         .btn-back, .btn-logout {
-            padding: 7px 14px;
-            border-radius: 9px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            font-weight: 600;
-            transition: all 0.2s;
-            border: 1px solid var(--border);
-            background: var(--surface);
-            color: var(--text-muted);
+            padding: 7px 14px; border-radius: 8px; font-size: 0.78rem;
+            cursor: pointer; transition: all 0.2s; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text);
         }
-        .btn-back:hover { color: var(--text); background: var(--surface-hover); }
-        .btn-logout {
-            background: rgba(239,68,68,0.1);
-            border-color: rgba(239,68,68,0.2);
-            color: #fca5a5;
-        }
-        .btn-logout:hover { background: rgba(239,68,68,0.2); }
+        .btn-back:hover  { background: var(--surface-hover); }
+        .btn-logout:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
 
         /* ── Main ── */
-        .main { max-width: 1400px; margin: 0 auto; padding: 36px 28px; }
+        .main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
 
-        .page-header { margin-bottom: 32px; }
-        .page-header h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 6px; }
-        .page-header h1 span { color: #fca5a5; }
-        .page-header p { color: var(--text-muted); font-size: 0.9rem; }
+        /* ── Page Header ── */
+        .page-header { margin-bottom: 28px; }
+        .page-header h1 { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; }
+        .page-header h1 span { color: var(--accent); }
+        .page-header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 6px; }
 
         /* ── Stats Grid ── */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 14px;
-            margin-bottom: 32px;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px; margin-bottom: 24px;
         }
         .stat-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 18px 20px;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 14px 12px; text-align: center;
         }
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-            background: var(--stat-color, var(--accent));
-        }
-        .stat-card.active::before { --stat-color: #10b981; }
-        .stat-card.inactive::before { --stat-color: #ef4444; }
-        .stat-card.pos::before { --stat-color: #3b82f6; }
-        .stat-card.payroll::before { --stat-color: #10b981; }
-        .stat-card.accounting::before { --stat-color: #f59e0b; }
-        .stat-card.sean::before { --stat-color: #8b5cf6; }
-        .stat-value {
-            font-size: 1.9rem; font-weight: 800;
-            background: linear-gradient(135deg, #fff, rgba(255,255,255,0.7));
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            line-height: 1;
-        }
-        .stat-label {
-            font-size: 0.72rem; color: var(--text-muted);
-            margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px;
-        }
+        .stat-card.active  { border-color: rgba(16,185,129,0.2); }
+        .stat-card.inactive { border-color: rgba(239,68,68,0.15); }
+        .stat-card.pos      { border-color: rgba(245,158,11,0.2); }
+        .stat-card.payroll  { border-color: rgba(102,126,234,0.2); }
+        .stat-card.accounting { border-color: rgba(139,92,246,0.2); }
+        .stat-card.sean     { border-color: rgba(34,211,238,0.2); }
+        .stat-value { font-size: 1.6rem; font-weight: 800; }
+        .stat-label { font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
 
         /* ── Toolbar ── */
         .toolbar {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            align-items: center;
-            margin-bottom: 24px;
-            padding: 16px 20px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
+            display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 14px; padding: 12px 16px; margin-bottom: 20px;
         }
         .toolbar-search {
-            flex: 1; min-width: 200px;
-            padding: 9px 14px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text);
-            font-size: 0.88rem;
+            flex: 1; min-width: 180px; padding: 8px 14px;
+            background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+            border-radius: 10px; color: var(--text); font-size: 0.82rem;
+            outline: none;
         }
-        .toolbar-search:focus { outline: none; border-color: var(--accent); }
-        .filter-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .toolbar-search:focus { border-color: var(--accent); }
+        .filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
         .filter-chip {
-            padding: 6px 14px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            color: var(--text-muted);
-            font-size: 0.76rem; font-weight: 600;
-            cursor: pointer; transition: all 0.2s;
+            padding: 5px 12px; border-radius: 20px; font-size: 0.73rem; font-weight: 600;
+            cursor: pointer; border: 1px solid var(--border); background: transparent;
+            color: var(--text-muted); transition: all 0.2s; user-select: none;
         }
-        .filter-chip:hover { border-color: rgba(255,255,255,0.15); color: var(--text); }
-        .filter-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(102,126,234,0.1); }
-        .filter-chip.active.danger { border-color: var(--danger); color: #fca5a5; background: rgba(239,68,68,0.1); }
-        .filter-chip.active.success { border-color: var(--success); color: #6ee7b7; background: rgba(16,185,129,0.1); }
-        .toolbar-count { margin-left: auto; font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+        .filter-chip:hover { background: var(--surface-hover); color: var(--text); }
+        .filter-chip.active { background: rgba(102,126,234,0.15); border-color: rgba(102,126,234,0.35); color: var(--accent); }
+        .filter-chip.success { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.3); color: var(--success); }
+        .filter-chip.danger  { background: rgba(239,68,68,0.1);   border-color: rgba(239,68,68,0.25);  color: var(--danger); }
+        .toolbar-count { font-size: 0.75rem; color: var(--text-muted); margin-left: auto; }
+        .btn-add-client {
+            padding: 7px 16px; background: linear-gradient(135deg, var(--accent), #764ba2);
+            border: none; border-radius: 9px; color: white; font-size: 0.78rem;
+            font-weight: 700; cursor: pointer; transition: opacity 0.2s;
+        }
+        .btn-add-client:hover { opacity: 0.88; }
 
-        /* ── Loading ── */
-        .loading-state {
-            text-align: center; padding: 60px;
-            color: var(--text-muted);
+        /* ── Loading / Empty ── */
+        .loading-state, .empty-state {
+            grid-column: 1 / -1; text-align: center;
+            padding: 60px 20px; color: var(--text-muted);
         }
+        .loading-state .icon, .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
         .spinner {
-            width: 40px; height: 40px;
+            width: 40px; height: 40px; margin: 0 auto 16px;
             border: 3px solid rgba(255,255,255,0.1);
-            border-top-color: var(--accent);
-            border-radius: 50%;
+            border-top-color: var(--accent); border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            margin: 0 auto 16px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── Client Grid ── */
-        .clients-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-            gap: 16px;
-        }
-        .client-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 22px;
-            transition: all 0.25s;
-            position: relative;
-        }
-        .client-card:hover { border-color: rgba(255,255,255,0.12); box-shadow: 0 8px 30px rgba(0,0,0,0.25); }
-        .client-card.inactive { opacity: 0.65; border-color: rgba(239,68,68,0.2); }
-        .client-card.inactive:hover { opacity: 0.85; }
-
-        .card-top {
-            display: flex; justify-content: space-between; align-items: flex-start;
-            margin-bottom: 14px;
-        }
-        .card-identity { display: flex; align-items: center; gap: 12px; }
-        .card-avatar {
-            width: 44px; height: 44px;
-            border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 18px; font-weight: 700; flex-shrink: 0;
-            background: linear-gradient(135deg, rgba(102,126,234,0.3), rgba(118,75,162,0.3));
-            color: #a3b1f0;
-        }
-        .card-avatar.business { background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(217,119,6,0.2)); color: #fbbf24; }
-        .card-name { font-size: 1rem; font-weight: 700; margin-bottom: 2px; }
-        .card-managing { font-size: 0.75rem; color: var(--text-muted); }
-        .card-managing span { color: rgba(255,255,255,0.65); }
-
-        .status-badge {
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 0.68rem; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            flex-shrink: 0;
-        }
-        .status-badge.active { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.25); }
-        .status-badge.inactive { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.25); }
-
-        .card-meta {
-            font-size: 0.8rem; color: var(--text-muted);
-            margin-bottom: 3px;
-            display: flex; align-items: center; gap: 6px;
-        }
-        .card-meta .icon { font-size: 0.85rem; }
-
-        .card-section-label {
-            font-size: 0.68rem; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.8px;
-            color: var(--text-muted); margin-bottom: 6px; margin-top: 12px;
-        }
-        .badges-row { display: flex; flex-wrap: wrap; gap: 6px; }
-        .app-badge {
-            display: inline-flex; align-items: center; gap: 4px;
-            padding: 4px 9px; border-radius: 7px;
-            font-size: 0.68rem; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.2px;
-        }
-        .app-badge.pos { background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
-        .app-badge.payroll { background: rgba(16,185,129,0.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); }
-        .app-badge.accounting { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
-        .app-badge.sean { background: rgba(139,92,246,0.2); color: #a78bfa; border: 1px solid rgba(139,92,246,0.2); }
-        .addon-badge {
-            display: inline-flex; align-items: center; gap: 4px;
-            padding: 3px 8px; border-radius: 7px;
-            font-size: 0.65rem; font-weight: 600;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: var(--text-muted);
-        }
-        .no-items { font-size: 0.78rem; color: var(--text-muted); font-style: italic; }
-
-        /* ── Per-App Row ── */
-        .app-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 8px 12px; border-radius: 9px;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.06);
-            margin-bottom: 6px;
-        }
-        .app-row .app-info {
-            display: flex; align-items: center; gap: 8px;
-        }
-        .app-row .app-icon { font-size: 1.1rem; }
-        .app-row .app-name { font-size: 0.78rem; font-weight: 700; color: #fff; }
-        .app-row .app-sub { font-size: 0.65rem; color: var(--text-muted); }
-        .app-row .app-emp-count {
-            font-size: 0.65rem; color: #6ee7b7;
-            background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.2);
-            padding: 2px 8px; border-radius: 6px; margin-left: 8px; font-weight: 600;
-        }
-        .app-toggle {
-            position: relative; width: 38px; height: 20px; cursor: pointer;
-        }
-        .app-toggle input { opacity: 0; width: 0; height: 0; }
-        .app-toggle .slider {
-            position: absolute; inset: 0; border-radius: 20px;
-            background: rgba(255,255,255,0.12); transition: all 0.25s;
-        }
-        .app-toggle .slider::before {
-            content: ''; position: absolute; width: 16px; height: 16px;
-            border-radius: 50%; background: #fff; left: 2px; top: 2px;
-            transition: transform 0.25s;
-        }
-        .app-toggle input:checked + .slider { background: #667eea; }
-        .app-toggle input:checked + .slider::before { transform: translateX(18px); }
-        .app-toggle input:disabled { cursor: not-allowed; }
-
-        .card-footer {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-top: 16px; padding-top: 14px;
-            border-top: 1px solid var(--border);
-        }
-        .card-date { font-size: 0.74rem; color: var(--text-muted); }
-
-        .btn-toggle {
-            padding: 7px 18px;
-            border-radius: 9px;
-            font-size: 0.78rem; font-weight: 700;
-            cursor: pointer; transition: all 0.2s;
-            border: none;
-        }
-        .btn-toggle.deactivate {
-            background: rgba(239,68,68,0.12);
-            border: 1px solid rgba(239,68,68,0.25);
-            color: #fca5a5;
-        }
-        .btn-toggle.deactivate:hover { background: rgba(239,68,68,0.22); }
-        .btn-toggle.activate {
-            background: rgba(16,185,129,0.12);
-            border: 1px solid rgba(16,185,129,0.25);
-            color: #6ee7b7;
-        }
-        .btn-toggle.activate:hover { background: rgba(16,185,129,0.22); }
-        .btn-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        /* ── Empty / Error ── */
-        .empty-state {
-            text-align: center; padding: 60px;
-            color: var(--text-muted); grid-column: 1/-1;
-        }
-        .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
-
         /* ── Toast ── */
         .toast {
-            position: fixed; bottom: 28px; right: 28px;
-            padding: 13px 22px;
-            background: #10b981; color: white;
-            border-radius: 12px; font-weight: 600; font-size: 0.88rem;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
-            z-index: 9999;
-            transform: translateY(100px); opacity: 0;
-            transition: all 0.3s;
+            position: fixed; bottom: 24px; right: 24px;
+            background: rgba(20,20,40,0.95); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px; padding: 12px 18px;
+            font-size: 0.82rem; color: var(--text);
+            -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+            transform: translateY(80px); opacity: 0;
+            transition: all 0.3s ease; z-index: 9999; max-width: 320px;
         }
         .toast.show { transform: translateY(0); opacity: 1; }
-        .toast.error { background: #ef4444; }
+        .toast.error { border-color: rgba(239,68,68,0.35); color: #fca5a5; }
 
-        /* ── Accounting Practice Group Header ───────────────────────────── */
-        .firm-group { margin-bottom: 36px; }
-        .firm-group-header {
-            display: flex; align-items: center; gap: 10px;
-            margin-bottom: 14px; padding: 10px 16px;
+        /* ── Toggle Switch ── */
+        .app-toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+        .app-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+        .slider {
+            display: inline-block; width: 34px; height: 18px;
+            background: rgba(255,255,255,0.12); border-radius: 9px;
+            transition: background 0.25s; position: relative;
+        }
+        .slider::after {
+            content: ''; position: absolute; top: 2px; left: 2px;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: rgba(255,255,255,0.5); transition: transform 0.25s, background 0.25s;
+        }
+        .app-toggle input:checked + .slider { background: var(--success); }
+        .app-toggle input:checked + .slider::after { transform: translateX(16px); background: #fff; }
+
+        /* ── Modal ── */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 200;
+            background: rgba(0,0,0,0.7);
+            -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+            align-items: center; justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: linear-gradient(135deg, #1a1535 0%, #0f0c29 100%);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 20px;
+            padding: 32px; width: 90%; max-width: 520px;
+            max-height: 90vh; overflow-y: auto;
+        }
+        .modal h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 24px; }
+        .modal h2 span { color: var(--accent); }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 10px 14px;
+            background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+            border-radius: 10px; color: var(--text); font-size: 0.85rem; outline: none;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .apps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .app-checkbox {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; border-radius: 9px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            cursor: pointer; transition: all 0.2s; font-size: 0.8rem;
+        }
+        .app-checkbox:hover { background: var(--surface-hover); }
+        .app-checkbox input { cursor: pointer; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+        .btn-cancel {
+            padding: 10px 20px; background: transparent; border: 1px solid var(--border);
+            border-radius: 10px; color: var(--text-muted); font-size: 0.82rem; cursor: pointer;
+        }
+        .btn-cancel:hover { background: var(--surface-hover); }
+        .btn-submit {
+            padding: 10px 24px;
+            background: linear-gradient(135deg, var(--accent), #764ba2);
+            border: none; border-radius: 10px; color: white;
+            font-size: 0.82rem; font-weight: 700; cursor: pointer;
+        }
+        .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── Account Holder Groups ── */
+        .control-panel { display: flex; flex-direction: column; gap: 16px; }
+
+        .holder-group {
+            border: 1px solid var(--border);
+            border-radius: 16px; overflow: hidden;
+        }
+        .holder-header {
+            padding: 15px 20px; display: flex; align-items: center; gap: 12px;
+            cursor: pointer; user-select: none;
             background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px;
+            transition: background 0.2s; border-bottom: 1px solid transparent;
         }
-        .firm-group-icon { font-size: 1.3rem; }
-        .firm-group-name { font-size: 0.98rem; font-weight: 700; }
-        .firm-group-count { font-size: 0.72rem; color: var(--text-muted); padding: 2px 8px; background: rgba(255,255,255,0.06); border-radius: 10px; }
+        .holder-header:hover { background: rgba(255,255,255,0.07); }
+        .holder-header.expanded { border-bottom-color: var(--border); }
+        .holder-icon { font-size: 1.3rem; flex-shrink: 0; }
+        .holder-name { font-size: 0.98rem; font-weight: 700; flex: 1; min-width: 0; }
+        .holder-type-badge {
+            font-size: 0.66rem; padding: 3px 9px; border-radius: 20px; flex-shrink: 0;
+            background: rgba(102,126,234,0.12); border: 1px solid rgba(102,126,234,0.2);
+            color: var(--accent);
+        }
+        .holder-count { font-size: 0.73rem; color: var(--text-muted); flex-shrink: 0; }
+        .holder-arrow { font-size: 0.7rem; color: var(--text-muted); flex-shrink: 0; transition: transform 0.2s; }
+        .holder-arrow.open { transform: rotate(180deg); }
 
-        /* ── Package / Addon rows ──────────────────────────────────────── */
-        .pkg-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 9px 12px; border-radius: 9px;
-            background: rgba(102,126,234,0.08);
-            border: 1px solid rgba(102,126,234,0.18);
-            margin-bottom: 6px;
+        .holder-clients {
+            padding: 12px; display: flex; flex-direction: column; gap: 10px;
         }
-        .pkg-row .pkg-info { display: flex; align-items: center; gap: 8px; }
-        .pkg-row .pkg-icon { font-size: 1.1rem; }
-        .pkg-row .pkg-name { font-size: 0.8rem; font-weight: 700; color: #fff; }
-        .pkg-row .pkg-sub  { font-size: 0.65rem; color: var(--text-muted); }
-        .pkg-badge {
-            font-size: 0.65rem; font-weight: 700; padding: 2px 8px;
-            border-radius: 8px; text-transform: uppercase; letter-spacing: 0.3px;
-            background: rgba(16,185,129,0.2); color: #6ee7b7;
-            border: 1px solid rgba(16,185,129,0.25);
-        }
-        .pkg-badge.inactive { background: rgba(239,68,68,0.15); color: #fca5a5; border-color: rgba(239,68,68,0.25); }
+        .holder-clients.hidden { display: none; }
 
+        /* ── Client Cards (slim) ── */
+        .client-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+        }
+        .client-card.client-inactive { opacity: 0.62; }
+
+        .client-header {
+            padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+        }
+        .client-avatar {
+            width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+            background: linear-gradient(135deg, var(--accent), #764ba2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.9rem;
+        }
+        .client-info { flex: 1; min-width: 0; }
+        .client-name { font-size: 0.9rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .client-meta { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
+        .client-status-dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        }
+        .client-status-dot.dot-active   { background: var(--success); }
+        .client-status-dot.dot-inactive { background: rgba(255,255,255,0.2); }
+        .client-id-badge {
+            font-size: 0.62rem; color: var(--text-muted);
+            background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+            padding: 2px 6px; border-radius: 6px; flex-shrink: 0;
+        }
+
+        .client-footer {
+            padding: 8px 16px 10px; display: flex; align-items: center;
+            justify-content: space-between; gap: 8px;
+            border-top: 1px solid var(--border);
+        }
+        .client-footer-date { font-size: 0.66rem; color: var(--text-muted); }
+        .btn-toggle-client {
+            padding: 5px 13px; border-radius: 7px; font-size: 0.72rem; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; border: 1px solid;
+        }
+        .btn-toggle-client.deactivate {
+            background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2);
+            color: #fca5a5;
+        }
+        .btn-toggle-client.deactivate:hover { background: rgba(239,68,68,0.18); }
+        .btn-toggle-client.activate {
+            background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.2);
+            color: #6ee7b7;
+        }
+        .btn-toggle-client.activate:hover { background: rgba(16,185,129,0.18); }
+        .btn-toggle-client:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── App List ── */
+        .app-list { border-top: 1px solid var(--border); }
+
+        .app-row { border-bottom: 1px solid var(--border); overflow: hidden; }
+        .app-row:last-child { border-bottom: none; }
+
+        .app-row-header {
+            padding: 9px 16px; display: flex; align-items: center; gap: 10px;
+            transition: background 0.15s;
+        }
+        .app-row.app-expandable .app-row-header { cursor: pointer; }
+        .app-row.app-expandable .app-row-header:hover { background: rgba(255,255,255,0.04); }
+
+        .app-row-icon { font-size: 1rem; width: 22px; text-align: center; flex-shrink: 0; }
+        .app-row-label { flex: 1; min-width: 0; }
+        .app-row-name { font-size: 0.82rem; font-weight: 600; }
+        .app-row-sub  { font-size: 0.67rem; color: var(--text-muted); }
+
+        .app-status-chip {
+            font-size: 0.64rem; padding: 2px 8px; border-radius: 20px; flex-shrink: 0;
+        }
+        .app-status-chip.chip-active   { background: rgba(16,185,129,0.12); color: var(--success); }
+        .app-status-chip.chip-inactive { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+
+        .app-toggle-wrap { flex-shrink: 0; }
+        .app-expand-arrow { font-size: 0.65rem; color: var(--text-muted); flex-shrink: 0; transition: transform 0.2s; }
+        .app-expand-arrow.open { transform: rotate(180deg); }
+
+        /* ── App Expanded Content ── */
+        .app-expanded {
+            display: none; background: rgba(0,0,0,0.22);
+            border-top: 1px solid var(--border); padding: 14px 16px;
+        }
+        .app-expanded.visible { display: block; }
+
+        .aec-section { margin-bottom: 13px; }
+        .aec-section:last-child { margin-bottom: 0; }
+        .aec-label {
+            font-size: 0.65rem; font-weight: 700; letter-spacing: 0.07em;
+            text-transform: uppercase; color: var(--text-muted); margin-bottom: 7px;
+        }
+
+        /* Package chip */
+        .pkg-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border-radius: 8px;
+            background: rgba(102,126,234,0.1); border: 1px solid rgba(102,126,234,0.18);
+            font-size: 0.78rem; color: var(--accent);
+        }
+        .pkg-chip-sub { font-size: 0.66rem; color: var(--text-muted); margin-top: 2px; display: block; }
+
+        /* Add-on rows */
         .addon-row {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 8px 12px; border-radius: 9px;
-            background: rgba(139,92,246,0.08);
-            border: 1px solid rgba(139,92,246,0.18);
+            padding: 8px 11px; border-radius: 9px;
+            background: rgba(139,92,246,0.07); border: 1px solid rgba(139,92,246,0.15);
             margin-bottom: 6px;
         }
-        .addon-row .addon-info { display: flex; align-items: center; gap: 8px; }
-        .addon-row .addon-name { font-size: 0.78rem; font-weight: 700; color: #c4b5fd; }
-        .addon-row .addon-sub  { font-size: 0.65rem; color: var(--text-muted); }
+        .addon-row:last-child { margin-bottom: 0; }
+        .addon-info { display: flex; align-items: center; gap: 8px; }
+        .addon-name { font-size: 0.78rem; font-weight: 700; color: #c4b5fd; }
+        .addon-sub  { font-size: 0.65rem; color: var(--text-muted); }
 
-        /* ── Paytime Billing Section ──────────────────────────────────── */
-        .billing-section {
-            margin-top: 12px; padding: 12px 14px;
-            background: rgba(16,185,129,0.06);
-            border: 1px solid rgba(16,185,129,0.14);
+        /* Billing block */
+        .billing-block {
+            padding: 12px 14px;
+            background: rgba(16,185,129,0.05);
+            border: 1px solid rgba(16,185,129,0.13);
             border-radius: 10px;
         }
-        .billing-section-title {
-            font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 0.8px; color: #6ee7b7; margin-bottom: 10px;
+        .billing-title {
+            font-size: 0.67rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.07em; color: #6ee7b7; margin-bottom: 10px;
             display: flex; align-items: center; gap: 6px;
         }
         .billing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
         .billing-cell { text-align: center; }
-        .billing-cell .b-val {
+        .b-val {
             font-size: 1.4rem; font-weight: 800;
-            background: linear-gradient(135deg,#fff,rgba(255,255,255,0.7));
+            background: linear-gradient(135deg, #fff, rgba(255,255,255,0.7));
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             line-height: 1.1;
         }
-        .billing-cell .b-val.up   { -webkit-text-fill-color: #34d399; }
-        .billing-cell .b-val.down { -webkit-text-fill-color: #f87171; }
-        .billing-cell .b-val.zero { -webkit-text-fill-color: rgba(255,255,255,0.4); }
-        .billing-cell .b-lbl { font-size: 0.63rem; color: var(--text-muted); margin-top: 2px; line-height: 1.2; }
+        .b-val.bv-up   { -webkit-text-fill-color: #34d399; }
+        .b-val.bv-down { -webkit-text-fill-color: #f87171; }
+        .b-val.bv-zero { -webkit-text-fill-color: rgba(255,255,255,0.35); }
+        .b-lbl { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; line-height: 1.25; }
+        .billing-note { font-size: 0.62rem; color: var(--text-muted); margin-bottom: 8px; }
+        .billing-first { font-size: 0.75rem; color: var(--warning); margin-bottom: 8px; padding: 6px 10px; background: rgba(245,158,11,0.07); border-radius: 7px; border: 1px solid rgba(245,158,11,0.15); }
+
         .btn-mark-billed {
             width: 100%; padding: 7px;
-            background: rgba(16,185,129,0.12);
-            border: 1px solid rgba(16,185,129,0.25);
+            background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.22);
             color: #6ee7b7; border-radius: 8px;
-            font-size: 0.76rem; font-weight: 700;
+            font-size: 0.75rem; font-weight: 700;
             cursor: pointer; transition: all 0.2s;
         }
-        .btn-mark-billed:hover { background: rgba(16,185,129,0.22); }
+        .btn-mark-billed:hover { background: rgba(16,185,129,0.2); }
         .btn-mark-billed:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── pkg/addon section in card ── */
+        .card-section-label {
+            font-size: 0.65rem; font-weight: 700; letter-spacing: 0.07em;
+            text-transform: uppercase; color: var(--text-muted);
+            padding: 8px 14px 4px;
+        }
 
         @media (max-width: 768px) {
             .main { padding: 20px 14px; }
-            .clients-grid { grid-template-columns: 1fr; }
             .toolbar { flex-direction: column; align-items: stretch; }
             .toolbar-count { margin-left: 0; }
+            .billing-grid { grid-template-columns: repeat(3, 1fr); }
+            .form-row { grid-template-columns: 1fr; }
         }
     </style>
     <script src="js/polyfills.js"></script>
-    <!-- Inline date fallbacks in case polyfills.js path resolves differently -->
     <script>
         if (typeof window.parseStandardDate !== 'function') {
             window.parseStandardDate = function(s) {
@@ -470,9 +443,10 @@
             };
         }
     </script>
+</head>
 <body>
 
-    <!-- Top Bar -->
+    <!-- ── Top Bar ── -->
     <div class="topbar">
         <div class="topbar-left">
             <div class="topbar-logo">&#9876;</div>
@@ -489,12 +463,12 @@
         </div>
     </div>
 
-    <!-- Main Content -->
+    <!-- ── Main Content ── -->
     <div class="main">
 
         <div class="page-header">
-            <h1>Client Control <span>Centre</span></h1>
-            <p>View, manage and control all clients across every company and accounting firm on the platform.</p>
+            <h1>Platform Control <span>Centre</span></h1>
+            <p>Billing &amp; admin oversight — all account holders, clients, and apps across the platform.</p>
         </div>
 
         <!-- Stats -->
@@ -531,32 +505,84 @@
 
         <!-- Toolbar -->
         <div class="toolbar">
-            <input type="text" class="toolbar-search" id="searchInput" placeholder="&#128269; Search by name, email, phone..." oninput="applyFilters()">
+            <input type="text" class="toolbar-search" id="searchInput"
+                placeholder="&#128269; Search by name, email, phone..." oninput="applyFilters()">
             <div class="filter-group">
-                <span class="filter-chip active" id="fAll" onclick="setStatusFilter('all', this)">All</span>
-                <span class="filter-chip" id="fActive" onclick="setStatusFilter('active', this)">&#9679; Active</span>
-                <span class="filter-chip" id="fInactive" onclick="setStatusFilter('inactive', this)">&#9675; Inactive</span>
+                <span class="filter-chip active" id="fAll"      onclick="setStatusFilter('all',this)">All</span>
+                <span class="filter-chip"         id="fActive"  onclick="setStatusFilter('active',this)">&#9679; Active</span>
+                <span class="filter-chip"         id="fInactive" onclick="setStatusFilter('inactive',this)">&#9675; Inactive</span>
             </div>
-            <div class="filter-group" id="appFilters">
-                <span class="filter-chip" id="faAll" onclick="setAppFilter('all', this)">All Apps</span>
-                <span class="filter-chip" id="faPos" onclick="setAppFilter('pos', this)">&#128722; POS</span>
-                <span class="filter-chip" id="faPayroll" onclick="setAppFilter('payroll', this)">&#128176; Payroll</span>
-                <span class="filter-chip" id="faAccounting" onclick="setAppFilter('accounting', this)">&#128200; Accounting</span>
-                <span class="filter-chip" id="faSean" onclick="setAppFilter('sean', this)">&#129302; SEAN</span>
+            <div class="filter-group">
+                <span class="filter-chip active" id="faAll"        onclick="setAppFilter('all',this)">All Apps</span>
+                <span class="filter-chip"         id="faPos"        onclick="setAppFilter('pos',this)">&#128722; POS</span>
+                <span class="filter-chip"         id="faPayroll"    onclick="setAppFilter('payroll',this)">&#128176; Payroll</span>
+                <span class="filter-chip"         id="faAccounting" onclick="setAppFilter('accounting',this)">&#128200; Accounting</span>
+                <span class="filter-chip"         id="faSean"       onclick="setAppFilter('sean',this)">&#129302; SEAN</span>
             </div>
-            <div class="filter-group" id="companyFilterGroup" style="display:none;">
-                <select id="companyFilter" onchange="applyFilters()" style="padding:6px 12px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:20px; color:var(--text); font-size:0.76rem; cursor:pointer;">
-                    <option value="">All Companies</option>
-                </select>
-            </div>
+            <button class="btn-add-client" onclick="openAddModal()">+ Add Client</button>
             <span class="toolbar-count" id="toolbarCount">Loading...</span>
         </div>
 
-        <!-- Client Grid -->
-        <div class="clients-grid" id="clientsGrid">
+        <!-- Control Panel — Account Holder Groups rendered here -->
+        <div class="control-panel" id="controlPanel">
             <div class="loading-state">
                 <div class="spinner"></div>
                 <p>Loading all platform clients...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Add Client Modal ── -->
+    <div class="modal-overlay" id="addClientModal">
+        <div class="modal">
+            <h2>Add New <span>Client</span></h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Client Name *</label>
+                    <input type="text" id="mName" placeholder="Full name or business name">
+                </div>
+                <div class="form-group">
+                    <label>Client Type</label>
+                    <select id="mType">
+                        <option value="business">Business</option>
+                        <option value="individual">Individual</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="mEmail" placeholder="client@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="tel" id="mPhone" placeholder="083 000 0000">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>ID / Passport Number</label>
+                <input type="text" id="mId" placeholder="SA ID or passport number">
+            </div>
+            <div class="form-group">
+                <label>Address</label>
+                <textarea id="mAddress" placeholder="Physical or postal address"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Apps to Activate</label>
+                <div class="apps-grid">
+                    <label class="app-checkbox"><input type="checkbox" id="mPos" value="pos"> &#128722; POS</label>
+                    <label class="app-checkbox"><input type="checkbox" id="mPayroll" value="payroll"> &#128176; Payroll</label>
+                    <label class="app-checkbox"><input type="checkbox" id="mAccounting" value="accounting"> &#128200; Accounting</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea id="mNotes" placeholder="Internal notes..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeAddModal()">Cancel</button>
+                <button class="btn-submit" id="btnAddSubmit" onclick="submitAddClient()">Create Client</button>
             </div>
         </div>
     </div>
@@ -567,26 +593,69 @@
     <script>
         const API_BASE = window.location.origin;
 
-        const APP_ICONS  = { pos: '🛒', payroll: '💰', accounting: '📊' };
-        const APP_LABELS = { pos: 'Checkout Charlie', payroll: 'Lorenco Paytime', accounting: 'Lorenco Accounting' };
-        const APP_SUBS   = { pos: 'Point of Sale', payroll: 'Payroll', accounting: 'General Ledger' };
+        // ============================================================
+        // APP REGISTRY — single source of truth for all apps.
+        // New apps added here automatically appear under every client.
+        // billingMetric: 'employees' | null (null = placeholder/future)
+        // seanAddonKey: addon key used to toggle Sean for this app,
+        //               or null if Sean is not applicable.
+        // NOTE: 'payroll' uses addon key 'sean' (existing DB value).
+        //       'accounting' uses 'sean_accounting' (future — safe to
+        //       store in TEXT[] without any backend schema change).
+        //       FOLLOW-UP: migrate to fully separate per-app Sean keys
+        //       once billing and provisioning logic is ready.
+        // ============================================================
+        const APP_REGISTRY = [
+            {
+                key:            'pos',
+                name:           'Checkout Charlie',
+                subtitle:       'Point of Sale',
+                icon:           '&#128722;',
+                seanAddonKey:   null,
+                seanAddonLabel: null,
+                billingMetric:  null,
+                packageSupport: true,
+            },
+            {
+                key:            'payroll',
+                name:           'Lorenco Paytime',
+                subtitle:       'Payroll Management',
+                icon:           '&#128176;',
+                seanAddonKey:   'sean',
+                seanAddonLabel: 'SEAN AI Insights for Paytime',
+                seanAddonSub:   'AI payroll insights &amp; IRP5 learning',
+                billingMetric:  'employees',
+                packageSupport: true,
+            },
+            {
+                key:            'accounting',
+                name:           'Lorenco Accounting',
+                subtitle:       'General Ledger',
+                icon:           '&#128200;',
+                seanAddonKey:   'sean_accounting',
+                seanAddonLabel: 'SEAN AI Insights for Accounting',
+                seanAddonSub:   'AI allocations &amp; transaction insights',
+                billingMetric:  null,
+                packageSupport: true,
+            },
+        ];
 
-        // Packages available — extensible for future tiers
+        // Packages available per app — extensible for future tiers
         const PACKAGES = [
-            { key: 'standard', label: 'Standard Package', icon: '📦', sub: 'Core platform access' }
-        ];
-        // Add-ons available
-        const ADDONS = [
-            { key: 'sean', label: 'SEAN AI Insights', icon: '🧠', sub: 'AI payroll & business insights' }
+            { key: 'standard', label: 'Standard Package', icon: '&#128230;', sub: 'Core platform access' }
         ];
 
-        let allClients   = [];
-        let companyMap   = {};
-        let billingSummary = {};
-        let statusFilter = 'all';
-        let appFilter    = 'all';
+        // ── State ────────────────────────────────────────────────────────────
+        let allClients       = [];
+        let companyMap       = {};
+        let billingSummary   = {};   // { [company_id]: { active_employees: N } }
+        let billingByClient  = {};   // { [eco_client_id]: N } — primary source
+        let statusFilter     = 'all';
+        let appFilter        = 'all';
+        let expandedHolders  = new Set();  // Set<firmId> — expanded account holder groups
+        let expandedApp      = {};         // { [clientId]: appKey } — one per client
 
-        // ── Auth Guard ──────────────────────────────────────────────────────
+        // ── Auth Guard ───────────────────────────────────────────────────────
         const token = localStorage.getItem('eco_token');
         function resolveIsSuperAdmin() {
             if (localStorage.getItem('eco_super_admin') === 'true') return true;
@@ -595,21 +664,25 @@
         }
         const isSuperAdmin = resolveIsSuperAdmin();
 
-        // ── Init ────────────────────────────────────────────────────────────
+        // ── Init ─────────────────────────────────────────────────────────────
         async function init() {
             try {
                 const user = JSON.parse(localStorage.getItem('eco_user'));
                 if (user) {
                     const name = user.fullName || user.username || user.email || 'Admin';
-                    document.getElementById('userAvatar').textContent = name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+                    document.getElementById('userAvatar').textContent =
+                        name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
                     document.getElementById('userName').textContent = name;
                 }
             } catch(e) {}
 
             const [clientsRes, companiesRes, billingRes] = await Promise.all([
-                fetch(`${API_BASE}/api/eco-clients?status=all`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_BASE}/api/companies`,              { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_BASE}/api/eco-clients/payroll-billing-summary`, { headers: { 'Authorization': `Bearer ${token}` } }).catch(() => null)
+                fetch(`${API_BASE}/api/eco-clients?status=all`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API_BASE}/api/companies`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API_BASE}/api/eco-clients/payroll-billing-summary`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }).catch(() => null)
             ]);
 
             if (companiesRes.ok) {
@@ -619,7 +692,8 @@
 
             if (billingRes && billingRes.ok) {
                 const bData = await billingRes.json();
-                billingSummary = bData.summary || {};
+                billingSummary  = bData.summary      || {};
+                billingByClient = bData.by_client_id || {};
             }
 
             if (clientsRes.ok) {
@@ -629,65 +703,82 @@
                 allClients = [];
             }
 
+            // Default: expand all account holder groups
+            const firmIds = new Set(allClients.map(c => c.company_id || 0));
+            firmIds.forEach(id => expandedHolders.add(id));
+
             renderStats();
             applyFilters();
         }
 
-        // ── Stats ───────────────────────────────────────────────────────────
+        // ── Stats ─────────────────────────────────────────────────────────────
         function renderStats() {
-            document.getElementById('statTotal').textContent     = allClients.length;
-            document.getElementById('statActive').textContent    = allClients.filter(c=>c.is_active).length;
-            document.getElementById('statInactive').textContent  = allClients.filter(c=>!c.is_active).length;
-            document.getElementById('statPos').textContent       = allClients.filter(c=>hasApp(c,'pos')).length;
-            document.getElementById('statPayroll').textContent   = allClients.filter(c=>hasApp(c,'payroll')).length;
-            document.getElementById('statAccounting').textContent= allClients.filter(c=>hasApp(c,'accounting')).length;
-            document.getElementById('statSean').textContent      = allClients.filter(c=>hasAddon(c,'sean')).length;
+            document.getElementById('statTotal').textContent      = allClients.length;
+            document.getElementById('statActive').textContent     = allClients.filter(c => c.is_active).length;
+            document.getElementById('statInactive').textContent   = allClients.filter(c => !c.is_active).length;
+            document.getElementById('statPos').textContent        = allClients.filter(c => hasApp(c, 'pos')).length;
+            document.getElementById('statPayroll').textContent    = allClients.filter(c => hasApp(c, 'payroll')).length;
+            document.getElementById('statAccounting').textContent = allClients.filter(c => hasApp(c, 'accounting')).length;
+            document.getElementById('statSean').textContent       = allClients.filter(c => hasAddon(c, 'sean') || hasAddon(c, 'sean_accounting')).length;
         }
 
         function hasApp(c, key)   { return Array.isArray(c.apps)   && c.apps.includes(key); }
         function hasAddon(c, key) { return Array.isArray(c.addons) && c.addons.includes(key); }
 
-        // ── Filters ─────────────────────────────────────────────────────────
+        // ── Filters ──────────────────────────────────────────────────────────
         function setStatusFilter(val, el) {
             statusFilter = val;
-            document.querySelectorAll('#fAll,#fActive,#fInactive').forEach(e => e.classList.remove('active','success','danger'));
+            document.querySelectorAll('#fAll,#fActive,#fInactive')
+                .forEach(e => e.classList.remove('active', 'success', 'danger'));
             el.classList.add('active');
-            if (val==='active')   el.classList.add('success');
-            if (val==='inactive') el.classList.add('danger');
+            if (val === 'active')   el.classList.add('success');
+            if (val === 'inactive') el.classList.add('danger');
             applyFilters();
         }
         function setAppFilter(val, el) {
             appFilter = val;
-            document.querySelectorAll('#faAll,#faPos,#faPayroll,#faAccounting,#faSean').forEach(e=>e.classList.remove('active'));
+            document.querySelectorAll('#faAll,#faPos,#faPayroll,#faAccounting,#faSean')
+                .forEach(e => e.classList.remove('active'));
             el.classList.add('active');
             applyFilters();
         }
         function applyFilters() {
-            const search = (document.getElementById('searchInput').value||'').toLowerCase();
+            const search = (document.getElementById('searchInput').value || '').toLowerCase();
             let filtered = [...allClients];
-            if (statusFilter==='active')   filtered = filtered.filter(c=>c.is_active);
-            if (statusFilter==='inactive') filtered = filtered.filter(c=>!c.is_active);
-            if (appFilter==='sean')        filtered = filtered.filter(c=>hasAddon(c,'sean'));
-            else if (appFilter!=='all')    filtered = filtered.filter(c=>hasApp(c,appFilter));
-            if (search) filtered = filtered.filter(c =>
-                (c.name||'').toLowerCase().includes(search) ||
-                (c.email||'').toLowerCase().includes(search) ||
-                (c.phone||'').includes(search)
-            );
+
+            if (statusFilter === 'active')   filtered = filtered.filter(c => c.is_active);
+            if (statusFilter === 'inactive') filtered = filtered.filter(c => !c.is_active);
+
+            if (appFilter === 'sean') {
+                filtered = filtered.filter(c => hasAddon(c, 'sean') || hasAddon(c, 'sean_accounting'));
+            } else if (appFilter !== 'all') {
+                filtered = filtered.filter(c => hasApp(c, appFilter));
+            }
+
+            if (search) {
+                filtered = filtered.filter(c =>
+                    (c.name  || '').toLowerCase().includes(search) ||
+                    (c.email || '').toLowerCase().includes(search) ||
+                    (c.phone || '').includes(search)
+                );
+            }
+
             document.getElementById('toolbarCount').textContent =
-                `${filtered.length} of ${allClients.length} client${allClients.length!==1?'s':''}`;
-            renderGrid(filtered);
+                `${filtered.length} of ${allClients.length} client${allClients.length !== 1 ? 's' : ''}`;
+
+            renderPanel(filtered);
         }
 
-        // ── Render Grid — grouped by managing firm ───────────────────────────
-        function renderGrid(clients) {
-            const grid = document.getElementById('clientsGrid');
+        // ── Render Account Holder Groups ──────────────────────────────────────
+        function renderPanel(clients) {
+            const panel = document.getElementById('controlPanel');
+
             if (clients.length === 0) {
-                grid.innerHTML = `<div class="empty-state"><div class="icon">👤</div><p>No clients match the current filters.</p></div>`;
+                panel.innerHTML = `<div class="empty-state"><div class="icon">&#128100;</div><p>No clients match the current filters.</p></div>`;
                 return;
             }
 
-            // Group by company_id (managing accounting firm)
+            // Group by managing firm (company_id)
             const groups = {};
             clients.forEach(c => {
                 const key = c.company_id || 0;
@@ -697,299 +788,491 @@
 
             let html = '';
             Object.keys(groups).forEach(firmId => {
-                const firm = companyMap[firmId];
+                const firm     = companyMap[firmId];
                 const firmName = firm ? (firm.trading_name || firm.company_name) : 'Unassigned';
-                const count = groups[firmId].length;
-                html += `
-                    <div class="firm-group" style="grid-column:1/-1;">
-                        <div class="firm-group-header">
-                            <span class="firm-group-icon">🏛️</span>
-                            <span class="firm-group-name">${esc(firmName)}</span>
-                            <span class="firm-group-count">${count} client${count!==1?'s':''}</span>
-                        </div>
-                        <div class="clients-grid" style="margin:0;">
-                            ${groups[firmId].map(c=>buildCard(c)).join('')}
-                        </div>
-                    </div>`;
+                const firmType = firm ? (firm.account_holder_type || detectFirmType(firmName)) : 'platform';
+                html += buildHolderGroup(parseInt(firmId), firmName, firmType, groups[firmId]);
             });
-            grid.innerHTML = html;
+
+            panel.innerHTML = html;
         }
 
-        // ── Build Card ───────────────────────────────────────────────────────
-        function buildCard(c) {
-            const isActive = !!c.is_active;
-            const isBusiness = c.client_type === 'business';
-            const dateStr = c.created_at ? formatDate(parseStandardDate(c.created_at), 'ZA') : '—';
+        // Simple heuristic for firm type — can be replaced by a proper DB column later
+        function detectFirmType(name) {
+            const n = (name || '').toLowerCase();
+            if (n.includes('accounting') || n.includes('practice') || n.includes('ca ') || n.includes('cpa') || n.includes('legacy'))
+                return 'accounting_practice';
+            return 'business_owner';
+        }
+        function firmTypeLabel(type) {
+            if (type === 'accounting_practice') return 'Accounting Practice';
+            if (type === 'business_owner')      return 'Business Owner';
+            return 'Platform';
+        }
 
-            // ── Package section ──
-            const pkgName = c.package_name || 'standard';
-            const pkgActive = isActive;
-            const pkgHtml = PACKAGES.map(pkg => `
-                <div class="pkg-row">
-                    <div class="pkg-info">
-                        <span class="pkg-icon">${pkg.icon}</span>
-                        <div>
-                            <div class="pkg-name">${pkg.label}</div>
-                            <div class="pkg-sub">${pkg.sub}</div>
-                        </div>
-                    </div>
-                    <span class="pkg-badge ${pkgActive?'':'inactive'}">${pkgActive?'Active':'Inactive'}</span>
-                </div>`).join('');
+        // ── Build Account Holder Group ────────────────────────────────────────
+        function buildHolderGroup(firmId, firmName, firmType, clients) {
+            const isExpanded = expandedHolders.has(firmId);
+            const count      = clients.length;
+            const clientsHtml = clients.map(c => buildClientCard(c)).join('');
 
-            // ── Add-ons section ──
-            const addonHtml = ADDONS.map(addon => {
-                const on = hasAddon(c, addon.key);
-                return `
-                <div class="addon-row">
-                    <div class="addon-info">
-                        <span style="font-size:1.1rem;">${addon.icon}</span>
-                        <div>
-                            <div class="addon-name">${addon.label}</div>
-                            <div class="addon-sub">${addon.sub}</div>
-                        </div>
+            return `
+            <div class="holder-group" id="holder-${firmId}">
+                <div class="holder-header ${isExpanded ? 'expanded' : ''}"
+                     onclick="toggleHolder(${firmId})">
+                    <span class="holder-icon">&#127963;&#65039;</span>
+                    <span class="holder-name">${esc(firmName)}</span>
+                    <span class="holder-type-badge">${esc(firmTypeLabel(firmType))}</span>
+                    <span class="holder-count">${count} client${count !== 1 ? 's' : ''}</span>
+                    <span class="holder-arrow ${isExpanded ? 'open' : ''}">&#9660;</span>
+                </div>
+                <div class="holder-clients ${isExpanded ? '' : 'hidden'}" id="holder-clients-${firmId}">
+                    ${clientsHtml}
+                </div>
+            </div>`;
+        }
+
+        // ── Toggle Account Holder Expand/Collapse ─────────────────────────────
+        function toggleHolder(firmId) {
+            const isExpanded = expandedHolders.has(firmId);
+            const clientsEl  = document.getElementById(`holder-clients-${firmId}`);
+            const headerEl   = document.querySelector(`#holder-${firmId} .holder-header`);
+            const arrowEl    = document.querySelector(`#holder-${firmId} .holder-arrow`);
+
+            if (isExpanded) {
+                expandedHolders.delete(firmId);
+                clientsEl.classList.add('hidden');
+                headerEl.classList.remove('expanded');
+                arrowEl.classList.remove('open');
+            } else {
+                expandedHolders.add(firmId);
+                clientsEl.classList.remove('hidden');
+                headerEl.classList.add('expanded');
+                arrowEl.classList.add('open');
+            }
+        }
+
+        // ── Build Client Card ─────────────────────────────────────────────────
+        function buildClientCard(c) {
+            const isActive  = !!c.is_active;
+            const isBiz     = c.client_type === 'business';
+            const dateStr   = c.created_at
+                ? formatDate(parseStandardDate(c.created_at), 'ZA') : '—';
+            const metaParts = [c.email, c.phone].filter(Boolean);
+
+            const appListHtml = APP_REGISTRY.map(appDef => buildAppRow(c, appDef)).join('');
+
+            return `
+            <div class="client-card ${isActive ? '' : 'client-inactive'}" id="card-${c.id}">
+                <div class="client-header">
+                    <div class="client-avatar">${isBiz ? '&#127970;' : '&#128100;'}</div>
+                    <div class="client-info">
+                        <div class="client-name">${esc(c.name)}</div>
+                        ${metaParts.length ? `<div class="client-meta">${esc(metaParts.join(' · '))}</div>` : ''}
                     </div>
-                    <label class="app-toggle" title="${on?'Deactivate':'Activate'} ${addon.label}">
-                        <input type="checkbox" ${on?'checked':''} onchange="toggleAddon(${c.id},'${addon.key}',this.checked)">
+                    <span class="client-id-badge">#${c.id}</span>
+                    <span class="client-status-dot ${isActive ? 'dot-active' : 'dot-inactive'}"></span>
+                </div>
+
+                <div class="app-list" id="applist-${c.id}">
+                    ${appListHtml}
+                </div>
+
+                <div class="client-footer">
+                    <span class="client-footer-date">&#128197; ${dateStr}</span>
+                    <button class="btn-toggle-client ${isActive ? 'deactivate' : 'activate'}"
+                        id="btn-${c.id}" onclick="toggleClient(${c.id}, ${isActive})">
+                        ${isActive ? '&#9940; Deactivate' : '&#10003; Activate'}
+                    </button>
+                </div>
+            </div>`;
+        }
+
+        // ── Build App Row ─────────────────────────────────────────────────────
+        // Every app from APP_REGISTRY appears under every client.
+        // Active apps are expandable (one at a time per client).
+        // Inactive apps are shown but not expandable.
+        function buildAppRow(c, appDef) {
+            const isActive   = hasApp(c, appDef.key);
+            const isExpanded = expandedApp[c.id] === appDef.key;
+
+            const statusChip = isActive
+                ? `<span class="app-status-chip chip-active">Active</span>`
+                : `<span class="app-status-chip chip-inactive">Inactive</span>`;
+
+            const toggleHtml = `
+                <div class="app-toggle-wrap">
+                    <label class="app-toggle" title="${isActive ? 'Deactivate' : 'Activate'} ${appDef.name}" onclick="event.stopPropagation()">
+                        <input type="checkbox" ${isActive ? 'checked' : ''}
+                            onchange="toggleApp(${c.id}, '${appDef.key}', this.checked)">
                         <span class="slider"></span>
                     </label>
                 </div>`;
-            }).join('');
 
-            // ── Apps section ──
-            const appsHtml = Object.entries(APP_LABELS).map(([key, label]) => {
-                const on = hasApp(c, key);
-                // Paytime: show billing sub-section
-                if (key === 'payroll' && on) {
-                    return `
-                    <div class="app-row">
-                        <div class="app-info">
-                            <span class="app-icon">${APP_ICONS[key]}</span>
-                            <div>
-                                <div class="app-name">${label}</div>
-                                <div class="app-sub">${APP_SUBS[key]}</div>
-                            </div>
-                        </div>
-                        <label class="app-toggle">
-                            <input type="checkbox" checked onchange="toggleApp(${c.id},'${key}',this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    ${buildBillingSection(c)}`;
-                }
-                return `
-                    <div class="app-row">
-                        <div class="app-info">
-                            <span class="app-icon">${APP_ICONS[key]}</span>
-                            <div>
-                                <div class="app-name">${label}</div>
-                                <div class="app-sub">${APP_SUBS[key]}</div>
-                            </div>
-                        </div>
-                        <label class="app-toggle">
-                            <input type="checkbox" ${on?'checked':''} onchange="toggleApp(${c.id},'${key}',this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                    </div>`;
-            }).join('');
+            const expandArrow = isActive
+                ? `<span class="app-expand-arrow ${isExpanded ? 'open' : ''}">&#9660;</span>`
+                : '';
+
+            const headerClick = isActive
+                ? `onclick="toggleAppExpand(${c.id}, '${appDef.key}')"` : '';
+
+            const expandedContent = isActive && isExpanded
+                ? `<div class="app-expanded visible" id="appexp-${c.id}-${appDef.key}">${buildAppExpandedContent(c, appDef)}</div>`
+                : `<div class="app-expanded" id="appexp-${c.id}-${appDef.key}">${isActive ? buildAppExpandedContent(c, appDef) : ''}</div>`;
 
             return `
-                <div class="client-card ${isActive?'':'inactive'}" id="card-${c.id}">
-                    <div class="card-top">
-                        <div class="card-identity">
-                            <div class="card-avatar ${isBusiness?'business':''}">${isBusiness?'🏢':'👤'}</div>
-                            <div>
-                                <div class="card-name">${esc(c.name)}</div>
-                                <div class="card-managing">Client ID: <span>${c.id}</span></div>
-                            </div>
-                        </div>
-                        <span class="status-badge ${isActive?'active':'inactive'}">${isActive?'● Active':'○ Inactive'}</span>
+            <div class="app-row ${isActive ? 'app-expandable' : ''}" id="approw-${c.id}-${appDef.key}">
+                <div class="app-row-header" ${headerClick}>
+                    <span class="app-row-icon">${appDef.icon}</span>
+                    <div class="app-row-label">
+                        <div class="app-row-name">${appDef.name}</div>
+                        <div class="app-row-sub">${appDef.subtitle}</div>
                     </div>
-
-                    ${c.email?`<div class="card-meta"><span class="icon">📧</span>${esc(c.email)}</div>`:''}
-                    ${c.phone?`<div class="card-meta"><span class="icon">📱</span>${esc(c.phone)}</div>`:''}
-
-                    <div class="card-section-label">Package</div>
-                    ${pkgHtml}
-
-                    <div class="card-section-label">Add-ons</div>
-                    ${addonHtml}
-
-                    <div class="card-section-label">Apps</div>
-                    <div>${appsHtml}</div>
-
-                    <div class="card-footer">
-                        <span class="card-date">📅 Added ${dateStr}</span>
-                        <button class="btn-toggle ${isActive?'deactivate':'activate'}"
-                            id="btn-${c.id}" onclick="toggleClient(${c.id},${isActive})">
-                            ${isActive?'⛔ Deactivate':'✓ Activate'}
-                        </button>
-                    </div>
-                </div>`;
+                    ${statusChip}
+                    ${toggleHtml}
+                    ${expandArrow}
+                </div>
+                ${expandedContent}
+            </div>`;
         }
 
-        // ── Paytime Billing Section ──────────────────────────────────────────
-        function buildBillingSection(c) {
-            if (!c.client_company_id) return '';
+        // ── Toggle App Expand (one per client) ────────────────────────────────
+        function toggleAppExpand(clientId, appKey) {
+            const currently = expandedApp[clientId];
 
-            const bs = billingSummary[c.client_company_id] || {};
-            const currentEmp = bs.active_employees || 0;
-            const lastBilled = c.last_billed_employees || 0;
-            const lastPeriod = c.last_billed_period || '—';
-            const diff = currentEmp - lastBilled;
-            const diffClass = diff > 0 ? 'up' : diff < 0 ? 'down' : 'zero';
-            const diffPrefix = diff > 0 ? '+' : '';
-            const lastDateStr = c.last_billed_date ? formatDate(parseStandardDate(c.last_billed_date), 'ZA') : 'Never';
+            // Collapse all apps for this client
+            APP_REGISTRY.forEach(appDef => {
+                const el = document.getElementById(`appexp-${clientId}-${appDef.key}`);
+                const arrow = document.querySelector(`#approw-${clientId}-${appDef.key} .app-expand-arrow`);
+                if (el)    el.classList.remove('visible');
+                if (arrow) arrow.classList.remove('open');
+            });
+
+            if (currently === appKey) {
+                // Was open — now collapsed
+                delete expandedApp[clientId];
+            } else {
+                // Open this app
+                expandedApp[clientId] = appKey;
+                const el = document.getElementById(`appexp-${clientId}-${appKey}`);
+                const arrow = document.querySelector(`#approw-${clientId}-${appKey} .app-expand-arrow`);
+                if (el)    el.classList.add('visible');
+                if (arrow) arrow.classList.add('open');
+            }
+        }
+
+        // ── Build App Expanded Content ────────────────────────────────────────
+        function buildAppExpandedContent(c, appDef) {
+            const pkgName = c.package_name || 'standard';
+            const pkg     = PACKAGES.find(p => p.key === pkgName) || PACKAGES[0];
+
+            let html = '';
+
+            // 1. Package
+            html += `
+            <div class="aec-section">
+                <div class="aec-label">Package</div>
+                <div class="pkg-chip">${pkg.icon}&nbsp;${esc(pkg.label)}</div>
+                <span class="pkg-chip-sub">${esc(pkg.sub)}</span>
+            </div>`;
+
+            // 2. Add-ons (app-specific Sean)
+            if (appDef.seanAddonKey) {
+                const seanOn = hasAddon(c, appDef.seanAddonKey);
+                html += `
+                <div class="aec-section">
+                    <div class="aec-label">Add-ons</div>
+                    <div class="addon-row">
+                        <div class="addon-info">
+                            <span style="font-size:1.1rem;">&#129302;</span>
+                            <div>
+                                <div class="addon-name">${appDef.seanAddonLabel}</div>
+                                <div class="addon-sub">${appDef.seanAddonSub || 'AI insights add-on'}</div>
+                            </div>
+                        </div>
+                        <label class="app-toggle" title="${seanOn ? 'Deactivate' : 'Activate'} SEAN">
+                            <input type="checkbox" ${seanOn ? 'checked' : ''}
+                                onchange="toggleAddon(${c.id}, '${appDef.seanAddonKey}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>`;
+            }
+
+            // 3. Billing block (app-specific)
+            if (appDef.billingMetric === 'employees') {
+                html += `
+                <div class="aec-section">
+                    <div class="aec-label">Billing</div>
+                    ${buildPaytimeBillingBlock(c)}
+                </div>`;
+            } else if (appDef.billingMetric === null && appDef.key !== 'pos') {
+                // Placeholder for future billing metrics
+                html += `
+                <div class="aec-section">
+                    <div class="aec-label">Billing</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 0;">
+                        Billing metric for ${esc(appDef.name)} — coming soon.
+                    </div>
+                </div>`;
+            }
+
+            return html;
+        }
+
+        // ── Paytime Billing Block ─────────────────────────────────────────────
+        // Employee count uses eco_client_id-based lookup first (most accurate),
+        // then falls back to client_company_id-based lookup.
+        //
+        // This fixes the "Anine shows 0" bug where the company_id stored on the
+        // employee record did not match the eco_client.client_company_id because
+        // the employee was created before or outside of the eco_client sync flow.
+        //
+        // Billing formulas:
+        //   current_active  = all active employees for this client in Paytime
+        //   last_billed     = employee count from last billing snapshot
+        //   difference      = current_active - last_billed
+        //   if difference > 0: new employees to bill this cycle
+        //   if difference < 0: employees left (credit, show as-is — no auto-clamp)
+        //   if no last bill:   first-billing state (clearly shown)
+        function buildPaytimeBillingBlock(c) {
+            if (!c.client_company_id && !billingByClient[c.id]) {
+                return `<div style="font-size:0.74rem;color:var(--text-muted);">No Paytime company linked yet.</div>`;
+            }
+
+            // Primary: by eco_client_id. Fallback: by client_company_id.
+            const currentEmp =
+                billingByClient[c.id] !== undefined
+                    ? billingByClient[c.id]
+                    : ((billingSummary[c.client_company_id] || {}).active_employees || 0);
+
+            const isFirstBill = !c.last_billed_period;
+            const lastBilled  = c.last_billed_employees || 0;
+            const lastPeriod  = c.last_billed_period    || '—';
+            const diff        = currentEmp - lastBilled;
+            const diffClass   = diff > 0 ? 'bv-up' : diff < 0 ? 'bv-down' : 'bv-zero';
+            const diffPrefix  = diff > 0 ? '+' : '';
+            const lastDateStr = c.last_billed_date
+                ? formatDate(parseStandardDate(c.last_billed_date), 'ZA') : 'Never';
+
+            const firstBillNote = isFirstBill
+                ? `<div class="billing-first">&#9432; First billing cycle — no previous bill recorded.</div>`
+                : '';
 
             return `
-            <div class="billing-section" id="billing-${c.id}">
-                <div class="billing-section-title">💰 Paytime Billing</div>
+            <div class="billing-block" id="billing-${c.id}">
+                <div class="billing-title">&#128176; Paytime Billing</div>
+                ${firstBillNote}
                 <div class="billing-grid">
                     <div class="billing-cell">
                         <div class="b-val">${currentEmp}</div>
-                        <div class="b-lbl">Active employees<br>this month</div>
+                        <div class="b-lbl">Active employees<br>on system</div>
                     </div>
                     <div class="billing-cell">
-                        <div class="b-val">${lastBilled}</div>
+                        <div class="b-val">${isFirstBill ? '—' : lastBilled}</div>
                         <div class="b-lbl">Last billed<br>${lastPeriod}</div>
                     </div>
                     <div class="billing-cell">
-                        <div class="b-val ${diffClass}">${diffPrefix}${diff}</div>
+                        <div class="b-val ${isFirstBill ? 'bv-zero' : diffClass}">${isFirstBill ? '—' : (diffPrefix + diff)}</div>
                         <div class="b-lbl">Difference<br>vs last bill</div>
                     </div>
                 </div>
-                <div style="font-size:0.63rem; color:var(--text-muted); margin-bottom:8px;">
-                    Last marked billed: ${lastDateStr}
-                </div>
-                <button class="btn-mark-billed" onclick="markAsBilled(${c.id},${currentEmp})">
-                    ✓ Mark ${currentEmp} employee${currentEmp!==1?'s':''} as Billed This Month
+                <div class="billing-note">Last marked billed: ${lastDateStr}</div>
+                <button class="btn-mark-billed" onclick="markAsBilled(${c.id}, ${currentEmp})">
+                    &#10003; Mark ${currentEmp} employee${currentEmp !== 1 ? 's' : ''} as Billed This Month
                 </button>
             </div>`;
         }
 
-        // ── Toggle Activate / Deactivate ─────────────────────────────────────
+        // ── Toggle Activate / Deactivate Client ───────────────────────────────
         async function toggleClient(clientId, currentlyActive) {
             const btn = document.getElementById(`btn-${clientId}`);
             if (!btn) return;
-            btn.disabled = true; btn.textContent = currentlyActive ? 'Deactivating...' : 'Activating...';
+            btn.disabled = true;
+            btn.textContent = currentlyActive ? 'Deactivating...' : 'Activating...';
             try {
                 const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ is_active: !currentlyActive })
                 });
                 if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-                const idx = allClients.findIndex(c=>c.id===clientId);
-                if (idx!==-1) allClients[idx].is_active = !currentlyActive;
-                showToast((!currentlyActive ? '✅ Client activated' : '🚫 Client deactivated'));
-                renderStats(); applyFilters();
+                const idx = allClients.findIndex(c => c.id === clientId);
+                if (idx !== -1) allClients[idx].is_active = !currentlyActive;
+                showToast((!currentlyActive ? '&#9989; Client activated' : '&#128683; Client deactivated'));
+                renderStats();
+                applyFilters();
             } catch(err) {
-                showToast('❌ '+err.message, true);
-                btn.disabled=false; btn.textContent=currentlyActive?'⛔ Deactivate':'✓ Activate';
+                showToast('&#10060; ' + err.message, true);
+                btn.disabled = false;
+                btn.textContent = currentlyActive ? '&#9940; Deactivate' : '&#10003; Activate';
             }
         }
 
-        // ── Toggle App ───────────────────────────────────────────────────────
+        // ── Toggle App ────────────────────────────────────────────────────────
         async function toggleApp(clientId, appKey, enable) {
-            const client = allClients.find(c=>c.id===clientId);
+            const client = allClients.find(c => c.id === clientId);
             if (!client) return;
-            const apps = new Set(client.apps||[]);
+            const apps = new Set(client.apps || []);
             enable ? apps.add(appKey) : apps.delete(appKey);
             try {
                 const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
-                    method:'PUT',
-                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ apps: [...apps] })
                 });
-                if (!res.ok) throw new Error((await res.json()).error||'Failed');
+                if (!res.ok) throw new Error((await res.json()).error || 'Failed');
                 client.apps = [...apps];
-                showToast(`${enable?'✅':'🚫'} ${APP_LABELS[appKey]||appKey} ${enable?'activated':'deactivated'} for ${client.name}`);
-                renderStats(); applyFilters();
+                const appDef = APP_REGISTRY.find(a => a.key === appKey);
+                showToast(`${enable ? '&#9989;' : '&#128683;'} ${appDef ? appDef.name : appKey} ${enable ? 'activated' : 'deactivated'} for ${client.name}`);
+                if (!enable && expandedApp[clientId] === appKey) delete expandedApp[clientId];
+                renderStats();
+                applyFilters();
             } catch(err) {
-                showToast('❌ '+err.message, true); applyFilters();
+                showToast('&#10060; ' + err.message, true);
+                applyFilters();
             }
         }
 
-        // ── Toggle Addon ─────────────────────────────────────────────────────
+        // ── Toggle Add-on ─────────────────────────────────────────────────────
         async function toggleAddon(clientId, addonKey, enable) {
-            const client = allClients.find(c=>c.id===clientId);
+            const client = allClients.find(c => c.id === clientId);
             if (!client) return;
-            const addons = new Set(client.addons||[]);
+            const addons = new Set(client.addons || []);
             enable ? addons.add(addonKey) : addons.delete(addonKey);
             try {
                 const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
-                    method:'PUT',
-                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ addons: [...addons] })
                 });
-                if (!res.ok) throw new Error((await res.json()).error||'Failed');
+                if (!res.ok) throw new Error((await res.json()).error || 'Failed');
                 client.addons = [...addons];
-                const addonLabel = ADDONS.find(a=>a.key===addonKey)?.label || addonKey;
-                showToast(`${enable?'✅':'🚫'} ${addonLabel} ${enable?'activated':'deactivated'} for ${client.name}`);
-                renderStats(); applyFilters();
+                showToast(`${enable ? '&#9989;' : '&#128683;'} SEAN ${enable ? 'activated' : 'deactivated'} for ${client.name}`);
+                renderStats();
+                applyFilters();
             } catch(err) {
-                showToast('❌ '+err.message, true); applyFilters();
+                showToast('&#10060; ' + err.message, true);
+                applyFilters();
             }
         }
 
-        // ── Mark as Billed ───────────────────────────────────────────────────
+        // ── Mark as Billed ────────────────────────────────────────────────────
         async function markAsBilled(clientId, empCount) {
             const btn = document.querySelector(`#billing-${clientId} .btn-mark-billed`);
-            if (btn) { btn.disabled=true; btn.textContent='Saving...'; }
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
 
-            const now = new Date();
-            const period = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+            const now    = new Date();
+            const period = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
 
             try {
                 const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
-                    method:'PUT',
-                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({
                         last_billed_employees: empCount,
-                        last_billed_period: period,
-                        last_billed_date: now.toISOString()
+                        last_billed_period:    period,
+                        last_billed_date:      now.toISOString()
                     })
                 });
-                if (!res.ok) throw new Error((await res.json()).error||'Failed');
-                const idx = allClients.findIndex(c=>c.id===clientId);
-                if (idx!==-1) {
+                if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+
+                const idx = allClients.findIndex(c => c.id === clientId);
+                if (idx !== -1) {
                     allClients[idx].last_billed_employees = empCount;
                     allClients[idx].last_billed_period    = period;
                     allClients[idx].last_billed_date      = now.toISOString();
                 }
-                showToast(`✅ Billed ${empCount} employee${empCount!==1?'s':''} for ${period}`);
+                showToast(`&#9989; Billed ${empCount} employee${empCount !== 1 ? 's' : ''} for ${period}`);
                 applyFilters();
             } catch(err) {
-                showToast('❌ '+err.message, true);
-                if (btn) { btn.disabled=false; btn.textContent=`✓ Mark ${empCount} employee${empCount!==1?'s':''} as Billed This Month`; }
+                showToast('&#10060; ' + err.message, true);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = `&#10003; Mark ${empCount} employee${empCount !== 1 ? 's' : ''} as Billed This Month`;
+                }
             }
         }
 
-        // ── Helpers ──────────────────────────────────────────────────────────
+        // ── Add Client Modal ──────────────────────────────────────────────────
+        function openAddModal() {
+            document.getElementById('addClientModal').classList.add('open');
+        }
+        function closeAddModal() {
+            document.getElementById('addClientModal').classList.remove('open');
+            ['mName','mEmail','mPhone','mId','mAddress','mNotes']
+                .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+            ['mPos','mPayroll','mAccounting']
+                .forEach(id => { const el = document.getElementById(id); if(el) el.checked = false; });
+        }
+        async function submitAddClient() {
+            const name = (document.getElementById('mName').value || '').trim();
+            if (!name) { showToast('&#10060; Client name is required', true); return; }
+
+            const btn = document.getElementById('btnAddSubmit');
+            btn.disabled = true; btn.textContent = 'Creating...';
+
+            const apps = ['pos','payroll','accounting']
+                .filter(key => document.getElementById('m' + key.charAt(0).toUpperCase() + key.slice(1))?.checked);
+
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        name,
+                        email:       document.getElementById('mEmail').value || null,
+                        phone:       document.getElementById('mPhone').value || null,
+                        id_number:   document.getElementById('mId').value || null,
+                        address:     document.getElementById('mAddress').value || null,
+                        client_type: document.getElementById('mType').value || 'business',
+                        notes:       document.getElementById('mNotes').value || null,
+                        apps
+                    })
+                });
+                if (!res.ok) throw new Error((await res.json()).error || 'Failed to create client');
+                const created = await res.json();
+                allClients.push(created);
+                // Auto-expand the firm group for this new client
+                if (created.company_id) expandedHolders.add(created.company_id);
+                showToast(`&#9989; Client "${name}" created`);
+                closeAddModal();
+                renderStats();
+                applyFilters();
+            } catch(err) {
+                showToast('&#10060; ' + err.message, true);
+            } finally {
+                btn.disabled = false; btn.textContent = 'Create Client';
+            }
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────────
         function esc(str) {
             if (!str) return '';
             const d = document.createElement('div');
-            d.textContent = str; return d.innerHTML;
+            d.textContent = str;
+            return d.innerHTML;
         }
         function showToast(msg, isError) {
             const t = document.getElementById('toast');
-            t.textContent = msg;
-            t.className = 'toast show'+(isError?' error':'');
-            setTimeout(()=>{ t.className='toast'; }, 3500);
+            t.innerHTML = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => { t.className = 'toast'; }, 3500);
         }
         function logout() {
             ['eco_token','eco_user','eco_companies','eco_super_admin','token','user','company','sso_source']
-                .forEach(k=>localStorage.removeItem(k));
-            window.location.href='/';
+                .forEach(k => localStorage.removeItem(k));
+            window.location.href = '/';
         }
 
-        // ── Boot ─────────────────────────────────────────────────────────────
+        // ── Boot ──────────────────────────────────────────────────────────────
         if (!token || !isSuperAdmin) {
             window.location.href = '/dashboard';
         } else {
             init().catch(err => {
-                document.getElementById('clientsGrid').innerHTML = `
+                document.getElementById('controlPanel').innerHTML = `
                     <div class="empty-state">
-                        <div class="icon">⚠️</div>
+                        <div class="icon">&#9888;&#65039;</div>
                         <p>Failed to load: ${err.message}</p>
                     </div>`;
             });

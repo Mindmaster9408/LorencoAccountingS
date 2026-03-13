@@ -350,25 +350,47 @@ router.get('/', async (req, res) => {
 
 /**
  * GET /api/eco-clients/payroll-billing-summary
- * Returns per-company active employee count + current-month finalized payslip count.
- * Used by the super-admin billing panel.
- * Returns { [client_company_id]: { active_employees, current_period } }
+ * Returns per-company active employee count for the super-admin billing panel.
+ *
+ * Returns two indexes:
+ *   summary       — { [company_id]:    { active_employees: N } }  (legacy, by client company)
+ *   by_client_id  — { [eco_client_id]: N }                        (preferred — avoids company_id mismatch)
+ *
+ * The by_client_id index is the authoritative source for billing counts because it matches
+ * employees directly to their eco_client record, bypassing any company_id mapping issues
+ * that can occur for clients created before migration 005 (which added client_company_id).
+ *
+ * Billing rule: count ALL active employees for the client, regardless of payrun state.
  */
 router.get('/payroll-billing-summary', async (req, res) => {
   try {
-    // Active employees per company
+    // Fetch all employees — both indexes in one query
     const { data: emps, error: empErr } = await supabase
       .from('employees')
-      .select('company_id, is_active');
+      .select('company_id, eco_client_id, is_active');
     if (empErr) throw empErr;
 
+    // Index 1: by company_id (legacy, used as fallback)
     const summary = {};
+    // Index 2: by eco_client_id (preferred — immune to company_id mismatch)
+    const byClientId = {};
+
     (emps || []).forEach(e => {
-      if (!summary[e.company_id]) summary[e.company_id] = { active_employees: 0 };
-      if (e.is_active) summary[e.company_id].active_employees++;
+      if (!e.is_active) return;
+
+      // company_id index
+      if (e.company_id) {
+        if (!summary[e.company_id]) summary[e.company_id] = { active_employees: 0 };
+        summary[e.company_id].active_employees++;
+      }
+
+      // eco_client_id index (only populated if eco_client_id column exists and is set)
+      if (e.eco_client_id) {
+        byClientId[e.eco_client_id] = (byClientId[e.eco_client_id] || 0) + 1;
+      }
     });
 
-    res.json({ summary });
+    res.json({ summary, by_client_id: byClientId });
   } catch (err) {
     console.error('payroll-billing-summary error:', err.message);
     res.status(500).json({ error: 'Server error' });

@@ -2535,7 +2535,7 @@
                             </div>
                             ${!isSelf && (isSuperAdmin || ((selectedCompany && selectedCompany.role) === 'business_owner')) ? `
                             <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;">
-                                <button type="button" onclick="changeUserRole(${u.id}, '${escHtml(u.full_name || u.username)}')" style="padding:5px 10px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Role</button>
+                                <button type="button" onclick="changeUserRole(${u.id}, '${escHtml(u.full_name || u.username)}', '${u.role}')" style="padding:5px 10px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Role</button>
                                 <button type="button" onclick="changeUserApps(${u.id}, '${escHtml(u.full_name || u.username)}', ${JSON.stringify(u.apps || [])})" style="padding:5px 10px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);color:#6ee7b7;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Apps</button>
                                 <button type="button" onclick="changeUserClients(${u.id}, '${escHtml(u.full_name || u.username)}', ${JSON.stringify(u.clients)})" style="padding:5px 10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);color:#fbbf24;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Clients</button>
                                 <button type="button" onclick="removePracticeUser(${u.id}, '${escHtml(u.full_name || u.username)}')" style="padding:5px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fca5a5;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Remove</button>
@@ -2549,6 +2549,25 @@
             }
         }
 
+        // ── Modal Shared Constants (Extract duplicate styles) ──
+        const MODAL_STYLES = {
+            overlay: 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;',
+            container: 'background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:28px;max-width:480px;width:90%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.6);',
+            primaryBtn: 'flex:1;padding:10px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:0.85rem;',
+            cancelBtn: 'padding:10px 20px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:rgba(255,255,255,0.7);cursor:pointer;font-size:0.85rem;'
+        };
+
+        // ── Role Definitions (Move to module level to avoid repeated allocation) ──
+        const ROLE_DEFINITIONS = [
+            { key: 'business_owner', name: 'Business Owner', desc: 'Full control over practice and all clients' },
+            { key: 'accountant', name: 'Accountant', desc: 'Manage assigned clients and their financial data' },
+            { key: 'store_manager', name: 'Store Manager', desc: 'Manage store operations and staff' },
+            { key: 'payroll_admin', name: 'Payroll Administrator', desc: 'Process payrolls and manage employee records' },
+            { key: 'assistant_manager', name: 'Assistant Manager', desc: 'Support management with limited admin access' },
+            { key: 'cashier', name: 'Cashier', desc: 'Handle sales transactions and customer service' },
+            { key: 'trainee', name: 'Trainee', desc: 'Learning role with supervised access' }
+        ];
+
         // ── Change user app access ──
         async function changeUserApps(userId, name, currentApps) {
             // Remove any existing modal
@@ -2560,9 +2579,9 @@
 
             const modal = document.createElement('div');
             modal.id = 'appAccessModal';
-            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;';
+            modal.style.cssText = MODAL_STYLES.overlay;
             modal.innerHTML = `
-                <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:28px;max-width:480px;width:90%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+                <div style="${MODAL_STYLES.container}">
                     <h3 style="color:#fff;margin:0 0 6px;font-size:1.05rem;font-weight:700;">App Access &mdash; ${escHtml(name)}</h3>
                     <p style="color:rgba(255,255,255,0.45);font-size:0.8rem;margin:0 0 18px;">Restrict which apps this user can access. Leave unrestricted to allow access to all apps.</p>
                     <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:14px;">
@@ -2584,8 +2603,8 @@
                         </label>`).join('')}
                     </div>
                     <div style="display:flex;gap:10px;margin-top:20px;">
-                        <button onclick="saveUserApps(${userId}, '${escHtml(name)}')" style="flex:1;padding:10px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:0.85rem;">Save Access</button>
-                        <button onclick="document.getElementById('appAccessModal').remove()" style="padding:10px 20px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:rgba(255,255,255,0.7);cursor:pointer;font-size:0.85rem;">Cancel</button>
+                        <button onclick="saveUserApps(${userId}, '${escHtml(name)}')" style="${MODAL_STYLES.primaryBtn}">Save Access</button>
+                        <button onclick="document.getElementById('appAccessModal').remove()" style="${MODAL_STYLES.cancelBtn}">Cancel</button>
                     </div>
                 </div>
             `;
@@ -2654,9 +2673,9 @@
 
             const modal = document.createElement('div');
             modal.id = 'clientAccessModal';
-            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;';
+            modal.style.cssText = MODAL_STYLES.overlay;
             modal.innerHTML = `
-                <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:28px;max-width:480px;width:90%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+                <div style="${MODAL_STYLES.container}">
                     <h3 style="color:#fff;margin:0 0 6px;font-size:1.05rem;font-weight:700;">Client Access &mdash; ${escHtml(name)}</h3>
                     <p style="color:rgba(255,255,255,0.45);font-size:0.8rem;margin:0 0 18px;">Restrict which clients this user can see. Leave all unchecked to allow access to all clients.</p>
                     <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:14px;">
@@ -2678,8 +2697,8 @@
                         </label>`).join('')}
                     </div>
                     <div style="display:flex;gap:10px;margin-top:20px;">
-                        <button onclick="saveUserClients(${userId}, '${escHtml(name)}')" style="flex:1;padding:10px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:0.85rem;">Save Access</button>
-                        <button onclick="document.getElementById('clientAccessModal').remove()" style="padding:10px 20px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:rgba(255,255,255,0.7);cursor:pointer;font-size:0.85rem;">Cancel</button>
+                        <button onclick="saveUserClients(${userId}, '${escHtml(name)}')" style="${MODAL_STYLES.primaryBtn}">Save Access</button>
+                        <button onclick="document.getElementById('clientAccessModal').remove()" style="${MODAL_STYLES.cancelBtn}">Cancel</button>
                     </div>
                 </div>
             `;
@@ -2777,61 +2796,37 @@
         }
 
         // ── Change user role ──
-        async function changeUserRole(userId, name) {
+        async function changeUserRole(userId, name, currentRole) {
             // Remove any existing modal
             const existing = document.getElementById('roleAccessModal');
             if (existing) existing.remove();
 
-            // Get current user to determine their role (for current role display)
-            const token = localStorage.getItem('eco_token');
-            let currentRole = 'user'; // default fallback
-
-            try {
-                // Get current user info to display current role
-                const res = await fetch(`${API_BASE}/api/users`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                const user = (data.users || []).find(u => u.id === parseInt(userId));
-                if (user) currentRole = user.role;
-            } catch (err) {
-                console.warn('Could not load current role:', err);
-            }
-
-            // Define role hierarchy with descriptions
-            const ROLE_DEFINITIONS = [
-                { key: 'business_owner', name: 'Business Owner', desc: 'Full control over practice and all clients' },
-                { key: 'accountant', name: 'Accountant', desc: 'Manage assigned clients and their financial data' },
-                { key: 'store_manager', name: 'Store Manager', desc: 'Manage store operations and staff' },
-                { key: 'payroll_admin', name: 'Payroll Administrator', desc: 'Process payrolls and manage employee records' },
-                { key: 'assistant_manager', name: 'Assistant Manager', desc: 'Support management with limited admin access' },
-                { key: 'cashier', name: 'Cashier', desc: 'Handle sales transactions and customer service' },
-                { key: 'trainee', name: 'Trainee', desc: 'Learning role with supervised access' }
-            ];
+            // Use passed currentRole (already available from user data)
+            const role = currentRole || 'user'; // fallback for safety
 
             const modal = document.createElement('div');
             modal.id = 'roleAccessModal';
-            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;';
+            modal.style.cssText = MODAL_STYLES.overlay;
             modal.innerHTML = `
-                <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:28px;max-width:480px;width:90%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+                <div style="${MODAL_STYLES.container}">
                     <h3 style="color:#fff;margin:0 0 6px;font-size:1.05rem;font-weight:700;">User Role &mdash; ${escHtml(name)}</h3>
-                    <p style="color:rgba(255,255,255,0.45);font-size:0.8rem;margin:0 0 18px;">Choose the role this user has within the practice. Current role: <span style="color:#a78bfa;font-weight:600;">${currentRole.replace(/_/g, ' ')}</span></p>
+                    <p style="color:rgba(255,255,255,0.45);font-size:0.8rem;margin:0 0 18px;">Choose the role this user has within the practice. Current role: <span style="color:#a78bfa;font-weight:600;">${role.replace(/_/g, ' ')}</span></p>
                     <div id="raRoleList" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:5px;max-height:360px;padding-right:4px;">
-                        ${ROLE_DEFINITIONS.map(role => {
-                            const roleColor = ROLE_COLORS[role.key] || '#94a3b8';
+                        ${ROLE_DEFINITIONS.map(roleItem => {
+                            const roleColor = ROLE_COLORS[roleItem.key] || '#94a3b8';
                             return `
                         <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:10px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;transition:all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.07)';this.style.borderColor='rgba(255,255,255,0.15)'" onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.borderColor='rgba(255,255,255,0.06)'">
-                            <input type="radio" value="${role.key}" name="roleAccess" style="width:16px;height:16px;cursor:pointer;accent-color:${roleColor};" ${currentRole === role.key ? 'checked' : ''}>
+                            <input type="radio" value="${roleItem.key}" name="roleAccess" style="width:16px;height:16px;cursor:pointer;accent-color:${roleColor};" ${role === roleItem.key ? 'checked' : ''}>
                             <div style="min-width:0;flex:1;">
-                                <div style="color:#fff;font-size:0.85rem;font-weight:600;margin-bottom:2px;">${escHtml(role.name)}</div>
-                                <div style="color:rgba(255,255,255,0.4);font-size:0.73rem;">${escHtml(role.desc)}</div>
+                                <div style="color:#fff;font-size:0.85rem;font-weight:600;margin-bottom:2px;">${escHtml(roleItem.name)}</div>
+                                <div style="color:rgba(255,255,255,0.4);font-size:0.73rem;">${escHtml(roleItem.desc)}</div>
                             </div>
                         </label>`;
                         }).join('')}
                     </div>
                     <div style="display:flex;gap:10px;margin-top:20px;">
-                        <button onclick="saveUserRole(${userId}, '${escHtml(name)}')" style="flex:1;padding:10px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:0.85rem;">Update Role</button>
-                        <button onclick="document.getElementById('roleAccessModal').remove()" style="padding:10px 20px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:rgba(255,255,255,0.7);cursor:pointer;font-size:0.85rem;">Cancel</button>
+                        <button onclick="saveUserRole(${userId}, '${escHtml(name)}')" style="${MODAL_STYLES.primaryBtn}">Update Role</button>
+                        <button onclick="document.getElementById('roleAccessModal').remove()" style="${MODAL_STYLES.cancelBtn}">Cancel</button>
                     </div>
                 </div>
             `;
