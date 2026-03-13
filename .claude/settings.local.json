@@ -7,7 +7,11 @@
       "Bash(grep -l \"background: white\\\\|background: #fff\\\\|background: #f8f9fa\\\\|background: #ffffff\" /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-pos/*.html)",
       "Bash(grep -r \"offline\\\\|cache\\\\|download\" /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-payroll/*.html)",
       "Bash(wc -l /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-payroll/js/*.js)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(find /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-payroll -type f -name *.html)",
+      "Bash(ls /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-payroll/*.html)",
+      "Bash(grep -l \"eco_clients\\\\|eco_client_firm_access\" /workspaces/LorencoAccountingS/accounting-ecosystem/database/*.sql)",
+      "Bash(grep -B 5 -A 20 \"eco_client_firm_access\" /workspaces/LorencoAccountingS/accounting-ecosystem/database/*.sql)"
     ]
   }
 }
