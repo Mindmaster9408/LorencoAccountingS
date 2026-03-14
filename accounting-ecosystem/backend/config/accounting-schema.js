@@ -400,4 +400,66 @@ async function ensureAccountingSchema(pool) {
   }
 }
 
-module.exports = { ensureAccountingSchema };
+module.exports = { ensureAccountingSchema, seedDefaultAccounts };
+
+/**
+ * seedDefaultAccounts(companyId, client)
+ * Seeds a standard SA chart of accounts for a company that has none.
+ * Safe to call multiple times — checks count before inserting.
+ */
+async function seedDefaultAccounts(companyId, client) {
+  const existing = await client.query(
+    'SELECT COUNT(*) FROM accounts WHERE company_id = $1',
+    [companyId]
+  );
+  if (parseInt(existing.rows[0].count) > 0) return 0; // already has accounts
+
+  const accounts = [
+    // ── Assets 1xxx ────────────────────────────────
+    ['1000', 'Cash and Bank',              'asset',     'Main operating bank / cash account'],
+    ['1100', 'Accounts Receivable',        'asset',     'Amounts owed by customers'],
+    ['1200', 'Inventory',                  'asset',     'Stock held for resale'],
+    ['1300', 'Prepaid Expenses',           'asset',     'Expenses paid in advance'],
+    ['1400', 'VAT Input (Claimable)',      'asset',     'VAT paid on purchases — claimable from SARS'],
+    ['1500', 'Fixed Assets',               'asset',     'Property, plant and equipment'],
+    ['1510', 'Accumulated Depreciation',   'asset',     'Contra asset — accumulated depreciation'],
+    // ── Liabilities 2xxx ───────────────────────────
+    ['2000', 'Accounts Payable',           'liability', 'Amounts owed to suppliers'],
+    ['2100', 'Short-term Loans',           'liability', 'Loans due within 12 months'],
+    ['2200', 'Accrued Expenses',           'liability', 'Expenses incurred but not yet paid'],
+    ['2300', 'VAT Output (Payable)',       'liability', 'VAT collected from customers — payable to SARS'],
+    ['2400', 'PAYE / UIF Payable',         'liability', 'Employee tax withheld — payable to SARS'],
+    ['2500', 'Long-term Loans',            'liability', 'Loans due after 12 months'],
+    // ── Equity 3xxx ────────────────────────────────
+    ['3000', 'Owner\'s Equity / Share Capital', 'equity', 'Capital contributed by owners'],
+    ['3100', 'Retained Earnings',          'equity',    'Accumulated profits retained in the business'],
+    // ── Income 4xxx ────────────────────────────────
+    ['4000', 'Sales Revenue',              'income',    'Revenue from sales of goods'],
+    ['4100', 'Service Revenue',            'income',    'Revenue from services rendered'],
+    ['4200', 'Other Income',               'income',    'Interest received, sundry income'],
+    // ── Expenses 5xxx-6xxx ─────────────────────────
+    ['5000', 'Cost of Sales',              'expense',   'Cost of goods sold'],
+    ['6000', 'Salaries and Wages',         'expense',   'Employee salaries and wages'],
+    ['6100', 'Rent',                       'expense',   'Office / premises rental'],
+    ['6200', 'Telephone and Internet',     'expense',   'Communication costs'],
+    ['6300', 'Office Supplies',            'expense',   'Stationery and consumables'],
+    ['6400', 'Motor Vehicle Expenses',     'expense',   'Fuel, repairs, licensing'],
+    ['6500', 'Bank Charges',               'expense',   'Bank fees and transaction charges'],
+    ['6600', 'Insurance',                  'expense',   'Business insurance premiums'],
+    ['6700', 'Marketing and Advertising',  'expense',   'Promotion and advertising costs'],
+    ['6800', 'Depreciation',               'expense',   'Depreciation of fixed assets'],
+    ['6900', 'Accounting and Audit Fees',  'expense',   'Professional accounting fees'],
+    ['6950', 'Other Expenses',             'expense',   'Sundry and miscellaneous expenses'],
+  ];
+
+  for (const [code, name, type, description] of accounts) {
+    await client.query(
+      `INSERT INTO accounts (company_id, code, name, type, description, is_active, is_system)
+       VALUES ($1, $2, $3, $4, $5, true, false)
+       ON CONFLICT (company_id, code) DO NOTHING`,
+      [companyId, code, name, type, description]
+    );
+  }
+
+  return accounts.length;
+}

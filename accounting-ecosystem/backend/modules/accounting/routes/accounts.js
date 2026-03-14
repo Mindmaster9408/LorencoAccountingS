@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database');
 const { authenticate, hasPermission, enforceCompanyScope } = require('../middleware/auth');
 const AuditLogger = require('../services/auditLogger');
+const { seedDefaultAccounts } = require('../../../config/accounting-schema');
 
 const router = express.Router();
 
@@ -273,6 +274,37 @@ router.delete('/:id', authenticate, hasPermission('account.delete'), async (req,
     await client.query('ROLLBACK');
     console.error('Error deleting account:', error);
     res.status(500).json({ error: 'Failed to delete account' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * POST /api/accounts/provision-defaults
+ * Seeds the standard SA chart of accounts for this company (safe if already has accounts).
+ */
+router.post('/provision-defaults', authenticate, hasPermission('account.create'), async (req, res) => {
+  const client = await db.getClient();
+  try {
+    await client.query('BEGIN');
+    const count = await seedDefaultAccounts(req.user.companyId, client);
+    await client.query('COMMIT');
+
+    if (count === 0) {
+      return res.json({ message: 'Chart of accounts already exists — no changes made.', seeded: false });
+    }
+
+    // Return the newly seeded accounts
+    const result = await db.query(
+      'SELECT * FROM accounts WHERE company_id = $1 ORDER BY code',
+      [req.user.companyId]
+    );
+    res.status(201).json({ message: `${count} default accounts created.`, seeded: true, accounts: result.rows });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error seeding default accounts:', error);
+    res.status(500).json({ error: 'Failed to provision default accounts' });
   } finally {
     client.release();
   }

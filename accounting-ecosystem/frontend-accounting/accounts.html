@@ -52,6 +52,13 @@
         .stat-item .label { font-size: 12px; color: #5f6368; margin-top: 4px; }
         .error-banner { background: #fce4ec; color: #c62828; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; font-weight: 600; display: none; }
         .loading-row td { text-align: center; padding: 40px; color: #9aa0a6; }
+        .empty-state { text-align: center; padding: 60px 30px; }
+        .empty-state h3 { font-size: 18px; color: #202124; margin-bottom: 8px; }
+        .empty-state p { color: #5f6368; font-size: 13px; margin-bottom: 24px; }
+        .btn-provision { padding: 12px 28px; background: linear-gradient(135deg, #0066cc, #0099ff); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; box-shadow: 0 2px 8px rgba(0,102,204,0.3); transition: all 0.2s; }
+        .btn-provision:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,102,204,0.4); }
+        .btn-provision:disabled { opacity: 0.6; cursor: not-allowed; }
+        .provision-note { font-size: 12px; color: #9aa0a6; margin-top: 10px; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 </head>
@@ -169,7 +176,12 @@
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             allAccounts = data.accounts || [];
-            applyFilters();
+
+            if (allAccounts.length === 0 && !showAll) {
+                renderEmptyState();
+            } else {
+                applyFilters();
+            }
         } catch (err) {
             document.getElementById('accountsBody').innerHTML =
                 `<tr class="loading-row"><td colspan="5" style="color:#d32f2f">Failed to load accounts: ${err.message}</td></tr>`;
@@ -313,6 +325,37 @@
             errEl.style.display = 'block';
         } finally {
             btn.disabled = false;
+        }
+    }
+
+    // ── Empty State / Provision ───────────────────────────────────────────────
+    function renderEmptyState() {
+        document.getElementById('accountStats').innerHTML = '';
+        document.getElementById('accountsBody').innerHTML = `
+            <tr><td colspan="5">
+                <div class="empty-state">
+                    <h3>No chart of accounts set up yet</h3>
+                    <p>This company has no ledger accounts. Set up a standard South African chart of accounts<br>to get started — you can customise it afterwards.</p>
+                    <button class="btn-provision" id="provisionBtn" onclick="provisionDefaults()">
+                        Set up Default SA Chart of Accounts
+                    </button>
+                    <div class="provision-note">Seeds 32 standard accounts (assets, liabilities, equity, income &amp; expenses)</div>
+                </div>
+            </td></tr>`;
+    }
+
+    async function provisionDefaults() {
+        const btn = document.getElementById('provisionBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Setting up…'; }
+
+        try {
+            const res  = await fetch('/api/accounts/provision-defaults', { method: 'POST', headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            await loadAccounts();
+        } catch (err) {
+            showError('Failed to provision default accounts: ' + err.message);
+            if (btn) { btn.disabled = false; btn.textContent = 'Set up Default SA Chart of Accounts'; }
         }
     }
 
