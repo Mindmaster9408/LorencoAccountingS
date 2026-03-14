@@ -48,6 +48,7 @@ const customersRoutes = require('./shared/routes/customers');
 const ecoClientsRoutes = require('./shared/routes/eco-clients');
 // Global KV store — all ecosystem frontend business data (NEVER in localStorage)
 const globalKvRoutes = require('./shared/routes/kv');
+const ocrRoutes      = require('./shared/routes/ocr');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
@@ -168,6 +169,8 @@ app.use('/api/eco-clients', authenticateToken, ecoClientsRoutes);
 app.use('/api/customers', authenticateToken, customersRoutes);
 // Global KV store — ecosystem-wide cloud persistence (NO browser localStorage for business data)
 app.use('/api/kv', globalKvRoutes);
+// OCR — image and scanned-PDF text extraction (any authenticated user)
+app.use('/api/ocr', authenticateToken, ocrRoutes);
 
 // ─── Top-level POS-related Routes (receipts, barcodes, reports, analytics) ──
 if (receiptsRoutes) {

@@ -20,8 +20,9 @@
  * ============================================================================
  */
 
-const pdfParse = require('pdf-parse');
+const pdfParse   = require('pdf-parse');
 const ParserRegistry = require('./pdf-statement-parsers/parser-registry');
+const OcrService = require('./ocr-service');
 
 // Minimum number of extracted characters to consider PDF text-parseable
 const MIN_TEXT_LENGTH = 100;
@@ -89,27 +90,54 @@ class PdfStatementImportService {
       return this._error(`Failed to read PDF: ${err.message}. The file may be corrupted or password-protected.`);
     }
 
-    const text = (pdfData.text || '').trim();
+    let text = (pdfData.text || '').trim();
     const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
 
-    // Scanned PDF detection
+    // Scanned PDF detection — attempt OCR fallback before giving up
     if (text.length < MIN_TEXT_LENGTH || wordCount < MIN_WORD_COUNT) {
-      return {
-        success: false,
-        error: 'This appears to be a scanned (image-based) PDF. Scanned statements cannot be parsed automatically. Please export your statement as a CSV from your bank\'s online portal, or contact your bank for a text-based PDF.',
-        isPdfScanned: true,
-        bank: null,
-        parserId: null,
-        parserConfidence: 0,
-        isGenericFallback: false,
-        accountNumber: null,
-        statementPeriod: { from: null, to: null },
-        transactions: [],
-        duplicateCount: 0,
-        warnings: [],
-        skippedLines: 0,
-        importedAt: new Date().toISOString()
-      };
+      const caps = OcrService.isAvailable();
+      if (caps.pdfOcr) {
+        warnings.push('Scanned (image-based) PDF detected — running OCR to extract text. This may take a moment.');
+        let ocrResult;
+        try {
+          ocrResult = await OcrService.extractTextFromScannedPdf(pdfBuffer, { dpi: 200, maxPages: 15 });
+        } catch (ocrErr) {
+          return this._error(
+            `This is a scanned PDF and OCR failed: ${ocrErr.message}. ` +
+            `Please export your statement as a CSV from your bank's online portal.`
+          );
+        }
+        const ocrText = ocrResult.text || '';
+        const ocrWords = ocrText.split(/\s+/).filter(w => w.length > 0).length;
+        if (ocrText.length < MIN_TEXT_LENGTH || ocrWords < MIN_WORD_COUNT) {
+          return {
+            success: false,
+            error: 'OCR ran but could not extract readable text from this scanned PDF. ' +
+                   'The scan quality may be too low, or the document may not be a bank statement.',
+            isPdfScanned: true,
+            bank: null, parserId: null, parserConfidence: 0, isGenericFallback: false,
+            accountNumber: null, statementPeriod: { from: null, to: null },
+            transactions: [], duplicateCount: 0, warnings, skippedLines: 0,
+            importedAt: new Date().toISOString()
+          };
+        }
+        // Replace text with OCR output and continue normal parsing pipeline
+        text = ocrText;
+        warnings.push(`OCR extracted ${ocrWords} words across ${ocrResult.pageCount} page(s).`);
+      } else {
+        return {
+          success: false,
+          error: 'This appears to be a scanned (image-based) PDF. ' +
+                 'OCR is not currently available on this server. ' +
+                 'Please export your statement as a CSV from your bank\'s online portal, ' +
+                 'or contact your bank for a text-based PDF.',
+          isPdfScanned: true,
+          bank: null, parserId: null, parserConfidence: 0, isGenericFallback: false,
+          accountNumber: null, statementPeriod: { from: null, to: null },
+          transactions: [], duplicateCount: 0, warnings: [], skippedLines: 0,
+          importedAt: new Date().toISOString()
+        };
+      }
     }
 
     // ─── STEP B: Select parser ───────────────────────────────────────────────

@@ -25,6 +25,13 @@
 
 FROM node:22-alpine
 
+# OCR dependencies: tesseract (engine + English data) + poppler-utils (pdftoppm for PDF→image)
+# tesseract-ocr-data-eng: ~15MB — add more langs e.g. tesseract-ocr-data-afr for Afrikaans
+RUN apk add --no-cache \
+    tesseract-ocr \
+    tesseract-ocr-data-eng \
+    poppler-utils
+
 WORKDIR /app
 
 # Install backend dependencies first (separate layer — only re-runs if package.json changes)
