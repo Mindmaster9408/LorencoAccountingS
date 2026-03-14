@@ -929,7 +929,7 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
 
     // Delete attachments from disk first, then DB
     const attachResult = await client.query(
-      `SELECT * FROM bank_transaction_attachments WHERE transaction_id = $1`,
+      `SELECT * FROM bank_transaction_attachments WHERE bank_transaction_id = $1`,
       [id]
     );
 
@@ -940,7 +940,7 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
     }
 
     await client.query(
-      `DELETE FROM bank_transaction_attachments WHERE transaction_id = $1`,
+      `DELETE FROM bank_transaction_attachments WHERE bank_transaction_id = $1`,
       [id]
     );
 
