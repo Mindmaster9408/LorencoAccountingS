@@ -376,7 +376,25 @@ async function ensureAccountingSchema(pool) {
       )
     `);
 
-    // ── 21. Indexes for performance ───────────────────────────────────────────
+    // ── 21. POS Reconciliations (cash/card daily settlement tracking) ─────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_reconciliations (
+        id                      SERIAL PRIMARY KEY,
+        company_id              INTEGER NOT NULL,
+        date                    DATE NOT NULL,
+        payment_method          VARCHAR(20) NOT NULL CHECK (payment_method IN ('cash', 'card')),
+        pos_amount              DECIMAL(12,2) NOT NULL DEFAULT 0,
+        bank_amount             DECIMAL(12,2) NOT NULL DEFAULT 0,
+        journal_id              INTEGER,
+        bank_description        TEXT,
+        notes                   TEXT,
+        reconciled_by_user_id   INTEGER,
+        reconciled_at           TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(company_id, date, payment_method)
+      )
+    `);
+
+    // ── 22. Indexes for performance ───────────────────────────────────────────
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_accounts_company ON accounts(company_id)',
       'CREATE INDEX IF NOT EXISTS idx_journals_company_date ON journals(company_id, date)',
@@ -386,6 +404,7 @@ async function ensureAccountingSchema(pool) {
       'CREATE INDEX IF NOT EXISTS idx_vat_periods_company ON vat_periods(company_id)',
       'CREATE INDEX IF NOT EXISTS idx_paye_recon_company ON paye_reconciliations(company_id)',
       'CREATE INDEX IF NOT EXISTS idx_accounting_audit ON accounting_audit_log(company_id)',
+      'CREATE INDEX IF NOT EXISTS idx_pos_recon_company ON pos_reconciliations(company_id, date)',
     ];
     for (const idx of indexes) {
       await client.query(idx);

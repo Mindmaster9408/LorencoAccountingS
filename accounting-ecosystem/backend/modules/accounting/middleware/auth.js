@@ -142,6 +142,10 @@ const PERMISSIONS = {
 
   // Audit
   'audit.view': ['admin', 'accountant'],
+
+  // POS bridge (read POS data + cash/card reconciliation from accounting)
+  'pos.view':      ['admin', 'accountant', 'bookkeeper', 'viewer'],
+  'pos.reconcile': ['admin', 'accountant'],
 };
 
 function hasPermission(permission) {

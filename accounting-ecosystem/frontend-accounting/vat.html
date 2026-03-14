@@ -1401,7 +1401,7 @@
         // VAT RECONCILIATION API INTEGRATION
         // ========================================================
 
-        const API_BASE = window.location.origin + '/api';
+        const API_BASE = window.location.origin + '/api/accounting';
         let currentReconId = null;
         let currentPeriodData = null;
 
@@ -1484,16 +1484,51 @@
             try {
                 const result = await fetchAPI(`/vat-recon/trial-balance?fromDate=${fromDate}&toDate=${toDate}`);
                 if (result.success) {
-                    populateTrialBalanceData(result.trialBalance);
+                    const periodKey = currentPeriodData && currentPeriodData.period_key;
+                    populateTrialBalanceData(result.trialBalance, periodKey);
                 }
             } catch (error) {
                 console.error('Error loading trial balance:', error);
             }
         }
 
-        function populateTrialBalanceData(trialBalance) {
-            // TODO: Populate trial balance section with actual TB data
-            console.log('Trial Balance data:', trialBalance);
+        function populateTrialBalanceData(trialBalance, periodKey) {
+            if (!trialBalance || !trialBalance.length) return;
+
+            let totalIncome = 0, totalExpenses = 0, vatInput = 0, vatOutput = 0;
+
+            trialBalance.forEach(acc => {
+                const code    = String(acc.account_code || '');
+                const balance = Math.abs(parseFloat(acc.balance) || 0);
+                const type    = (acc.account_type || '').toLowerCase();
+
+                if (type === 'income' || code.startsWith('4')) {
+                    totalIncome += balance;
+                } else if (type === 'expense' || code.startsWith('5') || code.startsWith('6')) {
+                    totalExpenses += balance;
+                }
+                if (code === '1400') vatInput  = balance; // VAT Input (Claimable)
+                if (code === '2300') vatOutput = balance; // VAT Output (Payable)
+            });
+
+            // Update reconciliation comparison TB columns for selected period
+            if (periodKey) {
+                const tbInc = document.querySelector(`.tb-income-ref[data-period="${periodKey}"]`);
+                const tbExp = document.querySelector(`.tb-expense-ref[data-period="${periodKey}"]`);
+                if (tbInc) tbInc.textContent = totalIncome.toFixed(2);
+                if (tbExp) tbExp.textContent = totalExpenses.toFixed(2);
+            }
+
+            // Update summary stat cards from real VAT account balances if available
+            if (vatOutput > 0 || vatInput > 0) {
+                const fmt = v => 'R ' + v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const outEl = document.getElementById('outputVatValue');
+                const inEl  = document.getElementById('inputVatValue');
+                const payEl = document.getElementById('vatPayableValue');
+                if (outEl) outEl.textContent = fmt(vatOutput);
+                if (inEl)  inEl.textContent  = fmt(vatInput);
+                if (payEl) payEl.textContent  = fmt(Math.abs(vatOutput - vatInput));
+            }
         }
 
         function populateReconciliationData(recon) {
@@ -1657,7 +1692,10 @@
         // Calculate difference between Net VAT and Statement of Account
         function calculateSOADifference() {
             const soaAmount = parseFloat(document.getElementById('soaAmount').value) || 0;
-            const netVat = parseFloat(document.getElementById('netVat').innerText.replace(/[^0-9.-]/g, '')) || 0;
+            const periodKey = currentPeriodData && currentPeriodData.period_key;
+            const netVatEl  = (periodKey && document.querySelector(`.vat-payable[data-row="${periodKey}"]`))
+                           || document.getElementById('vatPayableValue');
+            const netVat = parseFloat(netVatEl ? netVatEl.textContent.replace(/[^0-9.-]/g, '') : 0) || 0;
             
             const difference = netVat - soaAmount;
             
@@ -1718,10 +1756,14 @@
             const submissionRef = prompt('Enter SARS submission reference (optional):');
             
             try {
+                const periodKey = currentPeriodData.period_key;
+                const outputEl   = document.querySelector(`.total-output-a[data-row="${periodKey}"]`);
+                const inputEl    = document.querySelector(`.total-input-b[data-row="${periodKey}"]`);
+                const vatPayEl   = document.querySelector(`.vat-payable[data-row="${periodKey}"]`);
                 const submissionData = {
-                    outputVat: 0, // TODO: Get from reconciliation
-                    inputVat: 0,
-                    netVat: 0,
+                    outputVat: parseFloat(outputEl ? outputEl.textContent : 0) || 0,
+                    inputVat:  parseFloat(inputEl  ? inputEl.textContent  : 0) || 0,
+                    netVat:    parseFloat(vatPayEl  ? vatPayEl.textContent  : 0) || 0,
                     submissionReference: submissionRef,
                     paymentDate: null,
                     paymentReference: null
@@ -1756,7 +1798,12 @@
 
         function populateSubmissionHistoryTable(submissions) {
             const tbody = document.getElementById('vatSubmissionHistoryBody');
-            if (!tbody || submissions.length === 0) return;
+            if (!tbody) return;
+
+            if (!submissions || submissions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9aa0a6;padding:20px;">No submissions yet</td></tr>';
+                return;
+            }
 
             tbody.innerHTML = submissions.map(sub => `
                 <tr>
@@ -1766,21 +1813,33 @@
                     <td class="amount">R ${formatAmount(sub.input_vat)}</td>
                     <td class="amount">R ${formatAmount(sub.net_vat)}</td>
                     <td class="amount">${sub.payment_date ? formatDate(sub.payment_date) : '-'}</td>
-                    <td><span class="status-badge status-${sub.status.toLowerCase()}">${sub.status}</span></td>
+                    <td><span class="status-badge status-${(sub.status || '').toLowerCase()}">${sub.status || '-'}</span></td>
                     <td>
-                        ${sub.reconciliation_id 
+                        ${sub.reconciliation_id
                             ? `<button class="btn-link" onclick="viewReconciliation('${sub.period_key}')">View</button>`
                             : `<button class="btn-link" disabled>N/A</button>`
                         }
                     </td>
                     <td>
-                        ${sub.vat_report_id 
+                        ${sub.vat_report_id
                             ? `<button class="btn-link" onclick="viewVATReport('${sub.period_key}')">View</button>`
                             : `<button class="btn-link" disabled>N/A</button>`
                         }
                     </td>
                 </tr>
             `).join('');
+
+            // Update summary stat cards from most recent submission
+            const latest = submissions[0];
+            if (latest) {
+                const outputEl   = document.getElementById('outputVatValue');
+                const inputEl    = document.getElementById('inputVatValue');
+                const payableEl  = document.getElementById('vatPayableValue');
+                const fmt = v => 'R ' + Math.abs(parseFloat(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                if (outputEl)  outputEl.textContent  = fmt(latest.output_vat);
+                if (inputEl)   inputEl.textContent   = fmt(latest.input_vat);
+                if (payableEl) payableEl.textContent  = fmt(latest.net_vat);
+            }
         }
 
         function formatPeriodDisplay(periodKey) {

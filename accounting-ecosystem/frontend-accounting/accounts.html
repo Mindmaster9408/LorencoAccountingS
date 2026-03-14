@@ -172,7 +172,7 @@
         document.getElementById('accountsBody').innerHTML = '<tr class="loading-row"><td colspan="5">Loading…</td></tr>';
 
         try {
-            const res  = await fetch('/api/accounts' + params, { headers: authH() });
+            const res  = await fetch('/api/accounting/accounts' + params, { headers: authH() });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             allAccounts = data.accounts || [];
@@ -349,7 +349,7 @@
         if (btn) { btn.disabled = true; btn.textContent = 'Setting up…'; }
 
         try {
-            const res  = await fetch('/api/accounts/provision-defaults', { method: 'POST', headers: authH() });
+            const res  = await fetch('/api/accounting/accounts/provision-defaults', { method: 'POST', headers: authH() });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
             await loadAccounts();

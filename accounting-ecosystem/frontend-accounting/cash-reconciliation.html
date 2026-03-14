@@ -6,7 +6,6 @@
   <title>Cash Reconciliation - Lorenco Accounting</title>
   <script src="js/navigation.js"></script>
   <script src="js/polyfills.js"></script>
-  <script src="js/ledger.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; }
@@ -293,59 +292,67 @@
   </div>
 
   <script>
+    const token = localStorage.getItem('token');
+    function authH() {
+      return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    }
+
     let selectedDate = null;
     let dailyTotals = [];
 
-    function init() {
-      // Set default date range (last 30 days)
+    async function init() {
       const today = new Date();
       const thirtyDaysAgo = new Date(today);
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
       document.getElementById('reconFromDate').value = thirtyDaysAgo.toISOString().split('T')[0];
       document.getElementById('reconToDate').value = today.toISOString().split('T')[0];
-
-      loadReconciliation();
+      await loadReconciliation();
     }
 
-    function loadReconciliation() {
-      const fromDate = document.getElementById('reconFromDate').value;
-      const toDate = document.getElementById('reconToDate').value;
+    async function loadReconciliation() {
+      const fromDate     = document.getElementById('reconFromDate').value;
+      const toDate       = document.getElementById('reconToDate').value;
       const statusFilter = document.getElementById('reconStatusFilter').value;
 
-      // Get all daily totals
-      dailyTotals = LedgerSystem.getPOSDailyTotals(fromDate, toDate);
+      try {
+        const params = new URLSearchParams({ fromDate, toDate });
+        const res    = await fetch('/api/accounting/pos/daily-totals?' + params, { headers: authH() });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        dailyTotals = data.days || [];
+      } catch (err) {
+        console.error('Failed to load daily totals:', err);
+        dailyTotals = [];
+      }
 
-      // Filter by status
+      // Apply status filter
       let filteredDays = dailyTotals;
       if (statusFilter === 'pending') {
         filteredDays = dailyTotals.filter(d => d.cashPending > 0 || d.cardPending > 0);
       } else if (statusFilter === 'settled') {
-        filteredDays = dailyTotals.filter(d => d.cashPending === 0 && d.cardPending === 0 && (d.cashSales > 0 || d.cardSales > 0));
+        filteredDays = dailyTotals.filter(d => d.cashPending === 0 && d.cardPending === 0 && d.totalSales > 0);
       }
 
-      // Update stats
-      const unrecon = dailyTotals.filter(d => d.cashPending > 0 || d.cardPending > 0);
+      // Stats
+      const unrecon          = dailyTotals.filter(d => d.cashPending > 0 || d.cardPending > 0);
       const totalCashPending = unrecon.reduce((s, d) => s + d.cashPending, 0);
       const totalCardPending = unrecon.reduce((s, d) => s + d.cardPending, 0);
-      const totalSettled = dailyTotals.reduce((s, d) => s + d.cashSettled + d.cardSettled, 0);
+      const totalSettled     = dailyTotals.reduce((s, d) => s + d.cashSettled + d.cardSettled, 0);
 
-      document.getElementById('unreconDays').textContent = unrecon.length;
+      document.getElementById('unreconDays').textContent      = unrecon.length;
       document.getElementById('totalCashPending').textContent = formatCurrency(totalCashPending);
       document.getElementById('totalCardPending').textContent = formatCurrency(totalCardPending);
-      document.getElementById('totalSettled').textContent = formatCurrency(totalSettled);
+      document.getElementById('totalSettled').textContent     = formatCurrency(totalSettled);
 
-      // Render day list
       renderDayList(filteredDays);
 
-      // If selected date is in list, keep it selected
       if (selectedDate && filteredDays.find(d => d.date === selectedDate)) {
         selectDay(selectedDate);
       } else if (filteredDays.length > 0) {
         selectDay(filteredDays[0].date);
       } else {
         document.getElementById('reconDetail').style.display = 'none';
-        document.getElementById('emptyState').style.display = 'block';
+        document.getElementById('emptyState').style.display  = 'block';
       }
     }
 
@@ -380,45 +387,49 @@
       }).join('');
     }
 
-    function selectDay(date) {
+    async function selectDay(date) {
       selectedDate = date;
       const day = dailyTotals.find(d => d.date === date);
-
       if (!day) return;
 
-      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('emptyState').style.display  = 'none';
       document.getElementById('reconDetail').style.display = 'block';
 
-      // Update day selector active state
       document.querySelectorAll('.day-item').forEach(el => el.classList.remove('active'));
-      const activeItem = [...document.querySelectorAll('.day-item')].find(el => el.querySelector('.day-date').textContent === formatDate(date));
-      if (activeItem) activeItem.classList.add('active');
+      [...document.querySelectorAll('.day-item')].forEach(el => {
+        if (el.querySelector('.day-date')?.textContent === formatDate(date))
+          el.classList.add('active');
+      });
 
-      // Update title
-      document.getElementById('reconDateTitle').textContent = 'Reconciliation: ' + formatDate(date);
+      document.getElementById('reconDateTitle').textContent       = 'Reconciliation: ' + formatDate(date);
       document.getElementById('dayTransactionsTitle').textContent = 'Transactions for ' + formatDate(date);
 
-      // Cash section
-      const cashSales = LedgerSystem.getPOSSales({ date, paymentMethod: 'cash' });
-      document.getElementById('reconCashSales').textContent = formatCurrency(day.cashSales);
-      document.getElementById('reconCashCount').textContent = cashSales.length;
+      // Fetch day sales (cash + card) for counts and transaction list
+      let cashSales = [], cardSales = [];
+      try {
+        const [cashRes, cardRes] = await Promise.all([
+          fetch('/api/accounting/pos/sales?date=' + date + '&paymentMethod=cash', { headers: authH() }),
+          fetch('/api/accounting/pos/sales?date=' + date + '&paymentMethod=card', { headers: authH() }),
+        ]);
+        cashSales = cashRes.ok ? (await cashRes.json()).sales || [] : [];
+        cardSales = cardRes.ok ? (await cardRes.json()).sales || [] : [];
+      } catch (_) {}
+
+      document.getElementById('reconCashSales').textContent   = formatCurrency(day.cashSales);
+      document.getElementById('reconCashCount').textContent   = cashSales.length;
       document.getElementById('reconCashSettled').textContent = formatCurrency(day.cashSettled);
       document.getElementById('reconCashPending').textContent = formatCurrency(day.cashPending);
 
-      // Card section
-      const cardSales = LedgerSystem.getPOSSales({ date, paymentMethod: 'card' });
-      document.getElementById('reconCardSales').textContent = formatCurrency(day.cardSales);
-      document.getElementById('reconCardCount').textContent = cardSales.length;
+      document.getElementById('reconCardSales').textContent   = formatCurrency(day.cardSales);
+      document.getElementById('reconCardCount').textContent   = cardSales.length;
       document.getElementById('reconCardSettled').textContent = formatCurrency(day.cardSettled);
       document.getElementById('reconCardPending').textContent = formatCurrency(day.cardPending);
 
-      // Reset input fields
       document.getElementById('cashBankAmount').value = '';
-      document.getElementById('cashBankDesc').value = '';
+      document.getElementById('cashBankDesc').value   = '';
       document.getElementById('cardBankAmount').value = '';
-      document.getElementById('cardBankDesc').value = '';
+      document.getElementById('cardBankDesc').value   = '';
 
-      // Pre-fill bank amounts with pending amounts
       if (day.cashPending > 0) {
         document.getElementById('cashBankAmount').value = day.cashPending.toFixed(2);
         updateCashVariance();
@@ -428,62 +439,48 @@
         updateCardVariance();
       }
 
-      // Enable/disable settle buttons
       document.getElementById('settleCashBtn').disabled = day.cashPending === 0;
       document.getElementById('settleCardBtn').disabled = day.cardPending === 0;
 
-      // Show transactions
-      renderDayTransactions(date);
+      renderDayTransactions([...cashSales, ...cardSales]);
     }
 
-    function renderDayTransactions(date) {
-      const sales = LedgerSystem.getPOSSales({ date });
+    function renderDayTransactions(sales) {
       sales.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-
       const tbody = document.getElementById('dayTransactionsBody');
       tbody.innerHTML = sales.map(s => `
         <tr>
-          <td><strong>${s.id}</strong></td>
+          <td><strong>${s.saleNumber}</strong></td>
           <td>${s.time || '-'}</td>
           <td>${s.description}</td>
           <td><span class="method-badge method-${s.paymentMethod}">${s.paymentMethod}</span></td>
           <td class="amount">${formatCurrency(s.total)}</td>
-          <td><span class="status-badge status-${s.status}">${s.status}</span></td>
+          <td><span class="status-badge status-pending">${s.status}</span></td>
         </tr>
       `).join('');
 
-      // Add totals row
-      const cashTotal = sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
-      const cardTotal = sales.filter(s => s.paymentMethod === 'card').reduce((sum, s) => sum + s.total, 0);
-      const accountTotal = sales.filter(s => s.paymentMethod === 'account').reduce((sum, s) => sum + s.total, 0);
+      const cashTotal  = sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
+      const cardTotal  = sales.filter(s => s.paymentMethod === 'card').reduce((sum, s) => sum + s.total, 0);
       const grandTotal = sales.reduce((sum, s) => sum + s.total, 0);
 
       tbody.innerHTML += `
-        <tr style="background: #f0f9f0; font-weight: 600;">
+        <tr style="background:#f0f9f0;font-weight:600;">
           <td colspan="3">CASH TOTAL</td>
           <td><span class="method-badge method-cash">CASH</span></td>
           <td class="amount">${formatCurrency(cashTotal)}</td>
           <td></td>
         </tr>
-        <tr style="background: #e8f4fd; font-weight: 600;">
+        <tr style="background:#e8f4fd;font-weight:600;">
           <td colspan="3">CARD TOTAL</td>
           <td><span class="method-badge method-card">CARD</span></td>
           <td class="amount">${formatCurrency(cardTotal)}</td>
           <td></td>
         </tr>
-        ${accountTotal > 0 ? `
-        <tr style="background: #fff8e1; font-weight: 600;">
-          <td colspan="3">ACCOUNT TOTAL</td>
-          <td><span class="method-badge method-account">ACCOUNT</span></td>
-          <td class="amount">${formatCurrency(accountTotal)}</td>
-          <td></td>
-        </tr>` : ''}
-        <tr style="background: #e8eaed; font-weight: 700;">
+        <tr style="background:#e8eaed;font-weight:700;">
           <td colspan="4">DAY TOTAL</td>
           <td class="amount">${formatCurrency(grandTotal)}</td>
           <td></td>
-        </tr>
-      `;
+        </tr>`;
     }
 
     function updateCashVariance() {
@@ -532,81 +529,79 @@
       document.getElementById('settleCardBtn').disabled = bankAmount <= 0 || day.cardPending === 0;
     }
 
-    function settleCash() {
+    async function settleCash() {
       if (!selectedDate) return;
-
       const bankAmount = parseFloat(document.getElementById('cashBankAmount').value);
-      const bankDesc = document.getElementById('cashBankDesc').value || 'Cash deposit ' + selectedDate;
+      const bankDesc   = document.getElementById('cashBankDesc').value || 'Cash deposit ' + selectedDate;
+      if (!bankAmount || bankAmount <= 0) { alert('Please enter the bank deposit amount'); return; }
 
-      if (!bankAmount || bankAmount <= 0) {
-        alert('Please enter the bank deposit amount');
-        return;
-      }
-
-      const day = dailyTotals.find(d => d.date === selectedDate);
-      const variance = Math.abs(bankAmount - day.cashPending);
-
-      if (variance > 0.01) {
-        const proceed = confirm(
-          `There is a variance of ${formatCurrency(bankAmount - day.cashPending)}.\n\n` +
-          `POS Cash Sales: ${formatCurrency(day.cashPending)}\n` +
-          `Bank Deposit: ${formatCurrency(bankAmount)}\n\n` +
-          `Do you want to settle anyway?`
+      const day      = dailyTotals.find(d => d.date === selectedDate);
+      const variance = bankAmount - day.cashPending;
+      if (Math.abs(variance) > 0.01) {
+        const ok = confirm(
+          `Variance of ${formatCurrency(variance)}.\n\nPOS Cash: ${formatCurrency(day.cashPending)}\nBank Deposit: ${formatCurrency(bankAmount)}\n\nSettle anyway?`
         );
-        if (!proceed) return;
+        if (!ok) return;
       }
 
+      const btn = document.getElementById('settleCashBtn');
+      btn.disabled = true; btn.textContent = 'Settling…';
       try {
-        const result = LedgerSystem.settlePOSDay(selectedDate, 'cash', bankAmount, bankDesc);
+        const res  = await fetch('/api/accounting/pos/reconciliation/settle', {
+          method: 'POST', headers: authH(),
+          body: JSON.stringify({ date: selectedDate, paymentMethod: 'cash', bankAmount, bankDescription: bankDesc }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          btn.disabled = false; btn.textContent = 'Settle Cash';
+          return alert('Error: ' + (data.error || 'Settlement failed'));
+        }
         alert(
-          `Cash settled successfully!\n\n` +
-          `Settled ${result.salesCount} transactions\n` +
-          `Amount: ${formatCurrency(result.bankAmount)}\n` +
-          `Journal: ${result.journalRef}` +
-          (result.hasVariance ? `\nVariance: ${formatCurrency(result.difference)}` : '')
+          `Cash settled!\n\nTransactions: ${data.salesCount}\nPOS Amount: ${formatCurrency(data.posAmount)}\nBank Amount: ${formatCurrency(data.bankAmount)}` +
+          (data.hasVariance ? `\nVariance: ${formatCurrency(data.variance)}` : '')
         );
-        loadReconciliation();
-      } catch (e) {
-        alert('Error settling cash: ' + e.message);
+        await loadReconciliation();
+      } catch (err) {
+        btn.disabled = false; btn.textContent = 'Settle Cash';
+        alert('Error settling cash: ' + err.message);
       }
     }
 
-    function settleCard() {
+    async function settleCard() {
       if (!selectedDate) return;
-
       const bankAmount = parseFloat(document.getElementById('cardBankAmount').value);
-      const bankDesc = document.getElementById('cardBankDesc').value || 'Card merchant settlement ' + selectedDate;
+      const bankDesc   = document.getElementById('cardBankDesc').value || 'Card merchant settlement ' + selectedDate;
+      if (!bankAmount || bankAmount <= 0) { alert('Please enter the bank deposit amount'); return; }
 
-      if (!bankAmount || bankAmount <= 0) {
-        alert('Please enter the bank deposit amount');
-        return;
-      }
-
-      const day = dailyTotals.find(d => d.date === selectedDate);
-      const variance = Math.abs(bankAmount - day.cardPending);
-
-      if (variance > 0.01) {
-        const proceed = confirm(
-          `There is a variance of ${formatCurrency(bankAmount - day.cardPending)}.\n\n` +
-          `POS Card Sales: ${formatCurrency(day.cardPending)}\n` +
-          `Bank Deposit: ${formatCurrency(bankAmount)}\n\n` +
-          `Do you want to settle anyway?`
+      const day      = dailyTotals.find(d => d.date === selectedDate);
+      const variance = bankAmount - day.cardPending;
+      if (Math.abs(variance) > 0.01) {
+        const ok = confirm(
+          `Variance of ${formatCurrency(variance)}.\n\nPOS Card: ${formatCurrency(day.cardPending)}\nBank Deposit: ${formatCurrency(bankAmount)}\n\nSettle anyway?`
         );
-        if (!proceed) return;
+        if (!ok) return;
       }
 
+      const btn = document.getElementById('settleCardBtn');
+      btn.disabled = true; btn.textContent = 'Settling…';
       try {
-        const result = LedgerSystem.settlePOSDay(selectedDate, 'card', bankAmount, bankDesc);
+        const res  = await fetch('/api/accounting/pos/reconciliation/settle', {
+          method: 'POST', headers: authH(),
+          body: JSON.stringify({ date: selectedDate, paymentMethod: 'card', bankAmount, bankDescription: bankDesc }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          btn.disabled = false; btn.textContent = 'Settle Card';
+          return alert('Error: ' + (data.error || 'Settlement failed'));
+        }
         alert(
-          `Card settled successfully!\n\n` +
-          `Settled ${result.salesCount} transactions\n` +
-          `Amount: ${formatCurrency(result.bankAmount)}\n` +
-          `Journal: ${result.journalRef}` +
-          (result.hasVariance ? `\nVariance: ${formatCurrency(result.difference)}` : '')
+          `Card settled!\n\nTransactions: ${data.salesCount}\nPOS Amount: ${formatCurrency(data.posAmount)}\nBank Amount: ${formatCurrency(data.bankAmount)}` +
+          (data.hasVariance ? `\nVariance: ${formatCurrency(data.variance)}` : '')
         );
-        loadReconciliation();
-      } catch (e) {
-        alert('Error settling card: ' + e.message);
+        await loadReconciliation();
+      } catch (err) {
+        btn.disabled = false; btn.textContent = 'Settle Card';
+        alert('Error settling card: ' + err.message);
       }
     }
 
@@ -620,6 +615,6 @@
 
     // Initialize
     init();
-  </script>
+</script>
 </body>
 </html>

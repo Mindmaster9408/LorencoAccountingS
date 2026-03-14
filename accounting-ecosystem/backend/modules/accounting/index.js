@@ -47,6 +47,7 @@ router.get('/status', (req, res) => {
 router.use('/accounts', require('./routes/accounts'));
 router.use('/journals', require('./routes/journals'));
 router.use('/bank', require('./routes/bank'));
+router.use('/pos', require('./routes/pos-bridge'));
 router.use('/reports', require('./routes/reports'));
 
 // Tax & compliance
