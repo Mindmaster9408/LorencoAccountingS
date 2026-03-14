@@ -77,6 +77,10 @@
 
     .tab-content { display: none; }
     .tab-content.active { display: block; }
+    .coming-soon-state { text-align: center; padding: 60px 40px; }
+    .coming-soon-state .icon { font-size: 40px; margin-bottom: 16px; opacity: 0.35; }
+    .coming-soon-state h3 { font-size: 16px; font-weight: 600; color: #333; margin-bottom: 8px; }
+    .coming-soon-state p { font-size: 13px; color: #6b7280; max-width: 420px; margin: 0 auto; line-height: 1.6; }
 
     .pagination { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; }
     .pagination-info { font-size: 13px; color: #666; }
@@ -228,28 +232,13 @@
     <!-- Invoices Tab -->
     <div id="tab-invoices" class="tab-content">
       <div class="card">
-        <div class="card-header">
-          <h2>Invoices</h2>
-          <button class="btn btn-primary" onclick="openNewInvoiceModal()">+ New Invoice</button>
-        </div>
-        <div class="card-body" style="padding: 0;">
-          <table>
-            <thead>
-              <tr>
-                <th>Invoice #</th>
-                <th>Customer</th>
-                <th>Date</th>
-                <th>Due Date</th>
-                <th>Amount</th>
-                <th>Paid</th>
-                <th>Balance</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="invoiceTableBody">
-            </tbody>
-          </table>
+        <div class="card-header"><h2>Invoices</h2></div>
+        <div class="card-body">
+          <div class="coming-soon-state">
+            <div class="icon">🧾</div>
+            <h3>AR Invoicing — Coming Soon</h3>
+            <p>Full accounts-receivable invoicing hasn't been built yet. Sales from the POS appear in the <strong>POS Sales</strong> tab. Formal invoice creation and payment tracking will be added in a future sprint.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -257,26 +246,13 @@
     <!-- Quotes Tab -->
     <div id="tab-quotes" class="tab-content">
       <div class="card">
-        <div class="card-header">
-          <h2>Quotes</h2>
-          <button class="btn btn-primary" onclick="openNewQuoteModal()">+ New Quote</button>
-        </div>
-        <div class="card-body" style="padding: 0;">
-          <table>
-            <thead>
-              <tr>
-                <th>Quote #</th>
-                <th>Customer</th>
-                <th>Date</th>
-                <th>Valid Until</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="quoteTableBody">
-            </tbody>
-          </table>
+        <div class="card-header"><h2>Quotes</h2></div>
+        <div class="card-body">
+          <div class="coming-soon-state">
+            <div class="icon">📋</div>
+            <h3>Quotes / Proposals — Coming Soon</h3>
+            <p>Quote creation and conversion to invoices will be available once the AR invoicing module is built.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -284,26 +260,13 @@
     <!-- Receipts Tab -->
     <div id="tab-receipts" class="tab-content">
       <div class="card">
-        <div class="card-header">
-          <h2>Customer Receipts</h2>
-          <button class="btn btn-primary" onclick="openNewReceiptModal()">+ Record Receipt</button>
-        </div>
-        <div class="card-body" style="padding: 0;">
-          <table>
-            <thead>
-              <tr>
-                <th>Receipt #</th>
-                <th>Customer</th>
-                <th>Date</th>
-                <th>Invoice</th>
-                <th>Amount</th>
-                <th>Method</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="receiptTableBody">
-            </tbody>
-          </table>
+        <div class="card-header"><h2>Customer Receipts</h2></div>
+        <div class="card-body">
+          <div class="coming-soon-state">
+            <div class="icon">🧾</div>
+            <h3>Customer Receipts — Coming Soon</h3>
+            <p>Manual receipt recording will be available once the AR invoicing module is built. POS payments are already tracked in the <strong>POS Sales</strong> tab.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -684,22 +647,7 @@
       }
     }
 
-    // ── Invoices / Quotes / Receipts — coming soon ────────────────────────────
-
-    function renderInvoices() {
-      document.getElementById('invoiceTableBody').innerHTML =
-        '<tr><td colspan="9" style="text-align:center;padding:40px;color:#888;">AR Invoicing is coming in a future sprint. Account sales from POS appear in the POS Sales tab.</td></tr>';
-    }
-
-    function renderQuotes() {
-      document.getElementById('quoteTableBody').innerHTML =
-        '<tr><td colspan="7" style="text-align:center;padding:40px;color:#888;">Quotes / Proposals — coming soon.</td></tr>';
-    }
-
-    function renderReceipts() {
-      document.getElementById('receiptTableBody').innerHTML =
-        '<tr><td colspan="7" style="text-align:center;padding:40px;color:#888;">Receipts — coming soon.</td></tr>';
-    }
+    // ── Invoices / Quotes / Receipts — static coming-soon tabs (no JS needed) ──
 
     // ── New Customer — managed in POS ─────────────────────────────────────────
 
@@ -809,21 +757,10 @@
       document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
       event.target.classList.add('active');
       document.getElementById('tab-' + tabName).classList.add('active');
-      if (tabName === 'invoices')  renderInvoices();
-      if (tabName === 'quotes')    renderQuotes();
-      if (tabName === 'receipts')  renderReceipts();
     }
 
-    function newInvoiceFor(customerId)  { alert('AR Invoicing — coming soon.'); }
-    function openNewInvoiceModal()      { alert('AR Invoicing — coming soon.'); }
-    function openNewQuoteModal()        { alert('Quotes — coming soon.'); }
-    function openNewReceiptModal()      { alert('Receipts — coming soon.'); }
-    function viewInvoice(id)            { alert('View Invoice — coming soon.'); }
-    function recordPayment(id)          { alert('Record Payment — coming soon.'); }
-    function viewQuote(id)              { alert('View Quote — coming soon.'); }
-    function convertToInvoice(id)       { alert('Convert to Invoice — coming soon.'); }
-    function viewReceipt(id)            { alert('View Receipt — coming soon.'); }
-    function printReceipt(id)           { alert('Print Receipt — coming soon.'); }
+    function newInvoiceFor(customerId)  { /* AR invoicing — future sprint */ }
+
     function exportCustomers()          { alert('Export — coming soon.'); }
     function exportAging()              { alert('Export — coming soon.'); }
 
