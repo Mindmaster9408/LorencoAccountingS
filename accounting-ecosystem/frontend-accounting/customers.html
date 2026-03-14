@@ -344,7 +344,10 @@
     <div id="tab-aging" class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h2>Customer Aging Report</h2>
+          <div>
+            <h2>Customer Aging Report</h2>
+            <div style="font-size:11px;color:#9aa0a6;margin-top:3px;">Outstanding balances aged by date of last account transaction</div>
+          </div>
           <button class="btn btn-secondary" onclick="exportAging()">Export PDF</button>
         </div>
         <div class="card-body" style="padding: 0;">
@@ -504,7 +507,8 @@
         balance:     parseFloat(c.current_balance) || 0,
         totalSales:  parseInt(c.total_sales)        || 0,
         lifeValue:   parseFloat(c.lifetime_value)  || 0,
-        lastPurchase: c.last_purchase_at ? toDateStr(c.last_purchase_at) : null,
+        lastPurchase:    c.last_purchase_at      ? toDateStr(c.last_purchase_at)      : null,
+        lastAccountSale: c.last_account_sale_at  ? toDateStr(c.last_account_sale_at) : null,
         status:      c.is_active ? 'active' : 'inactive',
       };
     }
@@ -558,37 +562,71 @@
     }
 
     function renderAging() {
-      const tbody    = document.getElementById('agingTableBody');
-      const withBal  = customers.filter(c => c.balance > 0);
+      const tbody   = document.getElementById('agingTableBody');
+      const withBal = customers.filter(c => c.balance > 0);
 
       if (!withBal.length) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#888;">No outstanding balances</td></tr>';
         return;
       }
 
-      // Simplified: full balance shown in "Current" column until AR aging is available
-      tbody.innerHTML = withBal.map(c => `
-        <tr>
-          <td><strong>${esc(c.name)}</strong></td>
-          <td class="amount">${formatCurrency(c.balance)}</td>
-          <td class="amount">R 0.00</td>
-          <td class="amount">R 0.00</td>
-          <td class="amount">R 0.00</td>
-          <td class="amount">R 0.00</td>
-          <td class="amount"><strong>${formatCurrency(c.balance)}</strong></td>
-        </tr>
-      `).join('');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      const total = withBal.reduce((s, c) => s + c.balance, 0);
+      function ageDays(dateStr) {
+        if (!dateStr) return null;
+        const d = new Date(dateStr);
+        d.setHours(0, 0, 0, 0);
+        return Math.floor((today - d) / 86400000);
+      }
+
+      function bucketBalance(balance, days) {
+        // days null/undefined → unknown age → 90+ (conservative)
+        const d = (days === null || days === undefined) ? 999 : days;
+        if (d <= 30)  return { current: balance, d30: 0,       d60: 0,       d90: 0,       d90p: 0 };
+        if (d <= 60)  return { current: 0,       d30: balance, d60: 0,       d90: 0,       d90p: 0 };
+        if (d <= 90)  return { current: 0,       d30: 0,       d60: balance, d90: 0,       d90p: 0 };
+        if (d <= 120) return { current: 0,       d30: 0,       d60: 0,       d90: balance, d90p: 0 };
+        return              { current: 0,       d30: 0,       d60: 0,       d90: 0,        d90p: balance };
+      }
+
+      const totals = { current: 0, d30: 0, d60: 0, d90: 0, d90p: 0, total: 0 };
+
+      tbody.innerHTML = withBal.map(c => {
+        const refDate = c.lastAccountSale || c.lastPurchase;
+        const days    = ageDays(refDate);
+        const b       = bucketBalance(c.balance, days);
+
+        totals.current += b.current;
+        totals.d30     += b.d30;
+        totals.d60     += b.d60;
+        totals.d90     += b.d90;
+        totals.d90p    += b.d90p;
+        totals.total   += c.balance;
+
+        const aged = b.d90p > 0 ? ' style="color:#d32f2f;"' : (b.d90 > 0 ? ' style="color:#e65100;"' : '');
+
+        return `
+          <tr${aged}>
+            <td><strong>${esc(c.name)}</strong>${c.creditLimit ? `<br><small style="color:#9aa0a6;">Limit: ${formatCurrency(c.creditLimit)}</small>` : ''}</td>
+            <td class="amount">${b.current  ? formatCurrency(b.current)  : '-'}</td>
+            <td class="amount">${b.d30      ? formatCurrency(b.d30)      : '-'}</td>
+            <td class="amount">${b.d60      ? formatCurrency(b.d60)      : '-'}</td>
+            <td class="amount">${b.d90      ? formatCurrency(b.d90)      : '-'}</td>
+            <td class="amount">${b.d90p     ? formatCurrency(b.d90p)     : '-'}</td>
+            <td class="amount"><strong>${formatCurrency(c.balance)}</strong></td>
+          </tr>`;
+      }).join('');
+
       tbody.innerHTML += `
-        <tr style="background:#f8f9fa;font-weight:600;">
+        <tr style="background:#f8f9fa;font-weight:600;border-top:2px solid #dee2e6;">
           <td>TOTAL</td>
-          <td class="amount">${formatCurrency(total)}</td>
-          <td class="amount">R 0.00</td>
-          <td class="amount">R 0.00</td>
-          <td class="amount">R 0.00</td>
-          <td class="amount">R 0.00</td>
-          <td class="amount">${formatCurrency(total)}</td>
+          <td class="amount">${formatCurrency(totals.current)}</td>
+          <td class="amount">${formatCurrency(totals.d30)}</td>
+          <td class="amount">${formatCurrency(totals.d60)}</td>
+          <td class="amount">${formatCurrency(totals.d90)}</td>
+          <td class="amount">${totals.d90p ? `<span style="color:#d32f2f;">${formatCurrency(totals.d90p)}</span>` : formatCurrency(0)}</td>
+          <td class="amount">${formatCurrency(totals.total)}</td>
         </tr>`;
     }
 

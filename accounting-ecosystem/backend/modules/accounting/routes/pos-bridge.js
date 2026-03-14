@@ -366,7 +366,8 @@ router.get('/customers', authenticate, hasPermission('pos.view'), async (req, re
          c.is_active, c.created_at,
          COUNT(s.id)              AS total_sales,
          COALESCE(SUM(s.total_amount), 0) AS lifetime_value,
-         MAX(s.created_at)        AS last_purchase_at
+         MAX(s.created_at)        AS last_purchase_at,
+         MAX(CASE WHEN s.payment_method = 'account' THEN s.created_at END) AS last_account_sale_at
        FROM customers c
        LEFT JOIN sales s ON s.customer_id = c.id AND s.status = 'completed'
        WHERE ${whereClause}
