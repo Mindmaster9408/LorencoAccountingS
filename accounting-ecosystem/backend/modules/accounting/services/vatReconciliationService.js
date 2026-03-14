@@ -465,14 +465,14 @@ class VATReconciliationService {
      */
     async getSubmissions(companyId, filters = {}) {
         let query = `
-            SELECT s.*, 
+            SELECT s.*,
                    p.period_key, p.from_date, p.to_date,
                    r.id as reconciliation_id,
                    rep.id as vat_report_id
             FROM vat_submissions s
             JOIN vat_periods p ON s.vat_period_id = p.id
             LEFT JOIN vat_reconciliations r ON s.vat_reconciliation_id = r.id
-            LEFT JOIN vat_reports rep ON s.vat_report_id = rep.id
+            LEFT JOIN vat_reports rep ON rep.vat_period_id = s.vat_period_id
             WHERE s.company_id = $1
         `;
         const params = [companyId];
