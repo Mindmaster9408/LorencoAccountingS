@@ -62,7 +62,7 @@ router.get('/status', (req, res) => {
  * Optional form fields:
  *   langs     — comma-separated Tesseract language codes (default: "eng")
  *   dpi       — PDF render DPI (default: 200)
- *   maxPages  — max PDF pages to OCR (default: 15)
+ *   maxPages  — max PDF pages to OCR (default: 0 = all pages)
  *
  * Returns:
  *   { success, text, method, pageCount?, charCount, wordCount, processingMs }
@@ -85,7 +85,7 @@ router.post('/extract', upload.single('file'), async (req, res) => {
   // Parse options from form fields
   const langs    = req.body.langs    ? req.body.langs.split(',').map(l => l.trim()) : ['eng'];
   const dpi      = parseInt(req.body.dpi,      10) || 200;
-  const maxPages = parseInt(req.body.maxPages, 10) || 15;
+  const maxPages = parseInt(req.body.maxPages, 10) || 0; // 0 = all pages
 
   try {
     const result = await OcrService.extractText(

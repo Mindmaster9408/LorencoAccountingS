@@ -124,7 +124,7 @@ async function extractTextFromImage(imageBuffer, options = {}) {
  * @param {object}   [options]
  * @param {string[]} [options.langs]     - Tesseract language codes (default: ['eng'])
  * @param {number}   [options.dpi]       - Render DPI (default: 200 — good quality/speed tradeoff)
- * @param {number}   [options.maxPages]  - Max pages to OCR (default: 15)
+ * @param {number}   [options.maxPages]  - Max pages to OCR. Omit (or 0) for all pages.
  * @returns {Promise<{ text: string, pageCount: number, method: string, success: true }>}
  */
 async function extractTextFromScannedPdf(pdfBuffer, options = {}) {
@@ -135,9 +135,9 @@ async function extractTextFromScannedPdf(pdfBuffer, options = {}) {
     throw new Error('Scanned-PDF OCR unavailable: pdftoppm (poppler-utils) is not installed.');
   }
 
-  const langs    = options.langs    || ['eng'];
-  const dpi      = options.dpi      || 200;
-  const maxPages = options.maxPages || 15;
+  const langs    = options.langs || ['eng'];
+  const dpi      = options.dpi   || 200;
+  const maxPages = options.maxPages || 0; // 0 = no limit (process all pages)
 
   const tmpDir  = path.join(os.tmpdir(), `ocr-pdf-${crypto.randomUUID()}`);
   const pdfPath = path.join(tmpDir, 'input.pdf');
@@ -148,13 +148,12 @@ async function extractTextFromScannedPdf(pdfBuffer, options = {}) {
     fs.writeFileSync(pdfPath, pdfBuffer);
 
     // Convert PDF pages → PNG images
-    await execFileAsync('pdftoppm', [
-      '-png',
-      '-r', String(dpi),
-      '-l', String(maxPages),
-      pdfPath,
-      imgBase,
-    ], { timeout: 120000 });
+    // Only add -l (last page) flag when a limit is explicitly requested
+    const pdftoppmArgs = ['-png', '-r', String(dpi)];
+    if (maxPages > 0) pdftoppmArgs.push('-l', String(maxPages));
+    pdftoppmArgs.push(pdfPath, imgBase);
+
+    await execFileAsync('pdftoppm', pdftoppmArgs, { timeout: 300000 }); // 5 min for large PDFs
 
     // Find generated page images (pdftoppm names them page-1.png, page-2.png …)
     const pageFiles = fs.readdirSync(tmpDir)

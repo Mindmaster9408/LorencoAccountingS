@@ -100,7 +100,7 @@ class PdfStatementImportService {
         warnings.push('Scanned (image-based) PDF detected — running OCR to extract text. This may take a moment.');
         let ocrResult;
         try {
-          ocrResult = await OcrService.extractTextFromScannedPdf(pdfBuffer, { dpi: 200, maxPages: 15 });
+          ocrResult = await OcrService.extractTextFromScannedPdf(pdfBuffer, { dpi: 200 }); // all pages
         } catch (ocrErr) {
           return this._error(
             `This is a scanned PDF and OCR failed: ${ocrErr.message}. ` +
