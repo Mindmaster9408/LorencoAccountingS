@@ -762,6 +762,10 @@
                            || null;
       currentCompany = (activeCompanyId && companies.find(c => c.id === activeCompanyId)) || companies[0] || null;
       if (currentCompany) {
+        // Seed activeCompanyId so saveCompany() can find it (needed after SSO login)
+        if (!localStorage.getItem('activeCompanyId')) {
+          localStorage.setItem('activeCompanyId', currentCompany.id);
+        }
         loadCompanyDetails(currentCompany.id);
       }
     }

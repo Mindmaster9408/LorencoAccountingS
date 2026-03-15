@@ -1,17 +1,16 @@
 /**
  * Accounting Module — Company Routes
- * Uses Supabase schema: companies table + user_company_access for access control.
- * Maps Supabase column names to the format Lorenco Accounting frontend expects.
+ * Uses Supabase schema: companies table.
+ * Access control: JWT companyId scope (not user_company_access — SSO users bypass that table).
+ * On PUT, also syncs overlapping fields back to eco_clients (bidirectional sync with ECO Hub).
  */
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
-const { supabase } = require('../../../config/database');
 
-// GET /api/accounting/company/list — companies this user can access
+// GET /api/accounting/company/list — companies this token is scoped to
 router.get('/list', authenticate, async (req, res) => {
-  const userId = req.user.userId || req.user.id;
   const isSuperAdmin = req.user.isGlobalAdmin || req.user.isSuperAdmin || req.user.is_super_admin;
 
   try {
@@ -28,18 +27,15 @@ router.get('/list', authenticate, async (req, res) => {
          ORDER BY company_name`
       );
     } else {
+      // JWT companyId is the single company this token is scoped to (set by ECO auth middleware)
       result = await db.query(
-        `SELECT c.id,
-                c.company_name AS name,
-                c.registration_number AS "regNumber",
-                c.is_active AS "isActive"
-         FROM companies c
-         INNER JOIN user_company_access uca ON c.id = uca.company_id
-         WHERE uca.user_id = $1
-           AND uca.is_active = true
-           AND c.is_active = true
-         ORDER BY c.company_name`,
-        [userId]
+        `SELECT id,
+                company_name AS name,
+                registration_number AS "regNumber",
+                is_active AS "isActive"
+         FROM companies
+         WHERE id = $1`,
+        [req.companyId]
       );
     }
 
@@ -53,20 +49,14 @@ router.get('/list', authenticate, async (req, res) => {
 // GET /api/accounting/company/:id — full company details
 router.get('/:id', authenticate, async (req, res) => {
   const companyId = req.params.id;
-  const userId = req.user.userId || req.user.id;
   const isSuperAdmin = req.user.isGlobalAdmin || req.user.isSuperAdmin || req.user.is_super_admin;
 
-  try {
-    if (!isSuperAdmin) {
-      const accessCheck = await db.query(
-        'SELECT 1 FROM user_company_access WHERE user_id = $1 AND company_id = $2 AND is_active = true',
-        [userId, companyId]
-      );
-      if (accessCheck.rows.length === 0) {
-        return res.status(403).json({ error: 'Access denied to this company' });
-      }
-    }
+  // Access check: JWT companyId must match the requested company (unless super admin)
+  if (!isSuperAdmin && String(req.companyId) !== String(companyId)) {
+    return res.status(403).json({ error: 'Access denied to this company' });
+  }
 
+  try {
     const result = await db.query(
       `SELECT
          id,
@@ -120,24 +110,18 @@ router.post('/', authenticate, (req, res) => {
   });
 });
 
-// PUT /api/accounting/company/:id — update SA tax + banking details
-router.put('/:id', authenticate, authorize('ADMIN', 'ACCOUNTANT'), async (req, res) => {
+// PUT /api/accounting/company/:id — update SA tax + banking details, syncs back to eco_clients
+router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, res) => {
   const companyId = req.params.id;
-  const userId = req.user.userId || req.user.id;
   const isSuperAdmin = req.user.isGlobalAdmin || req.user.isSuperAdmin || req.user.is_super_admin;
   const data = req.body;
 
-  try {
-    if (!isSuperAdmin) {
-      const accessCheck = await db.query(
-        'SELECT 1 FROM user_company_access WHERE user_id = $1 AND company_id = $2 AND is_active = true',
-        [userId, companyId]
-      );
-      if (accessCheck.rows.length === 0) {
-        return res.status(403).json({ error: 'Access denied to this company' });
-      }
-    }
+  // Access check: JWT companyId must match the requested company (unless super admin)
+  if (!isSuperAdmin && String(req.companyId) !== String(companyId)) {
+    return res.status(403).json({ error: 'Access denied to this company' });
+  }
 
+  try {
     await db.query(
       `UPDATE companies SET
          company_name        = COALESCE($1,  company_name),
@@ -195,24 +179,30 @@ router.put('/:id', authenticate, authorize('ADMIN', 'ACCOUNTANT'), async (req, r
       ]
     );
 
-    // Sync overlapping fields back to eco_clients (if this company is a client's own company)
-    // eco_clients.client_company_id links a client record to its isolated companies row.
-    // Fields in common: name ↔ company_name, email ↔ email, phone ↔ phone, address ↔ physical_address
-    const ecoSync = {};
-    if (data.name)            ecoSync.name    = data.name;
-    if (data.email)           ecoSync.email   = data.email;
-    if (data.phone)           ecoSync.phone   = data.phone;
-    if (data.physicalAddress) ecoSync.address = data.physicalAddress;
-
-    if (Object.keys(ecoSync).length > 0) {
-      const { error: syncErr } = await supabase
-        .from('eco_clients')
-        .update(ecoSync)
-        .eq('client_company_id', companyId);
-      if (syncErr) {
-        // Non-fatal — log and continue. Not all companies are eco-clients.
-        console.warn('[Accounting] eco_clients sync warning:', syncErr.message);
-      }
+    // Sync overlapping fields back to eco_clients (bidirectional ECO Hub sync)
+    // Silent — if no eco_client record exists (e.g. manually created company), skip gracefully
+    try {
+      await db.query(
+        `UPDATE eco_clients SET
+           name       = COALESCE($1, name),
+           email      = COALESCE($2, email),
+           phone      = COALESCE($3, phone),
+           address    = COALESCE($4, address),
+           id_number  = COALESCE($5, id_number),
+           updated_at = NOW()
+         WHERE client_company_id = $6`,
+        [
+          data.name            || null,
+          data.email           || null,
+          data.phone           || null,
+          data.physicalAddress || null,
+          data.regNumber       || null,
+          companyId
+        ]
+      );
+    } catch (syncErr) {
+      // Non-fatal: log but don't fail the main save
+      console.warn('[Accounting] eco_clients sync skipped:', syncErr.message);
     }
 
     res.json({ success: true });
