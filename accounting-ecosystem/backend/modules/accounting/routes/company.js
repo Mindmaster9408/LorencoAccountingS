@@ -44,23 +44,54 @@ function mapCompanyRow(row) {
   };
 }
 
-// ── GET /api/accounting/company/list — companies this token is scoped to ──────
+// ── GET /api/accounting/company/list — companies scoped to this practice ──────
+// ISOLATION RULE: only returns client companies managed by the same practice that
+// owns the current JWT company. Super admin status does NOT bypass this — a super
+// admin logged into Practice A must never see Practice B's clients.
 router.get('/list', authenticate, async (req, res) => {
-  const isSuperAdmin = req.user.isGlobalAdmin || req.user.isSuperAdmin || req.user.is_super_admin;
-
   try {
-    let query = supabase
+    // Step 1: resolve the practice company ID from the current JWT company.
+    // The JWT company may be:
+    //   (a) a client_company_id  → look up its managing practice via eco_clients
+    //   (b) the practice company itself (direct login, not SSO'd into a client)
+    let practiceCompanyId = req.companyId;
+
+    const { data: clientRecord } = await supabase
+      .from('eco_clients')
+      .select('company_id')
+      .eq('client_company_id', req.companyId)
+      .maybeSingle();
+
+    if (clientRecord?.company_id) {
+      // JWT company is a client — its practice is clientRecord.company_id
+      practiceCompanyId = clientRecord.company_id;
+    }
+    // else: JWT company IS the practice (direct login) — use req.companyId as-is
+
+    // Step 2: get all client companies belonging to this practice
+    const { data: ecoClients, error: ecoErr } = await supabase
+      .from('eco_clients')
+      .select('client_company_id')
+      .eq('company_id', practiceCompanyId)
+      .not('client_company_id', 'is', null);
+
+    if (ecoErr) throw ecoErr;
+
+    const clientCompanyIds = (ecoClients || []).map(r => r.client_company_id);
+
+    if (clientCompanyIds.length === 0) {
+      // No clients registered for this practice yet
+      return res.json({ companies: [] });
+    }
+
+    // Step 3: fetch those companies
+    const { data, error } = await supabase
       .from('companies')
       .select('id, company_name, registration_number, is_active')
+      .in('id', clientCompanyIds)
       .eq('is_active', true)
       .order('company_name');
 
-    if (!isSuperAdmin) {
-      // JWT companyId is the single company this token is scoped to
-      query = query.eq('id', req.companyId);
-    }
-
-    const { data, error } = await query;
     if (error) throw error;
 
     const companies = (data || []).map(r => ({
