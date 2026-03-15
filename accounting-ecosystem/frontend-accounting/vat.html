@@ -2163,57 +2163,6 @@
             });
         }
 
-        // ===================================
-        // LEDGER INTEGRATION
-        // ===================================
-
-        function formatCurrency(amount) {
-            return 'R ' + Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-
-        function loadVatFromLedger() {
-            if (typeof LedgerSystem === 'undefined') return;
-
-            // Get VAT report from ledger
-            const vatReport = LedgerSystem.getVatReport();
-
-            // Check if there's any VAT data
-            if (vatReport.outputVat === 0 && vatReport.inputVat === 0) {
-                console.log('No VAT data in ledger, keeping demo values');
-                return;
-            }
-
-            // Update the summary cards
-            const outputVatEl = document.getElementById('outputVatValue');
-            const inputVatEl = document.getElementById('inputVatValue');
-            const vatPayableEl = document.getElementById('vatPayableValue');
-
-            if (outputVatEl) outputVatEl.textContent = formatCurrency(vatReport.outputVat);
-            if (inputVatEl) inputVatEl.textContent = formatCurrency(vatReport.inputVat);
-            if (vatPayableEl) {
-                vatPayableEl.textContent = formatCurrency(Math.abs(vatReport.netVat));
-                // Change label if refundable
-                if (vatReport.refundable) {
-                    const parentCard = vatPayableEl.closest('.stat-card');
-                    if (parentCard) {
-                        const h3 = parentCard.querySelector('h3');
-                        if (h3) h3.textContent = 'VAT Refundable from SARS';
-                    }
-                }
-            }
-
-            console.log('VAT data loaded from ledger:', vatReport);
-        }
-
-        // Load VAT data on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof LedgerSystem !== 'undefined') {
-                const journals = LedgerSystem.getJournals();
-                if (journals.length > 0) {
-                    loadVatFromLedger();
-                }
-            }
-        });
     </script>
 </body>
 </html>
