@@ -41,8 +41,8 @@ router.get('/list', authenticate, async (req, res) => {
 
     res.json({ companies: result.rows });
   } catch (err) {
-    console.error('[Accounting] Get companies error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch companies' });
+    console.error('[Accounting] Get companies error:', err.message, '| companyId:', req.companyId, '| isSuperAdmin:', req.user?.isGlobalAdmin);
+    res.status(500).json({ error: 'Failed to fetch companies', detail: err.message });
   }
 });
 

@@ -663,12 +663,13 @@
           const data = await res.json();
           companies = data.companies || [];
         } else {
-          throw new Error('Failed to load companies');
+          const errData = await res.json().catch(() => ({}));
+          throw new Error((errData.detail || errData.error || 'Failed to load companies') + ' [' + res.status + ']');
         }
       } catch (err) {
-        console.error('Failed to load companies:', err);
+        console.error('Failed to load companies:', err.message);
         companies = [];
-        showAlert('Could not load company list. Please refresh or re-login.', 'error');
+        showAlert('Could not load company list: ' + err.message, 'error');
       }
       renderCompanyList();
     }
