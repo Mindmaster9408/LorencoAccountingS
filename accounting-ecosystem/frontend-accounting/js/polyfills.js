@@ -727,6 +727,31 @@ window.debounce = function(func, wait) {
 };
 
 /**
+ * Storage availability test (standard MDN pattern)
+ * Tests whether a storage type is available and writable.
+ * Handles SecurityError if storage is blocked by browser policy.
+ * @param {string} type - 'localStorage' or 'sessionStorage'
+ * @returns {boolean}
+ */
+window.storageAvailable = function(type) {
+    var storage;
+    try {
+        storage = window[type];
+        var x = '__storage_test__';
+        storage.setItem(x, x);
+        storage.removeItem(x);
+        return true;
+    } catch (e) {
+        return e instanceof DOMException && (
+            e.code === 22 ||       // Chrome / Safari quota exceeded
+            e.code === 1014 ||     // Firefox NS_ERROR_DOM_QUOTA_REACHED
+            e.name === 'QuotaExceededError' ||
+            e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+        ) && (storage && storage.length !== 0);
+    }
+};
+
+/**
  * Feature detection helper
  * @param {string} feature - 'localStorage', 'fetch', 'IntersectionObserver', etc.
  * @returns {boolean}

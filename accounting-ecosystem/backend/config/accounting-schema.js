@@ -629,6 +629,19 @@ async function ensureAccountingSchema(pool) {
       )
     `);
 
+    // ── 24. Accounting KV Store — frontend cloud-backed localStorage bridge ────
+    // Used by polyfills.js synchronous preload — table MUST exist or every page
+    // load fails with a 500 on /api/accounting/kv.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS accounting_kv_store (
+        company_id  TEXT NOT NULL,
+        key         TEXT NOT NULL,
+        value       JSONB,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (company_id, key)
+      )
+    `);
+
     // ── 22. Indexes for performance ───────────────────────────────────────────
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_accounts_company ON accounts(company_id)',
