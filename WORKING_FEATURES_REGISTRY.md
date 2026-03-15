@@ -117,6 +117,32 @@ Each entry has:
 
 ---
 
+## Accounting App — Company Page (`accounting-ecosystem/`)
+
+| # | Feature | Status | Depends on | Break conditions | Last verified |
+|---|---------|--------|------------|-----------------|---------------|
+| AC1 | Company list loads only current practice's clients | ✅ Fixed | `company.js` GET /list — 3-step isolation via eco_clients lookup | Re-introducing `isSuperAdmin → return ALL companies` path | commit `4202e49` |
+| AC2 | Company form populates from DB (all SA fields) | ✅ Fixed | `company.js` GET /:id (Supabase), `mapCompanyRow()` helper, `company.html` `loadCompanyDetails()` | Switching back to pg Pool without DATABASE_URL set in Zeabur; changing column names in mapCompanyRow | commit `970858f` |
+| AC3 | Company save persists all fields including name | ✅ Fixed | `company.js` PUT /:id — `company_name = COALESCE($1, company_name)` | Removing `company_name` from Supabase update object; falsy check on `d.name` blocking valid empty-string clears | commit `a52bb4d` |
+| AC4 | Save syncs name/email/phone/address/regNumber back to eco_clients | ✅ Implemented | `company.js` PUT /:id — supabase UPDATE eco_clients WHERE client_company_id | Changing field name mapping (e.g. `id_number` → something else in eco_clients); removing the eco sync block | commit `970858f` |
+| AC5 | Nav bar company dropdown shows practice's clients | ✅ Implemented | `navigation.js` `loadAccountingClients()` — GET /api/eco-clients?app=accounting with eco_token | eco_token not in localStorage (user accessed accounting without ECO SSO); eco-clients route not returning `client_company_id` | commit `72f4cc0` |
+| AC6 | Nav bar client switcher issues scoped JWT | ✅ Implemented | `navigation.js` `switchToClient()` → POST /api/auth/select-company with eco_token → stores result as `token` | select-company route checking user_company_access for non-super-admins (SSO users fail); eco_token expired | commit `72f4cc0` |
+| AC7 | Access check uses JWT companyId not user_company_access | ✅ Fixed | `company.js` GET/PUT /:id — `String(req.companyId) !== String(companyId)` | Reverting to user_company_access JOIN (SSO users have no rows there → always 403) | commit `a52bb4d` |
+| AC8 | storageAvailable defined before hasFeature | ✅ Fixed | `polyfills.js` line 736 — `window.storageAvailable` MDN pattern | Moving `window.hasFeature` definition above `window.storageAvailable`; browser cache serving old polyfills (hard refresh fixes) | commit `373a972` |
+| AC9 | accounting_kv_store table exists (KV preload works) | ✅ Fixed | `accounting-schema.js` section 24 — CREATE TABLE IF NOT EXISTS accounting_kv_store | Removing the kv_store creation block from ensureAccountingSchema() | commit `373a972` |
+
+---
+
+## Accounting App — VAT Page
+
+| # | Feature | Status | Depends on | Break conditions | Last verified |
+|---|---------|--------|------------|-----------------|---------------|
+| AV1 | VAT recon section dark themed (no white/blue/beige bleed) | ✅ Fixed | `dark-theme.css` — `.vat-action-bar`, `.vat-summary-bar`, `.vat-recon-alert`, `.vat-checklist-card`; `vat.html` class names on those elements | Removing class names from inline elements in vat.html; removing those CSS rules from dark-theme.css | commit `9ab6485` |
+| AV2 | VAT page auto-loads current period on open | ✅ Implemented | `vat.html` DOMContentLoaded → `setupPeriodSelector()` → `selectVATPeriod()` | Removing DOMContentLoaded call chain; breaking `periodSelect` element ID | commit `6189bc1` |
+| AV3 | PROEFBALANS inputs pre-populated from trial balance | ✅ Implemented | `vat.html` `loadVATReconData()` → `loadTrialBalanceForPeriod()` → `populateTrialBalanceData()` | Reverting `loadVATReconData()` to safeLocalStorage reads; breaking account code 2300/1400 lookups | commit `db8c0b4` |
+
+---
+
 ## Point of Sale (`Point of Sale/`)
 
 | # | Feature | Status | Depends on | Break conditions | Last verified |
@@ -180,3 +206,7 @@ Safe to proceed? [ ] Yes — no overlap  [ ] Yes — protected by: _______  [ ] 
 14. **NEVER remove `clients:` from the `users.js` GET / map result** — dashboard `loadPracticeUsers` depends on it to render client chips (EC6, EC8)
 15. **NEVER use `.single()` in the SSO accountant cross-company chain** — if the user has no direct company access, the result is null and `.single()` throws; use `.maybeSingle()` (EC4)
 16. **NEVER remove tax_number required validation from `POST /api/employees`** — employees without tax numbers break PAYE compliance (PT5)
+17. **NEVER use `isSuperAdmin → return ALL companies` in the accounting company list** — super admins span all practices; this leaks other practices' client data. Always scope to the current practice via eco_clients lookup (AC1)
+18. **NEVER switch `company.js` back to pg Pool** without confirming `DATABASE_URL` is set in Zeabur — pg Pool throws "No database URL configured" if env vars absent → 500 on every request (AC2)
+19. **NEVER reverse the `authorize('admin', 'accountant')` lowercase** in accounting company routes — `mapRole()` outputs lowercase; uppercase 'ADMIN'/'ACCOUNTANT' never matches → all saves return 403 (AC3)
+20. **NEVER use `user_company_access` JOIN for accounting route access checks** — SSO users (launched via ECO Hub) have no rows in that table → always returns empty → 403 for all valid users. Use `req.companyId === companyId` JWT comparison instead (AC7)
