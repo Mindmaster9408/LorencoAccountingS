@@ -839,3 +839,250 @@ a:hover {
 .report-content table td[style*="background"] {
     background: rgba(255,255,255,0.06) !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * REPORT PAGES — Section/Total Row Theming + Report Header + Controls
+ * Covers: reports.html (P&L), balance-sheet.html, trial-balance.html,
+ *         cashflow.html, sales-analysis.html, purchase-analysis.html,
+ *         aged-debtors.html, aged-creditors.html
+ * These pages use .section-header / .section-total / .grand-total on <tr>
+ * elements in report tables, and .report-header as the banner at top of
+ * .report-card. The earlier rule (line ~663) set .report-header to surface —
+ * this override replaces that with the amber gradient.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Report banner header — amber gradient (overrides surface set earlier) */
+.report-header {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%) !important;
+    color: #1a1a2e !important;
+}
+.report-header h2,
+.report-header p,
+.report-header span {
+    color: #1a1a2e !important;
+}
+
+/* Report filter/controls bar */
+.report-controls {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+}
+
+/* Page header subtitle */
+.page-header p,
+.page-header .subtitle {
+    color: var(--text-muted) !important;
+}
+
+/* Section header rows — amber tinted (replaces blue #0066cc tint) */
+tr.section-header td,
+tr.section-header th,
+.report-table .section-header td,
+.report-table .section-header th {
+    background: rgba(245,158,11,0.08) !important;
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--border-strong) !important;
+}
+
+/* Section total rows — amber tinted bottom-line */
+tr.section-total td,
+tr.section-total th,
+.report-table .section-total td,
+.report-table .section-total th {
+    background: rgba(245,158,11,0.06) !important;
+    color: var(--text) !important;
+    border-top-color: var(--accent) !important;
+    border-bottom-color: var(--border) !important;
+}
+
+/* Grand total rows — amber gradient (replaces blue gradient) */
+tr.grand-total td,
+tr.grand-total th,
+.report-table .grand-total td,
+.report-table .grand-total th {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%) !important;
+    color: #1a1a2e !important;
+    border-color: transparent !important;
+}
+
+/* Report table row hover — amber tint (replaces blue tint from inline CSS) */
+.report-table tr:hover td,
+.report-table tr:hover th {
+    background: rgba(245,158,11,0.04) !important;
+}
+
+/* Preserve positive/negative colors — global td { color !important } would win otherwise */
+.positive,
+td.positive,
+.positive td {
+    color: #34a853 !important;
+}
+.negative,
+td.negative,
+.negative td {
+    color: #ea4335 !important;
+}
+
+/* Report table borders */
+.report-table th {
+    border-bottom-color: var(--border-strong) !important;
+}
+.report-table td {
+    border-bottom-color: var(--border) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * BANK RECONCILIATION PAGE (bank-reconciliation.html)
+ * All white/light containers, detail boxes, filter buttons, diff boxes
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+.recon-header,
+.transactions-section,
+.summary-panel {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+}
+.recon-account {
+    border-bottom-color: var(--border-strong) !important;
+}
+.account-info h2 {
+    color: var(--text) !important;
+}
+.account-number {
+    color: var(--text-muted) !important;
+}
+.detail-box {
+    background: var(--surface-alt) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.detail-label {
+    color: var(--text-muted) !important;
+}
+.detail-value {
+    color: var(--text) !important;
+}
+.detail-value input {
+    color: var(--text) !important;
+    background: transparent !important;
+}
+/* Highlighted detail box — amber instead of blue */
+.detail-box.highlight {
+    background: rgba(245,158,11,0.10) !important;
+    border-color: var(--accent) !important;
+}
+.detail-box.highlight .detail-value {
+    background: linear-gradient(135deg, var(--accent), var(--accent-light)) !important;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+/* Section header div in bank-recon (layout only, but h3 needs dark text) */
+.section-header h3 {
+    color: var(--text) !important;
+}
+/* Filter buttons */
+.filter-btn {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.filter-btn:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+}
+.filter-btn.active {
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)) !important;
+    color: #1a1a2e !important;
+    border-color: transparent !important;
+}
+/* Reconciled rows — subtle green tint in dark mode */
+.transactions-table tbody tr.reconciled {
+    background: rgba(16,185,129,0.05) !important;
+}
+.transactions-table tbody tr.reconciled:hover {
+    background: rgba(16,185,129,0.10) !important;
+}
+/* Status badges */
+.status-unreconciled {
+    background: rgba(245,158,11,0.15) !important;
+    color: var(--accent-light) !important;
+}
+.status-reconciled {
+    background: rgba(16,185,129,0.15) !important;
+    color: #6ee7b7 !important;
+}
+/* Summary panel internals */
+.summary-panel h3 {
+    color: var(--text) !important;
+}
+.summary-row {
+    border-bottom-color: var(--border) !important;
+}
+.summary-row:last-child {
+    border-top-color: var(--border-strong) !important;
+}
+.summary-label {
+    color: var(--text-muted) !important;
+}
+.summary-value {
+    color: var(--text) !important;
+}
+/* Difference box — amber tint when unbalanced, green tint when balanced */
+.difference-box {
+    background: rgba(245,158,11,0.08) !important;
+    border-color: var(--accent) !important;
+}
+.difference-box.balanced {
+    background: rgba(16,185,129,0.08) !important;
+    border-color: #10b981 !important;
+}
+.difference-label {
+    color: var(--text-muted) !important;
+}
+.difference-box.balanced .difference-label {
+    color: #6ee7b7 !important;
+}
+/* Info message box */
+.info-message {
+    background: rgba(245,158,11,0.06) !important;
+    color: var(--text-muted) !important;
+    border-radius: 8px;
+}
+.info-message strong {
+    color: var(--accent-light) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * CONTACTS PAGE (contacts.html)
+ * Tab hover state and border theming
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+.tabs {
+    border-bottom-color: var(--border) !important;
+}
+.tab {
+    color: var(--text-muted) !important;
+}
+.tab:hover {
+    color: var(--accent-light) !important;
+    background: rgba(245,158,11,0.06) !important;
+}
+/* Active tab — amber text + amber underline instead of blue */
+.tab.active {
+    color: var(--accent-light) !important;
+}
+.tab.active::after {
+    background: linear-gradient(90deg, var(--accent), var(--accent-dark)) !important;
+}
+
+/* ── Summary value colour variants (bank recon / contacts) ───────────────── */
+/* Global td { color !important } would win over .positive/.negative on td.   */
+/* Ensures coloured amounts survive in all contexts, not just report tables.   */
+.summary-value.positive { color: #34a853 !important; }
+.summary-value.negative { color: #ea4335 !important; }
+.summary-value.zero     { color: #10b981 !important; }
