@@ -28,9 +28,15 @@ function createNavigation() {
           <div class="logo-icon">L</div>
           <span>Lorenco</span>
         </div>
-        <div class="company-selector" id="companySelectorBtn">
-          <span id="navCompanyName">Business Current Account</span>
-          <span style="opacity: 0.7;">&darr;</span>
+        <div class="company-selector" id="companySelectorBtn" onclick="toggleCompanyDropdown()">
+          <span id="navCompanyName">Company</span>
+          <span class="company-chevron" style="opacity:0.7;transition:transform 0.2s;">&#x2193;</span>
+          <div class="company-dropdown" id="companyDropdown">
+            <div class="company-dropdown-header">Switch Client</div>
+            <div id="companyDropdownList">
+              <div class="company-dropdown-loading">Click to load clients&hellip;</div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="right-section">
@@ -306,10 +312,94 @@ function addNavigationStyles() {
         cursor: pointer;
         transition: all 0.2s;
         font-size: 13px;
+        position: relative;
+        user-select: none;
       }
 
       .company-selector:hover {
         background: rgba(255,255,255,0.25);
+      }
+
+      /* ── Client switcher dropdown ───────────────────────────────────────── */
+      .company-dropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        min-width: 260px;
+        max-height: 360px;
+        overflow-y: auto;
+        background: #1a1740;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 10px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+        z-index: 9999;
+        cursor: default;
+      }
+
+      .company-dropdown.show { display: block; }
+
+      .company-selector.open .company-chevron { transform: rotate(180deg); }
+
+      .company-dropdown-header {
+        padding: 10px 16px 8px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.4);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+
+      .company-dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        font-size: 13px;
+        color: rgba(255,255,255,0.9);
+        cursor: pointer;
+        transition: background 0.15s;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+      }
+
+      .company-dropdown-item:last-child { border-bottom: none; }
+
+      .company-dropdown-item:hover { background: rgba(255,255,255,0.08); }
+
+      .company-dropdown-item.active {
+        background: rgba(245,158,11,0.15);
+        color: #f59e0b;
+        font-weight: 600;
+      }
+
+      .company-dropdown-item .client-badge {
+        margin-left: auto;
+        font-size: 10px;
+        padding: 2px 7px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.5);
+        flex-shrink: 0;
+      }
+
+      .company-dropdown-item.active .client-badge { background: rgba(245,158,11,0.2); color: #f59e0b; }
+
+      .company-dropdown-loading,
+      .company-dropdown-error {
+        padding: 16px;
+        font-size: 12px;
+        text-align: center;
+        color: rgba(255,255,255,0.4);
+      }
+
+      .company-dropdown-error { color: #fca5a5; }
+
+      .company-dropdown-switching {
+        padding: 12px 16px;
+        font-size: 12px;
+        color: #f59e0b;
+        text-align: center;
       }
 
       .right-section {
@@ -662,14 +752,153 @@ function toggleUserDropdown() {
   }
 }
 
-// Close dropdown when clicking outside
+// Close dropdowns when clicking outside
 document.addEventListener('click', function(e) {
+  // User dropdown
   const userMenu = document.querySelector('.user-menu');
-  const dropdown = document.getElementById('userDropdown');
-  if (dropdown && userMenu && !userMenu.contains(e.target)) {
-    dropdown.classList.remove('show');
+  const userDropdown = document.getElementById('userDropdown');
+  if (userDropdown && userMenu && !userMenu.contains(e.target)) {
+    userDropdown.classList.remove('show');
+  }
+  // Company dropdown
+  const companyBtn = document.getElementById('companySelectorBtn');
+  const companyDropdown = document.getElementById('companyDropdown');
+  if (companyDropdown && companyBtn && !companyBtn.contains(e.target)) {
+    companyDropdown.classList.remove('show');
+    companyBtn.classList.remove('open');
   }
 });
+
+// ── Company / Client Switcher ────────────────────────────────────────────────
+
+let _clientsLoaded = false;
+
+function toggleCompanyDropdown() {
+  const btn      = document.getElementById('companySelectorBtn');
+  const dropdown = document.getElementById('companyDropdown');
+  if (!btn || !dropdown) return;
+
+  const isOpen = dropdown.classList.contains('show');
+
+  // Close user dropdown if open
+  document.getElementById('userDropdown')?.classList.remove('show');
+
+  if (isOpen) {
+    dropdown.classList.remove('show');
+    btn.classList.remove('open');
+  } else {
+    dropdown.classList.add('show');
+    btn.classList.add('open');
+    if (!_clientsLoaded) loadAccountingClients();
+  }
+}
+
+// Decode companyId from the current accounting JWT (no external deps)
+function _currentCompanyId() {
+  try {
+    const tok = localStorage.getItem('token') || '';
+    const payload = JSON.parse(atob(tok.split('.')[1]));
+    return payload.companyId || null;
+  } catch (_) { return null; }
+}
+
+async function loadAccountingClients() {
+  const listEl = document.getElementById('companyDropdownList');
+  if (!listEl) return;
+
+  listEl.innerHTML = '<div class="company-dropdown-loading">Loading clients&hellip;</div>';
+
+  // Use eco_token to call the shared ECO api (scoped to the practice company)
+  const ecoToken = localStorage.getItem('eco_token') || localStorage.getItem('token') || '';
+  if (!ecoToken) {
+    listEl.innerHTML = '<div class="company-dropdown-error">Not authenticated</div>';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/eco-clients?app=accounting', {
+      headers: { 'Authorization': 'Bearer ' + ecoToken }
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load clients');
+    }
+
+    const data    = await res.json();
+    const clients = (data.clients || []).filter(c => c.client_company_id);
+
+    if (clients.length === 0) {
+      listEl.innerHTML = '<div class="company-dropdown-loading">No accounting clients found</div>';
+      return;
+    }
+
+    const activeCid = _currentCompanyId();
+
+    listEl.innerHTML = clients.map(c => {
+      const cid      = c.client_company_id;
+      const isActive = String(cid) === String(activeCid);
+      const badge    = c.shared_access
+        ? '<span class="client-badge">Shared</span>'
+        : (isActive ? '<span class="client-badge" style="background:rgba(245,158,11,0.25);color:#f59e0b;">Active</span>' : '');
+      return `<div class="company-dropdown-item${isActive ? ' active' : ''}"
+                   onclick="switchToClient(${cid}, event)"
+                   data-name="${c.name.replace(/"/g, '&quot;')}">
+                <span>${c.name}</span>${badge}
+              </div>`;
+    }).join('');
+
+    _clientsLoaded = true;
+
+  } catch (err) {
+    console.error('[CompanyDropdown] loadAccountingClients:', err.message);
+    listEl.innerHTML = `<div class="company-dropdown-error">Error: ${err.message}</div>`;
+  }
+}
+
+async function switchToClient(companyId, event) {
+  if (event) event.stopPropagation();
+  if (!companyId) return;
+
+  const itemEl = event && event.currentTarget;
+  const clientName = itemEl ? itemEl.getAttribute('data-name') : 'Client';
+
+  const listEl = document.getElementById('companyDropdownList');
+  if (listEl) listEl.innerHTML = `<div class="company-dropdown-switching">Switching to ${clientName}&hellip;</div>`;
+
+  const ecoToken = localStorage.getItem('eco_token') || localStorage.getItem('token') || '';
+
+  try {
+    const res = await fetch('/api/auth/select-company', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + ecoToken
+      },
+      body: JSON.stringify({ companyId })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Switch failed');
+    }
+
+    const data = await res.json();
+
+    // Update accounting token and company name, then reload
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('eco_company_name', clientName);
+
+    window.location.reload();
+
+  } catch (err) {
+    console.error('[CompanyDropdown] switchToClient:', err.message);
+    alert('Could not switch to ' + clientName + ': ' + err.message);
+    // Reload client list on failure
+    _clientsLoaded = false;
+    loadAccountingClients();
+  }
+}
 
 function logout() {
   localStorage.removeItem('token');
