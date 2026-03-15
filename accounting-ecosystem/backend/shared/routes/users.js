@@ -529,6 +529,159 @@ router.delete('/:id/company-access', requirePermission('USERS.DELETE'), async (r
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PAYTIME ACCESS CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/users/:id/paytime-config
+ * Get paytime_user_config for a user + current company.
+ * Returns null if no config exists (user has unrestricted access).
+ */
+router.get('/:id/paytime-config', requirePermission('USERS.VIEW'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const companyId = req.companyId;
+
+    const { data, error } = await supabase
+      .from('paytime_user_config')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ config: data || null });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/users/:id/paytime-config
+ * Upsert paytime_user_config for a user + current company.
+ * Body: { modules: ['leave','payroll'], employee_scope: 'all'|'selected', can_view_confidential: bool }
+ * Send null body (or { clear: true }) to remove config entirely (restores unrestricted access).
+ */
+router.put('/:id/paytime-config', requirePermission('USERS.EDIT'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const companyId = req.companyId;
+
+    // Allow clearing config (restores unrestricted access)
+    if (req.body.clear === true || req.body === null) {
+      await supabase.from('paytime_user_config').delete()
+        .eq('user_id', userId).eq('company_id', companyId);
+      await auditFromReq(req, 'DELETE', 'paytime_user_config', userId, {
+        metadata: { company_id: companyId, action: 'config_cleared' }
+      });
+      return res.json({ success: true, config: null });
+    }
+
+    const { modules, employee_scope, can_view_confidential } = req.body;
+
+    // Validate
+    const VALID_MODULES = ['leave', 'payroll'];
+    const VALID_SCOPES = ['all', 'selected'];
+    if (modules !== undefined && (!Array.isArray(modules) || modules.some(m => !VALID_MODULES.includes(m)))) {
+      return res.status(400).json({ error: `modules must be an array containing: ${VALID_MODULES.join(', ')}` });
+    }
+    if (employee_scope !== undefined && !VALID_SCOPES.includes(employee_scope)) {
+      return res.status(400).json({ error: `employee_scope must be one of: ${VALID_SCOPES.join(', ')}` });
+    }
+
+    const configRow = {
+      user_id: userId,
+      company_id: companyId,
+      modules: modules ?? ['leave', 'payroll'],
+      employee_scope: employee_scope ?? 'all',
+      can_view_confidential: can_view_confidential ?? false,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('paytime_user_config')
+      .upsert(configRow, { onConflict: 'user_id,company_id' })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'UPDATE', 'paytime_user_config', userId, {
+      metadata: { company_id: companyId, config: configRow }
+    });
+
+    res.json({ config: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/users/:id/paytime-employees
+ * List employees explicitly assigned to a user (employee_scope='selected').
+ */
+router.get('/:id/paytime-employees', requirePermission('USERS.VIEW'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const companyId = req.companyId;
+
+    const { data, error } = await supabase
+      .from('paytime_employee_access')
+      .select('employee_id, granted_at, employees(id, full_name, employee_code, classification)')
+      .eq('user_id', userId)
+      .eq('company_id', companyId)
+      .order('granted_at');
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ employees: (data || []).map(r => ({ ...r.employees, granted_at: r.granted_at })) });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/users/:id/paytime-employees
+ * Replace the full employee visibility list for a user (replace-all semantics).
+ * Body: { employee_ids: [1, 2, 3] }
+ * Send employee_ids: [] to remove all assignments (effectively blocks all if scope='selected').
+ */
+router.put('/:id/paytime-employees', requirePermission('USERS.EDIT'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const companyId = req.companyId;
+    const { employee_ids } = req.body;
+
+    if (!Array.isArray(employee_ids)) {
+      return res.status(400).json({ error: 'employee_ids must be an array of integers' });
+    }
+
+    // Replace-all: delete existing, insert new
+    await supabase.from('paytime_employee_access').delete()
+      .eq('user_id', userId).eq('company_id', companyId);
+
+    const validIds = employee_ids.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0);
+    if (validIds.length > 0) {
+      const rows = validIds.map(employee_id => ({
+        user_id: userId,
+        company_id: companyId,
+        employee_id,
+        granted_by: req.user.userId,
+      }));
+      const { error } = await supabase.from('paytime_employee_access').insert(rows);
+      if (error) return res.status(500).json({ error: error.message });
+    }
+
+    await auditFromReq(req, 'UPDATE', 'paytime_employee_access', userId, {
+      metadata: { company_id: companyId, employee_ids: validIds }
+    });
+
+    res.json({ success: true, employee_ids: validIds });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 /**
  * DELETE /api/users/:id (soft delete)
  */

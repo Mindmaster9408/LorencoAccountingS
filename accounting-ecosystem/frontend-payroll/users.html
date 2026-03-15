@@ -183,6 +183,48 @@
                         <option value="inactive">Inactive</option>
                     </select>
                 </div>
+                <!-- ── Paytime Access Config ─────────────────────────────────────────── -->
+                <!-- Only shown when editing an existing DB user (numeric id). -->
+                <!-- Saves directly via real API — not localStorage.           -->
+                <div id="paytimeAccessSection" style="display:none;margin-top:24px;padding-top:20px;border-top:1px solid #e5e7eb;">
+                    <h4 style="margin:0 0 4px;font-size:0.95rem;color:#374151;">Paytime Access Settings</h4>
+                    <p style="margin:0 0 14px;font-size:0.8rem;color:#6b7280;">Controls what this user can access within Lorenco Paytime. Leave as default (Full Access / All Employees) to keep unrestricted access.</p>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Payroll Module Access</label>
+                            <select id="f-paytime-module">
+                                <option value="full">Full Access (Leave + Payroll)</option>
+                                <option value="leave_only">Leave Only (no salary/payslip data)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Employee Visibility</label>
+                            <select id="f-employee-scope" onchange="toggleEmployeeList()">
+                                <option value="all">All Employees</option>
+                                <option value="selected">Selected Employees Only</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="f-can-view-confidential" style="width:16px;height:16px;">
+                            <span>Can view confidential/executive employees</span>
+                        </label>
+                        <div style="font-size:0.78rem;color:#9ca3af;margin-top:4px;">If unchecked, employees marked as Confidential or Executive are hidden from this user.</div>
+                    </div>
+                    <div id="paytimeEmployeeListSection" style="display:none;">
+                        <label>Assigned Employees</label>
+                        <div id="paytimeEmployeeList" style="max-height:160px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:10px;font-size:0.85rem;color:#374151;">
+                            Loading…
+                        </div>
+                        <div style="font-size:0.78rem;color:#9ca3af;">Employee assignments are managed from the employee record. Use the assigned list above to review.</div>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <button type="button" class="btn btn-success" onclick="savePaytimeConfig()" style="font-size:0.85rem;padding:8px 18px;">Save Paytime Settings</button>
+                        <button type="button" class="btn" style="background:#fee2e2;color:#dc2626;font-size:0.85rem;padding:8px 18px;margin-left:8px;" onclick="clearPaytimeConfig()">Reset to Unrestricted</button>
+                        <span id="paytimeConfigMsg" style="font-size:0.82rem;margin-left:12px;"></span>
+                    </div>
+                </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
                     <button type="button" class="btn" style="background: #eee; color: #333;" onclick="closeModal('userModal')">Cancel</button>
                     <button type="submit" class="btn btn-success">Save User</button>
@@ -316,7 +358,7 @@
             document.getElementById('userModal').classList.add('show');
         }
 
-        function editUser(userId) {
+        async function editUser(userId) {
             const user = companyUsers.find(u => u.id === userId);
             if (!user) return;
 
@@ -330,6 +372,18 @@
             document.getElementById('f-status').value = user.active !== false ? 'active' : 'inactive';
             document.getElementById('passwordHint').textContent = 'Leave blank to keep current password';
             document.getElementById('userModal').classList.add('show');
+
+            // Show Paytime Access config section only for DB users (numeric IDs)
+            // and roles that could have Paytime access configured
+            const numericId = /^\d+$/.test(String(userId));
+            const paytimeRoles = ['payroll_admin', 'leave_admin', 'business_owner', 'accountant'];
+            const paytimeSection = document.getElementById('paytimeAccessSection');
+            if (numericId && paytimeRoles.includes(user.role)) {
+                paytimeSection.style.display = '';
+                await loadPaytimeConfig(userId);
+            } else {
+                paytimeSection.style.display = 'none';
+            }
         }
 
         function saveUser(e) {
@@ -454,6 +508,132 @@
             AuditTrail.logDelete(currentCompanyId, 'user', 'Deleted user "' + user.name + '" (' + user.email + ')');
             loadUsers();
             alert(user.name + ' has been removed.');
+        }
+
+        // ========== PAYTIME ACCESS CONFIG ==========
+
+        function _paytimeAuthHeader() {
+            const tok = localStorage.getItem('token') || localStorage.getItem('eco_token') || '';
+            return { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' };
+        }
+
+        async function loadPaytimeConfig(userId) {
+            const msgEl = document.getElementById('paytimeConfigMsg');
+            msgEl.textContent = '';
+            try {
+                const res = await fetch('/api/users/' + userId + '/paytime-config', { headers: _paytimeAuthHeader() });
+                const data = await res.json();
+                const config = data.config;
+
+                if (config) {
+                    const modules = config.modules || ['leave', 'payroll'];
+                    document.getElementById('f-paytime-module').value = modules.includes('payroll') ? 'full' : 'leave_only';
+                    document.getElementById('f-employee-scope').value = config.employee_scope || 'all';
+                    document.getElementById('f-can-view-confidential').checked = !!config.can_view_confidential;
+                } else {
+                    // No config = unrestricted defaults
+                    document.getElementById('f-paytime-module').value = 'full';
+                    document.getElementById('f-employee-scope').value = 'all';
+                    document.getElementById('f-can-view-confidential').checked = false;
+                }
+                toggleEmployeeList();
+
+                // Load assigned employees if scope = 'selected'
+                if (document.getElementById('f-employee-scope').value === 'selected') {
+                    await loadAssignedEmployees(userId);
+                }
+            } catch (err) {
+                console.error('loadPaytimeConfig error:', err);
+            }
+        }
+
+        function toggleEmployeeList() {
+            const scope = document.getElementById('f-employee-scope').value;
+            const listSection = document.getElementById('paytimeEmployeeListSection');
+            listSection.style.display = scope === 'selected' ? '' : 'none';
+        }
+
+        async function loadAssignedEmployees(userId) {
+            const listEl = document.getElementById('paytimeEmployeeList');
+            listEl.textContent = 'Loading…';
+            try {
+                const res = await fetch('/api/users/' + userId + '/paytime-employees', { headers: _paytimeAuthHeader() });
+                const data = await res.json();
+                const emps = data.employees || [];
+                if (emps.length === 0) {
+                    listEl.textContent = 'No employees assigned — this user will see no employees until you assign some.';
+                } else {
+                    listEl.innerHTML = emps.map(e =>
+                        `<div style="padding:4px 0;border-bottom:1px solid #f3f4f6;">${e.full_name || ''} <span style="color:#9ca3af;font-size:0.78rem;">${e.employee_code || ''}</span></div>`
+                    ).join('');
+                }
+            } catch (err) {
+                listEl.textContent = 'Failed to load employee assignments.';
+            }
+        }
+
+        async function savePaytimeConfig() {
+            const userId = document.getElementById('editUserId').value;
+            if (!userId || !/^\d+$/.test(String(userId))) {
+                document.getElementById('paytimeConfigMsg').textContent = 'Save the user first before configuring Paytime access.';
+                return;
+            }
+            const moduleVal = document.getElementById('f-paytime-module').value;
+            const scope = document.getElementById('f-employee-scope').value;
+            const canViewConfidential = document.getElementById('f-can-view-confidential').checked;
+            const modules = moduleVal === 'leave_only' ? ['leave'] : ['leave', 'payroll'];
+            const msgEl = document.getElementById('paytimeConfigMsg');
+            msgEl.style.color = '#6b7280';
+            msgEl.textContent = 'Saving…';
+            try {
+                const res = await fetch('/api/users/' + userId + '/paytime-config', {
+                    method: 'PUT',
+                    headers: _paytimeAuthHeader(),
+                    body: JSON.stringify({ modules, employee_scope: scope, can_view_confidential: canViewConfidential }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    msgEl.style.color = '#059669';
+                    msgEl.textContent = 'Paytime settings saved.';
+                } else {
+                    msgEl.style.color = '#dc2626';
+                    msgEl.textContent = data.error || 'Failed to save.';
+                }
+            } catch (err) {
+                msgEl.style.color = '#dc2626';
+                msgEl.textContent = 'Network error.';
+            }
+        }
+
+        async function clearPaytimeConfig() {
+            const userId = document.getElementById('editUserId').value;
+            if (!userId || !/^\d+$/.test(String(userId))) return;
+            if (!confirm('Reset this user to unrestricted Paytime access? Their paytime_user_config row will be deleted.')) return;
+            const msgEl = document.getElementById('paytimeConfigMsg');
+            msgEl.style.color = '#6b7280';
+            msgEl.textContent = 'Resetting…';
+            try {
+                const res = await fetch('/api/users/' + userId + '/paytime-config', {
+                    method: 'PUT',
+                    headers: _paytimeAuthHeader(),
+                    body: JSON.stringify({ clear: true }),
+                });
+                if (res.ok) {
+                    document.getElementById('f-paytime-module').value = 'full';
+                    document.getElementById('f-employee-scope').value = 'all';
+                    document.getElementById('f-can-view-confidential').checked = false;
+                    toggleEmployeeList();
+                    msgEl.style.color = '#059669';
+                    msgEl.textContent = 'Reset to unrestricted.';
+                } else {
+                    const data = await res.json();
+                    msgEl.style.color = '#dc2626';
+                    msgEl.textContent = data.error || 'Failed to reset.';
+                }
+            } catch (err) {
+                msgEl.style.color = '#dc2626';
+                msgEl.textContent = 'Network error.';
+            }
         }
 
         // ========== MODAL HELPERS ==========

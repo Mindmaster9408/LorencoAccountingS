@@ -10,6 +10,7 @@
  */
 
 const express = require('express');
+const bcrypt = require('bcrypt');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
 
@@ -952,6 +953,161 @@ router.delete('/:id/firm-access/:firmId', async (req, res) => {
  * DELETE /api/eco-clients/:id
  * Soft delete (set is_active = false)
  */
+// ═══════════════════════════════════════════════════════════════════════════════
+// OWNER USER CREATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/eco-clients/:ecoClientId/create-owner
+ *
+ * Creates a business_owner login for a client company.
+ * The owner can log in independently (scoped to their company only),
+ * manage their own users, and launch their apps — but cannot access ECO Hub
+ * practice management.
+ *
+ * Auth: practice user with role in ['business_owner', 'accountant', 'store_manager', 'super_admin']
+ *
+ * Body: { full_name, email, password }
+ *
+ * Effect:
+ *   1. Creates user in `users` table
+ *   2. Adds user_company_access(user_id, company_id=client_company_id, role='business_owner')
+ *   3. Adds user_app_access rows for all apps enabled on the client
+ *   4. Audit logs the creation
+ */
+router.post('/:ecoClientId/create-owner', async (req, res) => {
+  try {
+    const ecoClientId = parseInt(req.params.ecoClientId);
+    const { full_name, email, password } = req.body;
+
+    // Permission check — only practice-level roles may create owner logins
+    const allowedRoles = ['business_owner', 'accountant', 'store_manager', 'super_admin'];
+    if (!allowedRoles.includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Only practice users with management roles can create owner accounts' });
+    }
+
+    // Validate body
+    if (!full_name || !email || !password) {
+      return res.status(400).json({ error: 'full_name, email, and password are required' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    // Load the eco_client to get client_company_id and apps
+    const { data: ecoClient, error: clientErr } = await supabase
+      .from('eco_clients')
+      .select('id, name, client_company_id, apps, company_id, is_active')
+      .eq('id', ecoClientId)
+      .maybeSingle();
+
+    if (clientErr || !ecoClient) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    if (!ecoClient.is_active) {
+      return res.status(400).json({ error: 'Client is inactive — cannot create owner for inactive client' });
+    }
+    if (!ecoClient.client_company_id) {
+      return res.status(400).json({ error: 'Client has no associated company — ensure client was fully provisioned' });
+    }
+
+    // Practice isolation — verify the requesting user belongs to the managing practice
+    if (!req.user.isSuperAdmin && String(req.companyId) !== String(ecoClient.company_id)) {
+      return res.status(403).json({ error: 'Access denied — this client does not belong to your practice' });
+    }
+
+    const clientCompanyId = ecoClient.client_company_id;
+
+    // Check email is not already registered
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+    if (existingUser) {
+      return res.status(409).json({ error: 'A user with this email already exists' });
+    }
+
+    // Hash password
+    const password_hash = await bcrypt.hash(password, 12);
+
+    // Create user
+    const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const { data: newUser, error: userErr } = await supabase
+      .from('users')
+      .insert({
+        username,
+        email,
+        full_name,
+        password_hash,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      })
+      .select('id, username, email, full_name, is_active, created_at')
+      .single();
+
+    if (userErr) {
+      console.error('create-owner user insert error:', userErr.message);
+      return res.status(500).json({ error: userErr.message });
+    }
+
+    // Grant user_company_access for client's company with role=business_owner
+    const { error: accessErr } = await supabase
+      .from('user_company_access')
+      .insert({
+        user_id: newUser.id,
+        company_id: clientCompanyId,
+        role: 'business_owner',
+        is_primary: true,
+        is_active: true,
+      });
+
+    if (accessErr) {
+      console.error('create-owner user_company_access error:', accessErr.message);
+      // Rollback user creation
+      await supabase.from('users').delete().eq('id', newUser.id);
+      return res.status(500).json({ error: 'Failed to grant company access: ' + accessErr.message });
+    }
+
+    // Grant user_app_access for all apps enabled on the client
+    const apps = Array.isArray(ecoClient.apps) ? ecoClient.apps : [];
+    if (apps.length > 0) {
+      const appRows = apps.map(app_key => ({
+        user_id: newUser.id,
+        company_id: clientCompanyId,
+        app_key,
+        granted_by: req.user.userId,
+      }));
+      const { error: appErr } = await supabase.from('user_app_access').insert(appRows);
+      if (appErr) {
+        console.error('create-owner user_app_access error:', appErr.message);
+        // Non-fatal — user and company access are already created
+      }
+    }
+
+    await auditFromReq(req, 'CREATE', 'user', newUser.id, {
+      action_type: 'owner_created',
+      module: 'ecosystem',
+      metadata: {
+        eco_client_id: ecoClientId,
+        client_company_id: clientCompanyId,
+        client_name: ecoClient.name,
+        created_by: req.user.userId,
+      }
+    });
+
+    res.status(201).json({
+      user: newUser,
+      company_id: clientCompanyId,
+      role: 'business_owner',
+      apps_granted: apps,
+    });
+  } catch (err) {
+    console.error('create-owner error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     const clientId = parseInt(req.params.id);

@@ -11,6 +11,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
+const { getEmployeeFilter, applyFilter, canViewEmployee, requirePaytimeModule } = require('../services/paytimeAccess');
 
 const router = express.Router();
 
@@ -19,17 +20,23 @@ router.use(requireCompany);
 
 /**
  * GET /api/payroll/employees
- * Get employees with their payroll-specific data
+ * Get employees with their payroll-specific data.
+ * Applies paytimeAccess visibility filter — restricted users only see their allowed employees.
  */
-router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+router.get('/', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
-    const { data: employees, error } = await supabase
+    const filter = await getEmployeeFilter(req.user.role, req.user.userId, req.companyId);
+
+    let query = supabase
       .from('employees')
       .select('*, employee_bank_details(*)')
       .eq('company_id', req.companyId)
       .eq('is_active', true)
       .order('full_name');
 
+    query = applyFilter(query, filter);
+
+    const { data: employees, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
     res.json({ employees: employees || [] });
   } catch (err) {
@@ -62,7 +69,7 @@ router.get('/historical-log', requirePermission('PAYROLL.VIEW'), async (req, res
 /**
  * GET /api/payroll/employees/:id
  */
-router.get('/:id', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+router.get('/:id', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
     // Reject non-integer IDs (e.g. old localStorage string IDs like "emp-abc123")
     if (!/^\d+$/.test(String(req.params.id))) {
@@ -77,6 +84,11 @@ router.get('/:id', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       .single();
 
     if (error || !data) return res.status(404).json({ error: 'Employee not found' });
+
+    // Visibility gate — restricted users cannot fetch employees outside their scope
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, data);
+    if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
+
     res.json({ employee: data });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -87,18 +99,21 @@ router.get('/:id', requirePermission('PAYROLL.VIEW'), async (req, res) => {
  * PUT /api/payroll/employees/:id/salary
  * Update salary information
  */
-router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
     const { basic_salary, hourly_rate, payment_frequency } = req.body;
 
     const { data: old } = await supabase
       .from('employees')
-      .select('basic_salary, hourly_rate, payment_frequency')
+      .select('id, classification, basic_salary, hourly_rate, payment_frequency')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
 
     if (!old) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, old);
+    if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
 
     const updates = {};
     if (basic_salary !== undefined) updates.basic_salary = basic_salary;
@@ -132,20 +147,23 @@ router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), async (req, res) 
  * PUT /api/payroll/employees/:id/bank-details
  * Update bank details
  */
-router.put('/:id/bank-details', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+router.put('/:id/bank-details', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
     const empId = req.params.id;
     const { bank_name, account_number, branch_code, account_type } = req.body;
 
-    // Verify employee belongs to company
+    // Verify employee belongs to company + visibility check
     const { data: emp } = await supabase
       .from('employees')
-      .select('id')
+      .select('id, classification')
       .eq('id', empId)
       .eq('company_id', req.companyId)
       .single();
 
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
 
     // Upsert bank details
     const { data, error } = await supabase
@@ -228,8 +246,20 @@ router.post('/:id/notes', requirePermission('PAYROLL.CREATE'), async (req, res) 
 /**
  * GET /api/payroll/employees/:id/historical?period=YYYY-MM
  */
-router.get('/:id/historical', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+router.get('/:id/historical', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
+    // Visibility gate before returning historical payroll data
+    const { data: emp } = await supabase
+      .from('employees')
+      .select('id, classification')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .maybeSingle();
+
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
+
     const { period } = req.query;
     let query = supabase
       .from('payroll_historical')

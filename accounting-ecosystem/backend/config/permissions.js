@@ -23,6 +23,7 @@ const ROLE_LEVELS = {
   corporate_admin: 90,
   store_manager: 70,
   payroll_admin: 70,
+  leave_admin: 50,       // Leave-only Paytime access — no payroll/salary visibility
   assistant_manager: 50,
   shift_supervisor: 40,
   senior_cashier: 30,
@@ -33,7 +34,7 @@ const ROLE_LEVELS = {
 };
 
 const MANAGEMENT_ROLES = ['super_admin', 'business_owner', 'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin'];
-const SUPERVISOR_ROLES = [...MANAGEMENT_ROLES, 'assistant_manager', 'shift_supervisor'];
+const SUPERVISOR_ROLES = [...MANAGEMENT_ROLES, 'leave_admin', 'assistant_manager', 'shift_supervisor'];
 const ALL_ROLES = [...SUPERVISOR_ROLES, 'senior_cashier', 'cashier', 'trainee'];
 
 const PERMISSIONS = {
@@ -138,6 +139,12 @@ const PERMISSIONS = {
     VIEW: SUPERVISOR_ROLES,
     RECORD: ALL_ROLES.filter(r => r !== 'trainee'),
     EDIT: MANAGEMENT_ROLES,
+  },
+  // Leave management — accessible to leave_admin (cannot access PAYROLL.VIEW)
+  LEAVE: {
+    VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin', 'leave_admin'],
+    CREATE: ['super_admin', 'business_owner', 'accountant', 'payroll_admin', 'leave_admin'],
+    APPROVE: ['super_admin', 'business_owner', 'accountant', 'payroll_admin', 'leave_admin'],
   },
 };
 

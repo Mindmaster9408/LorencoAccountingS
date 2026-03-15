@@ -492,7 +492,7 @@ router.get('/companies', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
 
-    list = (accessRows || [])
+    const rawList = (accessRows || [])
       .filter(r => r.companies)
       .map(r => ({
         id: r.companies.id,
@@ -503,6 +503,31 @@ router.get('/companies', authenticateToken, async (req, res) => {
         role: isSuperAdmin ? 'super_admin' : r.role,
         is_primary: r.is_primary,
       }));
+
+    // Annotate each company with company_type so the frontend can detect owner-only logins.
+    //   'practice'   — company appears as eco_clients.company_id (managing accounting firm)
+    //   'client'     — company appears as eco_clients.client_company_id (client's isolated company)
+    //   'standalone' — not found in eco_clients
+    const allCompanyIds = rawList.map(c => c.id);
+    let practiceIds = new Set();
+    let clientIds = new Set();
+    if (allCompanyIds.length > 0) {
+      const [practiceRes, clientRes] = await Promise.all([
+        supabase.from('eco_clients').select('company_id').in('company_id', allCompanyIds),
+        supabase.from('eco_clients').select('client_company_id').in('client_company_id', allCompanyIds),
+      ]);
+      for (const r of (practiceRes.data || [])) practiceIds.add(r.company_id);
+      for (const r of (clientRes.data || [])) clientIds.add(r.client_company_id);
+    }
+
+    list = rawList.map(c => ({
+      ...c,
+      company_type: practiceIds.has(c.id)
+        ? 'practice'
+        : clientIds.has(c.id)
+          ? 'client'
+          : 'standalone',
+    }));
 
     res.json({ companies: list });
   } catch (err) {

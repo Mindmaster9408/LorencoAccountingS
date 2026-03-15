@@ -1059,6 +1059,47 @@
         </div>
     </div>
 
+    <!-- ═══════ CREATE OWNER LOGIN MODAL ═══════ -->
+    <div class="modal-overlay" id="createOwnerModal" style="display:none;" onclick="if(event.target===this)closeCreateOwner()">
+        <div class="modal" style="max-width:480px;">
+            <div class="modal-header">
+                <h2>👤 Create Owner Login</h2>
+                <button class="modal-close" onclick="closeCreateOwner()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-muted);margin-bottom:16px;font-size:0.88rem;">
+                    Create a <strong>business_owner</strong> login for <strong id="createOwnerClientName"></strong>.
+                    The owner will be able to log in independently, manage their own users, and launch their apps.
+                    They will not see the practice management screen.
+                </p>
+                <input type="hidden" id="createOwnerClientId">
+                <form id="createOwnerForm" onsubmit="event.preventDefault();submitCreateOwner()">
+                    <div class="form-field" style="margin-bottom:14px;">
+                        <label>Full Name *</label>
+                        <input type="text" id="createOwnerName" required placeholder="e.g. John Smith"
+                            style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:0.9rem;box-sizing:border-box;">
+                    </div>
+                    <div class="form-field" style="margin-bottom:14px;">
+                        <label>Email Address *</label>
+                        <input type="email" id="createOwnerEmail" required placeholder="owner@business.co.za"
+                            style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:0.9rem;box-sizing:border-box;">
+                    </div>
+                    <div class="form-field" style="margin-bottom:20px;">
+                        <label>Password * (min 8 characters)</label>
+                        <input type="password" id="createOwnerPassword" required minlength="8" placeholder="Temporary password"
+                            style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:0.9rem;box-sizing:border-box;">
+                    </div>
+                    <div id="createOwnerError" style="color:#f87171;font-size:0.85rem;margin-bottom:10px;"></div>
+                    <div id="createOwnerSuccess" style="color:#6ee7b7;font-size:0.85rem;margin-bottom:10px;"></div>
+                    <div style="display:flex;gap:10px;justify-content:flex-end;">
+                        <button type="button" onclick="closeCreateOwner()" style="padding:10px 20px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:10px;color:var(--text-muted);cursor:pointer;">Cancel</button>
+                        <button type="submit" id="createOwnerSubmit" style="padding:10px 24px;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.35);border-radius:10px;color:#6ee7b7;cursor:pointer;font-weight:600;">Create Owner Account</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
@@ -1436,12 +1477,28 @@
             renderApps();
             renderStats();
 
-            // Show client management for super admins & roles with management capability
-            // business_owner, accountant (accounting firm staff who manage clients),
-            // store_manager all need access to view/add clients.
-            const CLIENT_MGMT_ROLES = ['business_owner', 'super_admin', 'store_manager', 'accountant'];
-            if (isSuperAdmin || (selectedCompany && CLIENT_MGMT_ROLES.includes(selectedCompany.role))) {
-                document.getElementById('clientManagementSection').classList.remove('hidden');
+            // Detect owner-only login — user has no 'practice' type companies.
+            // Practice users manage clients. Owner users only have their own company (type='client').
+            const hasPractice = companies.some(c => c.company_type === 'practice' || c.company_type === 'standalone');
+            const isOwnerOnly = !hasPractice && !isSuperAdmin;
+
+            if (isOwnerOnly) {
+                // Owner portal — simplified view: hide practice management, show apps + user management only
+                document.getElementById('clientManagementSection').classList.add('hidden');
+                // Inject a friendly owner banner if not already present
+                const welcomeEl = document.getElementById('welcomeName');
+                if (welcomeEl) {
+                    const banner = document.createElement('div');
+                    banner.style.cssText = 'margin:8px 0 0;padding:6px 14px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.25);border-radius:20px;color:#6ee7b7;font-size:0.8rem;display:inline-block;';
+                    banner.textContent = '👤 Owner Portal';
+                    welcomeEl.parentElement.appendChild(banner);
+                }
+            } else {
+                // Practice management view — show client management for roles with capability
+                const CLIENT_MGMT_ROLES = ['business_owner', 'super_admin', 'store_manager', 'accountant'];
+                if (isSuperAdmin || (selectedCompany && CLIENT_MGMT_ROLES.includes(selectedCompany.role))) {
+                    document.getElementById('clientManagementSection').classList.remove('hidden');
+                }
             }
 
             // Show admin panel button + section for super admins only
@@ -2069,6 +2126,13 @@
                     ? `<button type="button" class="btn-add-app" onclick="openManageFirms(${c.id})" title="Link accounting firms to this client" style="background:rgba(102,126,234,0.12);border-color:rgba(102,126,234,0.25);color:#a5b4fc;">🏛 Firms</button>`
                     : '';
 
+                // "Create Owner Login" button — allows the managing practice to provision a
+                // business_owner login for the client so they can log in independently.
+                const canCreateOwner = !c.shared_access && c.client_company_id && (isSuperAdmin || (selectedCompany && selectedCompany.id === c.company_id));
+                const createOwnerBtn = canCreateOwner
+                    ? `<button type="button" class="btn-add-app" onclick="openCreateOwner(${c.id}, ${JSON.stringify(c.name)})" title="Create an owner login for this client" style="background:rgba(52,211,153,0.1);border-color:rgba(52,211,153,0.25);color:#6ee7b7;">👤 Owner</button>`
+                    : '';
+
                 return `
                     <div class="client-card${c.shared_access ? ' shared' : ''}">
                         <div class="client-card-top">
@@ -2088,6 +2152,7 @@
                             ${appLaunchBtns || '<span style="color:var(--text-muted); font-size:0.8rem;">No apps linked</span>'}
                             ${!c.shared_access ? `<button type="button" class="btn-add-app" onclick="openEditApps(${c.id})">+ Add</button>` : ''}
                             ${manageFirmsBtn}
+                            ${createOwnerBtn}
                         </div>
                     </div>
                 `;
@@ -2186,6 +2251,69 @@
         // ═══════════════════════════════════════════════════════════════════
 
         let manageFirmsClientId = null;
+        // ── Create Owner Login ──────────────────────────────────────────────────
+
+        function openCreateOwner(clientId, clientName) {
+            const modal = document.getElementById('createOwnerModal');
+            if (!modal) return;
+            document.getElementById('createOwnerClientName').textContent = clientName;
+            document.getElementById('createOwnerClientId').value = clientId;
+            document.getElementById('createOwnerForm').reset();
+            document.getElementById('createOwnerClientId').value = clientId;
+            document.getElementById('createOwnerError').textContent = '';
+            document.getElementById('createOwnerSuccess').textContent = '';
+            modal.style.display = 'flex';
+        }
+
+        function closeCreateOwner() {
+            const modal = document.getElementById('createOwnerModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function submitCreateOwner() {
+            const clientId = parseInt(document.getElementById('createOwnerClientId').value);
+            const full_name = document.getElementById('createOwnerName').value.trim();
+            const email = document.getElementById('createOwnerEmail').value.trim();
+            const password = document.getElementById('createOwnerPassword').value;
+            const errEl = document.getElementById('createOwnerError');
+            const okEl = document.getElementById('createOwnerSuccess');
+            const btn = document.getElementById('createOwnerSubmit');
+
+            errEl.textContent = '';
+            okEl.textContent = '';
+
+            if (!full_name || !email || !password) {
+                errEl.textContent = 'All fields are required.';
+                return;
+            }
+            if (password.length < 8) {
+                errEl.textContent = 'Password must be at least 8 characters.';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Creating…';
+            try {
+                const res = await fetch(`/api/eco-clients/${clientId}/create-owner`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('eco_token') },
+                    body: JSON.stringify({ full_name, email, password }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    errEl.textContent = data.error || 'Failed to create owner account.';
+                    return;
+                }
+                okEl.textContent = `Owner account created. ${data.user.full_name} (${data.user.email}) can now log in.`;
+                document.getElementById('createOwnerForm').reset();
+            } catch (err) {
+                errEl.textContent = 'Network error. Please try again.';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Create Owner Account';
+            }
+        }
+
         let firmSearchTimeout = null;
 
         function openManageFirms(clientId) {

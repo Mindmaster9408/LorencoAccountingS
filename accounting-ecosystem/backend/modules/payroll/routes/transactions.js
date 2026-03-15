@@ -11,6 +11,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
+const { getEmployeeFilter, requirePaytimeModule } = require('../services/paytimeAccess');
 
 const router = express.Router();
 
@@ -19,9 +20,10 @@ router.use(requireCompany);
 
 /**
  * GET /api/payroll/transactions
- * List payroll transactions for a period
+ * List payroll transactions for a period.
+ * Applies paytimeAccess visibility filter — restricted users only see their allowed employees.
  */
-router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+router.get('/', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
     const { period_id, employee_id } = req.query;
 
@@ -30,14 +32,36 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       return res.json({ transactions: [], data: [], current_inputs: [], overtimes: [] });
     }
 
+    // Resolve which employees this user can see
+    const filter = await getEmployeeFilter(req.user.role, req.user.userId, req.companyId);
+
     let query = supabase
       .from('payroll_transactions')
-      .select('*, employees(first_name, last_name, employee_code), payslip_items(*)')
+      .select('*, employees(first_name, last_name, employee_code, classification), payslip_items(*)')
       .eq('company_id', req.companyId)
       .order('created_at', { ascending: false });
 
     if (period_id) query = query.eq('period_id', period_id);
     if (employee_id) query = query.eq('employee_id', parseInt(employee_id));
+
+    // Apply employee scope filter at the transaction level
+    if (filter.type === 'ids') {
+      if (filter.ids.length === 0) return res.json({ transactions: [] });
+      query = query.in('employee_id', filter.ids);
+    } else if (filter.type === 'classification') {
+      // Filter by joining employees.classification — use inner join via !inner
+      // Since Supabase doesn't directly support nested WHERE on joined tables,
+      // resolve the visible employee IDs first (classification='public')
+      const { data: visibleEmps } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('company_id', req.companyId)
+        .eq('classification', 'public')
+        .eq('is_active', true);
+      const visibleIds = (visibleEmps || []).map(e => e.id);
+      if (visibleIds.length === 0) return res.json({ transactions: [] });
+      query = query.in('employee_id', visibleIds);
+    }
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
