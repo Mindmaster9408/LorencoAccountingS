@@ -79,10 +79,14 @@ CREATE TABLE IF NOT EXISTS journals (
 );
 
 -- ── 5. Journal Lines ──────────────────────────────────────────────────────────
+-- NOTE: journal_lines may already exist from schema.sql with FK pointing to
+-- journal_entries(id) instead of journals(id). We CREATE if missing, then:
+--  a) Drop the old FK so the accounting module can insert rows for journals.
+--  b) Add missing columns.
 CREATE TABLE IF NOT EXISTS journal_lines (
   id          SERIAL PRIMARY KEY,
-  journal_id  INTEGER NOT NULL REFERENCES journals(id) ON DELETE CASCADE,
-  account_id  INTEGER NOT NULL REFERENCES accounts(id),
+  journal_id  INTEGER NOT NULL,
+  account_id  INTEGER NOT NULL,
   line_number INTEGER,
   description TEXT,
   debit       NUMERIC(15,2) DEFAULT 0,
@@ -90,13 +94,21 @@ CREATE TABLE IF NOT EXISTS journal_lines (
   metadata    JSONB DEFAULT '{}',
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
-ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS segment_value_id INTEGER;
+-- Drop old FK that pointed at journal_entries — accounting module uses journals
+ALTER TABLE journal_lines DROP CONSTRAINT IF EXISTS journal_lines_journal_id_fkey;
+-- Add missing columns
+ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS line_number       INTEGER;
+ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS metadata          JSONB DEFAULT '{}';
+ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS segment_value_id  INTEGER;
 
 -- ── 6. Bank Accounts ──────────────────────────────────────────────────────────
+-- NOTE: bank_accounts may already exist from the shared schema.sql with a
+-- different column set. We CREATE if missing, then ALTER to add any missing
+-- columns the accounting module requires.
 CREATE TABLE IF NOT EXISTS bank_accounts (
   id                    SERIAL PRIMARY KEY,
   company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-  name                  VARCHAR(255) NOT NULL,
+  name                  VARCHAR(255),
   bank_name             VARCHAR(255),
   account_number_masked VARCHAR(50),
   currency              VARCHAR(10) DEFAULT 'ZAR',
@@ -107,26 +119,39 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
+-- Ensure accounting-required columns exist on the pre-existing table
+ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS name                 VARCHAR(255);
+ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS account_number_masked VARCHAR(50);
+ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS currency              VARCHAR(10) DEFAULT 'ZAR';
+ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS ledger_account_id    INTEGER REFERENCES accounts(id);
+ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS opening_balance       NUMERIC(15,2) DEFAULT 0;
+ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS opening_balance_date  DATE;
+ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS is_active             BOOLEAN DEFAULT true;
+ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ DEFAULT NOW();
 
 -- ── 7. Bank Transactions ──────────────────────────────────────────────────────
+-- NOTE: bank_transactions may already exist from schema.sql without company_id
+-- or status. We CREATE if missing, then ALTER to add required columns.
 CREATE TABLE IF NOT EXISTS bank_transactions (
   id                  SERIAL PRIMARY KEY,
-  company_id          INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   bank_account_id     INTEGER NOT NULL REFERENCES bank_accounts(id) ON DELETE CASCADE,
   date                DATE NOT NULL,
   description         TEXT,
   amount              NUMERIC(15,2) NOT NULL,
-  balance             NUMERIC(15,2),
-  reference           VARCHAR(255),
-  external_id         VARCHAR(255),
-  status              VARCHAR(20) DEFAULT 'unmatched',
-  matched_entity_type VARCHAR(50),
-  matched_entity_id   INTEGER,
-  matched_by_user_id  INTEGER REFERENCES users(id),
-  reconciled_at       TIMESTAMPTZ,
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   updated_at          TIMESTAMPTZ DEFAULT NOW()
 );
+-- Ensure accounting-required columns exist on the pre-existing table
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS company_id          INTEGER REFERENCES companies(id);
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS balance              NUMERIC(15,2);
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS reference            VARCHAR(255);
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS external_id          VARCHAR(255);
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS status               VARCHAR(20) DEFAULT 'unmatched';
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS matched_entity_type  VARCHAR(50);
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS matched_entity_id    INTEGER;
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS matched_by_user_id   INTEGER REFERENCES users(id);
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS reconciled_at        TIMESTAMPTZ;
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS updated_at           TIMESTAMPTZ DEFAULT NOW();
 
 -- ── 8. Bank Transaction Attachments ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS bank_transaction_attachments (
