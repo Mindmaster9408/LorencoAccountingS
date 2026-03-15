@@ -23,8 +23,8 @@ This means no page's inline styles need to change. Dark theme is applied purely 
 
 | File | Purpose |
 |---|---|
-| `css/dark-theme.css` | Complete dark theme override — ~1000+ lines covering all pages |
-| `js/theme-guard.js` | JS guard: adds `data-theme="dark"` to `<html>`, auto-injects CSS if missing, provides `ThemeGuard` API |
+| `css/dark-theme.css` | Complete dark theme override — ~1088 lines covering all pages |
+| `js/theme-guard.js` | JS guard: adds `data-theme="dark"` to `<html>`, auto-injects CSS if missing, provides `ThemeGuard` API (including `tokens`) |
 
 ---
 
@@ -100,8 +100,12 @@ Defined in `:root` at the top of `dark-theme.css`:
 |---|---|---|
 | Section container | `.section` | ✅ |
 | Tabs border | `.tabs` — dark border | ✅ |
+| Tab base text | `.tab` — muted text | ✅ |
 | Tab hover | `.tab:hover` — amber hover | ✅ |
-| Active tab | `.tab.active::after` — amber underline | ✅ |
+| Active tab text | `.tab.active` — amber text | ✅ |
+| Active tab underline | `.tab.active::after` — amber gradient | ✅ |
+| Table th/td | Global `th`/`td` rules | ✅ |
+| Filter dropdown | Global `select` rule | ✅ |
 
 ---
 
@@ -162,6 +166,24 @@ loadData().then(function(data) {
     ThemeGuard.refresh();  // triggers any registered onReady hooks
 });
 ```
+
+For JS-driven chart/canvas rendering, use the colour tokens:
+
+```javascript
+// Access theme colours without hardcoding values
+const { accent, surface, text, positive, negative } = ThemeGuard.tokens;
+
+// Example: Chart.js dataset colours
+const chartOptions = {
+    datasets: [{
+        borderColor: ThemeGuard.tokens.accent,
+        backgroundColor: ThemeGuard.tokens.accentGlow,
+    }],
+    color: ThemeGuard.tokens.text,
+};
+```
+
+`ThemeGuard.tokens` mirrors all `:root` CSS variables as JS constants. See `js/theme-guard.js` for the full list.
 
 ---
 
