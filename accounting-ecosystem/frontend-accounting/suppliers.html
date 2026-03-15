@@ -1037,9 +1037,10 @@ function makeAccountSelect(id, changeHandler) {
  * @returns {{ exVat, vat, incVat }}
  */
 function calcLineVAT(qty, unitPrice, vatRate, inclusive) {
-  const q = parseFloat(qty) || 1;
-  const p = parseFloat(unitPrice) || 0;
-  const r = parseFloat(vatRate) || 15;
+  const q      = parseFloat(qty) || 1;
+  const p      = parseFloat(unitPrice) || 0;
+  const _r     = parseFloat(vatRate);
+  const r      = isNaN(_r) ? 15 : _r; // 0% is valid; only default on null/undefined/NaN
   const entered = q * p;
   let exVat, vat, incVat;
 

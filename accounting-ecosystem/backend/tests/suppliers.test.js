@@ -20,7 +20,8 @@
 function calcLineVAT(quantity, unitPrice, vatRate, vatInclusive) {
   const qty     = parseFloat(quantity)  || 1;
   const price   = parseFloat(unitPrice) || 0;
-  const rate    = parseFloat(vatRate)   || 15;
+  const _parsed = parseFloat(vatRate);
+  const rate    = isNaN(_parsed) ? 15 : _parsed; // 0% is valid; only default on null/undefined/NaN
   const entered = Math.round(qty * price * 10000) / 10000;
 
   let subtotalExVat, vatAmount, totalIncVat;
@@ -94,10 +95,24 @@ describe('calcLineVAT — EX VAT mode (vatInclusive = false)', () => {
     expect(r.totalIncVat).toBe(110);
   });
 
-  test('vatRate=null or 0 defaults to 15% (falsy fallback behaviour)', () => {
-    // calcLineVAT uses `parseFloat(vatRate) || 15`, so 0 → 15
+  test('vatRate=0 applies 0% VAT — no tax on R100', () => {
+    // 0 is now a valid rate; previously bugged to default to 15%
     const r = calcLineVAT(1, 100, 0, false);
-    expect(r.vatAmount).toBe(15);  // defaulted to 15%
+    expect(r.subtotalExVat).toBe(100);
+    expect(r.vatAmount).toBe(0);
+    expect(r.totalIncVat).toBe(100);
+  });
+
+  test('vatRate=null falls back to 15% default', () => {
+    const r = calcLineVAT(1, 100, null, false);
+    expect(r.vatAmount).toBe(15);
+    expect(r.totalIncVat).toBe(115);
+  });
+
+  test('vatRate=undefined falls back to 15% default', () => {
+    const r = calcLineVAT(1, 100, undefined, false);
+    expect(r.vatAmount).toBe(15);
+    expect(r.totalIncVat).toBe(115);
   });
 
   test('result rounds to 2 decimal places', () => {

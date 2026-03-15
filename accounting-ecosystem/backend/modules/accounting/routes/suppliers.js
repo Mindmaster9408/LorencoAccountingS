@@ -24,7 +24,8 @@ const db = require('../config/database');
 function calcLineVAT(quantity, unitPrice, vatRate, vatInclusive) {
   const qty      = parseFloat(quantity)  || 1;
   const price    = parseFloat(unitPrice) || 0;
-  const rate     = parseFloat(vatRate)   || 15;
+  const _parsed  = parseFloat(vatRate);
+  const rate     = isNaN(_parsed) ? 15 : _parsed; // 0% is valid; only default on null/undefined/NaN
   const entered  = Math.round(qty * price * 10000) / 10000; // preserve 4dp during calc
 
   let subtotalExVat, vatAmount, totalIncVat;
