@@ -1837,7 +1837,7 @@ Click OK to simulate uploading a file.`;
             const grid = document.getElementById('bankAccountsList');
             if (!grid) return;
             try {
-                const res = await fetch('/api/bank/accounts', { headers: getAuthHeaders() });
+                const res = await fetch('/api/accounting/bank/accounts', { headers: getAuthHeaders() });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = await res.json();
                 bankAccountsData = data.bankAccounts || [];
@@ -1961,7 +1961,7 @@ Click OK to simulate uploading a file.`;
                 let res, data;
                 if (_editingBankAcctId) {
                     const isActive = document.getElementById('baIsActive').value === 'true';
-                    res = await fetch(`/api/bank/accounts/${_editingBankAcctId}`, {
+                    res = await fetch(`/api/accounting/bank/accounts/${_editingBankAcctId}`, {
                         method: 'PUT',
                         headers: getAuthHeaders(),
                         body: JSON.stringify({
@@ -1975,7 +1975,7 @@ Click OK to simulate uploading a file.`;
                 } else {
                     const openingBalance = parseFloat(document.getElementById('baOpeningBalance').value) || 0;
                     const openingDate    = document.getElementById('baOpeningDate').value || null;
-                    res = await fetch('/api/bank/accounts', {
+                    res = await fetch('/api/accounting/bank/accounts', {
                         method: 'POST',
                         headers: getAuthHeaders(),
                         body: JSON.stringify({
@@ -2042,7 +2042,7 @@ Click OK to simulate uploading a file.`;
                 if (status) params.set('status', status);
                 params.set('limit', '200');
 
-                const res = await fetch('/api/bank/transactions?' + params, { headers: getAuthHeaders() });
+                const res = await fetch('/api/accounting/bank/transactions?' + params, { headers: getAuthHeaders() });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = await res.json();
                 const txns = data.transactions || [];
@@ -2174,7 +2174,7 @@ Click OK to simulate uploading a file.`;
             // Use already-loaded bankAccountsData if available, otherwise fetch
             const accounts = bankAccountsData.length ? bankAccountsData : await (async () => {
                 try {
-                    const r = await fetch('/api/bank/accounts', { headers: { 'Authorization': 'Bearer ' + token } });
+                    const r = await fetch('/api/accounting/bank/accounts', { headers: { 'Authorization': 'Bearer ' + token } });
                     return r.ok ? (await r.json()).bankAccounts || [] : [];
                 } catch (_) { return []; }
             })();
@@ -2241,7 +2241,7 @@ Click OK to simulate uploading a file.`;
                 formData.append('file', importData.file);
                 formData.append('bankAccountId', bankAccountId);
 
-                const resp = await fetch('/api/bank/import/pdf', {
+                const resp = await fetch('/api/accounting/bank/import/pdf', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token },
                     body: formData
@@ -2399,7 +2399,7 @@ Click OK to simulate uploading a file.`;
             if (importBtn) { importBtn.disabled = true; importBtn.textContent = 'Importing...'; }
 
             try {
-                const resp = await fetch('/api/bank/import', {
+                const resp = await fetch('/api/accounting/bank/import', {
                     method: 'POST',
                     headers: {
                         'Authorization': 'Bearer ' + token,
@@ -2866,7 +2866,7 @@ Click OK to simulate uploading a file.`;
             if (importBtn) { importBtn.disabled = true; importBtn.textContent = 'Importing…'; }
 
             try {
-                const res = await fetch('/api/bank/import', {
+                const res = await fetch('/api/accounting/bank/import', {
                     method: 'POST',
                     headers: getAuthHeaders(),
                     body: JSON.stringify({ bankAccountId: selectedBankAccountId, transactions })
@@ -3145,7 +3145,7 @@ Click OK to simulate uploading a file.`;
                 }
 
                 // Call the real allocation API — handles double-entry journal automatically
-                const res = await fetch(`/api/bank/transactions/${id}/allocate`, {
+                const res = await fetch(`/api/accounting/bank/transactions/${id}/allocate`, {
                     method: 'POST',
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
@@ -3159,7 +3159,7 @@ Click OK to simulate uploading a file.`;
                 // Auto-post the draft journal so it flows into reports immediately
                 const journalId = data.journal && data.journal.id;
                 if (journalId) {
-                    const postRes = await fetch(`/api/journals/${journalId}/post`, {
+                    const postRes = await fetch(`/api/accounting/journals/${journalId}/post`, {
                         method: 'POST',
                         headers: getAuthHeaders()
                     });
@@ -3220,7 +3220,7 @@ Click OK to simulate uploading a file.`;
         async function loadChartOfAccounts() {
             if (window._allLedgerAccounts.length) return;
             try {
-                const res = await fetch('/api/accounts', { headers: getAuthHeaders() });
+                const res = await fetch('/api/accounting/accounts', { headers: getAuthHeaders() });
                 if (!res.ok) return;
                 const data = await res.json();
                 window._allLedgerAccounts = data.accounts || [];
@@ -3757,7 +3757,7 @@ Click OK to simulate uploading a file.`;
 
             try {
                 var apiAmount = moneyIn > 0 ? moneyIn : -moneyOut;
-                var res = await fetch('/api/bank/transactions', {
+                var res = await fetch('/api/accounting/bank/transactions', {
                     method: 'POST',
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
@@ -4195,7 +4195,7 @@ Click OK to simulate uploading a file.`;
             }
             
             // In demo mode, just show success message
-            alert(`File "${file.name}" uploaded successfully!\n\nIn production, this would upload to: /api/bank/transactions/${currentTransactionId}/attachments`);
+            alert(`File "${file.name}" uploaded successfully!\n\nIn production, this would upload to: /api/accounting/bank/transactions/${currentTransactionId}/attachments`);
             
             // Reload attachments
             loadAttachments(currentTransactionId);
@@ -4205,12 +4205,12 @@ Click OK to simulate uploading a file.`;
         }
         
         function downloadAttachment(attachmentId) {
-            alert(`Downloading attachment ${attachmentId}...\n\nIn production, this would download from: /api/bank/attachments/${attachmentId}/download`);
+            alert(`Downloading attachment ${attachmentId}...\n\nIn production, this would download from: /api/accounting/bank/attachments/${attachmentId}/download`);
         }
         
         function deleteAttachment(attachmentId) {
             if (confirm('Are you sure you want to delete this attachment?')) {
-                alert(`Attachment ${attachmentId} deleted!\n\nIn production, this would call: DELETE /api/bank/attachments/${attachmentId}`);
+                alert(`Attachment ${attachmentId} deleted!\n\nIn production, this would call: DELETE /api/accounting/bank/attachments/${attachmentId}`);
                 loadAttachments(currentTransactionId);
             }
         }

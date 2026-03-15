@@ -241,7 +241,7 @@ input[type="search"],
 input[type="tel"],
 select,
 textarea {
-    background: rgba(255,255,255,0.06) !important;
+    background: #1e1b3a !important;
     border-color: var(--border-strong) !important;
     color: var(--text) !important;
 }
@@ -438,7 +438,7 @@ select option {
 }
 /* Search box inside section header */
 .search-box input {
-    background: rgba(255,255,255,0.06) !important;
+    background: #1e1b3a !important;
     color: var(--text) !important;
     border-color: var(--border-strong) !important;
 }
@@ -704,3 +704,13 @@ a:hover {
     border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* ── Report tables — inline pastel backgrounds (VAT, comparison tables) ────── */
+/* vat.html has <td style="background:#ffe6cc">, <tr style="background:white">  */
+/* etc. In dark mode: light bg + white forced text = invisible.                 */
+/* Override ALL inline-styled tr/th/td backgrounds inside .report-content.      */
+.report-content table tr[style*="background"],
+.report-content table th[style*="background"],
+.report-content table td[style*="background"] {
+    background: rgba(255,255,255,0.06) !important;
+}
