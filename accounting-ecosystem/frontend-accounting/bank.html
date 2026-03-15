@@ -3157,18 +3157,7 @@ Click OK to simulate uploading a file.`;
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
-                // Auto-post the draft journal so it flows into reports immediately
-                const journalId = data.journal && data.journal.id;
-                if (journalId) {
-                    const postRes = await fetch(`/api/accounting/journals/${journalId}/post`, {
-                        method: 'POST',
-                        headers: getAuthHeaders()
-                    });
-                    // Non-fatal if post fails — allocation is still saved
-                    if (!postRes.ok) {
-                        console.warn('Journal created but auto-post failed — post manually in Journals.');
-                    }
-                }
+                // Journal is posted atomically by the backend — no separate post step needed.
 
                 // Update status in UI
                 const row = txnData.row;

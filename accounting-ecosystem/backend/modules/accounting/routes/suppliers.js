@@ -14,8 +14,25 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const JournalService = require('../services/journalService');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve an account ID by code within a company's chart of accounts.
+ * Returns null (never throws) so callers can skip GL gracefully.
+ */
+async function findAccountByCode(client, companyId, code) {
+  try {
+    const r = await client.query(
+      `SELECT id FROM accounts WHERE company_id = $1 AND code = $2 AND is_active = true LIMIT 1`,
+      [companyId, code]
+    );
+    return r.rows[0]?.id || null;
+  } catch (_) {
+    return null;
+  }
+}
 
 /**
  * Calculate line-item VAT amounts for a given mode.
@@ -243,8 +260,9 @@ router.post('/invoices', async (req, res) => {
     try {
       // Verify supplier belongs to company
       const supCheck = await client.query(
-        'SELECT id FROM suppliers WHERE id = $1 AND company_id = $2', [supplierId, companyId]);
+        'SELECT id, name FROM suppliers WHERE id = $1 AND company_id = $2', [supplierId, companyId]);
       if (!supCheck.rows.length) return res.status(400).json({ error: 'Supplier not found for this company' });
+      const supplierName = supCheck.rows[0].name;
 
       await client.query('BEGIN');
 
@@ -299,6 +317,56 @@ router.post('/invoices', async (req, res) => {
            l.lineSubtotalExVat, l.vatRate, l.vatAmount, l.lineTotalIncVat, l.sortOrder]
         );
       }
+
+      // ── GL Posting (AP) ───────────────────────────────────────────────────
+      // Attempt to post journal atomically with the invoice.
+      // Skip gracefully if required accounts are absent from the company's COA.
+      const apAccountId = await findAccountByCode(client, companyId, '2000');
+      if (apAccountId) {
+        const glLines = [];
+
+        // DR each expense account line
+        for (const l of processedLines) {
+          if (l.accountId && l.lineSubtotalExVat > 0) {
+            glLines.push({ accountId: l.accountId, debit: l.lineSubtotalExVat, credit: 0,
+              description: l.description || 'Supplier Invoice line' });
+          }
+        }
+
+        // DR VAT Input (code 1400) for total VAT if applicable
+        if (totals.vatAmount > 0) {
+          const vatInputId = await findAccountByCode(client, companyId, '1400');
+          if (vatInputId) {
+            glLines.push({ accountId: vatInputId, debit: totals.vatAmount, credit: 0,
+              description: 'VAT Input (Claimable)' });
+          }
+        }
+
+        // CR Accounts Payable
+        glLines.push({ accountId: apAccountId, debit: 0, credit: totals.totalIncVat,
+          description: `Supplier: ${supplierName}` });
+
+        // Only post if we have at least one real DR line (debit lines + AP credit)
+        const hasDebits = glLines.some(l => l.debit > 0);
+        if (hasDebits) {
+          const glJournal = await JournalService.createDraftJournal(client, {
+            companyId,
+            date: invoiceDate,
+            reference: invoiceNumber || null,
+            description: `AP Invoice: ${supplierName}${invoiceNumber ? ' ' + invoiceNumber : ''}`,
+            sourceType: 'supplier_invoice',
+            createdByUserId: req.user && req.user.userId ? req.user.userId : null,
+            lines: glLines,
+          });
+          await JournalService.postJournal(client, glJournal.id, companyId,
+            req.user && req.user.userId ? req.user.userId : null);
+          await client.query('UPDATE supplier_invoices SET journal_id = $1 WHERE id = $2',
+            [glJournal.id, invoice.id]);
+        }
+      } else {
+        console.warn(`[Suppliers] AP account (2000) not found for company ${companyId} — GL posting skipped for invoice ${invoice.id}`);
+      }
+      // ── End GL Posting ────────────────────────────────────────────────────
 
       await client.query('COMMIT');
 
@@ -638,7 +706,7 @@ router.post('/payments', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not available" });
 
   const companyId = req.companyId;
-  const { supplierId, paymentDate, paymentMethod, reference, amount, notes, allocations } = req.body;
+  const { supplierId, paymentDate, paymentMethod, reference, amount, notes, allocations, bankLedgerAccountId } = req.body;
 
   if (!supplierId)   return res.status(400).json({ error: 'Supplier is required' });
   if (!paymentDate)  return res.status(400).json({ error: 'Payment date is required' });
@@ -655,11 +723,13 @@ router.post('/payments', async (req, res) => {
 
       const payResult = await client.query(
         `INSERT INTO supplier_payments
-           (company_id, supplier_id, payment_date, payment_method, reference, amount, notes, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           (company_id, supplier_id, payment_date, payment_method, reference, amount, notes, bank_ledger_account_id, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          RETURNING *`,
         [companyId, parseInt(supplierId), paymentDate, paymentMethod || 'bank_transfer',
-         reference || null, parseFloat(amount), notes || null, req.user && req.user.userId ? req.user.userId : null || null]
+         reference || null, parseFloat(amount), notes || null,
+         bankLedgerAccountId ? parseInt(bankLedgerAccountId) : null,
+         req.user && req.user.userId ? req.user.userId : null || null]
       );
       const payment = payResult.rows[0];
 
@@ -686,6 +756,33 @@ router.post('/payments', async (req, res) => {
           );
         }
       }
+
+      // ── GL Posting (Payment) ──────────────────────────────────────────────
+      // DR AP (2000) / CR Bank ledger account — both sides required to post.
+      if (bankLedgerAccountId) {
+        const apAccountId = await findAccountByCode(client, companyId, '2000');
+        if (apAccountId) {
+          const glJournal = await JournalService.createDraftJournal(client, {
+            companyId,
+            date: paymentDate,
+            reference: reference || null,
+            description: `AP Payment: ${paymentMethod || 'bank_transfer'}`,
+            sourceType: 'supplier_payment',
+            createdByUserId: req.user && req.user.userId ? req.user.userId : null,
+            lines: [
+              { accountId: apAccountId,             debit: parseFloat(amount), credit: 0, description: 'Accounts Payable cleared' },
+              { accountId: parseInt(bankLedgerAccountId), debit: 0, credit: parseFloat(amount), description: 'Bank payment out' },
+            ],
+          });
+          await JournalService.postJournal(client, glJournal.id, companyId,
+            req.user && req.user.userId ? req.user.userId : null);
+          await client.query('UPDATE supplier_payments SET journal_id = $1 WHERE id = $2',
+            [glJournal.id, payment.id]);
+        } else {
+          console.warn(`[Suppliers] AP account (2000) not found for company ${companyId} — GL posting skipped for payment ${payment.id}`);
+        }
+      }
+      // ── End GL Posting ────────────────────────────────────────────────────
 
       await client.query('COMMIT');
       res.status(201).json({ payment });

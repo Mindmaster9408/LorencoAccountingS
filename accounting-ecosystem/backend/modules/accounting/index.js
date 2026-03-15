@@ -28,6 +28,8 @@ router.get('/status', (req, res) => {
     version: '2.0.0',
     features: [
       'chart-of-accounts',
+      'accounts-payable',
+      'accounts-receivable',
       'journal-entries',
       'bank-reconciliation',
       'vat-reconciliation',
@@ -50,6 +52,7 @@ router.use('/bank', require('./routes/bank'));
 router.use('/pos', require('./routes/pos-bridge'));
 router.use('/reports', require('./routes/reports'));
 router.use('/suppliers', require('./routes/suppliers'));
+router.use('/customer-invoices', require('./routes/customer-invoices'));
 router.use('/segments', require('./routes/segments'));
 
 // Tax & compliance

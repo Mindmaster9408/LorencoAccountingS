@@ -649,6 +649,12 @@
           </select>
         </div>
       </div>
+      <div class="form-group">
+        <label>Bank Account <span style="font-size:11px;opacity:0.6;">(optional — posts DR AP / CR Bank to GL)</span></label>
+        <select id="payBankAccount">
+          <option value="">— Skip GL posting —</option>
+        </select>
+      </div>
       <div class="form-row-2">
         <div class="form-group">
           <label>Amount *</label>
@@ -1386,8 +1392,25 @@ async function openNewPaymentModal(supplierId) {
   document.getElementById('openInvoicesSection').style.display = 'none';
   document.getElementById('openInvoicesList').innerHTML = '';
   openInvCache = [];
+  loadBankAccountsForPayment();
   if (supplierId) await loadOpenInvoices();
   document.getElementById('modalPayment').classList.add('show');
+}
+
+async function loadBankAccountsForPayment() {
+  const sel = document.getElementById('payBankAccount');
+  if (!sel || sel.options.length > 1) return; // already loaded
+  try {
+    const data = await apiGet('/api/accounting/bank/accounts');
+    const accounts = (data.accounts || data.bankAccounts || data || [])
+      .filter(a => a.ledger_account_id);
+    accounts.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.ledger_account_id;
+      opt.textContent = `${a.name}${a.bank_name ? ' (' + a.bank_name + ')' : ''}`;
+      sel.appendChild(opt);
+    });
+  } catch (_) { /* non-fatal — GL posting just won't be available */ }
 }
 
 async function loadOpenInvoices() {
@@ -1458,13 +1481,14 @@ async function savePayment() {
   });
 
   const payload = {
-    supplierId:    parseInt(supplierId),
+    supplierId:           parseInt(supplierId),
     paymentDate,
-    paymentMethod: document.getElementById('payMethod').value,
-    reference:     document.getElementById('payRef').value,
+    paymentMethod:        document.getElementById('payMethod').value,
+    reference:            document.getElementById('payRef').value,
     amount,
-    notes:         document.getElementById('payNotes').value,
+    notes:                document.getElementById('payNotes').value,
     allocations,
+    bankLedgerAccountId:  document.getElementById('payBankAccount')?.value || null,
   };
 
   const btn = document.getElementById('savePaymentBtn');

@@ -511,7 +511,8 @@ router.post('/transactions', authenticate, hasPermission('bank.manage'), async (
 
 /**
  * POST /api/bank/transactions/:id/allocate
- * Allocate bank transaction to create a draft journal
+ * Allocate bank transaction and atomically post the journal in one DB transaction.
+ * Journal is always 'posted' on success — no silent draft-only state possible.
  */
 router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
   const client = await db.getClient();
@@ -604,6 +605,10 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       metadata: { bankTransactionId: bankTxn.id }
     });
 
+    // Auto-post atomically — if this fails the whole transaction rolls back.
+    // Guarantees: bank_transaction.status = 'matched' ⟺ journal.status = 'posted'. No orphaned drafts.
+    await JournalService.postJournal(client, journal.id, req.user.companyId, req.user.id);
+
     // Mark transaction as matched
     await client.query(
       `UPDATE bank_transactions 
@@ -627,7 +632,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     const fullJournal = await JournalService.getJournalWithLines(journal.id, req.user.companyId);
 
     res.status(201).json({
-      message: 'Bank transaction allocated successfully',
+      message: 'Bank transaction allocated and posted to General Ledger',
       journal: fullJournal
     });
 

@@ -732,10 +732,31 @@ function initializeNavigation() {
     avatarEl.textContent = initial;
   }
 
-  // Update company name
+  // Update company name — use accounting_company_name (client-scoped) if set,
+  // otherwise fall back to eco_company_name (practice name). Then async-refresh
+  // from the API so the correct client name always wins after the JWT is available.
   const companyNameEl = document.getElementById('navCompanyName');
   if (companyNameEl) {
-    companyNameEl.textContent = user.companyName || 'Company';
+    const storedClientName = localStorage.getItem('accounting_company_name') || localStorage.getItem('eco_company_name') || '';
+    companyNameEl.textContent = storedClientName || 'Company';
+    // Async refresh: decode accounting JWT → fetch real company name from API
+    const acctToken = localStorage.getItem('token');
+    if (acctToken) {
+      try {
+        const payload = JSON.parse(atob(acctToken.split('.')[1]));
+        const cid = payload.companyId;
+        if (cid) {
+          fetch('/api/accounting/company/' + cid, {
+            headers: { 'Authorization': 'Bearer ' + acctToken }
+          }).then(r => r.ok ? r.json() : null).then(d => {
+            if (d && d.name) {
+              companyNameEl.textContent = d.name;
+              localStorage.setItem('accounting_company_name', d.name);
+            }
+          }).catch(() => {});
+        }
+      } catch (_) {}
+    }
   }
 
   // Show demo banner if in demo mode
@@ -897,9 +918,11 @@ async function switchToClient(companyId, event) {
 
     const data = await res.json();
 
-    // Update accounting token and company name, then reload
+    // Update accounting token and company name, then reload.
+    // accounting_company_name is the client-scoped name shown in the nav bar;
+    // eco_company_name stays as the practice name for ecosystem pages.
     localStorage.setItem('token', data.token);
-    localStorage.setItem('eco_company_name', clientName);
+    localStorage.setItem('accounting_company_name', clientName);
 
     window.location.reload();
 
@@ -922,6 +945,7 @@ function logout() {
   localStorage.removeItem('eco_companies');
   localStorage.removeItem('eco_super_admin');
   localStorage.removeItem('eco_company_name');
+  localStorage.removeItem('accounting_company_name');
   // Redirect to ECO ecosystem login
   window.location.href = '/';
 }

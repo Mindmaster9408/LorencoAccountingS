@@ -617,6 +617,9 @@ async function ensureAccountingSchema(pool) {
       )
     `);
 
+    // ── 23e-ext. Add bank_ledger_account_id to supplier_payments (safe on existing) ─
+    await client.query(`ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS bank_ledger_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL`);
+
     // ── 23f. Supplier Payment Allocations ─────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS supplier_payment_allocations (
@@ -639,6 +642,75 @@ async function ensureAccountingSchema(pool) {
         value       JSONB,
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (company_id, key)
+      )
+    `);
+
+    // ── 25. Customer AR Tables ─────────────────────────────────────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customer_invoices (
+        id                  SERIAL PRIMARY KEY,
+        company_id          INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        customer_id         INTEGER,
+        customer_name       TEXT NOT NULL,
+        invoice_number      TEXT NOT NULL,
+        reference           TEXT,
+        invoice_date        DATE NOT NULL,
+        due_date            DATE,
+        status              TEXT DEFAULT 'draft' CHECK (status IN ('draft','sent','paid','part_paid','void')),
+        subtotal_ex_vat     NUMERIC(15,2) DEFAULT 0,
+        vat_amount          NUMERIC(15,2) DEFAULT 0,
+        total_inc_vat       NUMERIC(15,2) DEFAULT 0,
+        amount_paid         NUMERIC(15,2) DEFAULT 0,
+        notes               TEXT,
+        journal_id          INTEGER REFERENCES journals(id) ON DELETE SET NULL,
+        created_by_user_id  INTEGER REFERENCES users(id),
+        created_at          TIMESTAMPTZ DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customer_invoice_lines (
+        id                  SERIAL PRIMARY KEY,
+        invoice_id          INTEGER NOT NULL REFERENCES customer_invoices(id) ON DELETE CASCADE,
+        description         TEXT NOT NULL,
+        account_id          INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+        quantity            NUMERIC(15,4) DEFAULT 1,
+        unit_price          NUMERIC(15,4) DEFAULT 0,
+        vat_rate            NUMERIC(5,2) DEFAULT 15,
+        subtotal_ex_vat     NUMERIC(15,2) DEFAULT 0,
+        vat_amount          NUMERIC(15,2) DEFAULT 0,
+        total_inc_vat       NUMERIC(15,2) DEFAULT 0,
+        sort_order          INTEGER DEFAULT 0
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customer_payments (
+        id                      SERIAL PRIMARY KEY,
+        company_id              INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        customer_id             INTEGER,
+        customer_name           TEXT NOT NULL,
+        payment_date            DATE NOT NULL,
+        payment_method          TEXT DEFAULT 'bank_transfer',
+        reference               TEXT,
+        amount                  NUMERIC(15,2) NOT NULL,
+        bank_ledger_account_id  INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+        notes                   TEXT,
+        journal_id              INTEGER REFERENCES journals(id) ON DELETE SET NULL,
+        created_by_user_id      INTEGER REFERENCES users(id),
+        created_at              TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customer_payment_allocations (
+        id              SERIAL PRIMARY KEY,
+        payment_id      INTEGER NOT NULL REFERENCES customer_payments(id) ON DELETE CASCADE,
+        invoice_id      INTEGER NOT NULL REFERENCES customer_invoices(id) ON DELETE CASCADE,
+        amount_applied  NUMERIC(15,2) NOT NULL,
+        UNIQUE(payment_id, invoice_id)
       )
     `);
 
@@ -665,6 +737,11 @@ async function ensureAccountingSchema(pool) {
       'CREATE INDEX IF NOT EXISTS idx_purchase_orders_company ON purchase_orders(company_id)',
       'CREATE INDEX IF NOT EXISTS idx_supplier_payments_company ON supplier_payments(company_id)',
       'CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier ON supplier_payments(supplier_id)',
+      // Customer AR indexes
+      'CREATE INDEX IF NOT EXISTS idx_customer_invoices_company ON customer_invoices(company_id)',
+      'CREATE INDEX IF NOT EXISTS idx_customer_invoices_status ON customer_invoices(company_id, status)',
+      'CREATE INDEX IF NOT EXISTS idx_customer_inv_lines_invoice ON customer_invoice_lines(invoice_id)',
+      'CREATE INDEX IF NOT EXISTS idx_customer_payments_company ON customer_payments(company_id)',
     ];
     for (const idx of indexes) {
       await client.query(idx);
