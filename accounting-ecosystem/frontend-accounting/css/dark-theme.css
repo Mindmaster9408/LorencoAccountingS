@@ -1451,3 +1451,125 @@ td.negative,
     background: var(--accent-dark) !important;
     color: #fff !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * GLOBAL THEME GUARD — Systematic !important overrides for inline-style
+ * artifacts that cannot be caught by class-based rules alone.
+ * Root cause: inline style="" attributes on TR/div elements with light colours
+ * create visible bleed-through even when child elements have dark backgrounds.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Report table row backgrounds — strip inline blue TR backgrounds ──────────
+ * Pages use <tr class="section-*" style="background:rgba(0,102,204,…)">
+ * The amber TD backgrounds are semi-transparent (6%–8%), so the blue TR colour
+ * bleeds through. Forcing the TR to transparent stops the bleed completely.  */
+tr.section-header,
+tr.section-total,
+tr.grand-total {
+    background: transparent !important;
+}
+
+/* ── Error / out-of-balance rows in JS-rendered report tables ───────────────── */
+tr.error-row td,
+tr.error-row th {
+    background: rgba(239,68,68,0.10) !important;
+    color: #fca5a5 !important;
+    font-weight: 600 !important;
+    text-align: center !important;
+}
+
+/* ── Error message divs (hidden by default, shown on API failure) ────────────── */
+/* Inline style="display:none;background:#fce4ec;color:#c62828" on these divs.   */
+/* The !important here overrides the inline background/color when they are shown.*/
+#plError,
+#bsError,
+#tbError,
+#bankModalError {
+    background: rgba(239,68,68,0.15) !important;
+    color: #fca5a5 !important;
+    border: 1px solid rgba(239,68,68,0.30) !important;
+}
+
+/* ── Sean AI info badge (small label inside form section title) ───────────────
+ * Was: color:#6c757d; background:#e9ecef — grey badge, invisible on dark bg. */
+.sean-info-badge {
+    background: var(--surface) !important;
+    color: var(--text-muted) !important;
+    border: 1px solid var(--border-strong) !important;
+}
+
+/* ── Sean AI info box under textarea (was light-blue gradient #e6f3ff) ────────*/
+.sean-info-box {
+    background: rgba(245,158,11,0.06) !important;
+    border-left-color: var(--accent) !important;
+    color: var(--text-secondary) !important;
+}
+.sean-info-box strong {
+    color: var(--accent-light) !important;
+}
+.sean-info-box span {
+    color: var(--text-muted) !important;
+}
+
+/* ── Bank account form cancel button (was background:#f5f5f5) ────────────────*/
+.bank-form-cancel {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.bank-form-cancel:hover {
+    background: var(--surface-hover) !important;
+    color: var(--text) !important;
+}
+
+/* ── Bank info box (was background:#e6f3ff light-blue) ──────────────────────*/
+.info-box {
+    background: rgba(245,158,11,0.06) !important;
+    border-color: var(--border) !important;
+    color: var(--text-secondary) !important;
+}
+.info-box strong {
+    color: var(--accent-light) !important;
+}
+.info-box a {
+    color: var(--accent-light) !important;
+}
+
+/* ── PDF review scrollable container (was border:1px solid #e8eaed) ─────────*/
+.pdf-review-container {
+    border-color: var(--border) !important;
+}
+
+/* ── Bank delete confirmation modal (JS-generated, inner div has no class) ───
+ * modal.innerHTML = '<div style="background:white;…">' creates a white box.
+ * Targeting by modal ID prevents the selector from being too broad.          */
+#deleteConfirmModal > div {
+    background: #1e1b3a !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;
+}
+#deleteConfirmModal h3,
+#deleteConfirmModal h4 {
+    color: var(--text) !important;
+}
+#deleteConfirmModal p {
+    color: var(--text-secondary) !important;
+}
+/* Cancel button in delete modal (was background:white) */
+#deleteConfirmModal button:not(#confirmDeleteBtn) {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+
+/* ── Warning div inside delete modal (was background:#fff8e1 light yellow) ──*/
+.bank-delete-warning {
+    background: rgba(245,158,11,0.10) !important;
+    border: 1px solid var(--accent) !important;
+    color: var(--accent-light) !important;
+    border-radius: 8px;
+}
+.bank-delete-warning strong {
+    color: var(--accent) !important;
+}

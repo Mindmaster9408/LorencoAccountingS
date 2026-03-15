@@ -250,3 +250,82 @@ The inline `<style>` blocks are intentionally preserved on each page. For print/
 3. CSS custom properties with light/dark variants — current approach IS this, implemented via the dark-theme.css override model
 
 **Why this works**: All 30 HTML pages load `dark-theme.css` as the last stylesheet. Since all inline styles have lower cascade specificity than `!important` rules in an external stylesheet that loads later, the dark theme wins for every element it targets.
+
+---
+
+## March 2026 — Global Theme Guard Extension
+
+### Root cause analysis of remaining issues
+
+Three patterns caused visible light-theme artefacts after dark-theme.css was loaded:
+
+**Pattern 1 — TR-level inline blue backgrounds bleeding through semi-transparent TDs**
+
+Report pages used:
+```html
+<tr class="section-total" style="background: rgba(0,102,204,0.12);">
+```
+The amber `td` backgrounds (`rgba(245,158,11,0.06)`) are only 6% opacity. The blue TR background bleeds through and creates a bluish tint.
+
+Fix added to dark-theme.css:
+```css
+tr.section-header, tr.section-total, tr.grand-total {
+    background: transparent !important;
+}
+```
+
+**Pattern 2 — JS-generated HTML with inline styles and no class**
+
+`bank.html` delete confirmation modal was created as:
+```js
+modal.innerHTML = '<div style="background:white;…">'
+```
+CSS cannot override this without an ID/class selector. Fixed by:
+- Targeting `#deleteConfirmModal > div` in dark-theme.css
+- Replacing inline JS `style="background:#fff8e1"` with `class="bank-delete-warning"`
+- Replacing `style="background:#f5f5f5"` on cancel buttons with `class="bank-form-cancel"`
+- Replacing `style="background:#e6f3ff"` info boxes with `class="info-box"`
+- Adding `class="pdf-review-container"` to the scrollable wrapper
+
+**Pattern 3 — Missing CSS coverage for contacts.html inline styles**
+
+The Sean AI section in contacts.html had:
+```html
+<span style="color:#6c757d; background:#e9ecef">Helps Sean understand this contact</span>
+<div style="background: linear-gradient(135deg, #e6f3ff 0%, #f0f8ff 100%); border-left: 3px solid #0066cc;">
+```
+
+Fixed by replacing with:
+```html
+<span class="sean-info-badge">…</span>
+<div class="sean-info-box" style="border-left: 3px solid;">…</div>
+```
+
+And adding rules for `.sean-info-badge` and `.sean-info-box` to dark-theme.css.
+
+### New CSS rules added (dark-theme.css, end of file)
+
+| Rule | Purpose |
+|---|---|
+| `tr.section-header, tr.section-total, tr.grand-total { background: transparent }` | Prevents blue TR bleed-through |
+| `tr.error-row td, tr.error-row th` | Dark red error rows in JS-rendered report tables |
+| `#plError, #bsError, #tbError, #bankModalError` | Error divs shown on API failure |
+| `.sean-info-badge` | Sean AI badge label (was grey) |
+| `.sean-info-box` | Sean AI info panel under textarea (was light blue) |
+| `.bank-form-cancel` | Bank account modal cancel button |
+| `.info-box` | Bank import and info panels (was light blue) |
+| `.pdf-review-container` | Scrollable PDF transaction review area |
+| `#deleteConfirmModal > div` | JS-generated delete modal inner div |
+| `#deleteConfirmModal button:not(#confirmDeleteBtn)` | Cancel button in delete modal |
+| `.bank-delete-warning` | Warning message in delete modal |
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `css/dark-theme.css` | Added ~120 lines of new rules covering the above |
+| `reports.html` | Removed `style="background: rgba(0,102,204,0.12)"` from static `<tr class="section-total">` |
+| `balance-sheet.html` | Removed inline blue backgrounds from 6 static TRs; fixed JS-generated section-total rows; converted error row to `class="error-row"` |
+| `trial-balance.html` | Converted JS-generated error row to `class="error-row"` |
+| `contacts.html` | Sean badge and info box: added `.sean-info-badge` and `.sean-info-box` classes |
+| `bank.html` | Delete modal JS rewrite (classes); cancel button class; info box class; PDF review container class |

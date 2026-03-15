@@ -428,7 +428,7 @@
                         <tr class="section-header">
                             <td colspan="2">ASSETS</td>
                         </tr>
-                        <tr class="section-header" style="background: rgba(0,102,204,0.03); font-weight: 600;">
+                        <tr class="section-header">
                             <td class="indent-1">Current Assets</td>
                             <td></td>
                         </tr>
@@ -455,7 +455,7 @@
                         
                         <tr><td colspan="2" style="height: 10px;"></td></tr>
                         
-                        <tr class="section-header" style="background: rgba(0,102,204,0.03); font-weight: 600;">
+                        <tr class="section-header">
                             <td class="indent-1">Non-Current Assets</td>
                             <td></td>
                         </tr>
@@ -476,7 +476,7 @@
                             <td class="amount"><strong>R 375,000.00</strong></td>
                         </tr>
                         
-                        <tr class="section-total" style="background: rgba(0,102,204,0.12);">
+                        <tr class="section-total">
                             <td><strong>TOTAL ASSETS</strong></td>
                             <td class="amount"><strong>R 676,700.00</strong></td>
                         </tr>
@@ -486,7 +486,7 @@
                         <tr class="section-header">
                             <td colspan="2">LIABILITIES</td>
                         </tr>
-                        <tr class="section-header" style="background: rgba(0,102,204,0.03); font-weight: 600;">
+                        <tr class="section-header">
                             <td class="indent-1">Current Liabilities</td>
                             <td></td>
                         </tr>
@@ -513,7 +513,7 @@
                         
                         <tr><td colspan="2" style="height: 10px;"></td></tr>
                         
-                        <tr class="section-header" style="background: rgba(0,102,204,0.03); font-weight: 600;">
+                        <tr class="section-header">
                             <td class="indent-1">Non-Current Liabilities</td>
                             <td></td>
                         </tr>
@@ -530,7 +530,7 @@
                             <td class="amount"><strong>R 202,500.00</strong></td>
                         </tr>
                         
-                        <tr class="section-total" style="background: rgba(0,102,204,0.12);">
+                        <tr class="section-total">
                             <td><strong>TOTAL LIABILITIES</strong></td>
                             <td class="amount"><strong>R 326,700.00</strong></td>
                         </tr>
@@ -620,7 +620,7 @@
             (data.assets || []).forEach(acc => {
                 html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
             });
-            html += `<tr class="section-total" style="background:rgba(0,102,204,0.15)"><td><strong>TOTAL ASSETS</strong></td><td class="amount"><strong>${fmtAmt(data.totals.assets)}</strong></td></tr>`;
+            html += `<tr class="section-total"><td><strong>TOTAL ASSETS</strong></td><td class="amount"><strong>${fmtAmt(data.totals.assets)}</strong></td></tr>`;
             html += '<tr><td colspan="2" style="height:20px"></td></tr>';
 
             // ── LIABILITIES ──────────────────────────────────────────────────
@@ -628,7 +628,7 @@
             (data.liabilities || []).forEach(acc => {
                 html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
             });
-            html += `<tr class="section-total" style="background:rgba(220,53,69,0.1)"><td><strong>TOTAL LIABILITIES</strong></td><td class="amount"><strong>${fmtAmt(data.totals.liabilities)}</strong></td></tr>`;
+            html += `<tr class="section-total"><td><strong>TOTAL LIABILITIES</strong></td><td class="amount"><strong>${fmtAmt(data.totals.liabilities)}</strong></td></tr>`;
             html += '<tr><td colspan="2" style="height:20px"></td></tr>';
 
             // ── EQUITY ───────────────────────────────────────────────────────
@@ -639,7 +639,7 @@
             if (data.currentYearEarnings !== 0) {
                 html += `<tr><td class="indent-1">Current Year Earnings</td><td class="amount">${fmtAmt(data.currentYearEarnings)}</td></tr>`;
             }
-            html += `<tr class="section-total" style="background:rgba(52,168,83,0.1)"><td><strong>TOTAL EQUITY</strong></td><td class="amount"><strong>${fmtAmt(data.totals.equity)}</strong></td></tr>`;
+            html += `<tr class="section-total"><td><strong>TOTAL EQUITY</strong></td><td class="amount"><strong>${fmtAmt(data.totals.equity)}</strong></td></tr>`;
             html += '<tr><td colspan="2" style="height:15px"></td></tr>';
 
             // ── TOTAL L + E ──────────────────────────────────────────────────
@@ -647,7 +647,7 @@
 
             if (!data.isBalanced) {
                 const diff = Math.abs(data.totals.assets - data.totals.liabilitiesAndEquity);
-                html += `<tr style="background:#fff4e6"><td colspan="2" style="color:#ea4335;font-weight:600;text-align:center;padding:15px">
+                html += `<tr class="error-row"><td colspan="2" style="text-align:center;padding:15px">
                     ⚠️ Warning: Balance Sheet is out of balance by R ${diff.toFixed(2)}
                 </td></tr>`;
             }

@@ -718,7 +718,7 @@
             </tr>`;
 
             if (!data.isBalanced) {
-                html += `<tr style="background:#fff4e6"><td colspan="4" style="color:#ea4335;font-weight:600;text-align:center;padding:15px">
+                html += `<tr class="error-row"><td colspan="4" style="text-align:center;padding:15px">
                     ⚠️ Warning: Trial Balance is out of balance by R ${Math.abs(totalDr - totalCr).toFixed(2)}
                 </td></tr>`;
             }
