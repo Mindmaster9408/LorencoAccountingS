@@ -53,6 +53,8 @@
         .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
         .line-header { display: grid; grid-template-columns: 2.5fr 1.5fr 1fr 1fr 30px; gap: 8px; font-weight: 600; font-size: 12px; color: #5f6368; margin-bottom: 4px; padding: 0 4px; }
         .line-item { display: grid; grid-template-columns: 2.5fr 1.5fr 1fr 1fr 30px; gap: 8px; margin-bottom: 8px; align-items: center; }
+        /* Segment column — added when company has segment definitions */
+        .line-header.seg, .line-item.seg { grid-template-columns: 2.2fr 1.2fr 0.85fr 0.85fr 0.85fr 30px; }
         .line-item input, .line-item select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 100%; }
         .btn-remove-line { background: none; border: none; color: #ef5350; cursor: pointer; font-size: 16px; font-weight: 700; padding: 0 4px; }
         .balance-check { padding: 10px 14px; border-radius: 6px; margin: 10px 0; font-weight: 600; font-size: 13px; text-align: right; }
@@ -234,6 +236,37 @@
         return accountsCache;
     }
 
+    // ── Segments cache (optional — only for companies with segment definitions) ──
+    let segmentValues = [];
+    let segmentsLoaded = false;
+
+    async function loadSegmentsList() {
+        if (segmentsLoaded) return;
+        segmentsLoaded = true;
+        try {
+            const res = await fetch('/api/accounting/segments', { headers: authHeaders() });
+            if (!res.ok) return;
+            const { segments } = await res.json();
+            if (!segments || !segments.length) return;
+            segments.forEach(seg => {
+                (seg.values || []).forEach(v => {
+                    segmentValues.push({ id: v.id, name: v.name });
+                });
+            });
+            if (segmentValues.length) {
+                // Add segment column header next to Credit (before the empty ✕ span)
+                const lh = document.querySelector('.line-header');
+                if (lh && !lh.querySelector('.seg-hdr')) {
+                    const span = document.createElement('span');
+                    span.className = 'seg-hdr';
+                    span.textContent = 'Segment';
+                    lh.insertBefore(span, lh.lastElementChild);
+                    lh.classList.add('seg');
+                }
+            }
+        } catch (_) {}
+    }
+
     function accountOptions(selectedId) {
         return '<option value="">Select account…</option>' +
             accountsCache.map(a =>
@@ -328,6 +361,7 @@
 
     async function showNewJournalModal() {
         await loadAccounts();
+        await loadSegmentsList();
         editingJournalId = null;
         document.getElementById('modalTitle').textContent = 'New Journal Entry';
         document.getElementById('jnlDate').value = new Date().toISOString().slice(0, 10);
@@ -345,6 +379,7 @@
 
     async function editJournal(id) {
         await loadAccounts();
+        await loadSegmentsList();
         try {
             const res = await fetch('/api/journals/' + id, { headers: authHeaders() });
             if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -363,7 +398,8 @@
                     accountId: line.account_id,
                     description: line.description || '',
                     debit: parseFloat(line.debit) || 0,
-                    credit: parseFloat(line.credit) || 0
+                    credit: parseFloat(line.credit) || 0,
+                    segmentValueId: line.segment_value_id || null
                 });
             });
             updateBalance();
@@ -387,12 +423,21 @@
         const debitVal  = prefill ? (prefill.debit  || '') : '';
         const creditVal = prefill ? (prefill.credit || '') : '';
         const descVal   = prefill ? (prefill.description || '') : '';
+        const segValId  = prefill ? (prefill.segmentValueId || '') : '';
 
-        const html = `<div class="line-item" id="jline${id}">
+        const segEl = segmentValues.length
+            ? `<select data-type="segment" title="Segment (optional)">
+                <option value="">— Segment —</option>
+                ${segmentValues.map(v => `<option value="${v.id}"${String(v.id) === String(segValId) ? ' selected' : ''}>${esc(v.name)}</option>`).join('')}
+               </select>`
+            : '';
+
+        const html = `<div class="line-item${segmentValues.length ? ' seg' : ''}" id="jline${id}">
             <select onchange="updateBalance()">${opts}</select>
             <input type="text" placeholder="Line description" value="${descVal.replace(/"/g, '&quot;')}">
             <input type="number" step="0.01" min="0" placeholder="0.00" value="${debitVal}" oninput="updateBalance()" class="debit-input">
             <input type="number" step="0.01" min="0" placeholder="0.00" value="${creditVal}" oninput="updateBalance()" class="credit-input">
+            ${segEl}
             <button class="btn-remove-line" onclick="removeLine(${id})" title="Remove line">✕</button>
         </div>`;
         document.getElementById('journalLines').insertAdjacentHTML('beforeend', html);
@@ -419,12 +464,16 @@
         const lineEls = document.querySelectorAll('#journalLines .line-item');
         const lines = [];
         lineEls.forEach(el => {
-            const accountId = el.querySelector('select').value;
+            const accountId = el.querySelector('select:not([data-type])').value;
             const desc   = el.querySelectorAll('input')[0].value.trim();
             const debit  = parseFloat(el.querySelectorAll('input')[1].value) || 0;
             const credit = parseFloat(el.querySelectorAll('input')[2].value) || 0;
+            const segSel = el.querySelector('select[data-type="segment"]');
+            const segmentValueId = segSel && segSel.value ? parseInt(segSel.value) : null;
             if (accountId && (debit > 0 || credit > 0)) {
-                lines.push({ accountId: parseInt(accountId), description: desc || null, debit, credit });
+                const line = { accountId: parseInt(accountId), description: desc || null, debit, credit };
+                if (segmentValueId) line.segmentValueId = segmentValueId;
+                lines.push(line);
             }
         });
         return lines;
@@ -556,6 +605,21 @@
             const lines = j.lines || [];
             const totalDebit  = lines.reduce((s, l) => s + parseFloat(l.debit || 0), 0);
             const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
+            const hasSegs = lines.some(l => l.segment_value_name);
+
+            // Dynamically add/remove Segment column in detail header
+            const detailThead = document.querySelector('.detail-lines thead tr');
+            if (detailThead) {
+                const existingSeg = detailThead.querySelector('.seg-col');
+                if (hasSegs && !existingSeg) {
+                    const th = document.createElement('th');
+                    th.className = 'seg-col';
+                    th.textContent = 'Segment';
+                    detailThead.insertBefore(th, detailThead.lastElementChild);
+                } else if (!hasSegs && existingSeg) {
+                    existingSeg.remove();
+                }
+            }
 
             document.getElementById('detailLines').innerHTML =
                 lines.map(l => `<tr>
@@ -563,9 +627,10 @@
                     <td>${l.description || ''}</td>
                     <td style="text-align:right">${parseFloat(l.debit) > 0 ? fmt(l.debit) : '—'}</td>
                     <td style="text-align:right">${parseFloat(l.credit) > 0 ? fmt(l.credit) : '—'}</td>
+                    ${hasSegs ? `<td style="font-size:11px;color:#5f6368">${l.segment_value_name || '—'}</td>` : ''}
                 </tr>`).join('') +
                 `<tr class="detail-total">
-                    <td colspan="2">Total</td>
+                    <td colspan="${hasSegs ? 3 : 2}">Total</td>
                     <td style="text-align:right">${fmt(totalDebit)}</td>
                     <td style="text-align:right">${fmt(totalCredit)}</td>
                 </tr>`;

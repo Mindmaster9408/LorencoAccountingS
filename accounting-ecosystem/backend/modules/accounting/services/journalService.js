@@ -123,8 +123,8 @@ class JournalService {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       await client.query(
-        `INSERT INTO journal_lines (journal_id, account_id, line_number, description, debit, credit, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO journal_lines (journal_id, account_id, line_number, description, debit, credit, segment_value_id, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           journal.id,
           line.accountId,
@@ -132,6 +132,7 @@ class JournalService {
           line.description || null,
           line.debit || 0,
           line.credit || 0,
+          line.segmentValueId || null,
           line.metadata ? JSON.stringify(line.metadata) : null
         ]
       );
@@ -192,8 +193,8 @@ class JournalService {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       await client.query(
-        `INSERT INTO journal_lines (journal_id, account_id, line_number, description, debit, credit, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO journal_lines (journal_id, account_id, line_number, description, debit, credit, segment_value_id, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           journalId,
           line.accountId,
@@ -201,6 +202,7 @@ class JournalService {
           line.description || null,
           line.debit || 0,
           line.credit || 0,
+          line.segmentValueId || null,
           line.metadata ? JSON.stringify(line.metadata) : null
         ]
       );
@@ -361,9 +363,11 @@ class JournalService {
     const journal = journalResult.rows[0];
 
     const linesResult = await db.query(
-      `SELECT jl.*, a.code as account_code, a.name as account_name, a.type as account_type
+      `SELECT jl.*, a.code as account_code, a.name as account_name, a.type as account_type,
+              sv.name as segment_value_name
        FROM journal_lines jl
        JOIN accounts a ON jl.account_id = a.id
+       LEFT JOIN coa_segment_values sv ON jl.segment_value_id = sv.id
        WHERE jl.journal_id = $1
        ORDER BY jl.line_number`,
       [journalId]
