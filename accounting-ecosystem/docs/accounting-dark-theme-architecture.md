@@ -113,12 +113,14 @@ Defined in `:root` at the top of `dark-theme.css`:
 
 When creating a new accounting HTML page:
 
+> **Current status (March 2026):** All 30 existing pages already have `theme-guard.js` wired in. New pages must maintain the same head block structure.
+
 ### Minimum required head block
 
 ```html
 <head>
     <script src="js/navigation.js"></script>
-    <script src="js/theme-guard.js"></script>   <!-- add BEFORE inline styles -->
+    <script src="js/theme-guard.js"></script>   <!-- BEFORE inline styles -->
     <style>
         /* ... your page-specific layout styles ... */
     </style>
