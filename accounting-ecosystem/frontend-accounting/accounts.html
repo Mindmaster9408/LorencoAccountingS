@@ -59,6 +59,25 @@
         .btn-provision:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,102,204,0.4); }
         .btn-provision:disabled { opacity: 0.6; cursor: not-allowed; }
         .provision-note { font-size: 12px; color: #9aa0a6; margin-top: 10px; }
+        .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 24px; text-align: left; }
+        .template-card { border: 2px solid #e0e0e0; border-radius: 10px; padding: 20px; cursor: pointer; transition: all 0.2s; background: #fafafa; }
+        .template-card:hover { border-color: #0066cc; background: #f0f8ff; }
+        .template-card.default-template { border-color: #0066cc; background: #f0f8ff; }
+        .template-card h4 { font-size: 15px; color: #202124; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+        .template-card p { font-size: 12px; color: #5f6368; line-height: 1.5; margin-bottom: 12px; }
+        .template-meta { display: flex; gap: 10px; font-size: 11px; color: #9aa0a6; margin-bottom: 14px; }
+        .industry-badge { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; background: #e8f5e9; color: #2e7d32; }
+        .industry-badge.farming { background: #fff3e0; color: #e65100; }
+        .default-badge { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; background: #0066cc; color: white; }
+        .btn-use-template { width: 100%; padding: 10px; background: linear-gradient(135deg, #0066cc, #0099ff); color: white; border: none; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s; }
+        .btn-use-template:hover:not(:disabled) { transform: translateY(-1px); }
+        .btn-use-template:disabled { opacity: 0.6; cursor: not-allowed; }
+        .applied-badge { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; background: #e8f5e9; color: #2e7d32; }
+        .template-card.applied { border-color: #4caf50; background: #f9fef9; }
+        .btn-apply-overlay { width: 100%; padding: 10px; background: linear-gradient(135deg, #43a047, #66bb6a); color: white; border: none; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s; }
+        .btn-apply-overlay:hover:not(:disabled) { transform: translateY(-1px); }
+        .btn-apply-overlay:disabled { opacity: 0.6; cursor: not-allowed; }
+        .overlay-modal-body { max-height: 60vh; overflow-y: auto; padding-right: 4px; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 </head>
@@ -70,7 +89,10 @@
             <h1>Chart of Accounts</h1>
             <p>Manage your general ledger accounts</p>
         </div>
-        <button class="btn-primary" onclick="showCreateModal()">+ New Account</button>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <button class="btn-secondary" id="btnOverlayTemplates" style="display:none" onclick="showOverlayModal()">🏭 Industry Templates</button>
+            <button class="btn-primary" onclick="showCreateModal()">+ New Account</button>
+        </div>
     </div>
 
     <div class="stats" id="accountStats"></div>
@@ -112,8 +134,7 @@
 </div>
 
 <!-- Create / Edit Modal -->
-<div class="modal-overlay" id="accountModal">
-    <div class="modal">
+<div class="modal-overlay" id="accountModal">    <div class="modal">
         <h2 id="modalTitle">New Account</h2>
 
         <div class="form-group">
@@ -155,6 +176,18 @@
     </div>
 </div>
 
+<!-- Industry Overlay Templates Modal -->
+<div class="modal-overlay" id="overlayModal">
+    <div class="modal" style="width:640px;max-width:96vw;">
+        <h2>Industry Account Templates</h2>
+        <p style="font-size:13px;color:#5f6368;margin-bottom:16px;">Add industry-specific accounts to your existing chart of accounts. Only new accounts are added — nothing existing is changed.</p>
+        <div class="overlay-modal-body" id="overlayModalBody">Loading…</div>
+        <div class="modal-actions" style="margin-top:16px;">
+            <button class="btn-secondary" onclick="closeOverlayModal()">Close</button>
+        </div>
+    </div>
+</div>
+
 <script>
     const token = localStorage.getItem('token');
     if (!token) window.location.href = '/';
@@ -177,8 +210,12 @@
             const data = await res.json();
             allAccounts = data.accounts || [];
 
+            // Show overlay button only when company has a provisioned COA
+            document.getElementById('btnOverlayTemplates').style.display =
+                allAccounts.length > 0 ? '' : 'none';
+
             if (allAccounts.length === 0 && !showAll) {
-                renderEmptyState();
+                await renderEmptyState();
             } else {
                 applyFilters();
             }
@@ -296,7 +333,7 @@
                 // Edit: only name, description, isActive can change
                 const isActive = document.getElementById('accActive').value === 'true';
                 if (!name) { errEl.textContent = 'Account name is required.'; errEl.style.display = 'block'; return; }
-                res  = await fetch(`/api/accounts/${editingId}`, {
+                res  = await fetch(`/api/accounting/accounts/${editingId}`, {
                     method: 'PUT',
                     headers: authH(),
                     body: JSON.stringify({ name, description: desc || null, isActive })
@@ -307,7 +344,7 @@
                 const code = document.getElementById('accCode').value.trim();
                 const type = document.getElementById('accType').value;
                 if (!code || !name) { errEl.textContent = 'Code and name are required.'; errEl.style.display = 'block'; return; }
-                res  = await fetch('/api/accounts', {
+                res  = await fetch('/api/accounting/accounts', {
                     method: 'POST',
                     headers: authH(),
                     body: JSON.stringify({ code, name, type, description: desc || null })
@@ -329,25 +366,74 @@
     }
 
     // ── Empty State / Provision ───────────────────────────────────────────────
-    function renderEmptyState() {
+    async function renderEmptyState() {
         document.getElementById('accountStats').innerHTML = '';
+
+        // Show skeleton while loading templates
         document.getElementById('accountsBody').innerHTML = `
             <tr><td colspan="5">
                 <div class="empty-state">
                     <h3>No chart of accounts set up yet</h3>
-                    <p>This company has no ledger accounts. Set up a standard South African chart of accounts<br>to get started — you can customise it afterwards.</p>
-                    <button class="btn-provision" id="provisionBtn" onclick="provisionDefaults()">
-                        Set up Default SA Chart of Accounts
-                    </button>
-                    <div class="provision-note">Seeds 32 standard accounts (assets, liabilities, equity, income &amp; expenses)</div>
+                    <p>Choose a template to provision your chart of accounts. You can customise it afterwards.</p>
+                    <div id="templatePickerArea" style="max-width:860px;margin:0 auto;">Loading templates…</div>
                 </div>
             </td></tr>`;
+
+        try {
+            const res  = await fetch('/api/accounting/accounts/templates', { headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+            // Only show base templates (not overlays) in the empty-state picker
+            const baseTemplates = (data.templates || []).filter(t => !t.parent_template_id);
+
+            const cards = baseTemplates.map(t => {
+                const industryClass = t.industry === 'farming' ? 'farming' : '';
+                const defaultBadge  = t.is_default ? '<span class="default-badge">Default</span>' : '';
+                return `
+                <div class="template-card ${t.is_default ? 'default-template' : ''}">
+                    <h4>
+                        <span class="industry-badge ${industryClass}">${esc(t.industry)}</span>
+                        ${esc(t.name)} ${defaultBadge}
+                    </h4>
+                    <p>${esc(t.description || '')}</p>
+                    <div class="template-meta">
+                        <span>📋 ${t.account_count} accounts</span>
+                        <span>v${esc(t.version)}</span>
+                    </div>
+                    <button class="btn-use-template" onclick="provisionFromTemplate(${t.id}, this)">
+                        Use this template
+                    </button>
+                </div>`;
+            }).join('');
+
+            document.getElementById('templatePickerArea').innerHTML =
+                baseTemplates.length > 0
+                    ? `<div class="template-grid">${cards}</div>`
+                    : `<button class="btn-provision" onclick="provisionDefaults()">Set up Default SA Chart of Accounts</button>`;
+
+        } catch (err) {
+            // Fallback to single-button approach if templates endpoint fails
+            document.getElementById('templatePickerArea').innerHTML = `
+                <button class="btn-provision" onclick="provisionDefaults()">Set up Default SA Chart of Accounts</button>
+                <div class="provision-note">Standard SA accounts — assets, liabilities, equity, income, expenses, finance costs &amp; depreciation</div>`;
+        }
+    }
+
+    async function provisionFromTemplate(templateId, btn) {
+        if (btn) { btn.disabled = true; btn.textContent = 'Setting up…'; }
+        try {
+            const res  = await fetch(`/api/accounting/accounts/provision-from-template/${templateId}`, { method: 'POST', headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            await loadAccounts();
+        } catch (err) {
+            showError('Failed to provision template: ' + err.message);
+            if (btn) { btn.disabled = false; btn.textContent = 'Use this template'; }
+        }
     }
 
     async function provisionDefaults() {
-        const btn = document.getElementById('provisionBtn');
-        if (btn) { btn.disabled = true; btn.textContent = 'Setting up…'; }
-
         try {
             const res  = await fetch('/api/accounting/accounts/provision-defaults', { method: 'POST', headers: authH() });
             const data = await res.json();
@@ -355,7 +441,71 @@
             await loadAccounts();
         } catch (err) {
             showError('Failed to provision default accounts: ' + err.message);
-            if (btn) { btn.disabled = false; btn.textContent = 'Set up Default SA Chart of Accounts'; }
+        }
+    }
+
+    // ── Overlay Templates ─────────────────────────────────────────────────────
+    async function showOverlayModal() {
+        document.getElementById('overlayModal').classList.add('show');
+        document.getElementById('overlayModalBody').innerHTML = 'Loading templates…';
+        try {
+            const res  = await fetch('/api/accounting/accounts/templates', { headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+            const overlays = (data.templates || []).filter(t => t.parent_template_id);
+            if (overlays.length === 0) {
+                document.getElementById('overlayModalBody').innerHTML =
+                    '<p style="text-align:center;color:#9aa0a6;padding:24px;">No industry overlay templates available.</p>';
+                return;
+            }
+
+            const cards = overlays.map(t => {
+                const applied       = !!t.applied_at;
+                const industryClass = t.industry === 'farming' ? 'farming' : '';
+                const appliedDate   = applied ? new Date(t.applied_at).toLocaleDateString('en-ZA') : '';
+                return `
+                <div class="template-card ${applied ? 'applied' : ''}" style="margin-bottom:14px;">
+                    <h4>
+                        <span class="industry-badge ${industryClass}">${esc(t.industry)}</span>
+                        ${esc(t.name)}
+                        ${applied ? `<span class="applied-badge">✓ Applied ${appliedDate}</span>` : ''}
+                    </h4>
+                    <p>${esc(t.description || '')}</p>
+                    <div class="template-meta">
+                        <span>📋 ${t.account_count} accounts</span>
+                        <span>v${esc(t.version)}</span>
+                        ${applied ? `<span>Added ${t.accounts_added || 0} account(s)</span>` : ''}
+                    </div>
+                    <button class="btn-apply-overlay" ${applied ? 'disabled' : ''}
+                            onclick="applyOverlay(${t.id}, this)">
+                        ${applied ? '✓ Already Applied' : 'Apply Overlay'}
+                    </button>
+                </div>`;
+            }).join('');
+
+            document.getElementById('overlayModalBody').innerHTML = `<div>${cards}</div>`;
+        } catch (err) {
+            document.getElementById('overlayModalBody').innerHTML =
+                `<p style="color:#c62828;">Failed to load templates: ${esc(err.message)}</p>`;
+        }
+    }
+
+    function closeOverlayModal() {
+        document.getElementById('overlayModal').classList.remove('show');
+    }
+
+    async function applyOverlay(templateId, btn) {
+        if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+        try {
+            const res  = await fetch(`/api/accounting/accounts/apply-overlay/${templateId}`, { method: 'POST', headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            closeOverlayModal();
+            await loadAccounts();
+        } catch (err) {
+            showError('Failed to apply overlay: ' + err.message);
+            if (btn) { btn.disabled = false; btn.textContent = 'Apply Overlay'; }
         }
     }
 
@@ -367,6 +517,9 @@
 
     document.getElementById('accountModal').addEventListener('click', function(e) {
         if (e.target === this) closeModal();
+    });
+    document.getElementById('overlayModal').addEventListener('click', function(e) {
+        if (e.target === this) closeOverlayModal();
     });
 
     // ── Init ──────────────────────────────────────────────────────────────────

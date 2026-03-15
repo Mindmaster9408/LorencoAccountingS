@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../config/database');
 const { authenticate, hasPermission, enforceCompanyScope } = require('../middleware/auth');
 const AuditLogger = require('../services/auditLogger');
-const { seedDefaultAccounts } = require('../../../config/accounting-schema');
+const { seedDefaultAccounts, provisionFromTemplate, applyTemplateOverlay, getDefaultTemplate } = require('../../../config/accounting-schema');
 
 const router = express.Router();
 
@@ -47,6 +47,63 @@ router.get('/', authenticate, hasPermission('account.view'), async (req, res) =>
 });
 
 /**
+ * GET /api/accounts/templates
+ * Returns available COA templates with account counts and company assignment status.
+ * Defined BEFORE /:id to avoid Express routing conflict on single-segment paths.
+ */
+router.get('/templates', authenticate, hasPermission('account.view'), async (req, res) => {
+  try {
+    const tmplResult = await db.query(
+      `SELECT t.*,
+              COUNT(ta.id)::int AS account_count,
+              cta.applied_at,
+              cta.accounts_added
+       FROM coa_templates t
+       LEFT JOIN coa_template_accounts ta ON ta.template_id = t.id
+       LEFT JOIN company_template_assignments cta
+              ON cta.template_id = t.id AND cta.company_id = $1
+       GROUP BY t.id, cta.applied_at, cta.accounts_added
+       ORDER BY t.is_default DESC, t.parent_template_id NULLS FIRST, t.name`,
+      [req.user.companyId]
+    );
+    res.json({ templates: tmplResult.rows });
+  } catch (error) {
+    console.error('Error fetching COA templates:', error);
+    res.status(500).json({ error: 'Failed to fetch COA templates' });
+  }
+});
+
+/**
+ * GET /api/accounts/templates/:id/accounts
+ * Preview accounts inside a specific template (before provisioning/applying overlay).
+ */
+router.get('/templates/:id/accounts', authenticate, hasPermission('account.view'), async (req, res) => {
+  try {
+    const templateId = parseInt(req.params.id);
+    if (isNaN(templateId)) return res.status(400).json({ error: 'Invalid templateId' });
+
+    const tmpl = await db.query(
+      `SELECT t.*, p.name AS parent_name
+       FROM coa_templates t
+       LEFT JOIN coa_templates p ON p.id = t.parent_template_id
+       WHERE t.id = $1`,
+      [templateId]
+    );
+    if (tmpl.rows.length === 0) return res.status(404).json({ error: 'Template not found' });
+
+    const accounts = await db.query(
+      `SELECT * FROM coa_template_accounts WHERE template_id = $1 ORDER BY sort_order, code`,
+      [templateId]
+    );
+
+    res.json({ template: tmpl.rows[0], accounts: accounts.rows });
+  } catch (error) {
+    console.error('Error fetching template accounts:', error);
+    res.status(500).json({ error: 'Failed to fetch template accounts' });
+  }
+});
+
+/**
  * GET /api/accounts/:id
  * Get a specific account
  */
@@ -77,7 +134,7 @@ router.post('/', authenticate, hasPermission('account.create'), async (req, res)
   const client = await db.getClient();
   
   try {
-    const { code, name, type, parentId, description } = req.body;
+    const { code, name, type, parentId, description, subType, reportingGroup, sortOrder, vatCode } = req.body;
 
     // Validation
     if (!code || !name || !type) {
@@ -104,10 +161,17 @@ router.post('/', authenticate, hasPermission('account.create'), async (req, res)
 
     // Create account
     const result = await client.query(
-      `INSERT INTO accounts (company_id, code, name, type, parent_id, description, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO accounts
+         (company_id, code, name, type, parent_id, description, sub_type,
+          reporting_group, sort_order, vat_code, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
        RETURNING *`,
-      [req.user.companyId, code, name, type, parentId || null, description || null, true]
+      [
+        req.user.companyId, code, name, type, parentId || null, description || null,
+        subType || null, reportingGroup || null,
+        sortOrder != null ? parseInt(sortOrder) : parseInt(code) || 0,
+        vatCode || null,
+      ]
     );
 
     const account = result.rows[0];
@@ -144,7 +208,7 @@ router.put('/:id', authenticate, hasPermission('account.edit'), async (req, res)
   const client = await db.getClient();
   
   try {
-    const { name, description, isActive } = req.body;
+    const { name, description, isActive, subType, reportingGroup, sortOrder, vatCode } = req.body;
 
     await client.query('BEGIN');
 
@@ -167,15 +231,26 @@ router.put('/:id', authenticate, hasPermission('account.edit'), async (req, res)
       return res.status(403).json({ error: 'Cannot edit system accounts' });
     }
 
-    // Update account
+    // Update account (code and type are immutable)
     const result = await client.query(
-      `UPDATE accounts 
-       SET name = COALESCE($1, name),
-           description = COALESCE($2, description),
-           is_active = COALESCE($3, is_active)
-       WHERE id = $4 AND company_id = $5
+      `UPDATE accounts
+       SET name            = COALESCE($1, name),
+           description     = COALESCE($2, description),
+           is_active       = COALESCE($3, is_active),
+           sub_type        = COALESCE($4, sub_type),
+           reporting_group = COALESCE($5, reporting_group),
+           sort_order      = COALESCE($6, sort_order),
+           vat_code        = COALESCE($7, vat_code),
+           updated_at      = NOW()
+       WHERE id = $8 AND company_id = $9
        RETURNING *`,
-      [name, description, isActive, req.params.id, req.user.companyId]
+      [
+        name, description, isActive,
+        subType || null, reportingGroup || null,
+        sortOrder != null ? parseInt(sortOrder) : null,
+        vatCode || null,
+        req.params.id, req.user.companyId,
+      ]
     );
 
     const account = result.rows[0];
@@ -282,29 +357,119 @@ router.delete('/:id', authenticate, hasPermission('account.delete'), async (req,
 /**
  * POST /api/accounts/provision-defaults
  * Seeds the standard SA chart of accounts for this company (safe if already has accounts).
+ * Delegates to provisionFromTemplate using the default template.
  */
 router.post('/provision-defaults', authenticate, hasPermission('account.create'), async (req, res) => {
   const client = await db.getClient();
   try {
     await client.query('BEGIN');
-    const count = await seedDefaultAccounts(req.user.companyId, client);
+    const count = await provisionFromTemplate(req.user.companyId, client);
     await client.query('COMMIT');
 
     if (count === 0) {
       return res.json({ message: 'Chart of accounts already exists — no changes made.', seeded: false });
     }
 
-    // Return the newly seeded accounts
     const result = await db.query(
-      'SELECT * FROM accounts WHERE company_id = $1 ORDER BY code',
+      'SELECT * FROM accounts WHERE company_id = $1 ORDER BY sort_order, code',
       [req.user.companyId]
     );
-    res.status(201).json({ message: `${count} default accounts created.`, seeded: true, accounts: result.rows });
+    res.status(201).json({ message: `${count} accounts provisioned from Standard SA Base template.`, seeded: true, accounts: result.rows });
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error seeding default accounts:', error);
+    console.error('Error provisioning default accounts:', error);
     res.status(500).json({ error: 'Failed to provision default accounts' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * POST /api/accounts/provision-from-template/:templateId
+ * Provisions a specific COA template for this company.
+ * Only allowed if the company has no accounts yet.
+ */
+router.post('/provision-from-template/:templateId', authenticate, hasPermission('account.create'), async (req, res) => {
+  const client = await db.getClient();
+  try {
+    const templateId = parseInt(req.params.templateId);
+    if (isNaN(templateId)) {
+      return res.status(400).json({ error: 'Invalid templateId' });
+    }
+
+    // Verify template exists
+    const tmplCheck = await db.query(
+      'SELECT id, name FROM coa_templates WHERE id = $1',
+      [templateId]
+    );
+    if (tmplCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'COA template not found' });
+    }
+
+    await client.query('BEGIN');
+    const count = await provisionFromTemplate(req.user.companyId, client, templateId);
+    await client.query('COMMIT');
+
+    if (count === 0) {
+      return res.json({ message: 'Chart of accounts already exists — no changes made.', seeded: false });
+    }
+
+    const result = await db.query(
+      'SELECT * FROM accounts WHERE company_id = $1 ORDER BY sort_order, code',
+      [req.user.companyId]
+    );
+    res.status(201).json({
+      message: `${count} accounts provisioned from "${tmplCheck.rows[0].name}" template.`,
+      seeded: true,
+      accounts: result.rows,
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error provisioning from template:', error);
+    res.status(500).json({ error: 'Failed to provision accounts from template' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * POST /api/accounts/apply-overlay/:templateId
+ * Applies an industry overlay template to a company that already has a base COA.
+ * Only adds accounts that don't already exist (ON CONFLICT DO NOTHING).
+ */
+router.post('/apply-overlay/:templateId', authenticate, hasPermission('account.create'), async (req, res) => {
+  const client = await db.getClient();
+  try {
+    const templateId = parseInt(req.params.templateId);
+    if (isNaN(templateId)) return res.status(400).json({ error: 'Invalid templateId' });
+
+    // Verify template exists
+    const tmpl = await db.query(
+      `SELECT id, name, parent_template_id FROM coa_templates WHERE id = $1`,
+      [templateId]
+    );
+    if (tmpl.rows.length === 0) return res.status(404).json({ error: 'COA template not found' });
+
+    await client.query('BEGIN');
+    const count = await applyTemplateOverlay(req.user.companyId, client, templateId);
+    await client.query('COMMIT');
+
+    const result = await db.query(
+      'SELECT * FROM accounts WHERE company_id = $1 ORDER BY sort_order, code',
+      [req.user.companyId]
+    );
+
+    res.status(201).json({
+      message: `${count} accounts added from "${tmpl.rows[0].name}" overlay.`,
+      added: count,
+      accounts: result.rows,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error applying template overlay:', error);
+    res.status(500).json({ error: error.message || 'Failed to apply template overlay' });
   } finally {
     client.release();
   }
