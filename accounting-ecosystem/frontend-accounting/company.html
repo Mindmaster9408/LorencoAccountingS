@@ -656,7 +656,7 @@
 
     async function loadCompanies() {
       try {
-        const res = await fetch('/api/company/list', {
+        const res = await fetch('/api/accounting/company/list', {
           headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
         });
         if (res.ok) {
@@ -714,7 +714,7 @@
 
     async function loadCompanyDetails(companyId) {
       try {
-        const res = await fetch(`/api/company/${companyId}`, {
+        const res = await fetch(`/api/accounting/company/${companyId}`, {
           headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
         });
         if (res.ok) {
@@ -805,7 +805,7 @@
       }
 
       try {
-        const res = await fetch(`/api/company/${companyId}`, {
+        const res = await fetch(`/api/accounting/company/${companyId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -851,7 +851,7 @@
       }
 
       try {
-        const res = await fetch('/api/company', {
+        const res = await fetch('/api/accounting/company', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

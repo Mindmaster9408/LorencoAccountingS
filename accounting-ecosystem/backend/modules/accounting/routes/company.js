@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
+const { supabase } = require('../../../config/database');
 
 // GET /api/accounting/company/list — companies this user can access
 router.get('/list', authenticate, async (req, res) => {
@@ -139,32 +140,34 @@ router.put('/:id', authenticate, authorize('ADMIN', 'ACCOUNTANT'), async (req, r
 
     await db.query(
       `UPDATE companies SET
-         trading_name        = COALESCE($1,  trading_name),
-         registration_number = COALESCE($2,  registration_number),
-         company_type        = COALESCE($3,  company_type),
-         income_tax_number   = COALESCE($4,  income_tax_number),
-         vat_number          = COALESCE($5,  vat_number),
-         paye_reference      = COALESCE($6,  paye_reference),
-         uif_reference       = COALESCE($7,  uif_reference),
-         sdl_reference       = COALESCE($8,  sdl_reference),
-         coid_number         = COALESCE($9,  coid_number),
-         financial_year_end  = COALESCE($10, financial_year_end),
-         vat_period          = COALESCE($11, vat_period),
-         physical_address    = COALESCE($12, physical_address),
-         city                = COALESCE($13, city),
-         postal_code         = COALESCE($14, postal_code),
-         postal_address      = COALESCE($15, postal_address),
-         phone               = COALESCE($16, phone),
-         email               = COALESCE($17, email),
-         website             = COALESCE($18, website),
-         bank_name           = COALESCE($19, bank_name),
-         branch_code         = COALESCE($20, branch_code),
-         account_number      = COALESCE($21, account_number),
-         account_type        = COALESCE($22, account_type),
-         account_holder      = COALESCE($23, account_holder),
+         company_name        = COALESCE($1,  company_name),
+         trading_name        = COALESCE($2,  trading_name),
+         registration_number = COALESCE($3,  registration_number),
+         company_type        = COALESCE($4,  company_type),
+         income_tax_number   = COALESCE($5,  income_tax_number),
+         vat_number          = COALESCE($6,  vat_number),
+         paye_reference      = COALESCE($7,  paye_reference),
+         uif_reference       = COALESCE($8,  uif_reference),
+         sdl_reference       = COALESCE($9,  sdl_reference),
+         coid_number         = COALESCE($10, coid_number),
+         financial_year_end  = COALESCE($11, financial_year_end),
+         vat_period          = COALESCE($12, vat_period),
+         physical_address    = COALESCE($13, physical_address),
+         city                = COALESCE($14, city),
+         postal_code         = COALESCE($15, postal_code),
+         postal_address      = COALESCE($16, postal_address),
+         phone               = COALESCE($17, phone),
+         email               = COALESCE($18, email),
+         website             = COALESCE($19, website),
+         bank_name           = COALESCE($20, bank_name),
+         branch_code         = COALESCE($21, branch_code),
+         account_number      = COALESCE($22, account_number),
+         account_type        = COALESCE($23, account_type),
+         account_holder      = COALESCE($24, account_holder),
          updated_at          = NOW()
-       WHERE id = $24`,
+       WHERE id = $25`,
       [
+        data.name           || null,
         data.tradingAs      || null,
         data.regNumber      || null,
         data.companyType    || null,
@@ -191,6 +194,26 @@ router.put('/:id', authenticate, authorize('ADMIN', 'ACCOUNTANT'), async (req, r
         companyId
       ]
     );
+
+    // Sync overlapping fields back to eco_clients (if this company is a client's own company)
+    // eco_clients.client_company_id links a client record to its isolated companies row.
+    // Fields in common: name ↔ company_name, email ↔ email, phone ↔ phone, address ↔ physical_address
+    const ecoSync = {};
+    if (data.name)            ecoSync.name    = data.name;
+    if (data.email)           ecoSync.email   = data.email;
+    if (data.phone)           ecoSync.phone   = data.phone;
+    if (data.physicalAddress) ecoSync.address = data.physicalAddress;
+
+    if (Object.keys(ecoSync).length > 0) {
+      const { error: syncErr } = await supabase
+        .from('eco_clients')
+        .update(ecoSync)
+        .eq('client_company_id', companyId);
+      if (syncErr) {
+        // Non-fatal — log and continue. Not all companies are eco-clients.
+        console.warn('[Accounting] eco_clients sync warning:', syncErr.message);
+      }
+    }
 
     res.json({ success: true });
   } catch (err) {

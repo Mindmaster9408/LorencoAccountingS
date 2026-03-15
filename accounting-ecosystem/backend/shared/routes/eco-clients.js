@@ -687,6 +687,33 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // 4. Sync core contact fields → companies table (eco hub → accounting direction)
+    // eco_clients.name ↔ companies.company_name
+    // eco_clients.email ↔ companies.email
+    // eco_clients.phone ↔ companies.phone
+    // eco_clients.address ↔ companies.physical_address
+    const coreContactChanged = changedFields.some(f => ['name', 'email', 'phone', 'address'].includes(f));
+    if (coreContactChanged && updated.client_company_id) {
+      try {
+        const companyPatch = {};
+        if (changedFields.includes('name'))    companyPatch.company_name    = updated.name    || null;
+        if (changedFields.includes('email'))   companyPatch.email           = updated.email   || null;
+        if (changedFields.includes('phone'))   companyPatch.phone           = updated.phone   || null;
+        if (changedFields.includes('address')) companyPatch.physical_address = updated.address || null;
+        if (Object.keys(companyPatch).length > 0) {
+          const { error: compSyncErr } = await supabase
+            .from('companies')
+            .update(companyPatch)
+            .eq('id', updated.client_company_id);
+          if (compSyncErr) {
+            console.warn('[eco-clients] companies sync warning:', compSyncErr.message);
+          }
+        }
+      } catch (syncErr) {
+        console.error('[eco-clients] companies sync failed:', syncErr.message);
+      }
+    }
+
     const syncResult = {
       synced:  newRecordSync.synced,
       updated: fieldSync.updated,
