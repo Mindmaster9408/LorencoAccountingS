@@ -49,6 +49,7 @@ router.use('/journals', require('./routes/journals'));
 router.use('/bank', require('./routes/bank'));
 router.use('/pos', require('./routes/pos-bridge'));
 router.use('/reports', require('./routes/reports'));
+router.use('/suppliers', require('./routes/suppliers'));
 
 // Tax & compliance
 router.use('/vat-recon', require('./routes/vatRecon'));

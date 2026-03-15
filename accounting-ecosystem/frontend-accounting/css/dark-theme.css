@@ -705,6 +705,131 @@ a:hover {
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
 
+/* ── Suppliers / Customers Page Fixes ───────────────────────────────────────── */
+/* These pages use .content wrapper (not .main-content) and explicit color values */
+.content {
+    color: var(--text) !important;
+}
+.content h1,
+.content h2,
+.content h3,
+.page-header h1 {
+    color: var(--text) !important;
+}
+/* Stat card text — inline CSS uses color:#333/#666/#888 which cascade fails dark theme */
+.stat-card .value {
+    color: var(--text) !important;
+}
+.stat-card .label {
+    color: var(--text-muted) !important;
+}
+.stat-card .sub {
+    color: var(--text-muted) !important;
+}
+/* Highlighted stat card already overrides to white — keep it */
+.stat-card.highlight .value,
+.stat-card.highlight .label,
+.stat-card.highlight .sub {
+    color: white !important;
+}
+/* Supplier name link — inline sets color:#0066cc */
+.supplier-name {
+    color: var(--accent-light) !important;
+}
+/* Card header h2 */
+.card-header h2 {
+    color: var(--text) !important;
+}
+/* Additional status badges not in the base set */
+.status-unpaid {
+    background: rgba(239,68,68,0.2) !important;
+    color: #fca5a5 !important;
+}
+.status-inactive {
+    background: rgba(120,120,120,0.2) !important;
+    color: rgba(255,255,255,0.5) !important;
+}
+.status-approved {
+    background: rgba(59,130,246,0.2) !important;
+    color: #60a5fa !important;
+}
+.status-received {
+    background: rgba(16,185,129,0.15) !important;
+    color: #6ee7b7 !important;
+}
+.status-draft {
+    background: rgba(120,120,120,0.15) !important;
+    color: rgba(255,255,255,0.5) !important;
+}
+.status-sent {
+    background: rgba(59,130,246,0.15) !important;
+    color: #60a5fa !important;
+}
+.status-part_paid {
+    background: rgba(245,158,11,0.2) !important;
+    color: var(--accent-light) !important;
+}
+.status-cancelled {
+    background: rgba(120,120,120,0.15) !important;
+    color: rgba(255,255,255,0.4) !important;
+    text-decoration: line-through;
+}
+/* Action button primary variant (supplier Invoice/Edit buttons) */
+.action-btn.primary {
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+    background: var(--surface) !important;
+}
+.action-btn.primary:hover {
+    background: var(--accent-subtle) !important;
+}
+/* VAT toggle button */
+.vat-toggle .vat-btn {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.vat-toggle .vat-btn.active {
+    background: var(--accent) !important;
+    color: #1a1a2e !important;
+    border-color: var(--accent) !important;
+}
+/* Invoice line-items table inside modal */
+.line-items-table th,
+.line-items-table td {
+    background: transparent !important;
+}
+.line-items-table input,
+.line-items-table select {
+    background: #1e1b3a !important;
+    color: var(--text) !important;
+    border-color: var(--border-strong) !important;
+}
+/* Invoice totals section */
+.invoice-totals {
+    background: rgba(255,255,255,0.04) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.invoice-totals .total-row-grand {
+    color: var(--accent-light) !important;
+    border-top-color: var(--border-strong) !important;
+}
+/* Pagination */
+.pagination-btns button {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.pagination-btns button.active {
+    background: var(--accent) !important;
+    color: #1a1a2e !important;
+    border-color: var(--accent) !important;
+}
+.pagination-info {
+    color: var(--text-muted) !important;
+}
+
 /* ── Report tables — inline pastel backgrounds (VAT, comparison tables) ────── */
 /* vat.html has <td style="background:#ffe6cc">, <tr style="background:white">  */
 /* etc. In dark mode: light bg + white forced text = invisible.                 */

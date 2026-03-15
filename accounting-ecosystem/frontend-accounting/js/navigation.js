@@ -94,17 +94,17 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item">
-        <a href="#">Suppliers</a>
+      <div class="nav-item ${currentPage === 'suppliers.html' ? 'active' : ''}">
+        <a href="/accounting/suppliers.html">Suppliers</a>
         <div class="dropdown">
           <div class="dropdown-header">Purchases</div>
-          <a href="#">Supplier List</a>
-          <a href="#">New Supplier</a>
-          <a href="#">Purchase Orders</a>
-          <a href="#">Supplier Invoices</a>
+          <a href="/accounting/suppliers.html">Supplier List</a>
+          <a href="/accounting/suppliers.html?new=supplier">New Supplier</a>
+          <a href="/accounting/suppliers.html?tab=orders">Purchase Orders</a>
+          <a href="/accounting/suppliers.html?tab=invoices">Supplier Invoices</a>
           <div class="dropdown-header">Payments</div>
-          <a href="#">Supplier Payments</a>
-          <a href="/accounting/aged-creditors.html">Supplier Aging</a>
+          <a href="/accounting/suppliers.html?tab=payments">Supplier Payments</a>
+          <a href="/accounting/suppliers.html?tab=aging">Supplier Aging</a>
         </div>
       </div>
 

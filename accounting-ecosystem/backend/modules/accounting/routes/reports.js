@@ -407,6 +407,15 @@ router.get('/balance-sheet', authenticate, hasPermission('report.view'), async (
 /**
  * GET /api/reports/profit-loss
  * Income statement (P&L) for a period.
+ * Returns accounts grouped by sub_type for proper SA P&L structure:
+ *   Revenue (operating_income)
+ *   Less: Cost of Sales (cost_of_sales)       → Gross Profit
+ *   Add:  Other Income (other_income)
+ *   Less: Operating Expenses (operating_expense, depreciation_amort)
+ *                                             → Operating Profit
+ *   Less: Finance Costs (finance_cost)        → Net Profit Before Tax
+ *
+ * Accounts without a sub_type fall back to: income→operating_income, expense→operating_expense
  *
  * Query params:
  *   fromDate  (required)  YYYY-MM-DD
@@ -424,7 +433,7 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
 
     const result = await db.query(
       `SELECT
-         a.id, a.code, a.name, a.type, a.parent_id,
+         a.id, a.code, a.name, a.type, a.sub_type, a.reporting_group, a.parent_id,
          COALESCE(SUM(jl.debit), 0)  AS total_debit,
          COALESCE(SUM(jl.credit), 0) AS total_credit
        FROM accounts a
@@ -434,43 +443,84 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
          AND a.is_active = true
          AND a.type IN ('income', 'expense')
          AND (j.id IS NULL OR (j.status = 'posted' AND j.date BETWEEN $2 AND $3))
-       GROUP BY a.id, a.code, a.name, a.type, a.parent_id
-       ORDER BY a.type, a.code`,
+       GROUP BY a.id, a.code, a.name, a.type, a.sub_type, a.reporting_group, a.parent_id
+       ORDER BY a.sort_order, a.code`,
       [companyId, fromDate, toDate]
     );
 
-    const incomeAccounts  = [];
-    const expenseAccounts = [];
+    // Resolve effective sub_type (fall back if null)
+    const sections = {
+      operating_income:   [],
+      other_income:       [],
+      cost_of_sales:      [],
+      operating_expense:  [],
+      depreciation_amort: [],
+      finance_cost:       [],
+    };
 
     for (const row of result.rows) {
       const debit  = parseFloat(row.total_debit);
       const credit = parseFloat(row.total_credit);
+      const effectiveSubType = row.sub_type ||
+        (row.type === 'income' ? 'operating_income' : 'operating_expense');
+
       const entry = {
         id: row.id, code: row.code, name: row.name,
-        type: row.type, parent_id: row.parent_id,
+        type: row.type, sub_type: effectiveSubType,
+        reporting_group: row.reporting_group, parent_id: row.parent_id,
         total_debit: debit, total_credit: credit,
-        // income: credit is positive; expense: debit is positive
-        balance: row.type === 'income' ? (credit - debit) : (debit - credit)
+        balance: row.type === 'income' ? (credit - debit) : (debit - credit),
       };
-      if (row.type === 'income')  incomeAccounts.push(entry);
-      else                        expenseAccounts.push(entry);
+
+      if (sections[effectiveSubType]) {
+        sections[effectiveSubType].push(entry);
+      } else {
+        // Unknown sub_type — fall back by type
+        if (row.type === 'income') sections.operating_income.push(entry);
+        else sections.operating_expense.push(entry);
+      }
     }
 
-    const totalIncome  = incomeAccounts.reduce((s, a) => s + a.balance, 0);
-    const totalExpense = expenseAccounts.reduce((s, a) => s + a.balance, 0);
-    const netProfit    = totalIncome - totalExpense;
+    const sum = (arr) => arr.reduce((s, a) => s + a.balance, 0);
+
+    const totalOperatingIncome   = sum(sections.operating_income);
+    const totalOtherIncome       = sum(sections.other_income);
+    const totalCostOfSales       = sum(sections.cost_of_sales);
+    const totalOperatingExpenses = sum(sections.operating_expense);
+    const totalDepreciation      = sum(sections.depreciation_amort);
+    const totalFinanceCosts      = sum(sections.finance_cost);
+
+    const grossProfit     = totalOperatingIncome - totalCostOfSales;
+    const operatingProfit = grossProfit + totalOtherIncome - totalOperatingExpenses - totalDepreciation;
+    const netProfit       = operatingProfit - totalFinanceCosts;
 
     res.json({
       fromDate,
       toDate,
-      income:  incomeAccounts,
-      expense: expenseAccounts,
+      // Sections for structured rendering
+      operatingIncome:   sections.operating_income,
+      costOfSales:       sections.cost_of_sales,
+      otherIncome:       sections.other_income,
+      operatingExpenses: sections.operating_expense,
+      depreciation:      sections.depreciation_amort,
+      financeCosts:      sections.finance_cost,
+      // Subtotals
       totals: {
-        income:    totalIncome,
-        expense:   totalExpense,
-        netProfit
+        operatingIncome:   totalOperatingIncome,
+        otherIncome:       totalOtherIncome,
+        costOfSales:       totalCostOfSales,
+        grossProfit,
+        operatingExpenses: totalOperatingExpenses,
+        depreciation:      totalDepreciation,
+        operatingProfit,
+        financeCosts:      totalFinanceCosts,
+        netProfit,
       },
-      isProfitable: netProfit >= 0
+      isProfitable: netProfit >= 0,
+      // Legacy flat arrays for backwards-compatibility with older frontend code
+      income:  [...sections.operating_income, ...sections.other_income],
+      expense: [...sections.cost_of_sales, ...sections.operating_expense,
+                ...sections.depreciation_amort, ...sections.finance_cost],
     });
 
   } catch (error) {

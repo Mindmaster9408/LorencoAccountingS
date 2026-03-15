@@ -491,6 +491,144 @@ async function ensureAccountingSchema(pool) {
     // ── 22i. Seed Farming SA Overlay Template (idempotent) ────────────────────
     await seedFarmingTemplate(client);
 
+    // ── 23. Suppliers / Accounts Payable ──────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        code                  VARCHAR(50),
+        name                  VARCHAR(255) NOT NULL,
+        type                  VARCHAR(20) DEFAULT 'company',
+        contact_name          VARCHAR(255),
+        email                 VARCHAR(255),
+        phone                 VARCHAR(50),
+        vat_number            VARCHAR(50),
+        registration_number   VARCHAR(50),
+        address               TEXT,
+        city                  VARCHAR(100),
+        postal_code           VARCHAR(20),
+        country               VARCHAR(100) DEFAULT 'South Africa',
+        payment_terms         INTEGER DEFAULT 30,
+        default_account_id    INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+        bank_name             VARCHAR(100),
+        bank_account_number   VARCHAR(50),
+        bank_branch_code      VARCHAR(20),
+        notes                 TEXT,
+        is_active             BOOLEAN DEFAULT true,
+        created_at            TIMESTAMPTZ DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── 23a. Supplier Invoices ─────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS supplier_invoices (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        supplier_id           INTEGER NOT NULL REFERENCES suppliers(id),
+        invoice_number        VARCHAR(100),
+        reference             VARCHAR(100),
+        invoice_date          DATE NOT NULL,
+        due_date              DATE,
+        vat_inclusive         BOOLEAN DEFAULT false,
+        subtotal_ex_vat       NUMERIC(15,2) DEFAULT 0,
+        vat_amount            NUMERIC(15,2) DEFAULT 0,
+        total_inc_vat         NUMERIC(15,2) DEFAULT 0,
+        amount_paid           NUMERIC(15,2) DEFAULT 0,
+        status                VARCHAR(20) DEFAULT 'draft',
+        notes                 TEXT,
+        journal_id            INTEGER REFERENCES journals(id) ON DELETE SET NULL,
+        created_by_user_id    INTEGER REFERENCES users(id),
+        created_at            TIMESTAMPTZ DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── 23b. Supplier Invoice Lines ───────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS supplier_invoice_lines (
+        id                    SERIAL PRIMARY KEY,
+        invoice_id            INTEGER NOT NULL REFERENCES supplier_invoices(id) ON DELETE CASCADE,
+        description           TEXT NOT NULL,
+        account_id            INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+        quantity              NUMERIC(10,3) DEFAULT 1,
+        unit_price            NUMERIC(15,4) DEFAULT 0,
+        line_subtotal_ex_vat  NUMERIC(15,2) DEFAULT 0,
+        vat_rate              NUMERIC(5,2) DEFAULT 15,
+        vat_amount            NUMERIC(15,2) DEFAULT 0,
+        line_total_inc_vat    NUMERIC(15,2) DEFAULT 0,
+        sort_order            INTEGER DEFAULT 0
+      )
+    `);
+
+    // ── 23c. Purchase Orders ──────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        supplier_id           INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+        po_number             VARCHAR(100),
+        po_date               DATE NOT NULL,
+        expected_date         DATE,
+        vat_inclusive         BOOLEAN DEFAULT false,
+        subtotal_ex_vat       NUMERIC(15,2) DEFAULT 0,
+        vat_amount            NUMERIC(15,2) DEFAULT 0,
+        total_inc_vat         NUMERIC(15,2) DEFAULT 0,
+        status                VARCHAR(20) DEFAULT 'draft',
+        notes                 TEXT,
+        created_by_user_id    INTEGER REFERENCES users(id),
+        created_at            TIMESTAMPTZ DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── 23d. Purchase Order Lines ─────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_order_lines (
+        id                    SERIAL PRIMARY KEY,
+        po_id                 INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        description           TEXT NOT NULL,
+        quantity              NUMERIC(10,3) DEFAULT 1,
+        unit_price            NUMERIC(15,4) DEFAULT 0,
+        line_subtotal_ex_vat  NUMERIC(15,2) DEFAULT 0,
+        vat_rate              NUMERIC(5,2) DEFAULT 15,
+        vat_amount            NUMERIC(15,2) DEFAULT 0,
+        line_total_inc_vat    NUMERIC(15,2) DEFAULT 0,
+        sort_order            INTEGER DEFAULT 0
+      )
+    `);
+
+    // ── 23e. Supplier Payments ────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS supplier_payments (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        supplier_id           INTEGER NOT NULL REFERENCES suppliers(id),
+        payment_date          DATE NOT NULL,
+        payment_method        VARCHAR(50) DEFAULT 'bank_transfer',
+        reference             VARCHAR(100),
+        amount                NUMERIC(15,2) NOT NULL,
+        notes                 TEXT,
+        bank_transaction_id   INTEGER REFERENCES bank_transactions(id) ON DELETE SET NULL,
+        journal_id            INTEGER REFERENCES journals(id) ON DELETE SET NULL,
+        created_by_user_id    INTEGER REFERENCES users(id),
+        created_at            TIMESTAMPTZ DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── 23f. Supplier Payment Allocations ─────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS supplier_payment_allocations (
+        id                    SERIAL PRIMARY KEY,
+        payment_id            INTEGER NOT NULL REFERENCES supplier_payments(id) ON DELETE CASCADE,
+        invoice_id            INTEGER NOT NULL REFERENCES supplier_invoices(id) ON DELETE CASCADE,
+        amount                NUMERIC(15,2) NOT NULL,
+        created_at            TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(payment_id, invoice_id)
+      )
+    `);
+
     // ── 22. Indexes for performance ───────────────────────────────────────────
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_accounts_company ON accounts(company_id)',
@@ -505,6 +643,15 @@ async function ensureAccountingSchema(pool) {
       'CREATE INDEX IF NOT EXISTS idx_coa_tmpl_accounts_tmpl ON coa_template_accounts(template_id)',
       'CREATE INDEX IF NOT EXISTS idx_accounts_sub_type ON accounts(company_id, sub_type)',
       'CREATE INDEX IF NOT EXISTS idx_accounts_sort ON accounts(company_id, sort_order)',
+      // Supplier AP indexes
+      'CREATE INDEX IF NOT EXISTS idx_suppliers_company ON suppliers(company_id)',
+      'CREATE INDEX IF NOT EXISTS idx_supplier_invoices_company ON supplier_invoices(company_id)',
+      'CREATE INDEX IF NOT EXISTS idx_supplier_invoices_supplier ON supplier_invoices(supplier_id)',
+      'CREATE INDEX IF NOT EXISTS idx_supplier_invoices_status ON supplier_invoices(company_id, status)',
+      'CREATE INDEX IF NOT EXISTS idx_supplier_inv_lines_invoice ON supplier_invoice_lines(invoice_id)',
+      'CREATE INDEX IF NOT EXISTS idx_purchase_orders_company ON purchase_orders(company_id)',
+      'CREATE INDEX IF NOT EXISTS idx_supplier_payments_company ON supplier_payments(company_id)',
+      'CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier ON supplier_payments(supplier_id)',
     ];
     for (const idx of indexes) {
       await client.query(idx);

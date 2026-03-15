@@ -31,11 +31,13 @@ function makeMockClient(overrides = {}) {
   const client = {
     _log: log,
     query: jest.fn(async (sql, params) => {
-      log.push({ sql: sql.trim().slice(0, 80), params });
-      // Default responses — overrides can replace per-SQL pattern
-      const key = sql.trim().slice(0, 60);
-      if (overrides[key]) return overrides[key](sql, params);
-      // SELECT COUNT for company has accounts check
+      log.push({ sql: sql.trim(), params });   // store full SQL for assertions
+      // Override matching: check if the trimmed SQL starts with any override key
+      const sqlTrimmed = sql.trim();
+      for (const key of Object.keys(overrides)) {
+        if (sqlTrimmed.startsWith(key)) return overrides[key](sql, params);
+      }
+      // Default responses
       if (/SELECT COUNT\(\*\) FROM accounts/.test(sql)) return { rows: [{ count: '0' }] };
       // SELECT id FROM coa_templates WHERE name
       if (/SELECT id FROM coa_templates WHERE name/.test(sql)) return { rows: [] };

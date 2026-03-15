@@ -183,7 +183,7 @@ The default template for all new South African companies.
 
 ---
 
-## Farming SA Overlay Template (~37 accounts)
+## Farming SA Overlay Template (~34 accounts)
 
 An **overlay** template — adds farming-specific accounts to a company already provisioned with Standard SA Base.
 
