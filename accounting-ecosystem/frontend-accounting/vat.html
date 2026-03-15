@@ -1290,91 +1290,14 @@
             }
         }
 
-        // Load VAT data from journals and populate reconciliation table
+        // Load VAT data for the currently selected period using the real trial balance API.
+        // Called on openVATRecon() and when a period is selected.
+        // If no period is selected yet, inputs stay blank — user must select a period first.
         function loadVATReconData() {
-            // Get journal entries from safeLocalStorage (cloud-backed via Supabase)
-            const journals = JSON.parse(safeLocalStorage.getItem('journals') || '[]');
-            
-            // Initialize data structure for VAT periods
-            const vatPeriods = {
-                '2025.03': { incInc115: 0, incOut15: 0, capGoods15: 0, capOut15: 0, zeroRate: 0, expInc115: 0, expIn15: 0, capGoodsIn15: 0, badDebts: 0 },
-                '2024.04': { incInc115: 0, incOut15: 0, capGoods15: 0, capOut15: 0, zeroRate: 0, expInc115: 0, expIn15: 0, capGoodsIn15: 0, badDebts: 0 },
-                '2024.05': { incInc115: 0, incOut15: 0, capGoods15: 0, capOut15: 0, zeroRate: 0, expInc115: 0, expIn15: 0, capGoodsIn15: 0, badDebts: 0 },
-                '2024.06': { incInc115: 0, incOut15: 0, capGoods15: 0, capOut15: 0, zeroRate: 0, expInc115: 0, expIn15: 0, capGoodsIn15: 0, badDebts: 0 },
-                '2024.07': { incInc115: 0, incOut15: 0, capGoods15: 0, capOut15: 0, zeroRate: 0, expInc115: 0, expIn15: 0, capGoodsIn15: 0, badDebts: 0 },
-                '2024.08': { incInc115: 0, incOut15: 0, capGoods15: 0, capOut15: 0, zeroRate: 0, expInc115: 0, expIn15: 0, capGoodsIn15: 0, badDebts: 0 }
-            };
-
-            // Process journal entries
-            journals.forEach(journal => {
-                const date = new Date(journal.date);
-                const period = `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}`;
-                
-                if (vatPeriods[period]) {
-                    (journal.entries || []).forEach(entry => {
-                        const amount = parseFloat(entry.credit || entry.debit || 0);
-                        const vatCode = entry.vatCode || '';
-                        
-                        // Income (Output) VAT
-                        if (vatCode === 'Output 15%' || vatCode === 'Sales 15%') {
-                            vatPeriods[period].incInc115 += amount * 1.15; // Inclusive
-                            vatPeriods[period].incOut15 += amount * 0.15; // VAT portion
-                        } else if (vatCode === 'Zero Rate' || vatCode === 'Sales 0%') {
-                            vatPeriods[period].zeroRate += amount;
-                        }
-                        
-                        // Expense (Input) VAT
-                        else if (vatCode === 'Input 15%' || vatCode === 'Purchases 15%') {
-                            vatPeriods[period].expInc115 += amount * 1.15; // Inclusive
-                            vatPeriods[period].expIn15 += amount * 0.15; // VAT portion
-                        } else if (vatCode === 'Capital Goods 15%') {
-                            vatPeriods[period].capGoodsIn15 += amount * 0.15;
-                        } else if (vatCode === 'Bad Debts') {
-                            vatPeriods[period].badDebts += amount * 0.15;
-                        }
-                    });
-                }
-            });
-
-            // Update table with calculated values
-            updateVATReconTable(vatPeriods);
-        }
-
-        function updateVATReconTable(vatPeriods) {
-            const tbody = document.querySelector('#vatReconTable tbody');
-            if (!tbody) return;
-
-            // Clear existing rows except header and total
-            const rows = tbody.querySelectorAll('tr');
-            rows.forEach((row, index) => {
-                if (index === rows.length - 1) return; // Skip total row
-                
-                const cells = row.cells;
-                const period = cells[1] ? cells[1].textContent.trim() : '';
-                
-                if (vatPeriods[period]) {
-                    const data = vatPeriods[period];
-                    
-                    // Calculate totals
-                    const totalOutput = data.incOut15 + data.capOut15 + data.zeroRate;
-                    const totalInput = data.expIn15 + data.capGoodsIn15 + data.badDebts;
-                    const vatPayable = totalOutput - totalInput;
-                    
-                    // Update cells
-                    cells[2].textContent = formatAmount(data.incInc115);
-                    cells[3].textContent = formatAmount(data.incOut15);
-                    cells[4].textContent = formatAmount(data.capGoods15);
-                    cells[5].textContent = formatAmount(data.capOut15);
-                    cells[6].textContent = formatAmount(data.zeroRate);
-                    cells[7].textContent = formatAmount(totalOutput);
-                    cells[8].textContent = formatAmount(data.expInc115);
-                    cells[9].textContent = formatAmount(data.expIn15);
-                    cells[10].textContent = formatAmount(data.capGoodsIn15);
-                    cells[11].textContent = formatAmount(data.badDebts);
-                    cells[12].textContent = formatAmount(totalInput);
-                    cells[13].textContent = formatAmount(vatPayable);
-                }
-            });
+            if (currentPeriodData && currentPeriodData.from_date && currentPeriodData.to_date) {
+                loadTrialBalanceForPeriod(currentPeriodData.from_date, currentPeriodData.to_date);
+            }
+            // No period selected — nothing to do; PROEFBALANS inputs stay blank
         }
 
         function formatAmount(amount) {
@@ -1529,6 +1452,34 @@
                 if (outEl) outEl.textContent = fmt(vatOutput);
                 if (inEl)  inEl.textContent  = fmt(vatInput);
                 if (payEl) payEl.textContent  = fmt(Math.abs(vatOutput - vatInput));
+            }
+
+            // Pre-populate PROEFBALANS inputs for the selected period row.
+            // Only sets values when the field is still empty — preserves any manual entries.
+            if (periodKey) {
+                const outputInput = document.querySelector(`input.output-15[data-row="${periodKey}"]`);
+                const inputInput  = document.querySelector(`input.input-15[data-row="${periodKey}"]`);
+                let changed = false;
+
+                if (outputInput && !outputInput.value && vatOutput > 0) {
+                    outputInput.value = vatOutput.toFixed(2);
+                    changed = true;
+                }
+                if (inputInput && !inputInput.value && vatInput > 0) {
+                    inputInput.value = vatInput.toFixed(2);
+                    changed = true;
+                }
+
+                // Cascade all downstream calculations for this row
+                if (changed) {
+                    calculateTotalOutputA(periodKey);
+                    calculateTotalInputB(periodKey);
+                    calculateVATPayable(periodKey);
+                    calculateDifference(periodKey);
+                    if (typeof updateReconciliationComparison === 'function') {
+                        updateReconciliationComparison();
+                    }
+                }
             }
         }
 
