@@ -906,6 +906,15 @@ tr.section-total th,
     border-bottom-color: var(--border) !important;
 }
 
+/* Profit subtotal rows (Gross Profit, Operating Profit) — amber accent */
+tr.profit-subtotal td,
+.report-table .profit-subtotal td {
+    background: rgba(245,158,11,0.08) !important;
+    color: var(--accent) !important;
+    border-top-color: var(--accent) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
 /* Grand total rows — amber gradient (replaces blue gradient) */
 tr.grand-total td,
 tr.grand-total th,

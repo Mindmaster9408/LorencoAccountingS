@@ -423,7 +423,7 @@ router.get('/balance-sheet', authenticate, hasPermission('report.view'), async (
  */
 router.get('/profit-loss', authenticate, hasPermission('report.view'), async (req, res) => {
   try {
-    const { fromDate, toDate } = req.query;
+    const { fromDate, toDate, segmentValueId } = req.query;
 
     if (!fromDate || !toDate) {
       return res.status(400).json({ error: 'fromDate and toDate are required' });
@@ -431,22 +431,45 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
 
     const companyId = req.user.companyId;
 
-    const result = await db.query(
-      `SELECT
-         a.id, a.code, a.name, a.type, a.sub_type, a.reporting_group, a.parent_id,
-         COALESCE(SUM(jl.debit), 0)  AS total_debit,
-         COALESCE(SUM(jl.credit), 0) AS total_credit
-       FROM accounts a
-       LEFT JOIN journal_lines jl ON a.id = jl.account_id
-       LEFT JOIN journals j ON jl.journal_id = j.id
-       WHERE a.company_id = $1
-         AND a.is_active = true
-         AND a.type IN ('income', 'expense')
-         AND (j.id IS NULL OR (j.status = 'posted' AND j.date BETWEEN $2 AND $3))
-       GROUP BY a.id, a.code, a.name, a.type, a.sub_type, a.reporting_group, a.parent_id
-       ORDER BY a.sort_order, a.code`,
-      [companyId, fromDate, toDate]
-    );
+    let result;
+    if (segmentValueId) {
+      // Segment-filtered P&L: only journal lines tagged with this segment_value_id
+      result = await db.query(
+        `SELECT
+           a.id, a.code, a.name, a.type, a.sub_type, a.reporting_group, a.parent_id,
+           COALESCE(SUM(jl.debit), 0)  AS total_debit,
+           COALESCE(SUM(jl.credit), 0) AS total_credit
+         FROM accounts a
+         INNER JOIN journal_lines jl ON a.id = jl.account_id
+                                     AND jl.segment_value_id = $4
+         INNER JOIN journals j ON jl.journal_id = j.id
+         WHERE a.company_id = $1
+           AND a.is_active = true
+           AND a.type IN ('income', 'expense')
+           AND j.status = 'posted'
+           AND j.date BETWEEN $2 AND $3
+         GROUP BY a.id, a.code, a.name, a.type, a.sub_type, a.reporting_group, a.parent_id
+         ORDER BY a.sort_order, a.code`,
+        [companyId, fromDate, toDate, segmentValueId]
+      );
+    } else {
+      result = await db.query(
+        `SELECT
+           a.id, a.code, a.name, a.type, a.sub_type, a.reporting_group, a.parent_id,
+           COALESCE(SUM(jl.debit), 0)  AS total_debit,
+           COALESCE(SUM(jl.credit), 0) AS total_credit
+         FROM accounts a
+         LEFT JOIN journal_lines jl ON a.id = jl.account_id
+         LEFT JOIN journals j ON jl.journal_id = j.id
+         WHERE a.company_id = $1
+           AND a.is_active = true
+           AND a.type IN ('income', 'expense')
+           AND (j.id IS NULL OR (j.status = 'posted' AND j.date BETWEEN $2 AND $3))
+         GROUP BY a.id, a.code, a.name, a.type, a.sub_type, a.reporting_group, a.parent_id
+         ORDER BY a.sort_order, a.code`,
+        [companyId, fromDate, toDate]
+      );
+    }
 
     // Resolve effective sub_type (fall back if null)
     const sections = {
@@ -497,6 +520,7 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
     res.json({
       fromDate,
       toDate,
+      segmentValueId: segmentValueId || null,
       // Sections for structured rendering
       operatingIncome:   sections.operating_income,
       costOfSales:       sections.cost_of_sales,

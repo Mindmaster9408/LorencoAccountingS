@@ -363,6 +363,16 @@
             color: white;
             border: none;
         }
+
+        .profit-subtotal {
+            font-weight: 700;
+            font-size: 14px;
+            background: rgba(245,158,11,0.1);
+            border-top: 2px solid #f59e0b;
+            border-bottom: 1px solid #f59e0b;
+        }
+
+        .profit-subtotal td { color: #92400e; }
         
         .amount {
             text-align: right;
@@ -413,6 +423,12 @@
             <button class="btn-primary" onclick="generateReport()">Generate Report</button>
             <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
             <button class="btn-secondary" onclick="window.location.href='paye-reconciliation.html'" style="background: #28a745;">PAYE Reconciliation</button>
+            <div class="control-group" id="segmentControlGroup" style="display:none">
+                <label>Segment</label>
+                <select id="segmentSelect" onchange="generateReport()">
+                    <option value="">All Segments</option>
+                </select>
+            </div>
         </div>
         <div id="plError" style="display:none;background:#fce4ec;color:#c62828;padding:10px 16px;border-radius:8px;margin:0 0 12px;font-weight:600;font-size:13px;"></div>
         
@@ -531,6 +547,7 @@
 
         function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
         function fmtAmt(n) { if (!n || n === 0) return '-'; return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        function fmtTot(n) { const abs = Math.abs(n || 0); const f = 'R ' + abs.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return (n || 0) < 0 ? '(' + f + ')' : f; }
 
         // Default: current year
         (function() {
@@ -542,10 +559,11 @@
         let lastResult = null;
 
         async function generateReport() {
-            const fromDate = document.getElementById('dateFrom').value;
-            const toDate   = document.getElementById('dateTo').value;
-            const errEl    = document.getElementById('plError');
-            errEl.style.display = 'none';
+            const fromDate       = document.getElementById('dateFrom').value;
+            const toDate         = document.getElementById('dateTo').value;
+            const segmentValueId = document.getElementById('segmentSelect').value;
+            const errEl          = document.getElementById('plError');
+            errEl.style.display  = 'none';
 
             if (!fromDate || !toDate) { errEl.textContent = 'Please select Date From and Date To.'; errEl.style.display = 'block'; return; }
 
@@ -553,14 +571,21 @@
             tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:30px;color:#9aa0a6">Loading…</td></tr>';
 
             try {
-                const res = await fetch(`/api/reports/profit-loss?fromDate=${fromDate}&toDate=${toDate}`, { headers: authH() });
+                let url = `/api/accounting/reports/profit-loss?fromDate=${fromDate}&toDate=${toDate}`;
+                if (segmentValueId) url += `&segmentValueId=${encodeURIComponent(segmentValueId)}`;
+                const res = await fetch(url, { headers: authH() });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
                 lastResult = data;
                 renderPL(data);
 
+                // Update header subtitle
                 const hdr = document.querySelector('.report-header p');
-                if (hdr) hdr.textContent = `Profit & Loss Report — ${fromDate} to ${toDate}`;
+                if (hdr) {
+                    const selEl = document.getElementById('segmentSelect');
+                    const segLabel = segmentValueId && selEl ? selEl.options[selEl.selectedIndex].text : null;
+                    hdr.textContent = `Profit & Loss${segLabel ? ' — ' + segLabel : ''} — ${fromDate} to ${toDate}`;
+                }
             } catch (err) {
                 errEl.textContent = 'Failed to generate report: ' + err.message;
                 errEl.style.display = 'block';
@@ -568,50 +593,118 @@
             }
         }
 
+        async function loadSegments() {
+            try {
+                const res = await fetch('/api/accounting/segments', { headers: authH() });
+                if (!res.ok) return;
+                const { segments } = await res.json();
+                if (!segments || !segments.length) return;
+                const sel = document.getElementById('segmentSelect');
+                segments.forEach(seg => {
+                    (seg.values || []).forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value       = v.id;
+                        opt.textContent = v.name + (segments.length > 1 ? ` (${seg.name})` : '');
+                        if (v.color) opt.style.color = v.color;
+                        sel.appendChild(opt);
+                    });
+                });
+                document.getElementById('segmentControlGroup').style.display = 'flex';
+            } catch (err) {
+                // segments not available — silently skip
+            }
+        }
+
         function renderPL(data) {
             const tbody = document.getElementById('plBody');
+            const t = data.totals || {};
             let html = '';
 
-            // INCOME
-            html += '<tr class="section-header"><td colspan="2">INCOME</td></tr>';
-            (data.income || []).forEach(acc => {
-                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
-            });
-            html += `<tr class="section-total"><td><strong>Total Income</strong></td><td class="amount"><strong>${fmtAmt(data.totals.income)}</strong></td></tr>`;
-            html += '<tr><td colspan="2" style="height:15px"></td></tr>';
+            const spacer  = () => `<tr><td colspan="2" style="height:15px"></td></tr>`;
+            const sHdr    = label  => `<tr class="section-header"><td colspan="2">${label}</td></tr>`;
+            const sLine   = (code, name, amt) => `<tr><td class="indent-1">${esc(code)} — ${esc(name)}</td><td class="amount">${fmtAmt(amt)}</td></tr>`;
+            const sTot    = (label, amt)  => `<tr class="section-total"><td><strong>${label}</strong></td><td class="amount"><strong>${fmtTot(amt)}</strong></td></tr>`;
+            const sProfit = (label, amt)  => {
+                const cls = (amt || 0) >= 0 ? 'positive' : 'negative';
+                return `<tr class="profit-subtotal"><td><strong>${label}</strong></td><td class="amount ${cls}"><strong>${fmtTot(amt)}</strong></td></tr>`;
+            };
 
-            // EXPENSES
-            html += '<tr class="section-header"><td colspan="2">EXPENSES</td></tr>';
-            (data.expense || []).forEach(acc => {
-                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
-            });
-            html += `<tr class="section-total"><td><strong>Total Expenses</strong></td><td class="amount"><strong>${fmtAmt(data.totals.expense)}</strong></td></tr>`;
-            html += '<tr><td colspan="2" style="height:15px"></td></tr>';
+            function section(hdr, accounts, totLabel, totAmt) {
+                if (!(accounts || []).length) return '';
+                let s = sHdr(hdr);
+                accounts.forEach(a => { s += sLine(a.code, a.name, a.balance); });
+                s += sTot(totLabel, totAmt);
+                s += spacer();
+                return s;
+            }
 
-            // NET PROFIT
-            const np = data.totals.netProfit || 0;
+            // Revenue
+            html += section('REVENUE', data.operatingIncome, 'Total Revenue', t.operatingIncome);
+
+            // Cost of Sales
+            html += section('COST OF SALES', data.costOfSales, 'Total Cost of Sales', t.costOfSales);
+
+            // Gross Profit
+            if ((data.operatingIncome || []).length || (data.costOfSales || []).length) {
+                html += sProfit(`GROSS ${(t.grossProfit || 0) >= 0 ? 'PROFIT' : 'LOSS'}`, t.grossProfit);
+                html += spacer();
+            }
+
+            // Other Income
+            html += section('OTHER INCOME', data.otherIncome, 'Total Other Income', t.otherIncome);
+
+            // Operating Expenses
+            html += section('OPERATING EXPENSES', data.operatingExpenses, 'Total Operating Expenses', t.operatingExpenses);
+
+            // Depreciation
+            html += section('DEPRECIATION & AMORTISATION', data.depreciation, 'Total Depreciation', t.depreciation);
+
+            // Operating Profit
+            html += sProfit(`OPERATING ${(t.operatingProfit || 0) >= 0 ? 'PROFIT' : 'LOSS'}`, t.operatingProfit);
+            html += spacer();
+
+            // Finance Costs
+            html += section('FINANCE COSTS', data.financeCosts, 'Total Finance Costs', t.financeCosts);
+
+            // Net Profit
+            const np  = t.netProfit || 0;
             const cls = np >= 0 ? 'positive' : 'negative';
-            html += `<tr class="grand-total"><td><strong>NET ${np >= 0 ? 'PROFIT' : 'LOSS'}</strong></td><td class="amount ${cls}"><strong>${fmtAmt(np)}</strong></td></tr>`;
+            html += `<tr class="grand-total"><td><strong>NET ${np >= 0 ? 'PROFIT' : 'LOSS'}</strong></td><td class="amount ${cls}"><strong>${fmtTot(np)}</strong></td></tr>`;
 
             tbody.innerHTML = html;
         }
 
+        function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
         function exportExcel() {
             if (!lastResult) { alert('Generate the report first.'); return; }
-            let csv = 'Section,Account,Amount\n';
-            (lastResult.income || []).forEach(a => { csv += `"INCOME","${a.code} — ${a.name}",${a.balance.toFixed(2)}\n`; });
-            csv += `"INCOME","Total Income",${(lastResult.totals.income || 0).toFixed(2)}\n`;
-            (lastResult.expense || []).forEach(a => { csv += `"EXPENSES","${a.code} — ${a.name}",${a.balance.toFixed(2)}\n`; });
-            csv += `"EXPENSES","Total Expenses",${(lastResult.totals.expense || 0).toFixed(2)}\n`;
-            csv += `"","NET PROFIT",${(lastResult.totals.netProfit || 0).toFixed(2)}\n`;
-            const a = Object.assign(document.createElement('a'), {
+            const d = lastResult;
+            const t = d.totals || {};
+            let csv = 'Section,Account Code,Account Name,Amount\n';
+            const add = (sec, code, name, amt) => { csv += `"${sec}","${code}","${name}",${Number(amt||0).toFixed(2)}\n`; };
+            (d.operatingIncome   || []).forEach(a => add('REVENUE',               a.code, a.name, a.balance));
+            add('REVENUE', '', 'Total Revenue', t.operatingIncome || 0);
+            (d.costOfSales       || []).forEach(a => add('COST OF SALES',         a.code, a.name, a.balance));
+            if ((d.costOfSales||[]).length)   add('COST OF SALES', '', 'Total Cost of Sales', t.costOfSales || 0);
+            add('', '', `GROSS ${(t.grossProfit||0)>=0?'PROFIT':'LOSS'}`, t.grossProfit || 0);
+            (d.otherIncome       || []).forEach(a => add('OTHER INCOME',          a.code, a.name, a.balance));
+            if ((d.otherIncome||[]).length)   add('OTHER INCOME', '', 'Total Other Income', t.otherIncome || 0);
+            (d.operatingExpenses || []).forEach(a => add('OPERATING EXPENSES',    a.code, a.name, a.balance));
+            if ((d.operatingExpenses||[]).length) add('OPERATING EXPENSES', '', 'Total Operating Expenses', t.operatingExpenses || 0);
+            (d.depreciation      || []).forEach(a => add('DEPRECIATION',          a.code, a.name, a.balance));
+            if ((d.depreciation||[]).length)  add('DEPRECIATION', '', 'Total Depreciation', t.depreciation || 0);
+            add('', '', `OPERATING ${(t.operatingProfit||0)>=0?'PROFIT':'LOSS'}`, t.operatingProfit || 0);
+            (d.financeCosts      || []).forEach(a => add('FINANCE COSTS',         a.code, a.name, a.balance));
+            if ((d.financeCosts||[]).length)  add('FINANCE COSTS', '', 'Total Finance Costs', t.financeCosts || 0);
+            add('', '', `NET ${(t.netProfit||0)>=0?'PROFIT':'LOSS'}`, t.netProfit || 0);
+            const link = Object.assign(document.createElement('a'), {
                 href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
-                download: 'profit-and-loss.csv'
+                download: `profit-and-loss-${d.fromDate}-to-${d.toDate}.csv`
             });
-            a.click();
+            link.click();
         }
 
-        document.addEventListener('DOMContentLoaded', generateReport);
+        document.addEventListener('DOMContentLoaded', () => { loadSegments(); generateReport(); });
     </script>
 </body>
 </html>

@@ -1572,6 +1572,62 @@
             }
         }
 
+        // Collect all PROEFBALANS input values and calculated totals for a given period key.
+        // Returns a lines array suitable for the vat-recon/reconciliations/draft endpoint.
+        function collectProefbalansLines(periodKey) {
+            if (!periodKey) return [];
+            const lines  = [];
+            let   order  = 0;
+
+            function inputVal(cls) {
+                const el = document.querySelector(`input.${cls}[data-row="${periodKey}"]`);
+                if (!el) return null;
+                const v = parseFloat(el.value);
+                return isNaN(v) ? null : v;
+            }
+            function spanVal(cls) {
+                const el = document.querySelector(`.${cls}[data-row="${periodKey}"]`);
+                if (!el) return null;
+                const v = parseFloat(el.textContent);
+                return isNaN(v) ? null : v;
+            }
+
+            // Output side
+            const vatOut15     = inputVal('output-15');
+            const capOut15     = inputVal('capital-output-15');
+            const totalOutputA = spanVal('total-output-a');
+            if (vatOut15     !== null) lines.push({ sectionKey: 'output',       rowKey: periodKey, label: 'VAT Output 15%',       lineOrder: order++, vatAmount: vatOut15 });
+            if (capOut15     !== null) lines.push({ sectionKey: 'output',       rowKey: periodKey, label: 'Capital Output 15%',    lineOrder: order++, vatAmount: capOut15 });
+            if (totalOutputA !== null) lines.push({ sectionKey: 'output_total', rowKey: periodKey, label: 'Total Output (A)',       lineOrder: order++, vatAmount: totalOutputA });
+
+            // Input side
+            const vatIn15      = inputVal('input-15');
+            const capGoods15   = inputVal('capital-goods-15');
+            const badDebts     = inputVal('bad-debts');
+            const totalInputB  = spanVal('total-input-b');
+            if (vatIn15      !== null) lines.push({ sectionKey: 'input',        rowKey: periodKey, label: 'VAT Input 15%',         lineOrder: order++, vatAmount: vatIn15 });
+            if (capGoods15   !== null) lines.push({ sectionKey: 'input',        rowKey: periodKey, label: 'Capital Goods 15%',      lineOrder: order++, vatAmount: capGoods15 });
+            if (badDebts     !== null) lines.push({ sectionKey: 'input',        rowKey: periodKey, label: 'Bad Debts',              lineOrder: order++, vatAmount: badDebts });
+            if (totalInputB  !== null) lines.push({ sectionKey: 'input_total',  rowKey: periodKey, label: 'Total Input (B)',         lineOrder: order++, vatAmount: totalInputB });
+
+            // VAT payable
+            const vatPayable = spanVal('vat-payable');
+            if (vatPayable !== null) lines.push({ sectionKey: 'vat_payable', rowKey: periodKey, label: 'VAT Payable', lineOrder: order++, vatAmount: vatPayable });
+
+            // SOA amount
+            const soaEl = document.querySelector(`input.soa-input[data-row="${periodKey}"]`);
+            if (soaEl) {
+                const v = parseFloat(soaEl.value);
+                if (!isNaN(v)) lines.push({ sectionKey: 'soa', rowKey: periodKey, label: 'SOA Amount', lineOrder: order++, statementAmount: v });
+            }
+
+            // Calculated difference
+            const diff = spanVal('difference');
+            if (diff !== null) lines.push({ sectionKey: 'difference', rowKey: periodKey, label: 'Difference', lineOrder: order++, differenceAmount: diff });
+
+            return lines;
+        }
+
         async function saveDraftReconciliation() {
             if (!currentPeriodData) {
                 alert('Please select a VAT period first');
@@ -1580,10 +1636,11 @@
 
             try {
                 const soaAmountEl = document.getElementById('soaAmount');
+                const periodKey = currentPeriodData.period_key;
                 const reconData = {
                     vatPeriodId: currentPeriodData.id,
                     soaAmount: soaAmountEl ? soaAmountEl.value : null,
-                    lines: [], // TODO: Collect line items from table
+                    lines: collectProefbalansLines(periodKey),
                     metadata: {}
                 };
 

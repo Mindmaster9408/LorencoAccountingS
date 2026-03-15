@@ -372,6 +372,50 @@
     </div>
   </div>
 
+  <!-- Customer Detail Modal -->
+  <div id="customerDetailModal" class="modal">
+    <div class="modal-content" style="width:700px;">
+      <div class="modal-header" style="background:linear-gradient(135deg,#0066cc,#0099ff);color:white;">
+        <h3 id="detailModalTitle">Customer Details</h3>
+        <button class="modal-close" onclick="closeModal('customerDetailModal')" style="color:white;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="pos-stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;" id="detailStats">
+          <div class="pos-stat total"><div class="pos-stat-label">Lifetime Value</div><div class="pos-stat-value" id="detailLifeValue">–</div></div>
+          <div class="pos-stat cash"><div class="pos-stat-label">Account Outstanding</div><div class="pos-stat-value" id="detailOutstanding">–</div></div>
+          <div class="pos-stat card"><div class="pos-stat-label">Total Transactions</div><div class="pos-stat-value" id="detailTxCount">–</div></div>
+        </div>
+        <div class="form-row" style="margin-bottom:12px;">
+          <div><strong>Customer #:</strong> <span id="detailCode">–</span></div>
+          <div><strong>Type:</strong> <span id="detailType">–</span></div>
+        </div>
+        <div class="form-row" style="margin-bottom:12px;">
+          <div><strong>Email:</strong> <span id="detailEmail">–</span></div>
+          <div><strong>Phone:</strong> <span id="detailPhone">–</span></div>
+        </div>
+        <div style="margin-bottom:12px;"><strong>Address:</strong> <span id="detailAddress">–</span></div>
+        <div class="form-row" style="margin-bottom:12px;">
+          <div><strong>VAT Number:</strong> <span id="detailVat">–</span></div>
+          <div><strong>Credit Limit:</strong> <span id="detailCreditLimit">–</span></div>
+        </div>
+        <hr style="margin:15px 0;">
+        <h4 style="margin-bottom:10px;color:#333;">Recent Sales</h4>
+        <table id="detailSalesTable" style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr>
+            <th style="text-align:left;padding:8px;border-bottom:2px solid #e8eaed;">Date</th>
+            <th style="text-align:left;padding:8px;border-bottom:2px solid #e8eaed;">Invoice</th>
+            <th style="text-align:left;padding:8px;border-bottom:2px solid #e8eaed;">Method</th>
+            <th style="text-align:right;padding:8px;border-bottom:2px solid #e8eaed;">Total</th>
+          </tr></thead>
+          <tbody id="detailSalesBody"><tr><td colspan="4" style="text-align:center;padding:20px;color:#888;">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('customerDetailModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- New Customer Modal -->
   <div id="customerModal" class="modal">
     <div class="modal-content">
@@ -664,25 +708,59 @@
     }
 
     async function viewCustomer(id) {
+      const modal = document.getElementById('customerDetailModal');
+
+      // Pre-fill from local cache while API loads
+      const cached = customers.find(c => c.id === id);
+      document.getElementById('detailModalTitle').textContent  = cached ? cached.name : 'Customer Details';
+      document.getElementById('detailCode').textContent        = cached ? cached.code : '–';
+      document.getElementById('detailType').textContent        = cached ? (cached.type === 'company' ? 'Company' : 'Individual') : '–';
+      document.getElementById('detailEmail').textContent       = cached ? (cached.email || '–') : '–';
+      document.getElementById('detailPhone').textContent       = cached ? (cached.phone || '–') : '–';
+      document.getElementById('detailAddress').textContent     = cached ? ([cached.address, cached.city, cached.postal].filter(Boolean).join(', ') || '–') : '–';
+      document.getElementById('detailOutstanding').textContent = cached ? formatCurrency(cached.balance) : '–';
+      document.getElementById('detailLifeValue').textContent   = cached ? formatCurrency(cached.lifeValue) : '–';
+      document.getElementById('detailTxCount').textContent     = cached ? cached.totalSales : '–';
+      document.getElementById('detailVat').textContent         = '–';
+      document.getElementById('detailCreditLimit').textContent = cached ? formatCurrency(cached.creditLimit) : '–';
+      document.getElementById('detailSalesBody').innerHTML     = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#888;">Loading…</td></tr>';
+      modal.classList.add('show');
+
       try {
-        const res  = await fetch('/api/accounting/pos/customers/' + id, { headers: authH() });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        const c    = data.customer;
-        const s    = data.salesSummary;
-        alert(
-          `${c.name}\n` +
-          `Customer #: ${c.customer_number || '-'}\n` +
-          `Email: ${c.email || '-'}\n` +
-          `Phone: ${c.phone || c.contact_number || '-'}\n` +
-          `Credit Limit: ${formatCurrency(parseFloat(c.credit_limit) || 0)}\n` +
-          `Outstanding: ${formatCurrency(parseFloat(c.current_balance) || 0)}\n\n` +
-          `Total Sales: ${s.totalSales} transactions\n` +
-          `Lifetime Value: ${formatCurrency(s.lifetimeValue)}\n` +
-          `Account Sales: ${formatCurrency(s.accountSales)}`
-        );
+        const [detailRes, salesRes] = await Promise.all([
+          fetch('/api/accounting/pos/customers/' + id, { headers: authH() }),
+          fetch('/api/accounting/pos/customers/' + id + '/sales?limit=10', { headers: authH() })
+        ]);
+        if (detailRes.ok) {
+          const { customer: c, salesSummary: s } = await detailRes.json();
+          document.getElementById('detailModalTitle').textContent  = c.name;
+          document.getElementById('detailCode').textContent        = c.customer_number || '–';
+          document.getElementById('detailType').textContent        = c.customer_type === 'company' ? 'Company' : 'Individual';
+          document.getElementById('detailEmail').textContent       = c.email || '–';
+          document.getElementById('detailPhone').textContent       = c.phone || c.contact_number || '–';
+          document.getElementById('detailVat').textContent         = c.vat_number || '–';
+          document.getElementById('detailCreditLimit').textContent = formatCurrency(parseFloat(c.credit_limit) || 0);
+          document.getElementById('detailOutstanding').textContent = formatCurrency(parseFloat(c.current_balance) || 0);
+          document.getElementById('detailLifeValue').textContent   = formatCurrency(s.lifetimeValue || 0);
+          document.getElementById('detailTxCount').textContent     = s.totalSales || 0;
+        }
+        if (salesRes.ok) {
+          const { sales } = await salesRes.json();
+          const tbody = document.getElementById('detailSalesBody');
+          if (!(sales || []).length) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#888;">No sales found.</td></tr>';
+          } else {
+            tbody.innerHTML = sales.map(s => `
+              <tr style="border-bottom:1px solid #f1f3f4;">
+                <td style="padding:8px;">${s.created_at ? s.created_at.substring(0,10) : '–'}</td>
+                <td style="padding:8px;">${esc(s.invoice_number || '#' + s.id)}</td>
+                <td style="padding:8px;"><span class="method-badge method-${(s.payment_method||'').toLowerCase()}">${(s.payment_method||'–').toUpperCase()}</span></td>
+                <td style="padding:8px;text-align:right;font-family:'Courier New',monospace;font-weight:600;">${formatCurrency(parseFloat(s.total_amount||0))}</td>
+              </tr>`).join('');
+          }
+        }
       } catch (err) {
-        alert('Could not load customer details: ' + err.message);
+        console.error('Failed to load customer details:', err);
       }
     }
 
@@ -800,8 +878,44 @@
 
     function newInvoiceFor(customerId)  { /* AR invoicing — future sprint */ }
 
-    function exportCustomers()          { alert('Export — coming soon.'); }
-    function exportAging()              { alert('Export — coming soon.'); }
+    function exportCustomers() {
+      if (!customers.length) { alert('No customer data to export. Load the customer list first.'); return; }
+      let csv = 'Code,Name,Type,Contact,Email,Phone,Address,City,Postal,Balance,Credit Limit,Status\n';
+      customers.forEach(c => {
+        csv += `"${c.code}","${c.name}","${c.type}","${c.contact}","${c.email}","${c.phone}","${c.address}","${c.city}","${c.postal}",${c.balance.toFixed(2)},${c.creditLimit.toFixed(2)},"${c.status}"\n`;
+      });
+      const link = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+        download: 'customers.csv'
+      });
+      link.click();
+    }
+
+    function exportAging() {
+      const withBal = customers.filter(c => c.balance > 0);
+      if (!withBal.length) { alert('No outstanding balances to export.'); return; }
+      const today = new Date(); today.setHours(0,0,0,0);
+      function ageDays(d) { if (!d) return null; const dt = new Date(d); dt.setHours(0,0,0,0); return Math.floor((today - dt) / 86400000); }
+      function bucket(balance, days) {
+        const d = (days === null || days === undefined) ? 999 : days;
+        if (d <= 30)  return { current: balance, d30: 0,       d60: 0,       d90: 0,       d90p: 0 };
+        if (d <= 60)  return { current: 0,       d30: balance, d60: 0,       d90: 0,       d90p: 0 };
+        if (d <= 90)  return { current: 0,       d30: 0,       d60: balance, d90: 0,       d90p: 0 };
+        if (d <= 120) return { current: 0,       d30: 0,       d60: 0,       d90: balance, d90p: 0 };
+        return              { current: 0,       d30: 0,       d60: 0,       d90: 0,       d90p: balance };
+      }
+      let csv = 'Customer,Current,30 Days,60 Days,90 Days,90+ Days,Total\n';
+      withBal.forEach(c => {
+        const ref = c.lastAccountSale || c.lastPurchase;
+        const b   = bucket(c.balance, ageDays(ref));
+        csv += `"${c.name}",${b.current.toFixed(2)},${b.d30.toFixed(2)},${b.d60.toFixed(2)},${b.d90.toFixed(2)},${b.d90p.toFixed(2)},${c.balance.toFixed(2)}\n`;
+      });
+      const link = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+        download: 'aging-report.csv'
+      });
+      link.click();
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
