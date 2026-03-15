@@ -255,7 +255,12 @@ router.get('/', async (req, res) => {
       } else if (!req.user.isSuperAdmin) {
         q = q.eq('company_id', effectiveCompanyId);
       }
-      // Super admin with no company filter → returns all (no eq added)
+      // Super admin with no company filter → returns all (no eq added) — used by admin panel only
+    } else if (app && effectiveCompanyId) {
+      // Defense-in-depth: when an app filter is provided (e.g. app=accounting),
+      // always scope to the practice company even for super admins.
+      // Prevents cross-practice data leaking into app-specific dropdowns.
+      q = q.eq('company_id', effectiveCompanyId);
     }
 
     if (client_type) {

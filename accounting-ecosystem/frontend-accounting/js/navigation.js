@@ -802,6 +802,15 @@ function _currentCompanyId() {
   } catch (_) { return null; }
 }
 
+// Decode companyId from eco_token (practice/firm JWT — NOT the client-scoped accounting token)
+function _ecoCompanyId() {
+  try {
+    const tok = localStorage.getItem('eco_token') || '';
+    const payload = JSON.parse(atob(tok.split('.')[1]));
+    return payload.companyId || null;
+  } catch (_) { return null; }
+}
+
 async function loadAccountingClients() {
   const listEl = document.getElementById('companyDropdownList');
   if (!listEl) return;
@@ -816,7 +825,10 @@ async function loadAccountingClients() {
   }
 
   try {
-    const res = await fetch('/api/eco-clients?app=accounting', {
+    // Always pass company_id so super admins are scoped to their practice, not all practices
+    const practiceId = _ecoCompanyId();
+    const url = '/api/eco-clients?app=accounting' + (practiceId ? `&company_id=${practiceId}` : '');
+    const res = await fetch(url, {
       headers: { 'Authorization': 'Bearer ' + ecoToken }
     });
 
