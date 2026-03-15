@@ -1083,6 +1083,371 @@ td.negative,
 /* ── Summary value colour variants (bank recon / contacts) ───────────────── */
 /* Global td { color !important } would win over .positive/.negative on td.   */
 /* Ensures coloured amounts survive in all contexts, not just report tables.   */
-.summary-value.positive { color: #34a853 !important; }
-.summary-value.negative { color: #ea4335 !important; }
-.summary-value.zero     { color: #10b981 !important; }
+.summary-value              { color: var(--accent-light) !important; }
+.summary-value.positive     { color: #34a853 !important; }
+.summary-value.negative     { color: #ea4335 !important; }
+.summary-value.zero         { color: #10b981 !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * MODAL ENHANCEMENTS — contacts.html and bank.html both define .modal-header
+ * as a blue gradient. Override to amber. .modal-footer blue/light bg → dark.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+.modal-header {
+    background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent) 100%) !important;
+    color: var(--text) !important;
+}
+.modal-header h2,
+.modal-header h3 {
+    color: var(--text) !important;
+}
+.modal-footer {
+    background: var(--surface-alt) !important;
+    border-top-color: var(--border) !important;
+}
+/* Modal internal tab bar (contacts/bank modal panels) */
+.modal-tabs {
+    border-bottom-color: var(--border) !important;
+}
+.modal-tab {
+    color: var(--text-muted) !important;
+    background: transparent !important;
+    border-bottom-color: transparent !important;
+}
+.modal-tab:hover {
+    color: var(--accent-light) !important;
+}
+.modal-tab.active {
+    color: var(--accent-light) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * CONTACTS PAGE — contacts.html unique classes
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Summary stats bar — light blue gradient → dark surface */
+.summary-stats {
+    background: var(--surface) !important;
+    border-radius: 8px;
+}
+
+/* Contact name link (blue → amber) */
+.contact-name {
+    color: var(--accent-light) !important;
+}
+
+/* Amount colours in contacts table */
+.amount-positive { color: #34a853 !important; }
+.amount-negative { color: #ea4335 !important; }
+.amount-zero     { color: var(--text-muted) !important; }
+
+/* Stat card in contact detail view */
+.contact-stat-card {
+    background: var(--surface-alt) !important;
+    border-radius: 8px;
+}
+.contact-stat-card .label {
+    color: var(--text-muted) !important;
+}
+.contact-stat-card .value {
+    color: var(--text) !important;
+}
+.contact-stat-card .value.positive { color: #34a853 !important; }
+.contact-stat-card .value.negative { color: #ea4335 !important; }
+
+/* Activity feed in contact detail */
+.activity-item {
+    border-bottom-color: var(--border) !important;
+}
+.activity-icon {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+}
+.activity-details .title {
+    color: var(--text) !important;
+}
+.activity-details .meta {
+    color: var(--text-muted) !important;
+}
+
+/* Form sections inside contact modal */
+.form-section {
+    border-bottom-color: var(--border) !important;
+}
+.form-section-title {
+    color: var(--text) !important;
+}
+.form-section-title::before {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%) !important;
+}
+
+/* Sean AI section — replaces light blue panel */
+.sean-ai-section {
+    background: var(--surface-alt) !important;
+    border-color: var(--accent) !important;
+}
+.sean-ai-section .form-section-title {
+    color: var(--accent-light) !important;
+}
+.sean-ai-section .form-section-title::before {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%) !important;
+}
+.sean-ai-section textarea,
+.sean-ai-section input[type="text"] {
+    background: var(--surface) !important;
+    border-color: var(--accent-glow) !important;
+    color: var(--text) !important;
+}
+.sean-ai-section textarea:focus,
+.sean-ai-section input[type="text"]:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+
+/* Action button small (per-row icon buttons in contacts table) */
+.action-btn-small {
+    background: var(--surface-alt) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.action-btn-small:hover {
+    background: var(--accent-subtle) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+}
+
+/* btn-cancel in modal footer */
+.btn-cancel {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.btn-cancel:hover {
+    background: var(--surface-hover) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * BANK PAGE — bank.html unique classes not yet covered
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Tab count badge (e.g. tab count pills like "All (245)") */
+.tab-count {
+    background: var(--surface-hover) !important;
+    color: var(--text-muted) !important;
+}
+.tab.active .tab-count {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+}
+
+/* AI button — per-row allocate AI trigger */
+.ai-btn {
+    background: var(--surface-alt) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+}
+.ai-btn:hover,
+.ai-btn.active {
+    background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent) 100%) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+}
+
+/* AI suggestion row — the expandable row below each transaction */
+.ai-suggestion-row {
+    background: var(--surface-alt) !important;
+    border-left-color: var(--accent) !important;
+}
+
+/* AI decision and override panels */
+.ai-decision,
+.ai-override {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+}
+.ai-decision-title {
+    color: var(--text-muted) !important;
+}
+.ai-decision-value {
+    color: var(--text) !important;
+}
+.ai-override-title {
+    color: var(--text) !important;
+}
+
+/* Manual transaction entry row */
+.manual-entry-row {
+    background: var(--surface-alt) !important;
+    border-top-color: var(--accent) !important;
+    border-bottom-color: var(--border) !important;
+}
+.manual-entry-row td {
+    background: transparent !important;
+}
+.manual-entry-label {
+    color: var(--accent-light) !important;
+}
+.manual-input {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.manual-input:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px var(--accent-glow) !important;
+}
+.manual-input.error {
+    border-color: #ef4444 !important;
+    background: rgba(239,68,68,0.08) !important;
+}
+.manual-input:disabled {
+    background: var(--surface-alt) !important;
+    color: var(--text-muted) !important;
+}
+.btn-manual-save {
+    background: var(--accent-dark) !important;
+    color: #fff !important;
+}
+.btn-manual-save:hover {
+    background: var(--accent) !important;
+}
+.btn-manual-cancel {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-muted) !important;
+}
+.btn-manual-cancel:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+}
+
+/* Attachment modal */
+.attachment-item {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.attachment-item:hover {
+    background: var(--surface-hover) !important;
+    border-color: var(--accent) !important;
+}
+.attachment-name {
+    color: var(--text) !important;
+}
+.attachment-meta {
+    color: var(--text-muted) !important;
+}
+.attachment-actions button {
+    background: var(--surface-alt) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.attachment-actions button:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent-light) !important;
+}
+.attachment-actions .delete-btn:hover {
+    border-color: #ef4444 !important;
+    color: #fca5a5 !important;
+    background: rgba(239,68,68,0.08) !important;
+}
+.upload-area {
+    background: var(--surface-alt) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.upload-area:hover,
+.upload-area.drag-over {
+    background: var(--accent-subtle) !important;
+    border-color: var(--accent) !important;
+}
+
+/* CSV / PDF import modal */
+.import-steps {
+    border-bottom-color: var(--border) !important;
+}
+.import-step {
+    color: var(--text-muted) !important;
+}
+.import-step.active {
+    color: var(--accent-light) !important;
+}
+.import-step.completed {
+    color: #34a853 !important;
+}
+.step-number {
+    background: var(--surface-hover) !important;
+    color: var(--text-muted) !important;
+}
+.import-step.active .step-number {
+    background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent) 100%) !important;
+    color: #fff !important;
+}
+.import-step.completed .step-number {
+    background: #34a853 !important;
+    color: #fff !important;
+}
+.import-summary {
+    background: var(--surface-alt) !important;
+}
+.summary-item {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+}
+.import-actions {
+    border-top-color: var(--border) !important;
+}
+.import-type-toggle {
+    border-color: var(--border-strong) !important;
+}
+.import-type-btn {
+    background: var(--surface-alt) !important;
+    color: var(--text-muted) !important;
+}
+.import-type-btn.active {
+    background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent) 100%) !important;
+    color: #fff !important;
+}
+.import-type-btn:first-child {
+    border-right-color: var(--border-strong) !important;
+}
+.bank-format-select select {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+.mapping-item label {
+    color: var(--text-secondary) !important;
+}
+
+/* PDF parse + review + warning */
+.pdf-parse-status {
+    background: var(--surface-alt) !important;
+    color: var(--text) !important;
+}
+.pdf-review-table th {
+    background: var(--surface-alt) !important;
+    color: var(--text-muted) !important;
+    border-bottom-color: var(--border-strong) !important;
+}
+.pdf-review-table td {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+}
+.pdf-review-table tr.is-duplicate {
+    background: var(--accent-subtle) !important;
+}
+.pdf-warning-banner {
+    background: var(--accent-subtle) !important;
+    border-color: var(--accent) !important;
+    color: var(--text-secondary) !important;
+}
+.pdf-detected-bank {
+    background: rgba(52,168,83,0.15) !important;
+    border-color: #34a853 !important;
+    color: #6ee7b7 !important;
+}
+.duplicate-badge {
+    background: var(--accent-dark) !important;
+    color: #fff !important;
+}

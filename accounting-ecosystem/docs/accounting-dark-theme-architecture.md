@@ -23,7 +23,7 @@ This means no page's inline styles need to change. Dark theme is applied purely 
 
 | File | Purpose |
 |---|---|
-| `css/dark-theme.css` | Complete dark theme override — ~1088 lines covering all pages |
+| `css/dark-theme.css` | Complete dark theme override — ~1453 lines covering all pages |
 | `js/theme-guard.js` | JS guard: adds `data-theme="dark"` to `<html>`, auto-injects CSS if missing, provides `ThemeGuard` API (including `tokens`) |
 
 ---
@@ -97,7 +97,7 @@ Defined in `:root` at the top of `dark-theme.css`:
 ### Contacts page
 
 | Component | CSS Rule | Coverage |
-|---|---|---|
+|---|---|---
 | Section container | `.section` | ✅ |
 | Tabs border | `.tabs` — dark border | ✅ |
 | Tab base text | `.tab` — muted text | ✅ |
@@ -106,6 +106,39 @@ Defined in `:root` at the top of `dark-theme.css`:
 | Active tab underline | `.tab.active::after` — amber gradient | ✅ |
 | Table th/td | Global `th`/`td` rules | ✅ |
 | Filter dropdown | Global `select` rule | ✅ |
+| Summary stats bar | `.summary-stats` — dark surface | ✅ |
+| Contact name (link) | `.contact-name` — amber text | ✅ |
+| Contact stat card | `.contact-stat-card` — dark surface | ✅ |
+| Activity item divider | `.activity-item` — dark border | ✅ |
+| Activity icon | `.activity-icon` — amber-subtle bg + amber text | ✅ |
+| Form section dividers | `.form-section` — dark border | ✅ |
+| Form section title | `.form-section-title` + `::before` — amber accent bar | ✅ |
+| Sean AI section | `.sean-ai-section` — dark surface + amber border | ✅ |
+| Action buttons (small) | `.action-btn-small` — dark surface | ✅ |
+| Modal header | `.modal-header` — amber gradient (replaces blue) | ✅ |
+| Modal footer | `.modal-footer` — dark surface-alt | ✅ |
+| Modal tabs | `.modal-tabs`, `.modal-tab`, `.modal-tab.active` | ✅ |
+| Amount colours | `.amount-positive/.negative/.zero` | ✅ |
+
+### Bank page (bank.html) — additional coverage
+
+| Component | CSS Rule | Coverage |
+|---|---|---|
+| Bank account cards | `.bank-account-card`, `.active`, `:hover` | ✅ |
+| Account balance | `.account-balance` — amber gradient clip text | ✅ |
+| Tab count badge | `.tab-count`, `.tab.active .tab-count` | ✅ |
+| AI allocation button | `.ai-btn`, `.ai-btn:hover/.active` | ✅ |
+| AI suggestion row | `.ai-suggestion-row` — dark surface + amber left border | ✅ |
+| AI decision / override panels | `.ai-decision`, `.ai-override` — dark surface | ✅ |
+| Manual entry row | `.manual-entry-row`, `.manual-entry-label`, `.manual-input` | ✅ |
+| Attachment modal items | `.attachment-item`, `.attachment-actions button` | ✅ |
+| Upload drag area | `.upload-area`, `.drag-over` | ✅ |
+| Import step wizard | `.import-steps`, `.import-step.active`, `.step-number` | ✅ |
+| Import summary panel | `.import-summary`, `.summary-item` | ✅ |
+| Import type toggle | `.import-type-toggle`, `.import-type-btn.active` | ✅ |
+| PDF review table | `.pdf-review-table` th/td, `.is-duplicate` | ✅ |
+| PDF warning banner | `.pdf-warning-banner` — amber-subtle + amber border | ✅ |
+| PDF detected bank badge | `.pdf-detected-bank` — green dark tint | ✅ |
 
 ---
 
