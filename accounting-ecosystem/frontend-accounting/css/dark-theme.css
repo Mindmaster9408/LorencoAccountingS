@@ -1573,3 +1573,50 @@ tr.error-row th {
 .bank-delete-warning strong {
     color: var(--accent) !important;
 }
+
+/* ── VAT page — reconciliation section dark theme ───────────────────────────── */
+/* Action bar: white bg + blue border → dark surface + amber border */
+[data-theme="dark"] .vat-action-bar {
+    background: var(--surface) !important;
+    border-color: var(--accent) !important;
+}
+/* Summary stat bar: blue gradient → amber gradient (matches dark theme accent) */
+[data-theme="dark"] .vat-summary-bar {
+    background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%) !important;
+}
+/* Reconciliation status alert: beige → amber-tinted dark */
+[data-theme="dark"] .vat-recon-alert {
+    background: rgba(245,158,11,0.10) !important;
+    border-color: rgba(245,158,11,0.45) !important;
+}
+[data-theme="dark"] .vat-recon-alert div[style*="color: #ef6c00"],
+[data-theme="dark"] .vat-recon-alert div[style*="color:#ef6c00"] {
+    color: var(--accent-light) !important;
+}
+[data-theme="dark"] .vat-recon-alert div[style*="color: #e65100"],
+[data-theme="dark"] .vat-recon-alert div[style*="color:#e65100"] {
+    color: var(--text-muted) !important;
+}
+/* Checklist card: white → dark surface */
+[data-theme="dark"] .vat-checklist-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+[data-theme="dark"] .vat-checklist-title {
+    color: var(--text) !important;
+}
+[data-theme="dark"] .vat-checklist-card label {
+    color: var(--text) !important;
+}
+[data-theme="dark"] .vat-checklist-card label span {
+    color: var(--text) !important;
+}
+/* Checklist footer divider */
+[data-theme="dark"] .vat-checklist-card div[style*="border-top: 1px solid #e8eaed"],
+[data-theme="dark"] .vat-checklist-card div[style*="border-top:1px solid #e8eaed"] {
+    border-top-color: var(--border) !important;
+}
+/* reconStatus text (Reconciliation Incomplete) stays amber */
+[data-theme="dark"] #reconStatus {
+    color: var(--accent-light) !important;
+}
