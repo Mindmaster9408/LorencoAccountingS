@@ -726,6 +726,15 @@ a:hover {
 .stat-card .sub {
     color: var(--text-muted) !important;
 }
+/* vat.html uses .stat-card h3 (color:#666) and .stat-card .subtext (color:#999) */
+.stat-card h3,
+.stat-card .subtext {
+    color: var(--text-muted) !important;
+}
+/* stat-card left accent bar — replace blue with amber */
+.stat-card {
+    border-left-color: var(--accent) !important;
+}
 /* Highlighted stat card already overrides to white — keep it */
 .stat-card.highlight .value,
 .stat-card.highlight .label,

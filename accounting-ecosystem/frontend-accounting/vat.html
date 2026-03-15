@@ -464,41 +464,35 @@
         
         <div class="card-grid">
             <div class="stat-card">
-                <h3>Current Period Output VAT</h3>
-                <div class="value" id="outputVatValue">R 34,102.83</div>
-                <div class="subtext">VAT Collected - January 2026</div>
+                <h3>Output VAT</h3>
+                <div class="value" id="outputVatValue" style="color:#888;font-size:20px;">Loading…</div>
+                <div class="subtext" id="outputVatSubtext">VAT Collected</div>
             </div>
             <div class="stat-card">
-                <h3>Current Period Input VAT</h3>
-                <div class="value" id="inputVatValue">R 17,145.00</div>
-                <div class="subtext">VAT Paid - January 2026</div>
+                <h3>Input VAT</h3>
+                <div class="value" id="inputVatValue" style="color:#888;font-size:20px;">Loading…</div>
+                <div class="subtext" id="inputVatSubtext">VAT Paid</div>
             </div>
             <div class="stat-card">
                 <h3>VAT Payable to SARS</h3>
-                <div class="value" id="vatPayableValue">R 16,957.83</div>
-                <div class="subtext">Due: 25 Feb 2026</div>
+                <div class="value" id="vatPayableValue" style="color:#888;font-size:20px;">Loading…</div>
+                <div class="subtext" id="vatPayableSubtext">Select a period above</div>
             </div>
         </div>
         
         <div class="report-controls">
             <div class="control-group">
-                <label>Actions</label>
-                <select>
-                    <option>View VAT Return</option>
-                    <option>Submit Return</option>
-                    <option>Payment History</option>
-                    <option>VAT Settings</option>
+                <label>VAT Period</label>
+                <select id="periodSelect" onchange="selectVATPeriod()" style="min-width: 180px;">
+                    <option value="">Loading periods…</option>
                 </select>
             </div>
-            <button class="btn-primary" onclick="viewReturn()">View Current Return</button>
-            <button class="btn-secondary" onclick="openVATRecon()">VAT Reconciliation</button>
-            <button class="btn-secondary" onclick="submitReturn()">Submit to SARS</button>
-            <button class="btn-secondary" onclick="makePayment()">Make Payment</button>
+            <button class="btn-secondary" onclick="submitToSARS()">Submit to SARS</button>
         </div>
 
-        <div class="report-card" id="vatReconSection" style="display: none;">
+        <div class="report-card" id="vatReconSection">
             <div class="report-header">
-                <h2>VAT Reconciliation January 2026</h2>
+                <h2 id="vatReconTitle">VAT Reconciliation</h2>
                 <p>VAT REPORT SUMMARY</p>
             </div>
             
@@ -1308,16 +1302,10 @@
             }).format(Math.abs(amount));
         }
 
-        // Load data when VAT Recon is opened
-        const originalOpenVATRecon = openVATRecon;
-        openVATRecon = function() {
-            originalOpenVATRecon();
-            loadVATReconData();
-        };
-
-        // Load on page load
+        // On page load: build period dropdown, auto-load current period, load submission history
         window.addEventListener('DOMContentLoaded', () => {
-            loadVATReconData();
+            setupPeriodSelector();   // populate last 12 months; defaults to current month
+            selectVATPeriod();       // auto-load current period — no click required
             loadVATSubmissionHistory();
         });
 
@@ -1349,6 +1337,25 @@
             return response.json();
         }
 
+        // Build the period dropdown with the last 12 months and auto-select current month
+        function setupPeriodSelector() {
+            const sel = document.getElementById('periodSelect');
+            if (!sel) return;
+            const now = new Date();
+            sel.innerHTML = '';
+            for (let i = 0; i < 12; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const year  = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const key   = `${year}.${month}`;
+                const label = d.toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
+                const opt   = document.createElement('option');
+                opt.value       = key;
+                opt.textContent = label;
+                sel.appendChild(opt);
+            }
+        }
+
         // Period selector and reconciliation workflow
         async function selectVATPeriod() {
             const periodSelectEl = document.getElementById('periodSelect');
@@ -1365,15 +1372,36 @@
 
                 currentPeriodData = result.period;
 
+                // Update page title and stat card subtexts with real period info
+                const [yr, mo] = periodKey.split('.');
+                const periodLabel = new Date(yr, parseInt(mo) - 1, 1)
+                    .toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
+                const dueDate = new Date(yr, parseInt(mo), 25); // 25th of following month
+                const dueDateLabel = dueDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                const titleEl = document.getElementById('vatReconTitle');
+                if (titleEl) titleEl.textContent = `VAT Reconciliation — ${periodLabel}`;
+
+                const outSub  = document.getElementById('outputVatSubtext');
+                const inSub   = document.getElementById('inputVatSubtext');
+                const paySub  = document.getElementById('vatPayableSubtext');
+                if (outSub)  outSub.textContent  = `VAT Collected — ${periodLabel}`;
+                if (inSub)   inSub.textContent   = `VAT Paid — ${periodLabel}`;
+                if (paySub)  paySub.textContent  = `Due: ${dueDateLabel}`;
+
                 // Load reconciliation for this period
                 await loadReconciliationForPeriod(periodKey);
-                
-                // Load Trial Balance data
+
+                // Load Trial Balance data (also updates stat cards + PROEFBALANS inputs)
                 await loadTrialBalanceForPeriod(currentPeriodData.from_date, currentPeriodData.to_date);
 
             } catch (error) {
                 console.error('Error selecting VAT period:', error);
-                alert('Error loading VAT period: ' + error.message);
+                // Show error in stat cards instead of alert — less disruptive
+                ['outputVatValue','inputVatValue','vatPayableValue'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) { el.textContent = 'Error'; el.style.color = '#e53e3e'; }
+                });
             }
         }
 
@@ -1443,16 +1471,15 @@
                 if (tbExp) tbExp.textContent = totalExpenses.toFixed(2);
             }
 
-            // Update summary stat cards from real VAT account balances if available
-            if (vatOutput > 0 || vatInput > 0) {
-                const fmt = v => 'R ' + v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                const outEl = document.getElementById('outputVatValue');
-                const inEl  = document.getElementById('inputVatValue');
-                const payEl = document.getElementById('vatPayableValue');
-                if (outEl) outEl.textContent = fmt(vatOutput);
-                if (inEl)  inEl.textContent  = fmt(vatInput);
-                if (payEl) payEl.textContent  = fmt(Math.abs(vatOutput - vatInput));
-            }
+            // Update summary stat cards from real VAT account balances
+            const fmt = v => 'R ' + v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const outEl = document.getElementById('outputVatValue');
+            const inEl  = document.getElementById('inputVatValue');
+            const payEl = document.getElementById('vatPayableValue');
+            const resetStyle = el => { el.style.color = ''; el.style.fontSize = ''; };
+            if (outEl) { outEl.textContent = fmt(vatOutput); resetStyle(outEl); }
+            if (inEl)  { inEl.textContent  = fmt(vatInput);  resetStyle(inEl);  }
+            if (payEl) { payEl.textContent = fmt(Math.abs(vatOutput - vatInput)); resetStyle(payEl); }
 
             // Pre-populate PROEFBALANS inputs for the selected period row.
             // Only sets values when the field is still empty — preserves any manual entries.
