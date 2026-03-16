@@ -2268,11 +2268,18 @@ Click OK to simulate uploading a file.`;
                 const result = await resp.json();
 
                 if (!resp.ok || !result.success) {
-                    document.getElementById('pdfParseStatusText').textContent =
-                        '❌ ' + (result.error || 'Failed to parse PDF.');
+                    const msg = result.error || 'Failed to parse PDF.';
+                    const extra = result.isPdfScanned
+                        ? ' Please export your statement as a text-based PDF or CSV from your bank\'s online portal.'
+                        : '';
+                    document.getElementById('pdfParseStatusText').textContent = '❌ ' + msg + extra;
                     document.getElementById('step1NextBtn').disabled = false;
+                    // Keep status visible so user sees the error
                     return;
                 }
+
+                // Hide status bar on success — we move to the review step
+                document.getElementById('pdfParseStatus').style.display = 'none';
 
                 pdfParseResult = result;
                 pdfParseResult._bankAccountId = parseInt(bankAccountId, 10);
@@ -2288,7 +2295,7 @@ Click OK to simulate uploading a file.`;
                     '❌ Network error. Please try again.';
             } finally {
                 document.getElementById('step1NextBtn').disabled = false;
-                document.getElementById('pdfParseStatus').style.display = 'none';
+                // Note: pdfParseStatus is hidden on success (above) or kept visible on error
             }
         }
 
