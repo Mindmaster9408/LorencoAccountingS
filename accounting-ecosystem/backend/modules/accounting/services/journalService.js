@@ -1,4 +1,4 @@
-const db = require('../config/database');
+const { supabase } = require('../../../config/database');
 
 /**
  * Journal Service
@@ -13,7 +13,7 @@ class JournalService {
     const totalCredits = lines.reduce((sum, line) => sum + parseFloat(line.credit || 0), 0);
 
     const difference = Math.abs(totalDebits - totalCredits);
-    
+
     // Allow for rounding errors (0.01)
     if (difference > 0.01) {
       return {
@@ -47,7 +47,7 @@ class JournalService {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      
+
       if (!line.accountId) {
         return { valid: false, message: `Line ${i + 1}: Account is required` };
       }
@@ -75,22 +75,22 @@ class JournalService {
    * Check if period is locked
    */
   static async isPeriodLocked(companyId, date) {
-    const result = await db.query(
-      `SELECT id, from_date, to_date 
-       FROM accounting_periods 
-       WHERE company_id = $1 
-       AND $2 BETWEEN from_date AND to_date 
-       AND is_locked = true`,
-      [companyId, date]
-    );
+    const { data } = await supabase
+      .from('accounting_periods')
+      .select('id')
+      .eq('company_id', companyId)
+      .lte('from_date', date)
+      .gte('to_date', date)
+      .eq('is_locked', true)
+      .limit(1);
 
-    return result.rows.length > 0;
+    return data && data.length > 0;
   }
 
   /**
    * Create a draft journal
    */
-  static async createDraftJournal(client, { companyId, date, reference, description, sourceType, createdByUserId, lines, metadata }) {
+  static async createDraftJournal({ companyId, date, reference, description, sourceType, createdByUserId, lines, metadata }) {
     // Validate lines
     const lineValidation = this.validateLines(lines);
     if (!lineValidation.valid) {
@@ -110,33 +110,37 @@ class JournalService {
     }
 
     // Create journal header
-    const journalResult = await client.query(
-      `INSERT INTO journals (company_id, date, reference, description, status, source_type, created_by_user_id, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [companyId, date, reference, description, 'draft', sourceType, createdByUserId, metadata ? JSON.stringify(metadata) : null]
-    );
+    const { data: journal, error } = await supabase
+      .from('journals')
+      .insert({
+        company_id: companyId,
+        date,
+        reference: reference || null,
+        description,
+        status: 'draft',
+        source_type: sourceType || 'manual',
+        created_by_user_id: createdByUserId || null,
+        metadata: metadata || null
+      })
+      .select()
+      .single();
 
-    const journal = journalResult.rows[0];
+    if (error) throw new Error(error.message);
 
-    // Create journal lines
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      await client.query(
-        `INSERT INTO journal_lines (journal_id, account_id, line_number, description, debit, credit, segment_value_id, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          journal.id,
-          line.accountId,
-          i + 1,
-          line.description || null,
-          line.debit || 0,
-          line.credit || 0,
-          line.segmentValueId || null,
-          line.metadata ? JSON.stringify(line.metadata) : null
-        ]
-      );
-    }
+    // Insert all lines at once
+    const lineInserts = lines.map((line, i) => ({
+      journal_id: journal.id,
+      account_id: line.accountId,
+      line_number: i + 1,
+      description: line.description || null,
+      debit: line.debit || 0,
+      credit: line.credit || 0,
+      segment_value_id: line.segmentValueId || null,
+      metadata: line.metadata || null
+    }));
+
+    const { error: linesErr } = await supabase.from('journal_lines').insert(lineInserts);
+    if (linesErr) throw new Error(linesErr.message);
 
     return journal;
   }
@@ -145,18 +149,18 @@ class JournalService {
    * Update a draft journal's header and lines.
    * Only draft journals may be edited.
    */
-  static async updateDraftJournal(client, journalId, companyId, { date, reference, description, lines, updatedByUserId }) {
+  static async updateDraftJournal(journalId, companyId, { date, reference, description, lines, updatedByUserId }) {
     // Fetch and guard
-    const journalResult = await client.query(
-      'SELECT * FROM journals WHERE id = $1 AND company_id = $2',
-      [journalId, companyId]
-    );
+    const { data: journal, error: fetchErr } = await supabase
+      .from('journals')
+      .select('*')
+      .eq('id', journalId)
+      .eq('company_id', companyId)
+      .single();
 
-    if (journalResult.rows.length === 0) {
+    if (fetchErr || !journal) {
       throw new Error('Journal not found');
     }
-
-    const journal = journalResult.rows[0];
 
     if (journal.status !== 'draft') {
       throw new Error(`Cannot edit a journal with status: ${journal.status}. Only draft journals may be edited.`);
@@ -180,33 +184,34 @@ class JournalService {
     }
 
     // Update header
-    await client.query(
-      `UPDATE journals
-       SET date = $1, reference = $2, description = $3, updated_at = NOW()
-       WHERE id = $4`,
-      [date, reference || null, description, journalId]
-    );
+    const { error: updateErr } = await supabase
+      .from('journals')
+      .update({ date, reference: reference || null, description, updated_at: new Date().toISOString() })
+      .eq('id', journalId);
+
+    if (updateErr) throw new Error(updateErr.message);
 
     // Replace lines: delete all existing, re-insert
-    await client.query('DELETE FROM journal_lines WHERE journal_id = $1', [journalId]);
+    const { error: deleteErr } = await supabase
+      .from('journal_lines')
+      .delete()
+      .eq('journal_id', journalId);
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      await client.query(
-        `INSERT INTO journal_lines (journal_id, account_id, line_number, description, debit, credit, segment_value_id, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          journalId,
-          line.accountId,
-          i + 1,
-          line.description || null,
-          line.debit || 0,
-          line.credit || 0,
-          line.segmentValueId || null,
-          line.metadata ? JSON.stringify(line.metadata) : null
-        ]
-      );
-    }
+    if (deleteErr) throw new Error(deleteErr.message);
+
+    const lineInserts = lines.map((line, i) => ({
+      journal_id: journalId,
+      account_id: line.accountId,
+      line_number: i + 1,
+      description: line.description || null,
+      debit: line.debit || 0,
+      credit: line.credit || 0,
+      segment_value_id: line.segmentValueId || null,
+      metadata: line.metadata ? line.metadata : null
+    }));
+
+    const { error: insertErr } = await supabase.from('journal_lines').insert(lineInserts);
+    if (insertErr) throw new Error(insertErr.message);
 
     return { ...journal, date, reference: reference || null, description };
   }
@@ -214,18 +219,18 @@ class JournalService {
   /**
    * Post a journal (make it permanent in the ledger)
    */
-  static async postJournal(client, journalId, companyId, postedByUserId) {
+  static async postJournal(journalId, companyId, postedByUserId) {
     // Get journal
-    const journalResult = await client.query(
-      'SELECT * FROM journals WHERE id = $1 AND company_id = $2',
-      [journalId, companyId]
-    );
+    const { data: journal, error: fetchErr } = await supabase
+      .from('journals')
+      .select('*')
+      .eq('id', journalId)
+      .eq('company_id', companyId)
+      .single();
 
-    if (journalResult.rows.length === 0) {
+    if (fetchErr || !journal) {
       throw new Error('Journal not found');
     }
-
-    const journal = journalResult.rows[0];
 
     if (journal.status !== 'draft') {
       throw new Error(`Cannot post journal with status: ${journal.status}`);
@@ -238,26 +243,31 @@ class JournalService {
     }
 
     // Get journal lines
-    const linesResult = await client.query(
-      'SELECT * FROM journal_lines WHERE journal_id = $1 ORDER BY line_number',
-      [journalId]
-    );
+    const { data: lines, error: linesErr } = await supabase
+      .from('journal_lines')
+      .select('*')
+      .eq('journal_id', journalId)
+      .order('line_number');
 
-    const lines = linesResult.rows;
+    if (linesErr) throw new Error(linesErr.message);
 
     // Validate balance
-    const balanceValidation = this.validateBalance(lines);
+    const balanceValidation = this.validateBalance(lines || []);
     if (!balanceValidation.valid) {
       throw new Error(balanceValidation.message);
     }
 
     // Update journal status
-    await client.query(
-      `UPDATE journals 
-       SET status = 'posted', posted_at = CURRENT_TIMESTAMP, posted_by_user_id = $1
-       WHERE id = $2`,
-      [postedByUserId, journalId]
-    );
+    const { error: updateErr } = await supabase
+      .from('journals')
+      .update({
+        status: 'posted',
+        posted_at: new Date().toISOString(),
+        posted_by_user_id: postedByUserId
+      })
+      .eq('id', journalId);
+
+    if (updateErr) throw new Error(updateErr.message);
 
     return journal;
   }
@@ -265,18 +275,18 @@ class JournalService {
   /**
    * Reverse a posted journal
    */
-  static async reverseJournal(client, originalJournalId, companyId, reversedByUserId, reason) {
+  static async reverseJournal(originalJournalId, companyId, reversedByUserId, reason) {
     // Get original journal
-    const journalResult = await client.query(
-      'SELECT * FROM journals WHERE id = $1 AND company_id = $2',
-      [originalJournalId, companyId]
-    );
+    const { data: originalJournal, error: fetchErr } = await supabase
+      .from('journals')
+      .select('*')
+      .eq('id', originalJournalId)
+      .eq('company_id', companyId)
+      .single();
 
-    if (journalResult.rows.length === 0) {
+    if (fetchErr || !originalJournal) {
       throw new Error('Journal not found');
     }
-
-    const originalJournal = journalResult.rows[0];
 
     if (originalJournal.status !== 'posted') {
       throw new Error('Can only reverse posted journals');
@@ -294,55 +304,55 @@ class JournalService {
     }
 
     // Get original journal lines
-    const linesResult = await client.query(
-      'SELECT * FROM journal_lines WHERE journal_id = $1 ORDER BY line_number',
-      [originalJournalId]
-    );
+    const { data: originalLines, error: linesErr } = await supabase
+      .from('journal_lines')
+      .select('*')
+      .eq('journal_id', originalJournalId)
+      .order('line_number');
 
-    const originalLines = linesResult.rows;
+    if (linesErr) throw new Error(linesErr.message);
 
     // Create reversal journal
-    const reversalResult = await client.query(
-      `INSERT INTO journals (company_id, date, reference, description, status, source_type, created_by_user_id, posted_by_user_id, posted_at, reversal_of_journal_id, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $7, CURRENT_TIMESTAMP, $8, $9)
-       RETURNING *`,
-      [
-        companyId,
-        today,
-        `REV-${originalJournal.reference || originalJournal.id}`,
-        `Reversal of: ${originalJournal.description}. Reason: ${reason}`,
-        'posted',
-        originalJournal.source_type,
-        reversedByUserId,
-        originalJournalId,
-        JSON.stringify({ reversalReason: reason })
-      ]
-    );
+    const { data: reversalJournal, error: reversalErr } = await supabase
+      .from('journals')
+      .insert({
+        company_id: companyId,
+        date: today,
+        reference: `REV-${originalJournal.reference || originalJournal.id}`,
+        description: `Reversal of: ${originalJournal.description}. Reason: ${reason}`,
+        status: 'posted',
+        source_type: originalJournal.source_type,
+        created_by_user_id: reversedByUserId,
+        posted_by_user_id: reversedByUserId,
+        posted_at: new Date().toISOString(),
+        reversal_of_journal_id: originalJournalId,
+        metadata: { reversalReason: reason }
+      })
+      .select()
+      .single();
 
-    const reversalJournal = reversalResult.rows[0];
+    if (reversalErr) throw new Error(reversalErr.message);
 
     // Create reversed lines (swap debits and credits)
-    for (let i = 0; i < originalLines.length; i++) {
-      const originalLine = originalLines[i];
-      await client.query(
-        `INSERT INTO journal_lines (journal_id, account_id, line_number, description, debit, credit)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          reversalJournal.id,
-          originalLine.account_id,
-          i + 1,
-          `Reversal: ${originalLine.description || ''}`,
-          originalLine.credit, // Swap
-          originalLine.debit   // Swap
-        ]
-      );
-    }
+    const reversedLineInserts = (originalLines || []).map((originalLine, i) => ({
+      journal_id: reversalJournal.id,
+      account_id: originalLine.account_id,
+      line_number: i + 1,
+      description: `Reversal: ${originalLine.description || ''}`,
+      debit: originalLine.credit,  // Swap
+      credit: originalLine.debit   // Swap
+    }));
+
+    const { error: revLinesErr } = await supabase.from('journal_lines').insert(reversedLineInserts);
+    if (revLinesErr) throw new Error(revLinesErr.message);
 
     // Mark original journal as reversed
-    await client.query(
-      'UPDATE journals SET status = $1, reversed_by_journal_id = $2 WHERE id = $3',
-      ['reversed', reversalJournal.id, originalJournalId]
-    );
+    const { error: markErr } = await supabase
+      .from('journals')
+      .update({ status: 'reversed', reversed_by_journal_id: reversalJournal.id })
+      .eq('id', originalJournalId);
+
+    if (markErr) throw new Error(markErr.message);
 
     return reversalJournal;
   }
@@ -351,29 +361,29 @@ class JournalService {
    * Get journal with lines
    */
   static async getJournalWithLines(journalId, companyId) {
-    const journalResult = await db.query(
-      'SELECT * FROM journals WHERE id = $1 AND company_id = $2',
-      [journalId, companyId]
-    );
+    const { data: journal } = await supabase
+      .from('journals')
+      .select('*')
+      .eq('id', journalId)
+      .eq('company_id', companyId)
+      .single();
 
-    if (journalResult.rows.length === 0) {
-      return null;
-    }
+    if (!journal) return null;
 
-    const journal = journalResult.rows[0];
+    const { data: lines } = await supabase
+      .from('journal_lines')
+      .select('*, accounts!account_id(code, name, type), coa_segment_values!segment_value_id(name)')
+      .eq('journal_id', journalId)
+      .order('line_number');
 
-    const linesResult = await db.query(
-      `SELECT jl.*, a.code as account_code, a.name as account_name, a.type as account_type,
-              sv.name as segment_value_name
-       FROM journal_lines jl
-       JOIN accounts a ON jl.account_id = a.id
-       LEFT JOIN coa_segment_values sv ON jl.segment_value_id = sv.id
-       WHERE jl.journal_id = $1
-       ORDER BY jl.line_number`,
-      [journalId]
-    );
-
-    journal.lines = linesResult.rows;
+    // Flatten nested objects to match expected shape
+    journal.lines = (lines || []).map(l => ({
+      ...l,
+      account_code: l.accounts?.code,
+      account_name: l.accounts?.name,
+      account_type: l.accounts?.type,
+      segment_value_name: l.coa_segment_values?.name
+    }));
 
     return journal;
   }

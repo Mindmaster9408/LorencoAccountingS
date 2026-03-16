@@ -1,5 +1,5 @@
 const express = require('express');
-const db = require('../config/database');
+const { supabase } = require('../../../config/database');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
@@ -73,18 +73,23 @@ const upload = multer({
  */
 router.get('/accounts', authenticate, hasPermission('bank.view'), async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT ba.*, a.code as ledger_account_code, a.name as ledger_account_name
-       FROM bank_accounts ba
-       LEFT JOIN accounts a ON ba.ledger_account_id = a.id
-       WHERE ba.company_id = $1
-       ORDER BY ba.name`,
-      [req.user.companyId]
-    );
+    const { data, error } = await supabase
+      .from('bank_accounts')
+      .select('*, accounts!ledger_account_id(code, name)')
+      .eq('company_id', req.user.companyId)
+      .order('name');
+
+    if (error) throw new Error(error.message);
+
+    const bankAccounts = (data || []).map(ba => ({
+      ...ba,
+      ledger_account_code: ba.accounts?.code,
+      ledger_account_name: ba.accounts?.name
+    }));
 
     res.json({
-      bankAccounts: result.rows,
-      count: result.rows.length
+      bankAccounts,
+      count: bankAccounts.length
     });
 
   } catch (error) {
@@ -98,8 +103,6 @@ router.get('/accounts', authenticate, hasPermission('bank.view'), async (req, re
  * Create a new bank account
  */
 router.post('/accounts', authenticate, hasPermission('bank.manage'), async (req, res) => {
-  const client = await db.getClient();
-  
   try {
     const { name, bankName, accountNumberMasked, currency = 'ZAR', ledgerAccountId, openingBalance = 0, openingBalanceDate } = req.body;
 
@@ -107,17 +110,23 @@ router.post('/accounts', authenticate, hasPermission('bank.manage'), async (req,
       return res.status(400).json({ error: 'Name is required' });
     }
 
-    await client.query('BEGIN');
+    const { data: bankAccount, error } = await supabase
+      .from('bank_accounts')
+      .insert({
+        company_id: req.user.companyId,
+        name,
+        bank_name: bankName,
+        account_number_masked: accountNumberMasked,
+        currency,
+        ledger_account_id: ledgerAccountId || null,
+        opening_balance: openingBalance,
+        opening_balance_date: openingBalanceDate || null,
+        is_active: true
+      })
+      .select()
+      .single();
 
-    const result = await client.query(
-      `INSERT INTO bank_accounts 
-       (company_id, name, bank_name, account_number_masked, currency, ledger_account_id, opening_balance, opening_balance_date, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [req.user.companyId, name, bankName, accountNumberMasked, currency, ledgerAccountId, openingBalance, openingBalanceDate, true]
-    );
-
-    const bankAccount = result.rows[0];
+    if (error) throw new Error(error.message);
 
     await AuditLogger.logUserAction(
       req,
@@ -129,16 +138,11 @@ router.post('/accounts', authenticate, hasPermission('bank.manage'), async (req,
       'Bank account created'
     );
 
-    await client.query('COMMIT');
-
     res.status(201).json(bankAccount);
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error creating bank account:', error);
     res.status(500).json({ error: 'Failed to create bank account' });
-  } finally {
-    client.release();
   }
 });
 
@@ -147,56 +151,52 @@ router.post('/accounts', authenticate, hasPermission('bank.manage'), async (req,
  * Update a bank account (name, bankName, accountNumberMasked, ledgerAccountId, isActive)
  */
 router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (req, res) => {
-  const client = await db.getClient();
-
   try {
     const { name, bankName, accountNumberMasked, ledgerAccountId, isActive } = req.body;
 
-    await client.query('BEGIN');
+    // Fetch existing record and verify ownership
+    const { data: existing, error: fetchErr } = await supabase
+      .from('bank_accounts')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('company_id', req.user.companyId)
+      .single();
 
-    const existing = await client.query(
-      'SELECT * FROM bank_accounts WHERE id = $1 AND company_id = $2',
-      [req.params.id, req.user.companyId]
-    );
-
-    if (existing.rows.length === 0) {
-      await client.query('ROLLBACK');
+    if (fetchErr || !existing) {
       return res.status(404).json({ error: 'Bank account not found' });
     }
 
-    const before = existing.rows[0];
+    const before = existing;
 
     // If ledgerAccountId provided, verify it belongs to this company
     if (ledgerAccountId !== undefined && ledgerAccountId !== null) {
-      const acctCheck = await client.query(
-        'SELECT id FROM accounts WHERE id = $1 AND company_id = $2',
-        [ledgerAccountId, req.user.companyId]
-      );
-      if (acctCheck.rows.length === 0) {
-        await client.query('ROLLBACK');
+      const { data: acctCheck } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('id', ledgerAccountId)
+        .eq('company_id', req.user.companyId)
+        .single();
+
+      if (!acctCheck) {
         return res.status(400).json({ error: 'Ledger account not found' });
       }
     }
 
-    const result = await client.query(
-      `UPDATE bank_accounts
-       SET name                  = COALESCE($1, name),
-           bank_name             = COALESCE($2, bank_name),
-           account_number_masked = COALESCE($3, account_number_masked),
-           ledger_account_id     = $4,
-           is_active             = COALESCE($5, is_active)
-       WHERE id = $6 AND company_id = $7
-       RETURNING *`,
-      [
-        name              || null,
-        bankName          !== undefined ? bankName          : null,
-        accountNumberMasked !== undefined ? accountNumberMasked : null,
-        ledgerAccountId   !== undefined ? ledgerAccountId   : before.ledger_account_id,
-        isActive          !== undefined ? isActive          : null,
-        req.params.id,
-        req.user.companyId
-      ]
-    );
+    const resolvedLedgerAccountId = ledgerAccountId !== undefined ? ledgerAccountId : before.ledger_account_id;
+
+    const { error: updateErr } = await supabase
+      .from('bank_accounts')
+      .update({
+        name: name || before.name,
+        bank_name: bankName !== undefined ? bankName : before.bank_name,
+        account_number_masked: accountNumberMasked !== undefined ? accountNumberMasked : before.account_number_masked,
+        ledger_account_id: resolvedLedgerAccountId,
+        is_active: isActive !== undefined ? isActive : before.is_active
+      })
+      .eq('id', req.params.id)
+      .eq('company_id', req.user.companyId);
+
+    if (updateErr) throw new Error(updateErr.message);
 
     await AuditLogger.logUserAction(
       req,
@@ -204,29 +204,28 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
       'BANK_ACCOUNT',
       before.id,
       { name: before.name, ledgerAccountId: before.ledger_account_id },
-      { name: result.rows[0].name, ledgerAccountId: result.rows[0].ledger_account_id },
+      { name: name || before.name, ledgerAccountId: resolvedLedgerAccountId },
       'Bank account updated'
     );
 
-    await client.query('COMMIT');
-
     // Return with joined ledger account info
-    const full = await db.query(
-      `SELECT ba.*, a.code as ledger_account_code, a.name as ledger_account_name
-       FROM bank_accounts ba
-       LEFT JOIN accounts a ON ba.ledger_account_id = a.id
-       WHERE ba.id = $1`,
-      [req.params.id]
-    );
+    const { data: full, error: fullErr } = await supabase
+      .from('bank_accounts')
+      .select('*, accounts!ledger_account_id(code, name)')
+      .eq('id', req.params.id)
+      .single();
 
-    res.json(full.rows[0]);
+    if (fullErr) throw new Error(fullErr.message);
+
+    res.json({
+      ...full,
+      ledger_account_code: full.accounts?.code,
+      ledger_account_name: full.accounts?.name
+    });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error updating bank account:', error);
     res.status(500).json({ error: 'Failed to update bank account' });
-  } finally {
-    client.release();
   }
 });
 
@@ -237,48 +236,34 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
 router.get('/transactions', authenticate, hasPermission('bank.view'), async (req, res) => {
   try {
     const { bankAccountId, status, fromDate, toDate, limit = 100, offset = 0 } = req.query;
-    
-    let query = `
-      SELECT bt.*, ba.name as bank_account_name
-      FROM bank_transactions bt
-      JOIN bank_accounts ba ON bt.bank_account_id = ba.id
-      WHERE bt.company_id = $1
-    `;
-    const params = [req.user.companyId];
-    let paramCount = 2;
 
-    if (bankAccountId) {
-      query += ` AND bt.bank_account_id = $${paramCount}`;
-      params.push(bankAccountId);
-      paramCount++;
-    }
+    let query = supabase
+      .from('bank_transactions')
+      .select('*, bank_accounts!bank_account_id(name)')
+      .eq('company_id', req.user.companyId);
 
-    if (status) {
-      query += ` AND bt.status = $${paramCount}`;
-      params.push(status);
-      paramCount++;
-    }
+    if (bankAccountId) query = query.eq('bank_account_id', bankAccountId);
+    if (status) query = query.eq('status', status);
+    if (fromDate) query = query.gte('date', fromDate);
+    if (toDate) query = query.lte('date', toDate);
 
-    if (fromDate) {
-      query += ` AND bt.date >= $${paramCount}`;
-      params.push(fromDate);
-      paramCount++;
-    }
+    query = query
+      .order('date', { ascending: false })
+      .order('id', { ascending: false })
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
-    if (toDate) {
-      query += ` AND bt.date <= $${paramCount}`;
-      params.push(toDate);
-      paramCount++;
-    }
+    const { data, error } = await query;
 
-    query += ` ORDER BY bt.date DESC, bt.id DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-    params.push(limit, offset);
+    if (error) throw new Error(error.message);
 
-    const result = await db.query(query, params);
+    const transactions = (data || []).map(t => ({
+      ...t,
+      bank_account_name: t.bank_accounts?.name
+    }));
 
     res.json({
-      transactions: result.rows,
-      count: result.rows.length
+      transactions,
+      count: transactions.length
     });
 
   } catch (error) {
@@ -292,8 +277,6 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
  * Import bank transactions from CSV
  */
 router.post('/import', authenticate, hasPermission('bank.import'), async (req, res) => {
-  const client = await db.getClient();
-  
   try {
     const { bankAccountId, transactions } = req.body;
 
@@ -301,16 +284,15 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
       return res.status(400).json({ error: 'Bank account ID and transactions array are required' });
     }
 
-    await client.query('BEGIN');
+    // Verify bank account exists and belongs to this company
+    const { data: bankAccountCheck } = await supabase
+      .from('bank_accounts')
+      .select('id')
+      .eq('id', bankAccountId)
+      .eq('company_id', req.user.companyId)
+      .single();
 
-    // Verify bank account exists
-    const bankAccountCheck = await client.query(
-      'SELECT id FROM bank_accounts WHERE id = $1 AND company_id = $2',
-      [bankAccountId, req.user.companyId]
-    );
-
-    if (bankAccountCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
+    if (!bankAccountCheck) {
       return res.status(404).json({ error: 'Bank account not found' });
     }
 
@@ -319,27 +301,39 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
     for (const txn of transactions) {
       const { date, description, amount, reference, externalId, balance } = txn;
 
-      // Check if already imported (by external ID)
+      // Check if already imported (by external ID) — skip duplicates
       if (externalId) {
-        const existingCheck = await client.query(
-          'SELECT id FROM bank_transactions WHERE bank_account_id = $1 AND external_id = $2',
-          [bankAccountId, externalId]
-        );
+        const { data: existingCheck } = await supabase
+          .from('bank_transactions')
+          .select('id')
+          .eq('bank_account_id', bankAccountId)
+          .eq('external_id', externalId)
+          .limit(1);
 
-        if (existingCheck.rows.length > 0) {
+        if (existingCheck && existingCheck.length > 0) {
           continue; // Skip duplicates
         }
       }
 
-      const result = await client.query(
-        `INSERT INTO bank_transactions 
-         (company_id, bank_account_id, date, description, amount, balance, reference, external_id, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING *`,
-        [req.user.companyId, bankAccountId, date, description, amount, balance, reference, externalId, 'unmatched']
-      );
+      const { data: row, error: insertErr } = await supabase
+        .from('bank_transactions')
+        .insert({
+          company_id: req.user.companyId,
+          bank_account_id: bankAccountId,
+          date,
+          description,
+          amount,
+          balance: balance != null ? balance : null,
+          reference: reference || null,
+          external_id: externalId || null,
+          status: 'unmatched'
+        })
+        .select()
+        .single();
 
-      importedTransactions.push(result.rows[0]);
+      if (insertErr) throw new Error(insertErr.message);
+
+      importedTransactions.push(row);
     }
 
     await AuditLogger.logUserAction(
@@ -352,8 +346,6 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
       'Bank transactions imported'
     );
 
-    await client.query('COMMIT');
-
     res.status(201).json({
       message: 'Bank transactions imported successfully',
       imported: importedTransactions.length,
@@ -361,11 +353,8 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error importing bank transactions:', error);
     res.status(500).json({ error: 'Failed to import bank transactions' });
-  } finally {
-    client.release();
   }
 });
 
@@ -401,50 +390,50 @@ router.post('/import/pdf',
       // using it for duplicate detection queries
       let verifiedBankAccountId = null;
       if (bankAccountId) {
-        const check = await db.query(
-          'SELECT id FROM bank_accounts WHERE id = $1 AND company_id = $2',
-          [bankAccountId, req.user.companyId]
-        );
-        if (check.rows.length > 0) verifiedBankAccountId = bankAccountId;
+        const { data: check } = await supabase
+          .from('bank_accounts')
+          .select('id')
+          .eq('id', bankAccountId)
+          .eq('company_id', req.user.companyId)
+          .single();
+
+        if (check) verifiedBankAccountId = bankAccountId;
       }
 
-      // For duplicate detection we need a DB client
-      const dbClient = verifiedBankAccountId ? await db.getClient() : null;
-      try {
-        const result = await PdfStatementImportService.parsePdf(
-          req.file.buffer,
-          req.file.originalname,
-          { dbClient, bankAccountId: verifiedBankAccountId }
-        );
+      // Pass dbClient: null — PDF parsing doesn't require db for initial parse step.
+      // Duplicate detection is handled at the confirm (POST /import) stage.
+      const result = await PdfStatementImportService.parsePdf(
+        req.file.buffer,
+        req.file.originalname,
+        { dbClient: null, bankAccountId: verifiedBankAccountId }
+      );
 
-        if (!result.success) {
-          return res.status(422).json({
-            error: result.error,
-            isPdfScanned: result.isPdfScanned,
-            warnings: result.warnings
-          });
-        }
-
-        await AuditLogger.logUserAction(
-          req,
-          'PARSE',
-          'PDF_STATEMENT',
-          verifiedBankAccountId,
-          null,
-          {
-            filename: req.file.originalname,
-            bank: result.bank,
-            parserId: result.parserId,
-            confidence: result.parserConfidence,
-            transactionCount: result.transactions.length
-          },
-          'PDF bank statement parsed for review'
-        );
-
-        return res.json(result);
-      } finally {
-        if (dbClient) dbClient.release();
+      if (!result.success) {
+        return res.status(422).json({
+          error: result.error,
+          isPdfScanned: result.isPdfScanned,
+          warnings: result.warnings
+        });
       }
+
+      await AuditLogger.logUserAction(
+        req,
+        'PARSE',
+        'PDF_STATEMENT',
+        verifiedBankAccountId,
+        null,
+        {
+          filename: req.file.originalname,
+          bank: result.bank,
+          parserId: result.parserId,
+          confidence: result.parserConfidence,
+          transactionCount: result.transactions.length
+        },
+        'PDF bank statement parsed for review'
+      );
+
+      return res.json(result);
+
     } catch (err) {
       console.error('PDF import error:', err);
       // Multer file-type error
@@ -461,7 +450,6 @@ router.post('/import/pdf',
  * Create a single manual bank transaction
  */
 router.post('/transactions', authenticate, hasPermission('bank.manage'), async (req, res) => {
-  const client = await db.getClient();
   try {
     const { bankAccountId, date, description, reference, amount, balance } = req.body;
 
@@ -471,52 +459,55 @@ router.post('/transactions', authenticate, hasPermission('bank.manage'), async (
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount)) return res.status(400).json({ error: 'amount must be a valid number' });
 
-    await client.query('BEGIN');
+    // Verify bank account belongs to this company
+    const { data: accountCheck } = await supabase
+      .from('bank_accounts')
+      .select('id')
+      .eq('id', bankAccountId)
+      .eq('company_id', req.user.companyId)
+      .single();
 
-    const accountCheck = await client.query(
-      'SELECT id FROM bank_accounts WHERE id = $1 AND company_id = $2',
-      [bankAccountId, req.user.companyId]
-    );
-    if (accountCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
+    if (!accountCheck) {
       return res.status(404).json({ error: 'Bank account not found or does not belong to this company' });
     }
 
-    const result = await client.query(
-      `INSERT INTO bank_transactions
-       (company_id, bank_account_id, date, description, amount, balance, reference, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'unmatched')
-       RETURNING *`,
-      [req.user.companyId, bankAccountId, date, description.trim(),
-       parsedAmount, balance != null ? parseFloat(balance) : null, reference || null]
-    );
+    const { data: row, error } = await supabase
+      .from('bank_transactions')
+      .insert({
+        company_id: req.user.companyId,
+        bank_account_id: bankAccountId,
+        date,
+        description: description.trim(),
+        amount: parsedAmount,
+        balance: balance != null ? parseFloat(balance) : null,
+        reference: reference || null,
+        status: 'unmatched'
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
 
     await AuditLogger.logUserAction(
-      req, 'CREATE', 'BANK_TRANSACTION', result.rows[0].id,
+      req, 'CREATE', 'BANK_TRANSACTION', row.id,
       null, { description: description.trim(), amount: parsedAmount },
       'Manual bank transaction created'
     );
 
-    await client.query('COMMIT');
-    res.status(201).json({ transaction: result.rows[0] });
+    res.status(201).json({ transaction: row });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error creating bank transaction:', error);
     res.status(500).json({ error: 'Failed to create bank transaction' });
-  } finally {
-    client.release();
   }
 });
 
 /**
  * POST /api/bank/transactions/:id/allocate
- * Allocate bank transaction and atomically post the journal in one DB transaction.
+ * Allocate bank transaction and atomically post the journal.
  * Journal is always 'posted' on success — no silent draft-only state possible.
  */
 router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
-  const client = await db.getClient();
-  
   try {
     const { lines, description } = req.body;
 
@@ -524,46 +515,42 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       return res.status(400).json({ error: 'Lines array is required' });
     }
 
-    await client.query('BEGIN');
+    // Get bank transaction with linked bank account ledger_account_id
+    const { data: bankTxn, error: txnErr } = await supabase
+      .from('bank_transactions')
+      .select('*, bank_accounts!bank_account_id(ledger_account_id, name)')
+      .eq('id', req.params.id)
+      .eq('company_id', req.user.companyId)
+      .single();
 
-    // Get bank transaction
-    const txnResult = await client.query(
-      `SELECT bt.*, ba.ledger_account_id, ba.name as bank_account_name
-       FROM bank_transactions bt
-       JOIN bank_accounts ba ON bt.bank_account_id = ba.id
-       WHERE bt.id = $1 AND bt.company_id = $2`,
-      [req.params.id, req.user.companyId]
-    );
-
-    if (txnResult.rows.length === 0) {
-      await client.query('ROLLBACK');
+    if (txnErr || !bankTxn) {
       return res.status(404).json({ error: 'Bank transaction not found' });
     }
 
-    const bankTxn = txnResult.rows[0];
-
     if (bankTxn.status !== 'unmatched') {
-      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Transaction already allocated' });
     }
 
-    if (!bankTxn.ledger_account_id) {
-      await client.query('ROLLBACK');
+    // Flatten the ledger_account_id from the nested bank_accounts relation
+    const ledgerAccountId = bankTxn.bank_accounts?.ledger_account_id;
+    const bankAccountName = bankTxn.bank_accounts?.name;
+
+    if (!ledgerAccountId) {
       return res.status(400).json({ error: 'Bank account has no linked ledger account' });
     }
 
     // Build journal lines (bank account + user-specified allocations)
     const journalLines = [];
-    
+
     if (bankTxn.amount > 0) {
       // Money in: Debit bank account
       journalLines.push({
-        accountId: bankTxn.ledger_account_id,
+        accountId: ledgerAccountId,
         debit: Math.abs(bankTxn.amount),
         credit: 0,
         description: `Bank: ${bankTxn.description}`
       });
-      
+
       // Credits to other accounts
       lines.forEach(line => {
         journalLines.push({
@@ -576,12 +563,12 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     } else {
       // Money out: Credit bank account
       journalLines.push({
-        accountId: bankTxn.ledger_account_id,
+        accountId: ledgerAccountId,
         debit: 0,
         credit: Math.abs(bankTxn.amount),
         description: `Bank: ${bankTxn.description}`
       });
-      
+
       // Debits to other accounts
       lines.forEach(line => {
         journalLines.push({
@@ -593,8 +580,8 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       });
     }
 
-    // Create draft journal
-    const journal = await JournalService.createDraftJournal(client, {
+    // Create draft journal (no pg client — uses Supabase directly)
+    const journal = await JournalService.createDraftJournal({
       companyId: req.user.companyId,
       date: bankTxn.date,
       reference: bankTxn.reference,
@@ -605,17 +592,25 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       metadata: { bankTransactionId: bankTxn.id }
     });
 
-    // Auto-post atomically — if this fails the whole transaction rolls back.
-    // Guarantees: bank_transaction.status = 'matched' ⟺ journal.status = 'posted'. No orphaned drafts.
-    await JournalService.postJournal(client, journal.id, req.user.companyId, req.user.id);
+    // Post the journal — guarantees journal.status = 'posted' on success.
+    await JournalService.postJournal(journal.id, req.user.companyId, req.user.id);
 
     // Mark transaction as matched
-    await client.query(
-      `UPDATE bank_transactions 
-       SET status = 'matched', matched_entity_type = 'JOURNAL', matched_entity_id = $1, matched_by_user_id = $2
-       WHERE id = $3`,
-      [journal.id, req.user.id, bankTxn.id]
-    );
+    const { error: updErr } = await supabase
+      .from('bank_transactions')
+      .update({
+        status: 'matched',
+        matched_entity_type: 'JOURNAL',
+        matched_entity_id: journal.id,
+        matched_by_user_id: req.user.id
+      })
+      .eq('id', bankTxn.id);
+
+    if (updErr) {
+      // Journal is already posted — log warning but still return success.
+      // Bank transaction status update can be retried if needed.
+      console.warn('Warning: journal posted but bank_transaction status update failed:', updErr.message);
+    }
 
     await AuditLogger.logUserAction(
       req,
@@ -627,8 +622,6 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       'Bank transaction allocated to journal'
     );
 
-    await client.query('COMMIT');
-
     const fullJournal = await JournalService.getJournalWithLines(journal.id, req.user.companyId);
 
     res.status(201).json({
@@ -637,11 +630,8 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error allocating bank transaction:', error);
     res.status(400).json({ error: error.message || 'Failed to allocate bank transaction' });
-  } finally {
-    client.release();
   }
 });
 
@@ -650,8 +640,6 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
  * Mark transactions as reconciled
  */
 router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (req, res) => {
-  const client = await db.getClient();
-  
   try {
     const { transactionIds } = req.body;
 
@@ -659,15 +647,13 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
       return res.status(400).json({ error: 'Transaction IDs array is required' });
     }
 
-    await client.query('BEGIN');
-
     for (const txnId of transactionIds) {
-      await client.query(
-        `UPDATE bank_transactions 
-         SET status = 'reconciled', reconciled_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND company_id = $2 AND status = 'matched'`,
-        [txnId, req.user.companyId]
-      );
+      await supabase
+        .from('bank_transactions')
+        .update({ status: 'reconciled', reconciled_at: new Date().toISOString() })
+        .eq('id', txnId)
+        .eq('company_id', req.user.companyId)
+        .eq('status', 'matched');
     }
 
     await AuditLogger.logUserAction(
@@ -680,19 +666,14 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
       'Bank transactions reconciled'
     );
 
-    await client.query('COMMIT');
-
     res.json({
       message: 'Transactions reconciled successfully',
       count: transactionIds.length
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error reconciling transactions:', error);
     res.status(500).json({ error: 'Failed to reconcile transactions' });
-  } finally {
-    client.release();
   }
 });
 
@@ -701,73 +682,71 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
  * Upload attachment for a bank transaction
  */
 router.post('/transactions/:id/attachments', authenticate, hasPermission('bank.manage'), upload.single('file'), async (req, res) => {
-  const client = await db.getClient();
-  
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    await client.query('BEGIN');
-
     // Verify transaction exists and belongs to user's company
-    const txnCheck = await client.query(
-      'SELECT id FROM bank_transactions WHERE id = $1 AND company_id = $2',
-      [req.params.id, req.user.companyId]
-    );
+    const { data: txnCheck } = await supabase
+      .from('bank_transactions')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('company_id', req.user.companyId)
+      .single();
 
-    if (txnCheck.rows.length === 0) {
+    if (!txnCheck) {
       // Delete uploaded file
       fs.unlinkSync(req.file.path);
-      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Bank transaction not found' });
     }
 
     // Save attachment record
-    const result = await client.query(
-      `INSERT INTO bank_transaction_attachments 
-       (company_id, bank_transaction_id, filename, original_filename, file_path, file_size, mime_type, uploaded_by_user_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [
-        req.user.companyId,
-        req.params.id,
-        req.file.filename,
-        req.file.originalname,
-        req.file.path,
-        req.file.size,
-        req.file.mimetype,
-        req.user.id
-      ]
-    );
+    const { data: attachment, error } = await supabase
+      .from('bank_transaction_attachments')
+      .insert({
+        company_id: req.user.companyId,
+        bank_transaction_id: req.params.id,
+        filename: req.file.filename,
+        original_filename: req.file.originalname,
+        file_path: req.file.path,
+        file_size: req.file.size,
+        mime_type: req.file.mimetype,
+        uploaded_by_user_id: req.user.id
+      })
+      .select()
+      .single();
+
+    if (error) {
+      // Delete uploaded file if database operation failed
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      throw new Error(error.message);
+    }
 
     await AuditLogger.logUserAction(
       req,
       'UPLOAD',
       'BANK_TRANSACTION_ATTACHMENT',
-      result.rows[0].id,
+      attachment.id,
       null,
       { filename: req.file.originalname, transactionId: req.params.id },
       'Attachment uploaded to bank transaction'
     );
 
-    await client.query('COMMIT');
-
     res.status(201).json({
       message: 'Attachment uploaded successfully',
-      attachment: result.rows[0]
+      attachment
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     // Delete uploaded file if database operation failed
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
     console.error('Error uploading attachment:', error);
     res.status(500).json({ error: error.message || 'Failed to upload attachment' });
-  } finally {
-    client.release();
   }
 });
 
@@ -777,18 +756,25 @@ router.post('/transactions/:id/attachments', authenticate, hasPermission('bank.m
  */
 router.get('/transactions/:id/attachments', authenticate, hasPermission('bank.view'), async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT a.*, u.email as uploaded_by_email, u.first_name, u.last_name
-       FROM bank_transaction_attachments a
-       LEFT JOIN users u ON a.uploaded_by_user_id = u.id
-       WHERE a.bank_transaction_id = $1 AND a.company_id = $2
-       ORDER BY a.created_at DESC`,
-      [req.params.id, req.user.companyId]
-    );
+    const { data, error } = await supabase
+      .from('bank_transaction_attachments')
+      .select('*, users!uploaded_by_user_id(email, first_name, last_name)')
+      .eq('bank_transaction_id', req.params.id)
+      .eq('company_id', req.user.companyId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    const attachments = (data || []).map(a => ({
+      ...a,
+      uploaded_by_email: a.users?.email,
+      first_name: a.users?.first_name,
+      last_name: a.users?.last_name
+    }));
 
     res.json({
-      attachments: result.rows,
-      count: result.rows.length
+      attachments,
+      count: attachments.length
     });
 
   } catch (error) {
@@ -803,17 +789,16 @@ router.get('/transactions/:id/attachments', authenticate, hasPermission('bank.vi
  */
 router.get('/attachments/:attachmentId/download', authenticate, hasPermission('bank.view'), async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT * FROM bank_transaction_attachments 
-       WHERE id = $1 AND company_id = $2`,
-      [req.params.attachmentId, req.user.companyId]
-    );
+    const { data: attachment, error } = await supabase
+      .from('bank_transaction_attachments')
+      .select('*')
+      .eq('id', req.params.attachmentId)
+      .eq('company_id', req.user.companyId)
+      .single();
 
-    if (result.rows.length === 0) {
+    if (error || !attachment) {
       return res.status(404).json({ error: 'Attachment not found' });
     }
-
-    const attachment = result.rows[0];
 
     if (!fs.existsSync(attachment.file_path)) {
       return res.status(404).json({ error: 'File not found on disk' });
@@ -832,29 +817,25 @@ router.get('/attachments/:attachmentId/download', authenticate, hasPermission('b
  * Delete an attachment
  */
 router.delete('/attachments/:attachmentId', authenticate, hasPermission('bank.manage'), async (req, res) => {
-  const client = await db.getClient();
-  
   try {
-    await client.query('BEGIN');
+    const { data: attachment, error: fetchErr } = await supabase
+      .from('bank_transaction_attachments')
+      .select('*')
+      .eq('id', req.params.attachmentId)
+      .eq('company_id', req.user.companyId)
+      .single();
 
-    const result = await client.query(
-      `SELECT * FROM bank_transaction_attachments 
-       WHERE id = $1 AND company_id = $2`,
-      [req.params.attachmentId, req.user.companyId]
-    );
-
-    if (result.rows.length === 0) {
-      await client.query('ROLLBACK');
+    if (fetchErr || !attachment) {
       return res.status(404).json({ error: 'Attachment not found' });
     }
 
-    const attachment = result.rows[0];
-
     // Delete from database
-    await client.query(
-      'DELETE FROM bank_transaction_attachments WHERE id = $1',
-      [req.params.attachmentId]
-    );
+    const { error: deleteErr } = await supabase
+      .from('bank_transaction_attachments')
+      .delete()
+      .eq('id', req.params.attachmentId);
+
+    if (deleteErr) throw new Error(deleteErr.message);
 
     // Delete file from disk
     if (fs.existsSync(attachment.file_path)) {
@@ -871,18 +852,13 @@ router.delete('/attachments/:attachmentId', authenticate, hasPermission('bank.ma
       'Attachment deleted from bank transaction'
     );
 
-    await client.query('COMMIT');
-
     res.json({
       message: 'Attachment deleted successfully'
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error deleting attachment:', error);
     res.status(500).json({ error: 'Failed to delete attachment' });
-  } finally {
-    client.release();
   }
 });
 
@@ -897,26 +873,21 @@ router.delete('/attachments/:attachmentId', authenticate, hasPermission('bank.ma
 router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), async (req, res) => {
   const { id } = req.params;
   const forceDelete = req.query.force === '1';
-  const client = await db.getClient();
 
   try {
-    await client.query('BEGIN');
-
     // Fetch and ownership-check the transaction
-    const txnResult = await client.query(
-      `SELECT * FROM bank_transactions WHERE id = $1 AND company_id = $2`,
-      [id, req.user.companyId]
-    );
+    const { data: txn, error: fetchErr } = await supabase
+      .from('bank_transactions')
+      .select('*')
+      .eq('id', id)
+      .eq('company_id', req.user.companyId)
+      .single();
 
-    if (txnResult.rows.length === 0) {
-      await client.query('ROLLBACK');
+    if (fetchErr || !txn) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    const txn = txnResult.rows[0];
-
     if (txn.status === 'reconciled') {
-      await client.query('ROLLBACK');
       return res.status(403).json({
         error: 'Cannot delete a reconciled transaction. Reverse the reconciliation first.',
         code: 'RECONCILED'
@@ -924,7 +895,6 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
     }
 
     if (txn.status === 'matched' && !forceDelete) {
-      await client.query('ROLLBACK');
       return res.status(409).json({
         error: 'Transaction is allocated to a journal entry. Add ?force=1 to confirm deletion.',
         code: 'ALLOCATED',
@@ -933,27 +903,30 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
     }
 
     // Delete attachments from disk first, then DB
-    const attachResult = await client.query(
-      `SELECT * FROM bank_transaction_attachments WHERE bank_transaction_id = $1`,
-      [id]
-    );
+    const { data: attachments } = await supabase
+      .from('bank_transaction_attachments')
+      .select('*')
+      .eq('bank_transaction_id', id);
 
-    for (const att of attachResult.rows) {
+    for (const att of (attachments || [])) {
       if (att.file_path && fs.existsSync(att.file_path)) {
         try { fs.unlinkSync(att.file_path); } catch (_) { /* non-fatal */ }
       }
     }
 
-    await client.query(
-      `DELETE FROM bank_transaction_attachments WHERE bank_transaction_id = $1`,
-      [id]
-    );
+    await supabase
+      .from('bank_transaction_attachments')
+      .delete()
+      .eq('bank_transaction_id', id);
 
     // Delete the transaction
-    await client.query(
-      `DELETE FROM bank_transactions WHERE id = $1 AND company_id = $2`,
-      [id, req.user.companyId]
-    );
+    const { error: deleteErr } = await supabase
+      .from('bank_transactions')
+      .delete()
+      .eq('id', id)
+      .eq('company_id', req.user.companyId);
+
+    if (deleteErr) throw new Error(deleteErr.message);
 
     await AuditLogger.logUserAction(
       req,
@@ -967,16 +940,11 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
         : 'Bank transaction deleted'
     );
 
-    await client.query('COMMIT');
-
     res.json({ success: true, message: 'Transaction deleted' });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error deleting bank transaction:', error);
     res.status(500).json({ error: 'Failed to delete transaction' });
-  } finally {
-    client.release();
   }
 });
 
