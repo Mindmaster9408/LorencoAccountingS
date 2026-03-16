@@ -19,21 +19,19 @@ const JournalService = require('../services/journalService');
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Resolve an account ID by code within a company's chart of accounts.
- * Returns null (never throws) so callers can skip GL gracefully.
+ * Resolve an account by code within a company's chart of accounts.
+ * Returns the full account row or null (never throws) so callers can skip GL gracefully.
  */
 async function findAccountByCode(companyId, code) {
   try {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('accounts')
-      .select('id')
+      .select('id,code,name')
       .eq('company_id', companyId)
       .eq('code', code)
       .eq('is_active', true)
-      .limit(1)
-      .single();
-    if (error || !data) return null;
-    return data.id;
+      .maybeSingle();
+    return data || null;
   } catch (_) {
     return null;
   }
@@ -79,7 +77,7 @@ function sumLines(lines) {
 /** Determine effective invoice balance status. */
 function invoiceStatus(totalIncVat, amountPaid) {
   const balance = parseFloat(totalIncVat) - parseFloat(amountPaid);
-  if (balance <= 0)           return 'paid';
+  if (balance <= 0)               return 'paid';
   if (parseFloat(amountPaid) > 0) return 'part_paid';
   return 'unpaid';
 }
@@ -87,66 +85,60 @@ function invoiceStatus(totalIncVat, amountPaid) {
 // ─── Dashboard Stats ──────────────────────────────────────────────────────────
 
 router.get('/stats', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   try {
-    // Total suppliers + active count
-    const { data: suppliersData, error: suppliersErr } = await supabase
-      .from('suppliers')
-      .select('is_active')
-      .eq('company_id', companyId);
-    if (suppliersErr) throw new Error(suppliersErr.message);
-
-    const totalSuppliers = (suppliersData || []).filter(s => s.is_active).length;
-
-    // Invoice totals — exclude cancelled and draft
-    const { data: invoicesData, error: invoicesErr } = await supabase
-      .from('supplier_invoices')
-      .select('total_inc_vat, amount_paid, due_date, status')
-      .eq('company_id', companyId)
-      .not('status', 'in', '("cancelled","draft")');
-    if (invoicesErr) throw new Error(invoicesErr.message);
-
     const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().split('T')[0];
+
+    const [
+      suppliersActive,
+      invoicesResult,
+      paymentsResult,
+    ] = await Promise.all([
+      supabase
+        .from('suppliers')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .eq('is_active', true),
+      supabase
+        .from('supplier_invoices')
+        .select('total_inc_vat, amount_paid, due_date, status')
+        .eq('company_id', companyId)
+        .neq('status', 'cancelled')
+        .neq('status', 'draft'),
+      supabase
+        .from('supplier_payments')
+        .select('amount')
+        .eq('company_id', companyId)
+        .gte('payment_date', startOfMonth)
+        .lt('payment_date', startOfNextMonth),
+    ]);
+
+    // Aggregate invoice stats client-side
     let totalPayable = 0;
     let overdue = 0;
     let overdueCount = 0;
-
-    for (const inv of (invoicesData || [])) {
-      const balance = (parseFloat(inv.total_inc_vat) || 0) - (parseFloat(inv.amount_paid) || 0);
+    for (const inv of invoicesResult.data || []) {
+      const balance = parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid);
       totalPayable += balance;
-      const isOverdue = inv.due_date && inv.due_date < today
-        && inv.status !== 'paid' && inv.status !== 'cancelled';
-      if (isOverdue) {
+      if (inv.due_date < today && inv.status !== 'paid' && inv.status !== 'cancelled') {
         overdue += balance;
-        overdueCount += 1;
+        overdueCount++;
       }
     }
 
-    // Payments this month
-    const { data: paymentsData, error: paymentsErr } = await supabase
-      .from('supplier_payments')
-      .select('amount, payment_date')
-      .eq('company_id', companyId);
-    if (paymentsErr) throw new Error(paymentsErr.message);
-
-    const nowDate = new Date();
-    const monthYear = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
-    let monthPayments = 0;
-    for (const p of (paymentsData || [])) {
-      if (p.payment_date && p.payment_date.startsWith(monthYear)) {
-        monthPayments += parseFloat(p.amount) || 0;
-      }
-    }
+    const monthPayments = (paymentsResult.data || []).reduce(
+      (sum, p) => sum + (parseFloat(p.amount) || 0), 0
+    );
 
     res.json({
-      totalSuppliers,
-      totalPayable:  Math.round(totalPayable * 100) / 100,
-      overdue:       Math.round(overdue * 100) / 100,
+      totalSuppliers: suppliersActive.count || 0,
+      totalPayable:   Math.round(totalPayable * 100) / 100,
+      overdue:        Math.round(overdue * 100) / 100,
       overdueCount,
-      monthPayments: Math.round(monthPayments * 100) / 100,
+      monthPayments:  Math.round(monthPayments * 100) / 100,
     });
   } catch (err) {
     console.error('GET /suppliers/stats error:', err);
@@ -157,56 +149,46 @@ router.get('/stats', async (req, res) => {
 // ─── Suppliers CRUD ───────────────────────────────────────────────────────────
 
 router.get('/', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const { search, status } = req.query;
   try {
-    // Fetch suppliers
-    let suppQuery = supabase
+    // Build supplier query with optional filters
+    let query = supabase
       .from('suppliers')
       .select('*')
-      .eq('company_id', companyId)
-      .order('name');
+      .eq('company_id', companyId);
 
-    if (status === 'active')   suppQuery = suppQuery.eq('is_active', true);
-    if (status === 'inactive') suppQuery = suppQuery.eq('is_active', false);
-
-    const { data: suppliers, error: suppErr } = await suppQuery;
-    if (suppErr) throw new Error(suppErr.message);
-
-    let filtered = suppliers || [];
-
-    // Search filter (name, code, email) — done in JS since Supabase ilike requires OR
+    if (status === 'active')   query = query.eq('is_active', true);
+    if (status === 'inactive') query = query.eq('is_active', false);
     if (search) {
-      const term = search.toLowerCase();
-      filtered = filtered.filter(s =>
-        (s.name  && s.name.toLowerCase().includes(term)) ||
-        (s.code  && s.code.toLowerCase().includes(term)) ||
-        (s.email && s.email.toLowerCase().includes(term))
+      query = query.or(
+        `name.ilike.%${search}%,code.ilike.%${search}%,email.ilike.%${search}%`
       );
     }
+    query = query.order('name');
 
-    // Fetch unpaid balances for all suppliers in this company
-    const { data: invData, error: invErr } = await supabase
+    const { data: suppliers, error: supErr } = await query;
+    if (supErr) throw new Error(supErr.message);
+
+    // Fetch outstanding invoice balances for the company to compute balance_owing per supplier
+    const { data: balanceRows, error: balErr } = await supabase
       .from('supplier_invoices')
-      .select('supplier_id, total_inc_vat, amount_paid, status')
+      .select('supplier_id, total_inc_vat, amount_paid')
       .eq('company_id', companyId)
-      .not('status', 'in', '("paid","cancelled","draft")');
-    if (invErr) throw new Error(invErr.message);
+      .neq('status', 'paid')
+      .neq('status', 'cancelled')
+      .neq('status', 'draft');
+    if (balErr) throw new Error(balErr.message);
 
-    // Build balance map
     const balanceMap = {};
-    for (const inv of (invData || [])) {
-      const sid = inv.supplier_id;
-      if (!balanceMap[sid]) balanceMap[sid] = 0;
-      balanceMap[sid] += (parseFloat(inv.total_inc_vat) || 0) - (parseFloat(inv.amount_paid) || 0);
+    for (const row of balanceRows || []) {
+      const b = parseFloat(row.total_inc_vat) - parseFloat(row.amount_paid);
+      balanceMap[row.supplier_id] = (balanceMap[row.supplier_id] || 0) + b;
     }
 
-    const result = filtered.map(s => ({
+    const result = (suppliers || []).map(s => ({
       ...s,
-      balance_owing: Math.round((balanceMap[s.id] || 0) * 100) / 100,
+      balance_owing: Math.round(((balanceMap[s.id] || 0)) * 100) / 100,
     }));
 
     res.json({ suppliers: result });
@@ -217,9 +199,6 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const {
     code, name, type, contactName, email, phone,
@@ -235,7 +214,7 @@ router.post('/', async (req, res) => {
     if (!supplierCode) {
       const { count, error: countErr } = await supabase
         .from('suppliers')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('company_id', companyId);
       if (countErr) throw new Error(countErr.message);
       const n = (count || 0) + 1;
@@ -266,8 +245,8 @@ router.post('/', async (req, res) => {
       })
       .select()
       .single();
-
     if (insErr) throw new Error(insErr.message);
+
     res.status(201).json({ supplier });
   } catch (err) {
     console.error('POST /suppliers error:', err);
@@ -278,34 +257,31 @@ router.post('/', async (req, res) => {
 // ─── Supplier Invoices ────────────────────────────────────────────────────────
 
 router.get('/invoices', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const { supplierId, status, fromDate, toDate } = req.query;
   try {
     let query = supabase
       .from('supplier_invoices')
       .select('*, suppliers!supplier_id(name, code)')
-      .eq('company_id', companyId)
-      .order('invoice_date', { ascending: false })
-      .order('id', { ascending: false });
+      .eq('company_id', companyId);
 
     if (supplierId) query = query.eq('supplier_id', parseInt(supplierId));
     if (status)     query = query.eq('status', status);
     if (fromDate)   query = query.gte('invoice_date', fromDate);
     if (toDate)     query = query.lte('invoice_date', toDate);
 
+    query = query
+      .order('invoice_date', { ascending: false })
+      .order('id', { ascending: false });
+
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    // Flatten joined supplier fields
-    const invoices = (data || []).map(inv => ({
-      ...inv,
-      supplier_name: inv.suppliers?.name || null,
-      supplier_code: inv.suppliers?.code || null,
-      suppliers: undefined,
-    }));
+    // Flatten nested supplier relation to match original response shape
+    const invoices = (data || []).map(row => {
+      const { suppliers: sup, ...rest } = row;
+      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.code || null };
+    });
 
     res.json({ invoices });
   } catch (err) {
@@ -315,29 +291,27 @@ router.get('/invoices', async (req, res) => {
 });
 
 router.post('/invoices', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const {
     supplierId, invoiceNumber, reference, invoiceDate, dueDate,
     vatInclusive, lines, notes,
   } = req.body;
 
-  if (!supplierId)   return res.status(400).json({ error: 'Supplier is required' });
-  if (!invoiceDate)  return res.status(400).json({ error: 'Invoice date is required' });
+  if (!supplierId)  return res.status(400).json({ error: 'Supplier is required' });
+  if (!invoiceDate) return res.status(400).json({ error: 'Invoice date is required' });
   if (!lines || !lines.length) return res.status(400).json({ error: 'At least one line item is required' });
 
   try {
     // Verify supplier belongs to company
-    const { data: supData, error: supErr } = await supabase
+    const { data: supRow, error: supErr } = await supabase
       .from('suppliers')
       .select('id, name')
       .eq('id', parseInt(supplierId))
       .eq('company_id', companyId)
-      .single();
-    if (supErr || !supData) return res.status(400).json({ error: 'Supplier not found for this company' });
-    const supplierName = supData.name;
+      .maybeSingle();
+    if (supErr) throw new Error(supErr.message);
+    if (!supRow) return res.status(400).json({ error: 'Supplier not found for this company' });
+    const supplierName = supRow.name;
 
     // Calculate line totals
     const processedLines = lines.map((l, i) => {
@@ -366,6 +340,8 @@ router.post('/invoices', async (req, res) => {
       { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 }
     );
 
+    const userId = req.user && req.user.userId ? req.user.userId : null;
+
     // Insert invoice header
     const { data: invoice, error: invErr } = await supabase
       .from('supplier_invoices')
@@ -383,7 +359,7 @@ router.post('/invoices', async (req, res) => {
         amount_paid:         0,
         status:              'unpaid',
         notes:               notes || null,
-        created_by_user_id:  req.user && req.user.userId ? req.user.userId : null,
+        created_by_user_id:  userId,
       })
       .select()
       .single();
@@ -406,33 +382,46 @@ router.post('/invoices', async (req, res) => {
     if (linesErr) throw new Error(linesErr.message);
 
     // ── GL Posting (AP) ───────────────────────────────────────────────────
-    // Attempt to post journal. Skip gracefully if required accounts are absent.
-    const apAccountId = await findAccountByCode(companyId, '2000');
-    if (apAccountId) {
+    // Attempt to post journal atomically with the invoice.
+    // Skip gracefully if required accounts are absent from the company's COA.
+    const apAccount = await findAccountByCode(companyId, '2000');
+    if (apAccount) {
       const glLines = [];
 
       // DR each expense account line
       for (const l of processedLines) {
         if (l.accountId && l.lineSubtotalExVat > 0) {
-          glLines.push({ accountId: l.accountId, debit: l.lineSubtotalExVat, credit: 0,
-            description: l.description || 'Supplier Invoice line' });
+          glLines.push({
+            accountId:   l.accountId,
+            debit:       l.lineSubtotalExVat,
+            credit:      0,
+            description: l.description || 'Supplier Invoice line',
+          });
         }
       }
 
       // DR VAT Input (code 1400) for total VAT if applicable
       if (totals.vatAmount > 0) {
-        const vatInputId = await findAccountByCode(companyId, '1400');
-        if (vatInputId) {
-          glLines.push({ accountId: vatInputId, debit: totals.vatAmount, credit: 0,
-            description: 'VAT Input (Claimable)' });
+        const vatInputAccount = await findAccountByCode(companyId, '1400');
+        if (vatInputAccount) {
+          glLines.push({
+            accountId:   vatInputAccount.id,
+            debit:       totals.vatAmount,
+            credit:      0,
+            description: 'VAT Input (Claimable)',
+          });
         }
       }
 
       // CR Accounts Payable
-      glLines.push({ accountId: apAccountId, debit: 0, credit: totals.totalIncVat,
-        description: `Supplier: ${supplierName}` });
+      glLines.push({
+        accountId:   apAccount.id,
+        debit:       0,
+        credit:      totals.totalIncVat,
+        description: `Supplier: ${supplierName}`,
+      });
 
-      // Only post if we have at least one real DR line
+      // Only post if we have at least one real DR line (debit lines + AP credit)
       const hasDebits = glLines.some(l => l.debit > 0);
       if (hasDebits) {
         const glJournal = await JournalService.createDraftJournal({
@@ -441,53 +430,44 @@ router.post('/invoices', async (req, res) => {
           reference: invoiceNumber || null,
           description: `AP Invoice: ${supplierName}${invoiceNumber ? ' ' + invoiceNumber : ''}`,
           sourceType: 'supplier_invoice',
-          createdByUserId: req.user && req.user.userId ? req.user.userId : null,
+          createdByUserId: userId,
           lines: glLines,
         });
-        await JournalService.postJournal(glJournal.id, companyId,
-          req.user && req.user.userId ? req.user.userId : null);
-
-        // Link journal to invoice
-        const { error: linkErr } = await supabase
+        await JournalService.postJournal(glJournal.id, companyId, userId);
+        const { error: jidErr } = await supabase
           .from('supplier_invoices')
           .update({ journal_id: glJournal.id })
           .eq('id', invoice.id);
-        if (linkErr) throw new Error(linkErr.message);
+        if (jidErr) console.warn(`[Suppliers] Failed to link journal_id to invoice ${invoice.id}:`, jidErr.message);
       }
     } else {
       console.warn(`[Suppliers] AP account (2000) not found for company ${companyId} — GL posting skipped for invoice ${invoice.id}`);
     }
     // ── End GL Posting ────────────────────────────────────────────────────
 
-    // Fetch with lines to return
-    const { data: fullInv, error: fetchInvErr } = await supabase
+    // Fetch full invoice with supplier name for response
+    const { data: fullInv, error: fullErr } = await supabase
       .from('supplier_invoices')
       .select('*, suppliers!supplier_id(name)')
       .eq('id', invoice.id)
       .single();
-    if (fetchInvErr) throw new Error(fetchInvErr.message);
+    if (fullErr) throw new Error(fullErr.message);
 
-    const { data: invLines, error: fetchLinesErr } = await supabase
+    const { data: invLines, error: ilErr } = await supabase
       .from('supplier_invoice_lines')
       .select('*, accounts!account_id(code, name)')
       .eq('invoice_id', invoice.id)
       .order('sort_order');
-    if (fetchLinesErr) throw new Error(fetchLinesErr.message);
+    if (ilErr) throw new Error(ilErr.message);
 
-    const flatLines = (invLines || []).map(l => ({
-      ...l,
-      account_code: l.accounts?.code || null,
-      account_name: l.accounts?.name || null,
-      accounts: undefined,
-    }));
+    const { suppliers: sup, ...invRest } = fullInv;
+    const flatLines = (invLines || []).map(row => {
+      const { accounts: acct, ...lineRest } = row;
+      return { ...lineRest, account_code: acct?.code || null, account_name: acct?.name || null };
+    });
 
     res.status(201).json({
-      invoice: {
-        ...fullInv,
-        supplier_name: fullInv.suppliers?.name || null,
-        suppliers: undefined,
-        lines: flatLines,
-      },
+      invoice: { ...invRest, supplier_name: sup?.name || null, lines: flatLines },
     });
   } catch (err) {
     console.error('POST /suppliers/invoices error:', err);
@@ -496,9 +476,6 @@ router.post('/invoices', async (req, res) => {
 });
 
 router.get('/invoices/:id', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
   try {
@@ -507,32 +484,31 @@ router.get('/invoices/:id', async (req, res) => {
       .select('*, suppliers!supplier_id(name, code, vat_number, email)')
       .eq('id', invoiceId)
       .eq('company_id', companyId)
-      .single();
-    if (invErr || !inv) return res.status(404).json({ error: 'Invoice not found' });
+      .maybeSingle();
+    if (invErr) throw new Error(invErr.message);
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
 
-    const { data: linesData, error: linesErr } = await supabase
+    const { data: linesData, error: lErr } = await supabase
       .from('supplier_invoice_lines')
       .select('*, accounts!account_id(code, name)')
       .eq('invoice_id', invoiceId)
       .order('sort_order');
-    if (linesErr) throw new Error(linesErr.message);
+    if (lErr) throw new Error(lErr.message);
 
-    const lines = (linesData || []).map(l => ({
-      ...l,
-      account_code: l.accounts?.code || null,
-      account_name: l.accounts?.name || null,
-      accounts: undefined,
-    }));
+    const { suppliers: sup, ...invRest } = inv;
+    const flatLines = (linesData || []).map(row => {
+      const { accounts: acct, ...lineRest } = row;
+      return { ...lineRest, account_code: acct?.code || null, account_name: acct?.name || null };
+    });
 
     res.json({
       invoice: {
-        ...inv,
-        supplier_name:  inv.suppliers?.name       || null,
-        supplier_code:  inv.suppliers?.code       || null,
-        supplier_vat:   inv.suppliers?.vat_number || null,
-        supplier_email: inv.suppliers?.email      || null,
-        suppliers: undefined,
-        lines,
+        ...invRest,
+        supplier_name:  sup?.name       || null,
+        supplier_code:  sup?.code       || null,
+        supplier_vat:   sup?.vat_number || null,
+        supplier_email: sup?.email      || null,
+        lines: flatLines,
       },
     });
   } catch (err) {
@@ -542,9 +518,6 @@ router.get('/invoices/:id', async (req, res) => {
 });
 
 router.put('/invoices/:id', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
   const {
@@ -556,13 +529,14 @@ router.put('/invoices/:id', async (req, res) => {
   if (!lines || !lines.length) return res.status(400).json({ error: 'At least one line item is required' });
 
   try {
-    const { data: existing, error: checkErr } = await supabase
+    const { data: existing, error: chkErr } = await supabase
       .from('supplier_invoices')
       .select('id, status, supplier_id')
       .eq('id', invoiceId)
       .eq('company_id', companyId)
-      .single();
-    if (checkErr || !existing) return res.status(404).json({ error: 'Invoice not found' });
+      .maybeSingle();
+    if (chkErr) throw new Error(chkErr.message);
+    if (!existing) return res.status(404).json({ error: 'Invoice not found' });
     if (existing.status === 'paid') return res.status(400).json({ error: 'Cannot edit a paid invoice' });
 
     const processedLines = lines.map((l, i) => {
@@ -570,21 +544,28 @@ router.put('/invoices/:id', async (req, res) => {
         l.quantity, l.unitPrice, l.vatRate != null ? l.vatRate : 15, vatInclusive === true
       );
       return {
-        description: l.description || '', accountId: l.accountId ? parseInt(l.accountId) : null,
-        quantity: parseFloat(l.quantity) || 1, unitPrice: parseFloat(l.unitPrice) || 0,
-        lineSubtotalExVat: subtotalExVat, vatRate: l.vatRate != null ? parseFloat(l.vatRate) : 15,
-        vatAmount, lineTotalIncVat: totalIncVat, sortOrder: i,
+        description:       l.description || '',
+        accountId:         l.accountId ? parseInt(l.accountId) : null,
+        quantity:          parseFloat(l.quantity) || 1,
+        unitPrice:         parseFloat(l.unitPrice) || 0,
+        lineSubtotalExVat: subtotalExVat,
+        vatRate:           l.vatRate != null ? parseFloat(l.vatRate) : 15,
+        vatAmount,
+        lineTotalIncVat:   totalIncVat,
+        sortOrder:         i,
       };
     });
 
     const totals = processedLines.reduce(
-      (acc, l) => ({ subtotalExVat: acc.subtotalExVat + l.lineSubtotalExVat,
-        vatAmount: acc.vatAmount + l.vatAmount, totalIncVat: acc.totalIncVat + l.lineTotalIncVat }),
+      (acc, l) => ({
+        subtotalExVat: acc.subtotalExVat + l.lineSubtotalExVat,
+        vatAmount:     acc.vatAmount     + l.vatAmount,
+        totalIncVat:   acc.totalIncVat   + l.lineTotalIncVat,
+      }),
       { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 }
     );
 
-    // Update invoice header
-    const { error: updateErr } = await supabase
+    const { error: updErr } = await supabase
       .from('supplier_invoices')
       .update({
         supplier_id:     supplierId ? parseInt(supplierId) : existing.supplier_id,
@@ -602,14 +583,14 @@ router.put('/invoices/:id', async (req, res) => {
       })
       .eq('id', invoiceId)
       .eq('company_id', companyId);
-    if (updateErr) throw new Error(updateErr.message);
+    if (updErr) throw new Error(updErr.message);
 
-    // Replace lines
-    const { error: delLinesErr } = await supabase
+    // Replace lines: delete old, insert new
+    const { error: delErr } = await supabase
       .from('supplier_invoice_lines')
       .delete()
       .eq('invoice_id', invoiceId);
-    if (delLinesErr) throw new Error(delLinesErr.message);
+    if (delErr) throw new Error(delErr.message);
 
     const lineInserts = processedLines.map(l => ({
       invoice_id:           invoiceId,
@@ -623,39 +604,31 @@ router.put('/invoices/:id', async (req, res) => {
       line_total_inc_vat:   l.lineTotalIncVat,
       sort_order:           l.sortOrder,
     }));
-    const { error: insLinesErr } = await supabase.from('supplier_invoice_lines').insert(lineInserts);
-    if (insLinesErr) throw new Error(insLinesErr.message);
+    const { error: lInsErr } = await supabase.from('supplier_invoice_lines').insert(lineInserts);
+    if (lInsErr) throw new Error(lInsErr.message);
 
-    // Fetch updated invoice with lines
-    const { data: fullInv, error: fetchInvErr } = await supabase
+    // Fetch updated invoice with lines for response
+    const { data: fullInv, error: fullErr } = await supabase
       .from('supplier_invoices')
       .select('*, suppliers!supplier_id(name)')
       .eq('id', invoiceId)
       .single();
-    if (fetchInvErr) throw new Error(fetchInvErr.message);
+    if (fullErr) throw new Error(fullErr.message);
 
-    const { data: invLines, error: fetchLinesErr } = await supabase
+    const { data: invLines, error: ilErr } = await supabase
       .from('supplier_invoice_lines')
       .select('*, accounts!account_id(code, name)')
       .eq('invoice_id', invoiceId)
       .order('sort_order');
-    if (fetchLinesErr) throw new Error(fetchLinesErr.message);
+    if (ilErr) throw new Error(ilErr.message);
 
-    const flatLines = (invLines || []).map(l => ({
-      ...l,
-      account_code: l.accounts?.code || null,
-      account_name: l.accounts?.name || null,
-      accounts: undefined,
-    }));
-
-    res.json({
-      invoice: {
-        ...fullInv,
-        supplier_name: fullInv.suppliers?.name || null,
-        suppliers: undefined,
-        lines: flatLines,
-      },
+    const { suppliers: sup, ...invRest } = fullInv;
+    const flatLines = (invLines || []).map(row => {
+      const { accounts: acct, ...lineRest } = row;
+      return { ...lineRest, account_code: acct?.code || null, account_name: acct?.name || null };
     });
+
+    res.json({ invoice: { ...invRest, supplier_name: sup?.name || null, lines: flatLines } });
   } catch (err) {
     console.error('PUT /suppliers/invoices/:id error:', err);
     res.status(500).json({ error: err.message });
@@ -665,31 +638,25 @@ router.put('/invoices/:id', async (req, res) => {
 // ─── Purchase Orders ──────────────────────────────────────────────────────────
 
 router.get('/orders', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const { supplierId, status } = req.query;
   try {
     let query = supabase
       .from('purchase_orders')
       .select('*, suppliers!supplier_id(name, code)')
-      .eq('company_id', companyId)
-      .order('po_date', { ascending: false })
-      .order('id', { ascending: false });
+      .eq('company_id', companyId);
 
     if (supplierId) query = query.eq('supplier_id', parseInt(supplierId));
     if (status)     query = query.eq('status', status);
+    query = query.order('po_date', { ascending: false }).order('id', { ascending: false });
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    const orders = (data || []).map(po => ({
-      ...po,
-      supplier_name: po.suppliers?.name || null,
-      supplier_code: po.suppliers?.code || null,
-      suppliers: undefined,
-    }));
+    const orders = (data || []).map(row => {
+      const { suppliers: sup, ...rest } = row;
+      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.code || null };
+    });
 
     res.json({ orders });
   } catch (err) {
@@ -699,9 +666,6 @@ router.get('/orders', async (req, res) => {
 });
 
 router.post('/orders', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const { supplierId, poNumber, poDate, expectedDate, vatInclusive, lines, notes } = req.body;
 
@@ -714,7 +678,7 @@ router.post('/orders', async (req, res) => {
     if (!poNum) {
       const { count, error: countErr } = await supabase
         .from('purchase_orders')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('company_id', companyId);
       if (countErr) throw new Error(countErr.message);
       const n = (count || 0) + 1;
@@ -727,20 +691,27 @@ router.post('/orders', async (req, res) => {
         l.quantity, l.unitPrice, l.vatRate != null ? l.vatRate : 15, vatInclusive === true
       );
       return {
-        description: l.description || '', quantity: parseFloat(l.quantity) || 1,
-        unitPrice: parseFloat(l.unitPrice) || 0, lineSubtotalExVat: subtotalExVat,
-        vatRate: l.vatRate != null ? parseFloat(l.vatRate) : 15,
-        vatAmount, lineTotalIncVat: totalIncVat, sortOrder: i,
+        description:       l.description || '',
+        quantity:          parseFloat(l.quantity) || 1,
+        unitPrice:         parseFloat(l.unitPrice) || 0,
+        lineSubtotalExVat: subtotalExVat,
+        vatRate:           l.vatRate != null ? parseFloat(l.vatRate) : 15,
+        vatAmount,
+        lineTotalIncVat:   totalIncVat,
+        sortOrder:         i,
       };
     });
 
     const totals = processedLines.reduce(
-      (acc, l) => ({ subtotalExVat: acc.subtotalExVat + l.lineSubtotalExVat,
-        vatAmount: acc.vatAmount + l.vatAmount, totalIncVat: acc.totalIncVat + l.lineTotalIncVat }),
+      (acc, l) => ({
+        subtotalExVat: acc.subtotalExVat + l.lineSubtotalExVat,
+        vatAmount:     acc.vatAmount     + l.vatAmount,
+        totalIncVat:   acc.totalIncVat   + l.lineTotalIncVat,
+      }),
       { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 }
     );
 
-    // Insert PO header
+    const userId = req.user && req.user.userId ? req.user.userId : null;
     const { data: po, error: poErr } = await supabase
       .from('purchase_orders')
       .insert({
@@ -755,14 +726,13 @@ router.post('/orders', async (req, res) => {
         total_inc_vat:       totals.totalIncVat,
         status:              'draft',
         notes:               notes || null,
-        created_by_user_id:  req.user && req.user.userId ? req.user.userId : null,
+        created_by_user_id:  userId,
       })
       .select()
       .single();
     if (poErr) throw new Error(poErr.message);
 
-    // Insert PO lines
-    const lineInserts = processedLines.map(l => ({
+    const poLineInserts = processedLines.map(l => ({
       po_id:                po.id,
       description:          l.description,
       quantity:             l.quantity,
@@ -773,8 +743,8 @@ router.post('/orders', async (req, res) => {
       line_total_inc_vat:   l.lineTotalIncVat,
       sort_order:           l.sortOrder,
     }));
-    const { error: linesErr } = await supabase.from('purchase_order_lines').insert(lineInserts);
-    if (linesErr) throw new Error(linesErr.message);
+    const { error: plErr } = await supabase.from('purchase_order_lines').insert(poLineInserts);
+    if (plErr) throw new Error(plErr.message);
 
     res.status(201).json({ order: po });
   } catch (err) {
@@ -784,9 +754,6 @@ router.post('/orders', async (req, res) => {
 });
 
 router.get('/orders/:id', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const poId = parseInt(req.params.id);
   try {
@@ -795,24 +762,19 @@ router.get('/orders/:id', async (req, res) => {
       .select('*, suppliers!supplier_id(name)')
       .eq('id', poId)
       .eq('company_id', companyId)
-      .single();
-    if (poErr || !po) return res.status(404).json({ error: 'Purchase order not found' });
+      .maybeSingle();
+    if (poErr) throw new Error(poErr.message);
+    if (!po) return res.status(404).json({ error: 'Purchase order not found' });
 
-    const { data: linesData, error: linesErr } = await supabase
+    const { data: linesData, error: lErr } = await supabase
       .from('purchase_order_lines')
       .select('*')
       .eq('po_id', poId)
       .order('sort_order');
-    if (linesErr) throw new Error(linesErr.message);
+    if (lErr) throw new Error(lErr.message);
 
-    res.json({
-      order: {
-        ...po,
-        supplier_name: po.suppliers?.name || null,
-        suppliers: undefined,
-        lines: linesData || [],
-      },
-    });
+    const { suppliers: sup, ...poRest } = po;
+    res.json({ order: { ...poRest, supplier_name: sup?.name || null, lines: linesData || [] } });
   } catch (err) {
     console.error('GET /suppliers/orders/:id error:', err);
     res.status(500).json({ error: err.message });
@@ -820,24 +782,24 @@ router.get('/orders/:id', async (req, res) => {
 });
 
 router.put('/orders/:id/status', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const poId = parseInt(req.params.id);
   const { status } = req.body;
   const allowed = ['draft', 'approved', 'sent', 'received', 'cancelled'];
-  if (!allowed.includes(status)) return res.status(400).json({ error: `Status must be one of: ${allowed.join(', ')}` });
+  if (!allowed.includes(status)) {
+    return res.status(400).json({ error: `Status must be one of: ${allowed.join(', ')}` });
+  }
 
   try {
-    const { data: po, error: updateErr } = await supabase
+    const { data: po, error } = await supabase
       .from('purchase_orders')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', poId)
       .eq('company_id', companyId)
       .select()
-      .single();
-    if (updateErr || !po) return res.status(404).json({ error: 'Purchase order not found' });
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!po) return res.status(404).json({ error: 'Purchase order not found' });
     res.json({ order: po });
   } catch (err) {
     console.error('PUT /suppliers/orders/:id/status error:', err);
@@ -848,32 +810,26 @@ router.put('/orders/:id/status', async (req, res) => {
 // ─── Supplier Payments ────────────────────────────────────────────────────────
 
 router.get('/payments', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   const { supplierId, fromDate, toDate } = req.query;
   try {
     let query = supabase
       .from('supplier_payments')
       .select('*, suppliers!supplier_id(name, code)')
-      .eq('company_id', companyId)
-      .order('payment_date', { ascending: false })
-      .order('id', { ascending: false });
+      .eq('company_id', companyId);
 
     if (supplierId) query = query.eq('supplier_id', parseInt(supplierId));
     if (fromDate)   query = query.gte('payment_date', fromDate);
     if (toDate)     query = query.lte('payment_date', toDate);
+    query = query.order('payment_date', { ascending: false }).order('id', { ascending: false });
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    const payments = (data || []).map(p => ({
-      ...p,
-      supplier_name: p.suppliers?.name || null,
-      supplier_code: p.suppliers?.code || null,
-      suppliers: undefined,
-    }));
+    const payments = (data || []).map(row => {
+      const { suppliers: sup, ...rest } = row;
+      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.code || null };
+    });
 
     res.json({ payments });
   } catch (err) {
@@ -883,39 +839,42 @@ router.get('/payments', async (req, res) => {
 });
 
 router.post('/payments', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
-  const { supplierId, paymentDate, paymentMethod, reference, amount, notes, allocations, bankLedgerAccountId } = req.body;
+  const {
+    supplierId, paymentDate, paymentMethod, reference, amount, notes,
+    allocations, bankLedgerAccountId,
+  } = req.body;
 
-  if (!supplierId)   return res.status(400).json({ error: 'Supplier is required' });
-  if (!paymentDate)  return res.status(400).json({ error: 'Payment date is required' });
+  if (!supplierId)  return res.status(400).json({ error: 'Supplier is required' });
+  if (!paymentDate) return res.status(400).json({ error: 'Payment date is required' });
   if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'Amount must be greater than 0' });
 
   try {
     // Verify supplier belongs to company
-    const { data: supData, error: supErr } = await supabase
+    const { data: supRow, error: supErr } = await supabase
       .from('suppliers')
       .select('id')
       .eq('id', parseInt(supplierId))
       .eq('company_id', companyId)
-      .single();
-    if (supErr || !supData) return res.status(400).json({ error: 'Supplier not found for this company' });
+      .maybeSingle();
+    if (supErr) throw new Error(supErr.message);
+    if (!supRow) return res.status(400).json({ error: 'Supplier not found for this company' });
+
+    const userId = req.user && req.user.userId ? req.user.userId : null;
 
     // Insert payment
     const { data: payment, error: payErr } = await supabase
       .from('supplier_payments')
       .insert({
-        company_id:            companyId,
-        supplier_id:           parseInt(supplierId),
-        payment_date:          paymentDate,
-        payment_method:        paymentMethod || 'bank_transfer',
-        reference:             reference || null,
-        amount:                parseFloat(amount),
-        notes:                 notes || null,
+        company_id:             companyId,
+        supplier_id:            parseInt(supplierId),
+        payment_date:           paymentDate,
+        payment_method:         paymentMethod || 'bank_transfer',
+        reference:              reference || null,
+        amount:                 parseFloat(amount),
+        notes:                  notes || null,
         bank_ledger_account_id: bankLedgerAccountId ? parseInt(bankLedgerAccountId) : null,
-        created_by_user_id:    req.user && req.user.userId ? req.user.userId : null,
+        created_by_user_id:     userId,
       })
       .select()
       .single();
@@ -926,7 +885,6 @@ router.post('/payments', async (req, res) => {
       for (const alloc of allocations) {
         if (!alloc.invoiceId || !alloc.amount) continue;
 
-        // Insert allocation record
         const { error: allocErr } = await supabase
           .from('supplier_payment_allocations')
           .insert({
@@ -936,61 +894,64 @@ router.post('/payments', async (req, res) => {
           });
         if (allocErr) throw new Error(allocErr.message);
 
-        // Fetch current invoice amounts
-        const { data: inv, error: invFetchErr } = await supabase
+        // Fetch current invoice totals to recompute status
+        const { data: invRow, error: invFetchErr } = await supabase
           .from('supplier_invoices')
           .select('total_inc_vat, amount_paid')
           .eq('id', parseInt(alloc.invoiceId))
           .eq('company_id', companyId)
-          .single();
-        if (invFetchErr || !inv) throw new Error('Invoice not found for allocation');
-
-        const newAmountPaid = (parseFloat(inv.amount_paid) || 0) + parseFloat(alloc.amount);
-        const newStatus = newAmountPaid >= parseFloat(inv.total_inc_vat)
-          ? 'paid'
-          : newAmountPaid > 0 ? 'part_paid' : undefined;
-
-        const updatePayload = {
-          amount_paid: newAmountPaid,
-          updated_at:  new Date().toISOString(),
-        };
-        if (newStatus) updatePayload.status = newStatus;
-
-        const { error: invUpdateErr } = await supabase
-          .from('supplier_invoices')
-          .update(updatePayload)
-          .eq('id', parseInt(alloc.invoiceId))
-          .eq('company_id', companyId);
-        if (invUpdateErr) throw new Error(invUpdateErr.message);
+          .maybeSingle();
+        if (invFetchErr) throw new Error(invFetchErr.message);
+        if (invRow) {
+          const newAmountPaid = parseFloat(invRow.amount_paid) + parseFloat(alloc.amount);
+          const newStatus = invoiceStatus(invRow.total_inc_vat, newAmountPaid);
+          const { error: invUpdErr } = await supabase
+            .from('supplier_invoices')
+            .update({
+              amount_paid: newAmountPaid,
+              status:      newStatus,
+              updated_at:  new Date().toISOString(),
+            })
+            .eq('id', parseInt(alloc.invoiceId))
+            .eq('company_id', companyId);
+          if (invUpdErr) throw new Error(invUpdErr.message);
+        }
       }
     }
 
     // ── GL Posting (Payment) ──────────────────────────────────────────────
     // DR AP (2000) / CR Bank ledger account — both sides required to post.
     if (bankLedgerAccountId) {
-      const apAccountId = await findAccountByCode(companyId, '2000');
-      if (apAccountId) {
+      const apAccount = await findAccountByCode(companyId, '2000');
+      if (apAccount) {
         const glJournal = await JournalService.createDraftJournal({
           companyId,
           date: paymentDate,
           reference: reference || null,
           description: `AP Payment: ${paymentMethod || 'bank_transfer'}`,
           sourceType: 'supplier_payment',
-          createdByUserId: req.user && req.user.userId ? req.user.userId : null,
+          createdByUserId: userId,
           lines: [
-            { accountId: apAccountId,                  debit: parseFloat(amount), credit: 0, description: 'Accounts Payable cleared' },
-            { accountId: parseInt(bankLedgerAccountId), debit: 0, credit: parseFloat(amount), description: 'Bank payment out' },
+            {
+              accountId:   apAccount.id,
+              debit:       parseFloat(amount),
+              credit:      0,
+              description: 'Accounts Payable cleared',
+            },
+            {
+              accountId:   parseInt(bankLedgerAccountId),
+              debit:       0,
+              credit:      parseFloat(amount),
+              description: 'Bank payment out',
+            },
           ],
         });
-        await JournalService.postJournal(glJournal.id, companyId,
-          req.user && req.user.userId ? req.user.userId : null);
-
-        // Link journal to payment
-        const { error: linkErr } = await supabase
+        await JournalService.postJournal(glJournal.id, companyId, userId);
+        const { error: jidErr } = await supabase
           .from('supplier_payments')
           .update({ journal_id: glJournal.id })
           .eq('id', payment.id);
-        if (linkErr) throw new Error(linkErr.message);
+        if (jidErr) console.warn(`[Suppliers] Failed to link journal_id to payment ${payment.id}:`, jidErr.message);
       } else {
         console.warn(`[Suppliers] AP account (2000) not found for company ${companyId} — GL posting skipped for payment ${payment.id}`);
       }
@@ -1007,62 +968,67 @@ router.post('/payments', async (req, res) => {
 // ─── Supplier Aging Report ────────────────────────────────────────────────────
 
 router.get('/aging', async (req, res) => {
-
-  if (!supabase) return res.status(503).json({ error: "Database not available" });
-
   const companyId = req.companyId;
   try {
-    // Unpaid / part-paid invoices — fetch with supplier info
-    const { data: rows, error: rowsErr } = await supabase
+    // Fetch unpaid / part-paid invoices with supplier details
+    const { data: rows, error } = await supabase
       .from('supplier_invoices')
-      .select('id, invoice_number, invoice_date, due_date, total_inc_vat, amount_paid, status, supplier_id, suppliers!supplier_id(name, code)')
+      .select('id, invoice_number, invoice_date, due_date, total_inc_vat, amount_paid, supplier_id, suppliers!supplier_id(id, name, code)')
       .eq('company_id', companyId)
-      .not('status', 'in', '("paid","cancelled","draft")');
-    if (rowsErr) throw new Error(rowsErr.message);
+      .neq('status', 'paid')
+      .neq('status', 'cancelled')
+      .neq('status', 'draft')
+      .order('due_date');
+    if (error) throw new Error(error.message);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Group by supplier and bucket
+    // Group by supplier and bucket into aging periods
     const supplierMap = {};
-    for (const row of (rows || [])) {
-      const outstanding = (parseFloat(row.total_inc_vat) || 0) - (parseFloat(row.amount_paid) || 0);
-      if (outstanding <= 0) continue; // skip fully settled
+    for (const row of rows || []) {
+      const outstanding = parseFloat(row.total_inc_vat) - parseFloat(row.amount_paid);
+      if (outstanding <= 0) continue; // skip fully-covered invoices
 
-      const sid = row.supplier_id;
+      const sup = row.suppliers;
+      if (!sup) continue; // skip invoices with no linked supplier
+
+      const sid = sup.id;
       if (!supplierMap[sid]) {
         supplierMap[sid] = {
           supplier_id:   sid,
-          supplier_name: row.suppliers?.name || null,
-          supplier_code: row.suppliers?.code || null,
-          current: 0, days30: 0, days60: 0, days90: 0, days90plus: 0, total: 0,
+          supplier_name: sup.name,
+          supplier_code: sup.code,
+          current:    0,
+          days30:     0,
+          days60:     0,
+          days90:     0,
+          days90plus: 0,
+          total:      0,
         };
       }
 
-      let daysOverdue = 0;
-      if (row.due_date) {
-        const dueDate = new Date(row.due_date);
-        dueDate.setHours(0, 0, 0, 0);
-        daysOverdue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
-      }
+      const dueDate = new Date(row.due_date);
+      dueDate.setHours(0, 0, 0, 0);
+      const daysOverdue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
 
       supplierMap[sid].total += outstanding;
-      if (daysOverdue <= 0)        supplierMap[sid].current   += outstanding;
-      else if (daysOverdue <= 30)  supplierMap[sid].days30    += outstanding;
-      else if (daysOverdue <= 60)  supplierMap[sid].days60    += outstanding;
-      else if (daysOverdue <= 90)  supplierMap[sid].days90    += outstanding;
+      if (daysOverdue <= 0)        supplierMap[sid].current    += outstanding;
+      else if (daysOverdue <= 30)  supplierMap[sid].days30     += outstanding;
+      else if (daysOverdue <= 60)  supplierMap[sid].days60     += outstanding;
+      else if (daysOverdue <= 90)  supplierMap[sid].days90     += outstanding;
       else                         supplierMap[sid].days90plus += outstanding;
     }
 
     // Round to 2dp
     const aging = Object.values(supplierMap).map(s => ({
       ...s,
-      current:    Math.round(s.current * 100) / 100,
-      days30:     Math.round(s.days30 * 100) / 100,
-      days60:     Math.round(s.days60 * 100) / 100,
-      days90:     Math.round(s.days90 * 100) / 100,
+      current:    Math.round(s.current    * 100) / 100,
+      days30:     Math.round(s.days30     * 100) / 100,
+      days60:     Math.round(s.days60     * 100) / 100,
+      days90:     Math.round(s.days90     * 100) / 100,
       days90plus: Math.round(s.days90plus * 100) / 100,
-      total:      Math.round(s.total * 100) / 100,
+      total:      Math.round(s.total      * 100) / 100,
     }));
 
     res.json({ aging });
@@ -1079,27 +1045,33 @@ router.get('/:id', async (req, res) => {
   const supplierId = parseInt(req.params.id);
   if (isNaN(supplierId)) return res.status(400).json({ error: 'Invalid supplier ID' });
   try {
-    const { data: supplier, error: suppErr } = await supabase
+    const { data: supplier, error: supErr } = await supabase
       .from('suppliers')
       .select('*')
       .eq('id', supplierId)
       .eq('company_id', companyId)
-      .single();
-    if (suppErr || !supplier) return res.status(404).json({ error: 'Supplier not found' });
+      .maybeSingle();
+    if (supErr) throw new Error(supErr.message);
+    if (!supplier) return res.status(404).json({ error: 'Supplier not found' });
 
-    // Calculate balance_owing
-    const { data: invData, error: invErr } = await supabase
+    // Compute balance_owing: sum of (total_inc_vat - amount_paid) for unpaid/part-paid invoices
+    const { data: invRows, error: invErr } = await supabase
       .from('supplier_invoices')
       .select('total_inc_vat, amount_paid')
-      .eq('supplier_id', supplierId)
       .eq('company_id', companyId)
-      .not('status', 'in', '("paid","cancelled","draft")');
+      .eq('supplier_id', supplierId)
+      .neq('status', 'paid')
+      .neq('status', 'cancelled')
+      .neq('status', 'draft');
     if (invErr) throw new Error(invErr.message);
 
-    const balance_owing = (invData || []).reduce((sum, inv) =>
-      sum + (parseFloat(inv.total_inc_vat) || 0) - (parseFloat(inv.amount_paid) || 0), 0);
+    const balance_owing = Math.round(
+      (invRows || []).reduce(
+        (sum, r) => sum + (parseFloat(r.total_inc_vat) - parseFloat(r.amount_paid)), 0
+      ) * 100
+    ) / 100;
 
-    res.json({ supplier: { ...supplier, balance_owing: Math.round(balance_owing * 100) / 100 } });
+    res.json({ supplier: { ...supplier, balance_owing } });
   } catch (err) {
     console.error('GET /suppliers/:id error:', err);
     res.status(500).json({ error: err.message });
@@ -1119,16 +1091,17 @@ router.put('/:id', async (req, res) => {
   if (!name || !name.trim()) return res.status(400).json({ error: 'Supplier name is required' });
 
   try {
-    // Verify exists
-    const { data: existing, error: checkErr } = await supabase
+    // Check supplier exists for this company
+    const { data: existing, error: chkErr } = await supabase
       .from('suppliers')
       .select('id')
       .eq('id', supplierId)
       .eq('company_id', companyId)
-      .single();
-    if (checkErr || !existing) return res.status(404).json({ error: 'Supplier not found' });
+      .maybeSingle();
+    if (chkErr) throw new Error(chkErr.message);
+    if (!existing) return res.status(404).json({ error: 'Supplier not found' });
 
-    const { data: supplier, error: updateErr } = await supabase
+    const { data: supplier, error: updErr } = await supabase
       .from('suppliers')
       .update({
         name:                 name.trim(),
@@ -1154,7 +1127,8 @@ router.put('/:id', async (req, res) => {
       .eq('company_id', companyId)
       .select()
       .single();
-    if (updateErr) throw new Error(updateErr.message);
+    if (updErr) throw new Error(updErr.message);
+
     res.json({ supplier });
   } catch (err) {
     console.error('PUT /suppliers/:id error:', err);
