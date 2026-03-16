@@ -2406,7 +2406,7 @@ Click OK to simulate uploading a file.`;
                         'Authorization': 'Bearer ' + token,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ bankAccountId, transactions })
+                    body: JSON.stringify({ bankAccountId, transactions, importSource: 'pdf' })
                 });
 
                 const data = await resp.json();
@@ -2870,7 +2870,7 @@ Click OK to simulate uploading a file.`;
                 const res = await fetch('/api/accounting/bank/import', {
                     method: 'POST',
                     headers: getAuthHeaders(),
-                    body: JSON.stringify({ bankAccountId: selectedBankAccountId, transactions })
+                    body: JSON.stringify({ bankAccountId: selectedBankAccountId, transactions, importSource: 'csv' })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
@@ -3327,42 +3327,86 @@ Click OK to simulate uploading a file.`;
             }
         }
         
-        function toggleAISuggestion(id, button) {
+        async function toggleAISuggestion(id, button) {
             const row = document.getElementById('aiRow' + id);
-            
+
             if (!row) {
                 alert('Error: AI suggestion row not found. Please refresh the page.');
                 return;
             }
-            
+
             const isVisible = row.classList.contains('show');
-            
+
             // Close all other AI rows
             document.querySelectorAll('.ai-suggestion-row').forEach(r => r.classList.remove('show'));
             document.querySelectorAll('.ai-btn').forEach(btn => btn.classList.remove('active'));
-            
+
             if (!isVisible) {
-                // Get transaction data and run Sean AI analysis
                 const txnData = getTransactionData(id);
                 if (txnData) {
-                    const suggestion = seanAnalyzeTransaction(txnData);
-                    updateAISuggestionPanel(id, row, txnData, suggestion);
+                    // Show local suggestion immediately (instant)
+                    const localSuggestion = seanAnalyzeTransaction(txnData);
+                    updateAISuggestionPanel(id, row, txnData, localSuggestion, null);
+
+                    // Async: fetch global pattern + Codex from SEAN learning API
+                    const bankName = txnData.bankName || null;
+                    const qs = `?description=${encodeURIComponent(txnData.description)}${bankName ? '&bankName=' + encodeURIComponent(bankName) : ''}`;
+                    try {
+                        const seanToken = localStorage.getItem('token') || localStorage.getItem('eco_token');
+                        const resp = await fetch(`/api/sean/bank-learning/suggest${qs}`, {
+                            headers: seanToken ? { 'Authorization': 'Bearer ' + seanToken } : {}
+                        });
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            if (data.suggestion) {
+                                // Re-render panel with SEAN global pattern data, keeping local as fallback
+                                updateAISuggestionPanel(id, row, txnData, localSuggestion, data.suggestion);
+                            }
+                        }
+                    } catch (_) { /* non-blocking — local suggestion already shown */ }
                 }
-                
+
                 row.classList.add('show');
                 button.classList.add('active');
             }
         }
         
-        function updateAISuggestionPanel(id, row, txnData, suggestion) {
+        function updateAISuggestionPanel(id, row, txnData, suggestion, globalSuggestion) {
             const content = row.querySelector('.ai-suggestion-content');
             if (!content) return;
-            
-            const confClass = suggestion.confidence >= 80 ? 'high' : suggestion.confidence >= 60 ? 'medium' : 'low';
+
+            // If a high-confidence global SEAN pattern exists, prefer it
+            const activeSuggestion = (globalSuggestion && globalSuggestion.confidence >= suggestion.confidence)
+                ? { ...suggestion, accountCode: globalSuggestion.accountCode, accountName: globalSuggestion.accountName,
+                    reason: globalSuggestion.reason, confidence: globalSuggestion.confidence, source: globalSuggestion.source }
+                : suggestion;
+
+            // Store globally so acceptAISuggestion can use it
+            window._seanActiveSuggestion = window._seanActiveSuggestion || {};
+            window._seanActiveSuggestion[id] = activeSuggestion;
+
+            const confClass = activeSuggestion.confidence >= 80 ? 'high' : activeSuggestion.confidence >= 60 ? 'medium' : 'low';
             const confColor = confClass === 'high' ? '#27ae60' : confClass === 'medium' ? '#f39c12' : '#e74c3c';
-            const learnedBadge = suggestion.source === 'learned' ? ' <span style="background:#9b59b6;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">Learned</span>' : '';
-            
-            // Get all accounts for the override dropdowns  
+            const sourceBadge = activeSuggestion.source === 'learned' ? ' <span style="background:#9b59b6;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">Learned</span>'
+                : activeSuggestion.source === 'sean_global_pattern' ? ' <span style="background:#10b981;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">SEAN Global</span>'
+                : activeSuggestion.source === 'sean_merchant_pattern' ? ' <span style="background:#6366f1;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">SEAN Merchant</span>'
+                : '';
+
+            // Codex articles from global suggestion
+            let codexHtml = '';
+            if (globalSuggestion && globalSuggestion.codexArticles && globalSuggestion.codexArticles.length) {
+                codexHtml = `<div style="margin-top:12px;border-top:1px solid var(--border-color,#e5e7eb);padding-top:10px;">
+                    <div style="font-weight:600;font-size:0.82rem;margin-bottom:8px;color:#10b981;">📚 SEAN Codex — Relevant Tax Rules</div>
+                    ${globalSuggestion.codexArticles.map(a => `
+                        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px;margin-bottom:8px;font-size:0.82rem;">
+                            <div style="font-weight:600;margin-bottom:3px;">${a.title}${a.law_reference ? ` <span style="color:#6b7280;font-weight:400;">(${a.law_reference})</span>` : ''}</div>
+                            <div style="color:#374151;margin-bottom:4px;">${a.explanation}</div>
+                            ${a.example ? `<div style="color:#6b7280;font-style:italic;">Example: ${a.example}</div>` : ''}
+                        </div>`).join('')}
+                </div>`;
+            }
+
+            // Get all accounts for the override dropdowns
             const accounts = window._allLedgerAccounts || [];
             const accountsByCategory = {};
             accounts.forEach(a => {
@@ -3370,32 +3414,33 @@ Click OK to simulate uploading a file.`;
                 if (!accountsByCategory[cat]) accountsByCategory[cat] = [];
                 accountsByCategory[cat].push(a);
             });
-            
+
             let accountOptions = '';
             for (const [cat, accts] of Object.entries(accountsByCategory)) {
                 accountOptions += `<optgroup label="${cat.charAt(0).toUpperCase() + cat.slice(1)}">`;
                 accts.forEach(a => {
-                    const selected = a.code === suggestion.accountCode ? ' selected' : '';
+                    const selected = a.code === activeSuggestion.accountCode ? ' selected' : '';
                     accountOptions += `<option value="${a.code}"${selected}>${a.code} - ${a.name}</option>`;
                 });
                 accountOptions += '</optgroup>';
             }
-            
+
             content.innerHTML = `
-                <div class="ai-suggestion-header">🤖 Sean AI Analysis</div>
-                
+                <div class="ai-suggestion-header">🤖 SEAN AI Analysis</div>
+
                 <div class="ai-decision">
-                    <div class="ai-decision-title">Sean's Decision${learnedBadge}</div>
+                    <div class="ai-decision-title">SEAN's Decision${sourceBadge}</div>
                     <div class="ai-decision-value">
                         <strong>Transaction:</strong> ${txnData.description}<br>
                         <strong>Amount:</strong> R ${Math.abs(txnData.amount).toLocaleString('en-ZA', {minimumFractionDigits: 2})}<br>
-                        <strong>Transaction Type:</strong> ${suggestion.type.charAt(0).toUpperCase() + suggestion.type.slice(1)} Payment<br>
-                        <strong>Account:</strong> ${suggestion.accountName}<br>
-                        <strong>Reason:</strong> ${suggestion.reason}
+                        <strong>Transaction Type:</strong> ${(activeSuggestion.type || 'account').charAt(0).toUpperCase() + (activeSuggestion.type || 'account').slice(1)} Payment<br>
+                        <strong>Account:</strong> ${activeSuggestion.accountName}<br>
+                        <strong>Reason:</strong> ${activeSuggestion.reason}
                     </div>
                     <div style="margin-top: 8px;">
-                        <span class="ai-confidence" style="background:${confColor};">${suggestion.confidence}% Confidence</span>
+                        <span class="ai-confidence" style="background:${confColor};">${activeSuggestion.confidence}% Confidence</span>
                     </div>
+                    ${codexHtml}
                 </div>
                 
                 <div style="margin: 12px 0; display: flex; gap: 8px;">
@@ -3439,8 +3484,11 @@ Click OK to simulate uploading a file.`;
         function acceptAISuggestion(id) {
             const txnData = getTransactionData(id);
             if (!txnData) return;
-            
-            const suggestion = seanAnalyzeTransaction(txnData);
+
+            // Use SEAN global suggestion if available, fall back to local
+            const suggestion = (window._seanActiveSuggestion && window._seanActiveSuggestion[id])
+                ? window._seanActiveSuggestion[id]
+                : seanAnalyzeTransaction(txnData);
             
             // Apply the suggestion to the transaction's allocation dropdowns
             applyAllocationToRow(id, suggestion.type, suggestion.accountCode);

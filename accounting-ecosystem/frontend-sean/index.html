@@ -266,7 +266,7 @@
         <button class="nav-tab" data-tab="chat" onclick="switchTab('chat')">💬 Chat</button>
         <button class="nav-tab" data-tab="transactions" onclick="switchTab('transactions')">🏦 Transactions</button>
         <button class="nav-tab" data-tab="calculator" onclick="switchTab('calculator')">🧮 Calculator</button>
-        <button class="nav-tab" data-tab="knowledge" onclick="switchTab('knowledge')">📚 Knowledge Base</button>
+        <button class="nav-tab" data-tab="knowledge" onclick="switchTab('knowledge')">📚 Codex</button>
         <button class="nav-tab" data-tab="categories" onclick="switchTab('categories')">🏷️ Categories</button>
     </div>
 
@@ -317,8 +317,55 @@
 
         <!-- ═══════ TRANSACTIONS TAB ═══════ -->
         <div id="tab-transactions" class="tab-content">
-            <div class="card">
-                <h3>🏦 Bank Transactions</h3>
+
+            <!-- Learning Sources layout: left panel + right content -->
+            <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start;">
+
+                <!-- ── Left: Learning Sources panel ── -->
+                <div class="card" style="padding:12px;">
+                    <h4 style="margin:0 0 12px;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);">Learning Sources</h4>
+                    <div id="learningSourcesList" style="display:flex;flex-direction:column;gap:6px;">
+                        <div style="color:var(--text-muted);font-size:0.82rem;">Loading apps…</div>
+                    </div>
+                    <hr style="margin:12px 0;border-color:var(--border);">
+                    <div style="font-size:0.78rem;color:var(--text-muted);">
+                        <div id="learnStatsTotal" style="margin-bottom:4px;">— events</div>
+                        <div id="learnStatsPatterns" style="margin-bottom:4px;">— patterns</div>
+                        <div id="learnStatsProposals">— pending proposals</div>
+                    </div>
+                </div>
+
+                <!-- ── Right: Learning patterns for selected app ── -->
+                <div>
+                    <div class="card" style="margin-bottom:16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                            <h3 style="margin:0;" id="learningPanelTitle">🧠 Bank Allocation Patterns</h3>
+                            <div style="display:flex;gap:8px;">
+                                <select id="patternStatusFilter" onchange="loadLearningPatterns()" style="font-size:0.82rem;padding:4px 8px;">
+                                    <option value="">All statuses</option>
+                                    <option value="candidate">Candidate</option>
+                                    <option value="proposed">Proposed</option>
+                                    <option value="approved">Approved</option>
+                                    <option value="rejected">Rejected</option>
+                                </select>
+                                <button class="btn btn-outline btn-sm" onclick="loadLearningPatterns()">🔄 Refresh</button>
+                            </div>
+                        </div>
+                        <div id="learningPatternsList"><div style="color:var(--text-muted);font-size:0.9rem;">Select a learning source to view patterns.</div></div>
+                    </div>
+
+                    <!-- Pending proposals for Super Admin -->
+                    <div class="card" id="proposalsCard" style="display:none;">
+                        <h3 style="margin:0 0 12px;">🔍 Pending Proposals — Super Admin Review</h3>
+                        <div id="proposalsList"><div style="color:var(--text-muted);font-size:0.9rem;">Loading proposals…</div></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Legacy: SEAN transaction store (kept for backward compat) -->
+            <div class="card" style="margin-top:16px;">
+                <h3>🏦 SEAN Transaction Store</h3>
                 <div class="filters">
                     <button class="filter-btn active" onclick="filterTxns('all', this)">All</button>
                     <button class="filter-btn" onclick="filterTxns('unallocated', this)">⏳ Pending</button>
@@ -380,15 +427,15 @@
             </div>
         </div>
 
-        <!-- ═══════ KNOWLEDGE BASE TAB ═══════ -->
+        <!-- ═══════ CODEX TAB ═══════ -->
         <div id="tab-knowledge" class="tab-content">
             <div class="card">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 style="margin:0;">📚 Knowledge Base (Codex)</h3>
+                    <h3 style="margin:0;">📚 SEAN Codex</h3>
                     <button class="btn btn-accent btn-sm" onclick="promptTeach()">+ Teach SEAN</button>
                 </div>
                 <div class="form-group" style="margin-bottom:16px;">
-                    <input type="text" id="kbSearch" placeholder="Search knowledge base..." onkeydown="if(event.key==='Enter')searchKB()">
+                    <input type="text" id="kbSearch" placeholder="Search codex..." onkeydown="if(event.key==='Enter')searchKB()">
                 </div>
                 <div id="kbItems">Loading...</div>
             </div>
@@ -549,7 +596,7 @@ function switchTab(tabId) {
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === `tab-${tabId}`));
     if (tabId === 'dashboard') loadDashboard();
-    if (tabId === 'transactions') loadTransactions();
+    if (tabId === 'transactions') { loadTransactions(); loadEcosystemApps(); }
     if (tabId === 'knowledge') loadKnowledge();
     if (tabId === 'categories') loadCategories();
 }
@@ -563,8 +610,8 @@ async function loadDashboard() {
         document.getElementById('statsGrid').innerHTML = `
             <div class="stat-card"><div class="stat-icon">🏦</div><div class="stat-value">${stats.transactions?.total || 0}</div><div class="stat-label">Transactions</div></div>
             <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value">${stats.transactions?.allocationRate || 0}%</div><div class="stat-label">Auto-Allocated</div></div>
-            <div class="stat-card"><div class="stat-icon">🌐</div><div class="stat-value">${stats.globalPatterns || 0}</div><div class="stat-label">Global Patterns</div></div>
-            <div class="stat-card"><div class="stat-icon">📚</div><div class="stat-value">${stats.knowledgeBase?.totalItems || 0}</div><div class="stat-label">Knowledge Items</div></div>
+            <div class="stat-card"><div class="stat-icon">🌐</div><div class="stat-value" id="dashGlobalPatterns">${stats.globalPatterns || 0}</div><div class="stat-label">Global Patterns</div></div>
+            <div class="stat-card"><div class="stat-icon">📚</div><div class="stat-value">${stats.knowledgeBase?.totalItems || 0}</div><div class="stat-label">Codex Items</div></div>
             <div class="stat-card"><div class="stat-icon">📐</div><div class="stat-value">${stats.rules?.companyRules || 0}</div><div class="stat-label">Company Rules</div></div>
         `;
         // Recent activity
@@ -579,6 +626,12 @@ async function loadDashboard() {
             </div>`;
         }).join('');
         document.getElementById('recentActivity').innerHTML = html || '<p style="color:var(--text-muted);">No transactions yet.</p>';
+
+        // Overlay bank learning stats on dashboard (non-blocking)
+        api('/sean/bank-learning/stats').then(ls => {
+            const el = document.getElementById('dashGlobalPatterns');
+            if (el) el.textContent = ls.totalPatterns || 0;
+        }).catch(() => {});
     } catch (err) {
         document.getElementById('statsGrid').innerHTML = `<div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-label">${err.message}</div></div>`;
     }
@@ -632,6 +685,169 @@ async function sendChat() {
         container.innerHTML += `<div class="msg msg-sean" style="border-left:3px solid var(--danger);">Error: ${escHtml(err.message)}</div>`;
     }
     container.scrollTop = container.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════
+// BANK LEARNING — Ecosystem Apps + Patterns + Proposals
+// ═══════════════════════════════════════════════════════════
+let _selectedLearningApp = 'accounting'; // default
+
+async function loadEcosystemApps() {
+    try {
+        const data = await api('/sean/ecosystem-apps');
+        const apps = data.apps || [];
+        const list = document.getElementById('learningSourcesList');
+        if (!list) return;
+
+        list.innerHTML = apps.map(app => `
+            <button
+                onclick="selectLearningApp('${app.slug}')"
+                id="appBtn_${app.slug}"
+                style="
+                    display:flex;align-items:center;gap:8px;padding:8px 10px;
+                    border-radius:6px;border:1px solid var(--border);background:transparent;
+                    cursor:pointer;font-size:0.85rem;text-align:left;color:var(--text);
+                    transition:all 0.15s;
+                "
+            >
+                <span style="font-size:1.1rem;">${app.icon}</span>
+                <span>${app.name}</span>
+            </button>
+        `).join('');
+
+        // Load stats
+        try {
+            const stats = await api('/sean/bank-learning/stats');
+            const el = id => document.getElementById(id);
+            if (el('learnStatsTotal'))     el('learnStatsTotal').textContent     = `${stats.totalEvents || 0} events`;
+            if (el('learnStatsPatterns'))  el('learnStatsPatterns').textContent  = `${stats.totalPatterns || 0} patterns`;
+            if (el('learnStatsProposals')) el('learnStatsProposals').textContent = `${stats.pendingProposals || 0} pending proposals`;
+        } catch (_) {}
+
+        // Auto-select accounting
+        selectLearningApp(_selectedLearningApp);
+    } catch (err) {
+        const list = document.getElementById('learningSourcesList');
+        if (list) list.innerHTML = `<div style="color:var(--text-muted);font-size:0.82rem;">${escHtml(err.message)}</div>`;
+    }
+}
+
+function selectLearningApp(slug) {
+    _selectedLearningApp = slug;
+    // Highlight active button
+    document.querySelectorAll('[id^="appBtn_"]').forEach(btn => {
+        btn.style.background = btn.id === `appBtn_${slug}` ? 'var(--primary-light, rgba(16,185,129,0.12))' : 'transparent';
+        btn.style.borderColor = btn.id === `appBtn_${slug}` ? 'var(--primary)' : 'var(--border)';
+    });
+    loadLearningPatterns();
+}
+
+async function loadLearningPatterns() {
+    const titleEl = document.getElementById('learningPanelTitle');
+    const listEl  = document.getElementById('learningPatternsList');
+    if (!listEl) return;
+
+    const status = document.getElementById('patternStatusFilter')?.value || '';
+    listEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;">Loading patterns…</div>';
+    if (titleEl) titleEl.textContent = `🧠 Bank Allocation Patterns — ${_selectedLearningApp}`;
+
+    try {
+        const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+        const data = await api(`/sean/bank-learning/patterns${qs}`);
+        const patterns = data.patterns || [];
+
+        if (!patterns.length) {
+            listEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;">No patterns found. Patterns appear after bank transactions from PDF or API sources are allocated.</div>';
+        } else {
+            const statusColour = s => ({ approved:'#10b981', proposed:'#6366f1', candidate:'#f59e0b', rejected:'#ef4444' })[s] || '#6b7280';
+            listEl.innerHTML = `<div class="table-wrap"><table>
+                <thead><tr>
+                    <th>Description Pattern</th><th>Account</th><th>Confidence</th>
+                    <th>Clients</th><th>Occurrences</th><th>Status</th><th>Action</th>
+                </tr></thead>
+                <tbody>
+                    ${patterns.map(p => `<tr>
+                        <td style="font-family:monospace;font-size:0.82rem;">${escHtml(p.normalized_description)}</td>
+                        <td><strong>${escHtml(p.suggested_account_code || '—')}</strong><br>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">${escHtml(p.suggested_account_name || '')}</span></td>
+                        <td><strong>${p.confidence_score}%</strong></td>
+                        <td>${p.clients_observed}</td>
+                        <td>${p.occurrence_count}</td>
+                        <td><span style="
+                            display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;
+                            background:${statusColour(p.status)}22;color:${statusColour(p.status)};
+                        ">${p.status}</span></td>
+                        <td>${p.status === 'proposed'
+                            ? `<button class="btn btn-outline btn-sm" style="font-size:0.75rem;padding:3px 8px;" onclick="openProposalReview(${p.id})">Review</button>`
+                            : '—'
+                        }</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table></div>`;
+        }
+
+        // Show proposals panel if there are pending proposals
+        try {
+            const proposalsData = await api('/sean/bank-learning/proposals');
+            const proposals = proposalsData.proposals || [];
+            const card = document.getElementById('proposalsCard');
+            const pList = document.getElementById('proposalsList');
+            if (card) card.style.display = proposals.length ? 'block' : 'none';
+            if (pList && proposals.length) {
+                pList.innerHTML = proposals.map(p => {
+                    const pat = p.sean_bank_allocation_patterns || {};
+                    return `<div style="
+                        padding:14px;border:1px solid var(--border);border-radius:8px;
+                        margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;
+                    ">
+                        <div>
+                            <div style="font-family:monospace;font-size:0.85rem;margin-bottom:4px;">${escHtml(p.snapshot_description || pat.normalized_description || '')}</div>
+                            <div style="font-size:0.82rem;color:var(--text-muted);">
+                                Account: <strong>${escHtml(p.snapshot_account_code || '')}</strong> &nbsp;·&nbsp;
+                                Confidence: <strong>${p.snapshot_confidence}%</strong> &nbsp;·&nbsp;
+                                Clients: <strong>${p.snapshot_clients}</strong>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-primary btn-sm" style="font-size:0.8rem;"
+                                onclick="authorizeProposal(${p.id})">✅ Authorize</button>
+                            <button class="btn btn-outline btn-sm" style="font-size:0.8rem;color:#ef4444;"
+                                onclick="rejectProposalPrompt(${p.id})">✗ Reject</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+        } catch (_) {}
+
+    } catch (err) {
+        if (listEl) listEl.innerHTML = `<div style="color:#ef4444;">${escHtml(err.message)}</div>`;
+    }
+}
+
+async function authorizeProposal(proposalId) {
+    if (!confirm('Authorize this pattern for global suggestion? It will be applied to all future bank allocations.')) return;
+    try {
+        await api(`/sean/bank-learning/proposals/${proposalId}/authorize`, { method: 'POST' });
+        alert('✅ Pattern authorized and promoted to global.');
+        loadLearningPatterns();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+async function rejectProposalPrompt(proposalId) {
+    const reason = prompt('Reason for rejection (optional):');
+    if (reason === null) return; // cancelled
+    try {
+        await api(`/sean/bank-learning/proposals/${proposalId}/reject`, {
+            method: 'POST',
+            body: JSON.stringify({ reason: reason || null })
+        });
+        alert('Proposal rejected. Pattern reverted to candidate.');
+        loadLearningPatterns();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════

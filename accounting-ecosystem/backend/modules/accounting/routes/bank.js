@@ -7,6 +7,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const PdfStatementImportService = require('../../../sean/pdf-statement-import-service');
+const bankLearning = require('../../../sean/bank-learning');
 
 const router = express.Router();
 
@@ -325,7 +326,9 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
  */
 router.post('/import', authenticate, hasPermission('bank.import'), async (req, res) => {
   try {
-    const { bankAccountId, transactions } = req.body;
+    const { bankAccountId, transactions, importSource } = req.body;
+    // importSource: 'pdf' (confirmed from PDF parse), 'csv' (spreadsheet import), 'manual' (default)
+    const resolvedSource = ['pdf', 'api', 'csv', 'manual'].includes(importSource) ? importSource : 'csv';
 
     if (!bankAccountId || !transactions || !Array.isArray(transactions)) {
       return res.status(400).json({ error: 'Bank account ID and transactions array are required' });
@@ -373,7 +376,8 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
           balance: balance != null ? balance : null,
           reference: reference || null,
           external_id: externalId || null,
-          status: 'unmatched'
+          status: 'unmatched',
+          import_source: resolvedSource
         })
         .select()
         .single();
@@ -528,7 +532,8 @@ router.post('/transactions', authenticate, hasPermission('bank.manage'), async (
         amount: parsedAmount,
         balance: balance != null ? parseFloat(balance) : null,
         reference: reference || null,
-        status: 'unmatched'
+        status: 'unmatched',
+        import_source: 'manual'
       })
       .select()
       .single();
@@ -668,6 +673,37 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       { status: 'matched', journalId: journal.id },
       'Bank transaction allocated to journal'
     );
+
+    // SEAN Bank Learning — fire async event for trusted sources (pdf / api).
+    // Untrusted sources (csv / manual) are silently ignored inside recordBankAllocationEvent.
+    // Only the first allocation line is recorded (primary account code for the transaction).
+    const primaryLine = lines[0];
+    if (primaryLine && primaryLine.accountId) {
+      // Resolve account code for the learning event (non-blocking — errors are swallowed)
+      supabase
+        .from('accounts')
+        .select('code, name')
+        .eq('id', primaryLine.accountId)
+        .eq('company_id', req.user.companyId)
+        .maybeSingle()
+        .then(({ data: acct }) => {
+          bankLearning.recordBankAllocationEvent({
+            companyId:            req.user.companyId,
+            bankTransactionId:    bankTxn.id,
+            importSource:         bankTxn.import_source || 'manual',
+            bankName:             bankTxn.bank_accounts?.name || null,
+            rawDescription:       bankTxn.description,
+            allocatedAccountId:   primaryLine.accountId,
+            allocatedAccountCode: acct?.code || null,
+            allocatedAccountName: acct?.name || null,
+            journalId:            journal.id,
+            createdByUserId:      req.user.id
+          }).catch(err =>
+            console.error('[SEAN Bank Learning] recordBankAllocationEvent error:', err.message)
+          );
+        })
+        .catch(() => {}); // non-blocking — never fail the allocation response
+    }
 
     const fullJournal = await JournalService.getJournalWithLines(journal.id, req.user.companyId);
 

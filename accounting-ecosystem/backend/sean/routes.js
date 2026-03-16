@@ -728,4 +728,139 @@ router.get('/import/:importId', async (req, res) => {
 const irp5Routes = require('./irp5-routes');
 router.use('/paytime', irp5Routes);
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BANK LEARNING API — Ecosystem apps registry + allocation learning
+// ═══════════════════════════════════════════════════════════════════════════
+
+const { supabase: seanSupabase } = require('../config/database');
+const bankLearning = require('./bank-learning');
+const { requireSuperAdmin } = require('../middleware/auth');
+
+// ─── GET /ecosystem-apps ─────────────────────────────────────────────────────
+// List all registered ecosystem apps (SEAN reads dynamically — no code change
+// needed when new apps are added to the ecosystem_apps table).
+
+router.get('/ecosystem-apps', async (req, res) => {
+  try {
+    const { data, error } = await seanSupabase
+      .from('ecosystem_apps')
+      .select('id, name, slug, description, icon, color, is_active, sort_order')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true });
+
+    if (error) throw new Error(error.message);
+
+    res.json({ apps: data || [] });
+  } catch (err) {
+    console.error('SEAN /ecosystem-apps error:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve ecosystem apps' });
+  }
+});
+
+// ─── GET /bank-learning/stats ────────────────────────────────────────────────
+
+router.get('/bank-learning/stats', async (req, res) => {
+  try {
+    const stats = await bankLearning.getStats();
+    res.json(stats);
+  } catch (err) {
+    console.error('SEAN /bank-learning/stats error:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve learning stats' });
+  }
+});
+
+// ─── GET /bank-learning/suggest ──────────────────────────────────────────────
+// Used by bank.html Sean button to get an allocation suggestion with
+// Codex-backed explanation.
+
+router.get('/bank-learning/suggest', async (req, res) => {
+  try {
+    const { description, bankName } = req.query;
+
+    if (!description) {
+      return res.status(400).json({ error: 'description query parameter is required' });
+    }
+
+    const suggestion = await bankLearning.suggestAllocation(description, bankName);
+
+    if (!suggestion) {
+      return res.json({ suggestion: null, message: 'No pattern found for this description' });
+    }
+
+    res.json({ suggestion });
+  } catch (err) {
+    console.error('SEAN /bank-learning/suggest error:', err.message);
+    res.status(500).json({ error: 'Failed to generate suggestion' });
+  }
+});
+
+// ─── GET /bank-learning/patterns ─────────────────────────────────────────────
+// List learning patterns (Super Admin review panel).
+// Query params: status (candidate|proposed|approved|rejected), minConfidence
+
+router.get('/bank-learning/patterns', requireSuperAdmin, async (req, res) => {
+  try {
+    const { status, minConfidence } = req.query;
+    const patterns = await bankLearning.getPatterns({
+      status: status || undefined,
+      minConfidence: minConfidence ? Number(minConfidence) : undefined
+    });
+    res.json({ count: patterns.length, patterns });
+  } catch (err) {
+    console.error('SEAN /bank-learning/patterns error:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve patterns' });
+  }
+});
+
+// ─── GET /bank-learning/proposals ────────────────────────────────────────────
+// List pending proposals for Super Admin review.
+
+router.get('/bank-learning/proposals', requireSuperAdmin, async (req, res) => {
+  try {
+    const proposals = await bankLearning.getProposals();
+    res.json({ count: proposals.length, proposals });
+  } catch (err) {
+    console.error('SEAN /bank-learning/proposals error:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve proposals' });
+  }
+});
+
+// ─── POST /bank-learning/proposals/:id/authorize ─────────────────────────────
+// Authorize a learning proposal → pattern promoted to 'approved' and eligible
+// for global suggestion. Super Admin only (Rule B2 / CLAUDE.md).
+
+router.post('/bank-learning/proposals/:id/authorize', requireSuperAdmin, async (req, res) => {
+  try {
+    const proposalId = parseInt(req.params.id);
+    const userId = req.user?.id;
+
+    if (!userId) return res.status(401).json({ error: 'User identity required' });
+
+    const result = await bankLearning.authorizeProposal(proposalId, userId);
+    res.json(result);
+  } catch (err) {
+    console.error('SEAN /bank-learning/proposals/:id/authorize error:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to authorize proposal' });
+  }
+});
+
+// ─── POST /bank-learning/proposals/:id/reject ────────────────────────────────
+// Reject a learning proposal. Pattern reverts to 'candidate'. Super Admin only.
+
+router.post('/bank-learning/proposals/:id/reject', requireSuperAdmin, async (req, res) => {
+  try {
+    const proposalId = parseInt(req.params.id);
+    const userId = req.user?.id;
+    const { reason } = req.body;
+
+    if (!userId) return res.status(401).json({ error: 'User identity required' });
+
+    const result = await bankLearning.rejectProposal(proposalId, userId, reason);
+    res.json(result);
+  } catch (err) {
+    console.error('SEAN /bank-learning/proposals/:id/reject error:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to reject proposal' });
+  }
+});
+
 module.exports = router;
