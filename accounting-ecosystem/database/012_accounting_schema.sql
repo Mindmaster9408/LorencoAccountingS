@@ -96,6 +96,9 @@ CREATE TABLE IF NOT EXISTS journal_lines (
 );
 -- Drop old FK that pointed at journal_entries — accounting module uses journals
 ALTER TABLE journal_lines DROP CONSTRAINT IF EXISTS journal_lines_journal_id_fkey;
+-- Drop old FK that pointed at chart_of_accounts — accounting module uses accounts
+-- Without this, every bank allocation (journal line insert) fails with a FK violation.
+ALTER TABLE journal_lines DROP CONSTRAINT IF EXISTS journal_lines_account_id_fkey;
 -- Add missing columns
 ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS line_number       INTEGER;
 ALTER TABLE journal_lines ADD COLUMN IF NOT EXISTS metadata          JSONB DEFAULT '{}';
@@ -129,6 +132,21 @@ ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS opening_balance_date  DATE;
 ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS is_active             BOOLEAN DEFAULT true;
 ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ DEFAULT NOW();
 
+-- Drop NOT NULL constraints from old schema.sql columns that the accounting
+-- module does not populate. Without this, every POST /bank/accounts fails with
+-- a null-constraint violation on `account_name` and `account_number`.
+-- Using EXCEPTION instead of IF EXISTS — more robust in Supabase.
+DO $$
+BEGIN
+  ALTER TABLE bank_accounts ALTER COLUMN account_name DROP NOT NULL;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE bank_accounts ALTER COLUMN account_number DROP NOT NULL;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+
 -- ── 7. Bank Transactions ──────────────────────────────────────────────────────
 -- NOTE: bank_transactions may already exist from schema.sql without company_id
 -- or status. We CREATE if missing, then ALTER to add required columns.
@@ -152,6 +170,9 @@ ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS matched_entity_id    INTE
 ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS matched_by_user_id   INTEGER REFERENCES users(id);
 ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS reconciled_at        TIMESTAMPTZ;
 ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS updated_at           TIMESTAMPTZ DEFAULT NOW();
+-- import_source: tracks how the transaction entered the system (pdf/csv/api/manual).
+-- Used by SEAN bank learning — only trusted sources (pdf/api) trigger learning events.
+ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS import_source        VARCHAR(20) DEFAULT 'manual';
 
 -- ── 8. Bank Transaction Attachments ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS bank_transaction_attachments (

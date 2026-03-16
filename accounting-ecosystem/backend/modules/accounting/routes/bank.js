@@ -80,7 +80,7 @@ router.get('/accounts', authenticate, hasPermission('bank.view'), async (req, re
 
     ({ data, error } = await supabase
       .from('bank_accounts')
-      .select('*, ledger:ledger_account_id(code, name)')
+      .select('*, accounts!ledger_account_id(code, name)')
       .eq('company_id', req.user.companyId)
       .order('name'));
 
