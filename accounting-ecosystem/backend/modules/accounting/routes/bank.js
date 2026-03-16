@@ -73,18 +73,33 @@ const upload = multer({
  */
 router.get('/accounts', authenticate, hasPermission('bank.view'), async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('bank_accounts')
-      .select('*, accounts!ledger_account_id(code, name)')
-      .eq('company_id', req.user.companyId)
-      .order('name');
+    // Try full query with ledger account join (requires migration 012 to have run).
+    // Fall back to plain select if ledger_account_id column doesn't exist yet.
+    let data, error;
 
-    if (error) throw new Error(error.message);
+    ({ data, error } = await supabase
+      .from('bank_accounts')
+      .select('*, ledger:ledger_account_id(code, name)')
+      .eq('company_id', req.user.companyId)
+      .order('name'));
+
+    if (error) {
+      // Fallback: column / FK not yet available — return base columns only
+      console.warn('[bank/accounts] FK join failed, falling back to base select:', error.message);
+      ({ data, error } = await supabase
+        .from('bank_accounts')
+        .select('*')
+        .eq('company_id', req.user.companyId)
+        .order('created_at'));
+
+      if (error) throw new Error(error.message);
+    }
 
     const bankAccounts = (data || []).map(ba => ({
       ...ba,
-      ledger_account_code: ba.accounts?.code,
-      ledger_account_name: ba.accounts?.name
+      // Support both joined shapes
+      ledger_account_code: ba.ledger?.code ?? ba.accounts?.code ?? null,
+      ledger_account_name: ba.ledger?.name ?? ba.accounts?.name ?? null
     }));
 
     res.json({
@@ -237,28 +252,60 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
   try {
     const { bankAccountId, status, fromDate, toDate, limit = 100, offset = 0 } = req.query;
 
+    // Try query with company_id filter (requires migration 012).
+    // company_id column was added by ALTER TABLE in migration 012.
     let query = supabase
       .from('bank_transactions')
       .select('*, bank_accounts!bank_account_id(name)')
       .eq('company_id', req.user.companyId);
 
     if (bankAccountId) query = query.eq('bank_account_id', bankAccountId);
-    if (status) query = query.eq('status', status);
-    if (fromDate) query = query.gte('date', fromDate);
-    if (toDate) query = query.lte('date', toDate);
+    if (status)        query = query.eq('status', status);
+    if (fromDate)      query = query.gte('date', fromDate);
+    if (toDate)        query = query.lte('date', toDate);
 
     query = query
       .order('date', { ascending: false })
       .order('id', { ascending: false })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
-    const { data, error } = await query;
+    let { data, error } = await query;
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      // Fallback: company_id not yet present — scope by bank account instead
+      console.warn('[bank/transactions] company_id filter failed, using bank_account fallback:', error.message);
+
+      // Get this company's bank account IDs and filter by those
+      const { data: accounts } = await supabase
+        .from('bank_accounts')
+        .select('id')
+        .eq('company_id', req.user.companyId);
+
+      if (!accounts || accounts.length === 0) {
+        return res.json({ transactions: [], count: 0 });
+      }
+
+      const accountIds = accounts.map(a => a.id);
+      let fbQuery = supabase
+        .from('bank_transactions')
+        .select('*')
+        .in('bank_account_id', accountIds);
+
+      if (bankAccountId) fbQuery = fbQuery.eq('bank_account_id', bankAccountId);
+      if (fromDate)      fbQuery = fbQuery.gte('date', fromDate);
+      if (toDate)        fbQuery = fbQuery.lte('date', toDate);
+
+      fbQuery = fbQuery
+        .order('date', { ascending: false })
+        .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+      ({ data, error } = await fbQuery);
+      if (error) throw new Error(error.message);
+    }
 
     const transactions = (data || []).map(t => ({
       ...t,
-      bank_account_name: t.bank_accounts?.name
+      bank_account_name: t.bank_accounts?.name ?? null
     }));
 
     res.json({
