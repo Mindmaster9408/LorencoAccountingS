@@ -1,4 +1,4 @@
-const db = require('../config/database');
+const { supabase } = require('../../../config/database');
 
 /**
  * VAT Reconciliation Service
@@ -6,278 +6,330 @@ const db = require('../config/database');
  */
 
 class VATReconciliationService {
-    
+
+    // ========================================================
+    // HELPERS
+    // ========================================================
+
+    /**
+     * Fetch a reconciliation row by ID and flatten the joined period columns
+     * into the top-level object (matching the original SQL JOIN shape).
+     */
+    async _fetchReconWithPeriod(companyId, reconId) {
+        const { data: recon, error: reconErr } = await supabase
+            .from('vat_reconciliations')
+            .select('*')
+            .eq('company_id', companyId)
+            .eq('id', reconId)
+            .maybeSingle();
+
+        if (reconErr) throw new Error(reconErr.message);
+        if (!recon) return null;
+
+        const { data: period, error: periodErr } = await supabase
+            .from('vat_periods')
+            .select('period_key, from_date, to_date, filing_frequency')
+            .eq('id', recon.vat_period_id)
+            .maybeSingle();
+
+        if (periodErr) throw new Error(periodErr.message);
+
+        return {
+            ...recon,
+            period_key:       period?.period_key       || null,
+            from_date:        period?.from_date         || null,
+            to_date:          period?.to_date           || null,
+            filing_frequency: period?.filing_frequency  || null,
+        };
+    }
+
     // ========================================================
     // VAT PERIODS
     // ========================================================
-    
+
     /**
      * Create or get a VAT period
      */
     async createOrGetPeriod(companyId, periodData) {
         const { periodKey, fromDate, toDate, filingFrequency } = periodData;
-        
+
         // Check if period already exists
-        const existing = await db.query(
-            `SELECT * FROM vat_periods 
-             WHERE company_id = $1 AND period_key = $2`,
-            [companyId, periodKey]
-        );
-        
-        if (existing.rows.length > 0) {
-            return existing.rows[0];
-        }
-        
+        const { data: existing, error: checkErr } = await supabase
+            .from('vat_periods')
+            .select('*')
+            .eq('company_id', companyId)
+            .eq('period_key', periodKey)
+            .maybeSingle();
+
+        if (checkErr) throw new Error(checkErr.message);
+        if (existing) return existing;
+
         // Create new period
-        const result = await db.query(
-            `INSERT INTO vat_periods 
-             (company_id, period_key, from_date, to_date, filing_frequency, status)
-             VALUES ($1, $2, $3, $4, $5, 'DRAFT')
-             RETURNING *`,
-            [companyId, periodKey, fromDate, toDate, filingFrequency]
-        );
-        
-        return result.rows[0];
+        const { data: created, error: insertErr } = await supabase
+            .from('vat_periods')
+            .insert({
+                company_id:       companyId,
+                period_key:       periodKey,
+                from_date:        fromDate,
+                to_date:          toDate,
+                filing_frequency: filingFrequency,
+                status:           'DRAFT',
+            })
+            .select()
+            .single();
+
+        if (insertErr) throw new Error(insertErr.message);
+        return created;
     }
-    
+
     /**
      * Get all VAT periods for a company
      */
     async getPeriods(companyId, filters = {}) {
-        let query = 'SELECT * FROM vat_periods WHERE company_id = $1';
-        const params = [companyId];
-        let paramCount = 1;
-        
-        if (filters.status) {
-            paramCount++;
-            query += ` AND status = $${paramCount}`;
-            params.push(filters.status);
-        }
-        
-        if (filters.fromDate) {
-            paramCount++;
-            query += ` AND from_date >= $${paramCount}`;
-            params.push(filters.fromDate);
-        }
-        
-        if (filters.toDate) {
-            paramCount++;
-            query += ` AND to_date <= $${paramCount}`;
-            params.push(filters.toDate);
-        }
-        
-        query += ' ORDER BY from_date DESC';
-        
-        const result = await db.query(query, params);
-        return result.rows;
+        let query = supabase
+            .from('vat_periods')
+            .select('*')
+            .eq('company_id', companyId);
+
+        if (filters.status)   query = query.eq('status', filters.status);
+        if (filters.fromDate) query = query.gte('from_date', filters.fromDate);
+        if (filters.toDate)   query = query.lte('to_date', filters.toDate);
+
+        query = query.order('from_date', { ascending: false });
+
+        const { data, error } = await query;
+        if (error) throw new Error(error.message);
+        return data || [];
     }
-    
+
     /**
      * Get single period by ID or period_key
      */
     async getPeriod(companyId, periodIdOrKey) {
-        let result;
-        
+        let query = supabase
+            .from('vat_periods')
+            .select('*')
+            .eq('company_id', companyId);
+
         if (isNaN(periodIdOrKey)) {
-            // It's a period_key
-            result = await db.query(
-                'SELECT * FROM vat_periods WHERE company_id = $1 AND period_key = $2',
-                [companyId, periodIdOrKey]
-            );
+            query = query.eq('period_key', periodIdOrKey);
         } else {
-            // It's an ID
-            result = await db.query(
-                'SELECT * FROM vat_periods WHERE company_id = $1 AND id = $2',
-                [companyId, periodIdOrKey]
-            );
+            query = query.eq('id', periodIdOrKey);
         }
-        
-        return result.rows[0];
+
+        const { data, error } = await query.maybeSingle();
+        if (error) throw new Error(error.message);
+        return data;
     }
-    
+
     // ========================================================
     // VAT RECONCILIATIONS
     // ========================================================
-    
+
     /**
      * Create or update draft reconciliation
      */
     async saveDraftReconciliation(companyId, userId, reconData) {
         const { vatPeriodId, lines, soaAmount, metadata } = reconData;
-        
+
         // Verify period exists and belongs to company
         const period = await this.getPeriod(companyId, vatPeriodId);
         if (!period) {
             throw new Error('VAT period not found');
         }
-        
+
         // Check if period is locked
         if (period.status === 'LOCKED') {
             throw new Error('Cannot edit locked VAT period');
         }
-        
-        const client = await db.getClient();
-        
-        try {
-            await client.query('BEGIN');
-            
-            // Check for existing draft reconciliation
-            const existing = await client.query(
-                `SELECT * FROM vat_reconciliations 
-                 WHERE company_id = $1 AND vat_period_id = $2 AND status = 'DRAFT'
-                 ORDER BY version DESC LIMIT 1`,
-                [companyId, vatPeriodId]
-            );
-        
+
+        // Check for existing DRAFT reconciliation (most recent version)
+        const { data: existingList, error: existingErr } = await supabase
+            .from('vat_reconciliations')
+            .select('*')
+            .eq('company_id', companyId)
+            .eq('vat_period_id', vatPeriodId)
+            .eq('status', 'DRAFT')
+            .order('version', { ascending: false })
+            .limit(1);
+
+        if (existingErr) throw new Error(existingErr.message);
+
         let reconId;
-        
-        if (existing.rows.length > 0) {
+
+        if (existingList && existingList.length > 0) {
             // Update existing draft
-            reconId = existing.rows[0].id;
-            await client.query(
-                `UPDATE vat_reconciliations 
-                 SET soa_amount = $1, metadata = $2, updated_at = CURRENT_TIMESTAMP
-                 WHERE id = $3`,
-                [soaAmount, JSON.stringify(metadata || {}), reconId]
-            );
+            reconId = existingList[0].id;
+            const { error: updateErr } = await supabase
+                .from('vat_reconciliations')
+                .update({
+                    soa_amount:  soaAmount,
+                    metadata:    metadata || {},
+                    updated_at:  new Date().toISOString(),
+                })
+                .eq('id', reconId);
+
+            if (updateErr) throw new Error(updateErr.message);
         } else {
-            // Create new draft - get max version across ALL statuses
-            const maxVersionResult = await client.query(
-                `SELECT COALESCE(MAX(version), 0) as max_version FROM vat_reconciliations 
-                 WHERE company_id = $1 AND vat_period_id = $2`,
-                [companyId, vatPeriodId]
-            );
-            const newVersion = maxVersionResult.rows[0].max_version + 1;
-            const result = await client.query(
-                `INSERT INTO vat_reconciliations 
-                 (company_id, vat_period_id, version, status, created_by_user_id, soa_amount, metadata)
-                 VALUES ($1, $2, $3, 'DRAFT', $4, $5, $6)
-                 RETURNING *`,
-                [companyId, vatPeriodId, newVersion, userId, soaAmount, JSON.stringify(metadata || {})]
-            );
-            reconId = result.rows[0].id;
+            // Create new draft — get max version across ALL statuses first
+            const { data: maxVerData, error: maxVerErr } = await supabase
+                .from('vat_reconciliations')
+                .select('version')
+                .eq('company_id', companyId)
+                .eq('vat_period_id', vatPeriodId)
+                .order('version', { ascending: false })
+                .limit(1);
+
+            if (maxVerErr) throw new Error(maxVerErr.message);
+
+            const newVersion = (maxVerData && maxVerData.length > 0) ? maxVerData[0].version + 1 : 1;
+
+            const { data: newRecon, error: insertErr } = await supabase
+                .from('vat_reconciliations')
+                .insert({
+                    company_id:          companyId,
+                    vat_period_id:       vatPeriodId,
+                    version:             newVersion,
+                    status:              'DRAFT',
+                    created_by_user_id:  userId,
+                    soa_amount:          soaAmount,
+                    metadata:            metadata || {},
+                })
+                .select('id')
+                .single();
+
+            if (insertErr) throw new Error(insertErr.message);
+            reconId = newRecon.id;
         }
-        
-        // Delete existing lines and insert new ones
-        await client.query(
-            'DELETE FROM vat_reconciliation_lines WHERE vat_reconciliation_id = $1',
-            [reconId]
-        );
-        
+
+        // Delete existing lines and replace with new ones
+        const { error: deleteErr } = await supabase
+            .from('vat_reconciliation_lines')
+            .delete()
+            .eq('vat_reconciliation_id', reconId);
+
+        if (deleteErr) throw new Error(deleteErr.message);
+
         if (lines && lines.length > 0) {
-            for (const line of lines) {
-                await client.query(
-                    `INSERT INTO vat_reconciliation_lines 
-                     (vat_reconciliation_id, section_key, row_key, label, line_order, 
-                      vat_amount, tb_amount, statement_amount, difference_amount, 
-                      account_id, metadata)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-                    [
-                        reconId, line.sectionKey, line.rowKey, line.label, line.lineOrder || 0,
-                        line.vatAmount, line.tbAmount, line.statementAmount, line.differenceAmount,
-                        line.accountId, JSON.stringify(line.metadata || {})
-                    ]
-                );
-            }
+            const lineInserts = lines.map(line => ({
+                vat_reconciliation_id: reconId,
+                section_key:           line.sectionKey,
+                row_key:               line.rowKey,
+                label:                 line.label,
+                line_order:            line.lineOrder || 0,
+                vat_amount:            line.vatAmount,
+                tb_amount:             line.tbAmount,
+                statement_amount:      line.statementAmount,
+                difference_amount:     line.differenceAmount,
+                account_id:            line.accountId,
+                metadata:              line.metadata || {},
+            }));
+
+            const { error: linesErr } = await supabase
+                .from('vat_reconciliation_lines')
+                .insert(lineInserts);
+
+            if (linesErr) throw new Error(linesErr.message);
         }
-        
-            await client.query('COMMIT');
-        } catch (err) {
-            await client.query('ROLLBACK');
-            throw err;
-        } finally {
-            client.release();
-        }
-        
+
         return this.getReconciliation(companyId, reconId);
     }
-    
+
     /**
      * Get reconciliation with lines
      */
     async getReconciliation(companyId, reconId) {
-        const reconResult = await db.query(
-            `SELECT r.*, p.period_key, p.from_date, p.to_date, p.filing_frequency
-             FROM vat_reconciliations r
-             JOIN vat_periods p ON r.vat_period_id = p.id
-             WHERE r.company_id = $1 AND r.id = $2`,
-            [companyId, reconId]
-        );
-        
-        if (reconResult.rows.length === 0) {
-            return null;
-        }
-        
-        const recon = reconResult.rows[0];
-        
+        const recon = await this._fetchReconWithPeriod(companyId, reconId);
+        if (!recon) return null;
+
         // Get lines
-        const linesResult = await db.query(
-            `SELECT * FROM vat_reconciliation_lines 
-             WHERE vat_reconciliation_id = $1 
-             ORDER BY section_key, line_order, id`,
-            [reconId]
-        );
-        
-        recon.lines = linesResult.rows;
-        
+        const { data: lines, error: linesErr } = await supabase
+            .from('vat_reconciliation_lines')
+            .select('*')
+            .eq('vat_reconciliation_id', reconId)
+            .order('section_key')
+            .order('line_order')
+            .order('id');
+
+        if (linesErr) throw new Error(linesErr.message);
+
+        recon.lines = lines || [];
         return recon;
     }
-    
+
     /**
      * Get reconciliation for a specific period
      */
     async getReconciliationByPeriod(companyId, periodIdOrKey, version = null) {
         const period = await this.getPeriod(companyId, periodIdOrKey);
-        if (!period) {
-            return null;
-        }
-        
-        let query = `
-            SELECT r.*, p.period_key, p.from_date, p.to_date, p.filing_frequency
-            FROM vat_reconciliations r
-            JOIN vat_periods p ON r.vat_period_id = p.id
-            WHERE r.company_id = $1 AND r.vat_period_id = $2
-        `;
-        const params = [companyId, period.id];
-        
+        if (!period) return null;
+
+        let query = supabase
+            .from('vat_reconciliations')
+            .select('*')
+            .eq('company_id', companyId)
+            .eq('vat_period_id', period.id);
+
         if (version !== null) {
-            query += ' AND r.version = $3';
-            params.push(version);
+            query = query.eq('version', version).limit(1);
+        }
+
+        const { data: recons, error: reconErr } = await query;
+        if (reconErr) throw new Error(reconErr.message);
+        if (!recons || recons.length === 0) return null;
+
+        let recon;
+        if (version !== null) {
+            recon = recons[0];
         } else {
-            // Get latest approved or latest draft
-            query += ` ORDER BY 
-                CASE WHEN r.status = 'APPROVED' THEN 1 
-                     WHEN r.status = 'LOCKED' THEN 2 
-                     ELSE 3 END, 
-                r.version DESC 
-                LIMIT 1`;
+            // Sort in JS: APPROVED first, then LOCKED, then others, then by version DESC
+            // (mirrors original SQL: CASE WHEN status='APPROVED' THEN 1 WHEN 'LOCKED' THEN 2 ELSE 3, version DESC)
+            const priority = { APPROVED: 1, LOCKED: 2 };
+            const sorted = recons.slice().sort((a, b) => {
+                const pa = priority[a.status] || 3;
+                const pb = priority[b.status] || 3;
+                if (pa !== pb) return pa - pb;
+                return b.version - a.version;
+            });
+            recon = sorted[0];
         }
-        
-        const reconResult = await db.query(query, params);
-        
-        if (reconResult.rows.length === 0) {
-            return null;
-        }
-        
-        const recon = reconResult.rows[0];
-        
+
+        // Fetch period columns and flatten
+        const { data: periodRow, error: periodErr } = await supabase
+            .from('vat_periods')
+            .select('period_key, from_date, to_date, filing_frequency')
+            .eq('id', period.id)
+            .maybeSingle();
+
+        if (periodErr) throw new Error(periodErr.message);
+
+        const flatRecon = {
+            ...recon,
+            period_key:       periodRow?.period_key       || null,
+            from_date:        periodRow?.from_date         || null,
+            to_date:          periodRow?.to_date           || null,
+            filing_frequency: periodRow?.filing_frequency  || null,
+        };
+
         // Get lines
-        const linesResult = await db.query(
-            `SELECT * FROM vat_reconciliation_lines 
-             WHERE vat_reconciliation_id = $1 
-             ORDER BY section_key, line_order, id`,
-            [recon.id]
-        );
-        
-        recon.lines = linesResult.rows;
-        
-        return recon;
+        const { data: lines, error: linesErr } = await supabase
+            .from('vat_reconciliation_lines')
+            .select('*')
+            .eq('vat_reconciliation_id', recon.id)
+            .order('section_key')
+            .order('line_order')
+            .order('id');
+
+        if (linesErr) throw new Error(linesErr.message);
+
+        flatRecon.lines = lines || [];
+        return flatRecon;
     }
-    
+
     // ========================================================
     // AUTHORIZATION
     // ========================================================
-    
+
     /**
      * Authorize difference (Income/Expense reconciliation)
      */
@@ -286,24 +338,26 @@ class VATReconciliationService {
         if (!recon) {
             throw new Error('Reconciliation not found');
         }
-        
+
         if (recon.status === 'LOCKED') {
             throw new Error('Cannot authorize locked reconciliation');
         }
-        
-        await db.query(
-            `UPDATE vat_reconciliations 
-             SET diff_authorized = true,
-                 diff_authorized_by_user_id = $1,
-                 diff_authorized_by_initials = $2,
-                 diff_authorized_at = CURRENT_TIMESTAMP
-             WHERE id = $3`,
-            [userId, userInitials, reconId]
-        );
-        
+
+        const { error } = await supabase
+            .from('vat_reconciliations')
+            .update({
+                diff_authorized:              true,
+                diff_authorized_by_user_id:   userId,
+                diff_authorized_by_initials:  userInitials,
+                diff_authorized_at:           new Date().toISOString(),
+            })
+            .eq('id', reconId);
+
+        if (error) throw new Error(error.message);
+
         return this.getReconciliation(companyId, reconId);
     }
-    
+
     /**
      * Authorize Statement of Account difference
      */
@@ -312,28 +366,30 @@ class VATReconciliationService {
         if (!recon) {
             throw new Error('Reconciliation not found');
         }
-        
+
         if (recon.status === 'LOCKED') {
             throw new Error('Cannot authorize locked reconciliation');
         }
-        
-        await db.query(
-            `UPDATE vat_reconciliations 
-             SET soa_authorized = true,
-                 soa_authorized_by_user_id = $1,
-                 soa_authorized_by_initials = $2,
-                 soa_authorized_at = CURRENT_TIMESTAMP
-             WHERE id = $3`,
-            [userId, userInitials, reconId]
-        );
-        
+
+        const { error } = await supabase
+            .from('vat_reconciliations')
+            .update({
+                soa_authorized:              true,
+                soa_authorized_by_user_id:   userId,
+                soa_authorized_by_initials:  userInitials,
+                soa_authorized_at:           new Date().toISOString(),
+            })
+            .eq('id', reconId);
+
+        if (error) throw new Error(error.message);
+
         return this.getReconciliation(companyId, reconId);
     }
-    
+
     // ========================================================
     // APPROVAL
     // ========================================================
-    
+
     /**
      * Approve reconciliation
      */
@@ -342,39 +398,42 @@ class VATReconciliationService {
         if (!recon) {
             throw new Error('Reconciliation not found');
         }
-        
+
         if (recon.status === 'LOCKED') {
             throw new Error('Cannot approve locked reconciliation');
         }
-        
+
         if (recon.status === 'APPROVED') {
             throw new Error('Reconciliation already approved');
         }
-        
-        await db.query(
-            `UPDATE vat_reconciliations 
-             SET status = 'APPROVED',
-                 approved_by_user_id = $1,
-                 approved_at = CURRENT_TIMESTAMP
-             WHERE id = $2`,
-            [userId, reconId]
-        );
-        
-        // Update period status if not already approved
-        await db.query(
-            `UPDATE vat_periods 
-             SET status = 'APPROVED'
-             WHERE id = $1 AND status = 'DRAFT'`,
-            [recon.vat_period_id]
-        );
-        
+
+        const { error: reconUpdateErr } = await supabase
+            .from('vat_reconciliations')
+            .update({
+                status:              'APPROVED',
+                approved_by_user_id: userId,
+                approved_at:         new Date().toISOString(),
+            })
+            .eq('id', reconId);
+
+        if (reconUpdateErr) throw new Error(reconUpdateErr.message);
+
+        // Update period status if still in DRAFT
+        const { error: periodUpdateErr } = await supabase
+            .from('vat_periods')
+            .update({ status: 'APPROVED' })
+            .eq('id', recon.vat_period_id)
+            .eq('status', 'DRAFT');
+
+        if (periodUpdateErr) throw new Error(periodUpdateErr.message);
+
         return this.getReconciliation(companyId, reconId);
     }
-    
+
     // ========================================================
     // SUBMISSION AND LOCKING
     // ========================================================
-    
+
     /**
      * Submit to SARS and lock
      */
@@ -383,152 +442,200 @@ class VATReconciliationService {
         if (!period) {
             throw new Error('VAT period not found');
         }
-        
+
         if (period.status === 'LOCKED') {
             throw new Error('Period already locked');
         }
-        
+
         // Get approved reconciliation
         const recon = await this.getReconciliationByPeriod(companyId, periodId);
         if (!recon || recon.status !== 'APPROVED') {
             throw new Error('No approved reconciliation found for this period');
         }
-        
+
         const { outputVat, inputVat, netVat, submissionReference, paymentDate, paymentReference } = submissionData;
-        
-        // Begin transaction
-        const client = await db.getClient();
-        
-        try {
-            await client.query('BEGIN');
-            // Create submission record
-            const submissionResult = await client.query(
-                `INSERT INTO vat_submissions 
-                 (company_id, vat_period_id, vat_reconciliation_id, 
-                  submission_date, submitted_by_user_id, submission_reference,
-                  output_vat, input_vat, net_vat, payment_date, payment_reference)
-                 VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5, $6, $7, $8, $9, $10)
-                 RETURNING *`,
-                [companyId, period.id, recon.id, userId, submissionReference,
-                 outputVat, inputVat, netVat, paymentDate, paymentReference]
-            );
-            
-            // Lock reconciliation
-            await client.query(
-                `UPDATE vat_reconciliations 
-                 SET status = 'LOCKED',
-                     locked_by_user_id = $1,
-                     locked_at = CURRENT_TIMESTAMP,
-                     submitted_by_user_id = $1,
-                     submitted_at = CURRENT_TIMESTAMP
-                 WHERE id = $2`,
-                [userId, recon.id]
-            );
-            
-            // Lock period
-            await client.query(
-                `UPDATE vat_periods 
-                 SET status = 'LOCKED',
-                     locked_by_user_id = $1,
-                     locked_at = CURRENT_TIMESTAMP,
-                     submitted_by_user_id = $1,
-                     submitted_at = CURRENT_TIMESTAMP,
-                     submission_reference = $2,
-                     payment_date = $3
-                 WHERE id = $4`,
-                [userId, submissionReference, paymentDate, period.id]
-            );
-            
-            // Lock VAT report if exists
-            await client.query(
-                `UPDATE vat_reports 
-                 SET status = 'LOCKED',
-                     locked_by_user_id = $1,
-                     locked_at = CURRENT_TIMESTAMP
-                 WHERE vat_period_id = $2`,
-                [userId, period.id]
-            );
-            
-            await client.query('COMMIT');
-            
-            return submissionResult.rows[0];
-        } catch (error) {
-            await client.query('ROLLBACK');
-            throw error;
-        } finally {
-            client.release();
-        }
+
+        // Create submission record
+        const { data: submission, error: subErr } = await supabase
+            .from('vat_submissions')
+            .insert({
+                company_id:              companyId,
+                vat_period_id:           period.id,
+                vat_reconciliation_id:   recon.id,
+                submission_date:         new Date().toISOString(),
+                submitted_by_user_id:    userId,
+                submission_reference:    submissionReference,
+                output_vat:              outputVat,
+                input_vat:               inputVat,
+                net_vat:                 netVat,
+                payment_date:            paymentDate,
+                payment_reference:       paymentReference,
+            })
+            .select()
+            .single();
+
+        if (subErr) throw new Error(subErr.message);
+
+        // Lock reconciliation
+        const { error: lockReconErr } = await supabase
+            .from('vat_reconciliations')
+            .update({
+                status:                  'LOCKED',
+                locked_by_user_id:       userId,
+                locked_at:               new Date().toISOString(),
+                submitted_by_user_id:    userId,
+                submitted_at:            new Date().toISOString(),
+            })
+            .eq('id', recon.id);
+
+        if (lockReconErr) throw new Error(lockReconErr.message);
+
+        // Lock period
+        const { error: lockPeriodErr } = await supabase
+            .from('vat_periods')
+            .update({
+                status:                  'LOCKED',
+                locked_by_user_id:       userId,
+                locked_at:               new Date().toISOString(),
+                submitted_by_user_id:    userId,
+                submitted_at:            new Date().toISOString(),
+                submission_reference:    submissionReference,
+                payment_date:            paymentDate,
+            })
+            .eq('id', period.id);
+
+        if (lockPeriodErr) throw new Error(lockPeriodErr.message);
+
+        // Lock VAT report if one exists for this period
+        await supabase
+            .from('vat_reports')
+            .update({
+                status:              'LOCKED',
+                locked_by_user_id:   userId,
+                locked_at:           new Date().toISOString(),
+            })
+            .eq('vat_period_id', period.id);
+        // No error check — it's fine if no vat_reports row exists for this period
+
+        return submission;
     }
-    
+
     /**
      * Get submission history
      */
     async getSubmissions(companyId, filters = {}) {
-        let query = `
-            SELECT s.*,
-                   p.period_key, p.from_date, p.to_date,
-                   r.id as reconciliation_id,
-                   rep.id as vat_report_id
-            FROM vat_submissions s
-            JOIN vat_periods p ON s.vat_period_id = p.id
-            LEFT JOIN vat_reconciliations r ON s.vat_reconciliation_id = r.id
-            LEFT JOIN vat_reports rep ON rep.vat_period_id = s.vat_period_id
-            WHERE s.company_id = $1
-        `;
-        const params = [companyId];
-        let paramCount = 1;
-        
-        if (filters.periodId) {
-            paramCount++;
-            query += ` AND s.vat_period_id = $${paramCount}`;
-            params.push(filters.periodId);
-        }
-        
-        if (filters.status) {
-            paramCount++;
-            query += ` AND s.status = $${paramCount}`;
-            params.push(filters.status);
-        }
-        
-        query += ' ORDER BY s.submission_date DESC';
-        
-        const result = await db.query(query, params);
-        return result.rows;
+        let query = supabase
+            .from('vat_submissions')
+            .select('*')
+            .eq('company_id', companyId);
+
+        if (filters.periodId) query = query.eq('vat_period_id', filters.periodId);
+        if (filters.status)   query = query.eq('status', filters.status);
+
+        query = query.order('submission_date', { ascending: false });
+
+        const { data: submissions, error } = await query;
+        if (error) throw new Error(error.message);
+        if (!submissions || submissions.length === 0) return [];
+
+        // Fetch period details for all involved periods in one query
+        const periodIds = [...new Set(submissions.map(s => s.vat_period_id))];
+        const { data: periods, error: periodsErr } = await supabase
+            .from('vat_periods')
+            .select('id, period_key, from_date, to_date')
+            .in('id', periodIds);
+
+        if (periodsErr) throw new Error(periodsErr.message);
+
+        const periodMap = {};
+        for (const p of periods || []) periodMap[p.id] = p;
+
+        // Fetch vat_report IDs for the involved periods in one query
+        const { data: vatReports, error: reportsErr } = await supabase
+            .from('vat_reports')
+            .select('id, vat_period_id')
+            .in('vat_period_id', periodIds);
+
+        if (reportsErr) throw new Error(reportsErr.message);
+
+        const vatReportByPeriod = {};
+        for (const r of vatReports || []) vatReportByPeriod[r.vat_period_id] = r.id;
+
+        // Flatten and merge period + vat_report data into each submission row
+        return submissions.map(s => {
+            const p = periodMap[s.vat_period_id] || {};
+            return {
+                ...s,
+                period_key:        p.period_key   || null,
+                from_date:         p.from_date     || null,
+                to_date:           p.to_date       || null,
+                reconciliation_id: s.vat_reconciliation_id || null,
+                vat_report_id:     vatReportByPeriod[s.vat_period_id] || null,
+            };
+        });
     }
-    
+
     // ========================================================
     // TRIAL BALANCE INTEGRATION
     // ========================================================
-    
+
     /**
      * Get Trial Balance data for a specific period
      */
     async getTrialBalanceForPeriod(companyId, fromDate, toDate) {
-        const query = `
-            SELECT 
-                a.id as account_id,
-                a.code as account_code,
-                a.name as account_name,
-                a.type as account_type,
-                COALESCE(SUM(jl.debit - jl.credit), 0) as amount
-            FROM accounts a
-            LEFT JOIN journal_lines jl ON jl.account_id = a.id
-            LEFT JOIN journals j ON jl.journal_id = j.id
-                AND j.company_id = $1
-                AND j.status = 'posted'
-                AND j.date >= $2
-                AND j.date <= $3
-            WHERE a.company_id = $1
-                AND a.is_active = true
-            GROUP BY a.id, a.code, a.name, a.type
-            HAVING COALESCE(SUM(jl.debit - jl.credit), 0) != 0
-            ORDER BY a.code
-        `;
-        
-        const result = await db.query(query, [companyId, fromDate, toDate]);
-        return result.rows;
+        // Fetch active accounts for the company
+        const { data: accounts, error: acctErr } = await supabase
+            .from('accounts')
+            .select('id, code, name, type')
+            .eq('company_id', companyId)
+            .eq('is_active', true)
+            .order('code');
+
+        if (acctErr) throw new Error(acctErr.message);
+        if (!accounts || accounts.length === 0) return [];
+
+        // Fetch posted journal IDs for the company within the date range
+        const { data: journals, error: journalsErr } = await supabase
+            .from('journals')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('status', 'posted')
+            .gte('date', fromDate)
+            .lte('date', toDate);
+
+        if (journalsErr) throw new Error(journalsErr.message);
+
+        // Aggregate journal line amounts per account in JavaScript
+        const lineMap = {};
+
+        if (journals && journals.length > 0) {
+            const journalIds = journals.map(j => j.id);
+
+            const { data: lines, error: linesErr } = await supabase
+                .from('journal_lines')
+                .select('account_id, debit, credit')
+                .in('journal_id', journalIds);
+
+            if (linesErr) throw new Error(linesErr.message);
+
+            for (const line of lines || []) {
+                if (!lineMap[line.account_id]) lineMap[line.account_id] = 0;
+                lineMap[line.account_id] += (parseFloat(line.debit) || 0) - (parseFloat(line.credit) || 0);
+            }
+        }
+
+        // Return accounts with non-zero balances (equivalent to HAVING != 0)
+        return accounts
+            .filter(a => Math.abs(lineMap[a.id] || 0) >= 0.001)
+            .map(a => ({
+                account_id:   a.id,
+                account_code: a.code,
+                account_name: a.name,
+                account_type: a.type,
+                amount:       lineMap[a.id] || 0,
+            }));
     }
-    
+
     /**
      * Generate user initials from user data
      */
@@ -536,20 +643,20 @@ class VATReconciliationService {
         if (!firstName || !lastName) {
             return '??';
         }
-        
+
         const firstInitial = firstName.charAt(0).toLowerCase();
-        
+
         // Handle "van" and other prefixes
         const lastNameParts = lastName.split(' ');
         let lastInitial;
-        
+
         if (lastNameParts.length > 1 && lastNameParts[0].toLowerCase() === 'van') {
             // Format: "r vL" for "Ruan van Loughrenberg"
             lastInitial = 'v' + lastNameParts[1].charAt(0).toUpperCase();
         } else {
             lastInitial = lastName.charAt(0).toUpperCase();
         }
-        
+
         return `${firstInitial} ${lastInitial}`;
     }
 }

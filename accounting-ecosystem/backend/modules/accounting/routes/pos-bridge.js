@@ -8,16 +8,17 @@
  *
  * All routes are under /api/accounting/pos/
  *
- * POS tables (sales, customers) live in the same PostgreSQL database as
- * accounting tables — queried directly via the same pg Pool connection.
- * The pg Pool bypasses Supabase RLS; company_id scoping is enforced here.
+ * POS tables (sales, customers) live in the same Supabase database as
+ * accounting tables — queried via the Supabase JS client.
+ * The service-role key bypasses RLS; company_id scoping is enforced here.
  *
- * SA timezone: UTC+2 (no DST). Date grouping uses (created_at + 2h)::date.
+ * SA timezone: UTC+2 (no DST). Date grouping is performed in JavaScript
+ * by offsetting UTC timestamps by +2 hours before extracting the date string.
  * ============================================================================
  */
 
 const express = require('express');
-const db = require('../config/database');
+const { supabase } = require('../../../config/database');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
@@ -26,7 +27,7 @@ const router = express.Router();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Convert a DB date row to YYYY-MM-DD string */
+/** Convert a DB date value to YYYY-MM-DD string */
 function toDateStr(d) {
   if (!d) return null;
   if (typeof d === 'string') return d.substring(0, 10);
@@ -34,9 +35,37 @@ function toDateStr(d) {
   return dt.toISOString().substring(0, 10);
 }
 
+/** Compute the SA date (UTC+2) string from a UTC timestamp */
+function saDateStr(createdAt) {
+  const ms = new Date(createdAt).getTime() + 2 * 3600 * 1000;
+  return new Date(ms).toISOString().substring(0, 10);
+}
+
+/** Compute the SA time HH:MM (UTC+2) from a UTC timestamp */
+function saTimeStr(createdAt) {
+  const ms = new Date(createdAt).getTime() + 2 * 3600 * 1000;
+  return new Date(ms).toISOString().substring(11, 16);
+}
+
+/**
+ * Convert an SA calendar date (YYYY-MM-DD) to the UTC ISO timestamp
+ * for the very start of that SA day (SA midnight = UTC-2h).
+ */
+function saDateToUtcStart(saDate) {
+  return new Date(`${saDate}T00:00:00+02:00`).toISOString();
+}
+
+/**
+ * Convert an SA calendar date (YYYY-MM-DD) to the UTC ISO timestamp
+ * for the very end of that SA day (SA 23:59:59.999 = UTC-2h).
+ */
+function saDateToUtcEnd(saDate) {
+  return new Date(`${saDate}T23:59:59.999+02:00`).toISOString();
+}
+
 // ─── GET /api/accounting/pos/daily-totals ─────────────────────────────────────
 /**
- * Aggregate POS sales by date, split cash vs card.
+ * Aggregate POS sales by SA date, split cash vs card.
  * Joins with pos_reconciliations to show settlement status.
  *
  * Query params:
@@ -50,70 +79,74 @@ function toDateStr(d) {
  */
 router.get('/daily-totals', authenticate, hasPermission('pos.view'), async (req, res) => {
   try {
-    const today = new Date().toISOString().substring(0, 10);
+    const today     = new Date().toISOString().substring(0, 10);
     const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 10);
-    const fromDate = req.query.fromDate || thirtyAgo;
-    const toDate   = req.query.toDate   || today;
+    const fromDate  = req.query.fromDate || thirtyAgo;
+    const toDate    = req.query.toDate   || today;
 
-    // Aggregate POS sales by SA date (UTC+2)
-    const salesResult = await db.query(
-      `SELECT
-         ((s.created_at + INTERVAL '2 hours')::date)::text                        AS date,
-         COALESCE(SUM(CASE WHEN s.payment_method = 'cash'  THEN s.total_amount ELSE 0 END), 0) AS cash_sales,
-         COALESCE(SUM(CASE WHEN s.payment_method = 'card'  THEN s.total_amount ELSE 0 END), 0) AS card_sales,
-         COALESCE(SUM(CASE WHEN s.payment_method = 'account' THEN s.total_amount ELSE 0 END), 0) AS account_sales,
-         COALESCE(SUM(s.total_amount), 0)     AS total_sales,
-         COUNT(*)                             AS transaction_count
-       FROM sales s
-       WHERE s.company_id = $1
-         AND s.status = 'completed'
-         AND (s.created_at + INTERVAL '2 hours')::date >= $2::date
-         AND (s.created_at + INTERVAL '2 hours')::date <= $3::date
-       GROUP BY 1
-       ORDER BY 1 DESC`,
-      [req.user.companyId, fromDate, toDate]
-    );
+    // Fetch completed sales within the SA date range (converted to UTC)
+    const { data: salesRows, error: salesError } = await supabase
+      .from('sales')
+      .select('created_at, payment_method, total_amount')
+      .eq('company_id', req.user.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', saDateToUtcStart(fromDate))
+      .lte('created_at', saDateToUtcEnd(toDate));
 
-    // Get existing settlements for the same period
-    const reconResult = await db.query(
-      `SELECT date::text, payment_method, bank_amount, pos_amount
-       FROM pos_reconciliations
-       WHERE company_id = $1
-         AND date >= $2::date
-         AND date <= $3::date`,
-      [req.user.companyId, fromDate, toDate]
-    );
+    if (salesError) throw new Error(salesError.message);
+
+    // Fetch existing settlements for the same period
+    const { data: reconRows, error: reconError } = await supabase
+      .from('pos_reconciliations')
+      .select('date, payment_method, bank_amount, pos_amount')
+      .eq('company_id', req.user.companyId)
+      .gte('date', fromDate)
+      .lte('date', toDate);
+
+    if (reconError) throw new Error(reconError.message);
+
+    // Aggregate sales by SA date in JavaScript
+    const salesByDate = {};
+    for (const s of salesRows || []) {
+      const date   = saDateStr(s.created_at);
+      const amount = parseFloat(s.total_amount) || 0;
+      if (!salesByDate[date]) {
+        salesByDate[date] = { date, cashSales: 0, cardSales: 0, accountSales: 0, totalSales: 0, transactionCount: 0 };
+      }
+      if (s.payment_method === 'cash')    salesByDate[date].cashSales    += amount;
+      if (s.payment_method === 'card')    salesByDate[date].cardSales    += amount;
+      if (s.payment_method === 'account') salesByDate[date].accountSales += amount;
+      salesByDate[date].totalSales += amount;
+      salesByDate[date].transactionCount++;
+    }
 
     // Build settlement map: { 'YYYY-MM-DD': { cash: amount, card: amount } }
     const settled = {};
-    for (const r of reconResult.rows) {
+    for (const r of reconRows || []) {
       const d = toDateStr(r.date);
       if (!settled[d]) settled[d] = {};
       settled[d][r.payment_method] = parseFloat(r.bank_amount) || 0;
     }
 
-    const days = salesResult.rows.map(row => {
-      const date        = toDateStr(row.date);
-      const cashSales   = parseFloat(row.cash_sales)   || 0;
-      const cardSales   = parseFloat(row.card_sales)   || 0;
-      const acctSales   = parseFloat(row.account_sales)|| 0;
-      const totalSales  = parseFloat(row.total_sales)  || 0;
-      const cashSettled = settled[date]?.cash  || 0;
-      const cardSettled = settled[date]?.card  || 0;
-
-      return {
-        date,
-        cashSales,
-        cardSales,
-        accountSales: acctSales,
-        totalSales,
-        transactionCount: parseInt(row.transaction_count) || 0,
-        cashSettled,
-        cardSettled,
-        cashPending:  Math.max(0, cashSales - cashSettled),
-        cardPending:  Math.max(0, cardSales - cardSettled),
-      };
-    });
+    const days = Object.values(salesByDate)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(row => {
+        const { date, cashSales, cardSales, accountSales, totalSales, transactionCount } = row;
+        const cashSettled = settled[date]?.cash || 0;
+        const cardSettled = settled[date]?.card || 0;
+        return {
+          date,
+          cashSales,
+          cardSales,
+          accountSales,
+          totalSales,
+          transactionCount,
+          cashSettled,
+          cardSettled,
+          cashPending: Math.max(0, cashSales - cashSettled),
+          cardPending: Math.max(0, cardSales - cardSettled),
+        };
+      });
 
     res.json({ days });
   } catch (err) {
@@ -124,7 +157,7 @@ router.get('/daily-totals', authenticate, hasPermission('pos.view'), async (req,
 
 // ─── GET /api/accounting/pos/sales ────────────────────────────────────────────
 /**
- * Individual POS sales for a specific date (for drill-down view).
+ * Individual POS sales for a specific SA date (for drill-down view).
  *
  * Query params:
  *   date          YYYY-MM-DD  (required)
@@ -139,46 +172,37 @@ router.get('/sales', authenticate, hasPermission('pos.view'), async (req, res) =
   if (!date) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
 
   try {
-    const params = [req.user.companyId, date];
-    let methodClause = '';
+    let query = supabase
+      .from('sales')
+      .select('id, sale_number, created_at, payment_method, total_amount, vat_amount, status, payment_status, customers!customer_id(name)')
+      .eq('company_id', req.user.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', saDateToUtcStart(date))
+      .lte('created_at', saDateToUtcEnd(date))
+      .order('created_at');
+
     if (paymentMethod) {
-      params.push(paymentMethod);
-      methodClause = `AND s.payment_method = $${params.length}`;
+      query = query.eq('payment_method', paymentMethod);
     }
 
-    const result = await db.query(
-      `SELECT
-         s.id,
-         s.sale_number                                            AS sale_number,
-         TO_CHAR(s.created_at + INTERVAL '2 hours', 'HH24:MI')  AS time,
-         COALESCE(c.name, 'Walk-in Customer')                    AS customer_name,
-         s.payment_method,
-         s.total_amount,
-         s.vat_amount,
-         s.status,
-         s.payment_status
-       FROM sales s
-       LEFT JOIN customers c ON s.customer_id = c.id
-       WHERE s.company_id = $1
-         AND (s.created_at + INTERVAL '2 hours')::date = $2::date
-         AND s.status = 'completed'
-         ${methodClause}
-       ORDER BY s.created_at ASC`,
-      params
-    );
+    const { data: salesRows, error } = await query;
+    if (error) throw new Error(error.message);
 
-    const sales = result.rows.map(r => ({
-      id:            r.id,
-      saleNumber:    r.sale_number,
-      time:          r.time,
-      description:   `${r.sale_number} — ${r.customer_name}`,
-      customerName:  r.customer_name,
-      paymentMethod: r.payment_method,
-      total:         parseFloat(r.total_amount) || 0,
-      vatAmount:     parseFloat(r.vat_amount)   || 0,
-      status:        r.status,
-      paymentStatus: r.payment_status,
-    }));
+    const sales = (salesRows || []).map(r => {
+      const customerName = r.customers?.name || 'Walk-in Customer';
+      return {
+        id:            r.id,
+        saleNumber:    r.sale_number,
+        time:          saTimeStr(r.created_at),
+        description:   `${r.sale_number} — ${customerName}`,
+        customerName,
+        paymentMethod: r.payment_method,
+        total:         parseFloat(r.total_amount) || 0,
+        vatAmount:     parseFloat(r.vat_amount)   || 0,
+        status:        r.status,
+        paymentStatus: r.payment_status,
+      };
+    });
 
     res.json({ sales });
   } catch (err) {
@@ -218,49 +242,53 @@ router.post('/reconciliation/settle', authenticate, hasPermission('pos.reconcile
   if (isNaN(parsedBankAmount) || parsedBankAmount < 0)
     return res.status(400).json({ error: 'bankAmount must be a non-negative number' });
 
-  const client = await db.getClient();
   try {
-    await client.query('BEGIN');
-
     // Check for existing reconciliation
-    const existing = await client.query(
-      'SELECT id FROM pos_reconciliations WHERE company_id = $1 AND date = $2::date AND payment_method = $3',
-      [req.user.companyId, date, paymentMethod]
-    );
-    if (existing.rows.length > 0) {
-      await client.query('ROLLBACK');
+    const { data: existing, error: existingError } = await supabase
+      .from('pos_reconciliations')
+      .select('id')
+      .eq('company_id', req.user.companyId)
+      .eq('date', date)
+      .eq('payment_method', paymentMethod)
+      .maybeSingle();
+
+    if (existingError) throw new Error(existingError.message);
+
+    if (existing) {
       return res.status(409).json({
         error: `${paymentMethod} for ${date} is already settled. Cannot re-settle.`,
         code: 'ALREADY_SETTLED'
       });
     }
 
-    // Calculate POS amount for the day
-    const salesResult = await client.query(
-      `SELECT
-         COALESCE(SUM(total_amount), 0) AS pos_amount,
-         COUNT(*)                        AS sales_count
-       FROM sales
-       WHERE company_id = $1
-         AND (created_at + INTERVAL '2 hours')::date = $2::date
-         AND payment_method = $3
-         AND status = 'completed'`,
-      [req.user.companyId, date, paymentMethod]
-    );
-    const posAmount   = parseFloat(salesResult.rows[0].pos_amount)  || 0;
-    const salesCount  = parseInt(salesResult.rows[0].sales_count)   || 0;
-    const variance    = parsedBankAmount - posAmount;
+    // Calculate POS amount for the day by fetching sales and aggregating in JS
+    const { data: salesRows, error: salesError } = await supabase
+      .from('sales')
+      .select('total_amount')
+      .eq('company_id', req.user.companyId)
+      .eq('payment_method', paymentMethod)
+      .eq('status', 'completed')
+      .gte('created_at', saDateToUtcStart(date))
+      .lte('created_at', saDateToUtcEnd(date));
+
+    if (salesError) throw new Error(salesError.message);
+
+    const salesCount = (salesRows || []).length;
+    const posAmount  = (salesRows || []).reduce((sum, s) => sum + (parseFloat(s.total_amount) || 0), 0);
+    const variance   = parsedBankAmount - posAmount;
 
     // Optionally create a journal entry
     let journal = null;
     if (bankLedgerAccountId && clearingAccountId) {
       // Verify both accounts belong to this company
-      const acctCheck = await client.query(
-        'SELECT id FROM accounts WHERE company_id = $1 AND id = ANY($2)',
-        [req.user.companyId, [bankLedgerAccountId, clearingAccountId]]
-      );
-      if (acctCheck.rows.length < 2) {
-        await client.query('ROLLBACK');
+      const { data: acctCheck, error: acctError } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('company_id', req.user.companyId)
+        .in('id', [bankLedgerAccountId, clearingAccountId]);
+
+      if (acctError) throw new Error(acctError.message);
+      if (!acctCheck || acctCheck.length < 2) {
         return res.status(400).json({ error: 'One or both ledger accounts not found for this company' });
       }
 
@@ -269,48 +297,50 @@ router.post('/reconciliation/settle', authenticate, hasPermission('pos.reconcile
         { accountId: bankLedgerAccountId, debit: parsedBankAmount, credit: 0,               description: desc },
         { accountId: clearingAccountId,   debit: 0,                credit: parsedBankAmount, description: desc },
       ];
-      // If there's a variance, add a rounding/variance line only if the accounts differ
-      // (for simplicity, variance is absorbed into the clearing account line)
 
-      const draftJournal = await JournalService.createDraftJournal(client, {
-        companyId:         req.user.companyId,
+      const draftJournal = await JournalService.createDraftJournal({
+        companyId:       req.user.companyId,
         date,
-        reference:         `POS-${paymentMethod.toUpperCase()}-${date}`,
-        description:       desc,
-        sourceType:        'pos_reconciliation',
-        createdByUserId:   req.user.id,
+        reference:       `POS-${paymentMethod.toUpperCase()}-${date}`,
+        description:     desc,
+        sourceType:      'pos_reconciliation',
+        createdByUserId: req.user.id,
         lines,
       });
 
       // Auto-post the journal
-      await JournalService.postJournal(client, draftJournal.id, req.user.companyId, req.user.id);
+      await JournalService.postJournal(draftJournal.id, req.user.companyId, req.user.id);
       journal = draftJournal;
     }
 
     // Record the reconciliation
-    const recon = await client.query(
-      `INSERT INTO pos_reconciliations
-         (company_id, date, payment_method, pos_amount, bank_amount,
-          journal_id, bank_description, notes, reconciled_by_user_id)
-       VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [
-        req.user.companyId, date, paymentMethod, posAmount, parsedBankAmount,
-        journal?.id || null, bankDescription || null, notes || null, req.user.id
-      ]
-    );
+    const { data: recon, error: reconInsertError } = await supabase
+      .from('pos_reconciliations')
+      .insert({
+        company_id:            req.user.companyId,
+        date,
+        payment_method:        paymentMethod,
+        pos_amount:            posAmount,
+        bank_amount:           parsedBankAmount,
+        journal_id:            journal?.id || null,
+        bank_description:      bankDescription || null,
+        notes:                 notes || null,
+        reconciled_by_user_id: req.user.id,
+      })
+      .select()
+      .single();
+
+    if (reconInsertError) throw new Error(reconInsertError.message);
 
     await AuditLogger.logUserAction(
-      req, 'SETTLE', 'POS_RECONCILIATION', recon.rows[0].id,
+      req, 'SETTLE', 'POS_RECONCILIATION', recon.id,
       null,
       { date, paymentMethod, posAmount, bankAmount: parsedBankAmount, variance },
       `POS ${paymentMethod} reconciled for ${date}`
     );
 
-    await client.query('COMMIT');
-
     res.status(201).json({
-      reconciliation: recon.rows[0],
+      reconciliation: recon,
       journal:        journal ? { id: journal.id, reference: journal.reference } : null,
       salesCount,
       posAmount,
@@ -319,11 +349,8 @@ router.post('/reconciliation/settle', authenticate, hasPermission('pos.reconcile
       variance,
     });
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('[pos-bridge] settle error:', err);
     res.status(500).json({ error: 'Failed to settle reconciliation' });
-  } finally {
-    client.release();
   }
 });
 
@@ -343,48 +370,77 @@ router.post('/reconciliation/settle', authenticate, hasPermission('pos.reconcile
 router.get('/customers', authenticate, hasPermission('pos.view'), async (req, res) => {
   try {
     const { search, limit = 100, offset = 0, active = 'true' } = req.query;
+    const parsedLimit  = parseInt(limit);
+    const parsedOffset = parseInt(offset);
 
-    const params  = [req.user.companyId];
-    let whereParts = ['c.company_id = $1'];
+    // Build the customer query with optional filters
+    let query = supabase
+      .from('customers')
+      .select(
+        'id, customer_number, name, customer_type, contact_person, email, phone, contact_number, address_line_1, city, postal_code, credit_limit, current_balance, is_active, created_at',
+        { count: 'exact' }
+      )
+      .eq('company_id', req.user.companyId);
 
-    if (active === 'true')  whereParts.push('c.is_active = true');
-    if (active === 'false') whereParts.push('c.is_active = false');
+    if (active === 'true')  query = query.eq('is_active', true);
+    if (active === 'false') query = query.eq('is_active', false);
 
     if (search) {
-      params.push(`%${search}%`);
-      whereParts.push(`(c.name ILIKE $${params.length} OR c.email ILIKE $${params.length} OR c.customer_number ILIKE $${params.length})`);
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,customer_number.ilike.%${search}%`);
     }
 
-    const whereClause = whereParts.join(' AND ');
+    query = query.order('name').range(parsedOffset, parsedOffset + parsedLimit - 1);
 
-    const result = await db.query(
-      `SELECT
-         c.id, c.customer_number, c.name, c.customer_type,
-         c.contact_person, c.email, c.phone, c.contact_number,
-         c.address_line_1, c.city, c.postal_code,
-         c.credit_limit, c.current_balance,
-         c.is_active, c.created_at,
-         COUNT(s.id)              AS total_sales,
-         COALESCE(SUM(s.total_amount), 0) AS lifetime_value,
-         MAX(s.created_at)        AS last_purchase_at,
-         MAX(CASE WHEN s.payment_method = 'account' THEN s.created_at END) AS last_account_sale_at
-       FROM customers c
-       LEFT JOIN sales s ON s.customer_id = c.id AND s.status = 'completed'
-       WHERE ${whereClause}
-       GROUP BY c.id
-       ORDER BY c.name
-       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, parseInt(limit), parseInt(offset)]
-    );
+    const { data: customers, count, error: custError } = await query;
+    if (custError) throw new Error(custError.message);
 
-    const totalResult = await db.query(
-      `SELECT COUNT(*) FROM customers c WHERE ${whereClause}`,
-      params
-    );
+    // Fetch sales aggregates for the returned customers
+    const customerIds = (customers || []).map(c => c.id);
+    const salesAgg = {};
+
+    if (customerIds.length > 0) {
+      const { data: salesData, error: salesError } = await supabase
+        .from('sales')
+        .select('customer_id, total_amount, created_at, payment_method')
+        .eq('company_id', req.user.companyId)
+        .eq('status', 'completed')
+        .in('customer_id', customerIds);
+
+      if (salesError) throw new Error(salesError.message);
+
+      for (const s of salesData || []) {
+        if (!salesAgg[s.customer_id]) {
+          salesAgg[s.customer_id] = {
+            total_sales: 0, lifetime_value: 0,
+            last_purchase_at: null, last_account_sale_at: null,
+          };
+        }
+        const agg    = salesAgg[s.customer_id];
+        const amount = parseFloat(s.total_amount) || 0;
+        agg.total_sales++;
+        agg.lifetime_value += amount;
+        if (!agg.last_purchase_at || s.created_at > agg.last_purchase_at) {
+          agg.last_purchase_at = s.created_at;
+        }
+        if (s.payment_method === 'account' &&
+            (!agg.last_account_sale_at || s.created_at > agg.last_account_sale_at)) {
+          agg.last_account_sale_at = s.created_at;
+        }
+      }
+    }
+
+    // Merge aggregate data into customer rows
+    const result = (customers || []).map(c => ({
+      ...c,
+      total_sales:          salesAgg[c.id]?.total_sales          || 0,
+      lifetime_value:       salesAgg[c.id]?.lifetime_value        || 0,
+      last_purchase_at:     salesAgg[c.id]?.last_purchase_at      || null,
+      last_account_sale_at: salesAgg[c.id]?.last_account_sale_at  || null,
+    }));
 
     res.json({
-      customers: result.rows,
-      total: parseInt(totalResult.rows[0].count) || 0,
+      customers: result,
+      total: count || 0,
     });
   } catch (err) {
     console.error('[pos-bridge] customers error:', err);
@@ -404,37 +460,48 @@ router.get('/customers/:id', authenticate, hasPermission('pos.view'), async (req
   try {
     const { id } = req.params;
 
-    const custResult = await db.query(
-      'SELECT * FROM customers WHERE id = $1 AND company_id = $2',
-      [id, req.user.companyId]
-    );
-    if (custResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Customer not found' });
+    const { data: customer, error: custError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', id)
+      .eq('company_id', req.user.companyId)
+      .maybeSingle();
+
+    if (custError) throw new Error(custError.message);
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+    const { data: salesRows, error: salesError } = await supabase
+      .from('sales')
+      .select('total_amount, payment_method, created_at')
+      .eq('customer_id', id)
+      .eq('company_id', req.user.companyId)
+      .eq('status', 'completed');
+
+    if (salesError) throw new Error(salesError.message);
+
+    let totalSales = 0, lifetimeValue = 0, cashSales = 0, cardSales = 0,
+        accountSales = 0, lastPurchaseAt = null;
+
+    for (const s of salesRows || []) {
+      const amount = parseFloat(s.total_amount) || 0;
+      totalSales++;
+      lifetimeValue += amount;
+      if (s.payment_method === 'cash')    cashSales    += amount;
+      if (s.payment_method === 'card')    cardSales    += amount;
+      if (s.payment_method === 'account') accountSales += amount;
+      if (!lastPurchaseAt || s.created_at > lastPurchaseAt) lastPurchaseAt = s.created_at;
     }
 
-    const salesResult = await db.query(
-      `SELECT
-         COUNT(*)                                                              AS total_sales,
-         COALESCE(SUM(total_amount), 0)                                       AS lifetime_value,
-         COALESCE(SUM(CASE WHEN payment_method='cash'    THEN total_amount ELSE 0 END), 0) AS cash_sales,
-         COALESCE(SUM(CASE WHEN payment_method='card'    THEN total_amount ELSE 0 END), 0) AS card_sales,
-         COALESCE(SUM(CASE WHEN payment_method='account' THEN total_amount ELSE 0 END), 0) AS account_sales,
-         MAX(created_at)                                                       AS last_purchase_at
-       FROM sales
-       WHERE customer_id = $1 AND company_id = $2 AND status = 'completed'`,
-      [id, req.user.companyId]
-    );
-
     res.json({
-      customer:     custResult.rows[0],
+      customer,
       salesSummary: {
-        totalSales:       parseInt(salesResult.rows[0].total_sales)     || 0,
-        lifetimeValue:    parseFloat(salesResult.rows[0].lifetime_value) || 0,
-        cashSales:        parseFloat(salesResult.rows[0].cash_sales)     || 0,
-        cardSales:        parseFloat(salesResult.rows[0].card_sales)     || 0,
-        accountSales:     parseFloat(salesResult.rows[0].account_sales)  || 0,
-        outstandingBalance: parseFloat(custResult.rows[0].current_balance) || 0,
-        lastPurchaseAt:   salesResult.rows[0].last_purchase_at,
+        totalSales,
+        lifetimeValue,
+        cashSales,
+        cardSales,
+        accountSales,
+        outstandingBalance: parseFloat(customer.current_balance) || 0,
+        lastPurchaseAt,
       },
     });
   } catch (err) {
@@ -461,48 +528,59 @@ router.get('/customers/:id/sales', authenticate, hasPermission('pos.view'), asyn
   try {
     const { id } = req.params;
     const { fromDate, toDate, paymentMethod, limit = 50, offset = 0 } = req.query;
+    const parsedLimit  = parseInt(limit);
+    const parsedOffset = parseInt(offset);
 
     // Verify customer belongs to company
-    const custCheck = await db.query(
-      'SELECT id FROM customers WHERE id = $1 AND company_id = $2',
-      [id, req.user.companyId]
-    );
-    if (custCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Customer not found' });
+    const { data: custCheck, error: custCheckError } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('id', id)
+      .eq('company_id', req.user.companyId)
+      .maybeSingle();
+
+    if (custCheckError) throw new Error(custCheckError.message);
+    if (!custCheck) return res.status(404).json({ error: 'Customer not found' });
+
+    let query = supabase
+      .from('sales')
+      .select(
+        'id, sale_number, created_at, payment_method, total_amount, vat_amount, subtotal, discount_amount, status, payment_status',
+        { count: 'exact' }
+      )
+      .eq('customer_id', id)
+      .eq('company_id', req.user.companyId)
+      .eq('status', 'completed');
+
+    if (fromDate) {
+      query = query.gte('created_at', `${fromDate}T00:00:00.000Z`);
+    }
+    if (toDate) {
+      // Exclusive upper bound: created_at < (toDate + 1 day), matching original SQL
+      const exclusiveEnd = new Date(new Date(`${toDate}T00:00:00.000Z`).getTime() + 86400000).toISOString();
+      query = query.lt('created_at', exclusiveEnd);
+    }
+    if (paymentMethod) {
+      query = query.eq('payment_method', paymentMethod);
     }
 
-    const params = [id, req.user.companyId];
-    let whereParts = ['s.customer_id = $1', 's.company_id = $2', "s.status = 'completed'"];
+    query = query
+      .order('created_at', { ascending: false })
+      .range(parsedOffset, parsedOffset + parsedLimit - 1);
 
-    if (fromDate) { params.push(fromDate); whereParts.push(`s.created_at >= $${params.length}::date`); }
-    if (toDate)   { params.push(toDate);   whereParts.push(`s.created_at < ($${params.length}::date + INTERVAL '1 day')`); }
-    if (paymentMethod) { params.push(paymentMethod); whereParts.push(`s.payment_method = $${params.length}`); }
+    const { data: salesRows, count, error: salesError } = await query;
+    if (salesError) throw new Error(salesError.message);
 
-    const whereClause = whereParts.join(' AND ');
-
-    const result = await db.query(
-      `SELECT
-         s.id, s.sale_number,
-         (s.created_at + INTERVAL '2 hours')::date::text AS date,
-         TO_CHAR(s.created_at + INTERVAL '2 hours', 'HH24:MI') AS time,
-         s.payment_method, s.total_amount, s.vat_amount,
-         s.subtotal, s.discount_amount,
-         s.status, s.payment_status
-       FROM sales s
-       WHERE ${whereClause}
-       ORDER BY s.created_at DESC
-       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, parseInt(limit), parseInt(offset)]
-    );
-
-    const countResult = await db.query(
-      `SELECT COUNT(*) FROM sales s WHERE ${whereClause}`,
-      params
-    );
+    // Decorate with SA date/time fields
+    const sales = (salesRows || []).map(s => ({
+      ...s,
+      date: saDateStr(s.created_at),
+      time: saTimeStr(s.created_at),
+    }));
 
     res.json({
-      sales: result.rows,
-      total: parseInt(countResult.rows[0].count) || 0,
+      sales,
+      total: count || 0,
     });
   } catch (err) {
     console.error('[pos-bridge] customer sales error:', err);
