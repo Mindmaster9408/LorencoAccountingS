@@ -65,16 +65,24 @@ const IMAGE_EXTENSIONS = new Set([
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
-/** Run tesseract on a file path, return the extracted text string. */
-async function _tesseract(imagePath, langs = ['eng']) {
+/**
+ * Run tesseract on a file path, return the extracted text string.
+ * @param {string}   imagePath
+ * @param {string[]} [langs]  - language codes (default: ['eng'])
+ * @param {number}   [psm]    - Page segmentation mode (default: 6)
+ *   PSM 3 = fully automatic (general purpose)
+ *   PSM 4 = single column, variable-size text (tall narrow docs)
+ *   PSM 6 = uniform block of text — best for bank statement tables
+ */
+async function _tesseract(imagePath, langs = ['eng'], psm = 6) {
   const outBase = path.join(os.tmpdir(), `ocr-out-${crypto.randomUUID()}`);
   try {
     await execFileAsync('tesseract', [
       imagePath,
       outBase,
       '-l', langs.join('+'),
-      '--oem', '3',   // LSTM + legacy combo
-      '--psm', '3',   // Fully automatic page segmentation
+      '--oem', '3',          // LSTM + legacy combo — most accurate
+      '--psm', String(psm),  // caller-controlled; 6 = uniform text block (tables)
     ], { timeout: 60000 });
     const txt = fs.readFileSync(outBase + '.txt', 'utf8');
     return txt.trim();
@@ -123,7 +131,8 @@ async function extractTextFromImage(imageBuffer, options = {}) {
  * @param {Buffer}   pdfBuffer
  * @param {object}   [options]
  * @param {string[]} [options.langs]     - Tesseract language codes (default: ['eng'])
- * @param {number}   [options.dpi]       - Render DPI (default: 200 — good quality/speed tradeoff)
+ * @param {number}   [options.dpi]       - Render DPI (default: 300 — required for reliable number OCR)
+ * @param {number}   [options.psm]       - Tesseract page segmentation mode (default: 6 = uniform text block)
  * @param {number}   [options.maxPages]  - Max pages to OCR. Omit (or 0) for all pages.
  * @returns {Promise<{ text: string, pageCount: number, method: string, success: true }>}
  */
@@ -135,9 +144,10 @@ async function extractTextFromScannedPdf(pdfBuffer, options = {}) {
     throw new Error('Scanned-PDF OCR unavailable: pdftoppm (poppler-utils) is not installed.');
   }
 
-  const langs    = options.langs || ['eng'];
-  const dpi      = options.dpi   || 200;
-  const maxPages = options.maxPages || 0; // 0 = no limit (process all pages)
+  const langs    = options.langs    || ['eng'];
+  const dpi      = options.dpi      || 300;  // 300 DPI minimum for reliable digit recognition
+  const psm      = options.psm      ?? 6;    // PSM 6 = uniform block — best for tabular bank data
+  const maxPages = options.maxPages || 0;    // 0 = no limit (process all pages)
 
   const tmpDir  = path.join(os.tmpdir(), `ocr-pdf-${crypto.randomUUID()}`);
   const pdfPath = path.join(tmpDir, 'input.pdf');
@@ -167,7 +177,7 @@ async function extractTextFromScannedPdf(pdfBuffer, options = {}) {
     // OCR each page
     const pageTexts = [];
     for (const file of pageFiles) {
-      const text = await _tesseract(path.join(tmpDir, file), langs);
+      const text = await _tesseract(path.join(tmpDir, file), langs, psm);
       if (text.trim()) pageTexts.push(text.trim());
     }
 

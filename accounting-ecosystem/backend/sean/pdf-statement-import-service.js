@@ -100,7 +100,9 @@ class PdfStatementImportService {
         warnings.push('Scanned (image-based) PDF detected — running OCR to extract text. This may take a moment.');
         let ocrResult;
         try {
-          ocrResult = await OcrService.extractTextFromScannedPdf(pdfBuffer, { dpi: 200 }); // all pages
+          // 300 DPI: minimum for reliable digit recognition (200 DPI causes OCR errors on numbers).
+          // PSM 6: "assume single uniform block of text" — best for bank statement tables.
+          ocrResult = await OcrService.extractTextFromScannedPdf(pdfBuffer, { dpi: 300, psm: 6 });
         } catch (ocrErr) {
           return this._error(
             `This is a scanned PDF and OCR failed: ${ocrErr.message}. ` +
@@ -109,7 +111,9 @@ class PdfStatementImportService {
         }
         const ocrText = ocrResult.text || '';
         const ocrWords = ocrText.split(/\s+/).filter(w => w.length > 0).length;
-        if (ocrText.length < MIN_TEXT_LENGTH || ocrWords < MIN_WORD_COUNT) {
+        // Only bail if OCR produced essentially nothing (< 10 words).
+        // A short but real statement may have few words — attempt parsing anyway.
+        if (ocrWords < 10) {
           return {
             success: false,
             error: 'OCR ran but could not extract readable text from this scanned PDF. ' +
@@ -121,8 +125,8 @@ class PdfStatementImportService {
             importedAt: new Date().toISOString()
           };
         }
-        // Replace text with OCR output and continue normal parsing pipeline
-        text = ocrText;
+        // Normalize OCR output before feeding parsers (fixes digit substitutions, spacing)
+        text = this._normalizeOcrText(ocrText);
         warnings.push(`OCR extracted ${ocrWords} words across ${ocrResult.pageCount} page(s).`);
       } else {
         return {
@@ -195,6 +199,54 @@ class PdfStatementImportService {
       skippedLines: parseResult.skippedLines,
       importedAt: new Date().toISOString()
     };
+  }
+
+  /**
+   * Normalize raw OCR text before feeding it into bank statement parsers.
+   *
+   * Tesseract on tabular financial documents produces characteristic errors:
+   *   - Capital O substituted for 0 in numeric contexts
+   *   - Lowercase l/I substituted for 1
+   *   - Amounts split across lines: "1 234\n.56" → should be "1 234.56"
+   *   - Date separators mangled: "01/01/ 2026" → "01/01/2026"
+   *   - Pipe characters instead of slash in dates: "01|01|2026"
+   *   - Excessive whitespace between columns on the same row
+   *   - Page-break markers inserted by multi-page OCR
+   */
+  static _normalizeOcrText(text) {
+    let t = text;
+
+    // 1. Normalize page-break separators inserted by the OCR pipeline
+    t = t.replace(/\n\n---\s*PAGE BREAK\s*---\n\n/g, '\n');
+
+    // 2. Fix pipe | used instead of / in date fields (01|01|2026 → 01/01/2026)
+    t = t.replace(/(\d{1,2})\|(\d{1,2})\|(\d{4})/g, '$1/$2/$3');
+
+    // 3. Fix spaces accidentally inserted into date separators ("01/01/ 2026")
+    t = t.replace(/(\d{2}\/\d{2}\/)\s+(\d{4})/g, '$1$2');
+
+    // 4. Replace capital O with 0 when surrounded by digits or at start of a number
+    //    "1O 500.00" → "10 500.00", "O1/O1/2026" → "01/01/2026"
+    t = t.replace(/(?<=\d)O(?=\d)/g, '0');
+    t = t.replace(/\bO(?=\d)/g, '0');
+
+    // 5. Replace lowercase l with 1 when in a numeric context
+    //    "l5 000.00" or "0l/01/2026"
+    t = t.replace(/(?<=\d)l(?=\d)/g, '1');
+    t = t.replace(/\bl(?=\d{1,2}[\/\-])/g, '1');  // leading l before date-like pattern
+
+    // 6. Fix amounts split across a newline: "1 234\n.56" → "1 234.56"
+    t = t.replace(/(\d+)\n\.(\d{2})\b/g, '$1.$2');
+
+    // 7. Collapse runs of more than two spaces on a single line to two spaces
+    //    (preserves column separation but removes excessive padding)
+    t = t.split('\n').map(line => line.replace(/  {2,}/g, '  ')).join('\n');
+
+    // 8. Remove stray non-printable characters that tesseract occasionally emits
+    // eslint-disable-next-line no-control-regex
+    t = t.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    return t;
   }
 
   /**

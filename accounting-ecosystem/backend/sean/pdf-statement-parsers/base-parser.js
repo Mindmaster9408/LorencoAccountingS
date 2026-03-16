@@ -66,7 +66,13 @@ class BaseParser {
    */
   static parseDate(str) {
     if (!str) return null;
-    const s = str.toString().trim();
+    // Normalize common OCR artifacts before parsing:
+    //   pipe used as slash: 01|01|2026 → 01/01/2026
+    //   capital O used as zero: O1/O1/2026 → 01/01/2026
+    let s = str.toString().trim()
+      .replace(/(\d{1,2})\|(\d{1,2})\|(\d{4})/, '$1/$2/$3')
+      .replace(/\bO(\d)/g, '0$1')
+      .replace(/(\d)O\b/g, '$10');
 
     const MONTHS = {
       jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
@@ -183,10 +189,12 @@ class BaseParser {
    */
   static startsWithDate(str) {
     return (
-      /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(str) ||
-      /^\d{4}[\/\-]\d{2}[\/\-]\d{2}/.test(str) ||
+      /^\d{1,2}[\/\-\|]\d{1,2}[\/\-\|]\d{4}/.test(str) ||   // DD/MM/YYYY or with pipe (OCR)
+      /^\d{4}[\/\-]\d{2}[\/\-]\d{2}/.test(str) ||             // YYYY-MM-DD
       /^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}/i.test(str) ||
-      /^\d{1,2}-(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4}/i.test(str)
+      /^\d{1,2}-(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4}/i.test(str) ||
+      // OCR: leading O mistaken for 0 — e.g. "O1/01/2026"
+      /^[O0]\d[\/\-\|]\d{1,2}[\/\-\|]\d{4}/.test(str)
     );
   }
 
