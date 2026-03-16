@@ -74,39 +74,33 @@ const upload = multer({
  */
 router.get('/accounts', authenticate, hasPermission('bank.view'), async (req, res) => {
   try {
-    // Try full query with ledger account join (requires migration 012 to have run).
-    // Fall back to plain select if ledger_account_id column doesn't exist yet.
-    let data, error;
-
-    ({ data, error } = await supabase
+    const { data: rows, error } = await supabase
       .from('bank_accounts')
-      .select('*, accounts!ledger_account_id(code, name)')
+      .select('*')
       .eq('company_id', req.user.companyId)
-      .order('name'));
+      .eq('is_active', true)
+      .order('created_at', { ascending: true });
 
-    if (error) {
-      // Fallback: column / FK not yet available — return base columns only
-      console.warn('[bank/accounts] FK join failed, falling back to base select:', error.message);
-      ({ data, error } = await supabase
-        .from('bank_accounts')
-        .select('*')
-        .eq('company_id', req.user.companyId)
-        .order('created_at'));
+    if (error) throw new Error(error.message);
 
-      if (error) throw new Error(error.message);
+    // Enrich with ledger account code/name via a separate lookup if ledger_account_id present
+    const ledgerIds = [...new Set((rows || []).map(r => r.ledger_account_id).filter(Boolean))];
+    let ledgerMap = {};
+    if (ledgerIds.length > 0) {
+      const { data: accts } = await supabase
+        .from('accounts')
+        .select('id, code, name')
+        .in('id', ledgerIds);
+      (accts || []).forEach(a => { ledgerMap[a.id] = a; });
     }
 
-    const bankAccounts = (data || []).map(ba => ({
+    const bankAccounts = (rows || []).map(ba => ({
       ...ba,
-      // Support both joined shapes
-      ledger_account_code: ba.ledger?.code ?? ba.accounts?.code ?? null,
-      ledger_account_name: ba.ledger?.name ?? ba.accounts?.name ?? null
+      ledger_account_code: ledgerMap[ba.ledger_account_id]?.code ?? null,
+      ledger_account_name: ledgerMap[ba.ledger_account_id]?.name ?? null
     }));
 
-    res.json({
-      bankAccounts,
-      count: bankAccounts.length
-    });
+    res.json({ bankAccounts, count: bankAccounts.length });
 
   } catch (error) {
     console.error('Error fetching bank accounts:', error);

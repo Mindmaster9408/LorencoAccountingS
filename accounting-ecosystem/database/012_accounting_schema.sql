@@ -134,8 +134,13 @@ ALTER TABLE bank_accounts ADD COLUMN IF NOT EXISTS updated_at            TIMESTA
 
 -- Drop NOT NULL constraints from old schema.sql columns that the accounting
 -- module does not populate. Without this, every POST /bank/accounts fails with
--- a null-constraint violation on `account_name` and `account_number`.
+-- a null-constraint violation on `bank_name`, `account_name`, and `account_number`.
 -- Using EXCEPTION instead of IF EXISTS — more robust in Supabase.
+DO $$
+BEGIN
+  ALTER TABLE bank_accounts ALTER COLUMN bank_name DROP NOT NULL;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
 DO $$
 BEGIN
   ALTER TABLE bank_accounts ALTER COLUMN account_name DROP NOT NULL;
