@@ -477,7 +477,24 @@
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        
+
+        .bank-card-ledger {
+            font-size: 11px;
+            margin-top: 4px;
+        }
+        .bank-card-ledger--linked { color: #0066cc; }
+        .bank-card-ledger--warn   { color: #e65100; }
+
+        .bank-card-edit-btn {
+            background: none;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            color: #5f6368;
+        }
+
         .transactions-section {
             background: white;
             padding: 24px;
@@ -1855,15 +1872,15 @@ Click OK to simulate uploading a file.`;
 
                 grid.innerHTML = bankAccountsData.map(acct => {
                     const ledgerLabel = acct.ledger_account_id
-                        ? `<div style="font-size:11px;color:#0066cc;margin-top:4px;">🔗 ${escapeHtml(acct.ledger_account_code || '')} — ${escapeHtml(acct.ledger_account_name || '')}</div>`
-                        : `<div style="font-size:11px;color:#e65100;margin-top:4px;">⚠️ No ledger account linked</div>`;
+                        ? `<div class="bank-card-ledger bank-card-ledger--linked">🔗 ${escapeHtml(acct.ledger_account_code || '')} — ${escapeHtml(acct.ledger_account_name || '')}</div>`
+                        : `<div class="bank-card-ledger bank-card-ledger--warn">⚠️ No ledger account linked</div>`;
                     return `
                     <div class="bank-account-card${acct.id === selectedBankAccountId ? ' active' : ''}"
                          onclick="selectAccount(this, ${acct.id})">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                             <div class="account-name">${escapeHtml(acct.name)}</div>
                             <button onclick="event.stopPropagation();showEditBankModal(${acct.id})"
-                                style="background:none;border:1px solid #e0e0e0;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;color:#5f6368;">Edit</button>
+                                class="bank-card-edit-btn">Edit</button>
                         </div>
                         <div class="account-number">${acct.account_number_masked ? escapeHtml(acct.account_number_masked) : (acct.bank_name ? escapeHtml(acct.bank_name) : '—')}</div>
                         ${ledgerLabel}

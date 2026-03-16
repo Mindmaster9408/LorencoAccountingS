@@ -425,6 +425,21 @@ select option {
     background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
 }
+/* Bank card — ledger link and edit button dark overrides */
+.bank-card-ledger--linked {
+    color: var(--accent-light) !important;
+}
+.bank-card-ledger--warn {
+    color: #fca5a5 !important;
+}
+.bank-card-edit-btn {
+    border-color: var(--border-strong) !important;
+    color: var(--text-muted) !important;
+}
+.bank-card-edit-btn:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+}
 /* Filter bar inside bank page */
 .filter-group select,
 .filter-group input {
