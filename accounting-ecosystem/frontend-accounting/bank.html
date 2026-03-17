@@ -542,20 +542,19 @@
             table-layout: fixed;
         }
         
-        .transactions-table th:nth-child(1) { width: 40px; }  /* Checkbox */
-        .transactions-table th:nth-child(2) { width: 90px; }  /* Date */
-        .transactions-table th:nth-child(3) { width: auto; min-width: 180px; }  /* Description */
-        .transactions-table th:nth-child(4) { width: 95px; } /* Reference */
-        .transactions-table th:nth-child(5) { width: 105px; } /* Money In */
-        .transactions-table th:nth-child(6) { width: 105px; } /* Money Out */
-        .transactions-table th:nth-child(7) { width: 105px; } /* Balance */
-        .transactions-table th:nth-child(8) { width: 185px; } /* Transaction Type */
-        .transactions-table th:nth-child(9) { width: 210px; } /* Account */
-        .transactions-table th:nth-child(10) { width: 95px; } /* Status */
-        .transactions-table th:nth-child(11) { width: 55px; }  /* Upload */
-        .transactions-table th:nth-child(12) { width: 95px; } /* Attachments */
-        .transactions-table th:nth-child(13) { width: 85px; } /* Actions */
-        .transactions-table th:nth-child(14) { width: 85px; } /* AI */
+        .transactions-table th:nth-child(1) { width: 40px; }   /* Checkbox */
+        .transactions-table th:nth-child(2) { width: 85px; }   /* Date */
+        .transactions-table th:nth-child(3) { width: auto; min-width: 220px; } /* Description */
+        .transactions-table th:nth-child(4) { width: 110px; }  /* Money In */
+        .transactions-table th:nth-child(5) { width: 110px; }  /* Money Out */
+        .transactions-table th:nth-child(6) { width: 110px; }  /* Balance */
+        .transactions-table th:nth-child(7) { width: 175px; }  /* Transaction Type */
+        .transactions-table th:nth-child(8) { width: 205px; }  /* Account */
+        .transactions-table th:nth-child(9) { width: 95px; }   /* Status */
+        .transactions-table th:nth-child(10) { width: 50px; }  /* Upload */
+        .transactions-table th:nth-child(11) { width: 90px; }  /* Attachments */
+        .transactions-table th:nth-child(12) { width: 75px; }  /* Actions */
+        .transactions-table th:nth-child(13) { width: 75px; }  /* AI */
         
         .transactions-table thead {
             background: #f8f9fa;
@@ -594,11 +593,17 @@
         
         .transaction-description {
             font-weight: 500;
+            word-break: break-word;
+            white-space: normal;
+            line-height: 1.4;
         }
-        
+
         .transaction-reference {
             color: #9aa0a6;
-            font-size: 12px;
+            font-size: 11px;
+            margin-top: 3px;
+            word-break: break-word;
+            white-space: normal;
         }
         
         .transaction-amount {
@@ -1654,8 +1659,7 @@
                     <tr>
                         <th><input type="checkbox" class="checkbox" onclick="selectAll(this)"></th>
                         <th>Date</th>
-                        <th>Description</th>
-                        <th>Reference</th>
+                        <th>Description / Reference</th>
                         <th>Money In</th>
                         <th>Money Out</th>
                         <th>Balance</th>
@@ -1679,9 +1683,7 @@
                         </td>
                         <td>
                             <input type="text" id="manualDesc" class="manual-input" placeholder="Description *">
-                        </td>
-                        <td>
-                            <input type="text" id="manualRef" class="manual-input" placeholder="Reference">
+                            <input type="text" id="manualRef" class="manual-input" placeholder="Reference (optional)" style="margin-top:4px;font-size:11px;color:#9aa0a6;">
                         </td>
                         <td>
                             <input type="number" id="manualMoneyIn" class="manual-input" placeholder="0.00" min="0" step="0.01" oninput="validateManualAmounts('in')">
@@ -2059,7 +2061,7 @@ Click OK to simulate uploading a file.`;
             // Clear non-entry rows and show loading state
             Array.from(tbody.querySelectorAll('tr:not(#manualEntryRow)')).forEach(r => r.remove());
             tbody.insertAdjacentHTML('beforeend',
-                '<tr id="txnLoadingRow"><td colspan="14" style="text-align:center;padding:30px;color:#5f6368;font-style:italic;">Loading transactions…</td></tr>');
+                '<tr id="txnLoadingRow"><td colspan="13" style="text-align:center;padding:30px;color:#5f6368;font-style:italic;">Loading transactions…</td></tr>');
 
             try {
                 const params = new URLSearchParams();
@@ -2082,7 +2084,7 @@ Click OK to simulate uploading a file.`;
 
                 if (!txns.length) {
                     tbody.insertAdjacentHTML('beforeend',
-                        '<tr id="noTxnRow"><td colspan="14" style="text-align:center;padding:40px;color:#5f6368;">No transactions found for the selected filters.</td></tr>');
+                        '<tr id="noTxnRow"><td colspan="13" style="text-align:center;padding:40px;color:#5f6368;">No transactions found for the selected filters.</td></tr>');
                     return;
                 }
 
@@ -2096,9 +2098,13 @@ Click OK to simulate uploading a file.`;
                         return true;
                     })
                     .map(txn => {
-                        const isIn    = txn.amount >= 0;
-                        const inCell  = isIn  ? `<td class="transaction-amount amount-in">${formatAmount(txn.amount)}</td><td>—</td>` : '<td>—</td>';
-                        const outCell = !isIn ? `<td>—</td><td class="transaction-amount amount-out">${formatAmount(txn.amount)}</td>` : '<td>—</td>';
+                        const isIn       = txn.amount >= 0;
+                        const moneyInCell  = isIn
+                            ? `<td class="transaction-amount amount-in">${formatAmount(txn.amount)}</td>`
+                            : '<td style="color:#9aa0a6">—</td>';
+                        const moneyOutCell = !isIn
+                            ? `<td class="transaction-amount amount-out">${formatAmount(txn.amount)}</td>`
+                            : '<td style="color:#9aa0a6">—</td>';
                         const bal     = txn.balance != null ? formatAmount(txn.balance) : '—';
                         return `
                         <tr data-txn-id="${txn.id}">
@@ -2106,11 +2112,10 @@ Click OK to simulate uploading a file.`;
                             <td class="transaction-date">${formatDisplayDate(txn.date)}</td>
                             <td>
                                 <div class="transaction-description">${escapeHtml(txn.description || '')}</div>
-                                ${txn.reference ? `<div class="transaction-reference">${escapeHtml(txn.reference)}</div>` : ''}
+                                ${txn.reference ? `<div class="transaction-reference">Ref: ${escapeHtml(txn.reference)}</div>` : ''}
                             </td>
-                            <td>${txn.reference ? escapeHtml(txn.reference) : '—'}</td>
-                            ${inCell}
-                            ${outCell}
+                            ${moneyInCell}
+                            ${moneyOutCell}
                             <td>${bal}</td>
                             <td>
                                 <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')">
@@ -2142,7 +2147,7 @@ Click OK to simulate uploading a file.`;
                             </td>
                         </tr>
                         <tr class="ai-suggestion-row" id="aiRow${txn.id}">
-                            <td colspan="14">
+                            <td colspan="13">
                                 <div class="ai-suggestion-content">
                                     <div class="ai-suggestion-header">&#129302; Sean AI Analysis</div>
                                     <div class="ai-decision"><em>Click to analyze…</em></div>
@@ -2166,7 +2171,7 @@ Click OK to simulate uploading a file.`;
                 console.error('loadTransactions error:', err);
                 document.getElementById('txnLoadingRow')?.remove();
                 tbody.insertAdjacentHTML('beforeend',
-                    '<tr><td colspan="14" style="text-align:center;padding:30px;color:#ea4335;">Failed to load transactions. Please refresh the page.</td></tr>');
+                    '<tr><td colspan="13" style="text-align:center;padding:30px;color:#ea4335;">Failed to load transactions. Please refresh the page.</td></tr>');
             }
         }
         
@@ -3837,7 +3842,7 @@ Click OK to simulate uploading a file.`;
                 + '</td>'
                 + '</tr>'
                 + '<tr class="ai-suggestion-row" id="aiRow' + id + '">'
-                + '<td colspan="14">'
+                + '<td colspan="13">'
                 +   '<div class="ai-suggestion-content">'
                 +     '<div class="ai-suggestion-header">\uD83E\uDD16 Sean AI Analysis</div>'
                 +     '<div class="ai-decision"><em>Click to analyze\u2026</em></div>'
