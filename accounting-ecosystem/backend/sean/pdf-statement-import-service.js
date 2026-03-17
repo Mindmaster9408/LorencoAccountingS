@@ -178,6 +178,12 @@ class PdfStatementImportService {
 
     warnings.push(...parseResult.warnings);
 
+    // Debug: log raw text sample when no transactions found — helps diagnose layout issues
+    if (parseResult.transactions.length === 0) {
+      const sample = text.slice(0, 800).replace(/\n/g, ' ↵ ');
+      console.warn(`[PDF Import] 0 transactions extracted by ${selection.parser.PARSER_ID}. Raw text sample:\n${sample}`);
+    }
+
     // ─── STEP D: Validate and enrich transactions ────────────────────────────
     const validTransactions = parseResult.transactions.filter(txn => {
       if (!txn.date || txn.amount === null || isNaN(txn.amount)) return false;
@@ -197,7 +203,7 @@ class PdfStatementImportService {
     );
 
     // ─── STEP F: Build result ────────────────────────────────────────────────
-    return {
+    const result = {
       success: true,
       error: null,
       isPdfScanned: false,
@@ -213,6 +219,14 @@ class PdfStatementImportService {
       skippedLines: parseResult.skippedLines,
       importedAt: new Date().toISOString()
     };
+
+    // Include a raw text sample when 0 transactions extracted — diagnostic aid
+    // for identifying layout issues without having to read server logs.
+    if (reviewTransactions.length === 0) {
+      result.rawTextSample = text.slice(0, 600);
+    }
+
+    return result;
   }
 
   /**

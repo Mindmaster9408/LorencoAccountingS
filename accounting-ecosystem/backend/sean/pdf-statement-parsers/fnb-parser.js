@@ -2,17 +2,11 @@
  * ============================================================================
  * FNB (First National Bank) PDF Statement Parser
  * ============================================================================
- * Supports text-based PDF statements from FNB Online Banking.
+ * FNB single signed amount column. Date format: DD/MM/YYYY.
  *
- * Layout:
- *   Date        Description                        Amount      Balance
- *   01/01/2026  OPENING BALANCE                                5 000.00
- *   02/01/2026  PAYMENT RECEIVED REF 12345        5 000.00    10 000.00
- *   05/01/2026  DEBIT ORDER VODACOM               -235.00      9 765.00
- *
- * FNB uses a single signed Amount column (positive = credit, negative = debit).
- * Some FNB exports use DR/Cr suffixes or bracket negatives.
- * Date format: DD/MM/YYYY (1 or 2 digit day/month)
+ * Parsing strategy: right-side amount scanning (see absa-parser.js).
+ * pdf-parse collapses column spacing, so we scan for all X.XX tokens
+ * and resolve sign via DR/Cr suffix, balance delta, or keywords.
  * ============================================================================
  */
 
@@ -20,20 +14,19 @@
 
 const BaseParser = require('./base-parser');
 
-// DD/MM/YYYY date starter (1-digit day/month allowed)
 const DATE_RE = /^\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})/;
 
-// Full: date + desc + amount + balance (amount may have DR/Cr suffix or brackets)
-const TXN_RE = /^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(.+?)\s{2,}([-]?R?\s*(?:\([\d\s,]+\.\d{2}\)|[\d\s,]+\.\d{2})\s*(?:[Dd][Rr]?|[Cc][Rr])?)\s{2,}(R?\s*[\d\s,]+\.\d{2})\s*$/;
-
-// Loose: date + desc + one number at end (balance-only or ambiguous lines)
-const TXN_LOOSE_RE = /^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(.+?)\s{2,}([-]?R?\s*[\d\s,]+\.\d{2})\s*$/;
+// Amount token — decimal-pointed numbers only (not integer reference numbers)
+const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
 
 const SKIP_KEYWORDS = [
   'opening balance', 'closing balance', 'balance brought',
   'balance carried', 'subtotal', 'sub-total', 'total fees',
   'interest charged', 'total interest', 'service fee'
 ];
+
+const CREDIT_RE = /\b(?:received|deposit|salary|credit|payment\s+from|transfer\s+in|proceeds|refund|reversal|cashback)\b/i;
+const DEBIT_RE  = /\b(?:debit\s+order|purchase|withdrawal|payment\s+to|transfer\s+to|atm|levy|fee|charge)\b/i;
 
 class FNBParser extends BaseParser {
 
@@ -44,17 +37,13 @@ class FNBParser extends BaseParser {
     if (/fnb|first.?national/i.test(filename)) {
       return { confidence: 0.7, details: { filename: true } };
     }
-
     const header = text.slice(0, 800).toLowerCase();
     let score = 0;
     const details = {};
-
     if (header.includes('first national bank')) { score += 0.6; details.bankName = true; }
     if (header.includes('fnb'))                 { score += 0.15; details.fnbAbbr = true; }
     if (header.includes('firstrand'))           { score += 0.2;  details.firstrand = true; }
-    // FNB branch codes: 250655 (JHB), 252005 (CPT), 251005 (DBN), etc.
     if (/branch\s*code\s*[:\s]+25[012]\d{3}/i.test(text)) { score += 0.1; details.branchCode = true; }
-
     return { confidence: Math.min(score, 1.0), details };
   }
 
@@ -63,52 +52,99 @@ class FNBParser extends BaseParser {
     result.accountNumber   = this.extractAccountNumber(text);
     result.statementPeriod = this.extractPeriod(text);
 
-    const rawLines = this.toLines(text);
-    const lines = this.joinContinuationLines(rawLines, l => DATE_RE.test(l));
+    const lines = this.joinContinuationLines(this.toLines(text), l => DATE_RE.test(l));
+    let prevBalance = null;
 
     for (const line of lines) {
       if (this.isPageNoise(line)) continue;
       if (!DATE_RE.test(line))    continue;
 
       const lower = line.toLowerCase();
-      if (SKIP_KEYWORDS.some(k => lower.includes(k))) { result.skippedLines++; continue; }
-
-      // Full pattern: date + desc + amount + balance
-      let m = line.match(TXN_RE);
-      if (m) {
-        const date    = this.parseDate(m[1]);
-        const desc    = m[2].trim();
-        const amount  = this.parseAmount(m[3]);
-        const balance = this.parseAmount(m[4]);
-
-        if (!date || amount === null) { result.skippedLines++; continue; }
-
-        const txn = { date, description: desc, reference: null, amount, balance, rawLine: line };
-        const warns = this.validateTransaction(txn);
-        if (warns.length === 0) {
-          result.transactions.push(txn);
-        } else {
-          result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 80)}`);
-          result.skippedLines++;
-        }
+      if (SKIP_KEYWORDS.some(k => lower.includes(k))) {
+        const bal = this._lastAmt(line);
+        if (bal !== null) prevBalance = bal;
+        result.skippedLines++;
         continue;
       }
 
-      // Loose pattern: single number — FNB format means it's balance-only (no amount), skip
-      m = line.match(TXN_LOOSE_RE);
-      if (m) {
+      const txn = this._parseLine(line, prevBalance);
+      if (!txn) { result.skippedLines++; continue; }
+      if (txn.balance !== null) prevBalance = txn.balance;
+
+      const warns = this.validateTransaction(txn);
+      if (warns.length === 0) {
+        result.transactions.push(txn);
+      } else {
+        result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 100)}`);
         result.skippedLines++;
       }
     }
 
     if (result.transactions.length === 0) {
-      result.warnings.push(
-        'No transactions extracted from this FNB statement. ' +
-        'The statement may use an unsupported FNB layout variant.'
-      );
+      result.warnings.push('No transactions extracted from this FNB statement. The statement may use an unsupported FNB layout variant.');
+    }
+    return result;
+  }
+
+  static _parseLine(line, prevBalance) {
+    const dateMatch = line.match(/^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/);
+    if (!dateMatch) return null;
+    const date = this.parseDate(dateMatch[1]);
+    if (!date) return null;
+    const rest = line.slice(dateMatch[0].length).trim();
+
+    AMT_TOKEN_RE.lastIndex = 0;
+    const tokens = [];
+    let m;
+    while ((m = AMT_TOKEN_RE.exec(rest)) !== null) {
+      const v = this.parseAmount(m[0]);
+      if (v !== null) tokens.push({ raw: m[0].trim(), value: v, start: m.index });
+    }
+    if (tokens.length < 2) return null;
+
+    const description = rest.slice(0, tokens[0].start).replace(/[\s\-]+$/, '').trim();
+    if (!description) return null;
+
+    const balance = tokens[tokens.length - 1].value;
+    const rawAmt  = tokens[tokens.length - 2].value;
+    const rawTok  = tokens[tokens.length - 2].raw;
+
+    let amount;
+    const hasSuffix = /[Dd][Rr]?|[Cc][Rr]/i.test(rawTok);
+    const hasMinus  = rawTok.startsWith('-') || rawTok.startsWith('(');
+
+    if (hasSuffix || hasMinus) {
+      amount = rawAmt;
+    } else if (prevBalance !== null) {
+      const delta = balance - prevBalance;
+      if (Math.abs(Math.abs(delta) - Math.abs(rawAmt)) < 0.02) {
+        amount = delta >= 0 ? Math.abs(rawAmt) : -Math.abs(rawAmt);
+      } else {
+        amount = this._sign(rawAmt, description);
+      }
+    } else {
+      amount = this._sign(rawAmt, description);
     }
 
-    return result;
+    return { date, description, reference: null, amount, balance, rawLine: line };
+  }
+
+  static _sign(amt, desc) {
+    if (DEBIT_RE.test(desc))  return -Math.abs(amt);
+    if (CREDIT_RE.test(desc)) return  Math.abs(amt);
+    // FNB amounts can be signed already in the PDF — if rawAmt is negative, keep it
+    return amt;
+  }
+
+  static _lastAmt(line) {
+    AMT_TOKEN_RE.lastIndex = 0;
+    let last = null;
+    let m;
+    while ((m = AMT_TOKEN_RE.exec(line)) !== null) {
+      const v = this.parseAmount(m[0]);
+      if (v !== null) last = v;
+    }
+    return last;
   }
 }
 

@@ -2,17 +2,9 @@
  * ============================================================================
  * Nedbank PDF Statement Parser
  * ============================================================================
- * Supports text-based PDF statements from Nedbank Online Banking.
+ * Date format: DD/MM/YYYY. Debit/Credit columns.
  *
- * Layout (separate Debit / Credit columns):
- *   Date        Description              Debit       Credit      Balance
- *   01/01/2026  Opening Balance                                  5 000.00
- *   02/01/2026  PAYMENT RECEIVED                    5 000.00   10 000.00
- *   05/01/2026  DEBIT ORDER VODACOM      235.00                  9 765.00
- *
- * Date format: DD/MM/YYYY (1 or 2 digit day/month)
- * Uses separate Debit / Credit columns; balance always last.
- * Some Nedbank exports use a single signed amount column with DR/Cr suffix.
+ * Parsing strategy: right-side amount scanning (see absa-parser.js).
  * ============================================================================
  */
 
@@ -21,22 +13,15 @@
 const BaseParser = require('./base-parser');
 
 const DATE_RE = /^\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})/;
-
-// Layout A: debit/credit columns separated by 2+ spaces
-const RE_DEBIT_CREDIT = /^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(.+?)\s{2,}([\d\s,]+\.\d{2}|)\s{2,}([\d\s,]+\.\d{2}|)\s{2,}([\d\s,]+\.\d{2})\s*$/;
-
-// Layout B: up to 3 numbers (debit + credit + balance, or amount + balance, or just balance)
-const RE_LOOSE = /^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(.+?)\s{2,}([\d\s,]+\.\d{2})(?:\s{2,}([\d\s,]+\.\d{2}))?(?:\s{2,}([\d\s,]+\.\d{2}))?\s*$/;
-
-// Layout C: signed amount + balance (some Nedbank Online exports)
-const RE_SIGNED = /^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(.+?)\s{2,}([-]?R?\s*[\d\s,]+\.\d{2}\s*(?:[Dd][Rr]?|[Cc][Rr])?)\s{2,}(R?\s*[\d\s,]+\.\d{2})\s*$/;
+const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
 
 const SKIP_KEYWORDS = [
   'opening balance', 'closing balance', 'balance brought',
   'balance carried', 'total', 'subtotal'
 ];
 
-const CREDIT_KEYWORDS = /\b(received|deposit|credit|salary|transfer\s+in|payment\s+from|refund)\b/i;
+const CREDIT_RE = /\b(?:received|deposit|salary|credit|transfer\s+in|payment\s+from|refund|reversal)\b/i;
+const DEBIT_RE  = /\b(?:debit\s+order|purchase|withdrawal|payment\s+to|transfer\s+to|atm|fee|charge|levy)\b/i;
 
 class NedbankParser extends BaseParser {
 
@@ -47,16 +32,12 @@ class NedbankParser extends BaseParser {
     if (/nedbank|nedgroup/i.test(filename)) {
       return { confidence: 0.7, details: { filename: true } };
     }
-
     const header = text.slice(0, 800).toLowerCase();
     let score = 0;
     const details = {};
-
     if (header.includes('nedbank'))  { score += 0.6; details.name = true; }
     if (header.includes('nedgroup')) { score += 0.2; details.nedgroup = true; }
-    // Nedbank branch codes start with 19
     if (/branch\s*code\s*[:\s]+19\d{4}/i.test(text)) { score += 0.2; details.branchCode = true; }
-
     return { confidence: Math.min(score, 1.0), details };
   }
 
@@ -65,24 +46,30 @@ class NedbankParser extends BaseParser {
     result.accountNumber   = this.extractAccountNumber(text);
     result.statementPeriod = this.extractPeriod(text);
 
-    const rawLines = this.toLines(text);
-    const lines = this.joinContinuationLines(rawLines, l => DATE_RE.test(l));
+    const lines = this.joinContinuationLines(this.toLines(text), l => DATE_RE.test(l));
+    let prevBalance = null;
 
     for (const line of lines) {
       if (this.isPageNoise(line)) continue;
       if (!DATE_RE.test(line))    continue;
 
       const lower = line.toLowerCase();
-      if (SKIP_KEYWORDS.some(k => lower.includes(k))) { result.skippedLines++; continue; }
+      if (SKIP_KEYWORDS.some(k => lower.includes(k))) {
+        const bal = this._lastAmt(line);
+        if (bal !== null) prevBalance = bal;
+        result.skippedLines++;
+        continue;
+      }
 
-      const txn = this._parseLine(line);
+      const txn = this._parseLine(line, prevBalance);
       if (!txn) { result.skippedLines++; continue; }
+      if (txn.balance !== null) prevBalance = txn.balance;
 
       const warns = this.validateTransaction(txn);
       if (warns.length === 0) {
         result.transactions.push(txn);
       } else {
-        result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 80)}`);
+        result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 100)}`);
         result.skippedLines++;
       }
     }
@@ -90,67 +77,67 @@ class NedbankParser extends BaseParser {
     if (result.transactions.length === 0) {
       result.warnings.push('No transactions extracted from this Nedbank statement. The statement may use an unsupported layout variant.');
     }
-
     return result;
   }
 
-  static _parseLine(line) {
-    // Try debit/credit column layout (most definitive)
-    let m = line.match(RE_DEBIT_CREDIT);
-    if (m) {
-      const date      = this.parseDate(m[1]);
-      const desc      = m[2].trim();
-      const debitStr  = m[3].trim();
-      const creditStr = m[4].trim();
-      const bal       = this.parseAmount(m[5]);
-      if (!date) return null;
+  static _parseLine(line, prevBalance) {
+    const dateMatch = line.match(/^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/);
+    if (!dateMatch) return null;
+    const date = this.parseDate(dateMatch[1]);
+    if (!date) return null;
+    const rest = line.slice(dateMatch[0].length).trim();
 
-      let amount = null;
-      if (creditStr) {
-        const c = this.parseAmount(creditStr);
-        if (c !== null && c !== 0) amount = Math.abs(c);
+    AMT_TOKEN_RE.lastIndex = 0;
+    const tokens = [];
+    let m;
+    while ((m = AMT_TOKEN_RE.exec(rest)) !== null) {
+      const v = this.parseAmount(m[0]);
+      if (v !== null) tokens.push({ raw: m[0].trim(), value: v, start: m.index });
+    }
+    if (tokens.length < 2) return null;
+
+    const description = rest.slice(0, tokens[0].start).replace(/[\s\-]+$/, '').trim();
+    if (!description) return null;
+
+    const balance = tokens[tokens.length - 1].value;
+    const rawAmt  = tokens[tokens.length - 2].value;
+    const rawTok  = tokens[tokens.length - 2].raw;
+
+    let amount;
+    const hasSuffix = /[Dd][Rr]?|[Cc][Rr]/i.test(rawTok);
+    const hasMinus  = rawTok.startsWith('-') || rawTok.startsWith('(');
+
+    if (hasSuffix || hasMinus) {
+      amount = rawAmt;
+    } else if (prevBalance !== null) {
+      const delta = balance - prevBalance;
+      if (Math.abs(Math.abs(delta) - Math.abs(rawAmt)) < 0.02) {
+        amount = delta >= 0 ? Math.abs(rawAmt) : -Math.abs(rawAmt);
+      } else {
+        amount = this._sign(rawAmt, description);
       }
-      if (amount === null && debitStr) {
-        const d = this.parseAmount(debitStr);
-        if (d !== null && d !== 0) amount = -Math.abs(d);
-      }
-      if (amount === null) return null;
-      return { date, description: desc, reference: null, amount, balance: bal, rawLine: line };
+    } else {
+      amount = this._sign(rawAmt, description);
     }
 
-    // Signed amount + balance (DR/Cr suffix handled by parseAmount)
-    m = line.match(RE_SIGNED);
-    if (m) {
-      const date   = this.parseDate(m[1]);
-      const desc   = m[2].trim();
-      const amount = this.parseAmount(m[3]);
-      const bal    = this.parseAmount(m[4]);
-      if (date && amount !== null) return { date, description: desc, reference: null, amount, balance: bal, rawLine: line };
+    return { date, description, reference: null, amount, balance, rawLine: line };
+  }
+
+  static _sign(amt, desc) {
+    if (DEBIT_RE.test(desc))  return -Math.abs(amt);
+    if (CREDIT_RE.test(desc)) return  Math.abs(amt);
+    return Math.abs(amt);
+  }
+
+  static _lastAmt(line) {
+    AMT_TOKEN_RE.lastIndex = 0;
+    let last = null;
+    let m;
+    while ((m = AMT_TOKEN_RE.exec(line)) !== null) {
+      const v = this.parseAmount(m[0]);
+      if (v !== null) last = v;
     }
-
-    // Loose: 1-3 numbers
-    m = line.match(RE_LOOSE);
-    if (m) {
-      const date = this.parseDate(m[1]);
-      const desc = m[2].trim();
-      if (!date) return null;
-      const nums = [m[3], m[4], m[5]].filter(Boolean).map(n => this.parseAmount(n));
-
-      if (nums.length === 3) {
-        // debit + credit + balance
-        const [debit, credit, bal] = nums;
-        if (credit > 0) return { date, description: desc, reference: null, amount: Math.abs(credit), balance: bal, rawLine: line };
-        if (debit  > 0) return { date, description: desc, reference: null, amount: -Math.abs(debit), balance: bal, rawLine: line };
-      } else if (nums.length === 2) {
-        const [first, bal] = nums;
-        if (first === null) return null;
-        const isCredit = CREDIT_KEYWORDS.test(desc);
-        return { date, description: desc, reference: null, amount: isCredit ? Math.abs(first) : -Math.abs(first), balance: bal, rawLine: line };
-      }
-      // Single number — ambiguous, skip
-    }
-
-    return null;
+    return last;
   }
 }
 

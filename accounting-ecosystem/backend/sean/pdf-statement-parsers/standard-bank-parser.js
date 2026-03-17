@@ -2,16 +2,9 @@
  * ============================================================================
  * Standard Bank PDF Statement Parser
  * ============================================================================
- * Supports text-based PDF statements from Standard Bank Online Banking.
+ * Date format: YYYY/MM/DD (primary). Debit/Credit columns.
  *
- * Layout (separate Debit / Credit columns):
- *   Date        Description              Debit       Credit      Balance
- *   2026/01/01  Opening Balance                                  5 000.00
- *   2026/01/02  PAYMENT RECEIVED                    5 000.00   10 000.00
- *   2026/01/05  DEBIT ORDER VODACOM      235.00                  9 765.00
- *
- * Standard Bank date format: YYYY/MM/DD (primary) or DD/MM/YYYY (some exports)
- * Uses separate Debit / Credit columns; balance always present.
+ * Parsing strategy: right-side amount scanning (see absa-parser.js).
  * ============================================================================
  */
 
@@ -19,30 +12,16 @@
 
 const BaseParser = require('./base-parser');
 
-// YYYY/MM/DD (primary Standard Bank format)
-const DATE_YYYYMMDD = /^\d{4}\/\d{2}\/\d{2}/;
-// DD/MM/YYYY fallback (some Standard Bank business exports)
-const DATE_DDMMYYYY = /^\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})/;
-
-const DATE_RE = new RegExp(`^(?:${DATE_YYYYMMDD.source}|${DATE_DDMMYYYY.source})`);
-
-// Layout A: YYYY/MM/DD + desc + debit (opt) + credit (opt) + balance
-// Columns separated by 2+ spaces; debit and credit may be absent
-const RE_DEBIT_CREDIT = /^(\d{4}\/\d{2}\/\d{2})\s+(.+?)\s{2,}([\d\s,]+\.\d{2}|)\s{2,}([\d\s,]+\.\d{2}|)\s{2,}([\d\s,]+\.\d{2})\s*$/;
-
-// Layout B: YYYY/MM/DD + desc + one or two numbers
-const RE_LOOSE = /^(\d{4}\/\d{2}\/\d{2})\s+(.+?)\s{2,}([-]?R?\s*[\d\s,]+\.\d{2})(?:\s{2,}(R?\s*[\d\s,]+\.\d{2}))?\s*$/;
-
-// Layout C: DD/MM/YYYY fallback (same loose structure)
-const RE_LOOSE_DD = /^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(.+?)\s{2,}([-]?R?\s*[\d\s,]+\.\d{2})(?:\s{2,}(R?\s*[\d\s,]+\.\d{2}))?\s*$/;
+const DATE_RE = /^(?:\d{4}\/\d{2}\/\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/;
+const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
 
 const SKIP_KEYWORDS = [
   'opening balance', 'closing balance', 'balance brought',
   'balance carried', 'total', 'subtotal', 'fees', 'service charge'
 ];
 
-// Keywords that strongly suggest a credit (money in)
-const CREDIT_KEYWORDS = /\b(payment\s+received|deposit|salary|credit|transfer\s+in|proceeds|refund|reversal\s+credit)\b/i;
+const CREDIT_RE = /\b(?:payment\s+received|deposit|salary|credit|transfer\s+in|proceeds|refund|reversal)\b/i;
+const DEBIT_RE  = /\b(?:debit\s+order|purchase|withdrawal|payment\s+to|transfer\s+to|atm|fee|charge|levy)\b/i;
 
 class StandardBankParser extends BaseParser {
 
@@ -53,20 +32,15 @@ class StandardBankParser extends BaseParser {
     if (/standard.?bank|stanbic/i.test(filename)) {
       return { confidence: 0.7, details: { filename: true } };
     }
-
     const header = text.slice(0, 800).toLowerCase();
     let score = 0;
     const details = {};
-
     if (header.includes('the standard bank of south africa')) { score += 0.7; details.fullName = true; }
     else if (header.includes('standard bank'))               { score += 0.55; details.name = true; }
     if (header.includes('stanbic'))                         { score += 0.3;  details.stanbic = true; }
-    // Standard Bank branch codes start with 05
     if (/branch\s*code\s*[:\s]+05\d{4}/i.test(text)) { score += 0.1; details.branchCode = true; }
-    // YYYY/MM/DD is characteristic of Standard Bank
     const yyyyCount = (text.match(/\b\d{4}\/\d{2}\/\d{2}\b/g) || []).length;
     if (yyyyCount > 3) { score += 0.1; details.dateFormat = 'YYYY/MM/DD'; }
-
     return { confidence: Math.min(score, 1.0), details };
   }
 
@@ -75,92 +49,98 @@ class StandardBankParser extends BaseParser {
     result.accountNumber   = this.extractAccountNumber(text);
     result.statementPeriod = this.extractPeriod(text);
 
-    const rawLines = this.toLines(text);
-    const lines = this.joinContinuationLines(rawLines, l => DATE_RE.test(l));
+    const lines = this.joinContinuationLines(this.toLines(text), l => DATE_RE.test(l));
+    let prevBalance = null;
 
     for (const line of lines) {
       if (this.isPageNoise(line)) continue;
       if (!DATE_RE.test(line))    continue;
 
       const lower = line.toLowerCase();
-      if (SKIP_KEYWORDS.some(k => lower.includes(k))) { result.skippedLines++; continue; }
+      if (SKIP_KEYWORDS.some(k => lower.includes(k))) {
+        const bal = this._lastAmt(line);
+        if (bal !== null) prevBalance = bal;
+        result.skippedLines++;
+        continue;
+      }
 
-      const txn = this._parseLine(line);
+      const txn = this._parseLine(line, prevBalance);
       if (!txn) { result.skippedLines++; continue; }
+      if (txn.balance !== null) prevBalance = txn.balance;
 
       const warns = this.validateTransaction(txn);
       if (warns.length === 0) {
         result.transactions.push(txn);
       } else {
-        result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 80)}`);
+        result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 100)}`);
         result.skippedLines++;
       }
     }
 
     if (result.transactions.length === 0) {
-      result.warnings.push(
-        'No transactions extracted from this Standard Bank statement. ' +
-        'Note: debit/credit assignment is heuristic — try CSV export for exact data.'
-      );
+      result.warnings.push('No transactions extracted from this Standard Bank statement. Note: debit/credit assignment is heuristic — try CSV export for exact data.');
     }
-
     return result;
   }
 
-  static _parseLine(line) {
-    // Try debit/credit column layout first (most definitive)
-    let m = line.match(RE_DEBIT_CREDIT);
-    if (m) {
-      const date      = this.parseDate(m[1]);
-      const desc      = m[2].trim();
-      const debitStr  = m[3].trim();
-      const creditStr = m[4].trim();
-      const bal       = this.parseAmount(m[5]);
-      if (!date) return null;
+  static _parseLine(line, prevBalance) {
+    const dateMatch = line.match(/^(\d{4}\/\d{2}\/\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/);
+    if (!dateMatch) return null;
+    const date = this.parseDate(dateMatch[1]);
+    if (!date) return null;
+    const rest = line.slice(dateMatch[0].length).trim();
 
-      let amount = null;
-      if (creditStr) {
-        const c = this.parseAmount(creditStr);
-        if (c !== null && c !== 0) amount = Math.abs(c);
+    AMT_TOKEN_RE.lastIndex = 0;
+    const tokens = [];
+    let m;
+    while ((m = AMT_TOKEN_RE.exec(rest)) !== null) {
+      const v = this.parseAmount(m[0]);
+      if (v !== null) tokens.push({ raw: m[0].trim(), value: v, start: m.index });
+    }
+    if (tokens.length < 2) return null;
+
+    const description = rest.slice(0, tokens[0].start).replace(/[\s\-]+$/, '').trim();
+    if (!description) return null;
+
+    const balance = tokens[tokens.length - 1].value;
+    const rawAmt  = tokens[tokens.length - 2].value;
+    const rawTok  = tokens[tokens.length - 2].raw;
+
+    let amount;
+    const hasSuffix = /[Dd][Rr]?|[Cc][Rr]/i.test(rawTok);
+    const hasMinus  = rawTok.startsWith('-') || rawTok.startsWith('(');
+
+    if (hasSuffix || hasMinus) {
+      amount = rawAmt;
+    } else if (prevBalance !== null) {
+      const delta = balance - prevBalance;
+      if (Math.abs(Math.abs(delta) - Math.abs(rawAmt)) < 0.02) {
+        amount = delta >= 0 ? Math.abs(rawAmt) : -Math.abs(rawAmt);
+      } else {
+        amount = this._sign(rawAmt, description);
       }
-      if (amount === null && debitStr) {
-        const d = this.parseAmount(debitStr);
-        if (d !== null && d !== 0) amount = -Math.abs(d);
-      }
-      if (amount === null) return null;
-      return { date, description: desc, reference: null, amount, balance: bal, rawLine: line };
+    } else {
+      amount = this._sign(rawAmt, description);
     }
 
-    // YYYY/MM/DD loose
-    m = line.match(RE_LOOSE);
-    if (m) return this._resolveLoose(m[1], m[2], m[3], m[4] || null, line);
-
-    // DD/MM/YYYY fallback
-    m = line.match(RE_LOOSE_DD);
-    if (m) return this._resolveLoose(m[1], m[2], m[3], m[4] || null, line);
-
-    return null;
+    return { date, description, reference: null, amount, balance, rawLine: line };
   }
 
-  static _resolveLoose(dateStr, desc, num1Str, num2Str, rawLine) {
-    const date = this.parseDate(dateStr);
-    if (!date) return null;
-    const num1 = this.parseAmount(num1Str);
-    const num2 = num2Str ? this.parseAmount(num2Str) : null;
-    if (num1 === null) return null;
+  static _sign(amt, desc) {
+    if (DEBIT_RE.test(desc))  return -Math.abs(amt);
+    if (CREDIT_RE.test(desc)) return  Math.abs(amt);
+    return Math.abs(amt);
+  }
 
-    let amount, balance;
-    if (num2 !== null) {
-      // Two numbers: first is debit or credit, second is balance
-      balance = num2;
-      const isCredit = CREDIT_KEYWORDS.test(desc);
-      amount = isCredit ? Math.abs(num1) : -Math.abs(num1);
-    } else {
-      // Single number — ambiguous, skip
-      return null;
+  static _lastAmt(line) {
+    AMT_TOKEN_RE.lastIndex = 0;
+    let last = null;
+    let m;
+    while ((m = AMT_TOKEN_RE.exec(line)) !== null) {
+      const v = this.parseAmount(m[0]);
+      if (v !== null) last = v;
     }
-
-    return { date, description: desc.trim(), reference: null, amount, balance, rawLine };
+    return last;
   }
 }
 

@@ -2,17 +2,9 @@
  * ============================================================================
  * Capitec Bank PDF Statement Parser
  * ============================================================================
- * Supports text-based PDF statements from Capitec Bank Online Banking.
+ * Date format: YYYY-MM-DD (ISO). Single signed amount.
  *
- * Layout:
- *   Date          Description                  Amount      Balance
- *   2026-01-01    Opening Balance                          5 000.00
- *   2026-01-02    PAYMENT RECEIVED             5 000.00   10 000.00
- *   2026-01-05    DEBIT ORDER VODACOM         -235.00      9 765.00
- *
- * Date format: YYYY-MM-DD (ISO format, characteristic of Capitec).
- * Single signed Amount column (positive = in, negative = out).
- * Some Capitec exports use a DD/MM/YYYY format.
+ * Parsing strategy: right-side amount scanning (see absa-parser.js).
  * ============================================================================
  */
 
@@ -20,23 +12,19 @@
 
 const BaseParser = require('./base-parser');
 
-// ISO date: YYYY-MM-DD (Capitec primary format)
 const DATE_ISO_RE  = /^\d{4}-\d{2}-\d{2}/;
-// DD/MM/YYYY fallback (some Capitec versions)
 const DATE_DDMM_RE = /^\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})/;
-
 const DATE_RE = new RegExp(`^(?:${DATE_ISO_RE.source}|${DATE_DDMM_RE.source})`);
 
-// Full: date + desc + amount + balance (amount may be negative, have R prefix, DR/Cr suffix)
-const TXN_RE = /^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(.+?)\s{2,}([-]?R?\s*(?:\([\d\s,]+\.\d{2}\)|[\d\s,]+\.\d{2})\s*(?:[Dd][Rr]?|[Cc][Rr])?)\s{2,}(R?\s*[\d\s,]+\.\d{2})\s*$/;
-
-// Loose: date + desc + single number (ambiguous — skip)
-const TXN_LOOSE_RE = /^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(.+?)\s{2,}([-]?R?\s*[\d\s,]+\.\d{2})\s*$/;
+const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
 
 const SKIP_KEYWORDS = [
   'opening balance', 'closing balance', 'balance brought',
   'balance carried', 'total', 'subtotal', 'service fee'
 ];
+
+const CREDIT_RE = /\b(?:received|deposit|salary|credit|transfer\s+in|payment\s+from|refund|reversal|cashback)\b/i;
+const DEBIT_RE  = /\b(?:debit\s+order|purchase|withdrawal|payment\s+to|transfer\s+to|atm|fee|charge|levy)\b/i;
 
 class CapitecParser extends BaseParser {
 
@@ -47,19 +35,14 @@ class CapitecParser extends BaseParser {
     if (/capitec/i.test(filename)) {
       return { confidence: 0.7, details: { filename: true } };
     }
-
     const header = text.slice(0, 800).toLowerCase();
     let score = 0;
     const details = {};
-
     if (header.includes('capitec bank'))  { score += 0.7; details.fullName = true; }
-    else if (header.includes('capitec')) { score += 0.5; details.name = true; }
-    // Capitec branch code: 470010
-    if (/470010/.test(text))             { score += 0.2; details.branchCode = true; }
-    // ISO date format (YYYY-MM-DD) is very characteristic of Capitec exports
+    else if (header.includes('capitec')) { score += 0.5;  details.name = true; }
+    if (/470010/.test(text))             { score += 0.2;  details.branchCode = true; }
     const isoCount = (text.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []).length;
     if (isoCount > 3) { score += 0.15; details.dateFormat = 'YYYY-MM-DD'; }
-
     return { confidence: Math.min(score, 1.0), details };
   }
 
@@ -68,40 +51,30 @@ class CapitecParser extends BaseParser {
     result.accountNumber   = this.extractAccountNumber(text);
     result.statementPeriod = this.extractPeriod(text);
 
-    const rawLines = this.toLines(text);
-    const lines = this.joinContinuationLines(rawLines, l => DATE_RE.test(l));
+    const lines = this.joinContinuationLines(this.toLines(text), l => DATE_RE.test(l));
+    let prevBalance = null;
 
     for (const line of lines) {
       if (this.isPageNoise(line)) continue;
       if (!DATE_RE.test(line))    continue;
 
       const lower = line.toLowerCase();
-      if (SKIP_KEYWORDS.some(k => lower.includes(k))) { result.skippedLines++; continue; }
-
-      // Full pattern: date + desc + signed amount + balance
-      let m = line.match(TXN_RE);
-      if (m) {
-        const date    = this.parseDate(m[1]);
-        const desc    = m[2].trim();
-        const amount  = this.parseAmount(m[3]);
-        const balance = this.parseAmount(m[4]);
-
-        if (!date || amount === null) { result.skippedLines++; continue; }
-
-        const txn = { date, description: desc, reference: null, amount, balance, rawLine: line };
-        const warns = this.validateTransaction(txn);
-        if (warns.length === 0) {
-          result.transactions.push(txn);
-        } else {
-          result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 80)}`);
-          result.skippedLines++;
-        }
+      if (SKIP_KEYWORDS.some(k => lower.includes(k))) {
+        const bal = this._lastAmt(line);
+        if (bal !== null) prevBalance = bal;
+        result.skippedLines++;
         continue;
       }
 
-      // Loose: single number (ambiguous — could be opening balance, skip)
-      m = line.match(TXN_LOOSE_RE);
-      if (m) {
+      const txn = this._parseLine(line, prevBalance);
+      if (!txn) { result.skippedLines++; continue; }
+      if (txn.balance !== null) prevBalance = txn.balance;
+
+      const warns = this.validateTransaction(txn);
+      if (warns.length === 0) {
+        result.transactions.push(txn);
+      } else {
+        result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 100)}`);
         result.skippedLines++;
       }
     }
@@ -109,8 +82,57 @@ class CapitecParser extends BaseParser {
     if (result.transactions.length === 0) {
       result.warnings.push('No transactions extracted from this Capitec statement. The statement may use an unsupported layout variant.');
     }
-
     return result;
+  }
+
+  static _parseLine(line, prevBalance) {
+    const dateMatch = line.match(/^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/);
+    if (!dateMatch) return null;
+    const date = this.parseDate(dateMatch[1]);
+    if (!date) return null;
+    const rest = line.slice(dateMatch[0].length).trim();
+
+    AMT_TOKEN_RE.lastIndex = 0;
+    const tokens = [];
+    let m;
+    while ((m = AMT_TOKEN_RE.exec(rest)) !== null) {
+      const v = this.parseAmount(m[0]);
+      if (v !== null) tokens.push({ raw: m[0].trim(), value: v, start: m.index });
+    }
+    if (tokens.length < 2) return null;
+
+    const description = rest.slice(0, tokens[0].start).replace(/[\s\-]+$/, '').trim();
+    if (!description) return null;
+
+    const balance = tokens[tokens.length - 1].value;
+    // Capitec uses single signed amount — the second-to-last IS the signed amount
+    const rawAmt = tokens[tokens.length - 2].value;
+
+    // Capitec's own PDFs already embed the sign (-235.00 for debits)
+    // so we trust parseAmount result directly; fall back to balance delta
+    let amount = rawAmt;
+    if (rawAmt > 0 && prevBalance !== null) {
+      const delta = balance - prevBalance;
+      if (Math.abs(Math.abs(delta) - Math.abs(rawAmt)) < 0.02) {
+        amount = delta >= 0 ? Math.abs(rawAmt) : -Math.abs(rawAmt);
+      }
+    } else if (rawAmt > 0) {
+      if (DEBIT_RE.test(description))  amount = -Math.abs(rawAmt);
+      if (CREDIT_RE.test(description)) amount =  Math.abs(rawAmt);
+    }
+
+    return { date, description, reference: null, amount, balance, rawLine: line };
+  }
+
+  static _lastAmt(line) {
+    AMT_TOKEN_RE.lastIndex = 0;
+    let last = null;
+    let m;
+    while ((m = AMT_TOKEN_RE.exec(line)) !== null) {
+      const v = this.parseAmount(m[0]);
+      if (v !== null) last = v;
+    }
+    return last;
   }
 }
 
