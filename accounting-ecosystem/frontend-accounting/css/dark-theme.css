@@ -1653,3 +1653,14 @@ tr.error-row th {
 [data-theme="dark"] #reconStatus {
     color: var(--accent-light) !important;
 }
+
+/* ── Bank subaccount rows (trial-balance.html, balance-sheet.html) ─────────── */
+[data-theme="dark"] .account-child td {
+    color: var(--text-muted, #9aa0a6) !important;
+}
+[data-theme="dark"] .account-child span {
+    color: var(--text-muted, #9aa0a6) !important;
+}
+[data-theme="dark"] .account-parent td {
+    border-top-color: var(--border) !important;
+}

@@ -368,11 +368,21 @@
             text-align: right;
             font-family: 'Courier New', monospace;
         }
-        
+
+        /* Sub-account indentation — bank accounts with multiple real accounts */
+        .account-child td:first-child,
+        .account-child td:nth-child(2) {
+            font-size: 13px;
+        }
+        .account-parent td:first-child,
+        .account-parent td:nth-child(2) {
+            border-top: 1px solid #e8eaed;
+        }
+
         .positive {
             color: #34a853;
         }
-        
+
         .negative {
             color: #ea4335;
         }
@@ -693,14 +703,33 @@
             Object.values(groups).forEach(group => {
                 if (!group.accounts.length) return;
                 html += `<tr class="section-header"><td colspan="4">${group.label}</td></tr>`;
+
+                // Build a set of parent_ids so we can render parent rows as grouping headers
+                // when they have children, keeping them visible but clearly distinguished.
+                const childIds = new Set(
+                    group.accounts.filter(a => a.parent_id).map(a => a.parent_id)
+                );
+
                 group.accounts.forEach(acc => {
                     const isDebitNormal = acc.type === 'asset' || acc.type === 'expense';
                     const bal = parseFloat(acc.balance || 0);
                     const dr = (isDebitNormal ? (bal > 0 ? bal : 0) : (bal < 0 ? -bal : 0));
                     const cr = (isDebitNormal ? (bal < 0 ? -bal : 0) : (bal > 0 ? bal : 0));
-                    html += `<tr>
-                        <td>${acc.code}</td>
-                        <td>${acc.name}</td>
+                    const isChild  = !!acc.parent_id;
+                    const isParent = childIds.has(acc.id);
+
+                    // Child accounts: indent with ↳ marker
+                    const codeCell = isChild
+                        ? `<span style="padding-left:18px">${acc.code}</span>`
+                        : (isParent ? `<strong>${acc.code}</strong>` : acc.code);
+                    const nameCell = isChild
+                        ? `<span style="padding-left:18px;color:#5f6368">↳ ${acc.name}</span>`
+                        : (isParent ? `<strong>${acc.name}</strong>` : acc.name);
+
+                    const rowClass = isChild ? ' class="account-child"' : (isParent ? ' class="account-parent"' : '');
+                    html += `<tr${rowClass}>
+                        <td>${codeCell}</td>
+                        <td>${nameCell}</td>
                         <td class="amount">${dr ? fmtAmt(dr) : '-'}</td>
                         <td class="amount">${cr ? fmtAmt(cr) : '-'}</td>
                     </tr>`;

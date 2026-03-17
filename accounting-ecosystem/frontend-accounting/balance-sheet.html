@@ -380,9 +380,17 @@
         .indent-1 {
             padding-left: 35px;
         }
-        
+
         .indent-2 {
             padding-left: 55px;
+        }
+
+        /* Sub-account indentation for multiple bank accounts under same parent */
+        .account-child td {
+            font-size: 13px;
+        }
+        .account-parent td {
+            border-top: 1px solid #e8eaed;
         }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
@@ -615,27 +623,43 @@
             const tbody = document.getElementById('bsBody');
             let html = '';
 
+            // Render a list of accounts with child-account indentation.
+            // Parent accounts (those that have children) are bolded.
+            // Child accounts (parent_id set) are indented with a ↳ marker.
+            function renderSection(accounts) {
+                const childParentIds = new Set(
+                    accounts.filter(a => a.parent_id).map(a => a.parent_id)
+                );
+                let rows = '';
+                accounts.forEach(acc => {
+                    const isChild  = !!acc.parent_id;
+                    const isParent = childParentIds.has(acc.id);
+                    if (isChild) {
+                        rows += `<tr class="account-child"><td class="indent-1"><span style="padding-left:16px;color:#5f6368">↳ ${acc.code} — ${acc.name}</span></td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
+                    } else if (isParent) {
+                        rows += `<tr class="account-parent"><td class="indent-1"><strong>${acc.code} — ${acc.name}</strong></td><td class="amount"><strong>${fmtAmt(acc.balance)}</strong></td></tr>`;
+                    } else {
+                        rows += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
+                    }
+                });
+                return rows;
+            }
+
             // ── ASSETS ──────────────────────────────────────────────────────
             html += '<tr class="section-header"><td colspan="2">ASSETS</td></tr>';
-            (data.assets || []).forEach(acc => {
-                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
-            });
+            html += renderSection(data.assets || []);
             html += `<tr class="section-total"><td><strong>TOTAL ASSETS</strong></td><td class="amount"><strong>${fmtAmt(data.totals.assets)}</strong></td></tr>`;
             html += '<tr><td colspan="2" style="height:20px"></td></tr>';
 
             // ── LIABILITIES ──────────────────────────────────────────────────
             html += '<tr class="section-header"><td colspan="2">LIABILITIES</td></tr>';
-            (data.liabilities || []).forEach(acc => {
-                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
-            });
+            html += renderSection(data.liabilities || []);
             html += `<tr class="section-total"><td><strong>TOTAL LIABILITIES</strong></td><td class="amount"><strong>${fmtAmt(data.totals.liabilities)}</strong></td></tr>`;
             html += '<tr><td colspan="2" style="height:20px"></td></tr>';
 
             // ── EQUITY ───────────────────────────────────────────────────────
             html += '<tr class="section-header"><td colspan="2">EQUITY</td></tr>';
-            (data.equity || []).forEach(acc => {
-                html += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
-            });
+            html += renderSection(data.equity || []);
             if (data.currentYearEarnings !== 0) {
                 html += `<tr><td class="indent-1">Current Year Earnings</td><td class="amount">${fmtAmt(data.currentYearEarnings)}</td></tr>`;
             }

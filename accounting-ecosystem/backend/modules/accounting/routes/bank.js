@@ -11,6 +11,98 @@ const bankLearning = require('../../../sean/bank-learning');
 
 const router = express.Router();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveOrCreateSubaccount
+// ─────────────────────────────────────────────────────────────────────────────
+// When a user creates or edits a bank account and selects a COA ledger account
+// that is already claimed by ANOTHER active bank account in the same company,
+// this helper automatically creates a numbered child subaccount under the
+// parent COA account and returns the new subaccount's id.
+//
+// If the requested account is free → returned directly (no-op, backward safe).
+//
+// Subaccount code format: [parentCode]-01, [parentCode]-02, …
+// Example: 1010 → 1010-01, 1010-02
+//
+// This preserves all existing bank account / ledger linkages and never moves
+// journal entries — it simply gives the new bank account its own GL account.
+//
+// @param supa           Supabase client
+// @param companyId      Authenticated company
+// @param requestedId    The ledger_account_id the user selected
+// @param bankName       Name of the real bank account (used for subaccount label)
+// @param excludeBankId  When updating, exclude this bank_account id from the
+//                       conflict check (the account being edited already owns
+//                       its current ledger account — that is not a conflict)
+// @returns { ledgerAccountId, subaccountCreated }
+// ─────────────────────────────────────────────────────────────────────────────
+async function resolveOrCreateSubaccount(supa, companyId, requestedId, bankName, excludeBankId = null) {
+  // Check if the requested COA account is already linked to another active bank account
+  let conflictQuery = supa
+    .from('bank_accounts')
+    .select('id, name')
+    .eq('company_id', companyId)
+    .eq('ledger_account_id', requestedId)
+    .eq('is_active', true);
+
+  if (excludeBankId) conflictQuery = conflictQuery.neq('id', excludeBankId);
+
+  const { data: conflicts } = await conflictQuery;
+
+  if (!conflicts || conflicts.length === 0) {
+    // No conflict — use the requested account directly (existing behaviour preserved)
+    return { ledgerAccountId: requestedId, subaccountCreated: null };
+  }
+
+  // Conflict — fetch parent account details to derive the subaccount
+  const { data: parent, error: parentErr } = await supa
+    .from('accounts')
+    .select('id, code, name, type, sub_type, reporting_group, sort_order')
+    .eq('id', requestedId)
+    .eq('company_id', companyId)
+    .single();
+
+  if (parentErr || !parent) {
+    throw new Error('Ledger account not found or does not belong to this company');
+  }
+
+  // Count existing child accounts under this parent to determine next sequence number
+  const { data: existingSubs } = await supa
+    .from('accounts')
+    .select('code')
+    .eq('company_id', companyId)
+    .eq('parent_id', parent.id)
+    .order('code');
+
+  const nextNum = (existingSubs?.length || 0) + 1;
+  const newCode = `${parent.code}-${String(nextNum).padStart(2, '0')}`;
+
+  // Create the subaccount as a real posting account under the parent
+  const { data: sub, error: subErr } = await supa
+    .from('accounts')
+    .insert({
+      company_id: companyId,
+      code:             newCode,
+      name:             `${parent.name} — ${bankName}`,
+      type:             parent.type,
+      sub_type:         parent.sub_type  || null,
+      reporting_group:  parent.reporting_group || null,
+      parent_id:        parent.id,
+      description:      `Auto-created subaccount for bank account: ${bankName}`,
+      is_active:        true,
+      is_system:        false,
+      sort_order:       (parent.sort_order || 0) + nextNum,
+    })
+    .select()
+    .single();
+
+  if (subErr) throw new Error(`Failed to create subaccount ${newCode}: ${subErr.message}`);
+
+  console.log(`[bank] Auto-created subaccount ${newCode} (id=${sub.id}) for bank "${bankName}" under parent ${parent.code}`);
+
+  return { ledgerAccountId: sub.id, subaccountCreated: sub };
+}
+
 // ─── Multer: memory storage for PDF parsing (buffer only, no disk write) ────
 const pdfUpload = multer({
   storage: multer.memoryStorage(),
@@ -120,18 +212,44 @@ router.post('/accounts', authenticate, hasPermission('bank.manage'), async (req,
       return res.status(400).json({ error: 'Name is required' });
     }
 
+    // Resolve ledger account — auto-create numbered subaccount if the selected
+    // COA account is already owned by another active bank account in this company.
+    // Falls through unchanged when the account is free (backward-compatible).
+    let resolvedLedgerId = ledgerAccountId || null;
+    let subaccountCreated = null;
+
+    if (resolvedLedgerId) {
+      // First verify the account belongs to this company
+      const { data: acctCheck } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('id', resolvedLedgerId)
+        .eq('company_id', req.user.companyId)
+        .single();
+
+      if (!acctCheck) {
+        return res.status(400).json({ error: 'Ledger account not found' });
+      }
+
+      const resolved = await resolveOrCreateSubaccount(
+        supabase, req.user.companyId, resolvedLedgerId, name
+      );
+      resolvedLedgerId     = resolved.ledgerAccountId;
+      subaccountCreated    = resolved.subaccountCreated;
+    }
+
     const { data: bankAccount, error } = await supabase
       .from('bank_accounts')
       .insert({
-        company_id: req.user.companyId,
+        company_id:           req.user.companyId,
         name,
-        bank_name: bankName,
+        bank_name:            bankName,
         account_number_masked: accountNumberMasked,
         currency,
-        ledger_account_id: ledgerAccountId || null,
-        opening_balance: openingBalance,
+        ledger_account_id:    resolvedLedgerId,
+        opening_balance:      openingBalance,
         opening_balance_date: openingBalanceDate || null,
-        is_active: true
+        is_active:            true
       })
       .select()
       .single();
@@ -144,11 +262,17 @@ router.post('/accounts', authenticate, hasPermission('bank.manage'), async (req,
       'BANK_ACCOUNT',
       bankAccount.id,
       null,
-      { name: bankAccount.name, bankName: bankAccount.bank_name },
-      'Bank account created'
+      { name: bankAccount.name, bankName: bankAccount.bank_name, ledgerAccountId: resolvedLedgerId },
+      subaccountCreated
+        ? `Bank account created; auto-created subaccount ${subaccountCreated.code}`
+        : 'Bank account created'
     );
 
-    res.status(201).json(bankAccount);
+    res.status(201).json({
+      ...bankAccount,
+      // Inform the caller if a new subaccount was created on their behalf
+      ...(subaccountCreated ? { subaccount_created: subaccountCreated } : {})
+    });
 
   } catch (error) {
     console.error('Error creating bank account:', error);
@@ -178,8 +302,23 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
 
     const before = existing;
 
-    // If ledgerAccountId provided, verify it belongs to this company
-    if (ledgerAccountId !== undefined && ledgerAccountId !== null) {
+    // Resolve ledger account for update.
+    // Rules:
+    //   • If ledgerAccountId not provided in body → keep existing (no change)
+    //   • If set to null → clear the link
+    //   • If set to a new account id that equals the CURRENT link → no-op
+    //   • If set to a new account id that differs from current → verify ownership,
+    //     then auto-create subaccount if that account is already taken by another
+    //     bank account in this company (same logic as POST /accounts)
+    let resolvedLedgerAccountId = before.ledger_account_id;
+    let subaccountCreated = null;
+
+    if (ledgerAccountId === null) {
+      // Explicitly clearing the link
+      resolvedLedgerAccountId = null;
+
+    } else if (ledgerAccountId !== undefined && ledgerAccountId !== before.ledger_account_id) {
+      // Changing to a different COA account — verify and resolve
       const { data: acctCheck } = await supabase
         .from('accounts')
         .select('id')
@@ -190,9 +329,19 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
       if (!acctCheck) {
         return res.status(400).json({ error: 'Ledger account not found' });
       }
-    }
 
-    const resolvedLedgerAccountId = ledgerAccountId !== undefined ? ledgerAccountId : before.ledger_account_id;
+      const resolved = await resolveOrCreateSubaccount(
+        supabase, req.user.companyId, ledgerAccountId,
+        (req.body.name || before.name),
+        parseInt(req.params.id)   // exclude self from conflict check
+      );
+      resolvedLedgerAccountId = resolved.ledgerAccountId;
+      subaccountCreated       = resolved.subaccountCreated;
+
+    } else if (ledgerAccountId !== undefined && ledgerAccountId === before.ledger_account_id) {
+      // Same value as current — no-op
+      resolvedLedgerAccountId = before.ledger_account_id;
+    }
 
     const { error: updateErr } = await supabase
       .from('bank_accounts')
@@ -215,7 +364,9 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
       before.id,
       { name: before.name, ledgerAccountId: before.ledger_account_id },
       { name: name || before.name, ledgerAccountId: resolvedLedgerAccountId },
-      'Bank account updated'
+      subaccountCreated
+        ? `Bank account updated; auto-created subaccount ${subaccountCreated.code}`
+        : 'Bank account updated'
     );
 
     // Return with joined ledger account info
@@ -230,7 +381,8 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
     res.json({
       ...full,
       ledger_account_code: full.accounts?.code,
-      ledger_account_name: full.accounts?.name
+      ledger_account_name: full.accounts?.name,
+      ...(subaccountCreated ? { subaccount_created: subaccountCreated } : {})
     });
 
   } catch (error) {
@@ -321,7 +473,6 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
 router.post('/import', authenticate, hasPermission('bank.import'), async (req, res) => {
   try {
     const { bankAccountId, transactions, importSource } = req.body;
-    // importSource: 'pdf' (confirmed from PDF parse), 'csv' (spreadsheet import), 'manual' (default)
     const resolvedSource = ['pdf', 'api', 'csv', 'manual'].includes(importSource) ? importSource : 'csv';
 
     if (!bankAccountId || !transactions || !Array.isArray(transactions)) {
@@ -341,9 +492,23 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
     }
 
     const importedTransactions = [];
+    const skippedTransactions = [];
+    let rowIndex = 0;
 
     for (const txn of transactions) {
+      rowIndex++;
       const { date, description, amount, reference, externalId, balance } = txn;
+
+      // Validate required fields
+      if (!date || !description || amount == null || isNaN(amount)) {
+        skippedTransactions.push({
+          row: rowIndex,
+          reason: 'Missing required field(s): ' +
+            [!date ? 'date' : '', !description ? 'description' : '', (amount == null || isNaN(amount)) ? 'amount' : ''].filter(Boolean).join(', '),
+          txn
+        });
+        continue;
+      }
 
       // Check if already imported (by external ID) — skip duplicates
       if (externalId) {
@@ -355,28 +520,61 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
           .limit(1);
 
         if (existingCheck && existingCheck.length > 0) {
-          continue; // Skip duplicates
+          skippedTransactions.push({
+            row: rowIndex,
+            reason: 'Duplicate (externalId already exists)',
+            txn
+          });
+          continue;
         }
       }
 
-      const { data: row, error: insertErr } = await supabase
+      let { data: row, error: insertErr } = await supabase
         .from('bank_transactions')
         .insert({
-          company_id: req.user.companyId,
+          company_id:     req.user.companyId,
           bank_account_id: bankAccountId,
           date,
           description,
           amount,
-          balance: balance != null ? balance : null,
-          reference: reference || null,
+          balance:     balance != null ? balance : null,
+          reference:   reference || null,
           external_id: externalId || null,
-          status: 'unmatched',
+          status:      'unmatched',
           import_source: resolvedSource
         })
         .select()
         .single();
 
-      if (insertErr) throw new Error(insertErr.message);
+      // Fallback: if import_source column doesn't exist yet (migration pending),
+      // retry without it so imports never silently fail due to a missing column.
+      if (insertErr && insertErr.message && insertErr.message.includes('import_source')) {
+        console.warn('[bank/import] import_source column missing — retrying without it. Run ALTER TABLE migration.');
+        ({ data: row, error: insertErr } = await supabase
+          .from('bank_transactions')
+          .insert({
+            company_id:     req.user.companyId,
+            bank_account_id: bankAccountId,
+            date,
+            description,
+            amount,
+            balance:     balance != null ? balance : null,
+            reference:   reference || null,
+            external_id: externalId || null,
+            status:      'unmatched'
+          })
+          .select()
+          .single());
+      }
+
+      if (insertErr) {
+        skippedTransactions.push({
+          row: rowIndex,
+          reason: 'DB insert error: ' + insertErr.message,
+          txn
+        });
+        continue;
+      }
 
       importedTransactions.push(row);
     }
@@ -387,14 +585,20 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
       'BANK_TRANSACTIONS',
       bankAccountId,
       null,
-      { count: importedTransactions.length },
+      { count: importedTransactions.length, skipped: skippedTransactions.length },
       'Bank transactions imported'
     );
 
+    let message = 'Bank transactions imported successfully.';
+    if (skippedTransactions.length > 0) {
+      message += ` ${skippedTransactions.length} row(s) skipped.`;
+    }
+
     res.status(201).json({
-      message: 'Bank transactions imported successfully',
+      message,
       imported: importedTransactions.length,
-      transactions: importedTransactions
+      transactions: importedTransactions,
+      skipped: skippedTransactions
     });
 
   } catch (error) {

@@ -161,6 +161,7 @@ async function ensureAccountingSchema(pool) {
         reference           VARCHAR(255),
         external_id         VARCHAR(255),
         status              VARCHAR(20) DEFAULT 'unmatched',
+        import_source       VARCHAR(20) DEFAULT 'manual',
         matched_entity_type VARCHAR(50),
         matched_entity_id   INTEGER,
         matched_by_user_id  INTEGER REFERENCES users(id),
@@ -644,6 +645,9 @@ async function ensureAccountingSchema(pool) {
         PRIMARY KEY (company_id, key)
       )
     `);
+
+    // ── 24b. Add import_source to bank_transactions (safe on existing tables) ───
+    await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS import_source VARCHAR(20) DEFAULT 'manual'`);
 
     // ── 25. Customer AR Tables ─────────────────────────────────────────────────
 

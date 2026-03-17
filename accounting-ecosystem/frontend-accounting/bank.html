@@ -2009,6 +2009,18 @@ Click OK to simulate uploading a file.`;
                 data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
+                // Inform the user if the system auto-created a GL subaccount because
+                // the selected ledger account was already linked to another bank account.
+                if (data.subaccount_created) {
+                    alert(
+                        `Bank account saved.\n\n` +
+                        `ℹ️ A new GL subaccount was automatically created:\n` +
+                        `  ${data.subaccount_created.code} — ${data.subaccount_created.name}\n\n` +
+                        `This keeps each bank account's transactions separate in the\n` +
+                        `Chart of Accounts, Trial Balance, and Balance Sheet.`
+                    );
+                }
+
                 closeBankAccountModal();
                 await loadBankAccounts();
 
@@ -2440,7 +2452,16 @@ Click OK to simulate uploading a file.`;
                     return;
                 }
 
-                alert(`✅ Import complete!\n\n${data.imported} transaction(s) imported successfully.`);
+                let msg = `✅ ${data.imported} transaction(s) imported successfully.`;
+                if (data.skipped && data.skipped.length > 0) {
+                    msg += `\n\n⚠️ ${data.skipped.length} row(s) were skipped:`;
+                    data.skipped.slice(0, 5).forEach(sk => {
+                        msg += `\n• Row ${sk.row}: ${sk.reason}`;
+                    });
+                    if (data.skipped.length > 5) msg += `\n• …and ${data.skipped.length - 5} more.`;
+                }
+                alert(msg);
+
                 closeImportModal();
                 // Switch the selected account to the imported one so the user sees the new transactions
                 selectedBankAccountId = bankAccountId;
@@ -2887,6 +2908,13 @@ Click OK to simulate uploading a file.`;
                 return;
             }
 
+            // Debug: log the payload being sent to backend
+            console.log('[CSV Import] Sending payload:', {
+                bankAccountId: selectedBankAccountId,
+                transactions,
+                importSource: 'csv'
+            });
+
             const importBtn = document.querySelector('#importStep3 .btn-primary');
             if (importBtn) { importBtn.disabled = true; importBtn.textContent = 'Importing…'; }
 
@@ -2901,7 +2929,16 @@ Click OK to simulate uploading a file.`;
 
                 closeImportModal();
                 await loadTransactions();
-                alert(`Imported ${data.imported} transaction(s) successfully.${skipDuplicates && data.imported < transactions.length ? '\n\nDuplicates were skipped.' : ''}`);
+
+                let alertMsg = `Imported ${data.imported} transaction(s) successfully.`;
+                if (data.skipped && data.skipped.length > 0) {
+                    alertMsg += `\n\n${data.skipped.length} row(s) were skipped:`;
+                    data.skipped.slice(0, 10).forEach(sk => {
+                        alertMsg += `\nRow ${sk.row}: ${sk.reason}`;
+                    });
+                    if (data.skipped.length > 10) alertMsg += `\n...and more.`;
+                }
+                alert(alertMsg);
 
             } catch (err) {
                 console.error('completeImport error:', err);
