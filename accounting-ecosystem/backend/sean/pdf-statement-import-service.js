@@ -20,9 +20,22 @@
  * ============================================================================
  */
 
-const pdfParse   = require('pdf-parse');
+// pdf-parse: v1.x exports the function directly; v2.x wraps it under .default
+const _pdfParseLib = require('pdf-parse');
+const pdfParse = typeof _pdfParseLib === 'function'
+  ? _pdfParseLib
+  : (_pdfParseLib.default || _pdfParseLib.parse || null);
+
+if (typeof pdfParse !== 'function') {
+  // Fail at module load time with a clear message rather than at runtime
+  throw new Error(
+    '[PdfStatementImportService] pdf-parse did not export a callable function. ' +
+    'Ensure pdf-parse is installed: run `npm install pdf-parse` in backend/.'
+  );
+}
+
 const ParserRegistry = require('./pdf-statement-parsers/parser-registry');
-const OcrService = require('./ocr-service');
+const OcrService     = require('./ocr-service');
 
 // Minimum number of extracted characters to consider PDF text-parseable
 const MIN_TEXT_LENGTH = 100;
@@ -90,7 +103,8 @@ class PdfStatementImportService {
       return this._error(`Failed to read PDF: ${err.message}. The file may be corrupted or password-protected.`);
     }
 
-    let text = (pdfData.text || '').trim();
+    // Preprocess extracted text — normalise artifacts common in bank PDF exports
+    let text = this._preprocessPdfText((pdfData.text || '').trim());
     const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
 
     // Scanned PDF detection — attempt OCR fallback before giving up
@@ -145,7 +159,7 @@ class PdfStatementImportService {
     }
 
     // ─── STEP B: Select parser ───────────────────────────────────────────────
-    const selection = ParserRegistry.selectParser(text);
+    const selection = ParserRegistry.selectParser(text, filename || '');
 
     if (selection.isGenericFallback) {
       warnings.push(
@@ -199,6 +213,39 @@ class PdfStatementImportService {
       skippedLines: parseResult.skippedLines,
       importedAt: new Date().toISOString()
     };
+  }
+
+  /**
+   * Normalise text extracted from a standard (text-based) PDF by pdf-parse.
+   *
+   * pdf-parse can produce:
+   *   - Ligature characters (ﬁ → fi, ﬂ → fl, etc.)
+   *   - Non-breaking spaces (U+00A0) instead of regular spaces
+   *   - Tab characters for column spacing
+   *   - Windows CRLF line endings
+   *   - Form-feed characters (U+000C) at page boundaries
+   *   - Multiple consecutive blank lines
+   *   - Smart/curly quotes
+   */
+  static _preprocessPdfText(text) {
+    return text
+      // Windows + old Mac line endings → Unix
+      .replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+      // Form feed (page break) → single newline
+      .replace(/\f/g, '\n')
+      // Non-breaking space → regular space
+      .replace(/\u00A0/g, ' ')
+      // Tabs → two spaces (preserve column intent without breaking regex)
+      .replace(/\t/g, '  ')
+      // Common PDF ligatures → readable ASCII
+      .replace(/\uFB00/g, 'ff').replace(/\uFB01/g, 'fi').replace(/\uFB02/g, 'fl')
+      .replace(/\uFB03/g, 'ffi').replace(/\uFB04/g, 'ffl')
+      // Smart / curly quotes → straight quotes
+      .replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
+      // En-dash / em-dash in amount positions → hyphen-minus
+      .replace(/[\u2013\u2014]/g, '-')
+      // Collapse 3+ consecutive blank lines to 2 (preserve paragraph structure)
+      .replace(/\n{3,}/g, '\n\n');
   }
 
   /**

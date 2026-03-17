@@ -36,7 +36,9 @@ const PARSERS = [
 
 // Below this threshold, even the best specific parser won't be selected;
 // generic parser will be used instead (with a warning).
-const SPECIFIC_MIN_CONFIDENCE = 0.4;
+// Set to 0.35 so that filename-hinted parsers (0.7) and name-matched parsers
+// (0.45+) all pass while truly unrecognised PDFs fall to generic.
+const SPECIFIC_MIN_CONFIDENCE = 0.35;
 
 class ParserRegistry {
 
@@ -54,7 +56,8 @@ class ParserRegistry {
   /**
    * Select the best parser for the given PDF text.
    *
-   * @param {string} text - Full extracted PDF text
+   * @param {string} text     - Full extracted PDF text
+   * @param {string} filename - Original filename (used by canParse for bank hint)
    * @returns {{
    *   parser: class,
    *   confidence: number,
@@ -62,12 +65,12 @@ class ParserRegistry {
    *   isGenericFallback: boolean
    * }}
    */
-  static selectParser(text) {
+  static selectParser(text, filename = '') {
     const scores = PARSERS.map(P => ({
       parser: P,
       id: P.PARSER_ID,
       bank: P.BANK_NAME,
-      ...P.canParse(text)
+      ...P.canParse(text, filename)
     }));
 
     // Separate specific parsers from generic

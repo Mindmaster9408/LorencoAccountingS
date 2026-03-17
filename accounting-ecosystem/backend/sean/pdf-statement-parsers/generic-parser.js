@@ -5,69 +5,71 @@
  * Used when no bank-specific parser matches with sufficient confidence.
  *
  * Strategy:
- *  1. Find a header row containing "date" + "description" + amount keywords
- *  2. Identify which columns map to date / description / debit / credit / amount / balance
- *  3. Parse each subsequent row that starts with a date pattern
+ *  1. Detect column layout from header row (debit/credit vs single amount)
+ *  2. For each line starting with a date, extract all numbers and resolve them
+ *  3. Assign debit/credit sign using description keyword heuristics
  *
- * Limitations:
- *  - Less reliable than bank-specific parsers
- *  - Debit/credit sign assignment is heuristic when only one amount column exists
- *  - PDFs with complex multi-column layouts may not parse correctly
+ * Supports date formats: DD/MM/YYYY, DD/MM/YY, YYYY-MM-DD, YYYY/MM/DD,
+ *                        DD Mon YYYY, DD-Mon-YYYY
+ * Supports amounts: space/comma thousands, R prefix, DR/Cr suffix, brackets
  *
  * confidence returned: 0.3 (always low — only used as last resort)
  * ============================================================================
  */
 
+'use strict';
+
 const BaseParser = require('./base-parser');
 
-const AMOUNT_RE = /^[-]?[\d\s,]+\.\d{2}$/;
+// All supported date starters
+const DATE_RE = /^(?:\d{1,2}[\/\-\|]\d{1,2}[\/\-\|]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-]\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{1,2}-[A-Za-z]{3}-\d{4})/i;
 
 const SKIP_KEYWORDS = [
   'opening balance', 'closing balance', 'balance brought',
-  'balance carried', 'total', 'subtotal', 'interest charged'
+  'balance carried', 'total', 'subtotal', 'interest charged',
+  'service fee', 'bank charges'
 ];
+
+// Description keywords that strongly suggest money IN
+const CREDIT_RE = /\b(received|deposit|salary|credit|transfer\s+in|proceeds|refund|reversal\s+credit|payment\s+from)\b/i;
+// Description keywords that strongly suggest money OUT
+const DEBIT_RE  = /\b(debit\s+order|payment\s+to|purchase|withdrawal|atm|fee|charge|transfer\s+out|levy)\b/i;
 
 class GenericParser extends BaseParser {
 
   static get PARSER_ID() { return 'generic-v1'; }
   static get BANK_NAME() { return 'Unknown'; }
 
-  /**
-   * Generic parser always returns low confidence — it is the last-resort fallback.
-   */
   static canParse(text) {
-    // Only offer generic if text looks like a financial statement at all
-    const hasAmounts = (text.match(/[\d,]+\.\d{2}/g) || []).length > 3;
-    const hasDateLike = this.startsWithDate(text.split('\n').find(l => this.startsWithDate(l.trim())) || '');
+    const hasAmounts  = (text.match(/[\d,]+\.\d{2}/g) || []).length > 3;
+    const firstLine   = text.split('\n').find(l => DATE_RE.test(l.trim())) || '';
+    const hasDateLike = DATE_RE.test(firstLine.trim());
     if (hasAmounts && hasDateLike) {
       return { confidence: 0.3, details: { generic: true } };
     }
     return { confidence: 0.1, details: { generic: true, insufficientSignals: true } };
   }
 
-  static parse(text, filename) {
+  static parse(text, filename = '') {
     const result = this.emptyResult('Unknown', this.PARSER_ID);
-    result.accountNumber = this.extractAccountNumber(text);
+    result.accountNumber   = this.extractAccountNumber(text);
     result.statementPeriod = this.extractPeriod(text);
 
-    const lines = this.toLines(text);
+    const rawLines = this.toLines(text);
+    const lines = this.joinContinuationLines(rawLines, l => DATE_RE.test(l));
 
-    // Step 1: Detect column layout from header row
-    const layout = this._detectLayout(lines);
+    // Detect column layout from header rows
+    const layout = this._detectLayout(lines.slice(0, 30));
     if (layout) {
-      result.warnings.push(`Generic parser: detected layout — ${JSON.stringify(layout.hint)}`);
+      result.warnings.push(`Generic parser: detected layout — ${layout.type}`);
     }
 
-    // Step 2: Parse transaction rows
     for (const line of lines) {
       if (this.isPageNoise(line)) continue;
-      if (!this.startsWithDate(line)) continue;
+      if (!DATE_RE.test(line))   continue;
 
-      const lowerLine = line.toLowerCase();
-      if (SKIP_KEYWORDS.some(k => lowerLine.includes(k))) {
-        result.skippedLines++;
-        continue;
-      }
+      const lower = line.toLowerCase();
+      if (SKIP_KEYWORDS.some(k => lower.includes(k))) { result.skippedLines++; continue; }
 
       const txn = this._parseLine(line, layout);
       if (!txn) { result.skippedLines++; continue; }
@@ -76,7 +78,7 @@ class GenericParser extends BaseParser {
       if (warns.length === 0) {
         result.transactions.push(txn);
       } else {
-        result.warnings.push(`Line skipped (${warns.join(', ')}): ${line}`);
+        result.warnings.push(`Skipped (${warns.join(', ')}): ${line.slice(0, 80)}`);
         result.skippedLines++;
       }
     }
@@ -84,51 +86,43 @@ class GenericParser extends BaseParser {
     if (result.transactions.length === 0) {
       result.warnings.push(
         'Generic parser could not extract transactions. ' +
-        'The PDF may be a scanned image, use an unsupported layout, or have complex formatting. ' +
-        'First version supports text-based PDFs only. ' +
-        'Try exporting as CSV from your bank\'s online portal instead.'
+        'The PDF may use a custom layout or be an image-based scan. ' +
+        'Try exporting as CSV from your bank\'s online portal.'
       );
     } else {
       result.warnings.push(
-        'Transactions parsed by generic fallback parser. ' +
-        'Debit/credit sign assignment is heuristic — please review before importing.'
+        'Parsed by generic fallback parser — debit/credit sign assignment is heuristic. ' +
+        'Please review all amounts before importing.'
       );
     }
 
     return result;
   }
 
-  /**
-   * Try to detect whether the statement uses:
-   *  - Single Amount column (signed)
-   *  - Debit + Credit columns
-   *  - Debit + Credit + Balance columns
-   */
+  // ── Layout detection ────────────────────────────────────────────────────────
+
   static _detectLayout(lines) {
-    for (const line of lines.slice(0, 30)) {
+    for (const line of lines) {
       const lower = line.toLowerCase();
       if (lower.includes('date') && lower.includes('description')) {
-        const hasDebit = lower.includes('debit');
-        const hasCredit = lower.includes('credit');
-        const hasAmount = lower.includes('amount');
-        const hasBalance = lower.includes('balance');
-
         return {
-          type: (hasDebit && hasCredit) ? 'debit-credit' : 'single-amount',
-          hasBalance,
-          hint: { hasDebit, hasCredit, hasAmount, hasBalance }
+          type: (lower.includes('debit') && lower.includes('credit'))
+            ? 'debit-credit'
+            : 'single-amount',
+          hasBalance: lower.includes('balance')
         };
       }
     }
     return null;
   }
 
-  /**
-   * Parse a single transaction line using heuristic column detection.
-   */
+  // ── Line parser ─────────────────────────────────────────────────────────────
+
   static _parseLine(line, layout) {
-    // Extract the date from the start
-    const dateMatch = line.match(/^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3}\s+\d{4})/);
+    // Extract the date from the start of the line
+    const dateMatch = line.match(
+      /^(\d{1,2}[\/\-\|]\d{1,2}[\/\-\|]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-]\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{1,2}-[A-Za-z]{3}-\d{4})/i
+    );
     if (!dateMatch) return null;
 
     const date = this.parseDate(dateMatch[1]);
@@ -136,48 +130,52 @@ class GenericParser extends BaseParser {
 
     const rest = line.slice(dateMatch[0].length).trim();
 
-    // Extract all number-like tokens from the rest of the line
-    const numberPattern = /[-]?[\d,\s]+\.\d{2}/g;
+    // Extract all amount-like tokens (with R prefix, DR/Cr suffix, brackets)
+    const AMT_PATTERN = /(?:R\s*)?(?:\([\d\s,]+\.\d{2}\)|[-]?[\d,\s]+\.\d{2})\s*(?:[Dd][Rr]?|[Cc][Rr])?/g;
     const numbers = [];
-    let lastIndex = 0;
     let numMatch;
-    while ((numMatch = numberPattern.exec(rest)) !== null) {
-      numbers.push({ value: this.parseAmount(numMatch[0]), index: numMatch.index });
-      lastIndex = numMatch.index + numMatch[0].length;
+    while ((numMatch = AMT_PATTERN.exec(rest)) !== null) {
+      const val = this.parseAmount(numMatch[0]);
+      if (val !== null) {
+        numbers.push({ value: val, index: numMatch.index, raw: numMatch[0].trim() });
+      }
     }
 
     if (numbers.length === 0) return null;
 
-    // Description is the text before the first number
-    const firstNumStart = numbers[0].index;
-    const description = rest.slice(0, firstNumStart).trim();
+    // Description is everything before the first number
+    const description = rest.slice(0, numbers[0].index).trim();
     if (!description) return null;
 
     let amount, balance;
 
-    if (numbers.length >= 3) {
-      // 3 numbers: debit|credit + other + balance
-      // Convention: last = balance, others indicate debit/credit
+    if (numbers.length >= 3 && layout && layout.type === 'debit-credit') {
+      // Last number is always balance; first two are debit + credit
       balance = numbers[numbers.length - 1].value;
-      // Try debit/credit pattern: one should be 0 or absent
       const n1 = numbers[0].value;
       const n2 = numbers[1].value;
-      if (n1 === 0 || n1 === null) {
-        amount = n2; // credit
-      } else if (n2 === 0 || n2 === null) {
-        amount = -Math.abs(n1); // debit
-      } else {
-        // Both non-zero: use heuristic
-        const isCredit = /\b(received|deposit|credit|salary|transfer in|payment from)\b/i.test(description);
-        amount = isCredit ? Math.abs(n1) : -Math.abs(n1);
+      // In debit/credit layout, one column is 0/absent; non-zero wins
+      if (Math.abs(n2) > 0)      amount = Math.abs(n2);   // credit column → positive
+      else if (Math.abs(n1) > 0) amount = -Math.abs(n1);  // debit column → negative
+      else                        return null;
+    } else if (numbers.length >= 2) {
+      // Last = balance, second-to-last (or only) = amount
+      balance = numbers[numbers.length - 1].value;
+      const raw = numbers[numbers.length - 2].value;
+      // If the raw value already carries a sign from DR/Cr suffix, trust it
+      amount = raw;
+      // If unsigned (>0) and no explicit suffix, use description heuristics
+      if (amount > 0 && !DEBIT_RE.test(description) && !CREDIT_RE.test(description)) {
+        // No clear signal — leave positive (conservative, user reviews anyway)
+        amount = raw;
+      } else if (amount > 0 && DEBIT_RE.test(description)) {
+        amount = -Math.abs(raw);
+      } else if (amount > 0 && CREDIT_RE.test(description)) {
+        amount = Math.abs(raw);
       }
-    } else if (numbers.length === 2) {
-      // 2 numbers: amount + balance
-      balance = numbers[1].value;
-      amount = numbers[0].value; // sign already embedded (from parseAmount)
     } else {
-      // 1 number: ambiguous
-      amount = numbers[0].value;
+      // Only one number — ambiguous: could be amount only, no balance
+      amount  = numbers[0].value;
       balance = null;
     }
 
