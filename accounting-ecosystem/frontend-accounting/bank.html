@@ -536,50 +536,56 @@
             transform: translateY(-50%);
         }
         
+        /* Table scrolls horizontally inside the section card */
         .transactions-table-wrap {
             overflow-x: auto;
             width: 100%;
+            -webkit-overflow-scrolling: touch;
         }
+        /* Fixed-layout table: 12 columns totalling ~1130px
+           (Upload merged into Files column alongside Attachments) */
         .transactions-table {
             border-collapse: collapse;
-            table-layout: auto;
-            min-width: 1300px;
+            table-layout: fixed;
+            width: 1130px;      /* explicit — enables overflow-x scroll on the wrap */
         }
 
-        .transactions-table th:nth-child(1)  { min-width: 38px;  width: 38px; }   /* Checkbox */
-        .transactions-table th:nth-child(2)  { min-width: 88px;  width: 88px; }   /* Date */
-        .transactions-table th:nth-child(3)  { min-width: 240px; }                /* Description */
-        .transactions-table th:nth-child(4)  { min-width: 105px; width: 105px; }  /* Money In */
-        .transactions-table th:nth-child(5)  { min-width: 105px; width: 105px; }  /* Money Out */
-        .transactions-table th:nth-child(6)  { min-width: 105px; width: 105px; }  /* Balance */
-        .transactions-table th:nth-child(7)  { min-width: 165px; width: 165px; }  /* Transaction Type */
-        .transactions-table th:nth-child(8)  { min-width: 195px; width: 195px; }  /* Account */
-        .transactions-table th:nth-child(9)  { min-width: 95px;  width: 95px; }   /* Status */
-        .transactions-table th:nth-child(10) { min-width: 48px;  width: 48px; }   /* Upload */
-        .transactions-table th:nth-child(11) { min-width: 90px;  width: 90px; }   /* Attachments */
-        .transactions-table th:nth-child(12) { min-width: 72px;  width: 72px; }   /* Actions */
-        .transactions-table th:nth-child(13) { min-width: 72px;  width: 72px; }   /* AI */
-        
+        .transactions-table th:nth-child(1)  { width: 34px;  }   /* Checkbox */
+        .transactions-table th:nth-child(2)  { width: 80px;  }   /* Date */
+        .transactions-table th:nth-child(3)  { width: 190px; }   /* Description */
+        .transactions-table th:nth-child(4)  { width: 90px;  }   /* Money In */
+        .transactions-table th:nth-child(5)  { width: 90px;  }   /* Money Out */
+        .transactions-table th:nth-child(6)  { width: 90px;  }   /* Balance */
+        .transactions-table th:nth-child(7)  { width: 148px; }   /* Transaction Type */
+        .transactions-table th:nth-child(8)  { width: 165px; }   /* Account */
+        .transactions-table th:nth-child(9)  { width: 84px;  }   /* Status */
+        .transactions-table th:nth-child(10) { width: 80px;  }   /* Files (upload + attach) */
+        .transactions-table th:nth-child(11) { width: 62px;  }   /* Actions */
+        .transactions-table th:nth-child(12) { width: 57px;  }   /* AI */
+
         .transactions-table thead {
             background: #f8f9fa;
             border-bottom: 2px solid #e8eaed;
         }
-        
+
         .transactions-table th {
-            padding: 14px 16px;
+            padding: 10px 8px;
             text-align: left;
             font-weight: 600;
             color: #5f6368;
-            font-size: 12px;
+            font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+            overflow: hidden;
         }
-        
+
         .transactions-table td {
-            padding: 16px;
+            padding: 10px 8px;
             border-bottom: 1px solid #f5f5f5;
             color: #202124;
             font-size: 13px;
+            overflow: hidden;
         }
         
         .transactions-table tbody tr {
@@ -597,17 +603,19 @@
         
         .transaction-description {
             font-weight: 500;
-            word-break: break-word;
-            white-space: normal;
-            line-height: 1.4;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 190px;
         }
 
         .transaction-reference {
             color: #9aa0a6;
             font-size: 11px;
-            margin-top: 3px;
-            word-break: break-word;
-            white-space: normal;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .transaction-amount {
@@ -1671,8 +1679,7 @@
                         <th>Transaction Type</th>
                         <th>Account</th>
                         <th>Status</th>
-                        <th>Upload</th>
-                        <th>Attachments</th>
+                        <th>Files</th>
                         <th>Actions</th>
                         <th id="aiHeader">AI</th>
                     </tr>
@@ -1715,7 +1722,7 @@
                         <td>
                             <span class="status-badge status-unmatched" style="font-size:10px; padding:3px 8px;">Unmatched</span>
                         </td>
-                        <td colspan="4" style="text-align:left; padding-left:8px;">
+                        <td colspan="3" style="text-align:left; padding-left:8px;">
                             <button class="btn-manual-save" onclick="saveManualTransaction()">&#8853; Save</button>
                             <button class="btn-manual-cancel" onclick="cancelManualEntry()">Cancel</button>
                         </td>
@@ -2067,7 +2074,7 @@ Click OK to simulate uploading a file.`;
             // Clear non-entry rows and show loading state
             Array.from(tbody.querySelectorAll('tr:not(#manualEntryRow)')).forEach(r => r.remove());
             tbody.insertAdjacentHTML('beforeend',
-                '<tr id="txnLoadingRow"><td colspan="13" style="text-align:center;padding:30px;color:#5f6368;font-style:italic;">Loading transactions…</td></tr>');
+                '<tr id="txnLoadingRow"><td colspan="12" style="text-align:center;padding:30px;color:#5f6368;font-style:italic;">Loading transactions…</td></tr>');
 
             try {
                 const params = new URLSearchParams();
@@ -2090,7 +2097,7 @@ Click OK to simulate uploading a file.`;
 
                 if (!txns.length) {
                     tbody.insertAdjacentHTML('beforeend',
-                        '<tr id="noTxnRow"><td colspan="13" style="text-align:center;padding:40px;color:#5f6368;">No transactions found for the selected filters.</td></tr>');
+                        '<tr id="noTxnRow"><td colspan="12" style="text-align:center;padding:40px;color:#5f6368;">No transactions found for the selected filters.</td></tr>');
                     return;
                 }
 
@@ -2116,7 +2123,7 @@ Click OK to simulate uploading a file.`;
                         <tr data-txn-id="${txn.id}">
                             <td><input type="checkbox" class="checkbox" data-txn-id="txn-${txn.id}" onchange="updateBulkActions()"></td>
                             <td class="transaction-date">${formatDisplayDate(txn.date)}</td>
-                            <td>
+                            <td title="${escapeHtml(txn.description || '')}${txn.reference ? ' | Ref: ' + escapeHtml(txn.reference) : ''}">
                                 <div class="transaction-description">${escapeHtml(txn.description || '')}</div>
                                 ${txn.reference ? `<div class="transaction-reference">Ref: ${escapeHtml(txn.reference)}</div>` : ''}
                             </td>
@@ -2139,12 +2146,9 @@ Click OK to simulate uploading a file.`;
                                 </select>
                             </td>
                             <td>${statusBadgeHtml(txn.status)}</td>
-                            <td>
-                                <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">
-                                    &#128206;<span class="file-count" id="fileCount${txn.id}" style="display:none;">0</span>
-                                </a>
+                            <td style="white-space:nowrap;">
+                                <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents" style="font-size:20px; margin-right:4px;">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:11px;">&#128196;<span id="attachCount${txn.id}">0</span></button>
                             </td>
-                            <td><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:6px 12px;">&#128196; <span id="attachCount${txn.id}">0</span></button></td>
                             <td><button class="action-btn" onclick="viewTransaction('${txn.id}')">View</button></td>
                             <td class="ai-column">
                                 <button class="ai-btn" onclick="toggleAISuggestion('${txn.id}', this)">
@@ -2153,7 +2157,7 @@ Click OK to simulate uploading a file.`;
                             </td>
                         </tr>
                         <tr class="ai-suggestion-row" id="aiRow${txn.id}">
-                            <td colspan="13">
+                            <td colspan="12">
                                 <div class="ai-suggestion-content">
                                     <div class="ai-suggestion-header">&#129302; Sean AI Analysis</div>
                                     <div class="ai-decision"><em>Click to analyze…</em></div>
@@ -2177,7 +2181,7 @@ Click OK to simulate uploading a file.`;
                 console.error('loadTransactions error:', err);
                 document.getElementById('txnLoadingRow')?.remove();
                 tbody.insertAdjacentHTML('beforeend',
-                    '<tr><td colspan="13" style="text-align:center;padding:30px;color:#ea4335;">Failed to load transactions. Please refresh the page.</td></tr>');
+                    '<tr><td colspan="12" style="text-align:center;padding:30px;color:#ea4335;">Failed to load transactions. Please refresh the page.</td></tr>');
             }
         }
         
@@ -3811,11 +3815,10 @@ Click OK to simulate uploading a file.`;
             var rowHtml = '<tr data-manual="true">'
                 + '<td><input type="checkbox" class="checkbox" data-txn-id="txn-' + id + '" onchange="updateBulkActions()"></td>'
                 + '<td class="transaction-date">' + escapeHtml(dispDate) + '</td>'
-                + '<td>'
+                + '<td title="' + escapeHtml(desc) + (ref ? ' | Ref: ' + escapeHtml(ref) : '') + '">'
                 +   '<div class="transaction-description">' + escapeHtml(desc) + '</div>'
-                +   (ref ? '<div class="transaction-reference">' + escapeHtml(ref) + '</div>' : '')
+                +   (ref ? '<div class="transaction-reference">Ref: ' + escapeHtml(ref) + '</div>' : '')
                 + '</td>'
-                + '<td>' + escapeHtml(ref) + '</td>'
                 + moneyInCell
                 + '<td>\u2014</td>'
                 + '<td>'
@@ -3834,12 +3837,10 @@ Click OK to simulate uploading a file.`;
                 +   '</select>'
                 + '</td>'
                 + '<td><span class="status-badge status-unmatched">Unmatched</span></td>'
-                + '<td>'
-                +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents">'
-                +     '&#128206;<span class="file-count" id="fileCount' + id + '" style="display:none;">0</span>'
-                +   '</a>'
+                + '<td style="white-space:nowrap;">'
+                +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents" style="font-size:20px; margin-right:4px;">&#128206;</a>'
+                +   '<button class="action-btn" onclick="showAttachments(\'' + id + '\')" style="padding:4px 8px; font-size:11px;">&#128196;<span id="attachCount' + id + '">0</span></button>'
                 + '</td>'
-                + '<td><button class="action-btn" onclick="showAttachments(\'' + id + '\')" style="padding:6px 12px;">&#128196; <span id="attachCount' + id + '">0</span></button></td>'
                 + '<td><button class="action-btn" onclick="viewTransaction(\'' + id + '\')">View</button></td>'
                 + '<td class="ai-column">'
                 +   '<button class="ai-btn" onclick="toggleAISuggestion(\'' + id + '\', this)">'
@@ -3848,7 +3849,7 @@ Click OK to simulate uploading a file.`;
                 + '</td>'
                 + '</tr>'
                 + '<tr class="ai-suggestion-row" id="aiRow' + id + '">'
-                + '<td colspan="13">'
+                + '<td colspan="12">'
                 +   '<div class="ai-suggestion-content">'
                 +     '<div class="ai-suggestion-header">\uD83E\uDD16 Sean AI Analysis</div>'
                 +     '<div class="ai-decision"><em>Click to analyze\u2026</em></div>'
