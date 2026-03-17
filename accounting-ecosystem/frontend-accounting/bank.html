@@ -3983,48 +3983,60 @@ Click OK to simulate uploading a file.`;
             }
 
             showDeleteConfirmModal(selectedRows.length, matchedRows.length, async function () {
-                var errors = [];
-                for (var i = 0; i < selectedRows.length; i++) {
-                    var row = selectedRows[i];
+                // Build a { row, id } map for each selected row
+                var items = selectedRows.map(function (row) {
                     var cb  = row.querySelector('.checkbox');
                     var raw = cb ? (cb.dataset.txnId || '').replace('txn-', '') : '';
+                    return { row: row, id: raw };
+                });
 
-                    // Server-backed transactions have numeric IDs; manual (local-only) start with 'm'
-                    if (raw && !raw.startsWith('m')) {
-                        try {
-                            var resp = await fetch('/api/accounting/bank/transactions/' + raw, {
-                                method: 'DELETE',
-                                headers: getAuthHeaders()
+                // Fire all server DELETEs in parallel — no waiting for one before the next
+                var serverItems  = items.filter(function (x) { return x.id && !x.id.startsWith('m'); });
+                var manualItems  = items.filter(function (x) { return !x.id || x.id.startsWith('m'); });
+
+                var deleteResults = await Promise.allSettled(
+                    serverItems.map(function (x) {
+                        return fetch('/api/accounting/bank/transactions/' + x.id, {
+                            method: 'DELETE',
+                            headers: getAuthHeaders()
+                        }).then(function (resp) {
+                            if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (b) {
+                                throw new Error(b.error || 'HTTP ' + resp.status);
                             });
-                            if (!resp.ok) {
-                                var body = await resp.json().catch(function () { return {}; });
-                                errors.push('Transaction ' + raw + ': ' + (body.error || 'HTTP ' + resp.status));
-                                continue; // leave this row in the table
-                            }
-                        } catch (e) {
-                            errors.push('Transaction ' + raw + ': network error');
-                            continue;
-                        }
-                    }
+                            return { ok: true, item: x };
+                        }).then(function (r) { return { ok: true, item: x }; })
+                          .catch(function (e) { return { ok: false, item: x, error: e.message }; });
+                    })
+                );
 
-                    // Remove paired AI suggestion row then the transaction row
-                    var next = row.nextElementSibling;
+                var errors       = [];
+                var failedIds    = new Set();
+                deleteResults.forEach(function (r) {
+                    var result = r.value || r.reason;
+                    if (result && !result.ok) {
+                        errors.push('Transaction ' + result.item.id + ': ' + (result.error || 'unknown error'));
+                        failedIds.add(result.item.id);
+                    }
+                });
+
+                // Remove from DOM: all server rows that succeeded + all manual rows
+                items.forEach(function (x) {
+                    if (failedIds.has(x.id)) return; // leave failed rows in table
+                    var next = x.row.nextElementSibling;
                     if (next && next.classList.contains('ai-suggestion-row')) next.remove();
-                    if (raw) delete transactionAllocations[raw];
-                    row.remove();
-                }
+                    if (x.id) delete transactionAllocations[x.id];
+                    x.row.remove();
+                });
 
                 saveAllocationsToStorage();
                 updateBulkActions();
 
-                // Remove any deleted manual transactions from persistent storage
-                var stored = JSON.parse(safeLocalStorage.getItem(storageKey('bank_manual_transactions')) || '[]');
-                if (stored.length > 0) {
-                    var deletedManual = selectedRows
-                        .map(function (r) { var c = r.querySelector('.checkbox'); return c ? (c.dataset.txnId || '').replace('txn-', '') : ''; })
-                        .filter(function (id) { return id.startsWith('m'); });
-                    if (deletedManual.length > 0) {
-                        stored = stored.filter(function (t) { return !deletedManual.includes(t.id); });
+                // Clean up manual transactions from localStorage
+                if (manualItems.length > 0) {
+                    var stored = JSON.parse(safeLocalStorage.getItem(storageKey('bank_manual_transactions')) || '[]');
+                    if (stored.length > 0) {
+                        var deletedManualIds = manualItems.map(function (x) { return x.id; });
+                        stored = stored.filter(function (t) { return !deletedManualIds.includes(t.id); });
                         safeLocalStorage.setItem(storageKey('bank_manual_transactions'), JSON.stringify(stored));
                     }
                 }
