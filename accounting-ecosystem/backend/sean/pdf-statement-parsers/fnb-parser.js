@@ -98,12 +98,14 @@ class FNBParser extends BaseParser {
     let m;
     while ((m = AMT_TOKEN_RE.exec(rest)) !== null) {
       const v = this.parseAmount(m[0]);
-      if (v !== null) tokens.push({ raw: m[0].trim(), value: v, start: m.index });
+      if (v !== null) tokens.push({ raw: m[0].trim(), value: v, start: m.index, end: m.index + m[0].length });
     }
     if (tokens.length < 2) return null;
 
-    const description = rest.slice(0, tokens[0].start).replace(/[\s\-]+$/, '').trim();
+    let description = rest.slice(0, tokens[0].start).replace(/[\s\-]+$/, '').trim();
     if (!description) return null;
+    const afterLast = rest.slice(tokens[tokens.length - 1].end).trim();
+    if (afterLast) description = (description + ' ' + afterLast).trim();
 
     const balance = tokens[tokens.length - 1].value;
     const rawAmt  = tokens[tokens.length - 2].value;

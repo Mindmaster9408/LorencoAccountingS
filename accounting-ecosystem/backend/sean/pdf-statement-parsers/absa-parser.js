@@ -176,10 +176,18 @@ class ABSAParser extends BaseParser {
 
     if (tokens.length === 0) return null;
 
-    // 3. Description = everything before the FIRST amount token.
+    // 3. Description = text before the FIRST amount token.
     //    Strip trailing dashes/spaces (the "-" dash in empty columns).
-    const description = rest.slice(0, tokens[0].start).replace(/[\s\-]+$/, '').trim();
+    let description = rest.slice(0, tokens[0].start).replace(/[\s\-]+$/, '').trim();
     if (!description) return null;
+
+    // 3b. Continuation sub-lines (counterparty account number, name, etc.) are
+    //     appended by joinContinuationLines AFTER the amounts in the joined string.
+    //     Re-attach them to the description so the user can identify the transaction.
+    //     e.g. "... 20 000.00 18 883.67 4071730751 Absa Bank Tjekrek 2" →
+    //          description += " 4071730751 Absa Bank Tjekrek 2"
+    const afterLast = rest.slice(tokens[tokens.length - 1].end).trim();
+    if (afterLast) description = (description + ' ' + afterLast).trim();
 
     // 4. Resolve balance and raw transaction amount from token positions.
     const balance = tokens[tokens.length - 1].value;

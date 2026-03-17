@@ -547,7 +547,7 @@
         .transactions-table {
             border-collapse: collapse;
             table-layout: fixed;
-            width: 1130px;      /* explicit — enables overflow-x scroll on the wrap */
+            width: 1170px;      /* sum of all 12 column widths — enables overflow-x scroll on the wrap */
         }
 
         .transactions-table th:nth-child(1)  { width: 34px;  }   /* Checkbox */
@@ -2147,7 +2147,7 @@ Click OK to simulate uploading a file.`;
                             </td>
                             <td>${statusBadgeHtml(txn.status)}</td>
                             <td style="white-space:nowrap;">
-                                <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents" style="font-size:20px; margin-right:4px;">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:11px;">&#128196;<span id="attachCount${txn.id}">0</span></button>
+                                <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:12px;">&#128196; <span id="attachCount${txn.id}">0</span></button>
                             </td>
                             <td><button class="action-btn" onclick="viewTransaction('${txn.id}')">View</button></td>
                             <td class="ai-column">
@@ -3838,7 +3838,7 @@ Click OK to simulate uploading a file.`;
                 + '</td>'
                 + '<td><span class="status-badge status-unmatched">Unmatched</span></td>'
                 + '<td style="white-space:nowrap;">'
-                +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents" style="font-size:20px; margin-right:4px;">&#128206;</a>'
+                +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents">&#128206;</a>'
                 +   '<button class="action-btn" onclick="showAttachments(\'' + id + '\')" style="padding:4px 8px; font-size:11px;">&#128196;<span id="attachCount' + id + '">0</span></button>'
                 + '</td>'
                 + '<td><button class="action-btn" onclick="viewTransaction(\'' + id + '\')">View</button></td>'
@@ -3990,38 +3990,36 @@ Click OK to simulate uploading a file.`;
                     return { row: row, id: raw };
                 });
 
-                // Fire all server DELETEs in parallel — no waiting for one before the next
                 var serverItems  = items.filter(function (x) { return x.id && !x.id.startsWith('m'); });
                 var manualItems  = items.filter(function (x) { return !x.id || x.id.startsWith('m'); });
 
-                var deleteResults = await Promise.allSettled(
-                    serverItems.map(function (x) {
-                        return fetch('/api/accounting/bank/transactions/' + x.id, {
-                            method: 'DELETE',
-                            headers: getAuthHeaders()
-                        }).then(function (resp) {
-                            if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (b) {
-                                throw new Error(b.error || 'HTTP ' + resp.status);
-                            });
-                            return { ok: true, item: x };
-                        }).then(function (r) { return { ok: true, item: x }; })
-                          .catch(function (e) { return { ok: false, item: x, error: e.message }; });
-                    })
-                );
+                // Single bulk DELETE request instead of one per transaction
+                var errors    = [];
+                var failedIds = new Set();
 
-                var errors       = [];
-                var failedIds    = new Set();
-                deleteResults.forEach(function (r) {
-                    var result = r.value || r.reason;
-                    if (result && !result.ok) {
-                        errors.push('Transaction ' + result.item.id + ': ' + (result.error || 'unknown error'));
-                        failedIds.add(result.item.id);
+                if (serverItems.length > 0) {
+                    var serverIds = serverItems.map(function (x) { return parseInt(x.id, 10); }).filter(Boolean);
+                    var bulkResp  = await fetch('/api/accounting/bank/transactions/bulk', {
+                        method: 'DELETE',
+                        headers: Object.assign({}, getAuthHeaders(), { 'Content-Type': 'application/json' }),
+                        body: JSON.stringify({ ids: serverIds, force: matchedRows.length > 0 })
+                    });
+                    var bulkData = await bulkResp.json().catch(function () { return {}; });
+
+                    if (!bulkResp.ok) {
+                        errors.push(bulkData.error || 'Bulk delete failed (HTTP ' + bulkResp.status + ')');
+                        serverItems.forEach(function (x) { failedIds.add(x.id); });
+                    } else if (bulkData.blocked && bulkData.blocked.length > 0) {
+                        bulkData.blocked.forEach(function (b) {
+                            errors.push('Transaction ' + b.id + ': ' + b.reason);
+                            failedIds.add(String(b.id));
+                        });
                     }
-                });
+                }
 
                 // Remove from DOM: all server rows that succeeded + all manual rows
                 items.forEach(function (x) {
-                    if (failedIds.has(x.id)) return; // leave failed rows in table
+                    if (failedIds.has(x.id)) return; // leave blocked rows in table
                     var next = x.row.nextElementSibling;
                     if (next && next.classList.contains('ai-suggestion-row')) next.remove();
                     if (x.id) delete transactionAllocations[x.id];
