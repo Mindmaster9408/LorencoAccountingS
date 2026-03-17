@@ -491,15 +491,32 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
       return res.status(404).json({ error: 'Bank account not found' });
     }
 
-    const importedTransactions = [];
     const skippedTransactions = [];
-    let rowIndex = 0;
 
-    for (const txn of transactions) {
-      rowIndex++;
+    // ── 1. Bulk duplicate check — ONE query instead of one per row ────────────
+    // Collect all externalIds from the incoming batch that are non-empty
+    const incomingExternalIds = transactions
+      .map(t => t.externalId)
+      .filter(Boolean);
+
+    let existingExternalIdSet = new Set();
+    if (incomingExternalIds.length > 0) {
+      const { data: existingRows } = await supabase
+        .from('bank_transactions')
+        .select('external_id')
+        .eq('bank_account_id', bankAccountId)
+        .in('external_id', incomingExternalIds);
+      if (existingRows) {
+        existingRows.forEach(r => existingExternalIdSet.add(r.external_id));
+      }
+    }
+
+    // ── 2. Validate rows and split into valid / skipped ───────────────────────
+    const rowsToInsert = [];
+    transactions.forEach((txn, idx) => {
+      const rowIndex = idx + 1;
       const { date, description, amount, reference, externalId, balance } = txn;
 
-      // Validate required fields
       if (!date || !description || amount == null || isNaN(amount)) {
         skippedTransactions.push({
           row: rowIndex,
@@ -507,76 +524,52 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
             [!date ? 'date' : '', !description ? 'description' : '', (amount == null || isNaN(amount)) ? 'amount' : ''].filter(Boolean).join(', '),
           txn
         });
-        continue;
+        return;
       }
 
-      // Check if already imported (by external ID) — skip duplicates
-      if (externalId) {
-        const { data: existingCheck } = await supabase
-          .from('bank_transactions')
-          .select('id')
-          .eq('bank_account_id', bankAccountId)
-          .eq('external_id', externalId)
-          .limit(1);
-
-        if (existingCheck && existingCheck.length > 0) {
-          skippedTransactions.push({
-            row: rowIndex,
-            reason: 'Duplicate (externalId already exists)',
-            txn
-          });
-          continue;
-        }
+      if (externalId && existingExternalIdSet.has(externalId)) {
+        skippedTransactions.push({ row: rowIndex, reason: 'Duplicate (externalId already exists)', txn });
+        return;
       }
 
-      let { data: row, error: insertErr } = await supabase
+      rowsToInsert.push({
+        company_id:      req.user.companyId,
+        bank_account_id: bankAccountId,
+        date,
+        description,
+        amount,
+        balance:      balance != null ? balance : null,
+        reference:    reference || null,
+        external_id:  externalId || null,
+        status:       'unmatched',
+        import_source: resolvedSource
+      });
+    });
+
+    // ── 3. Bulk insert — ONE round-trip for all valid rows ────────────────────
+    let importedTransactions = [];
+    if (rowsToInsert.length > 0) {
+      let { data: inserted, error: insertErr } = await supabase
         .from('bank_transactions')
-        .insert({
-          company_id:     req.user.companyId,
-          bank_account_id: bankAccountId,
-          date,
-          description,
-          amount,
-          balance:     balance != null ? balance : null,
-          reference:   reference || null,
-          external_id: externalId || null,
-          status:      'unmatched',
-          import_source: resolvedSource
-        })
-        .select()
-        .single();
+        .insert(rowsToInsert)
+        .select();
 
-      // Fallback: if import_source column doesn't exist yet (migration pending),
-      // retry without it so imports never silently fail due to a missing column.
+      // Fallback: import_source column missing on older deployments
       if (insertErr && insertErr.message && insertErr.message.includes('import_source')) {
-        console.warn('[bank/import] import_source column missing — retrying without it. Run ALTER TABLE migration.');
-        ({ data: row, error: insertErr } = await supabase
+        console.warn('[bank/import] import_source column missing — retrying without it.');
+        const rowsWithoutSource = rowsToInsert.map(({ import_source, ...rest }) => rest);
+        ({ data: inserted, error: insertErr } = await supabase
           .from('bank_transactions')
-          .insert({
-            company_id:     req.user.companyId,
-            bank_account_id: bankAccountId,
-            date,
-            description,
-            amount,
-            balance:     balance != null ? balance : null,
-            reference:   reference || null,
-            external_id: externalId || null,
-            status:      'unmatched'
-          })
-          .select()
-          .single());
+          .insert(rowsWithoutSource)
+          .select());
       }
 
       if (insertErr) {
-        skippedTransactions.push({
-          row: rowIndex,
-          reason: 'DB insert error: ' + insertErr.message,
-          txn
-        });
-        continue;
+        console.error('[bank/import] Bulk insert error:', insertErr);
+        return res.status(500).json({ error: 'Failed to insert transactions: ' + insertErr.message });
       }
 
-      importedTransactions.push(row);
+      importedTransactions = inserted || [];
     }
 
     await AuditLogger.logUserAction(
