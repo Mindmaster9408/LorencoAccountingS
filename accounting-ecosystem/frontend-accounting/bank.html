@@ -536,25 +536,29 @@
             transform: translateY(-50%);
         }
         
-        .transactions-table {
+        .transactions-table-wrap {
+            overflow-x: auto;
             width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
         }
-        
-        .transactions-table th:nth-child(1) { width: 40px; }   /* Checkbox */
-        .transactions-table th:nth-child(2) { width: 85px; }   /* Date */
-        .transactions-table th:nth-child(3) { width: auto; min-width: 220px; } /* Description */
-        .transactions-table th:nth-child(4) { width: 110px; }  /* Money In */
-        .transactions-table th:nth-child(5) { width: 110px; }  /* Money Out */
-        .transactions-table th:nth-child(6) { width: 110px; }  /* Balance */
-        .transactions-table th:nth-child(7) { width: 175px; }  /* Transaction Type */
-        .transactions-table th:nth-child(8) { width: 205px; }  /* Account */
-        .transactions-table th:nth-child(9) { width: 95px; }   /* Status */
-        .transactions-table th:nth-child(10) { width: 50px; }  /* Upload */
-        .transactions-table th:nth-child(11) { width: 90px; }  /* Attachments */
-        .transactions-table th:nth-child(12) { width: 75px; }  /* Actions */
-        .transactions-table th:nth-child(13) { width: 75px; }  /* AI */
+        .transactions-table {
+            border-collapse: collapse;
+            table-layout: auto;
+            min-width: 1300px;
+        }
+
+        .transactions-table th:nth-child(1)  { min-width: 38px;  width: 38px; }   /* Checkbox */
+        .transactions-table th:nth-child(2)  { min-width: 88px;  width: 88px; }   /* Date */
+        .transactions-table th:nth-child(3)  { min-width: 240px; }                /* Description */
+        .transactions-table th:nth-child(4)  { min-width: 105px; width: 105px; }  /* Money In */
+        .transactions-table th:nth-child(5)  { min-width: 105px; width: 105px; }  /* Money Out */
+        .transactions-table th:nth-child(6)  { min-width: 105px; width: 105px; }  /* Balance */
+        .transactions-table th:nth-child(7)  { min-width: 165px; width: 165px; }  /* Transaction Type */
+        .transactions-table th:nth-child(8)  { min-width: 195px; width: 195px; }  /* Account */
+        .transactions-table th:nth-child(9)  { min-width: 95px;  width: 95px; }   /* Status */
+        .transactions-table th:nth-child(10) { min-width: 48px;  width: 48px; }   /* Upload */
+        .transactions-table th:nth-child(11) { min-width: 90px;  width: 90px; }   /* Attachments */
+        .transactions-table th:nth-child(12) { min-width: 72px;  width: 72px; }   /* Actions */
+        .transactions-table th:nth-child(13) { min-width: 72px;  width: 72px; }   /* AI */
         
         .transactions-table thead {
             background: #f8f9fa;
@@ -832,7 +836,7 @@
         }
         .btn-manual-cancel:hover { border-color: #0066cc; color: #0066cc; }
 
-
+        .upload-link {
             color: #0066cc;
             text-decoration: none;
             font-size: 26px;
@@ -1654,6 +1658,7 @@
                 </div>
             </div>
             
+            <div class="transactions-table-wrap">
             <table class="transactions-table">
                 <thead>
                     <tr>
@@ -1717,7 +1722,8 @@
                     </tr>
                 </tbody>
             </table>
-            
+            </div><!-- /.transactions-table-wrap -->
+
             <div class="pagination">
                 <button disabled>← Previous</button>
                 <button class="active">1</button>
@@ -3975,21 +3981,37 @@ Click OK to simulate uploading a file.`;
                 return;
             }
 
-            showDeleteConfirmModal(selectedRows.length, matchedRows.length, function () {
-                selectedRows.forEach(function (row) {
-                    // Remove paired AI suggestion row
+            showDeleteConfirmModal(selectedRows.length, matchedRows.length, async function () {
+                var errors = [];
+                for (var i = 0; i < selectedRows.length; i++) {
+                    var row = selectedRows[i];
+                    var cb  = row.querySelector('.checkbox');
+                    var raw = cb ? (cb.dataset.txnId || '').replace('txn-', '') : '';
+
+                    // Server-backed transactions have numeric IDs; manual (local-only) start with 'm'
+                    if (raw && !raw.startsWith('m')) {
+                        try {
+                            var resp = await fetch('/api/accounting/bank/transactions/' + raw, {
+                                method: 'DELETE',
+                                headers: getAuthHeaders()
+                            });
+                            if (!resp.ok) {
+                                var body = await resp.json().catch(function () { return {}; });
+                                errors.push('Transaction ' + raw + ': ' + (body.error || 'HTTP ' + resp.status));
+                                continue; // leave this row in the table
+                            }
+                        } catch (e) {
+                            errors.push('Transaction ' + raw + ': network error');
+                            continue;
+                        }
+                    }
+
+                    // Remove paired AI suggestion row then the transaction row
                     var next = row.nextElementSibling;
-                    if (next && next.classList.contains('ai-suggestion-row')) {
-                        next.remove();
-                    }
-                    // Clean up allocation state
-                    var cb = row.querySelector('.checkbox');
-                    if (cb && cb.dataset.txnId) {
-                        var txnId = cb.dataset.txnId.replace('txn-', '');
-                        delete transactionAllocations[txnId];
-                    }
+                    if (next && next.classList.contains('ai-suggestion-row')) next.remove();
+                    if (raw) delete transactionAllocations[raw];
                     row.remove();
-                });
+                }
 
                 saveAllocationsToStorage();
                 updateBulkActions();
@@ -3997,15 +4019,17 @@ Click OK to simulate uploading a file.`;
                 // Remove any deleted manual transactions from persistent storage
                 var stored = JSON.parse(safeLocalStorage.getItem(storageKey('bank_manual_transactions')) || '[]');
                 if (stored.length > 0) {
-                    var deletedIds = selectedRows.map(function (row) {
-                        var cb = row.querySelector('.checkbox');
-                        var raw = cb ? (cb.dataset.txnId || '').replace('txn-', '') : '';
-                        return raw.startsWith('m') ? raw : null;
-                    }).filter(Boolean);
-                    if (deletedIds.length > 0) {
-                        stored = stored.filter(function (t) { return !deletedIds.includes(t.id); });
+                    var deletedManual = selectedRows
+                        .map(function (r) { var c = r.querySelector('.checkbox'); return c ? (c.dataset.txnId || '').replace('txn-', '') : ''; })
+                        .filter(function (id) { return id.startsWith('m'); });
+                    if (deletedManual.length > 0) {
+                        stored = stored.filter(function (t) { return !deletedManual.includes(t.id); });
                         safeLocalStorage.setItem(storageKey('bank_manual_transactions'), JSON.stringify(stored));
                     }
+                }
+
+                if (errors.length > 0) {
+                    alert('Some transactions could not be deleted:\n\n' + errors.join('\n'));
                 }
             });
         }
