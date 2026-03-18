@@ -602,7 +602,7 @@
             tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:30px;color:#9aa0a6">Loading…</td></tr>';
 
             try {
-                let url = `/api/reports/balance-sheet?asOfDate=${asOfDate}`;
+                let url = `/api/accounting/reports/balance-sheet?asOfDate=${asOfDate}`;
                 if (fromDate) url += `&fromDate=${fromDate}`;
                 const res = await fetch(url, { headers: authH() });
                 const data = await res.json();

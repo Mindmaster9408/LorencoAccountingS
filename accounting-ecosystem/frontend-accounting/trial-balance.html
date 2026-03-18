@@ -669,7 +669,7 @@
             tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:#9aa0a6">Loading…</td></tr>';
 
             try {
-                const res = await fetch(`/api/reports/trial-balance?fromDate=${fromDate}&toDate=${toDate}`, { headers: authH() });
+                const res = await fetch(`/api/accounting/reports/trial-balance?fromDate=${fromDate}&toDate=${toDate}`, { headers: authH() });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
                 lastResult = data;
@@ -711,10 +711,10 @@
                 );
 
                 group.accounts.forEach(acc => {
-                    const isDebitNormal = acc.type === 'asset' || acc.type === 'expense';
                     const bal = parseFloat(acc.balance || 0);
-                    const dr = (isDebitNormal ? (bal > 0 ? bal : 0) : (bal < 0 ? -bal : 0));
-                    const cr = (isDebitNormal ? (bal < 0 ? -bal : 0) : (bal > 0 ? bal : 0));
+                    // balance = DR - CR. Positive = net debit → DR column. Negative = net credit → CR column.
+                    const dr = bal > 0 ? bal : 0;
+                    const cr = bal < 0 ? -bal : 0;
                     const isChild  = !!acc.parent_id;
                     const isParent = childIds.has(acc.id);
 
@@ -759,10 +759,9 @@
             if (!lastResult) { alert('Generate the report first.'); return; }
             let csv = 'Account Code,Account Name,Debit,Credit\n';
             (lastResult.accounts || []).forEach(acc => {
-                const isDebitNormal = acc.type === 'asset' || acc.type === 'expense';
                 const bal = parseFloat(acc.balance || 0);
-                const dr = isDebitNormal ? (bal > 0 ? bal : 0) : (bal < 0 ? -bal : 0);
-                const cr = isDebitNormal ? (bal < 0 ? -bal : 0) : (bal > 0 ? bal : 0);
+                const dr = bal > 0 ? bal : 0;
+                const cr = bal < 0 ? -bal : 0;
                 csv += `"${acc.code}","${acc.name}",${dr ? dr.toFixed(2) : ''},${cr ? cr.toFixed(2) : ''}\n`;
             });
             const s = lastResult.summary || {};
