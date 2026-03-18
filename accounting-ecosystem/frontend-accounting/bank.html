@@ -3146,6 +3146,7 @@ Click OK to simulate uploading a file.`;
                     date: txn.date,
                     description: txn.description,
                     amount: txn.amount,
+                    bank_account_id: txn.bank_account_id,
                     row: targetRow
                 };
             }
@@ -3287,9 +3288,25 @@ Click OK to simulate uploading a file.`;
             }
 
             try {
-                // Require a real account ID (from chart of accounts)
+                // Require a real account ID (from chart of accounts).
+                // If null (stale localStorage), try to re-resolve from loaded accounts.
+                if (!allocation.accountId && allocation.accountCode) {
+                    const found = (window._allLedgerAccounts || []).find(a => a.code === allocation.accountCode);
+                    if (found) {
+                        allocation.accountId = found.id;
+                        transactionAllocations[id].accountId = found.id;
+                        saveAllocationsToStorage();
+                    }
+                }
                 if (!allocation.accountId) {
                     alert('Could not find this account in the chart of accounts.\nPlease refresh the page and try again.');
+                    return;
+                }
+
+                // Pre-flight: verify the bank account has a linked GL ledger account
+                const bankAcct = bankAccountsData.find(b => b.id === txnData.bank_account_id);
+                if (bankAcct && !bankAcct.ledger_account_id) {
+                    alert('⚠️ This bank account has no linked General Ledger account.\n\nTo fix:\n1. Scroll up to the bank account cards at the top\n2. Click "Edit" on the account\n3. Select a Ledger Account (e.g. 1020 — Bank Account)\n4. Save, then try allocating again.');
                     return;
                 }
 
@@ -3350,6 +3367,15 @@ Click OK to simulate uploading a file.`;
                         opt.textContent = saved.accountName || saved.accountCode;
                         acctSelect.appendChild(opt);
                         acctSelect.value = saved.accountCode;
+                    }
+                    // Re-resolve accountId in case it was null in localStorage
+                    // (can happen if accounts weren't loaded when user first selected)
+                    if (!saved.accountId) {
+                        const found = (window._allLedgerAccounts || []).find(a => a.code === saved.accountCode);
+                        if (found) {
+                            transactionAllocations[txnId].accountId = found.id;
+                            saveAllocationsToStorage();
+                        }
                     }
                 }
             });
