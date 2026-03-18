@@ -320,9 +320,7 @@
         }
         
         .main-content {
-            padding: 30px;
-            max-width: 1600px;
-            margin: 0 auto;
+            padding: 20px 16px;
         }
         
         .page-header {
@@ -497,7 +495,7 @@
 
         .transactions-section {
             background: white;
-            padding: 24px;
+            padding: 16px 12px;
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
             border: 1px solid #e8eaed;
@@ -542,26 +540,42 @@
             width: 100%;
             -webkit-overflow-scrolling: touch;
         }
-        /* Fixed-layout table: 12 columns totalling ~1130px
-           (Upload merged into Files column alongside Attachments) */
         .transactions-table {
             border-collapse: collapse;
             table-layout: fixed;
-            width: 1170px;      /* sum of all 12 column widths — enables overflow-x scroll on the wrap */
+            width: 100%;
+            min-width: 900px;
         }
 
+        /* Default column widths — JS col-resize overrides inline */
         .transactions-table th:nth-child(1)  { width: 34px;  }   /* Checkbox */
         .transactions-table th:nth-child(2)  { width: 80px;  }   /* Date */
-        .transactions-table th:nth-child(3)  { width: 190px; }   /* Description */
+        .transactions-table th:nth-child(3)  { width: 200px; }   /* Description */
         .transactions-table th:nth-child(4)  { width: 90px;  }   /* Money In */
         .transactions-table th:nth-child(5)  { width: 90px;  }   /* Money Out */
         .transactions-table th:nth-child(6)  { width: 90px;  }   /* Balance */
-        .transactions-table th:nth-child(7)  { width: 148px; }   /* Transaction Type */
-        .transactions-table th:nth-child(8)  { width: 165px; }   /* Account */
+        .transactions-table th:nth-child(7)  { width: 140px; }   /* Transaction Type */
+        .transactions-table th:nth-child(8)  { width: 155px; }   /* Account */
         .transactions-table th:nth-child(9)  { width: 84px;  }   /* Status */
-        .transactions-table th:nth-child(10) { width: 80px;  }   /* Files (upload + attach) */
+        .transactions-table th:nth-child(10) { width: 60px;  }   /* Files */
         .transactions-table th:nth-child(11) { width: 62px;  }   /* Actions */
-        .transactions-table th:nth-child(12) { width: 57px;  }   /* AI */
+        .transactions-table th:nth-child(12) { width: 50px;  }   /* AI */
+
+        /* Column resize handle */
+        .col-resize-handle {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 6px;
+            height: 100%;
+            cursor: col-resize;
+            user-select: none;
+            z-index: 1;
+        }
+        .col-resize-handle:hover,
+        .col-resize-handle.dragging {
+            background: rgba(0,102,204,0.35);
+        }
 
         .transactions-table thead {
             background: #f8f9fa;
@@ -577,7 +591,8 @@
             text-transform: uppercase;
             letter-spacing: 0.4px;
             white-space: nowrap;
-            overflow: hidden;
+            overflow: visible;
+            position: relative;
         }
 
         .transactions-table td {
@@ -1671,16 +1686,16 @@
                 <thead>
                     <tr>
                         <th><input type="checkbox" class="checkbox" onclick="selectAll(this)"></th>
-                        <th>Date</th>
-                        <th>Description / Reference</th>
-                        <th>Money In</th>
-                        <th>Money Out</th>
-                        <th>Balance</th>
-                        <th>Transaction Type</th>
-                        <th>Account</th>
-                        <th>Status</th>
-                        <th>Files</th>
-                        <th>Actions</th>
+                        <th>Date<span class="col-resize-handle"></span></th>
+                        <th>Description / Reference<span class="col-resize-handle"></span></th>
+                        <th>Money In<span class="col-resize-handle"></span></th>
+                        <th>Money Out<span class="col-resize-handle"></span></th>
+                        <th>Balance<span class="col-resize-handle"></span></th>
+                        <th>Transaction Type<span class="col-resize-handle"></span></th>
+                        <th>Account<span class="col-resize-handle"></span></th>
+                        <th>Status<span class="col-resize-handle"></span></th>
+                        <th>Files<span class="col-resize-handle"></span></th>
+                        <th>Actions<span class="col-resize-handle"></span></th>
                         <th id="aiHeader">AI</th>
                     </tr>
                 </thead>
@@ -2131,7 +2146,7 @@ Click OK to simulate uploading a file.`;
                             ${moneyOutCell}
                             <td>${bal}</td>
                             <td>
-                                <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')">
+                                <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
                                     <option value="">Select Type…</option>
                                     <option value="customer">Customer Payment</option>
                                     <option value="supplier">Supplier Payment</option>
@@ -2141,7 +2156,7 @@ Click OK to simulate uploading a file.`;
                                 </select>
                             </td>
                             <td>
-                                <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')">
+                                <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
                                     <option value="">Select Account…</option>
                                 </select>
                             </td>
@@ -2149,7 +2164,14 @@ Click OK to simulate uploading a file.`;
                             <td style="white-space:nowrap;">
                                 <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:12px;">&#128196; <span id="attachCount${txn.id}">0</span></button>
                             </td>
-                            <td><button class="action-btn" onclick="viewTransaction('${txn.id}')">View</button></td>
+                            <td style="white-space:nowrap;">
+                                ${txn.status === 'unmatched'
+                                    ? `<button class="action-btn allocate-btn" id="allocBtn${txn.id}" onclick="allocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#34a853,#2d8a47);color:#fff;">Allocate</button>`
+                                    : txn.status === 'matched'
+                                        ? `<button class="action-btn" onclick="unallocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#ea4335,#c62828);color:#fff;" title="Undo allocation &amp; reverse journal">Undo</button>`
+                                        : `<button class="action-btn" onclick="unreconcileTransaction('${txn.id}')" style="background:linear-gradient(135deg,#ff9800,#e65100);color:#fff;" title="Move back to matched">Undo Reconcile</button>`
+                                }
+                            </td>
                             <td class="ai-column">
                                 <button class="ai-btn" onclick="toggleAISuggestion('${txn.id}', this)">
                                     <span>&#129302;</span> AI
@@ -2167,6 +2189,9 @@ Click OK to simulate uploading a file.`;
                     }).join('');
 
                 tbody.insertAdjacentHTML('beforeend', rowsHtml);
+
+                // Restore previously saved allocation dropdown values
+                restoreAllocationsToUI();
 
                 // Update balance display on account cards
                 if (txns.length && selectedBankAccountId) {
@@ -3034,22 +3059,8 @@ Click OK to simulate uploading a file.`;
         }
 
         function getTransactionData(id) {
-            // Get transaction data from the row
-            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
-            let targetRow = null;
-
-            rows.forEach(row => {
-                const checkbox = row.querySelector('.checkbox');
-                if (checkbox && checkbox.dataset.txnId === 'txn-' + id) {
-                    targetRow = row;
-                }
-            });
-
-            // Also try to find by index
-            if (!targetRow) {
-                targetRow = rows[id - 1];
-            }
-
+            // Find row by real transaction UUID stored in data-txn-id attribute
+            const targetRow = document.querySelector(`.transactions-table tbody tr[data-txn-id="${id}"]`);
             if (!targetRow) return null;
 
             const dateCell = targetRow.querySelector('.transaction-date');
@@ -3234,24 +3245,15 @@ Click OK to simulate uploading a file.`;
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
                 // Journal is posted atomically by the backend — no separate post step needed.
+                const journalRef = data.journal ? data.journal.reference : '—';
 
-                // Update status in UI
-                const row = txnData.row;
-                if (row) {
-                    const statusCell = row.querySelector('.status-badge');
-                    if (statusCell) {
-                        statusCell.className = 'status-badge status-matched';
-                        statusCell.textContent = 'Allocated';
-                    }
-                    row.querySelectorAll('.allocation-select').forEach(sel => { sel.disabled = true; });
-                }
-
-                // Mark allocation as posted
-                transactionAllocations[id].posted = true;
-                transactionAllocations[id].journalRef = data.journal ? data.journal.reference : '';
+                // Clear the pending allocation from local storage (it's now in the DB)
+                delete transactionAllocations[id];
                 saveAllocationsToStorage();
 
-                alert(`Transaction allocated!\n\nJournal Reference: ${transactionAllocations[id].journalRef || '—'}\n\nThe journal has been posted and will appear in your reports.`);
+                // Reload to show the updated status and Undo button
+                await loadTransactions();
+                alert(`Transaction allocated!\n\nJournal Reference: ${journalRef}\n\nThe journal has been posted and will appear in your reports.`);
 
             } catch (error) {
                 alert('Error posting allocation: ' + error.message);
@@ -3259,25 +3261,80 @@ Click OK to simulate uploading a file.`;
             }
         }
 
-        // Add allocate buttons to action cells
-        function addAllocateButtons() {
+        // Restore saved allocation dropdown values after rows are rendered
+        function restoreAllocationsToUI() {
             const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
-            rows.forEach((row, index) => {
-                const actionCell = row.querySelector('td:has(.action-btn)');
-                if (actionCell && !actionCell.querySelector('.allocate-btn')) {
-                    const viewBtn = actionCell.querySelector('.action-btn');
-                    if (viewBtn) {
-                        const allocateBtn = document.createElement('button');
-                        allocateBtn.className = 'action-btn allocate-btn';
-                        allocateBtn.style.marginLeft = '5px';
-                        allocateBtn.style.background = 'linear-gradient(135deg, #34a853 0%, #2d8a47 100%)';
-                        allocateBtn.style.color = 'white';
-                        allocateBtn.textContent = 'Post';
-                        allocateBtn.onclick = () => allocateTransaction(index + 1);
-                        actionCell.appendChild(allocateBtn);
+            rows.forEach(row => {
+                const txnId = row.dataset.txnId;
+                if (!txnId) return;
+                const saved = transactionAllocations[txnId];
+                if (!saved || !saved.type) return;
+
+                const selects = row.querySelectorAll('.allocation-select');
+                const typeSelect = selects[0];
+                const acctSelect = selects[1];
+                if (!typeSelect || typeSelect.disabled) return; // already matched — don't overwrite
+
+                // Restore type
+                typeSelect.value = saved.type;
+                // Populate account options then restore saved account
+                updateAccountOptions(row, saved.type, txnId);
+                if (saved.accountCode && acctSelect) {
+                    // Options just rebuilt — set value
+                    acctSelect.value = saved.accountCode;
+                    if (!acctSelect.value && saved.accountCode) {
+                        // Code not in options list (accounts may not be loaded yet) — add it
+                        const opt = document.createElement('option');
+                        opt.value = saved.accountCode;
+                        opt.textContent = saved.accountName || saved.accountCode;
+                        acctSelect.appendChild(opt);
+                        acctSelect.value = saved.accountCode;
                     }
                 }
             });
+        }
+
+        // Unallocate: reverse the journal, reset transaction to unmatched
+        async function unallocateTransaction(id) {
+            if (!confirm('This will reverse the posted journal for this transaction and reset it to Unmatched.\n\nContinue?')) return;
+            try {
+                const res = await fetch(`/api/accounting/bank/transactions/${id}/allocate`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+                // Clear saved allocation from memory/localStorage
+                delete transactionAllocations[id];
+                saveAllocationsToStorage();
+
+                // Reload transactions to get fresh state
+                await loadTransactions();
+                alert('Allocation reversed. Transaction is now Unmatched and can be re-allocated.');
+            } catch (err) {
+                alert('Error undoing allocation: ' + err.message);
+                console.error('Unallocate error:', err);
+            }
+        }
+
+        // Unreconcile: move a reconciled transaction back to matched
+        async function unreconcileTransaction(id) {
+            if (!confirm('This will move the transaction back to Matched status so you can undo the allocation if needed.\n\nContinue?')) return;
+            try {
+                const res = await fetch(`/api/accounting/bank/transactions/${id}/unreconcile`, {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+                await loadTransactions();
+                alert('Transaction unreconciled and moved back to Matched. You can now undo the allocation.');
+            } catch (err) {
+                alert('Error unreconciling: ' + err.message);
+                console.error('Unreconcile error:', err);
+            }
         }
 
         // ─── Chart of accounts cache (used by allocation dropdowns) ──────────────
@@ -4093,7 +4150,7 @@ Click OK to simulate uploading a file.`;
             } else {
                 markReviewedBtn.style.display = 'none';
                 moveBackBtn.style.display = '';
-                table.classList.add('readonly');
+                table.classList.remove('readonly');
                 
                 // Show only reviewed transactions
                 rows.forEach(row => {
@@ -4387,6 +4444,51 @@ Click OK to simulate uploading a file.`;
                     fileInput.files = files;
                     handleFileUpload({ target: fileInput });
                 }
+            });
+        });
+
+        // ── Column resize (Excel-style drag) ─────────────────────────────────
+        document.addEventListener('DOMContentLoaded', function () {
+            const table = document.querySelector('.transactions-table');
+            if (!table) return;
+
+            let dragging = false;
+            let startX = 0;
+            let startW = 0;
+            let activeHandle = null;
+            let activeTh = null;
+
+            table.querySelectorAll('thead th').forEach(th => {
+                const handle = th.querySelector('.col-resize-handle');
+                if (!handle) return;
+
+                handle.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    dragging = true;
+                    startX = e.pageX;
+                    startW = th.offsetWidth;
+                    activeHandle = handle;
+                    activeTh = th;
+                    handle.classList.add('dragging');
+                    document.body.style.cursor = 'col-resize';
+                    document.body.style.userSelect = 'none';
+                });
+            });
+
+            document.addEventListener('mousemove', function (e) {
+                if (!dragging) return;
+                const newW = Math.max(40, startW + (e.pageX - startX));
+                activeTh.style.width = newW + 'px';
+            });
+
+            document.addEventListener('mouseup', function () {
+                if (!dragging) return;
+                dragging = false;
+                if (activeHandle) activeHandle.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                activeHandle = null;
+                activeTh = null;
             });
         });
     </script>

@@ -910,6 +910,108 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
 });
 
 /**
+ * DELETE /api/bank/transactions/:id/allocate  (unallocate)
+ * Reverse the posted journal and reset the transaction back to unmatched.
+ * Works on both 'matched' and 'reconciled' statuses.
+ */
+router.delete('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
+  try {
+    const { data: bankTxn, error: txnErr } = await supabase
+      .from('bank_transactions')
+      .select('id, status, matched_entity_id, description')
+      .eq('id', req.params.id)
+      .eq('company_id', req.user.companyId)
+      .single();
+
+    if (txnErr || !bankTxn) {
+      return res.status(404).json({ error: 'Bank transaction not found' });
+    }
+
+    if (bankTxn.status === 'unmatched') {
+      return res.status(409).json({ error: 'Transaction is not allocated' });
+    }
+
+    // Reverse the linked journal if one exists
+    if (bankTxn.matched_entity_id) {
+      try {
+        await JournalService.reverseJournal(
+          bankTxn.matched_entity_id,
+          req.user.companyId,
+          req.user.id,
+          `Unallocated: ${bankTxn.description}`
+        );
+      } catch (journalErr) {
+        // If journal already reversed or not found, continue — still reset the transaction
+        console.warn('Unallocate: journal reverse warning:', journalErr.message);
+      }
+    }
+
+    // Reset transaction to unmatched
+    await supabase
+      .from('bank_transactions')
+      .update({
+        status: 'unmatched',
+        matched_entity_type: null,
+        matched_entity_id: null,
+        matched_by_user_id: null,
+        reconciled_at: null
+      })
+      .eq('id', bankTxn.id);
+
+    await AuditLogger.logUserAction(
+      req, 'UNALLOCATE', 'BANK_TRANSACTION', bankTxn.id,
+      { status: bankTxn.status, journalId: bankTxn.matched_entity_id },
+      { status: 'unmatched' },
+      'Bank transaction unallocated'
+    );
+
+    res.json({ message: 'Transaction unallocated. Journal reversed.' });
+  } catch (error) {
+    console.error('Error unallocating bank transaction:', error);
+    res.status(500).json({ error: error.message || 'Failed to unallocate bank transaction' });
+  }
+});
+
+/**
+ * POST /api/bank/transactions/:id/unreconcile
+ * Move a reconciled transaction back to matched (allows editing allocation).
+ */
+router.post('/transactions/:id/unreconcile', authenticate, hasPermission('bank.reconcile'), async (req, res) => {
+  try {
+    const { data: bankTxn, error: txnErr } = await supabase
+      .from('bank_transactions')
+      .select('id, status')
+      .eq('id', req.params.id)
+      .eq('company_id', req.user.companyId)
+      .single();
+
+    if (txnErr || !bankTxn) {
+      return res.status(404).json({ error: 'Bank transaction not found' });
+    }
+
+    if (bankTxn.status !== 'reconciled') {
+      return res.status(409).json({ error: 'Transaction is not reconciled' });
+    }
+
+    await supabase
+      .from('bank_transactions')
+      .update({ status: 'matched', reconciled_at: null })
+      .eq('id', bankTxn.id);
+
+    await AuditLogger.logUserAction(
+      req, 'UNRECONCILE', 'BANK_TRANSACTION', bankTxn.id,
+      { status: 'reconciled' }, { status: 'matched' },
+      'Bank transaction unreconciled'
+    );
+
+    res.json({ message: 'Transaction moved back to matched.' });
+  } catch (error) {
+    console.error('Error unreconciling bank transaction:', error);
+    res.status(500).json({ error: error.message || 'Failed to unreconcile' });
+  }
+});
+
+/**
  * POST /api/bank/reconcile
  * Mark transactions as reconciled
  */

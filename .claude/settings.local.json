@@ -15,7 +15,23 @@
       "Bash(grep -n \"fetch.*version\\\\|checkUpdate\\\\|checkForUpdates\\\\|reloadApp\\\\|forceReload\" accounting-ecosystem/frontend-ecosystem/*.html accounting-ecosystem/frontend-payroll/*.html accounting-ecosystem/frontend-pos/index.html)",
       "Bash(node --check /workspaces/LorencoAccountingS/accounting-ecosystem/backend/server.js)",
       "Bash(grep -v \"^commit\\\\|^Author\\\\|^Date\\\\|^feat\\\\|^$\\\\|ROOT\\\\|THREE\\\\|API\\\\|GET\\\\|Three\\\\|Account\\\\|Expan\\\\|super\\\\|comp\\\\|eco\\\\|COMP\\\\|REWRITE\\\\|COMPL\\\\|auth\\\\|page\\\\|^  \\\\|^\\\\t\")",
-      "Bash(node /tmp/check-load.js)"
+      "Bash(node /tmp/check-load.js)",
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "Bash(npx jest:*)",
+      "Bash(grep -l \"LedgerSystem\" /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-accounting/*.html)",
+      "Bash(grep -l \"alert\\(\" /workspaces/LorencoAccountingS/accounting-ecosystem/frontend-accounting/*.html)",
+      "Bash(find /workspaces/LorencoAccountingS/accounting-ecosystem/backend/modules -name *.js)",
+      "Bash(done)",
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $f.html HEAD ===\")",
+      "Read(//workspaces/LorencoAccountingS/accounting-ecosystem/frontend-accounting/**)",
+      "Bash(echo \"FILE NOT FOUND: $f.html\")",
+      "Bash(do echo:*)",
+      "Bash(node --check /workspaces/LorencoAccountingS/accounting-ecosystem/backend/modules/accounting/routes/company.js)",
+      "Bash(configured\" on every request → 500.:*)",
+      "Bash(find /workspaces/LorencoAccountingS -type f -name *sean* -o -type d -name *sean*)"
     ]
   }
 }
