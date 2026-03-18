@@ -22,8 +22,10 @@ async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, typ
   const { data: journals, error: jErr } = await jQ;
   if (jErr) throw new Error(jErr.message);
 
+  const journalCount = journals ? journals.length : 0;
+
   if (!journals || journals.length === 0) {
-    return { accounts: accounts || [], lines: [] };
+    return { accounts: accounts || [], lines: [], journalCount: 0 };
   }
 
   const journalIds = journals.map(j => j.id);
@@ -34,7 +36,7 @@ async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, typ
   const { data: lines, error: lErr } = await lQ;
   if (lErr) throw new Error(lErr.message);
 
-  return { accounts: accounts || [], lines: lines || [] };
+  return { accounts: accounts || [], lines: lines || [], journalCount };
 }
 
 // Aggregate lines by account_id → { accountId: { debit, credit } }
@@ -59,7 +61,7 @@ router.get('/trial-balance', authenticate, hasPermission('report.view'), async (
       return res.status(400).json({ error: 'fromDate and toDate are required' });
     }
 
-    const { accounts, lines } = await fetchAccountBalances(req.user.companyId, { fromDate, toDate });
+    const { accounts, lines, journalCount } = await fetchAccountBalances(req.user.companyId, { fromDate, toDate });
     const agg = aggregateLines(lines);
 
     const result = accounts.map(a => {
@@ -86,6 +88,7 @@ router.get('/trial-balance', authenticate, hasPermission('report.view'), async (
       fromDate, toDate,
       accounts: result,
       summary,
+      journalCount: journalCount || 0,
       isBalanced: Math.abs(summary.total.debit - summary.total.credit) < 0.01
     });
 

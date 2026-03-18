@@ -675,9 +675,12 @@
                 lastResult = data;
                 renderTrialBalance(data);
 
-                // Update report header date
+                // Update report header date + journal count
                 const hdr = document.querySelector('.report-header p');
-                if (hdr) hdr.textContent = `Trial Balance — ${fromDate} to ${toDate}`;
+                if (hdr) {
+                    const jc = data.journalCount || 0;
+                    hdr.textContent = `Trial Balance — ${fromDate} to ${toDate}  •  ${jc} posted journal${jc !== 1 ? 's' : ''} found`;
+                }
             } catch (err) {
                 errEl.textContent = 'Failed to generate report: ' + err.message;
                 errEl.style.display = 'block';
@@ -753,6 +756,18 @@
             }
 
             tbody.innerHTML = html;
+
+            // If no journals found, prepend a diagnostic warning
+            if ((data.journalCount || 0) === 0) {
+                tbody.insertAdjacentHTML('afterbegin', `
+                    <tr><td colspan="4" style="padding:20px;background:#fff3cd;color:#856404;border-bottom:1px solid #ffeeba;text-align:left;font-size:13px;">
+                        ⚠️ <strong>0 posted journal entries found</strong> for ${data.fromDate} to ${data.toDate}.<br>
+                        If you completed a bank allocation, check:<br>
+                        1. The allocation succeeded (bank page → transaction should show "Undo" button, not "Allocate")<br>
+                        2. The transaction date falls within the above range<br>
+                        3. You are viewing the correct client company
+                    </td></tr>`);
+            }
         }
 
         function exportExcel() {
