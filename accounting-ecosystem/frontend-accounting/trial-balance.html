@@ -647,11 +647,11 @@
         function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
         function fmtAmt(n) { if (!n || n === 0) return '-'; return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-        // Set default dates: current month
+        // Default: beginning of previous calendar year → today.
+        // This ensures imported bank statements (which may span prior years) are always visible.
         (function() {
             const now = new Date();
-            const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0');
-            document.getElementById('tbFromDate').value = `${y}-${m}-01`;
+            document.getElementById('tbFromDate').value = `${now.getFullYear() - 1}-01-01`;
             document.getElementById('tbToDate').value = now.toISOString().slice(0, 10);
         })();
 

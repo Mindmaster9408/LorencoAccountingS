@@ -552,7 +552,7 @@
         // Default: current year
         (function() {
             const now = new Date();
-            document.getElementById('dateFrom').value = `${now.getFullYear()}-01-01`;
+            document.getElementById('dateFrom').value = `${now.getFullYear() - 1}-01-01`;
             document.getElementById('dateTo').value = now.toISOString().slice(0, 10);
         })();
 

@@ -585,7 +585,7 @@
             const now = new Date();
             const today = now.toISOString().slice(0, 10);
             document.getElementById('bsAsAtDate').value = today;
-            document.getElementById('bsFromDate').value = `${now.getFullYear()}-01-01`;
+            document.getElementById('bsFromDate').value = `${now.getFullYear() - 1}-01-01`;
         })();
 
         let lastResult = null;
