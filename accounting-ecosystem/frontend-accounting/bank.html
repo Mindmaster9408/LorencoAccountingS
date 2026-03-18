@@ -618,19 +618,35 @@
         
         .transaction-description {
             font-weight: 500;
-            white-space: nowrap;
+            white-space: normal;
             overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 190px;
+            word-break: break-word;
+            cursor: pointer;
         }
 
         .transaction-reference {
             color: #9aa0a6;
             font-size: 11px;
             margin-top: 2px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        /* Full-description popup */
+        .desc-popup {
+            position: fixed;
+            z-index: 9999;
+            background: #202124;
+            color: #fff;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            max-width: 420px;
+            line-height: 1.5;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+            pointer-events: none;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
         
         .transaction-amount {
@@ -4446,6 +4462,48 @@ Click OK to simulate uploading a file.`;
                 }
             });
         });
+
+        // ── Description popup (click to see full text) ───────────────────────
+        (function () {
+            let popup = null;
+
+            function removePopup() {
+                if (popup) { popup.remove(); popup = null; }
+            }
+
+            document.addEventListener('click', function (e) {
+                const desc = e.target.closest('.transaction-description, .transaction-reference');
+                if (!desc) { removePopup(); return; }
+
+                // If same element clicked again, toggle off
+                if (popup && popup.dataset.src === desc.dataset.fulltext) { removePopup(); return; }
+
+                removePopup();
+
+                // Collect full text from the parent <td>'s title attribute
+                const td = desc.closest('td');
+                const fullText = td ? td.getAttribute('title') : desc.textContent;
+                if (!fullText || fullText.trim() === desc.textContent.trim()) return; // nothing extra to show
+
+                popup = document.createElement('div');
+                popup.className = 'desc-popup';
+                popup.textContent = fullText;
+                popup.dataset.src = desc.dataset.fulltext || fullText;
+                document.body.appendChild(popup);
+
+                // Position near click but keep inside viewport
+                const x = Math.min(e.clientX + 12, window.innerWidth - 440);
+                const y = Math.min(e.clientY + 12, window.innerHeight - 120);
+                popup.style.left = x + 'px';
+                popup.style.top  = y + 'px';
+
+                e.stopPropagation();
+            }, true);
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') removePopup();
+            });
+        })();
 
         // ── Column resize (Excel-style drag) ─────────────────────────────────
         document.addEventListener('DOMContentLoaded', function () {
