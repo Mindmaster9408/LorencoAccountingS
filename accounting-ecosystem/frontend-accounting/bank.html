@@ -1762,13 +1762,7 @@
             </table>
             </div><!-- /.transactions-table-wrap -->
 
-            <div class="pagination">
-                <button disabled>← Previous</button>
-                <button class="active">1</button>
-                <button>2</button>
-                <button>3</button>
-                <button>Next →</button>
-            </div>
+            <div class="pagination" id="paginationBar"></div>
         </div>
     </div>
     
@@ -2097,6 +2091,132 @@ Click OK to simulate uploading a file.`;
             return `<span class="status-badge ${cls}">${label}</span>`;
         }
 
+        // ── Pagination state ─────────────────────────────────────────────────
+        const PAGE_SIZE = 50;
+        let _currentPage = 0;       // 0-based
+        let _allTxnData  = [];      // all filtered transactions from last API call
+
+        // Build a single transaction row's HTML (shared by loadTransactions + renderPage)
+        function txnRowHtml(txn) {
+            const isIn         = txn.amount >= 0;
+            const moneyInCell  = isIn
+                ? `<td class="transaction-amount amount-in">${formatAmount(txn.amount)}</td>`
+                : '<td style="color:#9aa0a6">—</td>';
+            const moneyOutCell = !isIn
+                ? `<td class="transaction-amount amount-out">${formatAmount(txn.amount)}</td>`
+                : '<td style="color:#9aa0a6">—</td>';
+            const bal = txn.balance != null ? formatAmount(txn.balance) : '—';
+            return `
+            <tr data-txn-id="${txn.id}">
+                <td><input type="checkbox" class="checkbox" data-txn-id="txn-${txn.id}" onchange="updateBulkActions()"></td>
+                <td class="transaction-date">${formatDisplayDate(txn.date)}</td>
+                <td title="${escapeHtml(txn.description || '')}${txn.reference ? ' | Ref: ' + escapeHtml(txn.reference) : ''}">
+                    <div class="transaction-description">${escapeHtml(txn.description || '')}</div>
+                    ${txn.reference ? `<div class="transaction-reference">Ref: ${escapeHtml(txn.reference)}</div>` : ''}
+                </td>
+                ${moneyInCell}
+                ${moneyOutCell}
+                <td>${bal}</td>
+                <td>
+                    <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
+                        <option value="">Select Type…</option>
+                        <option value="customer">Customer Payment</option>
+                        <option value="supplier">Supplier Payment</option>
+                        <option value="transfer">Transfer</option>
+                        <option value="vat">VAT Payment</option>
+                        <option value="account">Account</option>
+                    </select>
+                </td>
+                <td>
+                    <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
+                        <option value="">Select Account…</option>
+                    </select>
+                </td>
+                <td>
+                    ${statusBadgeHtml(txn.status)}
+                    ${txn.status === 'unmatched' ? `<br><button class="action-btn" onclick="flipTransaction('${txn.id}')" style="margin-top:4px;font-size:11px;padding:2px 6px;background:#6c757d;color:#fff;" title="Swap Money In ↔ Money Out (fix import direction)">↕ Flip</button>` : ''}
+                </td>
+                <td style="white-space:nowrap;">
+                    <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:12px;">&#128196; <span id="attachCount${txn.id}">0</span></button>
+                </td>
+                <td style="white-space:nowrap;">
+                    ${txn.status === 'unmatched'
+                        ? `<button class="action-btn allocate-btn" id="allocBtn${txn.id}" onclick="allocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#34a853,#2d8a47);color:#fff;">Allocate</button>`
+                        : txn.status === 'matched'
+                            ? `<button class="action-btn" onclick="unallocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#ea4335,#c62828);color:#fff;" title="Undo allocation &amp; reverse journal">Undo</button>`
+                            : `<button class="action-btn" onclick="unreconcileTransaction('${txn.id}')" style="background:linear-gradient(135deg,#ff9800,#e65100);color:#fff;" title="Move back to matched">Undo Reconcile</button>`
+                    }
+                </td>
+                <td class="ai-column">
+                    <button class="ai-btn" onclick="toggleAISuggestion('${txn.id}', this)">
+                        <span>&#129302;</span> AI
+                    </button>
+                </td>
+            </tr>
+            <tr class="ai-suggestion-row" id="aiRow${txn.id}">
+                <td colspan="12">
+                    <div class="ai-suggestion-content">
+                        <div class="ai-suggestion-header">&#129302; Sean AI Analysis</div>
+                        <div class="ai-decision"><em>Click to analyze…</em></div>
+                    </div>
+                </td>
+            </tr>`;
+        }
+
+        // Render one page of rows from _allTxnData into the tbody
+        function renderPage(page) {
+            _currentPage = page;
+            const tbody = document.getElementById('transactionsBody');
+            if (!tbody) return;
+
+            Array.from(tbody.querySelectorAll('tr:not(#manualEntryRow)')).forEach(r => r.remove());
+
+            const start = page * PAGE_SIZE;
+            const slice = _allTxnData.slice(start, start + PAGE_SIZE);
+
+            if (!slice.length) {
+                tbody.insertAdjacentHTML('beforeend',
+                    '<tr><td colspan="12" style="text-align:center;padding:40px;color:#5f6368;">No transactions on this page.</td></tr>');
+            } else {
+                tbody.insertAdjacentHTML('beforeend', slice.map(txnRowHtml).join(''));
+                restoreAllocationsToUI();
+            }
+
+            renderPaginationBar(_allTxnData.length, page);
+            updateCounts();
+            updateBulkActions();
+        }
+
+        // Render the Previous / page-number / Next bar
+        function renderPaginationBar(total, current) {
+            const bar = document.getElementById('paginationBar');
+            if (!bar) return;
+            const totalPages = Math.ceil(total / PAGE_SIZE);
+            if (totalPages <= 1) { bar.innerHTML = ''; return; }
+
+            let html = `<button ${current === 0 ? 'disabled' : ''} onclick="renderPage(${current - 1})">← Previous</button>`;
+
+            // Show at most 7 page buttons with ellipsis
+            const range = [];
+            for (let i = 0; i < totalPages; i++) {
+                if (i === 0 || i === totalPages - 1 || Math.abs(i - current) <= 2) range.push(i);
+                else if (range[range.length - 1] !== '…') range.push('…');
+            }
+            range.forEach(p => {
+                if (p === '…') {
+                    html += `<button disabled style="border:none;background:none;cursor:default;">…</button>`;
+                } else {
+                    const from = p * PAGE_SIZE + 1;
+                    const to   = Math.min((p + 1) * PAGE_SIZE, total);
+                    html += `<button class="${p === current ? 'active' : ''}" onclick="renderPage(${p})" title="Rows ${from}–${to}">${p + 1}</button>`;
+                }
+            });
+
+            html += `<button ${current >= totalPages - 1 ? 'disabled' : ''} onclick="renderPage(${current + 1})">Next →</button>`;
+            html += `<span style="margin-left:12px;font-size:12px;color:#5f6368;">${total} transactions total</span>`;
+            bar.innerHTML = html;
+        }
+
         // ── API: load transactions ───────────────────────────────────────────
         async function loadTransactions() {
             const tbody = document.getElementById('transactionsBody');
@@ -2116,7 +2236,7 @@ Click OK to simulate uploading a file.`;
                 if (from)   params.set('fromDate', from);
                 if (to)     params.set('toDate', to);
                 if (status) params.set('status', status);
-                params.set('limit', '200');
+                params.set('limit', '2000');   // fetch all; paginate client-side
 
                 const res = await fetch('/api/accounting/bank/transactions?' + params, { headers: getAuthHeaders() });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -2126,91 +2246,25 @@ Click OK to simulate uploading a file.`;
                 // Remove loading row
                 document.getElementById('txnLoadingRow')?.remove();
 
-                if (!txns.length) {
+                // Type filter (client-side)
+                const typeFilter = document.getElementById('typeFilter')?.value;
+                const filtered = txns.filter(txn => {
+                    if (typeFilter === 'in')  return txn.amount > 0;
+                    if (typeFilter === 'out') return txn.amount < 0;
+                    return true;
+                });
+                // Keep full set for tab switching; _allTxnData holds current-tab slice
+                window._allTxnDataUnfiltered = filtered;
+                _allTxnData = currentTab === 'reviewed'
+                    ? filtered.filter(txn => reviewedTransactions.includes('txn-' + txn.id))
+                    : filtered.filter(txn => !reviewedTransactions.includes('txn-' + txn.id));
+
+                if (!_allTxnData.length) {
                     tbody.insertAdjacentHTML('beforeend',
                         '<tr id="noTxnRow"><td colspan="12" style="text-align:center;padding:40px;color:#5f6368;">No transactions found for the selected filters.</td></tr>');
+                    document.getElementById('paginationBar').innerHTML = '';
                     return;
                 }
-
-                // Type filter (client-side — API returns all)
-                const typeFilter = document.getElementById('typeFilter')?.value;
-
-                const rowsHtml = txns
-                    .filter(txn => {
-                        if (typeFilter === 'in')  return txn.amount > 0;
-                        if (typeFilter === 'out') return txn.amount < 0;
-                        return true;
-                    })
-                    .map(txn => {
-                        const isIn       = txn.amount >= 0;
-                        const moneyInCell  = isIn
-                            ? `<td class="transaction-amount amount-in">${formatAmount(txn.amount)}</td>`
-                            : '<td style="color:#9aa0a6">—</td>';
-                        const moneyOutCell = !isIn
-                            ? `<td class="transaction-amount amount-out">${formatAmount(txn.amount)}</td>`
-                            : '<td style="color:#9aa0a6">—</td>';
-                        const bal     = txn.balance != null ? formatAmount(txn.balance) : '—';
-                        return `
-                        <tr data-txn-id="${txn.id}">
-                            <td><input type="checkbox" class="checkbox" data-txn-id="txn-${txn.id}" onchange="updateBulkActions()"></td>
-                            <td class="transaction-date">${formatDisplayDate(txn.date)}</td>
-                            <td title="${escapeHtml(txn.description || '')}${txn.reference ? ' | Ref: ' + escapeHtml(txn.reference) : ''}">
-                                <div class="transaction-description">${escapeHtml(txn.description || '')}</div>
-                                ${txn.reference ? `<div class="transaction-reference">Ref: ${escapeHtml(txn.reference)}</div>` : ''}
-                            </td>
-                            ${moneyInCell}
-                            ${moneyOutCell}
-                            <td>${bal}</td>
-                            <td>
-                                <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
-                                    <option value="">Select Type…</option>
-                                    <option value="customer">Customer Payment</option>
-                                    <option value="supplier">Supplier Payment</option>
-                                    <option value="transfer">Transfer</option>
-                                    <option value="vat">VAT Payment</option>
-                                    <option value="account">Account</option>
-                                </select>
-                            </td>
-                            <td>
-                                <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
-                                    <option value="">Select Account…</option>
-                                </select>
-                            </td>
-                            <td>
-                                ${statusBadgeHtml(txn.status)}
-                                ${txn.status === 'unmatched' ? `<br><button class="action-btn" onclick="flipTransaction('${txn.id}')" style="margin-top:4px;font-size:11px;padding:2px 6px;background:#6c757d;color:#fff;" title="Swap Money In ↔ Money Out (fix import direction)">↕ Flip</button>` : ''}
-                            </td>
-                            <td style="white-space:nowrap;">
-                                <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:12px;">&#128196; <span id="attachCount${txn.id}">0</span></button>
-                            </td>
-                            <td style="white-space:nowrap;">
-                                ${txn.status === 'unmatched'
-                                    ? `<button class="action-btn allocate-btn" id="allocBtn${txn.id}" onclick="allocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#34a853,#2d8a47);color:#fff;">Allocate</button>`
-                                    : txn.status === 'matched'
-                                        ? `<button class="action-btn" onclick="unallocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#ea4335,#c62828);color:#fff;" title="Undo allocation &amp; reverse journal">Undo</button>`
-                                        : `<button class="action-btn" onclick="unreconcileTransaction('${txn.id}')" style="background:linear-gradient(135deg,#ff9800,#e65100);color:#fff;" title="Move back to matched">Undo Reconcile</button>`
-                                }
-                            </td>
-                            <td class="ai-column">
-                                <button class="ai-btn" onclick="toggleAISuggestion('${txn.id}', this)">
-                                    <span>&#129302;</span> AI
-                                </button>
-                            </td>
-                        </tr>
-                        <tr class="ai-suggestion-row" id="aiRow${txn.id}">
-                            <td colspan="12">
-                                <div class="ai-suggestion-content">
-                                    <div class="ai-suggestion-header">&#129302; Sean AI Analysis</div>
-                                    <div class="ai-decision"><em>Click to analyze…</em></div>
-                                </div>
-                            </td>
-                        </tr>`;
-                    }).join('');
-
-                tbody.insertAdjacentHTML('beforeend', rowsHtml);
-
-                // Restore previously saved allocation dropdown values
-                restoreAllocationsToUI();
 
                 // Update balance display on account cards — use last row (most recent, ASC order)
                 if (txns.length && selectedBankAccountId) {
@@ -2220,6 +2274,8 @@ Click OK to simulate uploading a file.`;
                         if (balEl) balEl.textContent = formatAmount(latest.balance);
                     }
                 }
+
+                renderPage(0);   // always start at page 1 after a fresh load
 
             } catch (err) {
                 console.error('loadTransactions error:', err);
@@ -4143,73 +4199,31 @@ Click OK to simulate uploading a file.`;
         
         function switchTab(tab, evt) {
             currentTab = tab;
-            
-            // Update tab styles
+
+            // Update tab button styles
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             if (evt && evt.target) {
                 evt.target.classList.add('active');
             } else {
-                // Fallback: highlight the matching tab
                 document.querySelectorAll('.tab').forEach(t => {
                     if (t.textContent.toLowerCase().includes(tab)) t.classList.add('active');
                 });
             }
-            
-            // Get all transaction rows (not AI suggestion rows)
-            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
-            const table = document.querySelector('.transactions-table');
-            
-            // Update button visibility
+
+            // Update bulk-action button visibility
             const markReviewedBtn = document.getElementById('markReviewedBtn');
-            const moveBackBtn = document.getElementById('moveBackBtn');
-            
+            const moveBackBtn     = document.getElementById('moveBackBtn');
+            markReviewedBtn.style.display = tab === 'new'      ? '' : 'none';
+            moveBackBtn.style.display     = tab === 'reviewed' ? '' : 'none';
+
+            // Filter _allTxnData by tab then re-render page 1
+            const fullData = window._allTxnDataUnfiltered || _allTxnData;
             if (tab === 'new') {
-                markReviewedBtn.style.display = '';
-                moveBackBtn.style.display = 'none';
-                table.classList.remove('readonly');
-                
-                // Show only non-reviewed transactions
-                rows.forEach(row => {
-                    const txnId = row.querySelector('.checkbox')?.dataset?.txnId;
-                    if (txnId && reviewedTransactions.includes(txnId)) {
-                        row.style.display = 'none';
-                        // Hide corresponding AI row
-                        const aiRow = row.nextElementSibling;
-                        if (aiRow && aiRow.classList.contains('ai-suggestion-row')) {
-                            aiRow.style.display = 'none';
-                        }
-                    } else {
-                        row.style.display = '';
-                    }
-                });
+                _allTxnData = fullData.filter(txn => !reviewedTransactions.includes('txn-' + txn.id));
             } else {
-                markReviewedBtn.style.display = 'none';
-                moveBackBtn.style.display = '';
-                table.classList.remove('readonly');
-                
-                // Show only reviewed transactions
-                rows.forEach(row => {
-                    const txnId = row.querySelector('.checkbox')?.dataset?.txnId;
-                    if (txnId && reviewedTransactions.includes(txnId)) {
-                        row.style.display = '';
-                        // Show corresponding AI row
-                        const aiRow = row.nextElementSibling;
-                        if (aiRow && aiRow.classList.contains('ai-suggestion-row')) {
-                            aiRow.style.display = '';
-                        }
-                    } else {
-                        row.style.display = 'none';
-                        // Hide corresponding AI row
-                        const aiRow = row.nextElementSibling;
-                        if (aiRow && aiRow.classList.contains('ai-suggestion-row')) {
-                            aiRow.style.display = 'none';
-                        }
-                    }
-                });
+                _allTxnData = fullData.filter(txn => reviewedTransactions.includes('txn-' + txn.id));
             }
-            
-            updateCounts();
-            updateBulkActions(); // Reset selection
+            renderPage(0);
         }
         
         function markAsReviewed() {
@@ -4258,36 +4272,19 @@ Click OK to simulate uploading a file.`;
         }
         
         function updateCounts() {
-            const allRows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
+            // Count from full dataset, not just current page's DOM rows
             let newCount = 0;
             let reviewedCount = 0;
-            
-            allRows.forEach(row => {
-                const txnId = row.querySelector('.checkbox')?.dataset?.txnId;
-                if (txnId) {
-                    if (reviewedTransactions.includes(txnId)) {
-                        reviewedCount++;
-                    } else {
-                        newCount++;
-                    }
-                }
+            _allTxnData.forEach(txn => {
+                const txnId = 'txn-' + txn.id;
+                if (reviewedTransactions.includes(txnId)) reviewedCount++;
+                else newCount++;
             });
-            
             document.getElementById('newCount').textContent = newCount;
             document.getElementById('reviewedCount').textContent = reviewedCount;
         }
         
-        // Initialize transaction IDs on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            const rows = document.querySelectorAll('.transactions-table tbody tr:not(.ai-suggestion-row):not(.manual-entry-row)');
-            rows.forEach((row, index) => {
-                const checkbox = row.querySelector('.checkbox');
-                if (checkbox && !checkbox.dataset.txnId) {
-                    checkbox.dataset.txnId = 'txn-' + (index + 1);
-                }
-            });
-            updateCounts();
-        });
+        // updateCounts is called by renderPage after each page render — no DOMContentLoaded needed.
         
         // Search functionality
         document.getElementById('searchInput').addEventListener('input', function(e) {
