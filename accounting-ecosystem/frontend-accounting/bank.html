@@ -3134,44 +3134,30 @@ Click OK to simulate uploading a file.`;
         }
 
         function getTransactionData(id) {
-            // Find row by real transaction UUID stored in data-txn-id attribute
+            // Use in-memory data — avoids locale-dependent DOM parsing (en-ZA uses comma as
+            // decimal separator, so "R 100,00" stripped of commas becomes "10000", not "100").
+            const txn = (_allTxnData || []).find(t => String(t.id) === String(id))
+                     || (window._allTxnDataUnfiltered || []).find(t => String(t.id) === String(id));
             const targetRow = document.querySelector(`.transactions-table tbody tr[data-txn-id="${id}"]`);
+
+            if (txn) {
+                return {
+                    id: txn.id,
+                    date: txn.date,
+                    description: txn.description,
+                    amount: txn.amount,
+                    row: targetRow
+                };
+            }
+
+            // Fallback: row not in memory (shouldn't normally happen)
             if (!targetRow) return null;
-
-            const dateCell = targetRow.querySelector('.transaction-date');
             const descCell = targetRow.querySelector('.transaction-description');
-            const moneyInCell = targetRow.querySelector('.amount-in');
-            const moneyOutCell = targetRow.querySelector('.amount-out');
-
-            let amount = 0;
-            if (moneyInCell) {
-                const text = moneyInCell.textContent.replace(/[R,\s]/g, '');
-                amount = parseFloat(text) || 0;
-            } else if (moneyOutCell) {
-                const text = moneyOutCell.textContent.replace(/[R,\s]/g, '');
-                amount = -(parseFloat(text) || 0);
-            }
-
-            // Parse date (format: "14 Jan 2026")
-            const dateText = dateCell ? dateCell.textContent.trim() : '';
-            let date = new Date().toISOString().split('T')[0];
-            if (dateText) {
-                const parts = dateText.split(' ');
-                if (parts.length === 3) {
-                    const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
-                                     Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
-                    const day = parts[0].padStart(2, '0');
-                    const month = months[parts[1]] || '01';
-                    const year = parts[2];
-                    date = `${year}-${month}-${day}`;
-                }
-            }
-
             return {
                 id: id,
-                date: date,
+                date: new Date().toISOString().split('T')[0],
                 description: descCell ? descCell.textContent.trim() : 'Bank Transaction',
-                amount: amount,
+                amount: 0,
                 row: targetRow
             };
         }
