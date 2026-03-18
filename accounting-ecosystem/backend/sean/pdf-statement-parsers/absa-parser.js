@@ -40,10 +40,11 @@ const ANY_DATE_RE = /^(?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-
 // ── Amount token pattern ─────────────────────────────────────────────────────
 // Matches: optional R, optional leading -, optional brackets,
 //          digits with space/comma thousands sep, .XX,
-//          optional trailing DR/Db/CR/Cr suffix.
+//          optional trailing DR/Db/CR/Cr suffix OR trailing minus sign.
+// Trailing minus ("1 116.33-") is how Absa prints negative (overdraft) balances.
 // Key: we only match numbers that have a decimal point — this excludes
 // reference numbers and account numbers (which are integers).
-const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
+const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr]|-)?/g;
 
 // ── Lines to always skip ─────────────────────────────────────────────────────
 const SKIP_KEYWORDS = [
@@ -54,8 +55,9 @@ const SKIP_KEYWORDS = [
 ];
 
 // ── Description keywords used for sign heuristic ────────────────────────────
-const CREDIT_RE = /\b(?:received|deposit|salary|credit|payment\s+from|transfer\s+in|proceeds|refund|reversal|interest\s+paid|cashback)\b/i;
-const DEBIT_RE  = /\b(?:debit\s+order|purchase|withdrawal|payment\s+to|transfer\s+to|atm|levy|fee|charge|subscription)\b/i;
+const CREDIT_RE = /\b(?:received|deposit|salary|credit|payment\s+from|transfer\s+in|proceeds|refund|reversal|interest\s+paid|cashback|crsettlement|crkrediet)\b/i;
+// "Acb Debit" / "Acb Db" — bare \bdebit\b catches Absa's "Debit:" prefix style
+const DEBIT_RE  = /\b(?:debit|debit\s+order|purchase|withdrawal|payment\s+to|transfer\s+to|atm|levy|fee|charge|subscription|acb\s+db)\b/i;
 
 class ABSAParser extends BaseParser {
 
@@ -202,11 +204,12 @@ class ABSAParser extends BaseParser {
     const rawAmt   = tokens[tokens.length - 2].value;
     const rawToken = tokens[tokens.length - 2].raw;
 
-    // Check whether parseAmount already embedded a sign from DR/Cr suffix
+    // Check whether parseAmount already embedded a sign from DR/Cr suffix or trailing minus
     const hasSuffix = /[Dd][Rr]?|[Cc][Rr]/i.test(rawToken);
     const hasLeadingMinus = rawToken.startsWith('-') || rawToken.startsWith('(');
+    const hasTrailingMinus = rawToken.trimEnd().endsWith('-');
 
-    if (hasSuffix || hasLeadingMinus) {
+    if (hasSuffix || hasLeadingMinus || hasTrailingMinus) {
       // Sign is explicit in the amount string — trust parseAmount result
       amount = rawAmt;
     } else if (prevBalance !== null) {

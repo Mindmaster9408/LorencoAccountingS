@@ -2176,7 +2176,10 @@ Click OK to simulate uploading a file.`;
                                     <option value="">Select Account…</option>
                                 </select>
                             </td>
-                            <td>${statusBadgeHtml(txn.status)}</td>
+                            <td>
+                                ${statusBadgeHtml(txn.status)}
+                                ${txn.status === 'unmatched' ? `<br><button class="action-btn" onclick="flipTransaction('${txn.id}')" style="margin-top:4px;font-size:11px;padding:2px 6px;background:#6c757d;color:#fff;" title="Swap Money In ↔ Money Out (fix import direction)">↕ Flip</button>` : ''}
+                            </td>
                             <td style="white-space:nowrap;">
                                 <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:12px;">&#128196; <span id="attachCount${txn.id}">0</span></button>
                             </td>
@@ -2209,9 +2212,9 @@ Click OK to simulate uploading a file.`;
                 // Restore previously saved allocation dropdown values
                 restoreAllocationsToUI();
 
-                // Update balance display on account cards
+                // Update balance display on account cards — use last row (most recent, ASC order)
                 if (txns.length && selectedBankAccountId) {
-                    const latest = txns[0]; // already ordered date DESC
+                    const latest = txns[txns.length - 1];
                     if (latest.balance != null) {
                         const balEl = document.getElementById('acctBal' + selectedBankAccountId);
                         if (balEl) balEl.textContent = formatAmount(latest.balance);
@@ -3310,6 +3313,22 @@ Click OK to simulate uploading a file.`;
             });
         }
 
+        // Flip: correct import direction error (money in ↔ money out)
+        async function flipTransaction(id) {
+            if (!confirm('This will swap this transaction between Money In and Money Out.\n\nUse this to fix import errors where the direction was wrong.\n\nContinue?')) return;
+            try {
+                const res = await fetch(`/api/accounting/bank/transactions/${id}/flip`, {
+                    method: 'PATCH',
+                    headers: getAuthHeaders()
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                await loadTransactions();
+            } catch (err) {
+                alert('Error flipping transaction: ' + err.message);
+            }
+        }
+
         // Unallocate: reverse the journal, reset transaction to unmatched
         async function unallocateTransaction(id) {
             if (!confirm('This will reverse the posted journal for this transaction and reset it to Unmatched.\n\nContinue?')) return;
@@ -4071,7 +4090,7 @@ Click OK to simulate uploading a file.`;
                 var failedIds = new Set();
 
                 if (serverItems.length > 0) {
-                    var serverIds = serverItems.map(function (x) { return parseInt(x.id, 10); }).filter(Boolean);
+                    var serverIds = serverItems.map(function (x) { return x.id; }).filter(Boolean);
                     var bulkResp  = await fetch('/api/accounting/bank/transactions/bulk', {
                         method: 'DELETE',
                         headers: Object.assign({}, getAuthHeaders(), { 'Content-Type': 'application/json' }),

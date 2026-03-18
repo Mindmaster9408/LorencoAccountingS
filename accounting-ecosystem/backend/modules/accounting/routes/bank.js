@@ -412,8 +412,8 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
     if (toDate)        query = query.lte('date', toDate);
 
     query = query
-      .order('date', { ascending: false })
-      .order('id', { ascending: false })
+      .order('date', { ascending: true })
+      .order('id', { ascending: true })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
     let { data, error } = await query;
@@ -443,7 +443,7 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
       if (toDate)        fbQuery = fbQuery.lte('date', toDate);
 
       fbQuery = fbQuery
-        .order('date', { ascending: false })
+        .order('date', { ascending: true })
         .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
       ({ data, error } = await fbQuery);
@@ -742,6 +742,44 @@ router.post('/transactions', authenticate, hasPermission('bank.manage'), async (
   } catch (error) {
     console.error('Error creating bank transaction:', error);
     res.status(500).json({ error: 'Failed to create bank transaction' });
+  }
+});
+
+/**
+ * PATCH /api/bank/transactions/:id/flip
+ * Flip the sign of an unmatched transaction (money in ↔ money out).
+ * Used to correct import errors where debit/credit direction was wrong.
+ */
+router.patch('/transactions/:id/flip', authenticate, hasPermission('bank.manage'), async (req, res) => {
+  try {
+    const { data: txn, error: fetchErr } = await supabase
+      .from('bank_transactions')
+      .select('id, amount, status')
+      .eq('id', req.params.id)
+      .eq('company_id', req.user.companyId)
+      .single();
+
+    if (fetchErr || !txn) return res.status(404).json({ error: 'Bank transaction not found' });
+    if (txn.status !== 'unmatched') return res.status(409).json({ error: 'Only unmatched transactions can be flipped' });
+
+    const newAmount = -(parseFloat(txn.amount));
+    const { error: updErr } = await supabase
+      .from('bank_transactions')
+      .update({ amount: newAmount })
+      .eq('id', txn.id);
+
+    if (updErr) throw new Error(updErr.message);
+
+    await AuditLogger.logUserAction(
+      req, 'FLIP', 'BANK_TRANSACTION', txn.id,
+      { amount: txn.amount }, { amount: newAmount },
+      'Bank transaction amount sign flipped (in ↔ out)'
+    );
+
+    res.json({ transaction: { id: txn.id, amount: newAmount } });
+  } catch (error) {
+    console.error('Error flipping bank transaction:', error);
+    res.status(500).json({ error: error.message || 'Failed to flip transaction' });
   }
 });
 
@@ -1327,7 +1365,7 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
 /**
  * DELETE /api/bank/transactions/bulk
  * Delete multiple bank transactions in one request.
- * Body: { ids: number[], force?: boolean }
+ * Body: { ids: string[], force?: boolean }
  *   - Reconciled transactions are always blocked (returned in `blocked`)
  *   - Matched (allocated) transactions are blocked unless force=true
  *   - Attachments deleted, then all eligible rows deleted in 2 Supabase calls
