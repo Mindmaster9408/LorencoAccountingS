@@ -1364,33 +1364,99 @@
     </div>
     
     <script>
-        // Demo contact data
-        const contacts = [
-            { id: 1, name: 'ABC Manufacturing Ltd', email: 'accounts@abcmfg.co.za', phone: '+27 11 234 5678', type: 'customer', balance: 45750.00, status: 'active' },
-            { id: 2, name: 'XYZ Suppliers (Pty) Ltd', email: 'invoices@xyzsuppliers.co.za', phone: '+27 21 876 5432', type: 'supplier', balance: -28400.00, status: 'active' },
-            { id: 3, name: 'Global Tech Solutions', email: 'finance@globaltech.co.za', phone: '+27 31 555 1234', type: 'both', balance: 12500.00, status: 'active' },
-            { id: 4, name: 'Premier Office Supplies', email: 'sales@premieroffice.co.za', phone: '+27 12 987 6543', type: 'supplier', balance: -15600.00, status: 'active' },
-            { id: 5, name: 'Innovative Designs CC', email: 'admin@innovativedesigns.co.za', phone: '+27 41 333 2222', type: 'customer', balance: 8900.00, status: 'active' },
-            { id: 6, name: 'Coastal Transport Services', email: 'billing@coastaltransport.co.za', phone: '+27 21 444 5555', type: 'supplier', balance: -22100.00, status: 'active' },
-            { id: 7, name: 'Metro Construction Group', email: 'accounts@metroconstruction.co.za', phone: '+27 11 789 4561', type: 'customer', balance: 67800.00, status: 'active' },
-            { id: 8, name: 'Elite Marketing Agency', email: 'info@elitemarketing.co.za', phone: '+27 31 222 3333', type: 'customer', balance: 0.00, status: 'active' },
-            { id: 9, name: 'Industrial Equipment Co', email: 'sales@industrialequip.co.za', phone: '+27 12 666 7777', type: 'supplier', balance: -18900.00, status: 'active' },
-            { id: 10, name: 'Rainbow Retail Holdings', email: 'finance@rainbowretail.co.za', phone: '+27 11 888 9999', type: 'customer', balance: 5400.00, status: 'active' },
-            { id: 11, name: 'ProTech Services', email: 'info@protech.co.za', phone: '+27 21 111 2222', type: 'customer', balance: 3200.00, status: 'inactive' },
-            { id: 12, name: 'Quality Packaging Ltd', email: 'orders@qualitypkg.co.za', phone: '+27 31 333 4444', type: 'supplier', balance: -4200.00, status: 'active' },
-            { id: 13, name: 'Summit Consulting', email: 'accounts@summitconsult.co.za', phone: '+27 12 555 6666', type: 'customer', balance: 18900.00, status: 'active' },
-            { id: 14, name: 'Digital Print Solutions', email: 'admin@digitalprint.co.za', phone: '+27 41 777 8888', type: 'both', balance: -2100.00, status: 'active' },
-            { id: 15, name: 'Heritage Properties', email: 'finance@heritageprops.co.za', phone: '+27 11 999 0000', type: 'customer', balance: 0.00, status: 'inactive' }
-        ];
-        
+        const API_BASE = '/api/accounting';
+
+        function authH() {
+            return {
+                'Authorization': 'Bearer ' + (localStorage.getItem('token') || ''),
+                'Content-Type': 'application/json',
+            };
+        }
+
+        async function apiGet(url) {
+            try {
+                const r = await fetch(url, { headers: authH() });
+                if (r.status === 401) { window.location.href = '/'; return null; }
+                return r.json();
+            } catch (e) { console.error('GET', url, e); return null; }
+        }
+
+        async function apiPost(url, body) {
+            try {
+                const r = await fetch(url, { method: 'POST', headers: authH(), body: JSON.stringify(body) });
+                return r.json();
+            } catch (e) { console.error('POST', url, e); return { error: e.message }; }
+        }
+
+        async function apiPut(url, body) {
+            try {
+                const r = await fetch(url, { method: 'PUT', headers: authH(), body: JSON.stringify(body) });
+                return r.json();
+            } catch (e) { console.error('PUT', url, e); return { error: e.message }; }
+        }
+
         let currentFilter = 'all';
-        let allContacts = [...contacts];
-        
-        // Auto-login demo mode
-        window.addEventListener('DOMContentLoaded', function() {
-            // User info display handled by navigation.js
-            
+        let allContacts = [];
+
+        async function loadContacts() {
+            const [suppliersData, customersData] = await Promise.all([
+                apiGet(`${API_BASE}/suppliers`),
+                apiGet(`${API_BASE}/customer-invoices/customers`),
+            ]);
+
+            const contacts = [];
+            const nameIndex = new Map(); // lowercase name → index in contacts[]
+
+            // Add suppliers first
+            for (const s of (suppliersData && suppliersData.suppliers) || []) {
+                const contact = {
+                    id: 's_' + s.id,
+                    supplierId: s.id,
+                    name: s.name,
+                    email: s.email || '',
+                    phone: s.phone || '',
+                    type: 'supplier',
+                    balance: -(parseFloat(s.balance_owing) || 0),
+                    status: s.is_active ? 'active' : 'inactive',
+                };
+                nameIndex.set(s.name.toLowerCase().trim(), contacts.length);
+                contacts.push(contact);
+            }
+
+            // Add customers — merge with supplier if same name
+            for (const c of (customersData && customersData.customers) || []) {
+                const key = c.name.toLowerCase().trim();
+                if (nameIndex.has(key)) {
+                    // Same name exists as supplier — mark as 'both'
+                    contacts[nameIndex.get(key)].type = 'both';
+                    if (!contacts[nameIndex.get(key)].email && c.email) {
+                        contacts[nameIndex.get(key)].email = c.email;
+                    }
+                    if (!contacts[nameIndex.get(key)].phone && c.phone) {
+                        contacts[nameIndex.get(key)].phone = c.phone;
+                    }
+                } else {
+                    const contact = {
+                        id: c.id ? 'c_' + c.id : 'ci_' + key,
+                        customerId: c.id || null,
+                        name: c.name,
+                        email: c.email || '',
+                        phone: c.phone || '',
+                        type: 'customer',
+                        balance: 0,
+                        status: 'active',
+                    };
+                    nameIndex.set(key, contacts.length);
+                    contacts.push(contact);
+                }
+            }
+
+            allContacts = contacts;
             renderContacts();
+        }
+
+        window.addEventListener('DOMContentLoaded', function() {
+            loadContacts();
         });
         
         function renderContacts() {
@@ -1513,7 +1579,7 @@
         }
         
         function viewContact(id) {
-            const contact = contacts.find(c => c.id === id);
+            const contact = allContacts.find(c => c.id === id);
             if (!contact) return;
             
             currentViewingContact = contact;
@@ -1549,30 +1615,15 @@
                 balanceEl.className = 'value';
             }
             
-            // Demo totals
-            document.getElementById('viewTotalInvoiced').textContent = 'R ' + (Math.abs(contact.balance) * 3.5).toLocaleString('en-ZA', {minimumFractionDigits: 2});
-            document.getElementById('viewThisYear').textContent = 'R ' + (Math.abs(contact.balance) * 1.2).toLocaleString('en-ZA', {minimumFractionDigits: 2});
-            
-            // Activity list (demo data)
-            const activities = [
-                { icon: '📄', title: 'Invoice #INV-2026-001', date: '14 Jan 2026', amount: 'R 12,500.00', type: 'invoice' },
-                { icon: '💳', title: 'Payment Received', date: '10 Jan 2026', amount: 'R 8,000.00', type: 'payment' },
-                { icon: '📄', title: 'Invoice #INV-2025-089', date: '28 Dec 2025', amount: 'R 15,750.00', type: 'invoice' },
-                { icon: '💳', title: 'Payment Received', date: '15 Dec 2025', amount: 'R 15,750.00', type: 'payment' },
-                { icon: '📝', title: 'Quote #QT-2025-045', date: '01 Dec 2025', amount: 'R 22,000.00', type: 'quote' }
-            ];
-            
-            const activityHtml = activities.map(a => `
-                <div class="activity-item">
-                    <div class="activity-icon">${a.icon}</div>
-                    <div class="activity-details">
-                        <div class="title">${a.title}</div>
-                        <div class="meta">${a.date}</div>
-                    </div>
-                    <div class="activity-amount ${a.type === 'payment' ? 'amount-positive' : ''}">${a.amount}</div>
-                </div>
-            `).join('');
-            document.getElementById('activityList').innerHTML = activityHtml;
+            document.getElementById('viewTotalInvoiced').textContent = '—';
+            document.getElementById('viewThisYear').textContent = '—';
+
+            // Activity: direct users to the relevant module for full history
+            const moduleLink = contact.type === 'supplier'
+                ? '<a href="/suppliers.html">Suppliers module</a>'
+                : '<a href="/customers.html">Customers module</a>';
+            document.getElementById('activityList').innerHTML =
+                `<div class="activity-item"><div class="activity-details"><div class="meta">View full transaction history in the ${moduleLink}.</div></div></div>`;
             
             document.getElementById('viewContactModal').classList.add('active');
         }
@@ -1601,7 +1652,7 @@
         }
         
         function editContact(id) {
-            const contact = contacts.find(c => c.id === id);
+            const contact = allContacts.find(c => c.id === id);
             if (!contact) return;
             
             document.getElementById('modalTitle').textContent = 'Edit Contact';
@@ -1636,62 +1687,63 @@
             }
         }
         
-        function saveContact() {
-            const name = document.getElementById('contactName').value;
-            const email = document.getElementById('contactEmail').value;
+        async function saveContact() {
+            const name = document.getElementById('contactName').value.trim();
+            const email = document.getElementById('contactEmail').value.trim();
             const type = document.getElementById('contactType').value;
-            
-            if (!name || !email || !type) {
-                alert('Please fill in all required fields (Name, Email, Type)');
+            const phone = document.getElementById('contactPhone').value.trim();
+
+            if (!name || !type) {
+                alert('Please fill in all required fields (Name, Type)');
                 return;
             }
-            
+
             const contactId = document.getElementById('contactId').value;
-            
+
             if (contactId) {
-                // Update existing
-                const index = contacts.findIndex(c => c.id === parseInt(contactId));
-                if (index > -1) {
-                    contacts[index].name = name;
-                    contacts[index].email = email;
-                    contacts[index].phone = document.getElementById('contactPhone').value || contacts[index].phone;
-                    contacts[index].type = type;
-                    alert('Contact updated successfully!');
+                const existing = allContacts.find(c => c.id === contactId);
+                if (existing && existing.supplierId) {
+                    // Update supplier via API
+                    const result = await apiPut(`${API_BASE}/suppliers/${existing.supplierId}`, { name, email, phone });
+                    if (result && result.error) {
+                        alert('Failed to update contact: ' + result.error);
+                        return;
+                    }
+                    closeModal();
+                    await loadContacts();
+                    return;
+                } else {
+                    alert('Customer contacts can be managed in the Customers module.');
+                    closeModal();
+                    return;
                 }
             } else {
-                // Add new
-                const newContact = {
-                    id: contacts.length + 1,
-                    name: name,
-                    email: email,
-                    phone: document.getElementById('contactPhone').value || '+27 XX XXX XXXX',
-                    type: type,
-                    balance: 0,
-                    status: 'active'
-                };
-                contacts.push(newContact);
-                allContacts = [...contacts];
-                alert('Contact added successfully!');
+                // New contact — only suppliers can be created here
+                if (type === 'customer') {
+                    alert('New customers are created in the Customers module via an invoice.');
+                    closeModal();
+                    return;
+                }
+                const result = await apiPost(`${API_BASE}/suppliers`, { name, email, phone });
+                if (result && result.error) {
+                    alert('Failed to create supplier: ' + result.error);
+                    return;
+                }
+                closeModal();
+                await loadContacts();
             }
-            
-            closeModal();
-            renderContacts();
         }
         
         function deleteContact() {
             const contactId = document.getElementById('contactId').value;
             if (!contactId) return;
-            
-            if (confirm('Are you sure you want to delete this contact? This action cannot be undone.')) {
-                const index = contacts.findIndex(c => c.id === parseInt(contactId));
-                if (index > -1) {
-                    contacts.splice(index, 1);
-                    allContacts = [...contacts];
-                    alert('Contact deleted successfully!');
-                    closeModal();
-                    renderContacts();
-                }
+            const existing = allContacts.find(c => c.id === contactId);
+            if (existing && existing.supplierId) {
+                alert('To deactivate a supplier, use the Suppliers module.');
+            } else {
+                alert('Customer contacts are managed via the Customers module.');
             }
+            closeModal();
         }
     </script>
 </body>

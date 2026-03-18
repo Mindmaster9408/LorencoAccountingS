@@ -1,4 +1,5 @@
 const { supabase } = require('../../../config/database');
+const { derivePeriodForDate, isVatJournal, getVatAmountsFromLines } = require('./vatPeriodUtils');
 
 /**
  * Journal Service
@@ -72,7 +73,37 @@ class JournalService {
   }
 
   /**
-   * Check if period is locked
+   * Check if a journal's VAT period is locked.
+   * Used by routes that need to block VAT-affecting edits.
+   *
+   * @param {number|null} journalId
+   * @returns {{ locked: boolean, periodKey: string|null }}
+   */
+  static async isVatPeriodLocked(journalId) {
+    if (!journalId) return { locked: false, periodKey: null };
+
+    const { data: journal } = await supabase
+      .from('journals')
+      .select('vat_period_id')
+      .eq('id', journalId)
+      .maybeSingle();
+
+    if (!journal || !journal.vat_period_id) return { locked: false, periodKey: null };
+
+    const { data: period } = await supabase
+      .from('vat_periods')
+      .select('id, period_key, status')
+      .eq('id', journal.vat_period_id)
+      .maybeSingle();
+
+    if (!period) return { locked: false, periodKey: null };
+
+    const locked = (period.status || '').toUpperCase() === 'LOCKED';
+    return { locked, periodKey: period.period_key };
+  }
+
+  /**
+   * Check if period is locked (accounting_periods — existing general lock)
    */
   static async isPeriodLocked(companyId, date) {
     const { data } = await supabase
@@ -269,7 +300,126 @@ class JournalService {
 
     if (updateErr) throw new Error(updateErr.message);
 
+    // Assign VAT period asynchronously — non-blocking; failure is logged, not thrown
+    this.assignVatPeriod(journalId, companyId, journal.date).catch(err => {
+      console.error(`[JournalService] assignVatPeriod failed for journal ${journalId}:`, err.message);
+    });
+
     return journal;
+  }
+
+  /**
+   * Assign the correct VAT period to a newly posted journal.
+   *
+   * Rules:
+   * 1. If the journal has no VAT lines → skip (not VAT-relevant).
+   * 2. Derive the period for the journal's date using company VAT settings.
+   * 3. Find or create the vat_period record for that period.
+   * 4. If the period is LOCKED → this is an out-of-period item:
+   *      - Find the current open period (create if none exists)
+   *      - Assign the journal to the CURRENT period
+   *      - Set is_out_of_period = true, out_of_period_original_date = journal.date
+   *      - Update current period's OOP counters
+   * 5. If the period is open → assign normally, is_out_of_period = false.
+   */
+  static async assignVatPeriod(journalId, companyId, journalDate) {
+    // Fetch journal lines with account detail to detect VAT lines
+    const { data: lines } = await supabase
+      .from('journal_lines')
+      .select('*, accounts!account_id(code, name, reporting_group)')
+      .eq('journal_id', journalId);
+
+    if (!lines || lines.length === 0) return;
+
+    // Flatten for isVatJournal / getVatAmountsFromLines
+    const flatLines = lines.map(l => ({
+      ...l,
+      account_code:            l.accounts?.code,
+      account_reporting_group: l.accounts?.reporting_group,
+    }));
+
+    if (!isVatJournal(flatLines)) return; // No VAT lines — skip
+
+    // Get company VAT settings
+    const { data: company } = await supabase
+      .from('companies')
+      .select('vat_period, vat_cycle_type, is_vat_registered')
+      .eq('id', companyId)
+      .single();
+
+    if (!company || !company.is_vat_registered) return; // Not VAT registered — skip
+
+    const filingFrequency = company.vat_period  || 'bi-monthly';
+    const vatCycleType    = company.vat_cycle_type || 'even';
+
+    // Derive the period this journal date belongs to
+    const derivedPeriod = derivePeriodForDate(journalDate, filingFrequency, vatCycleType);
+
+    // Find or create the vat_period record
+    let vatPeriod = await this._findOrCreateVatPeriod(companyId, derivedPeriod, filingFrequency, vatCycleType);
+
+    let targetPeriodId      = vatPeriod.id;
+    let isOutOfPeriod       = false;
+    let originalDate        = null;
+
+    if ((vatPeriod.status || '').toUpperCase() === 'LOCKED') {
+      // Out-of-period: journal belongs to a locked period; bring into current open period
+      isOutOfPeriod = true;
+      originalDate  = journalDate;
+
+      const today = new Date().toISOString().split('T')[0];
+      const currentDerived = derivePeriodForDate(today, filingFrequency, vatCycleType);
+      const currentPeriod  = await this._findOrCreateVatPeriod(companyId, currentDerived, filingFrequency, vatCycleType);
+      targetPeriodId = currentPeriod.id;
+
+      // Update OOP counters on the current period
+      const { inputVat, outputVat } = getVatAmountsFromLines(flatLines);
+      await supabase.from('vat_periods').update({
+        out_of_period_count:        (currentPeriod.out_of_period_count  || 0) + 1,
+        out_of_period_total_input:  parseFloat(currentPeriod.out_of_period_total_input  || 0) + inputVat,
+        out_of_period_total_output: parseFloat(currentPeriod.out_of_period_total_output || 0) + outputVat,
+        updated_at: new Date().toISOString(),
+      }).eq('id', targetPeriodId);
+    }
+
+    // Write VAT period assignment back to the journal
+    await supabase.from('journals').update({
+      vat_period_id:             targetPeriodId,
+      is_out_of_period:          isOutOfPeriod,
+      out_of_period_original_date: originalDate,
+    }).eq('id', journalId);
+  }
+
+  /** Find an existing vat_period by key; create if missing (status = 'open'). */
+  static async _findOrCreateVatPeriod(companyId, { periodKey, fromDate, toDate }, filingFrequency, vatCycleType) {
+    const { data: existing } = await supabase
+      .from('vat_periods')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('period_key', periodKey)
+      .single();
+
+    if (existing) return existing;
+
+    const { data: created, error } = await supabase
+      .from('vat_periods')
+      .insert({
+        company_id:       companyId,
+        period_key:       periodKey,
+        from_date:        fromDate,
+        to_date:          toDate,
+        filing_frequency: filingFrequency,
+        vat_cycle_type:   vatCycleType,
+        status:           'open',
+        out_of_period_count:        0,
+        out_of_period_total_input:  0,
+        out_of_period_total_output: 0,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`_findOrCreateVatPeriod: ${error.message}`);
+    return created;
   }
 
   /**

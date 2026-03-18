@@ -487,6 +487,10 @@
                     <option value="">Loading periods…</option>
                 </select>
             </div>
+            <!-- Period lock status badge -->
+            <div id="periodLockBadge" style="display:none; align-items:center; gap:8px; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600;"></div>
+            <button class="btn-secondary" id="btnGeneratePeriods" onclick="generateVatPeriods()" style="display:none;">Generate Periods</button>
+            <button class="btn-secondary" id="btnLockPeriod" onclick="lockVatPeriod()" style="display:none; background:#fff3e0; border-color:#ff9800; color:#e65100;">Lock Period</button>
             <button class="btn-secondary" onclick="submitToSARS()">Submit to SARS</button>
         </div>
 
@@ -1045,11 +1049,43 @@
 
                 <!-- Action Buttons -->
                 <div class="vat-action-bar" style="background: white; border: 2px solid #0066cc; border-radius: 10px; padding: 25px; margin: 30px 0;">
-                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                        <button class="btn-secondary" onclick="saveDraftReconciliation()">Save Draft</button>
-                        <button class="btn-secondary" onclick="approveReconciliation()">Approve Reconciliation</button>
-                        <button class="btn-primary" onclick="submitToSARS()">Submit to SARS</button>
+                    <div style="display: flex; gap: 12px; justify-content: flex-end; align-items: center;">
+                        <div id="periodLockedNotice" style="display:none; color:#b71c1c; font-size:13px; font-weight:600; margin-right:auto;">
+                            🔒 This VAT period is locked. No changes can be made.
+                        </div>
+                        <button class="btn-secondary" id="btnSaveDraft" onclick="saveDraftReconciliation()">Save Draft</button>
+                        <button class="btn-secondary" id="btnApproveRecon" onclick="approveReconciliation()">Approve Reconciliation</button>
+                        <button class="btn-primary" id="btnSubmitSARS" onclick="submitToSARS()">Submit to SARS</button>
                     </div>
+                </div>
+
+                <!-- Out-of-Period Adjustments Summary (shown when current period has OOP items) -->
+                <div id="oopSummaryCard" style="display:none; background:#fff8e1; border:2px solid #ffc107; border-radius:10px; padding:20px; margin: 0 0 25px 0;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+                        <span style="font-size:20px;">⏳</span>
+                        <div>
+                            <div style="font-weight:700; font-size:15px; color:#7c4700;">Out-of-Period Adjustments Included in This Period</div>
+                            <div style="font-size:13px; color:#8b5e00; margin-top:2px;">
+                                These transactions were captured late — their original dates belong to an earlier locked VAT period.
+                                They are included here in the current period's VAT calculation.
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:14px;">
+                        <div style="background:white; border:1px solid #ffe082; border-radius:8px; padding:12px; text-align:center;">
+                            <div style="font-size:12px; color:#8b5e00; margin-bottom:4px;">Items</div>
+                            <div id="oopCount" style="font-size:22px; font-weight:700; color:#7c4700;">0</div>
+                        </div>
+                        <div style="background:white; border:1px solid #ffe082; border-radius:8px; padding:12px; text-align:center;">
+                            <div style="font-size:12px; color:#8b5e00; margin-bottom:4px;">Total Input VAT</div>
+                            <div id="oopInputVat" style="font-size:22px; font-weight:700; color:#2e7d32;">R 0.00</div>
+                        </div>
+                        <div style="background:white; border:1px solid #ffe082; border-radius:8px; padding:12px; text-align:center;">
+                            <div style="font-size:12px; color:#8b5e00; margin-bottom:4px;">Total Output VAT</div>
+                            <div id="oopOutputVat" style="font-size:22px; font-weight:700; color:#b71c1c;">R 0.00</div>
+                        </div>
+                    </div>
+                    <div id="oopItemsList" style="font-size:12px; color:#7c4700; border-top:1px solid #ffe082; padding-top:10px;"></div>
                 </div>
 
                 <div class="vat-summary-bar" style="background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%); color: white; padding: 25px; border-radius: 10px; margin-bottom: 25px;">
@@ -1371,6 +1407,14 @@
                 });
 
                 currentPeriodData = result.period;
+
+                // Update lock status badge and action button state
+                updatePeriodLockUI(currentPeriodData);
+
+                // Load out-of-period adjustments for this period
+                if (currentPeriodData && currentPeriodData.id) {
+                    loadOutOfPeriodItems(currentPeriodData.id);
+                }
 
                 // Update page title and stat card subtexts with real period info
                 const [yr, mo] = periodKey.split('.');
@@ -1812,12 +1856,142 @@
 
                 if (result.success) {
                     alert('✓ Successfully submitted to SARS!\n\nPeriod is now LOCKED.');
+                    if (currentPeriodData) currentPeriodData.status = 'LOCKED';
+                    updatePeriodLockUI(currentPeriodData);
                     await loadVATSubmissionHistory();
                     setReconciliationReadOnly();
                 }
             } catch (error) {
                 console.error('Error submitting to SARS:', error);
                 alert('Error: ' + error.message);
+            }
+        }
+
+        // ─── VAT Period Lock + Generate (Prompt 2) ──────────────────────────────
+
+        /** Update the lock status badge and action button visibility. */
+        function updatePeriodLockUI(period) {
+            const badge       = document.getElementById('periodLockBadge');
+            const lockBtn     = document.getElementById('btnLockPeriod');
+            const generateBtn = document.getElementById('btnGeneratePeriods');
+            const lockedNote  = document.getElementById('periodLockedNotice');
+            const btnSave     = document.getElementById('btnSaveDraft');
+            const btnApprove  = document.getElementById('btnApproveRecon');
+            const btnSubmit   = document.getElementById('btnSubmitSARS');
+
+            if (!period) {
+                if (badge) { badge.style.display = 'none'; }
+                if (lockBtn) lockBtn.style.display = 'none';
+                if (lockedNote) lockedNote.style.display = 'none';
+                return;
+            }
+
+            const isLocked = (period.status || '').toUpperCase() === 'LOCKED';
+
+            // Show generate button always (admin can always generate periods)
+            if (generateBtn) generateBtn.style.display = 'inline-block';
+
+            // Badge
+            if (badge) {
+                badge.style.display = 'flex';
+                if (isLocked) {
+                    badge.textContent = '🔒 Locked';
+                    badge.style.background = '#ffebee';
+                    badge.style.color = '#b71c1c';
+                    badge.style.border = '1px solid #ef9a9a';
+                } else {
+                    badge.textContent = '🟢 Open';
+                    badge.style.background = '#e8f5e9';
+                    badge.style.color = '#2e7d32';
+                    badge.style.border = '1px solid #a5d6a7';
+                }
+            }
+
+            // Lock period button — only show when period is open
+            if (lockBtn) lockBtn.style.display = isLocked ? 'none' : 'inline-block';
+
+            // Locked notice + disable action buttons
+            if (lockedNote) lockedNote.style.display = isLocked ? 'block' : 'none';
+            if (btnSave)    btnSave.disabled    = isLocked;
+            if (btnApprove) btnApprove.disabled = isLocked;
+            if (btnSubmit)  btnSubmit.disabled  = isLocked;
+            if (btnSave)    btnSave.style.opacity    = isLocked ? '0.4' : '';
+            if (btnApprove) btnApprove.style.opacity = isLocked ? '0.4' : '';
+        }
+
+        /** Fetch and display out-of-period items for the current period. */
+        async function loadOutOfPeriodItems(periodId) {
+            const card = document.getElementById('oopSummaryCard');
+            if (!card || !periodId) { if (card) card.style.display = 'none'; return; }
+
+            try {
+                const result = await fetchAPI(`/vat-recon/periods/${periodId}/out-of-period`);
+                if (!result.success || !result.summary || result.summary.count === 0) {
+                    card.style.display = 'none';
+                    return;
+                }
+                card.style.display = 'block';
+                const fmt = n => 'R ' + parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                document.getElementById('oopCount').textContent      = result.summary.count;
+                document.getElementById('oopInputVat').textContent   = fmt(result.summary.total_input_vat);
+                document.getElementById('oopOutputVat').textContent  = fmt(result.summary.total_output_vat);
+
+                // Render item list (compact)
+                const listEl = document.getElementById('oopItemsList');
+                if (listEl && result.items && result.items.length > 0) {
+                    listEl.innerHTML = '<strong>Details:</strong><br>' + result.items.map(item =>
+                        `&bull; <em>${item.original_period_date}</em> — ${item.description || item.reference || '(no desc)'}` +
+                        (item.input_vat  ? ` | Input VAT: R${parseFloat(item.input_vat ).toFixed(2)}` : '') +
+                        (item.output_vat ? ` | Output VAT: R${parseFloat(item.output_vat).toFixed(2)}` : '')
+                    ).join('<br>');
+                }
+            } catch (err) {
+                console.error('Error loading OOP items:', err);
+                card.style.display = 'none';
+            }
+        }
+
+        /** Lock the current VAT period. */
+        async function lockVatPeriod() {
+            if (!currentPeriodData) return alert('Please select a VAT period first.');
+            const isLocked = (currentPeriodData.status || '').toUpperCase() === 'LOCKED';
+            if (isLocked) return alert('This period is already locked.');
+
+            const periodKey = currentPeriodData.period_key || currentPeriodData.period_key;
+            if (!confirm(
+                `⚠️ LOCK VAT Period ${periodKey}?\n\n` +
+                `This will FREEZE this period. No further VAT-affecting edits will be allowed for transactions in this period.\n\n` +
+                `Any late transactions with dates in this period will be captured in the CURRENT OPEN period as out-of-period adjustments.\n\n` +
+                `This action cannot be undone without a full reopen workflow.\n\nContinue?`
+            )) return;
+
+            try {
+                const result = await fetchAPI(`/vat-recon/periods/${currentPeriodData.id}/lock`, { method: 'POST' });
+                if (result.success) {
+                    currentPeriodData = result.period;
+                    updatePeriodLockUI(currentPeriodData);
+                    alert(`✓ VAT period ${periodKey} is now LOCKED.`);
+                }
+            } catch (err) {
+                console.error('Error locking VAT period:', err);
+                alert('Error locking period: ' + err.message);
+            }
+        }
+
+        /** Auto-generate VAT period records from company settings. */
+        async function generateVatPeriods() {
+            if (!confirm('Generate VAT period records from company VAT settings?\n\nThis is safe — existing periods will not be changed.')) return;
+            try {
+                const result = await fetchAPI('/vat-recon/periods/generate', { method: 'POST', body: JSON.stringify({}) });
+                if (result.success) {
+                    const msg = result.count > 0
+                        ? `✓ Generated ${result.count} new VAT period(s).`
+                        : '✓ All periods already exist — nothing new to generate.';
+                    alert(msg);
+                }
+            } catch (err) {
+                console.error('Error generating VAT periods:', err);
+                alert('Error: ' + err.message);
             }
         }
 

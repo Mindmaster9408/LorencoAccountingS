@@ -56,6 +56,7 @@ router.use('/customer-invoices', require('./routes/customer-invoices'));
 router.use('/segments', require('./routes/segments'));
 
 // Tax & compliance
+router.use('/vat-settings', require('./routes/vat-settings'));
 router.use('/vat-recon', require('./routes/vatRecon'));
 router.use('/paye/config', require('./routes/payeConfig'));
 router.use('/paye/reconciliation', require('./routes/payeReconciliation'));

@@ -506,6 +506,16 @@ router.post('/:id/void', async (req, res) => {
       return res.status(409).json({ error: 'Cannot void an invoice that has payments applied. Reverse the payments first.' });
     }
 
+    // VAT period lock guard: block void if invoice GL journal is in a locked VAT period
+    if (invoice.journal_id) {
+      const vatLock = await JournalService.isVatPeriodLocked(invoice.journal_id);
+      if (vatLock.locked) {
+        return res.status(403).json({
+          error: `Cannot void this invoice — it is included in locked VAT period ${vatLock.periodKey}. VAT periods that have been locked cannot be changed.`,
+        });
+      }
+    }
+
     // Reverse the posted journal if one exists
     if (invoice.journal_id) {
       await JournalService.reverseJournal(invoice.journal_id, companyId, userId(req));

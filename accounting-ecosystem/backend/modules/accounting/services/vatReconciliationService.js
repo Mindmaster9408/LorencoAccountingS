@@ -1,4 +1,5 @@
 const { supabase } = require('../../../config/database');
+const { generatePeriods, derivePeriodForDate } = require('./vatPeriodUtils');
 
 /**
  * VAT Reconciliation Service
@@ -634,6 +635,269 @@ class VATReconciliationService {
                 account_type: a.type,
                 amount:       lineMap[a.id] || 0,
             }));
+    }
+
+    // ========================================================
+    // PERIOD GENERATION (Prompt 2)
+    // ========================================================
+
+    /**
+     * Auto-generate VAT period records for a company using its configured
+     * filing frequency and cycle type.
+     *
+     * Idempotent — skips periods that already exist (same period_key).
+     *
+     * @param {number} companyId
+     * @param {string} fromDateStr  YYYY-MM-DD — start of range
+     * @param {string} toDateStr    YYYY-MM-DD — end of range (defaults to today)
+     * @returns {Array} created period records
+     */
+    async generatePeriodsRange(companyId, fromDateStr, toDateStr) {
+        // Fetch company VAT settings
+        const { data: company, error: coErr } = await supabase
+            .from('companies')
+            .select('vat_period, vat_cycle_type, is_vat_registered, vat_registered_date')
+            .eq('id', companyId)
+            .single();
+
+        if (coErr || !company) throw new Error('Company not found');
+        if (!company.is_vat_registered) throw new Error('Company is not VAT registered');
+
+        const filingFrequency = company.vat_period       || 'bi-monthly';
+        const vatCycleType    = company.vat_cycle_type    || 'even';
+        const effectiveFrom   = fromDateStr || company.vat_registered_date || '2020-01-01';
+        const effectiveTo     = toDateStr   || new Date().toISOString().split('T')[0];
+
+        const periodDefs = generatePeriods(effectiveFrom, effectiveTo, filingFrequency, vatCycleType);
+
+        const created = [];
+        for (const p of periodDefs) {
+            // Check if already exists
+            const { data: existing } = await supabase
+                .from('vat_periods')
+                .select('id')
+                .eq('company_id', companyId)
+                .eq('period_key', p.periodKey)
+                .maybeSingle();
+
+            if (existing) continue;
+
+            const { data: inserted, error: insErr } = await supabase
+                .from('vat_periods')
+                .insert({
+                    company_id:       companyId,
+                    period_key:       p.periodKey,
+                    from_date:        p.fromDate,
+                    to_date:          p.toDate,
+                    filing_frequency: filingFrequency,
+                    vat_cycle_type:   vatCycleType,
+                    status:           'open',
+                    out_of_period_count:        0,
+                    out_of_period_total_input:  0,
+                    out_of_period_total_output: 0,
+                })
+                .select()
+                .single();
+
+            if (insErr) throw new Error(insErr.message);
+            created.push(inserted);
+        }
+
+        return created;
+    }
+
+    // ========================================================
+    // PERIOD LOCKING (Prompt 2)
+    // ========================================================
+
+    /**
+     * Lock a VAT period.
+     *
+     * Hard rules:
+     * - Period must exist and belong to company
+     * - Period must not already be locked
+     * - Only admin or accountant role may lock (caller must verify role before calling)
+     *
+     * This is separate from submitToSARS (which also locks) so users can lock
+     * without the SARS submission step when needed.
+     */
+    async lockPeriod(companyId, periodId, userId) {
+        const period = await this.getPeriod(companyId, periodId);
+        if (!period) throw new Error('VAT period not found');
+        if ((period.status || '').toUpperCase() === 'LOCKED') throw new Error('Period is already locked');
+
+        const { error } = await supabase
+            .from('vat_periods')
+            .update({
+                status:             'LOCKED',
+                locked_by_user_id:  userId,
+                locked_at:          new Date().toISOString(),
+                updated_at:         new Date().toISOString(),
+            })
+            .eq('id', period.id)
+            .eq('company_id', companyId);
+
+        if (error) throw new Error(error.message);
+
+        // Also lock the associated VAT report + reconciliation if they exist
+        await supabase.from('vat_reports').update({
+            status:            'LOCKED',
+            locked_by_user_id: userId,
+            locked_at:         new Date().toISOString(),
+        }).eq('company_id', companyId).eq('vat_period_id', period.id);
+
+        await supabase.from('vat_reconciliations').update({
+            status:            'LOCKED',
+            locked_by_user_id: userId,
+            locked_at:         new Date().toISOString(),
+        }).eq('company_id', companyId).eq('vat_period_id', period.id).neq('status', 'LOCKED');
+
+        return { ...period, status: 'LOCKED' };
+    }
+
+    // ========================================================
+    // CURRENT OPEN PERIOD (Prompt 2)
+    // ========================================================
+
+    /**
+     * Find the current open VAT period for a company (the most recent open one).
+     * If none exists, derive and create one based on today's date.
+     */
+    async getCurrentOpenPeriod(companyId) {
+        const { data: company } = await supabase
+            .from('companies')
+            .select('vat_period, vat_cycle_type, is_vat_registered')
+            .eq('id', companyId)
+            .single();
+
+        if (!company || !company.is_vat_registered) return null;
+
+        const filingFrequency = company.vat_period    || 'bi-monthly';
+        const vatCycleType    = company.vat_cycle_type || 'even';
+
+        // Find most recent open period
+        const { data: openPeriods } = await supabase
+            .from('vat_periods')
+            .select('*')
+            .eq('company_id', companyId)
+            .ilike('status', 'open')        // case-insensitive: 'open' or 'OPEN'
+            .order('from_date', { ascending: false })
+            .limit(1);
+
+        if (openPeriods && openPeriods.length > 0) return openPeriods[0];
+
+        // No open period — auto-create one for today
+        const today  = new Date().toISOString().split('T')[0];
+        const period = derivePeriodForDate(today, filingFrequency, vatCycleType);
+
+        const { data: existing } = await supabase
+            .from('vat_periods')
+            .select('*')
+            .eq('company_id', companyId)
+            .eq('period_key', period.periodKey)
+            .maybeSingle();
+
+        if (existing) return existing;
+
+        const { data: created, error } = await supabase
+            .from('vat_periods')
+            .insert({
+                company_id:       companyId,
+                period_key:       period.periodKey,
+                from_date:        period.fromDate,
+                to_date:          period.toDate,
+                filing_frequency: filingFrequency,
+                vat_cycle_type:   vatCycleType,
+                status:           'open',
+                out_of_period_count:        0,
+                out_of_period_total_input:  0,
+                out_of_period_total_output: 0,
+            })
+            .select()
+            .single();
+
+        if (error) throw new Error(error.message);
+        return created;
+    }
+
+    // ========================================================
+    // OUT-OF-PERIOD ITEMS (Prompt 2)
+    // ========================================================
+
+    /**
+     * Return all out-of-period journals assigned to a given VAT period.
+     * These are journals that were captured late and belong historically to
+     * an earlier locked period, but are included in this period's VAT.
+     */
+    async getOutOfPeriodItems(companyId, periodId) {
+        const period = await this.getPeriod(companyId, periodId);
+        if (!period) throw new Error('VAT period not found');
+
+        const { data: journals, error } = await supabase
+            .from('journals')
+            .select('id, date, reference, description, source_type, out_of_period_original_date, metadata')
+            .eq('company_id', companyId)
+            .eq('vat_period_id', periodId)
+            .eq('is_out_of_period', true)
+            .eq('status', 'posted')
+            .order('out_of_period_original_date', { ascending: true });
+
+        if (error) throw new Error(error.message);
+        if (!journals || journals.length === 0) return { items: [], summary: null };
+
+        // Fetch lines for VAT amount calculation
+        const journalIds = journals.map(j => j.id);
+        const { data: lines } = await supabase
+            .from('journal_lines')
+            .select('journal_id, account_id, debit, credit, accounts!account_id(code, reporting_group)')
+            .in('journal_id', journalIds);
+
+        // Group lines by journal for per-journal VAT amount display
+        const linesByJournal = {};
+        for (const l of lines || []) {
+            if (!linesByJournal[l.journal_id]) linesByJournal[l.journal_id] = [];
+            linesByJournal[l.journal_id].push({
+                ...l,
+                account_code:            l.accounts?.code,
+                account_reporting_group: l.accounts?.reporting_group,
+            });
+        }
+
+        let totalInputVat  = 0;
+        let totalOutputVat = 0;
+
+        const items = journals.map(j => {
+            const jLines = linesByJournal[j.id] || [];
+            let inputVat = 0, outputVat = 0;
+            for (const l of jLines) {
+                if (l.account_reporting_group === 'vat_asset'    || l.account_code === '1400')
+                    inputVat  += (parseFloat(l.debit) || 0) - (parseFloat(l.credit) || 0);
+                if (l.account_reporting_group === 'vat_liability' || l.account_code === '2300')
+                    outputVat += (parseFloat(l.credit) || 0) - (parseFloat(l.debit) || 0);
+            }
+            totalInputVat  += inputVat;
+            totalOutputVat += outputVat;
+            return {
+                journal_id:              j.id,
+                captured_date:           j.date,
+                original_period_date:    j.out_of_period_original_date,
+                reference:               j.reference,
+                description:             j.description,
+                source_type:             j.source_type,
+                input_vat:               Math.round(inputVat  * 100) / 100,
+                output_vat:              Math.round(outputVat * 100) / 100,
+            };
+        });
+
+        return {
+            items,
+            summary: {
+                count:              items.length,
+                total_input_vat:    Math.round(totalInputVat  * 100) / 100,
+                total_output_vat:   Math.round(totalOutputVat * 100) / 100,
+                total_net_vat:      Math.round((totalOutputVat - totalInputVat) * 100) / 100,
+            },
+        };
     }
 
     /**

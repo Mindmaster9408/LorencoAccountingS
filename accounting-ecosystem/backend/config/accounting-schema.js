@@ -39,6 +39,10 @@ async function ensureAccountingSchema(pool) {
       ['account_type',      'VARCHAR(50)'],
       ['account_holder',    'VARCHAR(255)'],
       ['logo_url',          'TEXT'],
+      // VAT registration — master switch and cycle settings
+      ['is_vat_registered',   'BOOLEAN DEFAULT false'],
+      ['vat_cycle_type',      'VARCHAR(20)'],    // 'even' | 'odd' — for bi-monthly filers
+      ['vat_registered_date', 'DATE'],            // effective start date of VAT registration
     ];
     for (const [col, type] of companyColumns) {
       await client.query(
@@ -284,6 +288,27 @@ async function ensureAccountingSchema(pool) {
         locked_by_user_id INTEGER REFERENCES users(id),
         locked_at       TIMESTAMPTZ,
         created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── 13b. VAT Settings (configurable rate/type catalogue per company) ─────
+    // Each row is one VAT category (e.g. standard 15%, zero-rated, exempt, old 14%).
+    // effective_from + effective_to support historical and future rate changes.
+    // UNIQUE(company_id, code, effective_from) allows one entry per code per rate era.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS vat_settings (
+        id             SERIAL PRIMARY KEY,
+        company_id     INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        code           VARCHAR(30) NOT NULL,
+        name           VARCHAR(100) NOT NULL,
+        rate           NUMERIC(5,2) NOT NULL DEFAULT 0,
+        is_capital     BOOLEAN DEFAULT false,
+        is_active      BOOLEAN DEFAULT true,
+        effective_from DATE NOT NULL DEFAULT '1990-01-01',
+        effective_to   DATE,
+        sort_order     INTEGER DEFAULT 0,
+        created_at     TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(company_id, code, effective_from)
       )
     `);
 
@@ -726,6 +751,7 @@ async function ensureAccountingSchema(pool) {
       'CREATE INDEX IF NOT EXISTS idx_bank_txn_account ON bank_transactions(bank_account_id)',
       'CREATE INDEX IF NOT EXISTS idx_bank_txn_status ON bank_transactions(company_id, status)',
       'CREATE INDEX IF NOT EXISTS idx_vat_periods_company ON vat_periods(company_id)',
+      'CREATE INDEX IF NOT EXISTS idx_vat_settings_company ON vat_settings(company_id, is_active)',
       'CREATE INDEX IF NOT EXISTS idx_paye_recon_company ON paye_reconciliations(company_id)',
       'CREATE INDEX IF NOT EXISTS idx_accounting_audit ON accounting_audit_log(company_id)',
       'CREATE INDEX IF NOT EXISTS idx_pos_recon_company ON pos_reconciliations(company_id, date)',
@@ -750,6 +776,33 @@ async function ensureAccountingSchema(pool) {
     for (const idx of indexes) {
       await client.query(idx);
     }
+
+    // ── Prompt 2: VAT period locking — schema additions ───────────────────────
+    // journals: VAT period assignment + out-of-period flag
+    const journalVatColumns = [
+      ['vat_period_id',              'INTEGER REFERENCES vat_periods(id) ON DELETE SET NULL'],
+      ['is_out_of_period',           'BOOLEAN DEFAULT false'],
+      ['out_of_period_original_date','DATE'],
+    ];
+    for (const [col, type] of journalVatColumns) {
+      await client.query(`ALTER TABLE journals ADD COLUMN IF NOT EXISTS ${col} ${type}`);
+    }
+
+    // vat_periods: cycle type + out-of-period summary counters + updated_at
+    const vatPeriodColumns = [
+      ['vat_cycle_type',             'VARCHAR(20)'],
+      ['out_of_period_total_input',  'NUMERIC(15,2) DEFAULT 0'],
+      ['out_of_period_total_output', 'NUMERIC(15,2) DEFAULT 0'],
+      ['out_of_period_count',        'INTEGER DEFAULT 0'],
+      ['updated_at',                 'TIMESTAMPTZ DEFAULT NOW()'],
+    ];
+    for (const [col, type] of vatPeriodColumns) {
+      await client.query(`ALTER TABLE vat_periods ADD COLUMN IF NOT EXISTS ${col} ${type}`);
+    }
+
+    // Indexes for VAT period assignment queries
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_journals_vat_period ON journals(vat_period_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_journals_oop ON journals(company_id, is_out_of_period) WHERE is_out_of_period = true`);
 
     console.log('  ✅ Accounting schema ready');
   } catch (err) {

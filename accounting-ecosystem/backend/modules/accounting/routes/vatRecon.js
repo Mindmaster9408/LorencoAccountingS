@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const vatReconService = require('../services/vatReconciliationService');
 const auditLogger = require('../services/auditLogger');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const { enforceCompanyStatus } = require('../middleware/companyStatus');
 
 // Apply middleware
@@ -82,6 +82,100 @@ router.post('/periods', async (req, res) => {
     } catch (error) {
         console.error('Error creating VAT period:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/vat-recon/periods/generate
+ * Auto-generate VAT period records from company settings.
+ * Admin/accountant only.
+ *
+ * Body: { fromDate?: "YYYY-MM-DD", toDate?: "YYYY-MM-DD" }
+ */
+router.post('/periods/generate', authorize('admin', 'accountant'), async (req, res) => {
+    try {
+        const { companyId, id: userId } = req.user;
+        const { fromDate, toDate } = req.body;
+
+        const created = await vatReconService.generatePeriodsRange(companyId, fromDate, toDate);
+
+        if (created.length > 0) {
+            await auditLogger.log({
+                companyId, actorType: 'USER', actorId: userId,
+                actionType: 'VAT_PERIODS_GENERATED',
+                entityType: 'vat_period', entityId: null,
+                afterJson: { count: created.length, fromDate, toDate },
+            });
+        }
+
+        res.json({ success: true, created, count: created.length });
+    } catch (error) {
+        console.error('Error generating VAT periods:', error);
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/vat-recon/periods/:periodId/lock
+ * Lock a VAT period manually (without full SARS submission).
+ * Admin/accountant only.
+ */
+router.post('/periods/:periodId/lock', authorize('admin', 'accountant'), async (req, res) => {
+    try {
+        const { companyId, id: userId } = req.user;
+        const periodId = parseInt(req.params.periodId, 10);
+        if (isNaN(periodId)) return res.status(400).json({ success: false, error: 'Invalid period ID' });
+
+        const period = await vatReconService.lockPeriod(companyId, periodId, userId);
+
+        await auditLogger.log({
+            companyId, actorType: 'USER', actorId: userId,
+            actionType: 'VAT_PERIOD_LOCKED',
+            entityType: 'vat_period', entityId: period.id,
+            afterJson: { period_key: period.period_key, locked_at: period.locked_at },
+        });
+
+        res.json({ success: true, period });
+    } catch (error) {
+        console.error('Error locking VAT period:', error);
+        const code = error.message.includes('not found') ? 404
+                   : error.message.includes('already locked') ? 409 : 400;
+        res.status(code).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/vat-recon/periods/current-open
+ * Return the current open VAT period (or create one if none exists).
+ */
+router.get('/periods/current-open', async (req, res) => {
+    try {
+        const { companyId } = req.user;
+        const period = await vatReconService.getCurrentOpenPeriod(companyId);
+        if (!period) return res.json({ success: true, period: null });
+        res.json({ success: true, period });
+    } catch (error) {
+        console.error('Error fetching current open period:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/vat-recon/periods/:periodId/out-of-period
+ * Return all out-of-period journals included in this VAT period.
+ */
+router.get('/periods/:periodId/out-of-period', async (req, res) => {
+    try {
+        const { companyId } = req.user;
+        const periodId = parseInt(req.params.periodId, 10);
+        if (isNaN(periodId)) return res.status(400).json({ success: false, error: 'Invalid period ID' });
+
+        const result = await vatReconService.getOutOfPeriodItems(companyId, periodId);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('Error fetching out-of-period items:', error);
+        const code = error.message.includes('not found') ? 404 : 500;
+        res.status(code).json({ success: false, error: error.message });
     }
 });
 

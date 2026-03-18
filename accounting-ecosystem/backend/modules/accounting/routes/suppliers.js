@@ -539,6 +539,16 @@ router.put('/invoices/:id', async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Invoice not found' });
     if (existing.status === 'paid') return res.status(400).json({ error: 'Cannot edit a paid invoice' });
 
+    // VAT period lock guard: block edits if invoice GL journal is in a locked VAT period
+    if (existing.journal_id) {
+      const vatLock = await JournalService.isVatPeriodLocked(existing.journal_id);
+      if (vatLock.locked) {
+        return res.status(403).json({
+          error: `Cannot edit this invoice — it is included in locked VAT period ${vatLock.periodKey}. VAT periods that have been locked cannot be changed.`,
+        });
+      }
+    }
+
     const processedLines = lines.map((l, i) => {
       const { subtotalExVat, vatAmount, totalIncVat } = calcLineVAT(
         l.quantity, l.unitPrice, l.vatRate != null ? l.vatRate : 15, vatInclusive === true

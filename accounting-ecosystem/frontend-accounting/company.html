@@ -60,6 +60,14 @@
 
     .tax-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
+    /* VAT registration toggle switch */
+    .toggle-switch { position:relative; display:inline-block; width:44px; height:24px; }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .toggle-slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#ccc; border-radius:24px; transition:.3s; }
+    .toggle-slider:before { position:absolute; content:''; height:18px; width:18px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.3s; }
+    .toggle-switch input:checked + .toggle-slider { background:#0066cc; }
+    .toggle-switch input:checked + .toggle-slider:before { transform:translateX(20px); }
+
     .logo-upload { display: flex; align-items: center; gap: 15px; }
     .logo-preview { width: 80px; height: 80px; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: #f5f5f5; overflow: hidden; }
     .logo-preview img { max-width: 100%; max-height: 100%; }
@@ -254,7 +262,17 @@
               <input type="text" id="incomeTaxNo" placeholder="e.g. 9012345678">
             </div>
             <div class="form-group">
-              <label>VAT Number</label>
+              <label>VAT Registered?</label>
+              <div style="display:flex;align-items:center;gap:10px;padding-top:6px;">
+                <label class="toggle-switch" style="margin:0;">
+                  <input type="checkbox" id="isVatRegistered" onchange="toggleVatFields()">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span id="vatRegisteredLabel" style="font-size:13px;color:#666;">No</span>
+              </div>
+            </div>
+            <div class="form-group" id="vatNumberGroup" style="display:none;">
+              <label>VAT Number <span style="color:#c00;">*</span></label>
               <input type="text" id="vatNumber" placeholder="e.g. 4012345678">
             </div>
             <div class="form-group">
@@ -286,14 +304,25 @@
                 <option value="12">December</option>
               </select>
             </div>
-            <div class="form-group">
-              <label>VAT Period</label>
-              <select id="vatPeriod">
+            <div class="form-group" id="vatPeriodGroup" style="display:none;">
+              <label>VAT Submission Frequency</label>
+              <select id="vatPeriod" onchange="toggleVatCycleType()">
                 <option value="monthly">Monthly</option>
-                <option value="bi-monthly">Bi-Monthly</option>
+                <option value="bi-monthly">Every 2 Months (Bi-Monthly)</option>
                 <option value="quarterly">Quarterly</option>
                 <option value="annually">Annually</option>
               </select>
+            </div>
+            <div class="form-group" id="vatCycleTypeGroup" style="display:none;">
+              <label>Bi-Monthly Cycle</label>
+              <select id="vatCycleType">
+                <option value="even">Even months (Feb, Apr, Jun, Aug, Oct, Dec)</option>
+                <option value="odd">Odd months (Jan, Mar, May, Jul, Sep, Nov)</option>
+              </select>
+            </div>
+            <div class="form-group" id="vatRegisteredDateGroup" style="display:none;">
+              <label>VAT Registration Date</label>
+              <input type="date" id="vatRegisteredDate" placeholder="Date VAT registration became effective">
             </div>
           </div>
         </form>
@@ -713,6 +742,27 @@
       showAlert('Switched to ' + currentCompany.name, 'success');
     }
 
+    // ── VAT field visibility helpers ─────────────────────────────────────────
+    function toggleVatFields() {
+      const isVatReg = document.getElementById('isVatRegistered').checked;
+      const show = isVatReg ? '' : 'none';
+      document.getElementById('vatNumberGroup').style.display = show;
+      document.getElementById('vatPeriodGroup').style.display = show;
+      document.getElementById('vatRegisteredDateGroup').style.display = show;
+      document.getElementById('vatRegisteredLabel').textContent = isVatReg ? 'Yes' : 'No';
+      if (isVatReg) {
+        toggleVatCycleType();
+      } else {
+        document.getElementById('vatCycleTypeGroup').style.display = 'none';
+      }
+    }
+
+    function toggleVatCycleType() {
+      const period = document.getElementById('vatPeriod').value;
+      document.getElementById('vatCycleTypeGroup').style.display =
+        period === 'bi-monthly' ? '' : 'none';
+    }
+
     async function loadCompanyDetails(companyId) {
       try {
         const res = await fetch(`/api/accounting/company/${companyId}`, {
@@ -737,12 +787,16 @@
       document.getElementById('companyType').value = data.companyType || 'pty_ltd';
       document.getElementById('incomeTaxNo').value = data.incomeTaxNo || '';
       document.getElementById('vatNumber').value = data.vatNumber || '';
+      document.getElementById('isVatRegistered').checked = !!data.isVatRegistered;
+      document.getElementById('vatPeriod').value = data.vatPeriod || 'bi-monthly';
+      document.getElementById('vatCycleType').value = data.vatCycleType || 'even';
+      document.getElementById('vatRegisteredDate').value = data.vatRegisteredDate ? data.vatRegisteredDate.slice(0,10) : '';
+      toggleVatFields();  // show/hide dependent fields — called AFTER all VAT values are set
       document.getElementById('payeRef').value = data.payeRef || '';
       document.getElementById('uifRef').value = data.uifRef || '';
       document.getElementById('sdlRef').value = data.sdlRef || '';
       document.getElementById('coidNumber').value = data.coidNumber || '';
       document.getElementById('yearEnd').value = data.yearEnd || '02';
-      document.getElementById('vatPeriod').value = data.vatPeriod || 'bi-monthly';
       document.getElementById('physicalAddress').value = data.physicalAddress || '';
       document.getElementById('city').value = data.city || '';
       document.getElementById('postalCode').value = data.postalCode || '';
@@ -783,13 +837,16 @@
         regNumber: document.getElementById('regNumber').value,
         companyType: document.getElementById('companyType').value,
         incomeTaxNo: document.getElementById('incomeTaxNo').value,
-        vatNumber: document.getElementById('vatNumber').value,
+        vatNumber:         document.getElementById('vatNumber').value,
+        isVatRegistered:   document.getElementById('isVatRegistered').checked,
+        vatPeriod:         document.getElementById('vatPeriod').value,
+        vatCycleType:      document.getElementById('vatCycleType').value,
+        vatRegisteredDate: document.getElementById('vatRegisteredDate').value || null,
         payeRef: document.getElementById('payeRef').value,
         uifRef: document.getElementById('uifRef').value,
         sdlRef: document.getElementById('sdlRef').value,
         coidNumber: document.getElementById('coidNumber').value,
         yearEnd: document.getElementById('yearEnd').value,
-        vatPeriod: document.getElementById('vatPeriod').value,
         physicalAddress: document.getElementById('physicalAddress').value,
         city: document.getElementById('city').value,
         postalCode: document.getElementById('postalCode').value,
@@ -832,7 +889,7 @@
           throw new Error('Failed to save');
         }
       } catch (err) {
-        showAlert('Company settings saved locally (demo mode)', 'info');
+        showAlert('Failed to save company settings: ' + (err.message || 'Server error'), 'danger');
       }
     }
 

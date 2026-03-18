@@ -784,9 +784,33 @@ router.patch('/transactions/:id/flip', authenticate, hasPermission('bank.manage'
 });
 
 /**
+ * Resolve VAT Input (1400) or VAT Output (2300) account for a company.
+ * Returns the account row or null if not found.
+ */
+async function findVatAccount(companyId, code) {
+  const { data } = await supabase
+    .from('accounts')
+    .select('id, code, name')
+    .eq('company_id', companyId)
+    .eq('code', code)
+    .eq('is_active', true)
+    .maybeSingle();
+  return data || null;
+}
+
+/**
  * POST /api/bank/transactions/:id/allocate
  * Allocate bank transaction and atomically post the journal.
  * Journal is always 'posted' on success — no silent draft-only state possible.
+ *
+ * VAT support (ACCOUNT allocations only):
+ *   Each line may include { vatSettingId, vatInclusive }.
+ *   When vatSettingId is provided and VAT rate > 0:
+ *     - The line amount is treated as VAT-inclusive (gross) by default.
+ *     - ex-VAT amount → the user-chosen allocation account
+ *     - VAT amount → VAT Input (1400) for payments out, VAT Output (2300) for receipts in
+ *   CUSTOMER/SUPPLIER payment lines must NOT carry vatSettingId — they are settling
+ *   invoices where VAT is already handled on the invoice side.
  */
 router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
   try {
@@ -822,43 +846,89 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
 
     // Build journal lines (bank account + user-specified allocations)
     const journalLines = [];
+    const isMoneyIn = bankTxn.amount > 0;
 
-    if (bankTxn.amount > 0) {
-      // Money in: Debit bank account
-      journalLines.push({
-        accountId: ledgerAccountId,
-        debit: Math.abs(bankTxn.amount),
-        credit: 0,
-        description: `Bank: ${bankTxn.description}`
-      });
+    // Bank account line (always the full gross amount)
+    journalLines.push({
+      accountId:   ledgerAccountId,
+      debit:       isMoneyIn ? Math.abs(bankTxn.amount) : 0,
+      credit:      isMoneyIn ? 0 : Math.abs(bankTxn.amount),
+      description: `Bank: ${bankTxn.description}`
+    });
 
-      // Credits to other accounts
-      lines.forEach(line => {
+    // Resolve VAT settings for any lines that carry a vatSettingId
+    // We do this once outside the loop to avoid N+1 queries per line.
+    const vatSettingIds = [...new Set(
+      lines.filter(l => l.vatSettingId).map(l => l.vatSettingId)
+    )];
+    const vatSettingMap = {};
+    if (vatSettingIds.length > 0) {
+      const { data: vsRows } = await supabase
+        .from('vat_settings')
+        .select('id, code, name, rate, is_capital')
+        .eq('company_id', req.user.companyId)
+        .in('id', vatSettingIds);
+      (vsRows || []).forEach(vs => { vatSettingMap[vs.id] = vs; });
+    }
+
+    // Process each allocation line
+    for (const line of lines) {
+      const gross = Math.round(Number(line.amount) * 100) / 100;
+      const lineDesc = line.description || bankTxn.description;
+      const vs = line.vatSettingId ? vatSettingMap[line.vatSettingId] : null;
+
+      if (vs && vs.rate > 0) {
+        // VAT-bearing allocation (ACCOUNT type only — not CUSTOMER/SUPPLIER payments)
+        // Default: gross amount is VAT-inclusive. Override with vatInclusive: false if ex-VAT.
+        const vatInclusive = line.vatInclusive !== false; // default true
+        let exVat, vatAmt;
+
+        if (vatInclusive) {
+          exVat  = Math.round((gross / (1 + vs.rate / 100)) * 100) / 100;
+          vatAmt = Math.round((gross - exVat) * 100) / 100;
+        } else {
+          exVat  = gross;
+          vatAmt = Math.round((gross * vs.rate / 100) * 100) / 100;
+        }
+
+        // Allocation account line at ex-VAT amount
         journalLines.push({
-          accountId: line.accountId,
-          debit: 0,
-          credit: line.amount,
-          description: line.description || bankTxn.description
+          accountId:   line.accountId,
+          debit:       isMoneyIn ? 0 : exVat,
+          credit:      isMoneyIn ? exVat : 0,
+          description: lineDesc
         });
-      });
-    } else {
-      // Money out: Credit bank account
-      journalLines.push({
-        accountId: ledgerAccountId,
-        debit: 0,
-        credit: Math.abs(bankTxn.amount),
-        description: `Bank: ${bankTxn.description}`
-      });
 
-      // Debits to other accounts
-      lines.forEach(line => {
+        // VAT account line — Input (1400) for payments out, Output (2300) for receipts in
+        const vatAccountCode = isMoneyIn ? '2300' : '1400';
+        const vatAccount = await findVatAccount(req.user.companyId, vatAccountCode);
+        if (vatAccount) {
+          journalLines.push({
+            accountId:   vatAccount.id,
+            debit:       isMoneyIn ? 0 : vatAmt,
+            credit:      isMoneyIn ? vatAmt : 0,
+            description: `VAT — ${vs.name} (${vs.rate}%) on: ${lineDesc}`
+          });
+        } else {
+          // VAT account not found in COA — fall back to posting full gross to allocation account
+          // Log warning so accountant is alerted
+          console.warn(
+            `[bank.allocate] VAT account ${vatAccountCode} not found for company ${req.user.companyId}. ` +
+            `Posting full amount without VAT split. Check Chart of Accounts.`
+          );
+          // Replace the ex-VAT line with a full-gross line
+          journalLines[journalLines.length - 1].debit  = isMoneyIn ? 0 : gross;
+          journalLines[journalLines.length - 1].credit = isMoneyIn ? gross : 0;
+        }
+      } else {
+        // No VAT — standard single-line allocation
         journalLines.push({
-          accountId: line.accountId,
-          debit: line.amount,
-          credit: 0,
-          description: line.description || bankTxn.description
+          accountId:   line.accountId,
+          debit:       isMoneyIn ? 0 : gross,
+          credit:      isMoneyIn ? gross : 0,
+          description: lineDesc
         });
-      });
+      }
     }
 
     // Create draft journal (no pg client — uses Supabase directly)
@@ -967,6 +1037,16 @@ router.delete('/transactions/:id/allocate', authenticate, hasPermission('bank.al
 
     if (bankTxn.status === 'unmatched') {
       return res.status(409).json({ error: 'Transaction is not allocated' });
+    }
+
+    // VAT period lock guard: block unallocate if linked journal is in a locked VAT period
+    if (bankTxn.matched_entity_id) {
+      const vatLock = await JournalService.isVatPeriodLocked(bankTxn.matched_entity_id);
+      if (vatLock.locked) {
+        return res.status(403).json({
+          error: `Cannot unallocate this transaction — it is included in locked VAT period ${vatLock.periodKey}. VAT periods that have been locked cannot be changed.`,
+        });
+      }
     }
 
     // Reverse the linked journal if one exists

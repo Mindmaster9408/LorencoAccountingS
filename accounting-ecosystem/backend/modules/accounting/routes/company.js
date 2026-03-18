@@ -20,7 +20,10 @@ function mapCompanyRow(row) {
     regNumber:       row.registration_number,
     companyType:     row.company_type,
     incomeTaxNo:     row.income_tax_number,
-    vatNumber:       row.vat_number,
+    vatNumber:          row.vat_number,
+    isVatRegistered:    row.is_vat_registered || false,
+    vatCycleType:       row.vat_cycle_type,
+    vatRegisteredDate:  row.vat_registered_date,
     payeRef:         row.paye_reference,
     uifRef:          row.uif_reference,
     sdlRef:          row.sdl_reference,
@@ -160,7 +163,11 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
     if (d.regNumber)       updates.registration_number = d.regNumber;
     if (d.companyType)     updates.company_type        = d.companyType;
     if (d.incomeTaxNo)     updates.income_tax_number   = d.incomeTaxNo;
-    if (d.vatNumber)       updates.vat_number          = d.vatNumber;
+    if (d.vatNumber)          updates.vat_number           = d.vatNumber;
+    // is_vat_registered is a boolean — handle explicit false correctly
+    if (d.isVatRegistered !== undefined) updates.is_vat_registered = !!d.isVatRegistered;
+    if (d.vatCycleType)       updates.vat_cycle_type       = d.vatCycleType;
+    if (d.vatRegisteredDate)  updates.vat_registered_date  = d.vatRegisteredDate;
     if (d.payeRef)         updates.paye_reference      = d.payeRef;
     if (d.uifRef)          updates.uif_reference       = d.uifRef;
     if (d.sdlRef)          updates.sdl_reference       = d.sdlRef;

@@ -2131,6 +2131,11 @@ Click OK to simulate uploading a file.`;
                     <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
                         <option value="">Select Account…</option>
                     </select>
+                    <div id="vatSelectWrap_${txn.id}" style="display:none;margin-top:4px;">
+                        <select id="vatSelect_${txn.id}" class="allocation-select" style="font-size:11px;color:#555;" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
+                            <option value="">No VAT</option>
+                        </select>
+                    </div>
                 </td>
                 <td>
                     ${statusBadgeHtml(txn.status)}
@@ -3165,12 +3170,13 @@ Click OK to simulate uploading a file.`;
 
         function updateAllocation(select, id) {
             const type = select.value;
-            console.log(`Transaction ${id} type set to: ${type}`);
 
             if (!transactionAllocations[id]) {
                 transactionAllocations[id] = {};
             }
             transactionAllocations[id].type = type;
+            // Clear any previously chosen VAT setting when type changes
+            transactionAllocations[id].vatSettingId = null;
             saveAllocationsToStorage();
 
             // Update UI - show account selector based on type
@@ -3178,6 +3184,28 @@ Click OK to simulate uploading a file.`;
             if (row) {
                 updateAccountOptions(row, type, id);
             }
+
+            // Show VAT dropdown only for ACCOUNT type on VAT-registered companies.
+            // CUSTOMER and SUPPLIER payments must NOT carry VAT here — invoice already handles it.
+            const vatWrap = document.getElementById('vatSelectWrap_' + id);
+            if (vatWrap) {
+                const showVat = type === 'account' && window._companyIsVatRegistered;
+                vatWrap.style.display = showVat ? '' : 'none';
+                if (showVat) {
+                    populateVatSelect(id);
+                }
+            }
+        }
+
+        function populateVatSelect(id) {
+            const sel = document.getElementById('vatSelect_' + id);
+            if (!sel) return;
+            const settings = window._vatSettings || [];
+            let html = '<option value="">No VAT</option>';
+            settings.forEach(vs => {
+                html += `<option value="${vs.id}">${vs.name}</option>`;
+            });
+            sel.innerHTML = html;
         }
 
         function updateAccountOptions(row, type, id) {
@@ -3310,12 +3338,27 @@ Click OK to simulate uploading a file.`;
                     return;
                 }
 
+                // Resolve VAT setting for this allocation (only applies when type = 'account')
+                let vatSettingId = null;
+                if (allocation.type === 'account' && window._companyIsVatRegistered) {
+                    const vatSel = document.getElementById('vatSelect_' + id);
+                    const selectedVal = vatSel ? vatSel.value : '';
+                    vatSettingId = selectedVal ? parseInt(selectedVal, 10) : null;
+                }
+
+                // Build allocation line — include vatSettingId when applicable
+                const allocationLine = { accountId: allocation.accountId, amount: Math.abs(txnData.amount) };
+                if (vatSettingId) {
+                    allocationLine.vatSettingId = vatSettingId;
+                    allocationLine.vatInclusive = true; // bank statement amounts are always gross (VAT inclusive)
+                }
+
                 // Call the real allocation API — handles double-entry journal automatically
                 const res = await fetch(`/api/accounting/bank/transactions/${id}/allocate`, {
                     method: 'POST',
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
-                        lines: [{ accountId: allocation.accountId, amount: Math.abs(txnData.amount) }],
+                        lines: [allocationLine],
                         description: txnData.description
                     })
                 });
@@ -3357,6 +3400,20 @@ Click OK to simulate uploading a file.`;
                 typeSelect.value = saved.type;
                 // Populate account options then restore saved account
                 updateAccountOptions(row, saved.type, txnId);
+
+                // Restore VAT selector visibility + value
+                const vatWrap = document.getElementById('vatSelectWrap_' + txnId);
+                if (vatWrap) {
+                    const showVat = saved.type === 'account' && window._companyIsVatRegistered;
+                    vatWrap.style.display = showVat ? '' : 'none';
+                    if (showVat) {
+                        populateVatSelect(txnId);
+                        if (saved.vatSettingId) {
+                            const vatSel = document.getElementById('vatSelect_' + txnId);
+                            if (vatSel) vatSel.value = String(saved.vatSettingId);
+                        }
+                    }
+                }
                 if (saved.accountCode && acctSelect) {
                     // Options just rebuilt — set value
                     acctSelect.value = saved.accountCode;
@@ -3453,6 +3510,26 @@ Click OK to simulate uploading a file.`;
             } catch (_) {}
         }
 
+        // ── Company VAT settings (loaded once at init) ───────────────────────
+        // Used to show/hide VAT dropdown on ACCOUNT allocations.
+        window._vatSettings = [];   // active VAT categories for this company
+        window._companyIsVatRegistered = false;
+
+        async function loadVatSettings() {
+            try {
+                const res = await fetch('/api/accounting/vat-settings/active', {
+                    headers: getAuthHeaders()
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                window._vatSettings = data.vatSettings || [];
+                window._companyIsVatRegistered = window._vatSettings.length > 0;
+            } catch (e) {
+                // Non-fatal — VAT features simply won't appear
+                console.warn('[bank] Could not load VAT settings:', e.message);
+            }
+        }
+
         // Initialize on page load — clear any hardcoded rows and load real company data
         document.addEventListener('DOMContentLoaded', async function() {
             // Immediately remove any hardcoded demo rows
@@ -3460,8 +3537,8 @@ Click OK to simulate uploading a file.`;
             if (tbody) {
                 Array.from(tbody.querySelectorAll('tr:not(#manualEntryRow)')).forEach(r => r.remove());
             }
-            // Load chart of accounts, bank accounts, then transactions in parallel
-            await Promise.all([loadChartOfAccounts(), loadBankAccounts()]);
+            // Load chart of accounts, bank accounts, VAT settings, then transactions in parallel
+            await Promise.all([loadChartOfAccounts(), loadBankAccounts(), loadVatSettings()]);
             await loadTransactions();
         });
         

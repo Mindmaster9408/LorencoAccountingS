@@ -539,42 +539,6 @@
         }
         
         async function loadDashboard() {
-            const demoMode = localStorage.getItem('demoMode') === 'true';
-            
-            if (demoMode) {
-                // Demo mode - show mock data
-                document.getElementById('totalAccounts').textContent = '25';
-                document.getElementById('draftJournals').textContent = '3';
-                document.getElementById('unmatchedTxns').textContent = '12';
-                document.getElementById('aiPending').textContent = '0';
-                
-                const tbody = document.querySelector('#recentJournals tbody');
-                tbody.innerHTML = `
-                    <tr>
-                        <td>2026-01-14</td>
-                        <td>JNL-001</td>
-                        <td>Office supplies purchase</td>
-                        <td><span class="badge badge-success">posted</span></td>
-                        <td>MANUAL</td>
-                    </tr>
-                    <tr>
-                        <td>2026-01-13</td>
-                        <td>JNL-002</td>
-                        <td>Client payment received</td>
-                        <td><span class="badge badge-success">posted</span></td>
-                        <td>BANK</td>
-                    </tr>
-                    <tr>
-                        <td>2026-01-12</td>
-                        <td>JNL-003</td>
-                        <td>Utilities expense</td>
-                        <td><span class="badge badge-warning">draft</span></td>
-                        <td>MANUAL</td>
-                    </tr>
-                `;
-                return;
-            }
-            
             try {
                 // Load accounts count
                 const accountsRes = await fetchWithAuth(`${API_URL}/accounts`);
