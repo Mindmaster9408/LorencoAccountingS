@@ -1277,6 +1277,90 @@ router.delete('/attachments/:attachmentId', authenticate, hasPermission('bank.ma
 });
 
 /**
+ * DELETE /api/bank/transactions/bulk
+ * Delete multiple bank transactions in one request.
+ * Body: { ids: string[], force?: boolean }
+ * MUST be registered before DELETE /transactions/:id so Express doesn't match "bulk" as :id.
+ */
+router.delete('/transactions/bulk', authenticate, hasPermission('bank.manage'), async (req, res) => {
+  const { ids, force } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids array is required' });
+  }
+
+  const companyId = req.user.companyId;
+
+  try {
+    const { data: txns, error: fetchErr } = await supabase
+      .from('bank_transactions')
+      .select('id, status, description, amount, date, matched_entity_id')
+      .in('id', ids)
+      .eq('company_id', companyId);
+
+    if (fetchErr) throw new Error(fetchErr.message);
+
+    const found    = txns || [];
+    const blocked  = [];
+    const eligible = [];
+
+    for (const txn of found) {
+      if (txn.status === 'reconciled') {
+        blocked.push({ id: txn.id, reason: 'reconciled' });
+      } else if (txn.status === 'matched' && !force) {
+        blocked.push({ id: txn.id, reason: 'allocated', journalRef: txn.matched_entity_id });
+      } else {
+        eligible.push(txn);
+      }
+    }
+
+    if (eligible.length === 0) {
+      return res.json({ success: true, deleted: 0, blocked });
+    }
+
+    const eligibleIds = eligible.map(t => t.id);
+
+    const { data: attachments } = await supabase
+      .from('bank_transaction_attachments')
+      .select('id, file_path, bank_transaction_id')
+      .in('bank_transaction_id', eligibleIds);
+
+    for (const att of (attachments || [])) {
+      if (att.file_path && fs.existsSync(att.file_path)) {
+        try { fs.unlinkSync(att.file_path); } catch (_) { /* non-fatal */ }
+      }
+    }
+
+    if ((attachments || []).length > 0) {
+      await supabase
+        .from('bank_transaction_attachments')
+        .delete()
+        .in('bank_transaction_id', eligibleIds);
+    }
+
+    const { error: deleteErr } = await supabase
+      .from('bank_transactions')
+      .delete()
+      .in('id', eligibleIds)
+      .eq('company_id', companyId);
+
+    if (deleteErr) throw new Error(deleteErr.message);
+
+    await AuditLogger.logUserAction(
+      req, 'DELETE', 'BANK_TRANSACTION', eligibleIds.join(','),
+      { count: eligibleIds.length }, null,
+      `Bulk deleted ${eligibleIds.length} bank transaction(s)`
+    );
+
+    res.json({ success: true, deleted: eligibleIds.length, blocked });
+
+  } catch (error) {
+    console.error('Error bulk-deleting bank transactions:', error);
+    res.status(500).json({ error: 'Failed to delete transactions' });
+  }
+});
+
+/**
  * DELETE /api/bank/transactions/:id
  * Delete a bank transaction.
  * Rules:
@@ -1359,96 +1443,6 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
   } catch (error) {
     console.error('Error deleting bank transaction:', error);
     res.status(500).json({ error: 'Failed to delete transaction' });
-  }
-});
-
-/**
- * DELETE /api/bank/transactions/bulk
- * Delete multiple bank transactions in one request.
- * Body: { ids: string[], force?: boolean }
- *   - Reconciled transactions are always blocked (returned in `blocked`)
- *   - Matched (allocated) transactions are blocked unless force=true
- *   - Attachments deleted, then all eligible rows deleted in 2 Supabase calls
- */
-router.delete('/transactions/bulk', authenticate, hasPermission('bank.manage'), async (req, res) => {
-  const { ids, force } = req.body;
-
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'ids array is required' });
-  }
-
-  const companyId = req.user.companyId;
-
-  try {
-    // 1. Fetch all requested transactions in one query
-    const { data: txns, error: fetchErr } = await supabase
-      .from('bank_transactions')
-      .select('id, status, description, amount, date, matched_entity_id')
-      .in('id', ids)
-      .eq('company_id', companyId);
-
-    if (fetchErr) throw new Error(fetchErr.message);
-
-    const found    = txns || [];
-    const blocked  = [];
-    const eligible = [];
-
-    for (const txn of found) {
-      if (txn.status === 'reconciled') {
-        blocked.push({ id: txn.id, reason: 'reconciled' });
-      } else if (txn.status === 'matched' && !force) {
-        blocked.push({ id: txn.id, reason: 'allocated', journalRef: txn.matched_entity_id });
-      } else {
-        eligible.push(txn);
-      }
-    }
-
-    if (eligible.length === 0) {
-      return res.json({ success: true, deleted: 0, blocked });
-    }
-
-    const eligibleIds = eligible.map(t => t.id);
-
-    // 2. Delete attachments for all eligible transactions in one query
-    const { data: attachments } = await supabase
-      .from('bank_transaction_attachments')
-      .select('id, file_path, bank_transaction_id')
-      .in('bank_transaction_id', eligibleIds);
-
-    for (const att of (attachments || [])) {
-      if (att.file_path && fs.existsSync(att.file_path)) {
-        try { fs.unlinkSync(att.file_path); } catch (_) { /* non-fatal */ }
-      }
-    }
-
-    if ((attachments || []).length > 0) {
-      await supabase
-        .from('bank_transaction_attachments')
-        .delete()
-        .in('bank_transaction_id', eligibleIds);
-    }
-
-    // 3. Delete all eligible transactions in one query
-    const { error: deleteErr } = await supabase
-      .from('bank_transactions')
-      .delete()
-      .in('id', eligibleIds)
-      .eq('company_id', companyId);
-
-    if (deleteErr) throw new Error(deleteErr.message);
-
-    await AuditLogger.logUserAction(
-      req, 'DELETE', 'BANK_TRANSACTION', eligibleIds.join(','),
-      { count: eligibleIds.length },
-      null,
-      `Bulk deleted ${eligibleIds.length} bank transaction(s)`
-    );
-
-    res.json({ success: true, deleted: eligibleIds.length, blocked });
-
-  } catch (error) {
-    console.error('Error bulk-deleting bank transactions:', error);
-    res.status(500).json({ error: 'Failed to delete transactions' });
   }
 });
 
