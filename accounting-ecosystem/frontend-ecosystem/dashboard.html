@@ -1223,8 +1223,8 @@
                         <div style="color:var(--text-muted);font-size:0.85rem;">Loading users...</div>
                     </div>
 
-                    <!-- Add user section -->
-                    <div style="border-top:1px solid var(--border);padding-top:20px;">
+                    <!-- Add user section — hidden for non-managers via switchPracticeTab -->
+                    <div id="addUserSection" style="border-top:1px solid var(--border);padding-top:20px;">
                         <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:16px;">Add New User</div>
                         <form id="addUserForm" onsubmit="return addPracticeUser(event)">
                             <div class="form-row">
@@ -2554,7 +2554,13 @@
             matrixBtn.style.cssText = baseStyle + (tab === 'matrix'  ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
             demosBtn.style.cssText  = baseStyle + (tab === 'demos'   ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;' : 'background:transparent;color:rgba(255,255,255,0.5);');
 
-            if (tab === 'users') loadPracticeUsers();
+            if (tab === 'users') {
+                // Only business owners and super admins can add/manage users
+                const canManageUsers = isSuperAdmin || (selectedCompany && selectedCompany.role === 'business_owner');
+                const addSection = document.getElementById('addUserSection');
+                if (addSection) addSection.style.display = canManageUsers ? '' : 'none';
+                loadPracticeUsers();
+            }
             if (tab === 'matrix') loadPermissionMatrix();
             if (tab === 'demos') renderDemosTab();
         }
