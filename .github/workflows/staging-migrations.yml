@@ -1,0 +1,54 @@
+name: Staging — Apply DB Migrations
+
+# Triggered when code is pushed to the staging branch.
+# Applies SQL migrations to the STAGING Supabase database.
+# Production migrations are in apply-migrations.yml (main branch only).
+
+on:
+  push:
+    branches: [ staging ]
+
+permissions:
+  contents: read
+
+jobs:
+  apply-staging-migrations:
+    name: Apply SQL migrations to Staging Supabase
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run staging migrations
+        env:
+          # SUPABASE_DB_URL_STAGING must be set in GitHub repository secrets
+          # (Settings → Secrets → Actions → New repository secret)
+          # Value: your staging Supabase direct connection string
+          # Format: postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL_STAGING }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "SUPABASE_DB_URL_STAGING secret is not set."
+            echo "Add it in GitHub → Settings → Secrets → Actions."
+            echo "Skipping staging migrations.";
+            exit 0;
+          fi
+
+          echo "Ensuring pgcrypto extension exists (staging)..."
+          psql "$SUPABASE_DB_URL" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" || true
+
+          echo "Applying SQL migration files to staging DB..."
+          set -e
+          for f in accounting-ecosystem/backend/config/migrations/*.sql; do
+            echo "---- Running $f ----"
+            psql "$SUPABASE_DB_URL" -f "$f"
+          done
+
+          echo "Staging migrations complete."

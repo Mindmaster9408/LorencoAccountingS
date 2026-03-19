@@ -48,7 +48,8 @@ const customersRoutes = require('./shared/routes/customers');
 const ecoClientsRoutes = require('./shared/routes/eco-clients');
 // Global KV store — all ecosystem frontend business data (NEVER in localStorage)
 const globalKvRoutes = require('./shared/routes/kv');
-const ocrRoutes      = require('./shared/routes/ocr');
+const ocrRoutes          = require('./shared/routes/ocr');
+const featureFlagsRoutes = require('./shared/routes/featureFlags');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
@@ -171,6 +172,8 @@ app.use('/api/customers', authenticateToken, customersRoutes);
 app.use('/api/kv', globalKvRoutes);
 // OCR — image and scanned-PDF text extraction (any authenticated user)
 app.use('/api/ocr', authenticateToken, ocrRoutes);
+// Feature flags — admin management + per-user/company flag checks
+app.use('/api/feature-flags', authenticateToken, featureFlagsRoutes);
 
 // ─── Top-level POS-related Routes (receipts, barcodes, reports, analytics) ──
 if (receiptsRoutes) {
@@ -546,6 +549,14 @@ async function start() {
     } catch (migErr) {
       console.warn('  ⚠️  POS schema migration skipped:', migErr.message);
       console.warn('     Set DATABASE_URL (Supabase direct connection string, port 5432) to enable auto-migration.');
+    }
+
+    // 4d. Auto-migrate feature flags table (runs on every startup, safe — uses IF NOT EXISTS)
+    try {
+      const { ensureFeatureFlagsSchema } = require('./config/feature-flags-schema');
+      await ensureFeatureFlagsSchema(supabase);
+    } catch (migErr) {
+      console.warn('  ⚠️  Feature flags schema migration skipped:', migErr.message);
     }
   }
 
