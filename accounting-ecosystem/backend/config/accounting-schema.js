@@ -40,6 +40,7 @@ async function ensureAccountingSchema(pool) {
       ['account_holder',    'VARCHAR(255)'],
       ['logo_url',          'TEXT'],
       // VAT registration — master switch and cycle settings
+      ['vat_number',          'VARCHAR(50)'],     // VAT registration number for SARS
       ['is_vat_registered',   'BOOLEAN DEFAULT false'],
       ['vat_cycle_type',      'VARCHAR(20)'],    // 'even' | 'odd' — for bi-monthly filers
       ['vat_registered_date', 'DATE'],            // effective start date of VAT registration
