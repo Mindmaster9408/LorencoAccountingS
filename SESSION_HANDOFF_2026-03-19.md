@@ -154,3 +154,90 @@ These were pre-existing — not introduced today:
 ---
 
 *Come back, read this file, then check `docs/paytime-release-process.md` for full workflow details.*
+
+---
+
+# SESSION HANDOFF ADDENDUM — 2026-03-19 (Part 2)
+## Multi-Tenant Access Fix: Paytime + Ecosystem
+
+---
+
+## WHAT WAS CHANGED (PART 2)
+
+### Root Cause Summary
+
+**The core multi-tenant access bug**: Non-superadmin accounting firm employees (accountants, payroll admins) could NOT open client companies in Paytime. The system was designed correctly for superadmins but broke for everyone else in 3 different places.
+
+---
+
+### File 1: `accounting-ecosystem/frontend-payroll/company-selection.html`
+
+**CRITICAL FIX — `selectCompany(companyId)`**: Replaced `AUTH.selectCompany()` (which called `POST /api/auth/select-company`) with a direct `POST /api/auth/sso-launch` call.
+
+`select-company` requires a `user_company_access` row for the target company. Accountants at a firm have no such row for client companies — access is via the eco_client chain. Only `sso-launch` handles this correctly. Result: all non-superadmins got 403 when trying to open a client in Paytime.
+
+**ALSO FIXED — `loadEcoClients()`**: Now uses `eco_token || token` for the eco-clients query. When navigating back from company-dashboard.html (where the payroll token has CLIENT_COMPANY_ID), the eco-clients query would return empty results without this fix. `eco_token` always has the firm's company_id.
+
+---
+
+### File 2: `accounting-ecosystem/frontend-payroll/company-dashboard.html`
+
+**CRITICAL FIX — `switchToCompany(companyId)`**: Was only updating `localStorage.session.company_id` without issuing a new JWT. After the "switch", API calls still carried the OLD company's JWT → wrong data shown. Now calls `sso-launch` to get a new scoped JWT, stores it, updates session, reloads.
+
+**CRITICAL FIX — `loadCompaniesCarousel()`**: Was reading only from the `availableCompanies` localStorage cache (set at login, contains only the firm from `user_company_access`). Clients never appeared in the sidebar switcher. Now fetches eco-clients via `GET /api/eco-clients?app=payroll` using `eco_token || token` and renders both firm and all managed clients. Clients show with `↗` suffix and turn green when active.
+
+**MINOR FIX — company name display in `loadDashboard()`**: `AUTH.getCompanyById()` only searches the login-time cache and fails for client companies. Now falls back to `session.company_name` → `company` localStorage key → 'Unnamed Company'.
+
+---
+
+### File 3: `accounting-ecosystem/backend/shared/routes/auth.js`
+
+**BACKEND SAFETY NET — `POST /api/auth/select-company`**: Added eco_client indirect access support. If no direct `user_company_access` row exists for the target company, now applies the same eco_client chain lookup as `sso-launch` (fetch user's practices → check eco_clients → verify role). This also fixes the accounting app's `navigation.js` company switcher, which calls `select-company`.
+
+---
+
+## BUGS FIXED
+
+| Bug | Symptom | File |
+|-----|---------|------|
+| `selectCompany()` using wrong endpoint | 403 for all non-superadmins selecting client in Paytime | `company-selection.html` |
+| `loadEcoClients()` using wrong token when navigating back | Client list empty on company-selection after returning from dashboard | `company-selection.html` |
+| `switchToCompany()` not issuing new JWT | API calls showed wrong company's data after switch | `company-dashboard.html` |
+| `loadCompaniesCarousel()` reading from login cache only | Sidebar only showed firm, never clients | `company-dashboard.html` |
+| Company name blank in Paytime header for clients | `getCompanyById()` fails for client companies | `company-dashboard.html` |
+| `select-company` blocking indirect access | Accounting app company switcher broken for non-superadmins | `auth.js` |
+
+---
+
+## TESTING REQUIRED
+
+1. **Accountant at Firm A opens Paytime for Client X from ecosystem dashboard** → should reach client's dashboard
+2. **Direct Paytime login as firm accountant** → company-selection shows firm AND clients → clicking client works
+3. **Paytime sidebar company switcher** → shows firm AND all managed clients → switching loads correct client data
+4. **Sub-user (payroll_admin) at firm** → can launch Paytime for any client via ecosystem
+5. **Navigate back: company-dashboard → company-selection** → clients still visible (eco_token used)
+6. **Accounting app company switcher** → works for non-superadmin firm employees
+
+---
+
+## FOLLOW-UP NOTES
+
+```
+FOLLOW-UP NOTE
+- Area: frontend-payroll/users.html
+- Dependency: Uses legacy AUTH.USERS / AUTH.getRegisteredUsers() (localStorage-based)
+- Confirmed now: Not a blocker — only business_owner/admin roles can access this page
+- Not yet confirmed: Whether firm owners need to see API-managed users here
+- Risk if not checked: Users created via ecosystem dashboard API don't appear in Paytime users.html
+- Recommended next check: When Paytime user management is needed, rewrite to call GET /api/users
+```
+
+```
+FOLLOW-UP NOTE
+- Area: AUTH.selectCompany() in frontend-payroll/js/auth.js
+- Dependency: Method still calls select-company endpoint
+- Confirmed now: company-selection.html no longer calls AUTH.selectCompany()
+- Not yet confirmed: Whether any other Paytime page calls AUTH.selectCompany()
+- Risk if not checked: Low — backend select-company now supports eco_client chain too
+- Recommended next check: Audit all Paytime pages for AUTH.selectCompany() usage
+```

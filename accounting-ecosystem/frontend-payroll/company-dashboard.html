@@ -620,12 +620,18 @@
             const roleText = roleLabels[session.role] || session.role;
             document.getElementById('user-role').textContent = roleText;
 
-            // Set company info
-            if (company) {
-                var _cn = company.name || company.company_name || company.trading_name || 'Unnamed';
-                document.getElementById('company-name-header').textContent = _cn;
-                document.getElementById('emp-company-name-header').textContent = _cn;
-            }
+            // Set company info — getCompanyById only finds companies in availableCompanies
+            // (firm-level cache). When SSO'd into a client company, fall back to
+            // session.company_name (set by SSO pickup in index.html) or the 'company'
+            // key stored by launchClientApp.
+            const _cn = (company && (company.name || company.company_name || company.trading_name))
+                || session.company_name
+                || (function() {
+                    try { const c = JSON.parse(safeLocalStorage.getItem('company') || 'null'); return c && (c.trading_name || c.company_name); } catch(e) { return null; }
+                })()
+                || 'Unnamed Company';
+            document.getElementById('company-name-header').textContent = _cn;
+            document.getElementById('emp-company-name-header').textContent = _cn;
 
             // Update employee count from actual stored employees
             updateEmployeeCount();
@@ -640,45 +646,119 @@
             loadEmployeesFromStorage();
         }
 
-        function loadCompaniesCarousel() {
+        async function loadCompaniesCarousel() {
             const session = AUTH.getSession();
-            const companies = AUTH.getCompaniesForUser(session);
             const carousel = document.getElementById('companies-carousel');
-            carousel.innerHTML = '';
+            carousel.innerHTML = '<div style="padding:8px;color:#999;font-size:12px;text-align:center;">Loading...</div>';
 
-            if (companies.length === 0) {
-                carousel.innerHTML = '<div style="padding: 10px; color: #999; text-align: center; font-size: 12px;">No companies available</div>';
-            } else {
-                companies.forEach(company => {
-                    const div = document.createElement('div');
-                    div.className = 'carousel-company';
-                    div.textContent = company.name || company.company_name || company.trading_name || 'Unnamed';
-                    if (company.id === session.company_id) {
-                        div.style.background = '#667eea';
-                        div.style.color = 'white';
-                        div.style.fontWeight = 'bold';
-                    }
-                    div.onclick = () => switchToCompany(company.id);
-                    carousel.appendChild(div);
+            // Direct companies the user has explicit access to
+            const directCompanies = AUTH.getCompaniesForUser() || [];
+            const directIds = new Set(directCompanies.map(c => String(c.id || c.company_id)));
+
+            // Also fetch eco-clients managed by this user's practice.
+            // Use eco_token (ecosystem JWT = practice FIRM_ID) when available so the
+            // eco-clients query is scoped to the firm, not the currently-open client.
+            // Falls back to payroll token (works when that token itself has FIRM_ID,
+            // i.e. direct login or launchApp SSO — not launchClientApp SSO).
+            let clients = [];
+            try {
+                const queryToken = safeLocalStorage.getItem('eco_token') || safeLocalStorage.getItem('token');
+                const resp = await fetch('/api/eco-clients?app=payroll', {
+                    headers: { 'Authorization': 'Bearer ' + queryToken, 'Content-Type': 'application/json' }
                 });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    clients = (data.clients || []).filter(c => {
+                        const cid = String(c.client_company_id || c.company_id || '');
+                        return cid && !directIds.has(cid);
+                    });
+                }
+            } catch (e) {
+                console.warn('[carousel] eco-clients load failed:', e.message);
             }
 
-            // Add Company button for business_owner and accountant
+            carousel.innerHTML = '';
+
+            if (directCompanies.length === 0 && clients.length === 0) {
+                carousel.innerHTML = '<div style="padding:10px;color:#999;text-align:center;font-size:12px;">No companies available</div>';
+            }
+
+            // Direct companies (firm itself, or standalone companies)
+            directCompanies.forEach(company => {
+                const cid = company.id || company.company_id;
+                const div = document.createElement('div');
+                div.className = 'carousel-company';
+                div.textContent = company.name || company.company_name || company.trading_name || 'Unnamed';
+                if (String(cid) === String(session.company_id)) {
+                    div.style.background = '#667eea';
+                    div.style.color = 'white';
+                    div.style.fontWeight = 'bold';
+                }
+                div.onclick = () => switchToCompany(cid);
+                carousel.appendChild(div);
+            });
+
+            // Eco-clients (managed clients)
+            clients.forEach(client => {
+                const cid = client.client_company_id || client.company_id;
+                const div = document.createElement('div');
+                div.className = 'carousel-company';
+                div.textContent = (client.name || 'Unnamed') + ' ↗';
+                div.title = 'Switch to ' + (client.name || 'Unnamed') + ' (client)';
+                if (String(cid) === String(session.company_id)) {
+                    div.style.background = '#10b981';
+                    div.style.color = 'white';
+                    div.style.fontWeight = 'bold';
+                }
+                div.onclick = () => switchToCompany(cid);
+                carousel.appendChild(div);
+            });
+
+            // Add Company shortcut for owners/accountants
             if (session.role === 'business_owner' || session.role === 'accountant') {
-                var addBtn = document.createElement('div');
+                const addBtn = document.createElement('div');
                 addBtn.className = 'carousel-company';
-                addBtn.style.cssText = 'background:#e8f5e9; color:#28a745; font-weight:600; text-align:center; border:1px dashed #28a745; cursor:pointer;';
+                addBtn.style.cssText = 'background:#e8f5e9;color:#28a745;font-weight:600;text-align:center;border:1px dashed #28a745;cursor:pointer;';
                 addBtn.textContent = '+ Add Company';
-                addBtn.onclick = function() { openAddCompanyModal(); };
+                addBtn.onclick = function() { openAddCompanyModal && openAddCompanyModal(); };
                 carousel.appendChild(addBtn);
             }
         }
 
-        function switchToCompany(company_id) {
-            const session = AUTH.getSession();
-            session.company_id = company_id;
-            safeLocalStorage.setItem('session', JSON.stringify(session));
-            location.reload();
+        async function switchToCompany(companyId) {
+            // Issue a new SSO-scoped JWT for the target company.
+            // This supports both direct companies (user_company_access) and
+            // client companies reached via the eco_client chain.
+            // Using the current payroll token is fine — sso-launch resolves
+            // the user's practices from the DB, not from the token's companyId.
+            try {
+                const token = safeLocalStorage.getItem('token');
+                const res = await fetch('/api/auth/sso-launch', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetApp: 'payroll', companyId: companyId })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert('Failed to switch company: ' + (data.error || 'Unknown error'));
+                    return;
+                }
+
+                safeLocalStorage.setItem('token', data.appToken);
+                if (data.user) safeLocalStorage.setItem('user', JSON.stringify(data.user));
+                if (data.company) safeLocalStorage.setItem('company', JSON.stringify(data.company));
+
+                const session = AUTH.getSession() || {};
+                session.company_id = companyId;
+                if (data.company) {
+                    session.role = data.company.role || session.role;
+                    session.company_name = data.company.trading_name || data.company.company_name || session.company_name;
+                }
+                AUTH.setSession(session);
+                location.reload();
+            } catch (e) {
+                alert('Failed to switch company: ' + e.message);
+            }
         }
 
         function goToCompanySelection() {

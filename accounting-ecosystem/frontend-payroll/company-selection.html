@@ -412,7 +412,13 @@
 
         async function loadEcoClients() {
             try {
-                var token = safeLocalStorage.getItem('token');
+                // Use eco_token (ecosystem JWT = firm/practice context) when available.
+                // This ensures the eco-clients query is scoped to the firm even when
+                // the payroll token is scoped to a specific client company (e.g. after
+                // navigating back from company-dashboard.html).
+                // Falls back to payroll token for direct-login scenarios where eco_token
+                // is not present (in those cases, the payroll token has FIRM_ID).
+                var token = safeLocalStorage.getItem('eco_token') || safeLocalStorage.getItem('token');
                 var resp = await fetch('/api/eco-clients?app=' + TARGET_APP, {
                     headers: {
                         'Authorization': 'Bearer ' + token,
@@ -590,15 +596,49 @@
         }
 
         async function selectCompany(companyId) {
-            var result = await AUTH.selectCompany(companyId);
-            if (result.success) {
-                var session = AUTH.getSession();
+            // Use sso-launch instead of select-company so that non-superadmin
+            // practice users (accountants, payroll admins) can SSO into client
+            // companies via the eco_client chain — select-company only allows
+            // direct user_company_access members.
+            try {
+                var token = safeLocalStorage.getItem('token');
+                if (!token) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                var res = await fetch('/api/auth/sso-launch', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ targetApp: 'payroll', companyId: companyId })
+                });
+
+                var data = await res.json();
+                if (!res.ok) {
+                    alert('Failed to select company: ' + (data.error || 'Unknown error'));
+                    return;
+                }
+
+                // Store the SSO-issued app token (scoped to this company)
+                safeLocalStorage.setItem('token', data.appToken);
+                if (data.user) safeLocalStorage.setItem('user', JSON.stringify(data.user));
+                if (data.company) safeLocalStorage.setItem('company', JSON.stringify(data.company));
+
+                // Update session with new company context
+                var session = AUTH.getSession() || {};
                 session.company_id = companyId;
-                session.role = result.role || session.role;
+                if (data.company) {
+                    session.role = data.company.role || session.role;
+                    session.company_name = data.company.trading_name || data.company.company_name || session.company_name;
+                }
                 AUTH.setSession(session);
+
                 window.location.href = 'company-dashboard.html';
-            } else {
-                alert('Failed to select company: ' + (result.message || 'Unknown error'));
+            } catch (e) {
+                alert('Failed to select company: ' + e.message);
             }
         }
 

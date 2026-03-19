@@ -392,19 +392,58 @@ router.post('/select-company', authenticateToken, async (req, res) => {
     if (isSuperAdmin) {
       role = 'super_admin';
     } else {
-      // Regular users — check user_company_access
-      const { data: access, error } = await supabase
+      // Regular users — check direct user_company_access first
+      const { data: access } = await supabase
         .from('user_company_access')
         .select('role')
         .eq('user_id', userId)
         .eq('company_id', parsedCompanyId)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
-      if (error || !access) {
-        return res.status(403).json({ error: 'You do not have access to this company' });
+      if (access) {
+        role = access.role;
+      } else {
+        // No direct row — check if the target company is a client company managed
+        // by a practice the user belongs to.  This mirrors the sso-launch logic so
+        // accountants / business owners can select a client company from inside
+        // Paytime's company-selection page without needing an explicit row.
+        const { data: userPractices } = await supabase
+          .from('user_company_access')
+          .select('company_id')
+          .eq('user_id', userId)
+          .eq('is_active', true);
+        const practiceIds = (userPractices || []).map(r => r.company_id);
+
+        const { data: ecoClient } = practiceIds.length > 0
+          ? await supabase
+              .from('eco_clients')
+              .select('id, company_id')
+              .eq('client_company_id', parsedCompanyId)
+              .in('company_id', practiceIds)
+              .eq('is_active', true)
+              .maybeSingle()
+          : { data: null };
+
+        if (!ecoClient) {
+          return res.status(403).json({ error: 'You do not have access to this company' });
+        }
+
+        // Use the user's role from their managing practice
+        const { data: practiceAccess } = await supabase
+          .from('user_company_access')
+          .select('role')
+          .eq('user_id', userId)
+          .eq('company_id', ecoClient.company_id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        const ALLOWED_CROSS_ROLES = ['business_owner', 'accountant', 'super_admin', 'store_manager'];
+        if (!practiceAccess || !ALLOWED_CROSS_ROLES.includes(practiceAccess.role)) {
+          return res.status(403).json({ error: 'You do not have access to this company' });
+        }
+        role = practiceAccess.role;
       }
-      role = access.role;
     }
 
     // Issue new token with company context
