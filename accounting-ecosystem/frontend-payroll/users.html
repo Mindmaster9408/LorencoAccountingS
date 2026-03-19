@@ -245,12 +245,16 @@
         let companyUsers = [];
         const ALLOWED_ROLES = ['super_admin', 'admin', 'manager', 'business_owner'];
 
+        function _authHeader() {
+            const tok = safeLocalStorage.getItem('token') || safeLocalStorage.getItem('eco_token') || '';
+            return { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' };
+        }
+
         window.addEventListener('load', function() {
             if (!AUTH.isLoggedIn()) { window.location.href = 'login.html'; return; }
             currentSession = AUTH.getSession();
             currentCompanyId = currentSession.company_id;
 
-            // Check access
             if (!ALLOWED_ROLES.includes(currentSession.role)) {
                 document.getElementById('userContent').style.display = 'none';
                 document.getElementById('addUserBtn').style.display = 'none';
@@ -258,8 +262,12 @@
                 return;
             }
 
-            const company = AUTH.getCompanyById(currentCompanyId);
-            document.getElementById('companyName').textContent = company ? company.name : '';
+            // Resolve company name from session/localStorage (API users may not be in AUTH cache)
+            var companyName = currentSession.company_name;
+            if (!companyName) {
+                try { var co = JSON.parse(safeLocalStorage.getItem('company') || 'null'); companyName = co && (co.trading_name || co.company_name); } catch(e) {}
+            }
+            document.getElementById('companyName').textContent = companyName || '';
 
             loadUsers();
         });
@@ -269,27 +277,23 @@
         }
 
         // ========== USER MANAGEMENT ==========
-        function loadUsers() {
+
+        async function loadUsers() {
+            document.getElementById('userGrid').innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><div class="empty-icon">👤</div><div class="empty-text">Loading users...</div></div>';
             companyUsers = [];
-
-            // Get users from in-memory USERS array
-            AUTH.USERS.forEach(u => {
-                if (u.company_id === currentCompanyId) {
-                    companyUsers.push({ ...u, source: 'memory' });
+            try {
+                const res = await fetch('/api/users', { headers: _authHeader() });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    document.getElementById('userGrid').innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><div class="empty-icon">⚠️</div><div class="empty-text">Failed to load users</div><div class="empty-sub">' + (err.error || 'Please try again') + '</div></div>';
+                    return;
                 }
-            });
-
-            // Get users from localStorage registered_users
-            const registeredUsers = AUTH.getRegisteredUsers();
-            registeredUsers.forEach(u => {
-                if (u.company_id === currentCompanyId) {
-                    // Avoid duplicates (in case user exists in both)
-                    if (!companyUsers.find(cu => cu.email === u.email)) {
-                        companyUsers.push({ ...u, source: 'localStorage' });
-                    }
-                }
-            });
-
+                const data = await res.json();
+                companyUsers = data.users || [];
+            } catch (e) {
+                document.getElementById('userGrid').innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><div class="empty-icon">⚠️</div><div class="empty-text">Failed to load users</div><div class="empty-sub">Network error</div></div>';
+                return;
+            }
             document.getElementById('userCount').textContent = companyUsers.length + ' user' + (companyUsers.length !== 1 ? 's' : '');
             displayUsers();
         }
@@ -305,26 +309,26 @@
                 const roleLabel = formatRole(user.role);
                 const roleClass = 'role-' + user.role;
                 const isCurrentUser = user.email === currentSession.email;
-                const isActive = user.active !== false;
+                const isActive = user.is_active !== false;
                 const statusClass = isActive ? 'status-active' : 'status-inactive';
                 const statusLabel = isActive ? 'Active' : 'Inactive';
 
                 return '<div class="user-card ' + (!isActive ? 'inactive' : '') + '">' +
                     (isCurrentUser ? '<span class="current-user-badge">You</span>' : '') +
-                    '<div class="user-name">' + (user.name || 'No Name') + '</div>' +
+                    '<div class="user-name">' + (user.full_name || 'No Name') + '</div>' +
                     '<div class="user-email">' + user.email + '</div>' +
                     '<div class="user-details">' +
                         '<div><div class="user-detail-label">Role</div><span class="role-badge ' + roleClass + '">' + roleLabel + '</span></div>' +
                         '<div><div class="user-detail-label">Status</div><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></div>' +
                     '</div>' +
                     '<div class="user-actions">' +
-                        '<button class="btn btn-primary btn-sm" data-permission="MANAGE_USERS" onclick="editUser(\'' + user.id + '\')">Edit</button>' +
+                        '<button class="btn btn-primary btn-sm" data-permission="MANAGE_USERS" onclick="editUser(' + user.id + ')">Edit</button>' +
                         (!isCurrentUser ?
                             (isActive ?
-                                '<button class="btn btn-warning btn-sm" data-permission="MANAGE_USERS" onclick="toggleUserStatus(\'' + user.id + '\', false)">Deactivate</button>' :
-                                '<button class="btn btn-success btn-sm" data-permission="MANAGE_USERS" onclick="toggleUserStatus(\'' + user.id + '\', true)">Activate</button>'
+                                '<button class="btn btn-warning btn-sm" data-permission="MANAGE_USERS" onclick="toggleUserStatus(' + user.id + ', false)">Deactivate</button>' :
+                                '<button class="btn btn-success btn-sm" data-permission="MANAGE_USERS" onclick="toggleUserStatus(' + user.id + ', true)">Activate</button>'
                             ) +
-                            '<button class="btn btn-danger btn-sm" data-permission="MANAGE_USERS" onclick="deleteUser(\'' + user.id + '\')">Remove</button>'
+                            '<button class="btn btn-danger btn-sm" data-permission="MANAGE_USERS" onclick="deleteUser(' + user.id + ')">Remove</button>'
                         : '') +
                     '</div>' +
                 '</div>';
@@ -335,16 +339,15 @@
 
         function formatRole(role) {
             const labels = {
-                'business_owner': 'Business Owner',
-                'manager': 'Manager',
-                'admin': 'Admin',
-                'accountant': 'Accountant',
-                'super_admin': 'Super Admin'
+                'business_owner': 'Business Owner', 'manager': 'Manager', 'admin': 'Admin',
+                'accountant': 'Accountant', 'super_admin': 'Super Admin',
+                'payroll_admin': 'Payroll Admin', 'leave_admin': 'Leave Admin'
             };
             return labels[role] || role;
         }
 
         // ========== ADD / EDIT USER ==========
+
         function openAddUserModal() {
             document.getElementById('modalTitle').textContent = 'Add New User';
             document.getElementById('editUserId').value = '';
@@ -355,6 +358,7 @@
             document.getElementById('f-role').value = '';
             document.getElementById('f-status').value = 'active';
             document.getElementById('passwordHint').textContent = 'Required for new users';
+            document.getElementById('paytimeAccessSection').style.display = 'none';
             document.getElementById('userModal').classList.add('show');
         }
 
@@ -364,21 +368,18 @@
 
             document.getElementById('modalTitle').textContent = 'Edit User';
             document.getElementById('editUserId').value = user.id;
-            document.getElementById('f-name').value = user.name || '';
+            document.getElementById('f-name').value = user.full_name || '';
             document.getElementById('f-email').value = user.email || '';
             document.getElementById('f-password').value = '';
             document.getElementById('f-password').required = false;
             document.getElementById('f-role').value = user.role || '';
-            document.getElementById('f-status').value = user.active !== false ? 'active' : 'inactive';
+            document.getElementById('f-status').value = user.is_active !== false ? 'active' : 'inactive';
             document.getElementById('passwordHint').textContent = 'Leave blank to keep current password';
             document.getElementById('userModal').classList.add('show');
 
-            // Show Paytime Access config section only for DB users (numeric IDs)
-            // and roles that could have Paytime access configured
-            const numericId = /^\d+$/.test(String(userId));
             const paytimeRoles = ['payroll_admin', 'leave_admin', 'business_owner', 'accountant'];
             const paytimeSection = document.getElementById('paytimeAccessSection');
-            if (numericId && paytimeRoles.includes(user.role)) {
+            if (paytimeRoles.includes(user.role)) {
                 paytimeSection.style.display = '';
                 await loadPaytimeConfig(userId);
             } else {
@@ -386,7 +387,7 @@
             }
         }
 
-        function saveUser(e) {
+        async function saveUser(e) {
             e.preventDefault();
             const editId = document.getElementById('editUserId').value;
             const name = document.getElementById('f-name').value.trim();
@@ -395,119 +396,78 @@
             const role = document.getElementById('f-role').value;
             const active = document.getElementById('f-status').value === 'active';
 
-            if (!name || !email || !role) {
-                alert('Please fill in all required fields.');
-                return;
-            }
+            if (!name || !email || !role) { alert('Please fill in all required fields.'); return; }
 
             if (editId) {
-                // EDIT existing user
-                updateExistingUser(editId, name, email, password, role, active);
+                // EDIT existing user via API
+                try {
+                    const res = await fetch('/api/users/' + editId, {
+                        method: 'PUT', headers: _authHeader(),
+                        body: JSON.stringify({ full_name: name, email: email, role: role, is_active: active })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) { alert(data.error || 'Failed to update user.'); return; }
+
+                    // Change password separately if provided
+                    if (password && password.length >= 6) {
+                        const pwRes = await fetch('/api/users/' + editId + '/password', {
+                            method: 'PUT', headers: _authHeader(),
+                            body: JSON.stringify({ new_password: password })
+                        });
+                        if (!pwRes.ok) {
+                            const pwData = await pwRes.json().catch(() => ({}));
+                            alert('User updated but password change failed: ' + (pwData.error || 'Unknown error'));
+                        }
+                    }
+                } catch (e) { alert('Network error. Please try again.'); return; }
             } else {
-                // ADD new user
-                if (!password || password.length < 6) {
-                    alert('Password must be at least 6 characters.');
-                    return;
-                }
-
-                // Check if email already exists
-                const existing = AUTH.findUserByEmail(email);
-                if (existing) {
-                    alert('A user with this email already exists.');
-                    return;
-                }
-
-                const newUser = {
-                    id: 'user-' + Math.random().toString(36).substr(2, 9),
-                    email: email,
-                    password: password,
-                    name: name,
-                    role: role,
-                    company_id: currentCompanyId,
-                    active: active
-                };
-
-                // Save to localStorage registered_users
-                const registeredUsers = AUTH.getRegisteredUsers();
-                registeredUsers.push(newUser);
-                safeLocalStorage.setItem('registered_users', JSON.stringify(registeredUsers));
-
-                // Also add to in-memory so AUTH.findUserByEmail works immediately
-                AUTH.USERS.push(newUser);
+                // ADD new user via API — use email as username (unique by nature)
+                if (!password || password.length < 6) { alert('Password must be at least 6 characters.'); return; }
+                try {
+                    const res = await fetch('/api/users', {
+                        method: 'POST', headers: _authHeader(),
+                        body: JSON.stringify({ username: email, email: email, password: password, full_name: name, role: role })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) { alert(data.error || 'Failed to create user.'); return; }
+                } catch (e) { alert('Network error. Please try again.'); return; }
             }
 
             closeModal('userModal');
-            loadUsers();
-            if (editId) {
-                AuditTrail.logUpdate(currentCompanyId, 'user', 'Updated user "' + name + '" (' + email + ') - role: ' + role);
-            } else {
-                AuditTrail.logCreate(currentCompanyId, 'user', 'Created user "' + name + '" (' + email + ') - role: ' + role);
-            }
+            await loadUsers();
             alert(editId ? 'User updated successfully!' : 'User added successfully!');
         }
 
-        function updateExistingUser(userId, name, email, password, role, active) {
-            // Update in in-memory USERS
-            const memIdx = AUTH.USERS.findIndex(u => u.id === userId);
-            if (memIdx !== -1) {
-                AUTH.USERS[memIdx].name = name;
-                AUTH.USERS[memIdx].email = email;
-                AUTH.USERS[memIdx].role = role;
-                AUTH.USERS[memIdx].active = active;
-                if (password) AUTH.USERS[memIdx].password = password;
-            }
-
-            // Update in localStorage registered_users
-            const registeredUsers = AUTH.getRegisteredUsers();
-            const regIdx = registeredUsers.findIndex(u => u.id === userId);
-            if (regIdx !== -1) {
-                registeredUsers[regIdx].name = name;
-                registeredUsers[regIdx].email = email;
-                registeredUsers[regIdx].role = role;
-                registeredUsers[regIdx].active = active;
-                if (password) registeredUsers[regIdx].password = password;
-                safeLocalStorage.setItem('registered_users', JSON.stringify(registeredUsers));
-            }
-
-            // If editing self, update session
-            if (userId === currentSession.user_id || email === currentSession.email) {
-                currentSession.name = name;
-                currentSession.email = email;
-                currentSession.role = role;
-                safeLocalStorage.setItem('session', JSON.stringify(currentSession));
-            }
-        }
-
-        function toggleUserStatus(userId, active) {
+        async function toggleUserStatus(userId, active) {
             if (!Permissions.require('MANAGE_USERS')) return;
             const user = companyUsers.find(u => u.id === userId);
             if (!user) return;
             const action = active ? 'activate' : 'deactivate';
-            if (!confirm('Are you sure you want to ' + action + ' ' + user.name + '?')) return;
+            if (!confirm('Are you sure you want to ' + action + ' ' + (user.full_name || user.email) + '?')) return;
 
-            updateExistingUser(userId, user.name, user.email, null, user.role, active);
-            AuditTrail.logUpdate(currentCompanyId, 'user', (active ? 'Activated' : 'Deactivated') + ' user "' + user.name + '" (' + user.email + ')');
-            loadUsers();
+            try {
+                const res = await fetch('/api/users/' + userId, {
+                    method: 'PUT', headers: _authHeader(), body: JSON.stringify({ is_active: active })
+                });
+                if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Failed.'); return; }
+                await loadUsers();
+            } catch (e) { alert('Network error. Please try again.'); }
         }
 
-        function deleteUser(userId) {
+        async function deleteUser(userId) {
             if (!Permissions.require('MANAGE_USERS')) return;
             const user = companyUsers.find(u => u.id === userId);
             if (!user) return;
-            if (!confirm('Remove ' + user.name + ' (' + user.email + ') from this company?\n\nThis cannot be undone.')) return;
+            if (!confirm('Remove ' + (user.full_name || user.email) + ' from this company?\n\nThis removes their access but does not delete their account.')) return;
 
-            // Remove from in-memory USERS
-            const memIdx = AUTH.USERS.findIndex(u => u.id === userId);
-            if (memIdx !== -1) AUTH.USERS.splice(memIdx, 1);
-
-            // Remove from localStorage
-            const registeredUsers = AUTH.getRegisteredUsers();
-            const filtered = registeredUsers.filter(u => u.id !== userId);
-            safeLocalStorage.setItem('registered_users', JSON.stringify(filtered));
-
-            AuditTrail.logDelete(currentCompanyId, 'user', 'Deleted user "' + user.name + '" (' + user.email + ')');
-            loadUsers();
-            alert(user.name + ' has been removed.');
+            try {
+                const res = await fetch('/api/users/' + userId + '/company-access', {
+                    method: 'DELETE', headers: _authHeader()
+                });
+                if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Failed.'); return; }
+                await loadUsers();
+                alert((user.full_name || user.email) + ' has been removed from this company.');
+            } catch (e) { alert('Network error. Please try again.'); }
         }
 
         // ========== PAYTIME ACCESS CONFIG ==========

@@ -10,7 +10,11 @@
 const jwt = require('jsonwebtoken');
 const { hasPermission } = require('../config/permissions');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret';
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 /**
  * Authenticate JWT token — extracts user info and attaches to req
