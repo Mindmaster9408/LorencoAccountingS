@@ -504,10 +504,37 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
-    const { name, email, phone, id_number, address, client_type, apps, company_id, client_company_id, notes } = req.body;
+    const {
+      name, email, phone, id_number, address, client_type, apps, company_id, client_company_id, notes,
+      // Extra fields from PDF import — passed through to auto-created company record
+      company_type, registration_date, directors,
+      // import_source: 'manual' | 'pdf-import' — tracks how the client was created
+      import_source,
+      // force: true — bypass duplicate check (user confirmed after seeing warning)
+      force,
+    } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Client name is required' });
+    }
+
+    // ── Duplicate check (by id_number / registration number) ──────────────
+    // Skipped when force=true (user has already been warned and confirmed).
+    if (!force && id_number) {
+      const { data: existingByRegNum } = await supabase
+        .from('eco_clients')
+        .select('id, name, id_number, is_active')
+        .eq('id_number', id_number)
+        .limit(5);
+
+      if (existingByRegNum && existingByRegNum.length > 0) {
+        return res.status(409).json({
+          error: 'A client with this registration/ID number already exists.',
+          code:  'DUPLICATE_REG_NUMBER',
+          duplicate: existingByRegNum,
+          hint:  'If you want to create it anyway, resubmit with force: true in the request body.',
+        });
+      }
     }
 
     // ── Resolve managing company (The Infinite Legacy / logged-in company) ──
@@ -543,15 +570,24 @@ router.post('/', async (req, res) => {
     if (!resolvedClientCompanyId) {
       // Auto-create a dedicated company for this client
       const clientApps = Array.isArray(apps) ? apps : [];
+
+      // Build company insert — include registration details if provided (e.g. from PDF import)
+      const companyInsert = {
+        company_name:      name,
+        trading_name:      name,
+        is_active:         true,
+        modules_enabled:   clientApps.length > 0 ? clientApps : ['pos', 'payroll', 'accounting'],
+        subscription_status: 'active',
+      };
+      if (id_number)          companyInsert.registration_number = id_number;
+      if (company_type)       companyInsert.company_type        = company_type;
+      if (registration_date)  companyInsert.registration_date   = registration_date;
+      if (Array.isArray(directors) && directors.length > 0) companyInsert.directors = directors;
+      if (address)            companyInsert.address             = address;
+
       const { data: newCo, error: coErr } = await supabase
         .from('companies')
-        .insert({
-          company_name: name,
-          trading_name: name,
-          is_active: true,
-          modules_enabled: clientApps.length > 0 ? clientApps : ['pos', 'payroll', 'accounting'],
-          subscription_status: 'active'
-        })
+        .insert(companyInsert)
         .select()
         .single();
 
@@ -566,17 +602,19 @@ router.post('/', async (req, res) => {
     }
 
     const newClient = {
-      company_id: resolvedCompanyId,
+      company_id:        resolvedCompanyId,
       client_company_id: resolvedClientCompanyId,
       name,
-      email: email || null,
-      phone: phone || null,
-      id_number: id_number || null,
-      address: address || null,
+      email:       email       || null,
+      phone:       phone       || null,
+      id_number:   id_number   || null,
+      address:     address     || null,
       client_type: client_type || 'business',
-      apps: Array.isArray(apps) ? apps : [],
-      notes: notes || null,
-      is_active: true,
+      apps:        Array.isArray(apps) ? apps : [],
+      notes:       notes       || null,
+      is_active:   true,
+      // Track creation method (column exists after migration 010; gracefully ignored if absent)
+      ...(import_source ? { import_source } : {}),
     };
 
     const { data: inserted, error } = await supabase

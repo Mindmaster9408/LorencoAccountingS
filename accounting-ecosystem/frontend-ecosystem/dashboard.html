@@ -832,7 +832,7 @@
         <div id="clientManagementSection" class="hidden">
             <div class="section-label">Client Management</div>
             <div class="client-management">
-                <button type="button" class="btn-client primary" onclick="showAddClient()">
+                <button type="button" class="btn-client primary" onclick="showImportChoice()">
                     <span>➕</span> Add Client
                 </button>
                 <button type="button" class="btn-client" onclick="toggleViewClients()">
@@ -983,6 +983,73 @@
                         <button type="submit" class="btn-form save" id="acSaveBtn">Save Client</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ IMPORT CHOICE MODAL ═══════ -->
+    <div class="modal-overlay" id="importChoiceModal">
+        <div class="modal" style="max-width:460px;">
+            <div class="modal-header">
+                <h2>➕ Add New Client</h2>
+                <button class="modal-close" onclick="_closeImportChoice()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:24px;">How would you like to add this client?</p>
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                    <button onclick="_chooseManual()" style="padding:16px 20px;border-radius:12px;border:2px solid var(--border);background:transparent;cursor:pointer;text-align:left;color:var(--text);" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor=''">
+                        <div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;">✏️ Add Manually</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);">Enter client details by hand using the standard form.</div>
+                    </button>
+                    <button onclick="_choosePdfImport()" style="padding:16px 20px;border-radius:12px;border:2px solid #667eea;background:rgba(102,126,234,0.07);cursor:pointer;text-align:left;color:var(--text);">
+                        <div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;color:#a78bfa;">📄 Import from Registration PDF</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);">Upload a CIPC / company registration PDF to prefill client details automatically.</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ PDF IMPORT MODAL ═══════ -->
+    <div class="modal-overlay" id="importPdfModal">
+        <div class="modal" style="max-width:580px;">
+            <div class="modal-header">
+                <h2 id="importPdfTitle">📄 Import from Registration PDF</h2>
+                <button class="modal-close" onclick="_closeImportPdf()">✕</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- ── Step 1: Upload ── -->
+                <div id="importStepUpload">
+                    <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:16px;">
+                        Upload a CIPC company registration document (CoR14.3 or similar). Company details will be extracted and prefilled for your review.
+                    </p>
+                    <div id="importDropZone" onclick="document.getElementById('importPdfFile').click()" ondragover="_importDragOver(event)" ondrop="_importDrop(event)" style="border:2px dashed var(--border);border-radius:12px;padding:32px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s;">
+                        <div style="font-size:2.5rem;margin-bottom:8px;">📄</div>
+                        <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Click to select PDF or drag and drop</div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);">Text-based PDF only · Max 20 MB · CIPC / registration documents</div>
+                        <div id="importSelectedFile" style="display:none;margin-top:12px;font-size:0.85rem;color:#60a5fa;font-weight:600;"></div>
+                    </div>
+                    <input type="file" id="importPdfFile" accept=".pdf,application/pdf" style="display:none;" onchange="_importFileSelected(this)">
+                    <div id="importUploadWarning" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);font-size:0.82rem;color:#fbbf24;"></div>
+                    <div class="form-actions" style="margin-top:20px;">
+                        <button type="button" class="btn-form cancel" onclick="_closeImportPdf()">Cancel</button>
+                        <button type="button" class="btn-form save" id="importExtractBtn" onclick="_runExtraction()" disabled style="opacity:0.5;">Extract Details</button>
+                    </div>
+                </div>
+
+                <!-- ── Step 2: Review ── -->
+                <div id="importStepReview" style="display:none;">
+                    <div id="importReviewWarnings" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:8px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);font-size:0.82rem;color:#fbbf24;"></div>
+                    <div id="importDuplicateWarning" style="display:none;margin-bottom:14px;padding:12px 16px;border-radius:8px;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.4);font-size:0.85rem;color:#fca5a5;"></div>
+                    <div id="importFieldsTable" style="margin-bottom:20px;"></div>
+                    <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;">These values will prefill the client form. You can edit anything before saving.</p>
+                    <div class="form-actions">
+                        <button type="button" class="btn-form cancel" onclick="_importBackToUpload()">← Back</button>
+                        <button type="button" class="btn-form save" id="importConfirmBtn" onclick="_confirmImport()">Continue to Form →</button>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -1889,6 +1956,8 @@
         let allClients = [];
         let activeFilter = 'all';
         let editingClientId = null;
+        // Extra fields carried from PDF import into the add-client form (null when adding manually)
+        let _importedClientData = null;
 
         const APP_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖' };
         const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI' };
@@ -1972,6 +2041,232 @@
             document.getElementById('addClientModal').classList.remove('show');
         }
 
+        // ═══ IMPORT CHOICE + PDF IMPORT FLOW ═══════════════════════════════════
+
+        /** Show the Add Client choice dialog (Manual vs PDF import). */
+        function showImportChoice() {
+            _importedClientData = null; // clear any previous import data
+            document.getElementById('importChoiceModal').classList.add('show');
+        }
+
+        function _closeImportChoice() {
+            document.getElementById('importChoiceModal').classList.remove('show');
+        }
+
+        /** User chose manual entry — close choice, open normal form. */
+        function _chooseManual() {
+            _closeImportChoice();
+            showAddClient();
+        }
+
+        /** User chose PDF import — close choice, open upload step. */
+        function _choosePdfImport() {
+            _closeImportChoice();
+            _resetImportModal();
+            document.getElementById('importPdfModal').classList.add('show');
+        }
+
+        function _closeImportPdf() {
+            document.getElementById('importPdfModal').classList.remove('show');
+            _resetImportModal();
+        }
+
+        function _resetImportModal() {
+            document.getElementById('importStepUpload').style.display = '';
+            document.getElementById('importStepReview').style.display = 'none';
+            document.getElementById('importSelectedFile').style.display = 'none';
+            document.getElementById('importSelectedFile').textContent = '';
+            document.getElementById('importUploadWarning').style.display = 'none';
+            document.getElementById('importExtractBtn').disabled = true;
+            document.getElementById('importExtractBtn').style.opacity = '0.5';
+            document.getElementById('importExtractBtn').textContent = 'Extract Details';
+            document.getElementById('importPdfFile').value = '';
+            document.getElementById('importDropZone').style.borderColor = '';
+        }
+
+        function _importFileSelected(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
+                document.getElementById('importUploadWarning').textContent = 'Only PDF files are supported.';
+                document.getElementById('importUploadWarning').style.display = '';
+                document.getElementById('importExtractBtn').disabled = true;
+                document.getElementById('importExtractBtn').style.opacity = '0.5';
+                return;
+            }
+            document.getElementById('importUploadWarning').style.display = 'none';
+            document.getElementById('importSelectedFile').textContent = '📎 ' + file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+            document.getElementById('importSelectedFile').style.display = '';
+            document.getElementById('importDropZone').style.borderColor = '#667eea';
+            document.getElementById('importExtractBtn').disabled = false;
+            document.getElementById('importExtractBtn').style.opacity = '1';
+        }
+
+        function _importDragOver(e) { e.preventDefault(); document.getElementById('importDropZone').style.borderColor = '#667eea'; }
+        function _importDrop(e) {
+            e.preventDefault();
+            const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (!file) return;
+            const input = document.getElementById('importPdfFile');
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            _importFileSelected(input);
+        }
+
+        /** Upload PDF to backend, extract fields, show review step. */
+        async function _runExtraction() {
+            const file = document.getElementById('importPdfFile').files[0];
+            if (!file) return;
+
+            const btn = document.getElementById('importExtractBtn');
+            btn.disabled = true;
+            btn.textContent = 'Extracting…';
+
+            try {
+                const formData = new FormData();
+                formData.append('pdf', file);
+
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/import/pdf-extract`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: formData,
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    const warnEl = document.getElementById('importUploadWarning');
+                    warnEl.textContent = data.error || 'Extraction failed. Please try a different PDF.';
+                    warnEl.style.display = '';
+                    return;
+                }
+
+                _showImportReview(data);
+
+            } catch (err) {
+                const warnEl = document.getElementById('importUploadWarning');
+                warnEl.textContent = 'Network error during extraction: ' + err.message;
+                warnEl.style.display = '';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Extract Details';
+            }
+        }
+
+        /** Render the review step with extracted fields. */
+        function _showImportReview(data) {
+            // Switch steps
+            document.getElementById('importStepUpload').style.display = 'none';
+            document.getElementById('importStepReview').style.display = '';
+
+            // Warnings
+            const warnEl = document.getElementById('importReviewWarnings');
+            if (data.warnings && data.warnings.length > 0) {
+                warnEl.innerHTML = data.warnings.map(w => '⚠️ ' + w).join('<br>');
+                warnEl.style.display = '';
+            } else {
+                warnEl.style.display = 'none';
+            }
+
+            // Duplicate warning
+            const dupEl = document.getElementById('importDuplicateWarning');
+            if (data.duplicate && data.duplicate.length > 0) {
+                const dupNames = data.duplicate.map(d => `"${d.name}"${d.id_number ? ' (' + d.id_number + ')' : ''}`).join(', ');
+                dupEl.innerHTML = '⚠️ <strong>Possible duplicate:</strong> A client with this registration number already exists in your practice: ' + dupNames + '.<br>You can still continue — you will get a final warning when saving.';
+                dupEl.style.display = '';
+            } else {
+                dupEl.style.display = 'none';
+            }
+
+            // Field table
+            const CONFIDENCE_BADGE = {
+                high:      '<span style="font-size:0.7rem;padding:2px 8px;border-radius:8px;background:rgba(52,211,153,0.15);color:#34d399;font-weight:600;">✓ Confirmed</span>',
+                medium:    '<span style="font-size:0.7rem;padding:2px 8px;border-radius:8px;background:rgba(251,191,36,0.15);color:#fbbf24;font-weight:600;">⚠ Review</span>',
+                low:       '<span style="font-size:0.7rem;padding:2px 8px;border-radius:8px;background:rgba(248,113,113,0.15);color:#f87171;font-weight:600;">⚠ Check</span>',
+                not_found: '<span style="font-size:0.7rem;padding:2px 8px;border-radius:8px;background:rgba(148,163,184,0.15);color:#94a3b8;font-weight:600;">— Not found</span>',
+            };
+
+            const FIELD_LABELS = {
+                company_name:        'Company Name',
+                registration_number: 'Registration Number',
+                company_type:        'Company Type',
+                registration_date:   'Registration Date',
+                address:             'Registered Address',
+                directors:           'Directors / Members',
+            };
+
+            const f = data.fields || {};
+            const c = data.confidence || {};
+
+            const rows = Object.keys(FIELD_LABELS).map(key => {
+                const val   = key === 'directors'
+                    ? (Array.isArray(f[key]) && f[key].length > 0 ? f[key].join(', ') : null)
+                    : f[key];
+                const badge = CONFIDENCE_BADGE[c[key] || 'not_found'];
+                const valHtml = val
+                    ? `<span style="font-weight:600;color:var(--text);">${val}</span>`
+                    : `<span style="color:var(--text-muted);font-style:italic;">Not found — fill manually</span>`;
+                return `<tr>
+                    <td style="padding:8px 12px;font-size:0.82rem;color:var(--text-muted);white-space:nowrap;">${FIELD_LABELS[key]}</td>
+                    <td style="padding:8px 12px;font-size:0.85rem;">${valHtml}</td>
+                    <td style="padding:8px 12px;text-align:right;">${badge}</td>
+                </tr>`;
+            }).join('');
+
+            document.getElementById('importFieldsTable').innerHTML = `
+                <table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+                    <thead>
+                        <tr style="background:rgba(255,255,255,0.04);">
+                            <th style="padding:8px 12px;text-align:left;font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Field</th>
+                            <th style="padding:8px 12px;text-align:left;font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Extracted Value</th>
+                            <th style="padding:8px 12px;text-align:right;font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+
+            // Store extraction result for use in _confirmImport
+            window._lastImportData = data;
+        }
+
+        function _importBackToUpload() {
+            document.getElementById('importStepUpload').style.display = '';
+            document.getElementById('importStepReview').style.display = 'none';
+        }
+
+        /** User confirmed extracted data — prefill form and open it. */
+        function _confirmImport() {
+            const data = window._lastImportData;
+            if (!data || !data.fields) return;
+
+            const f = data.fields;
+
+            // Store extra fields for saveNewClient to include in payload
+            _importedClientData = {
+                company_type:      f.company_type      || null,
+                registration_date: f.registration_date || null,
+                directors:         Array.isArray(f.directors) ? f.directors : [],
+            };
+
+            _closeImportPdf();
+
+            // Open the standard add client form
+            showAddClient();
+
+            // Prefill fields from extraction
+            if (f.company_name)        document.getElementById('acName').value     = f.company_name;
+            if (f.registration_number) document.getElementById('acIdNumber').value = f.registration_number;
+            if (f.address)             document.getElementById('acAddress').value   = f.address;
+
+            // Set type to 'business' for company registration documents
+            document.getElementById('acType').value = 'business';
+            onClientTypeChange();
+        }
+
+        // ═══ END PDF IMPORT FLOW ════════════════════════════════════════════════
+
         async function saveNewClient(e) {
             e.preventDefault();
             const btn = document.getElementById('acSaveBtn');
@@ -1998,18 +2293,49 @@
                 company_id: managingCompanyId,
             };
 
+            // Include extra fields from PDF import if present
+            if (_importedClientData) {
+                if (_importedClientData.company_type)      payload.company_type      = _importedClientData.company_type;
+                if (_importedClientData.registration_date) payload.registration_date = _importedClientData.registration_date;
+                if (_importedClientData.directors && _importedClientData.directors.length > 0) payload.directors = _importedClientData.directors;
+                payload.import_source = 'pdf-import';
+            }
+
             try {
                 const token = localStorage.getItem('eco_token');
-                // 1. Create main client in ecosystem
-                const res = await fetch(`${API_BASE}/api/eco-clients`, {
+
+                const _doCreate = async (body) => fetch(`${API_BASE}/api/eco-clients`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify(body),
                 });
+
+                let res = await _doCreate(payload);
 
                 if (!res.ok) {
                     const err = await res.json();
-                    throw new Error(err.error || 'Failed to create client');
+
+                    // Duplicate registration number — ask user whether to proceed
+                    if (res.status === 409 && err.code === 'DUPLICATE_REG_NUMBER') {
+                        btn.disabled = false;
+                        btn.textContent = 'Save Client';
+                        const dupNames = (err.duplicate || []).map(d => `"${d.name}"`).join(', ');
+                        const proceed = confirm(
+                            `⚠️ Duplicate Registration Number\n\n` +
+                            `A client with registration number "${payload.id_number}" already exists:\n${dupNames}\n\n` +
+                            `Create this client anyway?`
+                        );
+                        if (!proceed) return false;
+                        btn.disabled = true;
+                        btn.textContent = 'Saving...';
+                        res = await _doCreate({ ...payload, force: true });
+                        if (!res.ok) {
+                            const retryErr = await res.json();
+                            throw new Error(retryErr.error || 'Failed to create client');
+                        }
+                    } else {
+                        throw new Error(err.error || 'Failed to create client');
+                    }
                 }
 
                 const newClient = await res.json();
@@ -2021,6 +2347,7 @@
                 const failedApps = syncInfo.errors.map(e => e.app);
 
                 closeAddClient();
+                _importedClientData = null; // clear import data after successful save
 
                 if (failedApps.length > 0) {
                     showToast(`${newClient.name} created. Synced to: ${syncedApps.join(', ') || 'none'}. Failed: ${failedApps.join(', ')}`, true);

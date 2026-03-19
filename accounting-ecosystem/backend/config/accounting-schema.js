@@ -44,6 +44,9 @@ async function ensureAccountingSchema(pool) {
       ['is_vat_registered',   'BOOLEAN DEFAULT false'],
       ['vat_cycle_type',      'VARCHAR(20)'],    // 'even' | 'odd' — for bi-monthly filers
       ['vat_registered_date', 'DATE'],            // effective start date of VAT registration
+      // PDF import / CIPC registration fields (migration 010)
+      ['registration_date',   'DATE'],            // date of CIPC registration
+      ['directors',           "JSONB DEFAULT '[]'::JSONB"], // director names from registration doc
     ];
     for (const [col, type] of companyColumns) {
       await client.query(

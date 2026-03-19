@@ -50,6 +50,7 @@ const ecoClientsRoutes = require('./shared/routes/eco-clients');
 const globalKvRoutes = require('./shared/routes/kv');
 const ocrRoutes          = require('./shared/routes/ocr');
 const featureFlagsRoutes = require('./shared/routes/featureFlags');
+const pdfImportRoutes    = require('./shared/routes/pdfImport');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
@@ -174,6 +175,9 @@ app.use('/api/kv', globalKvRoutes);
 app.use('/api/ocr', authenticateToken, ocrRoutes);
 // Feature flags — admin management + per-user/company flag checks
 app.use('/api/feature-flags', authenticateToken, featureFlagsRoutes);
+// PDF import — company registration document extraction and duplicate check
+// authenticateToken is applied inside pdfImportRoutes
+app.use('/api/import', pdfImportRoutes);
 
 // ─── Top-level POS-related Routes (receipts, barcodes, reports, analytics) ──
 if (receiptsRoutes) {
