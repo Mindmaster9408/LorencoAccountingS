@@ -557,6 +557,23 @@ window.debounce = function(func, wait) {
 };
 
 /**
+ * Storage availability check (used by hasFeature)
+ * @param {string} type - 'localStorage' or 'sessionStorage'
+ * @returns {boolean}
+ */
+window.storageAvailable = function(type) {
+    try {
+        var storage = window[type];
+        var x = '__storage_test__';
+        storage.setItem(x, x);
+        storage.removeItem(x);
+        return true;
+    } catch(e) {
+        return false;
+    }
+};
+
+/**
  * Feature detection helper
  * @param {string} feature - 'localStorage', 'fetch', 'IntersectionObserver', etc.
  * @returns {boolean}

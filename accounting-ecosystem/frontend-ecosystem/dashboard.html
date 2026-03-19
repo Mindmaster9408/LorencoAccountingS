@@ -2613,6 +2613,12 @@
             if (tab === 'clients') renderClientsMatrix();
         }
 
+        const ROLE_COLORS = {
+            super_admin: '#fca5a5', business_owner: '#a78bfa', accountant: '#60a5fa',
+            store_manager: '#34d399', payroll_admin: '#6ee7b7', assistant_manager: '#fbbf24',
+            cashier: '#94a3b8', trainee: '#64748b'
+        };
+
         function renderPermissionMatrix() {
             // Default to overview tab on first load
             switchMatrixTab('overview');
@@ -3068,11 +3074,6 @@
                     return;
                 }
 
-                const ROLE_COLORS = {
-                    super_admin: '#fca5a5', business_owner: '#a78bfa', accountant: '#60a5fa',
-                    store_manager: '#34d399', payroll_admin: '#6ee7b7', assistant_manager: '#fbbf24',
-                    cashier: '#94a3b8', trainee: '#64748b'
-                };
                 const APP_CHIP_STYLE = {
                     pos:        'background:rgba(59,130,246,0.15);color:#60a5fa;',
                     payroll:    'background:rgba(16,185,129,0.15);color:#6ee7b7;',
