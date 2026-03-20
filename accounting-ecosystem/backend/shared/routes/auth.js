@@ -244,11 +244,19 @@ router.post('/register', async (req, res) => {
     // Create company if name provided
     let company = null;
     if (companyName) {
-      // Map account_type from the registration form to the persisted account_holder_type column.
-      // 'accounting_practice' and 'business_owner' are the two first-class types.
-      // Any other value (or no value) falls back to null — treated as 'business_owner' in the UI.
-      const validTypes = ['accounting_practice', 'business_owner', 'individual'];
-      const holderType = validTypes.includes(account_type) ? account_type : null;
+      // Map account_type from the registration form to the canonical DB value.
+      // The signup form sends 'accountant' (Accounting Practice) or 'business' (Business Owner).
+      // Canonical DB values are 'accounting_practice' and 'business_owner'.
+      // Both short form ('accountant'/'business') and canonical form are accepted so that
+      // both old and new clients always produce the correct classification in the database.
+      const accountTypeMap = {
+        accountant:          'accounting_practice',
+        accounting_practice: 'accounting_practice',
+        business:            'business_owner',
+        business_owner:      'business_owner',
+        individual:          'individual',
+      };
+      const holderType = accountTypeMap[account_type] || null;
 
       const { data: newCompany, error: compError } = await supabase
         .from('companies')
