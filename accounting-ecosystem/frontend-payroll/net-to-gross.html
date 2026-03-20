@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Net-to-Gross Calculator - Lorenco Paytime</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .wrapper { display: flex; gap: 20px; max-width: 1600px; margin: 0 auto; }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 300px; background: white; border-radius: 15px;
+            padding: 25px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            height: fit-content; position: sticky; top: 20px;
+        }
+        .sidebar-header { padding: 0 20px 20px; border-bottom: 2px solid #eee; }
+        .sidebar-title { color: #667eea; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+        .sidebar-section { margin-top: 20px; }
+        .sidebar-section-title {
+            padding: 10px 20px; color: #999; font-size: 0.75rem;
+            font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .sidebar-link {
+            display: block; padding: 12px 20px; color: #666; text-decoration: none;
+            transition: all 0.2s; border-left: 3px solid transparent; font-weight: 500;
+        }
+        .sidebar-link:hover { background: #f8f9fa; color: #667eea; border-left-color: #667eea; }
+        .sidebar-link.active { background: #f0f4ff; color: #667eea; border-left-color: #667eea; font-weight: 600; }
+        .company-carousel { margin-top: 15px; padding: 15px 20px; border-top: 1px solid #eee; border-bottom: 1px solid #eee; }
+        .carousel-title { font-size: 0.85rem; font-weight: 600; color: #999; margin-bottom: 10px; text-transform: uppercase; }
+        .carousel-companies { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+        .carousel-company {
+            background: #f8f9fa; padding: 10px 12px; border-radius: 6px; font-size: 0.85rem;
+            color: #333; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .carousel-company:hover { background: #eee; border-color: #667eea; color: #667eea; }
+        .sidebar-actions { padding: 15px 20px; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .btn-sidebar { padding: 10px 15px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; text-align: center; }
+        .btn-switch { background: #667eea; color: white; }
+        .btn-switch:hover { background: #5568d3; }
+        .btn-logout { background: #eee; color: #333; }
+        .btn-logout:hover { background: #ddd; }
+
+        /* MAIN CONTENT */
+        .main-content { flex: 1; background: white; border-radius: 15px; padding: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #eee; }
+        .page-header h1 { color: #667eea; font-size: 2rem; }
+        .company-badge { background: #f0f4ff; color: #667eea; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+
+        /* INFO CARD */
+        .info-card {
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8ecff 100%);
+            border: 1px solid #d0d8ff; border-radius: 12px; padding: 20px; margin-bottom: 30px;
+        }
+        .info-card-title { font-weight: 700; color: #667eea; font-size: 1rem; margin-bottom: 8px; }
+        .info-card-text { color: #555; font-size: 0.9rem; line-height: 1.6; }
+
+        /* SECTION PANELS */
+        .panel { background: #f8f9fa; border-radius: 12px; padding: 25px; margin-bottom: 25px; border: 1px solid #e0e0e0; }
+        .panel-title { font-size: 0.85rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+        .panel-title span { background: #667eea; color: white; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+
+        /* FORM GRID */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
+        .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; }
+        .form-group input, .form-group select {
+            padding: 10px 14px; border: 2px solid #e0e0e0; border-radius: 8px;
+            font-size: 14px; transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #667eea; }
+        .form-group .hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+        .target-net-input { font-size: 1.4rem !important; font-weight: 700 !important; color: #667eea !important; border-color: #667eea !important; }
+
+        /* ITEMS TABLE */
+        .items-table-wrap { overflow-x: auto; }
+        .items-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px; }
+        .items-table th { background: #eee; padding: 10px 12px; text-align: left; font-weight: 600; color: #555; }
+        .items-table td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .items-table tr:last-child td { border-bottom: none; }
+        .items-table input, .items-table select {
+            padding: 7px 10px; border: 1.5px solid #ddd; border-radius: 6px;
+            font-size: 13px; width: 100%;
+        }
+        .items-table input:focus, .items-table select:focus { outline: none; border-color: #667eea; }
+        .items-table .amount-input { text-align: right; }
+        .badge-taxable { background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .badge-nontaxable { background: #f3e5f5; color: #7b1fa2; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .badge-deduction { background: #ffebee; color: #c62828; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .btn-remove { background: none; border: none; color: #dc3545; cursor: pointer; font-size: 1.1rem; padding: 4px 8px; border-radius: 4px; transition: background 0.2s; }
+        .btn-remove:hover { background: #ffebee; }
+        .items-empty { text-align: center; padding: 20px; color: #bbb; font-size: 0.9rem; }
+
+        /* BUTTONS */
+        .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .btn-success { background: linear-gradient(135deg, #28a745, #20c997); color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-outline { background: white; border: 2px solid #667eea; color: #667eea; }
+        .btn-outline:hover { background: #667eea; color: white; }
+        .btn-sm { padding: 7px 14px; font-size: 12px; }
+        .btn-add-item { background: #f0f4ff; color: #667eea; border: 2px dashed #667eea; width: 100%; padding: 10px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .btn-add-item:hover { background: #667eea; color: white; border-style: solid; }
+        .action-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+
+        /* CALCULATE BUTTON AREA */
+        .calculate-area { text-align: center; padding: 10px 0 5px; }
+        .calculate-btn { padding: 16px 48px; font-size: 1.1rem; letter-spacing: 0.5px; }
+
+        /* RESULTS */
+        .results-section { display: none; }
+        .results-section.visible { display: block; }
+        .result-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #28a745; }
+        .result-header h2 { color: #28a745; font-size: 1.5rem; }
+        .result-badge { background: #28a745; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .result-error-header { border-bottom-color: #dc3545; }
+        .result-error-header h2 { color: #dc3545; }
+        .result-error-badge { background: #dc3545; }
+
+        /* SUMMARY CARDS */
+        .summary-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .summary-card {
+            background: linear-gradient(135deg, #667eea, #764ba2); color: white;
+            padding: 18px; border-radius: 10px; text-align: center;
+        }
+        .summary-card.green  { background: linear-gradient(135deg, #28a745, #20c997); }
+        .summary-card.red    { background: linear-gradient(135deg, #dc3545, #c82333); }
+        .summary-card.orange { background: linear-gradient(135deg, #fd7e14, #ffc107); }
+        .summary-card.teal   { background: linear-gradient(135deg, #17a2b8, #138496); }
+        .summary-card.grey   { background: linear-gradient(135deg, #6c757d, #495057); }
+        .summary-card-label { font-size: 0.72rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.5px; }
+        .summary-card-value { font-size: 1.3rem; font-weight: 700; margin-top: 5px; }
+
+        /* BREAKDOWN TABLE */
+        .breakdown-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px; }
+        .breakdown-table th { background: #f8f9fa; padding: 10px 15px; text-align: left; font-weight: 600; color: #333; border-bottom: 2px solid #eee; }
+        .breakdown-table td { padding: 10px 15px; border-bottom: 1px solid #eee; }
+        .breakdown-table .amount { text-align: right; font-weight: 600; }
+        .breakdown-table .total-row { font-weight: 700; background: #f0f4ff; }
+        .breakdown-table .total-row td { border-top: 2px solid #667eea; padding: 12px 15px; }
+        .breakdown-table .deduction-row td { color: #dc3545; }
+        .breakdown-table .highlight-row { background: #f0fff4; }
+        .breakdown-table .highlight-row td { color: #155724; font-weight: 700; border-top: 2px solid #28a745; }
+        .verification-chip {
+            display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px;
+        }
+        .chip-ok { background: #d4edda; color: #155724; }
+        .chip-warn { background: #fff3cd; color: #856404; }
+
+        /* APPLY SECTION */
+        .apply-panel { background: #f0fff4; border: 1px solid #c3e6cb; border-radius: 12px; padding: 20px; margin-top: 20px; }
+        .apply-panel-title { font-weight: 700; color: #155724; font-size: 1rem; margin-bottom: 15px; }
+        .apply-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+        .apply-note { font-size: 12px; color: #6c757d; margin-top: 10px; }
+
+        /* ERROR PANEL */
+        .error-panel { background: #fff5f5; border: 1px solid #f5c6cb; border-radius: 12px; padding: 20px; }
+        .error-panel-msg { color: #721c24; font-weight: 600; margin-bottom: 8px; }
+        .error-panel-hint { color: #856404; font-size: 13px; }
+
+        /* RESPONSIVE */
+        @media (max-width: 1024px) {
+            .sidebar { width: 250px; }
+            .main-content { padding: 25px; }
+            .page-header h1 { font-size: 1.5rem; }
+        }
+        @media (max-width: 768px) {
+            .wrapper { flex-direction: column; }
+            .sidebar { width: 100%; position: relative; top: 0; }
+            .main-content { padding: 20px; }
+            .form-grid { grid-template-columns: 1fr 1fr; }
+            .form-grid-2 { grid-template-columns: 1fr; }
+            .summary-cards { grid-template-columns: 1fr 1fr; }
+            .apply-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+    <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/mobile-responsive.css">
+</head>
+<body>
+    <button id="mobile-hamburger" class="mobile-hamburger"><span style="font-size:20px;">&#9776;</span></button>
+    <div id="mobile-overlay" class="mobile-overlay"></div>
+    <div class="wrapper">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">Menu</div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Navigation</div>
+                <a href="company-dashboard.html" class="sidebar-link">📊 Dashboard</a>
+                <a href="employee-management.html" class="sidebar-link">👥 Employees</a>
+                <a href="payruns.html" class="sidebar-link">💵 Pay Runs</a>
+                <a href="payruns.html" class="sidebar-link">📄 Payslips</a>
+                <a href="payroll-items.html" class="sidebar-link">📋 Payroll Items</a>
+                <a href="attendance.html" class="sidebar-link">&#x23F0; Attendance</a>
+                <a href="reports.html" class="sidebar-link">📊 Reports</a>
+                <a href="paye-reconciliation.html" class="sidebar-link">🧾 PAYE Reconciliation</a>
+                <a href="net-to-gross.html" class="sidebar-link active">🔁 Net-to-Gross</a>
+                <a href="historical-import.html" class="sidebar-link">📥 Import</a>
+                <a href="company-details.html" class="sidebar-link">🏢 Company Details</a>
+            </div>
+            <div class="company-carousel">
+                <div class="carousel-title">Switch Company</div>
+                <div class="carousel-container">
+                    <div class="carousel-companies" id="companies-carousel"></div>
+                </div>
+            </div>
+            <div class="sidebar-actions">
+                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='/dashboard/dashboard.html'">🏠 Return to Ecosystem</button>
+                <button class="btn-sidebar btn-switch" onclick="window.location.href='company-selection.html'">← Return to Dashboard</button>
+                <button class="btn-sidebar btn-logout" onclick="handleLogout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <div class="page-header">
+                <h1>🔁 Net-to-Gross Calculator</h1>
+                <span class="company-badge" id="company-name-badge">Loading…</span>
+            </div>
+
+            <div class="info-card">
+                <div class="info-card-title">What does this tool do?</div>
+                <div class="info-card-text">
+                    Enter the amount you want to pay into the employee's bank account (the <strong>net pay</strong>),
+                    add any known allowances or deductions, and this tool works backwards to find the
+                    <strong>required basic salary</strong> — including the exact PAYE, UIF, and deductions that will apply.
+                    Use the result to set up or adjust the employee's payroll record.
+                </div>
+            </div>
+
+            <!-- STEP 1: CORE INPUTS -->
+            <div class="panel">
+                <div class="panel-title"><span>1</span> Target Net Pay &amp; Period</div>
+                <div class="form-grid">
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label>Target Net Pay (R) *</label>
+                        <input type="number" id="target-net" class="target-net-input"
+                               placeholder="e.g. 15000.00" min="0" step="0.01"
+                               oninput="clearResults()">
+                        <span class="hint">The amount the employee receives in their bank account after all deductions.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Pay Period</label>
+                        <input type="text" id="pay-period" placeholder="e.g. 2026-03" maxlength="7"
+                               oninput="clearResults()">
+                        <span class="hint">YYYY-MM — sets correct tax year tables. Leave blank for current year defaults.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 2: EMPLOYEE OPTIONS -->
+            <div class="panel">
+                <div class="panel-title"><span>2</span> Employee Tax Options (optional)</div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Employee Age</label>
+                        <input type="number" id="emp-age" placeholder="e.g. 35" min="0" max="120"
+                               oninput="clearResults()">
+                        <span class="hint">≥65 applies secondary rebate; ≥75 applies tertiary rebate.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Medical Aid Members</label>
+                        <input type="number" id="medical-members" placeholder="e.g. 2" min="0" max="20"
+                               oninput="clearResults()">
+                        <span class="hint">Employee + dependants. Reduces PAYE via Section 6A credit.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Tax Directive (%)</label>
+                        <input type="number" id="tax-directive" placeholder="e.g. 0" min="0" max="100"
+                               step="0.01" oninput="clearResults()">
+                        <span class="hint">If set, PAYE = gross × rate (bypasses normal brackets).</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Search Limit (Basic Salary Max R)</label>
+                        <input type="number" id="search-limit" value="500000" min="1000" step="1000"
+                               oninput="clearResults()">
+                        <span class="hint">Increase if the employee earns above R500,000/month.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 3: KNOWN ITEMS -->
+            <div class="panel">
+                <div class="panel-title"><span>3</span> Known Payroll Items (excluding Basic Salary)</div>
+                <div class="items-table-wrap">
+                    <table class="items-table" id="items-table">
+                        <thead>
+                            <tr>
+                                <th style="width:35%;">Description</th>
+                                <th style="width:30%;">Type</th>
+                                <th style="width:20%;">Amount (R)</th>
+                                <th style="width:15%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="items-tbody">
+                            <tr id="items-empty-row">
+                                <td colspan="4" class="items-empty">No items added yet. Use the button below to add allowances or deductions.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <button class="btn-add-item" onclick="addItem()">+ Add Allowance or Deduction</button>
+                <p style="font-size:12px; color:#aaa; margin-top:8px;">
+                    <strong>Taxable Earning</strong> — increases gross and PAYE base (e.g. commission, bonus).<br>
+                    <strong>Non-Taxable Earning</strong> — increases gross but not PAYE base (e.g. reimbursements).<br>
+                    <strong>Deduction</strong> — reduces net pay (e.g. medical aid, pension, garnishee).
+                </p>
+            </div>
+
+            <!-- CALCULATE -->
+            <div class="calculate-area">
+                <button class="btn btn-primary calculate-btn" onclick="calculate()" id="calculate-btn">
+                    Calculate Required Basic Salary
+                </button>
+            </div>
+
+            <!-- RESULTS -->
+            <div class="results-section" id="results-section" style="margin-top: 30px;">
+                <div id="result-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- APPLY TO EMPLOYEE MODAL -->
+    <div id="applyModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:15px; padding:30px; max-width:480px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="color:#28a745; margin:0; font-size:1.3rem;">Apply Basic Salary to Employee</h2>
+                <span style="font-size:1.5rem; cursor:pointer; color:#999;" onclick="closeApplyModal()">&times;</span>
+            </div>
+            <div style="background:#f0fff4; border-radius:8px; padding:12px 15px; margin-bottom:20px; font-size:14px; color:#155724;">
+                This will set the employee's <strong>basic salary</strong> to
+                <strong id="apply-basic-display">R0.00</strong> in their payroll record.
+                It does <em>not</em> create a payslip — use Pay Runs to process the actual payroll.
+            </div>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-weight:600; color:#333; margin-bottom:5px; font-size:13px;">Employee *</label>
+                <select id="apply-emp-select" style="width:100%; padding:10px; border:2px solid #ddd; border-radius:8px; font-size:14px;">
+                    <option value="">— Select employee —</option>
+                </select>
+            </div>
+            <div id="apply-error" style="display:none; background:#fee; color:#c33; padding:10px; border-radius:8px; margin-bottom:15px; font-size:13px; border-left:3px solid #c33;"></div>
+            <div id="apply-success" style="display:none; background:#d4edda; color:#155724; padding:10px; border-radius:8px; margin-bottom:15px; font-size:13px; border-left:3px solid #28a745;"></div>
+            <div style="display:flex; gap:10px;">
+                <button onclick="closeApplyModal()" style="flex:1; padding:12px; background:#eee; color:#333; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px;">Cancel</button>
+                <button onclick="applyBasicToEmployee()" id="apply-confirm-btn" style="flex:1; padding:12px; background:linear-gradient(135deg, #28a745 0%, #20c997 100%); color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px;">Apply Basic Salary</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/polyfills.js"></script>
+    <script src="js/update-check.js"></script>
+    <script src="js/data-access.js"></script>
+    <script src="js/permissions.js"></script>
+    <script src="js/audit.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/payroll-engine.js"></script>
+    <script>
+        var currentCompanyId = null;
+        var itemIdCounter = 0;
+        var itemRows = [];       // { id, description, type, amount }
+        var lastResult = null;   // last successful calculation result
+
+        // ========== INIT ==========
+        window.addEventListener('load', function() {
+            if (!AUTH.isLoggedIn()) { window.location.href = 'login.html'; return; }
+            var session = AUTH.getSession();
+            currentCompanyId = session.company_id;
+            var company = AUTH.getCompanyById(currentCompanyId);
+            document.getElementById('company-name-badge').textContent =
+                company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown';
+            loadCompaniesCarousel();
+
+            // Pre-fill current period
+            var now = new Date();
+            var mm = String(now.getMonth() + 1).padStart(2, '0');
+            document.getElementById('pay-period').value = now.getFullYear() + '-' + mm;
+        });
+
+        function loadCompaniesCarousel() {
+            var session = AUTH.getSession();
+            var companies = AUTH.getCompaniesForUser(session);
+            var carousel = document.getElementById('companies-carousel');
+            carousel.innerHTML = '';
+            if (!companies || companies.length === 0) {
+                carousel.innerHTML = '<div style="padding:10px; color:#999; text-align:center; font-size:12px;">No companies available</div>';
+                return;
+            }
+            companies.forEach(function(c) {
+                var div = document.createElement('div');
+                div.className = 'carousel-company';
+                div.textContent = c.name || c.company_name || c.trading_name || 'Company';
+                div.onclick = function() {
+                    var s = AUTH.getSession();
+                    s.company_id = c.id || c.company_id;
+                    safeLocalStorage.setItem('session', JSON.stringify(s));
+                    location.reload();
+                };
+                carousel.appendChild(div);
+            });
+        }
+
+        function handleLogout() {
+            if (confirm('Are you sure you want to logout?')) AUTH.logout();
+        }
+
+        // ========== ITEMS MANAGEMENT ==========
+        function addItem() {
+            itemIdCounter++;
+            itemRows.push({ id: itemIdCounter, description: '', type: 'taxable', amount: '' });
+            renderItems();
+            clearResults();
+        }
+
+        function removeItem(id) {
+            itemRows = itemRows.filter(function(r) { return r.id !== id; });
+            renderItems();
+            clearResults();
+        }
+
+        function renderItems() {
+            var tbody = document.getElementById('items-tbody');
+            if (itemRows.length === 0) {
+                tbody.innerHTML = '<tr id="items-empty-row"><td colspan="4" class="items-empty">No items added yet. Use the button below to add allowances or deductions.</td></tr>';
+                return;
+            }
+            var html = '';
+            itemRows.forEach(function(row) {
+                html += '<tr data-id="' + row.id + '">' +
+                    '<td><input type="text" placeholder="e.g. Travel Allowance" value="' + escAttr(row.description) + '" oninput="updateItemField(' + row.id + ', \'description\', this.value)"></td>' +
+                    '<td>' +
+                        '<select onchange="updateItemField(' + row.id + ', \'type\', this.value)">' +
+                            '<option value="taxable"'   + (row.type === 'taxable'    ? ' selected' : '') + '>Taxable Earning</option>' +
+                            '<option value="nontaxable"' + (row.type === 'nontaxable' ? ' selected' : '') + '>Non-Taxable Earning</option>' +
+                            '<option value="deduction"' + (row.type === 'deduction'  ? ' selected' : '') + '>Deduction</option>' +
+                        '</select>' +
+                    '</td>' +
+                    '<td><input type="number" class="amount-input" placeholder="0.00" min="0" step="0.01" value="' + (row.amount || '') + '" oninput="updateItemField(' + row.id + ', \'amount\', parseFloat(this.value) || 0); clearResults();"></td>' +
+                    '<td style="text-align:center;"><button class="btn-remove" onclick="removeItem(' + row.id + ')" title="Remove">&#x2715;</button></td>' +
+                '</tr>';
+            });
+            tbody.innerHTML = html;
+        }
+
+        function updateItemField(id, field, value) {
+            var row = itemRows.find(function(r) { return r.id === id; });
+            if (row) row[field] = value;
+            clearResults();
+        }
+
+        function escAttr(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function getItemsForEngine() {
+            return itemRows.map(function(row) {
+                var amt = parseFloat(row.amount) || 0;
+                if (row.type === 'deduction') {
+                    return { type: 'deduction', is_taxable: false, amount: amt };
+                } else {
+                    return { type: 'income', is_taxable: row.type !== 'nontaxable', amount: amt };
+                }
+            });
+        }
+
+        // ========== CALCULATION ==========
+        function calculate() {
+            var targetNet = parseFloat(document.getElementById('target-net').value);
+            if (!targetNet || targetNet <= 0) {
+                alert('Please enter a valid target net amount greater than zero.');
+                document.getElementById('target-net').focus();
+                return;
+            }
+
+            var period    = (document.getElementById('pay-period').value || '').trim();
+            var age       = parseInt(document.getElementById('emp-age').value) || null;
+            var medMem    = parseInt(document.getElementById('medical-members').value) || 0;
+            var taxDir    = parseFloat(document.getElementById('tax-directive').value) || 0;
+            var hiLimit   = parseFloat(document.getElementById('search-limit').value) || 500000;
+
+            var empOpts = {};
+            if (age && age > 0)   empOpts.age            = age;
+            if (medMem > 0)       empOpts.medicalMembers = medMem;
+            if (taxDir > 0)       empOpts.taxDirective   = taxDir;
+
+            var params = {
+                targetNet:       targetNet,
+                items:           getItemsForEngine(),
+                employeeOptions: empOpts,
+                period:          period || null,
+                basicSalaryHi:   hiLimit
+            };
+
+            var btn = document.getElementById('calculate-btn');
+            btn.disabled = true;
+            btn.textContent = 'Calculating…';
+
+            // Run synchronously (pure function) — use setTimeout so UI updates first
+            setTimeout(function() {
+                var result = PayrollEngine.calculateNetToGross(params);
+                lastResult = result;
+                renderResult(result, targetNet, period);
+                btn.disabled = false;
+                btn.textContent = 'Calculate Required Basic Salary';
+            }, 0);
+        }
+
+        function clearResults() {
+            lastResult = null;
+            var section = document.getElementById('results-section');
+            section.classList.remove('visible');
+            section.querySelector('#result-content').innerHTML = '';
+        }
+
+        function formatMoney(n) {
+            n = parseFloat(n) || 0;
+            return 'R ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        // ========== RENDER RESULT ==========
+        function renderResult(result, targetNet, period) {
+            var section = document.getElementById('results-section');
+            var content = document.getElementById('result-content');
+            section.classList.add('visible');
+
+            if (!result.success) {
+                content.innerHTML =
+                    '<div class="result-header result-error-header">' +
+                        '<h2>&#x26A0; Calculation Failed</h2>' +
+                        '<span class="result-badge result-error-badge">Error</span>' +
+                    '</div>' +
+                    '<div class="error-panel">' +
+                        '<div class="error-panel-msg">' + escHtml(result.error) + '</div>' +
+                        '<div class="error-panel-hint">Try reducing fixed deductions, increasing the search limit, or checking that the target net is achievable.</div>' +
+                    '</div>';
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
+            }
+
+            var netDiff     = Math.abs(result.net - targetNet);
+            var netOk       = netDiff <= 0.02;
+            var taxYear     = period ? PayrollEngine.getTaxYearForPeriod(period) : PayrollEngine.TAX_YEAR;
+            var uifCapped   = result.uif >= (PayrollEngine.UIF_MONTHLY_CAP - 0.01);
+            var iterNote    = result.iterations > 1 ? ' (' + result.iterations + ' iterations)' : '';
+            var noteHtml    = result.note ? '<div style="background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:12px 15px; margin-bottom:20px; font-size:13px; color:#856404;">' + escHtml(result.note) + '</div>' : '';
+
+            // Summary cards
+            var cardsHtml =
+                '<div class="summary-cards">' +
+                    '<div class="summary-card"><div class="summary-card-label">Required Basic</div><div class="summary-card-value">' + formatMoney(result.basic) + '</div></div>' +
+                    '<div class="summary-card orange"><div class="summary-card-label">Total Gross</div><div class="summary-card-value">' + formatMoney(result.gross) + '</div></div>' +
+                    '<div class="summary-card red"><div class="summary-card-label">PAYE</div><div class="summary-card-value">' + formatMoney(result.paye) + '</div></div>' +
+                    '<div class="summary-card teal"><div class="summary-card-label">UIF (Employee)</div><div class="summary-card-value">' + formatMoney(result.uif) + (uifCapped ? '<br><small style="font-size:0.65rem;opacity:0.85;">Capped</small>' : '') + '</div></div>' +
+                    '<div class="summary-card grey"><div class="summary-card-label">Other Deductions</div><div class="summary-card-value">' + formatMoney(result.deductions) + '</div></div>' +
+                    '<div class="summary-card green"><div class="summary-card-label">Actual Net</div><div class="summary-card-value">' + formatMoney(result.net) + '</div></div>' +
+                '</div>';
+
+            // Breakdown table
+            var rows = [
+                { label: 'Basic Salary', amount: result.basic, type: 'income' },
+            ];
+            itemRows.forEach(function(item) {
+                var amt = parseFloat(item.amount) || 0;
+                rows.push({
+                    label: item.description || '(unnamed item)',
+                    amount: amt,
+                    type: item.type
+                });
+            });
+            rows.push({ label: 'Total Gross', amount: result.gross, type: 'total' });
+            rows.push({ label: 'PAYE', amount: result.paye, type: 'deduction' });
+            rows.push({ label: 'UIF (Employee 1%)' + (uifCapped ? ' — CAPPED' : ''), amount: result.uif, type: 'deduction' });
+            if (result.deductions > 0) {
+                rows.push({ label: 'Other Deductions', amount: result.deductions, type: 'deduction' });
+            }
+            rows.push({ label: 'Net Pay', amount: result.net, type: 'net' });
+
+            var tblHtml = '<table class="breakdown-table"><thead><tr><th>Item</th><th style="text-align:left;">Type</th><th class="amount">Amount</th></tr></thead><tbody>';
+            rows.forEach(function(r) {
+                var typeBadge = '';
+                var rowClass  = '';
+                if (r.type === 'income') { typeBadge = '<span class="badge-taxable">Taxable Earning</span>'; }
+                else if (r.type === 'nontaxable') { typeBadge = '<span class="badge-nontaxable">Non-Taxable</span>'; }
+                else if (r.type === 'deduction') { typeBadge = '<span class="badge-deduction">Deduction</span>'; rowClass = 'deduction-row'; }
+                else if (r.type === 'total') { typeBadge = '—'; rowClass = 'total-row'; }
+                else if (r.type === 'net') { typeBadge = '—'; rowClass = 'highlight-row'; }
+                else { typeBadge = '—'; }
+
+                var prefix = (r.type === 'deduction') ? '–' : '';
+                tblHtml += '<tr class="' + rowClass + '"><td>' + escHtml(r.label) + '</td><td>' + typeBadge + '</td><td class="amount">' + prefix + formatMoney(r.amount) + '</td></tr>';
+            });
+            tblHtml += '</tbody></table>';
+
+            // Verification row
+            var verifyHtml =
+                '<div style="background:#f8f9fa; border-radius:8px; padding:12px 16px; margin-bottom:20px; font-size:13px; color:#555; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+                    '<span>Tax year: <strong>' + escHtml(taxYear) + '</strong>' + iterNote + '</span>' +
+                    (result.medicalCredit > 0 ? '<span>Medical credit applied: <strong>' + formatMoney(result.medicalCredit) + '/month</strong></span>' : '') +
+                    '<span>Net vs target: <strong>' + formatMoney(result.net) + '</strong> vs <strong>' + formatMoney(targetNet) + '</strong>' +
+                        '<span class="verification-chip ' + (netOk ? 'chip-ok' : 'chip-warn') + '">' + (netOk ? '&#x2713; Match' : '&#x26A0; ' + formatMoney(netDiff) + ' diff') + '</span>' +
+                    '</span>' +
+                '</div>';
+
+            // Apply section
+            var applyHtml =
+                '<div class="apply-panel">' +
+                    '<div class="apply-panel-title">&#x2705; Apply This Basic Salary to an Employee</div>' +
+                    '<p style="font-size:13px; color:#555; margin-bottom:15px;">' +
+                        'Set the calculated basic salary of <strong>' + formatMoney(result.basic) + '</strong> directly on an employee\'s payroll record.' +
+                    '</p>' +
+                    '<div style="display:flex; gap:12px; flex-wrap:wrap;">' +
+                        '<button class="btn btn-success" onclick="openApplyModal(' + result.basic + ')">Apply to Employee…</button>' +
+                        '<button class="btn btn-outline btn-sm" onclick="copyBasic(' + result.basic + ')">Copy Basic (R' + result.basic.toFixed(2) + ')</button>' +
+                        '<a href="payruns.html" class="btn btn-secondary btn-sm" style="text-decoration:none; display:inline-flex; align-items:center;">Go to Pay Runs</a>' +
+                    '</div>' +
+                    '<p class="apply-note">Applying the basic salary updates the employee\'s <em>payroll setup record</em>. The next pay run will use this value.</p>' +
+                '</div>';
+
+            content.innerHTML =
+                '<div class="result-header">' +
+                    '<h2>&#x2713; Result</h2>' +
+                    '<span class="result-badge">Solved in ' + result.iterations + (result.iterations === 1 ? ' step' : ' steps') + '</span>' +
+                '</div>' +
+                noteHtml +
+                cardsHtml +
+                tblHtml +
+                verifyHtml +
+                applyHtml;
+
+            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function escHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function copyBasic(basic) {
+            var text = basic.toFixed(2);
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(function() {
+                    alert('Basic salary copied: R' + text);
+                });
+            } else {
+                alert('Basic salary: R' + text);
+            }
+        }
+
+        // ========== APPLY TO EMPLOYEE MODAL ==========
+        function openApplyModal(basic) {
+            document.getElementById('apply-basic-display').textContent = formatMoney(basic);
+            document.getElementById('apply-error').style.display = 'none';
+            document.getElementById('apply-success').style.display = 'none';
+            document.getElementById('apply-confirm-btn').disabled = false;
+            document.getElementById('apply-confirm-btn').textContent = 'Apply Basic Salary';
+
+            // Load employees from localStorage
+            var employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
+            var sel = document.getElementById('apply-emp-select');
+            sel.innerHTML = '<option value="">— Select employee —</option>';
+            if (employees.length === 0) {
+                sel.innerHTML += '<option disabled>No employees found for this company</option>';
+            } else {
+                employees.forEach(function(emp) {
+                    var opt = document.createElement('option');
+                    opt.value = emp.id;
+                    opt.textContent = (emp.first_name || '') + ' ' + (emp.last_name || '') +
+                        (emp.employee_number ? ' (' + emp.employee_number + ')' : '');
+                    sel.appendChild(opt);
+                });
+            }
+
+            document.getElementById('applyModal').style.display = 'flex';
+        }
+
+        function closeApplyModal() {
+            document.getElementById('applyModal').style.display = 'none';
+        }
+
+        function applyBasicToEmployee() {
+            if (!lastResult || !lastResult.success) { return; }
+            var empId = document.getElementById('apply-emp-select').value;
+            if (!empId) {
+                document.getElementById('apply-error').textContent = 'Please select an employee.';
+                document.getElementById('apply-error').style.display = 'block';
+                return;
+            }
+
+            var key = 'emp_payroll_' + currentCompanyId + '_' + empId;
+            var payrollData = JSON.parse(safeLocalStorage.getItem(key) || '{"basic_salary":0,"regular_inputs":[]}');
+            var oldBasic = payrollData.basic_salary || 0;
+            payrollData.basic_salary = lastResult.basic;
+            safeLocalStorage.setItem(key, JSON.stringify(payrollData));
+
+            // Audit log
+            if (typeof AuditTrail !== 'undefined') {
+                var employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
+                var emp = employees.find(function(e) { return e.id === empId; });
+                var empName = emp ? ((emp.first_name || '') + ' ' + (emp.last_name || '')) : empId;
+                AuditTrail.log(currentCompanyId, 'UPDATE', 'payroll_setup',
+                    'Net-to-Gross: set basic salary to R' + lastResult.basic.toFixed(2) +
+                    ' (from R' + oldBasic.toFixed(2) + ') for ' + empName);
+            }
+
+            document.getElementById('apply-error').style.display = 'none';
+            document.getElementById('apply-success').textContent =
+                'Basic salary updated to ' + formatMoney(lastResult.basic) + '. The next pay run will use this value.';
+            document.getElementById('apply-success').style.display = 'block';
+            document.getElementById('apply-confirm-btn').disabled = true;
+            document.getElementById('apply-confirm-btn').textContent = 'Applied';
+        }
+
+        // Close modal on background click
+        document.getElementById('applyModal').addEventListener('click', function(e) {
+            if (e.target === this) closeApplyModal();
+        });
+    </script>
+    <script src="js/mobile-utils.js"></script>
+</body>
+</html>
