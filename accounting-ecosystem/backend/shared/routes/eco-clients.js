@@ -499,6 +499,136 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
+ * POST /api/eco-clients/adopt-company
+ * Super admin only — adopt an existing standalone registered company as an eco_client
+ * under a parent practice/business owner, WITHOUT creating a new company data silo.
+ * The existing company (company_id) becomes the client's data silo (client_company_id).
+ *
+ * Use case: a company that registered via signup as a standalone entity now needs to
+ * appear as a managed client beneath a practice or business owner in the admin panel.
+ *
+ * Body: { company_id: <existing company ID>, parent_company_id: <managing practice ID> }
+ *
+ * Safety checks (all enforced before any write):
+ *   - Super admin only
+ *   - Both companies must be active
+ *   - company_id must NOT already be a client_company_id of any eco_client
+ *   - company_id must NOT be managing any active eco_clients of its own (would orphan them)
+ *   - company_id must NOT equal parent_company_id
+ *
+ * Multi-tenant safety:
+ *   - Only eco_clients.company_id (managing parent) is new; client_company_id is the
+ *     existing company so all app data already in that company remains intact.
+ *   - user_company_access rows for the adopted company are NOT changed — users who had
+ *     direct access to that company still have it.
+ */
+router.post('/adopt-company', async (req, res) => {
+  try {
+    if (!req.user || !req.user.isSuperAdmin) {
+      return res.status(403).json({ error: 'Super admin access required' });
+    }
+
+    const companyId = parseInt(req.body.company_id);
+    const parentId  = parseInt(req.body.parent_company_id);
+
+    if (!companyId || !parentId || isNaN(companyId) || isNaN(parentId)) {
+      return res.status(400).json({ error: 'company_id and parent_company_id are required' });
+    }
+    if (companyId === parentId) {
+      return res.status(400).json({ error: 'Cannot adopt a company as its own client' });
+    }
+
+    // Verify target company exists and is active
+    const { data: company } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name, is_active')
+      .eq('id', companyId)
+      .single();
+
+    if (!company || !company.is_active) {
+      return res.status(404).json({ error: 'Target company not found or inactive' });
+    }
+
+    // Verify parent company exists and is active
+    const { data: parent } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name')
+      .eq('id', parentId)
+      .eq('is_active', true)
+      .single();
+
+    if (!parent) {
+      return res.status(404).json({ error: 'Parent company not found or inactive' });
+    }
+
+    // Safety check 1: already a data silo for another eco_client?
+    const { data: existingAsSilo } = await supabase
+      .from('eco_clients')
+      .select('id, name')
+      .eq('client_company_id', companyId)
+      .limit(1);
+
+    if (existingAsSilo && existingAsSilo.length > 0) {
+      return res.status(409).json({
+        error: `This company is already linked as a managed client ("${existingAsSilo[0].name}"). Cannot adopt again.`,
+      });
+    }
+
+    // Safety check 2: this company manages other eco_clients — adopting it would orphan them
+    const { data: managedClients } = await supabase
+      .from('eco_clients')
+      .select('id, name')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .limit(3);
+
+    if (managedClients && managedClients.length > 0) {
+      const names = managedClients.map(c => `"${c.name}"`).join(', ');
+      return res.status(409).json({
+        error: `Cannot adopt: this company currently manages ${managedClients.length} client(s) (${names}). Move those clients to another parent first, then adopt.`,
+      });
+    }
+
+    // Create the eco_client record — existing company becomes the client_company_id data silo
+    const clientName = company.trading_name || company.company_name;
+    const { data: inserted, error: insertErr } = await supabase
+      .from('eco_clients')
+      .insert({
+        company_id:        parentId,
+        client_company_id: companyId,
+        name:              clientName,
+        client_type:       'business',
+        apps:              [],
+        is_active:         true,
+      })
+      .select()
+      .single();
+
+    if (insertErr) {
+      console.error('[adopt-company] Insert error:', insertErr.message);
+      return res.status(500).json({ error: 'Failed to create eco_client: ' + insertErr.message });
+    }
+
+    const parentName = parent.trading_name || parent.company_name;
+    await auditFromReq(req, 'CREATE', 'eco_client', inserted.id, {
+      action:             'adopt_existing_company',
+      adoptedCompanyId:   companyId,
+      adoptedCompanyName: clientName,
+      parentCompanyId:    parentId,
+      parentCompanyName:  parentName,
+    });
+
+    res.status(201).json({
+      client:  inserted,
+      message: `"${clientName}" adopted as a client under "${parentName}"`,
+    });
+  } catch (err) {
+    console.error('eco-clients POST /adopt-company error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * POST /api/eco-clients
  * Create a new ecosystem client and sync to selected apps
  */

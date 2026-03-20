@@ -272,6 +272,17 @@
             background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.2); color: #fcd34d;
         }
         .btn-type-action:hover { background: rgba(245,158,11,0.16); border-color: rgba(245,158,11,0.4); }
+        .btn-adopt-action {
+            background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.2); color: #6ee7b7;
+        }
+        .btn-adopt-action:hover { background: rgba(16,185,129,0.16); border-color: rgba(16,185,129,0.4); }
+        /* Unclassified type badge — shown when account_holder_type is null (heuristic fallback) */
+        .holder-type-unclassified {
+            background: rgba(245,158,11,0.12) !important;
+            border-color: rgba(245,158,11,0.3) !important;
+            color: #fcd34d !important;
+            cursor: help;
+        }
 
         /* ── Move-client button on client card ── */
         .btn-move-client {
@@ -697,6 +708,29 @@
         </div>
     </div>
 
+    <!-- ── Adopt Company as Client Modal ── -->
+    <div class="modal-overlay" id="adoptCompanyModal">
+        <div class="modal">
+            <h2>&#8853; Adopt <span>Company as Client</span></h2>
+            <p id="adoptModalSubtitle" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px;margin-top:-14px;"></p>
+            <div class="form-group">
+                <label>Select Standalone Company to Adopt</label>
+                <select id="adoptCompanySelect">
+                    <option value="">Select company...</option>
+                </select>
+                <p style="font-size:0.72rem;color:rgba(255,255,255,0.35);margin-top:6px;line-height:1.4;">
+                    Shows companies that are not yet managed clients and do not manage sub-clients of their own.
+                    The adopted company will appear as a client under this account holder.
+                    Existing user access and app data in that company are preserved.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeAdoptModal()">Cancel</button>
+                <button class="btn-submit" id="btnAdoptSubmit" onclick="submitAdoptCompany()">Adopt as Client</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
@@ -937,11 +971,16 @@
                     if (!nameMatch) return;
                 }
 
+                // typeIsHeuristic: true when account_holder_type is not set in DB —
+                // the type is derived from the name heuristic and may be wrong.
+                // The admin panel shows a ⚠ indicator so the superuser knows to fix it
+                // using the "✎ Type" button.
+                const typeIsHeuristic = !firm || !firm.account_holder_type;
                 const firmType = firm
                     ? (firm.account_holder_type || detectFirmType(firmName))
                     : 'platform';
 
-                html += buildHolderGroup(firmId, firmName, firmType, firmClients);
+                html += buildHolderGroup(firmId, firmName, firmType, firmClients, typeIsHeuristic);
                 renderedCount++;
             });
 
@@ -968,12 +1007,25 @@
         }
 
         // ── Build Account Holder Group ────────────────────────────────────────
-        function buildHolderGroup(firmId, firmName, firmType, clients) {
+        // typeIsHeuristic: when true, account_holder_type was null in DB — type was derived
+        // from the name heuristic and may be incorrect.  A ⚠ indicator is shown to prompt
+        // the superuser to use the "✎ Type" button to set the correct classification.
+        function buildHolderGroup(firmId, firmName, firmType, clients, typeIsHeuristic) {
             const isExpanded  = expandedHolders.has(firmId);
             const count       = clients.length;
             const clientsHtml = count > 0
                 ? clients.map(c => buildClientCard(c)).join('')
-                : `<div style="padding:16px 20px;color:var(--text-muted);font-size:0.85rem;font-style:italic;">No clients yet.</div>`;
+                : `<div style="padding:16px 20px;color:var(--text-muted);font-size:0.85rem;font-style:italic;">No clients yet. Use + Add Client or &#8853; Adopt to add companies here.</div>`;
+
+            const typeBadgeClass = typeIsHeuristic
+                ? 'holder-type-badge holder-type-unclassified'
+                : 'holder-type-badge';
+            const typeBadgeTip = typeIsHeuristic
+                ? ' title="Type not set in database — click ✎ Type to classify this entity"'
+                : '';
+            const typeBadgeLabel = typeIsHeuristic
+                ? `${esc(firmTypeLabel(firmType))} ⚠`
+                : esc(firmTypeLabel(firmType));
 
             return `
             <div class="holder-group" id="holder-${firmId}">
@@ -981,7 +1033,7 @@
                      onclick="toggleHolder(${firmId})">
                     <span class="holder-icon">&#127963;&#65039;</span>
                     <span class="holder-name">${esc(firmName)}</span>
-                    <span class="holder-type-badge">${esc(firmTypeLabel(firmType))}</span>
+                    <span class="${typeBadgeClass}"${typeBadgeTip}>${typeBadgeLabel}</span>
                     <span class="holder-count">${count} client${count !== 1 ? 's' : ''}</span>
                     <span class="holder-actions" onclick="event.stopPropagation()">
                         <button class="btn-holder-action btn-users-action"
@@ -991,6 +1043,10 @@
                         <button class="btn-holder-action btn-type-action"
                             onclick="openEditTypeModal(${firmId}, '${esc(firmName).replace(/'/g,"\\'")}', '${firmType || ''}')">
                             &#9998; Type
+                        </button>
+                        <button class="btn-holder-action btn-adopt-action"
+                            onclick="openAdoptModal(${firmId}, '${esc(firmName).replace(/'/g,"\\'")}')">
+                            &#8853; Adopt
                         </button>
                     </span>
                     <span class="holder-arrow ${isExpanded ? 'open' : ''}">&#9660;</span>
@@ -1573,6 +1629,94 @@
                 showToast('&#10060; ' + err.message, true);
             } finally {
                 btn.disabled = false; btn.textContent = 'Save Classification';
+            }
+        }
+
+        // ── Adopt Company as Client ───────────────────────────────────────────
+        // Allows superuser to "adopt" a standalone registered company as a managed
+        // eco_client under an account holder, without creating a new data silo company.
+        // Solves: companies that registered via signup appearing as separate top-level
+        // entities when they should be clients under a practice or business owner.
+        let _adoptFirmId = null;
+
+        function populateAdoptDropdown(selectId, firmId) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+            const clientCompanyIdSet = new Set(
+                allClients.filter(c => c.client_company_id).map(c => Number(c.client_company_id))
+            );
+            // Candidates for adoption:
+            //   - NOT already a client_company_id data silo
+            //   - NOT the target parent itself
+            //   - NOT managing other eco_clients (would orphan them — backend also enforces this)
+            //   - Has modules_enabled (is a real company, not a leftover orphan)
+            const candidates = Object.values(companyMap).filter(co => {
+                const id = Number(co.id);
+                if (clientCompanyIdSet.has(id)) return false;  // already a data silo
+                if (id === Number(firmId))       return false;  // can't adopt yourself
+                if (managingCompanyIds.has(id))  return false;  // manages other clients
+                return Array.isArray(co.modules_enabled) && co.modules_enabled.length > 0;
+            }).sort((a, b) =>
+                (a.trading_name || a.company_name).localeCompare(b.trading_name || b.company_name)
+            );
+
+            sel.innerHTML = candidates.length === 0
+                ? '<option value="">No standalone companies available to adopt</option>'
+                : '<option value="">Select company to adopt...</option>';
+
+            candidates.forEach(co => {
+                const opt = document.createElement('option');
+                opt.value = co.id;
+                opt.textContent = co.trading_name || co.company_name;
+                sel.appendChild(opt);
+            });
+        }
+
+        function openAdoptModal(firmId, firmName) {
+            _adoptFirmId = firmId;
+            document.getElementById('adoptModalSubtitle').textContent =
+                `Adopting under: ${firmName}`;
+            populateAdoptDropdown('adoptCompanySelect', firmId);
+            document.getElementById('adoptCompanyModal').classList.add('open');
+        }
+        function closeAdoptModal() {
+            document.getElementById('adoptCompanyModal').classList.remove('open');
+            _adoptFirmId = null;
+        }
+
+        async function submitAdoptCompany() {
+            if (!_adoptFirmId) return;
+            const companyId = document.getElementById('adoptCompanySelect').value;
+            if (!companyId) { showToast('&#10060; Please select a company to adopt', true); return; }
+            const btn = document.getElementById('btnAdoptSubmit');
+            btn.disabled = true; btn.textContent = 'Adopting...';
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients/adopt-company`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        company_id:        parseInt(companyId),
+                        parent_company_id: parseInt(_adoptFirmId),
+                    })
+                });
+                if (!res.ok) throw new Error((await res.json()).error || 'Failed to adopt company');
+                const data = await res.json();
+                // Update local state — push new eco_client so the adopted company
+                // appears as a client card and is excluded from account holder list
+                allClients.push(data.client);
+                // Rebuild managingCompanyIds so the new parent's group stays visible
+                managingCompanyIds = new Set(
+                    allClients.filter(c => c.company_id).map(c => Number(c.company_id))
+                );
+                expandedHolders.add(parseInt(_adoptFirmId));
+                showToast('&#9989; ' + (data.message || 'Company adopted as client'));
+                closeAdoptModal();
+                renderStats();
+                applyFilters();
+            } catch(err) {
+                showToast('&#10060; ' + err.message, true);
+            } finally {
+                btn.disabled = false; btn.textContent = 'Adopt as Client';
             }
         }
 
