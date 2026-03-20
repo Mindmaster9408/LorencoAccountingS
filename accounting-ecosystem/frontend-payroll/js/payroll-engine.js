@@ -769,5 +769,162 @@ const PayrollEngine = {
         safeLocalStorage.setItem(logKey, JSON.stringify(log));
 
         return deletedCount;
+    },
+
+    // === NET-TO-GROSS REVERSE CALCULATION ===
+
+    /**
+     * calculateNetToGross — Reverse payroll calculation.
+     *
+     * Given a desired net pay amount (what lands in the employee's bank), and
+     * any known payroll items (fixed allowances / deductions), determines the
+     * required basic salary using binary search (bisection) so that after
+     * applying all items, PAYE, and UIF the resulting net matches targetNet
+     * to within R0.01.
+     *
+     * The function iterates over trial basic salary values between 0 and
+     * basicSalaryHi (default R500,000). Because PAYE is monotonically
+     * increasing in basic salary, net is also monotonically increasing, which
+     * guarantees bisection converges.
+     *
+     * @param {Object} params
+     * @param {number}  params.targetNet         - Target net pay (amount paid into bank)
+     * @param {Array}   params.items             - Known items excluding basic salary.
+     *                                             Each: { type, amount, is_taxable }
+     *                                             type: 'deduction' | any string (income)
+     *                                             is_taxable: true/false (income items only)
+     * @param {Object}  [params.employeeOptions] - { age, medicalMembers, taxDirective }
+     * @param {string}  [params.period]          - 'YYYY-MM' — selects correct tax year tables
+     * @param {Object}  [params.ytdData]         - { ytdTaxableGross, ytdPAYE } for SARS YTD method
+     * @param {number}  [params.basicSalaryHi]   - Upper search bound (default 500000)
+     *
+     * @returns {Object} {
+     *   success       {boolean}
+     *   basic         {number}  — required basic salary
+     *   gross         {number}  — total gross (basic + allowances)
+     *   taxableGross  {number}
+     *   paye          {number}
+     *   uif           {number}
+     *   sdl           {number}
+     *   deductions    {number}
+     *   net           {number}  — actual net (should equal targetNet ± R0.01)
+     *   medicalCredit {number}
+     *   iterations    {number}
+     *   error         {string}  — present when success=false
+     *   note          {string}  — present for edge-case successes
+     * }
+     */
+    calculateNetToGross: function(params) {
+        var targetNet = typeof params.targetNet    === 'number' ? params.targetNet    : 0;
+        var items     = params.items               || [];
+        var empOpts   = params.employeeOptions     || {};
+        var period    = params.period              || null;
+        var ytdData   = params.ytdData             || null;
+        var hiLimit   = typeof params.basicSalaryHi === 'number' ? params.basicSalaryHi : 500000;
+        var tolerance = 0.01;
+        var maxIter   = 100;
+
+        var self = this;
+
+        if (targetNet <= 0) {
+            return {
+                success: false,
+                error: 'Target net must be greater than zero.',
+                basic: 0, gross: 0, taxableGross: 0,
+                paye: 0, uif: 0, sdl: 0, deductions: 0,
+                net: 0, medicalCredit: 0, negativeNetPay: false, iterations: 0
+            };
+        }
+
+        // Run one trial calculation with a given basic salary
+        function trial(trialBasic) {
+            return self.calculateFromData(
+                { basic_salary: trialBasic, regular_inputs: [] },
+                items,
+                [], [], [],
+                empOpts,
+                period,
+                ytdData
+            );
+        }
+
+        var loResult = trial(0);
+        var hiResult = trial(hiLimit);
+
+        // Edge case: items alone already meet or exceed the target net
+        if (loResult.net >= targetNet - tolerance) {
+            return {
+                success: true,
+                basic: 0,
+                gross: loResult.gross,
+                taxableGross: loResult.taxableGross,
+                paye: loResult.paye,
+                uif: loResult.uif,
+                sdl: loResult.sdl,
+                deductions: loResult.deductions,
+                net: loResult.net,
+                medicalCredit: loResult.medicalCredit || 0,
+                negativeNetPay: loResult.negativeNetPay,
+                iterations: 0,
+                note: 'Basic salary is zero — known items alone meet or exceed the target net.'
+            };
+        }
+
+        // Edge case: upper bound is insufficient
+        if (hiResult.net < targetNet - tolerance) {
+            return {
+                success: false,
+                error: 'Target net exceeds what is achievable within the search range (R' +
+                    hiLimit.toLocaleString('en-ZA') + ' basic). Increase the search limit or reduce fixed deductions.',
+                basic: hiLimit,
+                gross: hiResult.gross,
+                taxableGross: hiResult.taxableGross,
+                paye: hiResult.paye,
+                uif: hiResult.uif,
+                sdl: hiResult.sdl,
+                deductions: hiResult.deductions,
+                net: hiResult.net,
+                medicalCredit: hiResult.medicalCredit || 0,
+                negativeNetPay: hiResult.negativeNetPay,
+                iterations: 2
+            };
+        }
+
+        // Binary search (bisection)
+        var lo = 0;
+        var hi = hiLimit;
+        var result = loResult;
+        var i = 0;
+        for (i = 0; i < maxIter; i++) {
+            var mid = (lo + hi) / 2;
+            result = trial(mid);
+            var diff = result.net - targetNet;
+            if (Math.abs(diff) <= tolerance) { break; }
+            if (diff < 0) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
+        // Recalculate with the rounded basic for a consistent, clean output
+        var finalBasic = self.r2((lo + hi) / 2);
+        var finalResult = trial(finalBasic);
+
+        return {
+            success: true,
+            basic: finalBasic,
+            gross: finalResult.gross,
+            taxableGross: finalResult.taxableGross,
+            paye: finalResult.paye,
+            uif: finalResult.uif,
+            sdl: finalResult.sdl,
+            deductions: finalResult.deductions,
+            net: finalResult.net,
+            medicalCredit: finalResult.medicalCredit || 0,
+            negativeNetPay: finalResult.negativeNetPay,
+            iterations: i + 1
+        };
     }
+
 };

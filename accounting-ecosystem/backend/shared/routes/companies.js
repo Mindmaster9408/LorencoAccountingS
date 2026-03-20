@@ -265,8 +265,21 @@ router.patch('/:id/account-holder-type', requireSuperAdmin, async (req, res) => 
       return res.status(400).json({ error: 'Invalid account_holder_type. Must be accounting_practice, business_owner, individual, or null.' });
     }
 
-    const { data: old } = await supabase.from('companies').select('account_holder_type, company_name').eq('id', id).single();
-    if (!old) return res.status(404).json({ error: 'Company not found' });
+    // Check company exists (select only base fields — account_holder_type column may not
+    // exist if the pg-pool startup migration hasn't run; using id+company_name is safe)
+    const { data: old, error: checkErr } = await supabase
+      .from('companies')
+      .select('id, company_name, account_holder_type')
+      .eq('id', id)
+      .single();
+
+    if (checkErr || !old) {
+      // If the error mentions the column name, it means the schema migration hasn't run
+      const msg = checkErr && checkErr.message && checkErr.message.includes('account_holder_type')
+        ? 'The account_holder_type column does not exist yet. Run this SQL in Supabase: ALTER TABLE companies ADD COLUMN IF NOT EXISTS account_holder_type VARCHAR(50);'
+        : 'Company not found';
+      return res.status(checkErr ? 500 : 404).json({ error: msg });
+    }
 
     const { data, error } = await supabase
       .from('companies')
@@ -275,7 +288,12 @@ router.patch('/:id/account-holder-type', requireSuperAdmin, async (req, res) => 
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      const msg = error.message && error.message.includes('account_holder_type')
+        ? 'The account_holder_type column does not exist. Run this SQL in Supabase: ALTER TABLE companies ADD COLUMN IF NOT EXISTS account_holder_type VARCHAR(50);'
+        : error.message;
+      return res.status(500).json({ error: msg });
+    }
 
     await auditFromReq(req, 'UPDATE', 'company', id, {
       field: 'account_holder_type',
