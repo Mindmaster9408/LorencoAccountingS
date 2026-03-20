@@ -447,7 +447,25 @@ router.post('/select-company', authenticateToken, async (req, res) => {
 
         const ALLOWED_CROSS_ROLES = ['business_owner', 'accountant', 'super_admin', 'store_manager'];
         if (!practiceAccess || !ALLOWED_CROSS_ROLES.includes(practiceAccess.role)) {
-          return res.status(403).json({ error: 'You do not have access to this company' });
+          // Delegated access path: user has a restricted role at the practice but may have
+          // explicit client visibility grant from the admin.
+          let delegatedAccess = false;
+          if (practiceAccess) {
+            const { data: clientAccessRows } = await supabase
+              .from('user_client_access').select('eco_client_id')
+              .eq('user_id', userId)
+              .eq('company_id', ecoClient.company_id);
+            const rows = clientAccessRows || [];
+            if (rows.length === 0) {
+              // Zero rows = unrestricted client visibility
+              delegatedAccess = true;
+            } else {
+              delegatedAccess = rows.some(r => r.eco_client_id === ecoClient.id);
+            }
+          }
+          if (!delegatedAccess) {
+            return res.status(403).json({ error: 'You do not have access to this company' });
+          }
         }
         role = practiceAccess.role;
       }
@@ -673,7 +691,34 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
 
           const ALLOWED_CROSS_ROLES = ['business_owner', 'accountant', 'super_admin', 'store_manager'];
           if (!practiceAccess || !ALLOWED_CROSS_ROLES.includes(practiceAccess.role)) {
-            return res.status(403).json({ error: 'You do not have access to this company' });
+            // Delegated access path: user has a restricted role (e.g. employee) at the practice
+            // but may have been explicitly granted app + client access by the admin.
+            // Check: user_app_access grant for targetApp at practice + client visibility.
+            let delegatedAccess = false;
+            if (practiceAccess && targetApp) {
+              const [appGrantResult, clientRowsResult] = await Promise.all([
+                supabase.from('user_app_access').select('id')
+                  .eq('user_id', user.id)
+                  .eq('company_id', ecoClient.company_id)
+                  .eq('app_key', targetApp)
+                  .maybeSingle(),
+                supabase.from('user_client_access').select('eco_client_id')
+                  .eq('user_id', user.id)
+                  .eq('company_id', ecoClient.company_id),
+              ]);
+              if (appGrantResult.data) {
+                const clientAccessRows = clientRowsResult.data || [];
+                if (clientAccessRows.length === 0) {
+                  // Zero rows = unrestricted — can access all clients
+                  delegatedAccess = true;
+                } else {
+                  delegatedAccess = clientAccessRows.some(r => r.eco_client_id === ecoClient.id);
+                }
+              }
+            }
+            if (!delegatedAccess) {
+              return res.status(403).json({ error: 'You do not have access to this company' });
+            }
           }
           // Use the user's role from their managing practice
           role = practiceAccess.role;
