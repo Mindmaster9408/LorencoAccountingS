@@ -220,6 +220,13 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
+    // Super admins may also update the account_holder_type classification
+    if (req.user.isSuperAdmin && req.body.account_holder_type !== undefined) {
+      const validTypes = ['accounting_practice', 'business_owner', 'individual', null];
+      if (validTypes.includes(req.body.account_holder_type)) {
+        updates.account_holder_type = req.body.account_holder_type;
+      }
+    }
     updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
@@ -239,6 +246,46 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
 
     res.json({ company: data });
   } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PATCH /api/companies/:id/account-holder-type
+ * Super admin only — update entity classification without requiring full COMPANIES.EDIT permission.
+ * Used by the Admin Panel to repair wrong classifications on existing records.
+ */
+router.patch('/:id/account-holder-type', requireSuperAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { account_holder_type } = req.body;
+
+    const validTypes = ['accounting_practice', 'business_owner', 'individual', null];
+    if (!validTypes.includes(account_holder_type)) {
+      return res.status(400).json({ error: 'Invalid account_holder_type. Must be accounting_practice, business_owner, individual, or null.' });
+    }
+
+    const { data: old } = await supabase.from('companies').select('account_holder_type, company_name').eq('id', id).single();
+    if (!old) return res.status(404).json({ error: 'Company not found' });
+
+    const { data, error } = await supabase
+      .from('companies')
+      .update({ account_holder_type, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'UPDATE', 'company', id, {
+      field: 'account_holder_type',
+      oldValue: old.account_holder_type,
+      newValue: account_holder_type,
+    });
+
+    res.json({ company: data });
+  } catch (err) {
+    console.error('PATCH account-holder-type error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

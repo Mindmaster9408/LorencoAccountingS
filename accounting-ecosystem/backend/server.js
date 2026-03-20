@@ -51,6 +51,7 @@ const globalKvRoutes = require('./shared/routes/kv');
 const ocrRoutes          = require('./shared/routes/ocr');
 const featureFlagsRoutes = require('./shared/routes/featureFlags');
 const pdfImportRoutes    = require('./shared/routes/pdfImport');
+const adminPanelRoutes   = require('./shared/routes/admin-panel');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
@@ -178,6 +179,9 @@ app.use('/api/feature-flags', authenticateToken, featureFlagsRoutes);
 // PDF import — company registration document extraction and duplicate check
 // authenticateToken is applied inside pdfImportRoutes
 app.use('/api/import', pdfImportRoutes);
+// Admin Panel — super admin only routes (entity classification, user management)
+// authenticateToken + requireSuperAdmin are applied inside adminPanelRoutes
+app.use('/api/admin', adminPanelRoutes);
 
 // ─── Top-level POS-related Routes (receipts, barcodes, reports, analytics) ──
 if (receiptsRoutes) {

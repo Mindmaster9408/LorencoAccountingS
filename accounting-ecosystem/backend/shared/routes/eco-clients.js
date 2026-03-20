@@ -988,6 +988,81 @@ router.delete('/:id/firm-access/:firmId', async (req, res) => {
 });
 
 /**
+ * PATCH /api/eco-clients/:id/parent
+ * Super admin only — reassign a client to a different managing company (parent practice/owner).
+ * Moves eco_clients.company_id to the new parent.
+ * The client's data silo (client_company_id) is NOT changed — all app data is preserved.
+ *
+ * Body: { company_id: <new parent company id> }
+ */
+router.patch('/:id/parent', async (req, res) => {
+  try {
+    if (!req.user || !req.user.isSuperAdmin) {
+      return res.status(403).json({ error: 'Super admin access required' });
+    }
+
+    const clientId = parseInt(req.params.id);
+    const newParentId = parseInt(req.body.company_id);
+
+    if (!newParentId || isNaN(newParentId)) {
+      return res.status(400).json({ error: 'company_id (new parent) is required' });
+    }
+
+    // Verify client exists
+    const { data: client, error: clientErr } = await supabase
+      .from('eco_clients')
+      .select('id, name, company_id, client_company_id')
+      .eq('id', clientId)
+      .single();
+
+    if (clientErr || !client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Verify new parent company exists and is active
+    const { data: newParent, error: parentErr } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name')
+      .eq('id', newParentId)
+      .eq('is_active', true)
+      .single();
+
+    if (parentErr || !newParent) {
+      return res.status(404).json({ error: 'Target parent company not found or inactive' });
+    }
+
+    // Prevent assigning a client to its own data silo company (would break isolation)
+    if (client.client_company_id && newParentId === client.client_company_id) {
+      return res.status(400).json({ error: 'Cannot assign a client to its own data silo company' });
+    }
+
+    const oldParentId = client.company_id;
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('eco_clients')
+      .update({ company_id: newParentId, updated_at: new Date().toISOString() })
+      .eq('id', clientId)
+      .select()
+      .single();
+
+    if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+    await auditFromReq(req, 'UPDATE', 'eco_client', clientId, {
+      action: 'parent_reassignment',
+      oldParentId,
+      newParentId,
+      clientName: client.name,
+    });
+
+    const parentName = newParent.trading_name || newParent.company_name;
+    res.json({ client: updated, message: `Client "${client.name}" moved under "${parentName}"` });
+  } catch (err) {
+    console.error('eco-clients PATCH /:id/parent error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * DELETE /api/eco-clients/:id
  * Soft delete (set is_active = false)
  */

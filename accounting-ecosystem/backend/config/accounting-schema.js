@@ -47,6 +47,8 @@ async function ensureAccountingSchema(pool) {
       // PDF import / CIPC registration fields (migration 010)
       ['registration_date',   'DATE'],            // date of CIPC registration
       ['directors',           "JSONB DEFAULT '[]'::JSONB"], // director names from registration doc
+      // Entity classification — 'accounting_practice' | 'business_owner' | 'individual' | null
+      ['account_holder_type', 'VARCHAR(50)'],
     ];
     for (const [col, type] of companyColumns) {
       await client.query(

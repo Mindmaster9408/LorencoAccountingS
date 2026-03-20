@@ -244,6 +244,12 @@ router.post('/register', async (req, res) => {
     // Create company if name provided
     let company = null;
     if (companyName) {
+      // Map account_type from the registration form to the persisted account_holder_type column.
+      // 'accounting_practice' and 'business_owner' are the two first-class types.
+      // Any other value (or no value) falls back to null — treated as 'business_owner' in the UI.
+      const validTypes = ['accounting_practice', 'business_owner', 'individual'];
+      const holderType = validTypes.includes(account_type) ? account_type : null;
+
       const { data: newCompany, error: compError } = await supabase
         .from('companies')
         .insert({
@@ -251,7 +257,8 @@ router.post('/register', async (req, res) => {
           trading_name: companyTradingName,
           is_active: true,
           modules_enabled: ['pos', 'payroll', 'accounting', 'sean'],
-          subscription_status: 'active'
+          subscription_status: 'active',
+          account_holder_type: holderType,
         })
         .select()
         .single();
