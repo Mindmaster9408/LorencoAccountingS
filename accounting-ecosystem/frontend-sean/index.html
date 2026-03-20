@@ -340,7 +340,7 @@
                     <div class="card" style="margin-bottom:16px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                             <h3 style="margin:0;" id="learningPanelTitle">🧠 Bank Allocation Patterns</h3>
-                            <div style="display:flex;gap:8px;">
+                            <div style="display:flex;gap:8px;" id="patternFilterControls">
                                 <select id="patternStatusFilter" onchange="loadLearningPatterns()" style="font-size:0.82rem;padding:4px 8px;">
                                     <option value="">All statuses</option>
                                     <option value="candidate">Candidate</option>
@@ -690,6 +690,102 @@ async function sendChat() {
 // ═══════════════════════════════════════════════════════════
 // BANK LEARNING — Ecosystem Apps + Patterns + Proposals
 // ═══════════════════════════════════════════════════════════
+
+// ── SEAN Module Visibility Registry ──────────────────────────────────────────
+// Defines which learning modules are visible per app in the SEAN UI.
+//
+// IMPORTANT ARCHITECTURAL RULE:
+//   - SEAN's global knowledge base is universal (backend learns across all apps)
+//   - SEAN's UI modules are app-specific (only shown where currently relevant)
+//
+// To add a future module: register it here with the apps it belongs to.
+// Never show an accounting-native module under Paytime/POS prematurely.
+//
+// Future modules planned but NOT yet active:
+//   salary_matching:       apps: ['paytime']  — salary payment matching, PAYE recon
+//   pos_category_learning: apps: ['pos']       — POS product/category learning
+// ─────────────────────────────────────────────────────────────────────────────
+const SEAN_MODULE_REGISTRY = {
+    bank_allocation_patterns: {
+        label:       'Bank Allocation Patterns',
+        icon:        '🧠',
+        description: 'Bank transaction GL allocation learning from accounting data',
+        apps:        ['accounting'],  // Only active in Accounting — source data lives there
+        // Note: Paytime may later get salary/payment matching as a SEPARATE module.
+        // That is NOT the same as bank allocation and must be built independently.
+    },
+    // Future modules — NOT yet active. Registered for documentation/planning only.
+    // irp5_learning: {
+    //     label: 'IRP5 Code Learning',
+    //     apps:  ['paytime'],
+    //     note:  'IRP5 learning currently managed inside Paytime directly, not here',
+    // },
+    // salary_matching: {
+    //     label: 'Salary Payment Matching',
+    //     apps:  ['paytime'],
+    //     note:  'Future: match bank payments to payroll runs, PAYE reconciliation',
+    // },
+    // pos_category_learning: {
+    //     label: 'POS Category Learning',
+    //     apps:  ['pos'],
+    //     note:  'Future: product category and stock movement learning',
+    // },
+};
+
+// Returns true if a module is visible for the currently selected learning app.
+function isModuleVisible(moduleKey) {
+    const mod = SEAN_MODULE_REGISTRY[moduleKey];
+    if (!mod) return false;
+    return Array.isArray(mod.apps) && mod.apps.includes(_selectedLearningApp);
+}
+
+// Returns the display name for an app slug.
+function appDisplayName(slug) {
+    const names = { accounting: 'Accounting', paytime: 'Paytime', pos: 'Checkout Charlie' };
+    return names[slug] || (slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : 'Unknown');
+}
+
+// Renders a contextual placeholder for apps that have no active learning modules here.
+// Each message explains WHY the module is absent and WHAT is coming later.
+function renderNoModulePlaceholder(slug) {
+    const context = {
+        paytime: {
+            icon:   '💼',
+            title:  'No Active Learning Modules for Paytime',
+            body:   'Bank Allocation Patterns belong to Accounting, where the bank transaction data lives. ' +
+                    'Paytime IRP5 code learning happens directly inside the Paytime app when payroll items are coded.',
+            future: 'Coming later: Salary payment matching and PAYE reconciliation learning will appear here ' +
+                    'once that integration is built — as a dedicated Paytime module, not a reuse of accounting logic.',
+        },
+        pos: {
+            icon:   '🛒',
+            title:  'No Active Learning Modules for Checkout Charlie',
+            body:   'SEAN currently has no active learning modules for Checkout Charlie in this view. ' +
+                    'Bank allocation patterns belong to Accounting only.',
+            future: 'Coming later: POS product category learning and daily reconciliation intelligence will appear ' +
+                    'here once those modules are built.',
+        },
+    };
+    const def = context[slug] || {
+        icon:   '🔮',
+        title:  `No Active Learning Modules for ${appDisplayName(slug)}`,
+        body:   'No learning modules are currently active for this app in the SEAN learning view.',
+        future: '',
+    };
+    return `
+        <div style="padding:32px 20px;text-align:center;">
+            <div style="font-size:2.2rem;margin-bottom:12px;">${def.icon}</div>
+            <div style="font-weight:700;font-size:0.95rem;margin-bottom:10px;color:var(--text);">${def.title}</div>
+            <div style="font-size:0.85rem;color:var(--text-muted);max-width:440px;margin:0 auto 16px;line-height:1.6;">${def.body}</div>
+            ${def.future ? `
+            <div style="
+                font-size:0.78rem;color:var(--primary);max-width:440px;margin:0 auto;
+                padding:10px 14px;border:1px solid rgba(16,185,129,0.22);
+                border-radius:8px;background:rgba(16,185,129,0.04);line-height:1.55;text-align:left;
+            ">🔭 ${def.future}</div>` : ''}
+        </div>`;
+}
+
 let _selectedLearningApp = 'accounting'; // default
 
 async function loadEcosystemApps() {
@@ -743,13 +839,30 @@ function selectLearningApp(slug) {
 }
 
 async function loadLearningPatterns() {
-    const titleEl = document.getElementById('learningPanelTitle');
-    const listEl  = document.getElementById('learningPatternsList');
+    const titleEl      = document.getElementById('learningPanelTitle');
+    const listEl       = document.getElementById('learningPatternsList');
+    const filterCtrl   = document.getElementById('patternFilterControls');
+    const proposalsCard = document.getElementById('proposalsCard');
     if (!listEl) return;
+
+    // ── Module visibility gate ─────────────────────────────────────────────
+    // Bank Allocation Patterns is an Accounting-native module.
+    // If the selected app does not have this module, show a contextual placeholder
+    // and hide the filter controls + proposals panel.
+    if (!isModuleVisible('bank_allocation_patterns')) {
+        if (titleEl)    titleEl.textContent = `🔮 SEAN — ${appDisplayName(_selectedLearningApp)}`;
+        if (filterCtrl) filterCtrl.style.display = 'none';
+        if (proposalsCard) proposalsCard.style.display = 'none';
+        listEl.innerHTML = renderNoModulePlaceholder(_selectedLearningApp);
+        return;
+    }
+
+    // Restore filter controls (in case we're switching back from a non-accounting app)
+    if (filterCtrl) filterCtrl.style.display = '';
 
     const status = document.getElementById('patternStatusFilter')?.value || '';
     listEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;">Loading patterns…</div>';
-    if (titleEl) titleEl.textContent = `🧠 Bank Allocation Patterns — ${_selectedLearningApp}`;
+    if (titleEl) titleEl.textContent = `🧠 Bank Allocation Patterns — ${appDisplayName(_selectedLearningApp)}`;
 
     try {
         const qs = status ? `?status=${encodeURIComponent(status)}` : '';
