@@ -32,7 +32,12 @@ async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, typ
 
   // Fetch journal lines for those journals (batch — Supabase supports .in() up to 1000)
   let lQ = supabase.from('journal_lines').select('account_id, debit, credit').in('journal_id', journalIds);
-  if (segmentValueId) lQ = lQ.eq('segment_value_id', segmentValueId);
+  if (segmentValueId === 'untagged') {
+    lQ = lQ.is('segment_value_id', null);   // lines with no division tag
+  } else if (segmentValueId) {
+    lQ = lQ.eq('segment_value_id', parseInt(segmentValueId));
+  }
+  // no filter = ALL lines (used for company-total and existing balance-sheet/trial-balance)
   const { data: lines, error: lErr } = await lQ;
   if (lErr) throw new Error(lErr.message);
 
@@ -360,6 +365,155 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
   } catch (error) {
     console.error('Error generating profit & loss:', error);
     res.status(500).json({ error: 'Failed to generate profit & loss report' });
+  }
+});
+
+/**
+ * GET /api/reports/division-profit-loss?fromDate=&toDate=
+ *
+ * Returns a complete side-by-side P&L for every division (segment value) in the company,
+ * plus an "Untagged" column for journal lines with no segment_value_id, plus a Company Total.
+ *
+ * Response shape:
+ * {
+ *   fromDate, toDate,
+ *   columns: [{ id, name, code, color }],   // one per division + { id:'untagged', name:'Untagged' } + { id:'total', name:'Total' }
+ *   sections: { operating_income, cost_of_sales, other_income, operating_expense, depreciation_amort, finance_cost },
+ *   // each section is an array of { id, code, name, sub_type, values: { [columnId]: balance } }
+ *   totals: { [columnId]: { grossProfit, operatingProfit, netProfit, ... } }
+ * }
+ */
+router.get('/division-profit-loss', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate } = req.query;
+    if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
+
+    const companyId = req.user.companyId;
+
+    // 1 — fetch all active segments + values for this company
+    const { data: segments, error: segErr } = await supabase
+      .from('coa_segments')
+      .select('id, name, code')
+      .eq('company_id', companyId)
+      .eq('is_active', true);
+    if (segErr) throw new Error(segErr.message);
+
+    let divisionValues = [];
+    if (segments && segments.length > 0) {
+      const { data: vals, error: vErr } = await supabase
+        .from('coa_segment_values')
+        .select('id, segment_id, code, name, color, sort_order')
+        .in('segment_id', segments.map(s => s.id))
+        .eq('is_active', true)
+        .order('sort_order').order('name');
+      if (vErr) throw new Error(vErr.message);
+      divisionValues = vals || [];
+    }
+
+    // 2 — build column list: one per division value + untagged + total
+    const columns = [
+      ...divisionValues.map(v => ({ id: String(v.id), name: v.name, code: v.code, color: v.color || null })),
+      { id: 'untagged', name: 'Untagged', code: 'UNTAGGED', color: '#9ca3af' },
+      { id: 'total',    name: 'Total',    code: 'TOTAL',    color: null }
+    ];
+
+    // 3 — fetch P&L data for each column (division, untagged, total)
+    // Re-use fetchAccountBalances; accounts list is the same for all — fetch once then reuse
+    const { accounts, lines: totalLines, journalCount } = await fetchAccountBalances(companyId, {
+      fromDate, toDate, types: ['income', 'expense']
+    });
+
+    // aggregations keyed by column id
+    const aggByColumn = {};
+
+    // total
+    aggByColumn['total'] = aggregateLines(totalLines);
+
+    // untagged
+    const { lines: untaggedLines } = await fetchAccountBalances(companyId, {
+      fromDate, toDate, types: ['income', 'expense'], segmentValueId: 'untagged'
+    });
+    aggByColumn['untagged'] = aggregateLines(untaggedLines);
+
+    // per division
+    for (const dv of divisionValues) {
+      const { lines: dvLines } = await fetchAccountBalances(companyId, {
+        fromDate, toDate, types: ['income', 'expense'], segmentValueId: String(dv.id)
+      });
+      aggByColumn[String(dv.id)] = aggregateLines(dvLines);
+    }
+
+    // 4 — build sections
+    const sectionKeys = ['operating_income', 'cost_of_sales', 'other_income', 'operating_expense', 'depreciation_amort', 'finance_cost'];
+    const sections = {};
+    sectionKeys.forEach(k => { sections[k] = []; });
+
+    for (const a of accounts) {
+      const effectiveSubType = a.sub_type ||
+        (a.type === 'income' ? 'operating_income' : 'operating_expense');
+      const targetSection = sections[effectiveSubType]
+        ? effectiveSubType
+        : (a.type === 'income' ? 'operating_income' : 'operating_expense');
+
+      const values = {};
+      for (const col of columns) {
+        const agg = aggByColumn[col.id] || {};
+        const d = parseFloat(agg[a.id]?.debit  || 0);
+        const c = parseFloat(agg[a.id]?.credit || 0);
+        values[col.id] = a.type === 'income' ? (c - d) : (d - c);
+      }
+
+      // only include row if at least one column has a non-zero balance
+      const hasActivity = Object.values(values).some(v => Math.abs(v) > 0.001);
+      if (!hasActivity) continue;
+
+      sections[targetSection].push({
+        id: a.id, code: a.code, name: a.name, type: a.type,
+        sub_type: effectiveSubType, reporting_group: a.reporting_group,
+        values
+      });
+    }
+
+    // 5 — compute subtotals per column
+    const sum = (section, colId) => sections[section].reduce((s, r) => s + (r.values[colId] || 0), 0);
+    const totals = {};
+    for (const col of columns) {
+      const cid = col.id;
+      const totalOperatingIncome   = sum('operating_income',   cid);
+      const totalOtherIncome       = sum('other_income',       cid);
+      const totalCostOfSales       = sum('cost_of_sales',      cid);
+      const totalOperatingExpenses = sum('operating_expense',  cid);
+      const totalDepreciation      = sum('depreciation_amort', cid);
+      const totalFinanceCosts      = sum('finance_cost',       cid);
+      const grossProfit     = totalOperatingIncome - totalCostOfSales;
+      const operatingProfit = grossProfit + totalOtherIncome - totalOperatingExpenses - totalDepreciation;
+      const netProfit       = operatingProfit - totalFinanceCosts;
+      totals[cid] = {
+        operatingIncome: totalOperatingIncome, otherIncome: totalOtherIncome,
+        costOfSales: totalCostOfSales, grossProfit,
+        operatingExpenses: totalOperatingExpenses, depreciation: totalDepreciation,
+        operatingProfit, financeCosts: totalFinanceCosts, netProfit
+      };
+    }
+
+    res.json({
+      fromDate, toDate,
+      columns,
+      sections: {
+        operatingIncome:   sections.operating_income,
+        costOfSales:       sections.cost_of_sales,
+        otherIncome:       sections.other_income,
+        operatingExpenses: sections.operating_expense,
+        depreciation:      sections.depreciation_amort,
+        financeCosts:      sections.finance_cost,
+      },
+      totals,
+      journalCount
+    });
+
+  } catch (error) {
+    console.error('Error generating division P&L:', error);
+    res.status(500).json({ error: 'Failed to generate division profit & loss report' });
   }
 });
 

@@ -115,6 +115,32 @@
     .add-knowledge-form .add-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; }
     .add-knowledge-form .add-btn:hover { opacity: 0.9; }
 
+    /* Divisions Section */
+    .divisions-section { background: #fff; padding: 20px; margin-top: 20px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .divisions-section h2 { font-size: 18px; color: #333; margin-bottom: 5px; display: flex; align-items: center; gap: 10px; }
+    .divisions-section .div-badge { background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%); color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .divisions-section .section-desc { color: #666; font-size: 13px; margin-bottom: 20px; }
+    .division-segment { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+    .division-segment-header { background: #f8f9fa; padding: 10px 14px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; justify-content: space-between; }
+    .division-segment-header .seg-name { font-weight: 700; font-size: 14px; color: #333; }
+    .division-segment-header .seg-actions { display: flex; gap: 6px; }
+    .division-segment-header .seg-actions button { background: none; border: 1px solid #dee2e6; color: #555; padding: 3px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    .division-segment-header .seg-actions button:hover { background: #e9ecef; }
+    .division-values { padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .division-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; color: white; }
+    .division-chip .chip-del { background: none; border: none; color: rgba(255,255,255,0.8); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+    .division-chip .chip-del:hover { color: white; }
+    .add-value-form { display: inline-flex; align-items: center; gap: 6px; padding: 2px; border: 1px dashed #adb5bd; border-radius: 20px; padding: 2px 8px; }
+    .add-value-form input { border: none; outline: none; font-size: 12px; width: 110px; background: transparent; }
+    .add-value-form input[type="color"] { width: 28px; height: 20px; padding: 0; border: none; cursor: pointer; }
+    .add-value-form button { background: #0066cc; color: white; border: none; border-radius: 20px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
+    .add-segment-bar { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .add-segment-bar input { border: 1px solid #dee2e6; border-radius: 4px; padding: 7px 10px; font-size: 13px; }
+    .add-segment-bar button { background: #0066cc; color: white; border: none; border-radius: 4px; padding: 7px 16px; font-size: 13px; cursor: pointer; font-weight: 600; }
+    .add-segment-bar button:hover { background: #0052a3; }
+    .div-seed-btn { margin-left: auto; background: white; border: 1px solid #0066cc; color: #0066cc; border-radius: 4px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+    .div-seed-btn:hover { background: #e8f0fe; }
+
     /* Integrations Section */
     .integrations-section { background: #fff; padding: 20px; margin-top: 20px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .integrations-section h2 { font-size: 18px; color: #333; margin-bottom: 5px; display: flex; align-items: center; gap: 10px; }
@@ -477,6 +503,24 @@
       </div>
     </div>
 
+    <!-- Divisions Section -->
+    <div class="divisions-section">
+      <h2>
+        Business Divisions
+        <span class="div-badge">Segment Reporting</span>
+      </h2>
+      <p class="section-desc">Divisions (segments) let you tag transactions and generate a side-by-side Division P&amp;L report. Common use case: Cattle / Macadamia / General for a farming company.</p>
+      <div id="divisionsList">
+        <div style="color:#999;font-size:13px;padding:20px 0;">Loading divisions…</div>
+      </div>
+      <div class="add-segment-bar">
+        <input type="text" id="newSegmentName" placeholder="Segment name (e.g. Farm Division)" style="width:220px;">
+        <button onclick="createSegment()">+ Add Segment</button>
+        <button class="div-seed-btn" onclick="seedFarming()" title="Seeds Cattle / Macadamia / General divisions">Seed Farming Defaults</button>
+      </div>
+      <div id="divMsg" style="margin-top:10px;font-size:13px;display:none;"></div>
+    </div>
+
     <!-- Integrations Section -->
     <div class="integrations-section">
       <h2>
@@ -681,6 +725,7 @@
       await loadCompanies();
       loadCurrentCompany();
       loadSeanKnowledge();
+      loadDivisions();
     }
 
     async function loadCompanies() {
@@ -1075,6 +1120,130 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // ========== Division / Segment Functions ==========
+
+    function divMsg(msg, ok) {
+      const el = document.getElementById('divMsg');
+      el.textContent = msg;
+      el.style.color  = ok ? '#28a745' : '#d32f2f';
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
+
+    async function loadDivisions() {
+      const el = document.getElementById('divisionsList');
+      try {
+        const res = await fetch('/api/accounting/segments', { headers: authH() });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const { segments } = await res.json();
+        renderDivisions(segments || []);
+      } catch (err) {
+        el.innerHTML = '<div style="color:#d32f2f;font-size:13px;">Failed to load divisions: ' + escapeHtml(err.message) + '</div>';
+      }
+    }
+
+    function renderDivisions(segments) {
+      const el = document.getElementById('divisionsList');
+      if (!segments.length) {
+        el.innerHTML = '<div style="color:#999;font-size:13px;padding:10px 0;">No segments configured yet. Add one below.</div>';
+        return;
+      }
+      el.innerHTML = segments.map(seg => `
+        <div class="division-segment" id="seg-${seg.id}">
+          <div class="division-segment-header">
+            <span class="seg-name">${escapeHtml(seg.name)}</span>
+            <span class="seg-actions">
+              <button onclick="deleteSegment(${seg.id}, '${escapeHtml(seg.name)}')">Remove</button>
+            </span>
+          </div>
+          <div class="division-values" id="segvals-${seg.id}">
+            ${(seg.values || []).map(v => {
+              const bg = v.color || '#6c757d';
+              return `<span class="division-chip" style="background:${escapeHtml(bg)}" title="${escapeHtml(v.name)}">
+                ${escapeHtml(v.name)}
+                <button class="chip-del" onclick="deleteSegmentValue(${seg.id}, ${v.id}, '${escapeHtml(v.name)}')" title="Remove division">&times;</button>
+              </span>`;
+            }).join('')}
+            <div class="add-value-form">
+              <input type="color" id="newValColor-${seg.id}" value="#0066cc">
+              <input type="text" id="newValName-${seg.id}" placeholder="New division name" onkeydown="if(event.key==='Enter') addDivisionValue(${seg.id})">
+              <button onclick="addDivisionValue(${seg.id})">Add</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function createSegment() {
+      const inp  = document.getElementById('newSegmentName');
+      const name = (inp.value || '').trim();
+      if (!name) { divMsg('Please enter a segment name.', false); return; }
+      try {
+        const res = await fetch('/api/accounting/segments', {
+          method: 'POST', headers: authH(), body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+        inp.value = '';
+        divMsg('Segment "' + name + '" created.', true);
+        loadDivisions();
+      } catch (err) { divMsg('Failed to create segment: ' + err.message, false); }
+    }
+
+    async function deleteSegment(segId, name) {
+      if (!confirm('Remove segment "' + name + '"? Existing journal line tags are preserved.')) return;
+      try {
+        const res = await fetch('/api/accounting/segments/' + segId, { method: 'DELETE', headers: authH() });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'HTTP ' + res.status); }
+        divMsg('Segment removed.', true);
+        loadDivisions();
+      } catch (err) { divMsg('Failed to remove segment: ' + err.message, false); }
+    }
+
+    async function addDivisionValue(segId) {
+      const nameEl  = document.getElementById('newValName-' + segId);
+      const colorEl = document.getElementById('newValColor-' + segId);
+      const name    = (nameEl.value || '').trim();
+      if (!name) { divMsg('Please enter a division name.', false); return; }
+      try {
+        const res = await fetch('/api/accounting/segments/' + segId + '/values', {
+          method: 'POST', headers: authH(),
+          body: JSON.stringify({ name, color: colorEl.value || null })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+        nameEl.value  = '';
+        colorEl.value = '#0066cc';
+        divMsg('Division "' + name + '" added.', true);
+        loadDivisions();
+      } catch (err) { divMsg('Failed to add division: ' + err.message, false); }
+    }
+
+    async function deleteSegmentValue(segId, valId, name) {
+      if (!confirm('Remove division "' + name + '"? Existing tags on journal lines are preserved.')) return;
+      try {
+        const res = await fetch('/api/accounting/segments/' + segId + '/values/' + valId, { method: 'DELETE', headers: authH() });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'HTTP ' + res.status); }
+        divMsg('Division "' + name + '" removed.', true);
+        loadDivisions();
+      } catch (err) { divMsg('Failed to remove division: ' + err.message, false); }
+    }
+
+    async function seedFarming() {
+      if (!confirm('Seed default Farming divisions (Cattle, Macadamia / Nuts, General)?')) return;
+      try {
+        const res = await fetch('/api/accounting/segments/seed-farming', { method: 'POST', headers: authH() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+        if (data.seeded === false) {
+          divMsg(data.message || 'Farming segments already exist.', true);
+        } else {
+          divMsg('Farming divisions seeded: Cattle, Macadamia / Nuts, General.', true);
+        }
+        loadDivisions();
+      } catch (err) { divMsg('Failed to seed farming divisions: ' + err.message, false); }
     }
 
     // ========== Integrations Functions ==========

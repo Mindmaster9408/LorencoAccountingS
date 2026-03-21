@@ -137,11 +137,12 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'reports.html' || currentPage === 'balance-sheet.html' || currentPage === 'cashflow.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'reports.html' || currentPage === 'balance-sheet.html' || currentPage === 'cashflow.html' || currentPage === 'division-pl.html' ? 'active' : ''}">
         <a href="/accounting/reports.html">Reports</a>
         <div class="dropdown">
           <div class="dropdown-header">Financial</div>
           <a href="/accounting/reports.html">Profit & Loss</a>
+          <a href="/accounting/division-pl.html">Division P&amp;L</a>
           <a href="/accounting/balance-sheet.html">Balance Sheet</a>
           <a href="/accounting/cashflow.html">Cash Flow Statement</a>
           <a href="/accounting/trial-balance.html">Trial Balance</a>
