@@ -177,4 +177,173 @@ router.get('/summary', requirePermission('ATTENDANCE.VIEW'), async (req, res) =>
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEAVE MANAGEMENT — full CRUD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/payroll/attendance/leave
+ * List leave records for an employee. Also returns current-year balances.
+ * Query: employee_id (required), year (optional, defaults to current year)
+ */
+router.get('/leave', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+  try {
+    const { employee_id, year } = req.query;
+    if (!employee_id) return res.status(400).json({ error: 'employee_id is required' });
+
+    const targetYear = parseInt(year) || new Date().getFullYear();
+
+    // Fetch leave records (all years — frontend filters by year if needed)
+    const { data: records, error: rErr } = await supabase
+      .from('leave_records')
+      .select('*')
+      .eq('company_id', req.companyId)
+      .eq('employee_id', parseInt(employee_id))
+      .order('start_date', { ascending: false });
+
+    if (rErr) return res.status(500).json({ error: rErr.message });
+
+    // Fetch leave balances for this year
+    const { data: balances, error: bErr } = await supabase
+      .from('leave_balances')
+      .select('*')
+      .eq('company_id', req.companyId)
+      .eq('employee_id', parseInt(employee_id))
+      .eq('year', targetYear);
+
+    if (bErr) return res.status(500).json({ error: bErr.message });
+
+    // If no balances exist for this year, create SA statutory defaults
+    let effectiveBalances = balances || [];
+    if (effectiveBalances.length === 0) {
+      const defaults = [
+        { leave_type: 'annual',  annual_entitlement: 15, balance: 15, carried_forward: 0 },
+        { leave_type: 'sick',    annual_entitlement: 30, balance: 30, carried_forward: 0 },
+        { leave_type: 'family',  annual_entitlement: 3,  balance: 3,  carried_forward: 0 },
+      ];
+      const rows = defaults.map(d => ({
+        company_id: req.companyId,
+        employee_id: parseInt(employee_id),
+        year: targetYear,
+        ...d
+      }));
+      const { data: inserted } = await supabase.from('leave_balances').insert(rows).select();
+      effectiveBalances = inserted || rows;
+    }
+
+    res.json({ records: records || [], balances: effectiveBalances, year: targetYear });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/payroll/attendance/leave/:id
+ * Update a leave record's status or fields.
+ */
+router.put('/leave/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, reason, start_date, end_date, days_taken } = req.body;
+
+    // Verify ownership
+    const { data: existing, error: fErr } = await supabase
+      .from('leave_records')
+      .select('id, company_id, employee_id, days_taken, leave_type, status, start_date')
+      .eq('id', parseInt(id))
+      .eq('company_id', req.companyId)
+      .maybeSingle();
+
+    if (fErr || !existing) return res.status(404).json({ error: 'Leave record not found' });
+
+    const updates = {};
+    if (status !== undefined) updates.status = status;
+    if (reason !== undefined) updates.reason = reason;
+    if (start_date !== undefined) updates.start_date = start_date;
+    if (end_date !== undefined) updates.end_date = end_date;
+    if (days_taken !== undefined) updates.days_taken = parseFloat(days_taken);
+
+    // If days_taken changed AND record was approved, adjust the balance delta
+    if (days_taken !== undefined && existing.status === 'approved' && updates.days_taken !== existing.days_taken) {
+      const delta = existing.days_taken - updates.days_taken; // positive = freeing up days
+      const year = new Date(existing.start_date).getFullYear();
+      const { data: bal } = await supabase.from('leave_balances').select('id, balance')
+        .eq('company_id', req.companyId).eq('employee_id', existing.employee_id)
+        .eq('leave_type', existing.leave_type).eq('year', year).maybeSingle();
+      if (bal) {
+        await supabase.from('leave_balances').update({ balance: parseFloat(bal.balance) + delta }).eq('id', bal.id);
+      }
+    }
+
+    // If status is changing from non-approved → approved, deduct balance
+    if (status === 'approved' && existing.status !== 'approved') {
+      const year = new Date(existing.start_date).getFullYear();
+      const { data: bal } = await supabase.from('leave_balances').select('id, balance')
+        .eq('company_id', req.companyId).eq('employee_id', existing.employee_id)
+        .eq('leave_type', existing.leave_type).eq('year', year).maybeSingle();
+      if (bal) {
+        await supabase.from('leave_balances').update({ balance: parseFloat(bal.balance) - existing.days_taken }).eq('id', bal.id);
+      }
+    }
+
+    // If status is changing from approved → rejected/cancelled, restore balance
+    if ((status === 'rejected' || status === 'cancelled') && existing.status === 'approved') {
+      const year = new Date(existing.start_date).getFullYear();
+      const { data: bal } = await supabase.from('leave_balances').select('id, balance')
+        .eq('company_id', req.companyId).eq('employee_id', existing.employee_id)
+        .eq('leave_type', existing.leave_type).eq('year', year).maybeSingle();
+      if (bal) {
+        await supabase.from('leave_balances').update({ balance: parseFloat(bal.balance) + existing.days_taken }).eq('id', bal.id);
+      }
+    }
+
+    const { data, error } = await supabase.from('leave_records').update(updates).eq('id', parseInt(id)).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * DELETE /api/payroll/attendance/leave/:id
+ * Delete a leave record and restore the balance if it was approved.
+ */
+router.delete('/leave/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify ownership and fetch for balance restoration
+    const { data: existing, error: fErr } = await supabase
+      .from('leave_records')
+      .select('id, company_id, employee_id, days_taken, leave_type, status, start_date')
+      .eq('id', parseInt(id))
+      .eq('company_id', req.companyId)
+      .maybeSingle();
+
+    if (fErr || !existing) return res.status(404).json({ error: 'Leave record not found' });
+
+    // Restore balance only if the leave was approved
+    if (existing.status === 'approved') {
+      const year = new Date(existing.start_date).getFullYear();
+      const { data: bal } = await supabase.from('leave_balances').select('id, balance')
+        .eq('company_id', req.companyId).eq('employee_id', existing.employee_id)
+        .eq('leave_type', existing.leave_type).eq('year', year).maybeSingle();
+      if (bal) {
+        await supabase.from('leave_balances')
+          .update({ balance: parseFloat(bal.balance) + existing.days_taken })
+          .eq('id', bal.id);
+      }
+    }
+
+    const { error } = await supabase.from('leave_records').delete().eq('id', parseInt(id));
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

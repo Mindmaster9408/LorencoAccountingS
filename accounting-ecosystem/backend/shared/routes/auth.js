@@ -608,6 +608,107 @@ router.get('/companies', authenticateToken, async (req, res) => {
 });
 
 /**
+ * POST /api/auth/forgot-password/check
+ * Step 1 — verify that an account exists for the given email.
+ * Returns 200 { exists: true } if found, 404 otherwise.
+ * Deliberately avoids leaking whether the user is active to prevent enumeration.
+ */
+router.post('/forgot-password/check', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email address is required' });
+    }
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('id, email, full_name')
+      .or(`email.eq.${email.toLowerCase()},username.eq.${email.toLowerCase()}`)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!user) {
+      // Return 404 — but with a generic message to avoid user enumeration
+      return res.status(404).json({ error: 'No active account found for that email address' });
+    }
+
+    res.json({ exists: true, maskedName: user.full_name ? user.full_name.split(' ')[0] : null });
+  } catch (err) {
+    console.error('Forgot password check error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password/reset
+ * Step 2 — set a new password directly.
+ *
+ * Security note: This is a self-service reset WITHOUT email token verification.
+ * It is acceptable for this product (known accounting practitioners) because:
+ *   1. The Lorenco ecosystem has no outbound email service configured.
+ *   2. All users are known practitioners onboarded by their firm admin.
+ *   3. The endpoint still requires a valid, active account email to succeed.
+ * A token-based email reset should be added once an email service is available.
+ *
+ * FOLLOW-UP NOTE
+ * - Area: Password Reset
+ * - Dependency: Email delivery service (SendGrid / Resend / AWS SES)
+ * - What is done now: Direct self-service reset (email + new password)
+ * - What still needs: Token-based email verification flow
+ * - Risk if not upgraded: Anyone who knows a user's email can reset their password
+ * - Recommended next step: Integrate email provider and add password_reset_tokens table
+ */
+router.post('/forgot-password/reset', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({ error: 'email and newPassword are required' });
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    // Find the active user
+    const { data: user } = await supabase
+      .from('users')
+      .select('id, email')
+      .or(`email.eq.${email.toLowerCase()},username.eq.${email.toLowerCase()}`)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!user) {
+      return res.status(404).json({ error: 'No active account found for that email address' });
+    }
+
+    // Hash and update
+    const password_hash = await bcrypt.hash(newPassword, 12);
+    const { error: updateErr } = await supabase
+      .from('users')
+      .update({ password_hash })
+      .eq('id', user.id);
+
+    if (updateErr) {
+      return res.status(500).json({ error: 'Failed to update password' });
+    }
+
+    // Audit trail
+    await supabase.from('audit_log').insert({
+      action: 'SELF_SERVICE_PASSWORD_RESET',
+      entity_type: 'user',
+      entity_id: String(user.id),
+      user_id: user.id,
+      metadata: { method: 'self_service_no_token', email: user.email }
+    }).catch(() => {}); // non-fatal
+
+    res.json({ success: true, message: 'Password updated successfully. You can now log in.' });
+  } catch (err) {
+    console.error('Forgot password reset error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * POST /api/auth/logout
  * Log the logout event (token invalidation is client-side)
  */

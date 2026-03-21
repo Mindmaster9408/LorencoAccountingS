@@ -861,7 +861,7 @@
             document.getElementById('forgot-email').value = '';
         }
 
-        function handleForgotStep1(event) {
+        async function handleForgotStep1(event) {
             event.preventDefault();
 
             const email = document.getElementById('forgot-email').value.trim();
@@ -871,21 +871,40 @@
             errorDiv.classList.remove('show');
             successDiv.classList.remove('show');
 
-            // Show loading
             document.getElementById('forgot-step1-loading').style.display = 'block';
             document.getElementById('forgot-step1-btn').disabled = true;
 
-            // For now, go straight to step 2 (server validates on reset)
-            forgotEmail = email;
-            document.getElementById('forgot-step1-loading').style.display = 'none';
-            document.getElementById('forgot-step1-btn').disabled = false;
-            document.getElementById('forgot-found-email').textContent = email;
-            document.getElementById('forgot-step-1').style.display = 'none';
-            document.getElementById('forgot-step-2').style.display = 'block';
-            errorDiv.classList.remove('show');
+            try {
+                const res = await fetch('/api/auth/forgot-password/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const json = await res.json();
+
+                document.getElementById('forgot-step1-loading').style.display = 'none';
+                document.getElementById('forgot-step1-btn').disabled = false;
+
+                if (!res.ok) {
+                    errorDiv.textContent = json.error || 'No account found for that email address.';
+                    errorDiv.classList.add('show');
+                    return;
+                }
+
+                // Account found — advance to step 2
+                forgotEmail = email;
+                document.getElementById('forgot-found-email').textContent = email;
+                document.getElementById('forgot-step-1').style.display = 'none';
+                document.getElementById('forgot-step-2').style.display = 'block';
+            } catch (err) {
+                document.getElementById('forgot-step1-loading').style.display = 'none';
+                document.getElementById('forgot-step1-btn').disabled = false;
+                errorDiv.textContent = 'Network error. Please try again.';
+                errorDiv.classList.add('show');
+            }
         }
 
-        function handleForgotStep2(event) {
+        async function handleForgotStep2(event) {
             event.preventDefault();
 
             const newPassword = document.getElementById('forgot-new-password').value;
@@ -908,17 +927,36 @@
                 return;
             }
 
-            // Show loading
             document.getElementById('forgot-step2-loading').style.display = 'block';
             document.getElementById('forgot-step2-btn').disabled = true;
 
-            // Password reset not yet implemented on backend
-            document.getElementById('forgot-step2-loading').style.display = 'none';
-            document.getElementById('forgot-step2-btn').disabled = false;
-            successDiv.textContent = 'Password reset request sent. Please contact your administrator.';
-            successDiv.classList.add('show');
-            errorDiv.classList.remove('show');
-            setTimeout(() => { switchTabDirect('login'); }, 2000);
+            try {
+                const res = await fetch('/api/auth/forgot-password/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: forgotEmail, newPassword })
+                });
+                const json = await res.json();
+
+                document.getElementById('forgot-step2-loading').style.display = 'none';
+                document.getElementById('forgot-step2-btn').disabled = false;
+
+                if (!res.ok) {
+                    errorDiv.textContent = json.error || 'Failed to reset password. Please try again.';
+                    errorDiv.classList.add('show');
+                    return;
+                }
+
+                successDiv.textContent = 'Password updated successfully. Redirecting to login...';
+                successDiv.classList.add('show');
+                errorDiv.classList.remove('show');
+                setTimeout(() => { switchTabDirect('login'); }, 2000);
+            } catch (err) {
+                document.getElementById('forgot-step2-loading').style.display = 'none';
+                document.getElementById('forgot-step2-btn').disabled = false;
+                errorDiv.textContent = 'Network error. Please try again.';
+                errorDiv.classList.add('show');
+            }
         }
 
         function forgotGoBackToStep1() {

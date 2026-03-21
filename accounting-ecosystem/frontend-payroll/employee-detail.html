@@ -2044,25 +2044,60 @@
         }
 
         // ========== LEAVE ==========
-        function loadLeaveData() {
-            const leave = JSON.parse(safeLocalStorage.getItem(getLeaveKey()) || '[]');
-            renderLeave(leave); updateLeaveBalances(leave);
-        }
-        function renderLeave(leave) {
+        const typeNames = { annual: 'Annual', sick: 'Sick', family: 'Family Resp.', maternity: 'Maternity', study: 'Study', unpaid: 'Unpaid', other: 'Other' };
+
+        async function loadLeaveData() {
             const tbody = document.getElementById('leaveTableBody');
-            if (leave.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:30px;">No leave records yet</td></tr>'; return; }
-            const typeNames = { annual: 'Annual', sick: 'Sick', family: 'Family Resp.', maternity: 'Maternity', study: 'Study', unpaid: 'Unpaid' };
-            tbody.innerHTML = [...leave].sort((a, b) => b.start_date.localeCompare(a.start_date)).map(l =>
-                '<tr><td>' + (typeNames[l.type] || l.type) + '</td><td>' + l.start_date + '</td><td>' + l.end_date + '</td><td>' + l.days + '</td><td><span class="leave-status leave-' + l.status + '">' + l.status + '</span></td><td>' + (l.reason || '-') + '</td><td><button class="btn btn-danger btn-sm" onclick="deleteLeave(\'' + l.id + '\')">Delete</button></td></tr>'
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">Loading...</td></tr>';
+            try {
+                const data = await DataAccess.getLeave(currentCompanyId, currentEmpId);
+                renderLeave(data.records || []);
+                updateLeaveBalancesFromAPI(data.balances || []);
+            } catch(e) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:30px;">No leave records yet</td></tr>';
+            }
+        }
+
+        function renderLeave(records) {
+            const tbody = document.getElementById('leaveTableBody');
+            if (!records || records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:30px;">No leave records yet</td></tr>';
+                return;
+            }
+            // Backend field names: leave_type, days_taken, start_date, end_date, status, reason, id
+            tbody.innerHTML = [...records].sort((a, b) => b.start_date.localeCompare(a.start_date)).map(l =>
+                '<tr>' +
+                '<td>' + (typeNames[l.leave_type || l.type] || l.leave_type || l.type) + '</td>' +
+                '<td>' + l.start_date + '</td>' +
+                '<td>' + l.end_date + '</td>' +
+                '<td>' + (l.days_taken || l.days || '-') + '</td>' +
+                '<td><span class="leave-status leave-' + l.status + '">' + l.status + '</span></td>' +
+                '<td>' + (l.reason || '-') + '</td>' +
+                '<td><button class="btn btn-danger btn-sm" onclick="deleteLeave(' + l.id + ')">Delete</button></td>' +
+                '</tr>'
             ).join('');
         }
-        function updateLeaveBalances(leave) {
-            const approved = leave.filter(l => l.status === 'approved');
-            document.getElementById('annualLeaveBalance').textContent = Math.max(15 - approved.filter(l => l.type === 'annual').reduce((s, l) => s + parseFloat(l.days), 0), 0);
-            document.getElementById('sickLeaveBalance').textContent = Math.max(30 - approved.filter(l => l.type === 'sick').reduce((s, l) => s + parseFloat(l.days), 0), 0);
-            document.getElementById('familyLeaveBalance').textContent = Math.max(3 - approved.filter(l => l.type === 'family').reduce((s, l) => s + parseFloat(l.days), 0), 0);
+
+        function updateLeaveBalancesFromAPI(balances) {
+            // balances is array of { leave_type, balance, annual_entitlement }
+            const byType = {};
+            (balances || []).forEach(b => { byType[b.leave_type] = b; });
+            const annualBal = byType['annual'];
+            const sickBal   = byType['sick'];
+            const familyBal = byType['family'];
+            document.getElementById('annualLeaveBalance').textContent = annualBal ? Math.max(parseFloat(annualBal.balance) || 0, 0).toFixed(0) : '15';
+            document.getElementById('sickLeaveBalance').textContent   = sickBal   ? Math.max(parseFloat(sickBal.balance)   || 0, 0).toFixed(0) : '30';
+            document.getElementById('familyLeaveBalance').textContent = familyBal ? Math.max(parseFloat(familyBal.balance)  || 0, 0).toFixed(0) : '3';
         }
-        function openAddLeaveModal() { document.getElementById('leaveStartDate').value = ''; document.getElementById('leaveEndDate').value = ''; document.getElementById('leaveDays').value = ''; document.getElementById('leaveReason').value = ''; document.getElementById('addLeaveModal').classList.add('show'); }
+
+        function openAddLeaveModal() {
+            document.getElementById('leaveStartDate').value = '';
+            document.getElementById('leaveEndDate').value = '';
+            document.getElementById('leaveDays').value = '';
+            document.getElementById('leaveReason').value = '';
+            document.getElementById('addLeaveModal').classList.add('show');
+        }
+
         function calcLeaveDays() {
             const start = document.getElementById('leaveStartDate').value;
             const end = document.getElementById('leaveEndDate').value;
@@ -2072,16 +2107,40 @@
                 document.getElementById('leaveDays').value = days;
             }
         }
-        function saveLeave() {
+
+        async function saveLeave() {
             const start = document.getElementById('leaveStartDate').value;
             const end = document.getElementById('leaveEndDate').value;
             const days = parseFloat(document.getElementById('leaveDays').value);
             if (!start || !end || !days) { alert('Please fill in all required fields'); return; }
-            const leave = JSON.parse(safeLocalStorage.getItem(getLeaveKey()) || '[]');
-            leave.push({ id: 'lv-' + Math.random().toString(36).substr(2, 9), type: document.getElementById('leaveType').value, start_date: start, end_date: end, days: days, status: document.getElementById('leaveStatus').value, reason: document.getElementById('leaveReason').value.trim(), date_created: new Date().toISOString() });
-            safeLocalStorage.setItem(getLeaveKey(), JSON.stringify(leave)); loadLeaveData(); closeModal('addLeaveModal');
+
+            const record = {
+                leave_type: document.getElementById('leaveType').value,
+                start_date: start,
+                end_date: end,
+                days_taken: days,
+                status: document.getElementById('leaveStatus').value,
+                reason: document.getElementById('leaveReason').value.trim()
+            };
+
+            try {
+                await DataAccess.saveLeave(currentCompanyId, currentEmpId, record);
+                closeModal('addLeaveModal');
+                await loadLeaveData();
+            } catch(e) {
+                alert('Failed to save leave record. Please try again.');
+            }
         }
-        function deleteLeave(id) { if (!confirm('Delete this leave record?')) return; const leave = JSON.parse(safeLocalStorage.getItem(getLeaveKey()) || '[]').filter(l => l.id !== id); safeLocalStorage.setItem(getLeaveKey(), JSON.stringify(leave)); loadLeaveData(); }
+
+        async function deleteLeave(id) {
+            if (!confirm('Delete this leave record?')) return;
+            try {
+                await DataAccess.deleteLeave(currentCompanyId, currentEmpId, id);
+                await loadLeaveData();
+            } catch(e) {
+                alert('Failed to delete leave record. Please try again.');
+            }
+        }
 
         // ========== NOTES ==========
         function loadNotes() {

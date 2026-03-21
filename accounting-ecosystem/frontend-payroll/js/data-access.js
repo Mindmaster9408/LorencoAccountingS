@@ -344,21 +344,35 @@ var DataAccess = (function() {
 
         // === LEAVE ===
 
-        getLeave: async function(companyId, empId) {
+        getLeave: async function(companyId, empId, year) {
+            const yearParam = year ? '&year=' + year : '';
             try {
-                const result = await GET('/payroll/attendance?employee_id=' + empId + '&type=leave');
-                return result.data || [];
+                const result = await GET('/payroll/attendance/leave?employee_id=' + empId + yearParam);
+                // Cache for offline fallback
+                cacheSet('emp_leave_' + companyId + '_' + empId, result.records || []);
+                cacheSet('emp_leave_balances_' + companyId + '_' + empId, result.balances || []);
+                return result; // { records, balances, year }
             } catch(e) {
-                return cacheGet('emp_leave_' + companyId + '_' + empId) || [];
+                return {
+                    records: cacheGet('emp_leave_' + companyId + '_' + empId) || [],
+                    balances: cacheGet('emp_leave_balances_' + companyId + '_' + empId) || [],
+                    year: year || new Date().getFullYear()
+                };
             }
         },
 
-        saveLeave: async function(companyId, empId, leave) {
-            try {
-                await POST('/payroll/attendance/leave', { employee_id: empId, records: leave });
-            } catch(e) {
-                cacheSet('emp_leave_' + companyId + '_' + empId, leave);
-            }
+        saveLeave: async function(companyId, empId, record) {
+            // Saves a SINGLE leave record. record must have: leave_type, start_date, end_date, days_taken, status, reason
+            const result = await POST('/payroll/attendance/leave', { employee_id: empId, records: [record] });
+            return result;
+        },
+
+        deleteLeave: async function(companyId, empId, recordId) {
+            await DELETE('/payroll/attendance/leave/' + recordId);
+        },
+
+        updateLeaveStatus: async function(companyId, recordId, status) {
+            await PUT('/payroll/attendance/leave/' + recordId, { status });
         },
 
         // === NOTES ===
