@@ -2136,6 +2136,7 @@ Click OK to simulate uploading a file.`;
                             <option value="">No VAT</option>
                         </select>
                     </div>
+                    ${(window._bankSegmentValues || []).length && txn.status === 'unmatched' ? `<div style="margin-top:4px;"><select id="segSelect_${txn.id}" class="allocation-select" style="font-size:11px;color:#555;" title="Division (optional)"><option value="">No Division</option>${(window._bankSegmentValues || []).map(v => `<option value="${v.id}">${escapeHtml(v.name)}</option>`).join('')}</select></div>` : ''}
                 </td>
                 <td>
                     ${statusBadgeHtml(txn.status)}
@@ -3346,11 +3347,18 @@ Click OK to simulate uploading a file.`;
                     vatSettingId = selectedVal ? parseInt(selectedVal, 10) : null;
                 }
 
-                // Build allocation line — include vatSettingId when applicable
+                // Resolve segment/division for this allocation (optional)
+                const segSel = document.getElementById('segSelect_' + id);
+                const segmentValueId = segSel && segSel.value ? parseInt(segSel.value, 10) : null;
+
+                // Build allocation line — include vatSettingId and segmentValueId when applicable
                 const allocationLine = { accountId: allocation.accountId, amount: Math.abs(txnData.amount) };
                 if (vatSettingId) {
                     allocationLine.vatSettingId = vatSettingId;
                     allocationLine.vatInclusive = true; // bank statement amounts are always gross (VAT inclusive)
+                }
+                if (segmentValueId) {
+                    allocationLine.segmentValueId = segmentValueId;
                 }
 
                 // Call the real allocation API — handles double-entry journal automatically
@@ -3510,6 +3518,27 @@ Click OK to simulate uploading a file.`;
             } catch (_) {}
         }
 
+        // ── Division / segment values (loaded once at init) ──────────────────
+        // Used to show division dropdown on allocation rows.
+        window._bankSegmentValues = [];   // flat list of { id, name } from all active segments
+
+        async function loadBankSegments() {
+            try {
+                const res = await fetch('/api/accounting/segments', { headers: getAuthHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                window._bankSegmentValues = [];
+                (data.segments || []).forEach(seg => {
+                    (seg.values || []).forEach(v => {
+                        window._bankSegmentValues.push({ id: v.id, name: v.name });
+                    });
+                });
+            } catch (e) {
+                // Non-fatal — division dropdown simply won't appear
+                console.warn('[bank] Could not load segment values:', e.message);
+            }
+        }
+
         // ── Company VAT settings (loaded once at init) ───────────────────────
         // Used to show/hide VAT dropdown on ACCOUNT allocations.
         window._vatSettings = [];   // active VAT categories for this company
@@ -3537,8 +3566,8 @@ Click OK to simulate uploading a file.`;
             if (tbody) {
                 Array.from(tbody.querySelectorAll('tr:not(#manualEntryRow)')).forEach(r => r.remove());
             }
-            // Load chart of accounts, bank accounts, VAT settings, then transactions in parallel
-            await Promise.all([loadChartOfAccounts(), loadBankAccounts(), loadVatSettings()]);
+            // Load chart of accounts, bank accounts, VAT settings, segments, then transactions in parallel
+            await Promise.all([loadChartOfAccounts(), loadBankAccounts(), loadVatSettings(), loadBankSegments()]);
             await loadTransactions();
         });
         

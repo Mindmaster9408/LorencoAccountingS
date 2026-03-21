@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS employees (
   employment_type VARCHAR(50) DEFAULT 'full_time',
   hourly_rate DECIMAL(10,2),
   salary DECIMAL(12,2),
+  hours_per_week DECIMAL(4,2) DEFAULT 40.00,   -- used in hourly wage formula: salary / (hours_per_week × 4.33)
+  hours_per_day DECIMAL(4,2) DEFAULT 8.00,     -- informational for attendance context
   tax_number VARCHAR(50),
   eco_client_id INTEGER,  -- linked after eco_clients table is created (FK added in migration 003)
   is_active BOOLEAN DEFAULT true,

@@ -101,11 +101,11 @@ router.get('/:id', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payr
  */
 router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
-    const { basic_salary, hourly_rate, payment_frequency } = req.body;
+    const { basic_salary, hourly_rate, payment_frequency, hours_per_week, hours_per_day } = req.body;
 
     const { data: old } = await supabase
       .from('employees')
-      .select('id, classification, basic_salary, hourly_rate, payment_frequency')
+      .select('id, classification, basic_salary, hourly_rate, payment_frequency, hours_per_week, hours_per_day')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
@@ -115,10 +115,26 @@ router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeMod
     const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, old);
     if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
 
+    // Validate hours_per_week: must be a positive number ≤ 84 (maximum under SA labour law)
+    if (hours_per_week !== undefined) {
+      const hw = parseFloat(hours_per_week);
+      if (isNaN(hw) || hw <= 0 || hw > 84) {
+        return res.status(400).json({ error: 'hours_per_week must be between 1 and 84' });
+      }
+    }
+    if (hours_per_day !== undefined) {
+      const hd = parseFloat(hours_per_day);
+      if (isNaN(hd) || hd <= 0 || hd > 24) {
+        return res.status(400).json({ error: 'hours_per_day must be between 1 and 24' });
+      }
+    }
+
     const updates = {};
     if (basic_salary !== undefined) updates.basic_salary = basic_salary;
     if (hourly_rate !== undefined) updates.hourly_rate = hourly_rate;
     if (payment_frequency !== undefined) updates.payment_frequency = payment_frequency;
+    if (hours_per_week !== undefined) updates.hours_per_week = parseFloat(hours_per_week);
+    if (hours_per_day !== undefined) updates.hours_per_day = parseFloat(hours_per_day);
     updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase

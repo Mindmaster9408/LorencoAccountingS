@@ -193,28 +193,23 @@ Features:
 | `backend/config/accounting-schema.js` | Added `ALTER TABLE coa_segments ADD COLUMN IF NOT EXISTS code / description` + backfill |
 | `backend/modules/accounting/routes/segments.js` | Complete rewrite: full CRUD (7 routes, 323 lines) |
 | `backend/modules/accounting/routes/reports.js` | `fetchAccountBalances`: untagged support. New `division-profit-loss` route. |
+| `backend/modules/accounting/routes/bank.js` | Bank allocation: `segmentValueId` passed from request lines through to journal lines |
 | `frontend-accounting/division-pl.html` | New page — Division P&L report |
 | `frontend-accounting/js/navigation.js` | Added "Division P&L" link in Reports → Financial dropdown |
 | `frontend-accounting/company.html` | Added Division Management section (CSS + HTML + JS) |
+| `frontend-accounting/bank.html` | Bank allocation: segment dropdown added (loads on init, included in API call) |
+| `backend/tests/division-pl.test.js` | 24 tests: aggregateLines, subtotals, section mapping, filter logic, bank passthrough |
 
 ---
 
 ## 7. Follow-Up Notes
 
 ```
-FOLLOW-UP NOTE
-- Area: Division tagging on journal entry UI
-- Dependency: journals.html journal entry form
-- What was done now: Schema, API, and reporting are complete. Segment values can be
-  created and managed. Division P&L report is functional.
-- What still needs to be checked:
-    journals.html does NOT yet have a segment value dropdown on journal lines.
-    Users cannot tag lines to divisions from the journal entry form yet.
-    This means division P&L will show all activity in "Untagged" until tagging is added.
-- Risk if not added: Division P&L works technically but shows no data per division
-  until journal lines have segment_value_id populated.
-- Recommended next review point: When a client actively needs division reporting.
-  Priority: HIGH for farming clients with the Farm Division segment seeded.
+NOTE (verified 2026-03-21):
+journals.html DOES have a segment value dropdown on each journal line.
+Segment values load from GET /api/accounting/segments; the dropdown appears per line
+when the company has segment values defined. segmentValueId is included in the line
+payload when saving. Status: COMPLETE.
 ```
 
 ```

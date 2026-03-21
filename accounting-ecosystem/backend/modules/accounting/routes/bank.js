@@ -893,10 +893,11 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
 
         // Allocation account line at ex-VAT amount
         journalLines.push({
-          accountId:   line.accountId,
-          debit:       isMoneyIn ? 0 : exVat,
-          credit:      isMoneyIn ? exVat : 0,
-          description: lineDesc
+          accountId:      line.accountId,
+          debit:          isMoneyIn ? 0 : exVat,
+          credit:         isMoneyIn ? exVat : 0,
+          description:    lineDesc,
+          segmentValueId: line.segmentValueId || null
         });
 
         // VAT account line — Input (1400) for payments out, Output (2300) for receipts in
@@ -923,10 +924,11 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       } else {
         // No VAT — standard single-line allocation
         journalLines.push({
-          accountId:   line.accountId,
-          debit:       isMoneyIn ? 0 : gross,
-          credit:      isMoneyIn ? gross : 0,
-          description: lineDesc
+          accountId:      line.accountId,
+          debit:          isMoneyIn ? 0 : gross,
+          credit:         isMoneyIn ? gross : 0,
+          description:    lineDesc,
+          segmentValueId: line.segmentValueId || null
         });
       }
     }

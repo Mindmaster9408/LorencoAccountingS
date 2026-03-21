@@ -513,8 +513,14 @@ const PayrollEngine = {
             }
         });
 
+        // Hourly wage = Salary / (hours_per_week × 4.33)
+        // Falls back to HOURLY_DIVISOR (173.33 = 40 × 4.33) for employees without configured work hours.
+        // This is backward-compatible: employees without hours_per_week get identical results to before.
+        var weeklyHours = parseFloat(payrollData.hours_per_week) || null;
+        var hourlyDivisor = (weeklyHours && weeklyHours > 0) ? (weeklyHours * 4.33) : PayrollEngine.HOURLY_DIVISOR;
+
         // Overtime (always taxable — calculated independently, never offset against short time)
-        var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / PayrollEngine.HOURLY_DIVISOR : 0;
+        var hourlyRate = payrollData.basic_salary ? (payrollData.basic_salary / hourlyDivisor) : 0;
         var overtimeAmount = 0;
         (overtime || []).forEach(function(ot) {
             var otAmt = (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
@@ -937,6 +943,46 @@ const PayrollEngine = {
         };
     }
 
+};
+
+// ─── Static helpers for hourly wage, overtime rate, and short-time value ─────
+// These are exposed so that the frontend can display derived rates before a full
+// payslip calculation is triggered, and so tests can verify the formulas directly.
+
+/**
+ * Calculate the hourly wage for a salaried employee.
+ * Formula: Salary / (hours_per_week × 4.33)
+ * @param {number} monthlySalary  — gross monthly salary (basic salary)
+ * @param {number|null} hoursPerWeek — contracted weekly hours (default: 40)
+ * @returns {number} hourly wage rounded to 4 decimal places
+ */
+PayrollEngine.calculateHourlyWage = function(monthlySalary, hoursPerWeek) {
+    if (!monthlySalary || monthlySalary <= 0) return 0;
+    var hw = parseFloat(hoursPerWeek) || null;
+    var divisor = (hw && hw > 0) ? (hw * 4.33) : PayrollEngine.HOURLY_DIVISOR;
+    return Math.round((monthlySalary / divisor) * 10000) / 10000;
+};
+
+/**
+ * Calculate the overtime rate (1.5× the hourly wage).
+ * @param {number} monthlySalary
+ * @param {number|null} hoursPerWeek
+ * @returns {number} overtime rate per hour (rounded to 4 dp)
+ */
+PayrollEngine.calculateOvertimeRate = function(monthlySalary, hoursPerWeek) {
+    return Math.round(PayrollEngine.calculateHourlyWage(monthlySalary, hoursPerWeek) * 1.5 * 10000) / 10000;
+};
+
+/**
+ * Calculate short-time deduction value.
+ * @param {number} monthlySalary
+ * @param {number} hoursMissed   — decimal hours missed (0.25 increments supported)
+ * @param {number|null} hoursPerWeek
+ * @returns {number} rand value deducted for short time (rounded to 2 dp)
+ */
+PayrollEngine.calculateShortTimeValue = function(monthlySalary, hoursMissed, hoursPerWeek) {
+    var hourlyWage = PayrollEngine.calculateHourlyWage(monthlySalary, hoursPerWeek);
+    return PayrollEngine.r2((parseFloat(hoursMissed) || 0) * hourlyWage);
 };
 
 // CommonJS export — allows Node.js/Jest testing without affecting browser behaviour
