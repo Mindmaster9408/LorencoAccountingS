@@ -1282,9 +1282,13 @@
                     c.deductionsList = (pd.regular_inputs || []).filter(function(ri) { return ri.type === 'deduction'; });
                     c.totalDeductions = c.deductions || 0;
                     c.overtimeAmount = 0;
+                    c.shortTimeAmount = 0;
                     var hr = pd.basic_salary ? pd.basic_salary / 173.33 : 0;
                     JSON.parse(safeLocalStorage.getItem('emp_overtime_' + currentCompanyId + '_' + empId + '_' + run.period) || '[]').forEach(function(ot) {
                         c.overtimeAmount += (parseFloat(ot.hours) || 0) * hr * (parseFloat(ot.rate_multiplier) || 1.5);
+                    });
+                    JSON.parse(safeLocalStorage.getItem('emp_short_time_' + currentCompanyId + '_' + empId + '_' + run.period) || '[]').forEach(function(st) {
+                        c.shortTimeAmount += (parseFloat(st.hours_missed) || 0) * hr;
                     });
                     return c;
                 };

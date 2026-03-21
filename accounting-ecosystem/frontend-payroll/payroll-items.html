@@ -1033,6 +1033,92 @@
             }
             displayItemsByCategory();
             renderStandardItems();
+            // Pull global library standards from SEAN (fills only blank/null fields — never overwrites)
+            seanSyncBackFromLibrary();
+        }
+
+        // ─── SEAN Transaction Store Integration ──────────────────────────────────────
+        // Fire-and-forget: never blocks the UI, errors are logged silently.
+
+        function _seanToken() {
+            return safeLocalStorage.getItem('token') || '';
+        }
+
+        // Called on page load. Requests global standard values for this company's items.
+        // Only fields that are blank/null locally will be filled — Rule B9 (never overwrite).
+        function seanSyncBackFromLibrary() {
+            const token = _seanToken();
+            if (!token || !currentCompanyId || !currentItems.length) return;
+
+            const localItems = currentItems.map(function(i) {
+                return {
+                    id:        i.id,
+                    item_name: i.item_name,
+                    irp5_code: i.irp5_code || null
+                };
+            });
+
+            fetch('/api/sean/store/sync-back/' + currentCompanyId, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body:    JSON.stringify({ entityType: 'payroll_item', localItems: localItems })
+            })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.updates || !data.updates.length) return;
+
+                var changed = false;
+                data.updates.forEach(function(u) {
+                    var item = currentItems.find(function(i) { return i.id === u.localItemId; });
+                    if (!item) return;
+                    // Double-check locally: only apply if still blank (race-condition guard)
+                    if (!item[u.field]) {
+                        item[u.field] = u.value;
+                        changed = true;
+                    }
+                });
+
+                if (changed) {
+                    saveItemsToStorage();
+                    displayItemsByCategory();
+                    console.log('[SEAN] Sync-back applied ' + data.updates.length + ' standard value(s) from global library.');
+                }
+            })
+            .catch(function(e) {
+                console.warn('[SEAN] sync-back skipped (offline or server unavailable):', e.message);
+            });
+        }
+
+        // Called after saveItem() succeeds. Submits the saved item to the SEAN
+        // Transaction Store for super admin review + possible global standardization.
+        function seanSubmitToStore(itemData, isEdit, previousIrp5Code) {
+            const token = _seanToken();
+            if (!token || !currentCompanyId) return;
+
+            fetch('/api/sean/store/submit', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({
+                    entityType:    'payroll_item',
+                    sourceApp:     'paytime',
+                    companyId:     currentCompanyId,
+                    itemName:      itemData.item_name,
+                    payload:       itemData,
+                    proposedField: 'irp5_code',
+                    proposedValue: itemData.irp5_code || null,
+                    previousValue: previousIrp5Code || null,
+                    changeType:    isEdit ? 'update' : 'create'
+                })
+            })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (data && data.success) {
+                    console.log('[SEAN] Payroll item submitted to transaction store:', data.action, data.item && data.item.id);
+                }
+            })
+            .catch(function(e) {
+                console.warn('[SEAN] store submit skipped (offline or server unavailable):', e.message);
+            });
         }
 
         function saveItemsToStorage() {
@@ -1223,6 +1309,10 @@
             const itemId = document.getElementById('itemId').value;
             const isEdit = itemId !== '';
 
+            // Capture previous IRP5 code before overwriting (for SEAN change tracking)
+            const previousItem = isEdit ? currentItems.find(i => i.id === itemId) : null;
+            const previousIrp5Code = previousItem ? (previousItem.irp5_code || null) : null;
+
             const itemData = {
                 id: itemId || 'pi-' + Math.random().toString(36).substr(2, 9),
                 item_code: document.getElementById('itemCode').value.trim(),
@@ -1262,6 +1352,12 @@
             }
 
             saveItemsToStorage();
+
+            // Fire-and-forget: submit to SEAN Transaction Store for global review
+            // Only submits when IRP5 code is set or changed (the key field for standardization)
+            if (!isEdit || itemData.irp5_code !== previousIrp5Code) {
+                seanSubmitToStore(itemData, isEdit, previousIrp5Code);
+            }
 
             if (isEdit) {
                 AuditTrail.logUpdate(currentCompanyId, 'payroll_item', 'Updated payroll item "' + itemData.item_name + '" (' + itemData.item_code + ') - ' + itemData.category + ', R' + itemData.default_amount.toFixed(2));

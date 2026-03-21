@@ -354,10 +354,38 @@
                         <div id="learningPatternsList"><div style="color:var(--text-muted);font-size:0.9rem;">Select a learning source to view patterns.</div></div>
                     </div>
 
-                    <!-- Pending proposals for Super Admin -->
+                    <!-- Pending proposals for Super Admin (bank patterns) -->
                     <div class="card" id="proposalsCard" style="display:none;">
                         <h3 style="margin:0 0 12px;">🔍 Pending Proposals — Super Admin Review</h3>
                         <div id="proposalsList"><div style="color:var(--text-muted);font-size:0.9rem;">Loading proposals…</div></div>
+                    </div>
+
+                    <!-- IRP5 Transaction Store: Pending items awaiting review -->
+                    <div class="card" id="storeReviewCard" style="display:none;margin-top:0;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                            <h3 style="margin:0;">📋 Pending Review Queue</h3>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <select id="storeEntityFilter" onchange="loadIRP5StoreItems()" style="font-size:0.82rem;padding:4px 8px;">
+                                    <option value="payroll_item">Payroll Items</option>
+                                    <option value="">All entity types</option>
+                                </select>
+                                <button class="btn btn-outline btn-sm" onclick="loadIRP5StoreItems()">🔄 Refresh</button>
+                            </div>
+                        </div>
+                        <div id="storeReviewList"><div style="color:var(--text-muted);font-size:0.9rem;">Loading…</div></div>
+                    </div>
+
+                    <!-- IRP5 Global Library — what's approved and syncing globally -->
+                    <div class="card" id="storeLibraryCard" style="display:none;margin-top:16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                            <h3 style="margin:0;">🌐 Global Library — Approved Standards</h3>
+                            <button class="btn btn-outline btn-sm" onclick="loadStoreGlobalLibrary()">🔄 Refresh</button>
+                        </div>
+                        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 12px;">
+                            These are the approved standard values synced to all Paytime clients on page load.
+                            Clients with a different existing value are never overwritten.
+                        </p>
+                        <div id="storeLibraryList"><div style="color:var(--text-muted);font-size:0.9rem;">Loading library…</div></div>
                     </div>
                 </div>
 
@@ -714,12 +742,13 @@ const SEAN_MODULE_REGISTRY = {
         // Note: Paytime may later get salary/payment matching as a SEPARATE module.
         // That is NOT the same as bank allocation and must be built independently.
     },
-    // Future modules — NOT yet active. Registered for documentation/planning only.
-    // irp5_learning: {
-    //     label: 'IRP5 Code Learning',
-    //     apps:  ['paytime'],
-    //     note:  'IRP5 learning currently managed inside Paytime directly, not here',
-    // },
+    irp5_learning: {
+        label:       'IRP5 Code Learning',
+        icon:        '💼',
+        description: 'Payroll item IRP5 code standardization across all Paytime clients',
+        apps:        ['paytime'],    // Active in Paytime — items flow from payroll-items.html
+    },
+    // Future modules — not yet active.
     // salary_matching: {
     //     label: 'Salary Payment Matching',
     //     apps:  ['paytime'],
@@ -749,14 +778,6 @@ function appDisplayName(slug) {
 // Each message explains WHY the module is absent and WHAT is coming later.
 function renderNoModulePlaceholder(slug) {
     const context = {
-        paytime: {
-            icon:   '💼',
-            title:  'No Active Learning Modules for Paytime',
-            body:   'Bank Allocation Patterns belong to Accounting, where the bank transaction data lives. ' +
-                    'Paytime IRP5 code learning happens directly inside the Paytime app when payroll items are coded.',
-            future: 'Coming later: Salary payment matching and PAYE reconciliation learning will appear here ' +
-                    'once that integration is built — as a dedicated Paytime module, not a reuse of accounting logic.',
-        },
         pos: {
             icon:   '🛒',
             title:  'No Active Learning Modules for Checkout Charlie',
@@ -846,9 +867,18 @@ async function loadLearningPatterns() {
     if (!listEl) return;
 
     // ── Module visibility gate ─────────────────────────────────────────────
-    // Bank Allocation Patterns is an Accounting-native module.
-    // If the selected app does not have this module, show a contextual placeholder
-    // and hide the filter controls + proposals panel.
+    // Route to the correct module based on selected app.
+
+    // IRP5 Learning — Paytime
+    if (isModuleVisible('irp5_learning')) {
+        if (filterCtrl) filterCtrl.style.display = 'none';
+        if (proposalsCard) proposalsCard.style.display = 'none';
+        if (titleEl) titleEl.innerHTML = '💼 IRP5 Code Learning — Paytime Transaction Store';
+        await loadIRP5StoreItems(listEl, proposalsCard);
+        return;
+    }
+
+    // Bank Allocation Patterns — Accounting only
     if (!isModuleVisible('bank_allocation_patterns')) {
         if (titleEl)    titleEl.textContent = `🔮 SEAN — ${appDisplayName(_selectedLearningApp)}`;
         if (filterCtrl) filterCtrl.style.display = 'none';
@@ -960,6 +990,228 @@ async function rejectProposalPrompt(proposalId) {
         loadLearningPatterns();
     } catch (err) {
         alert('Error: ' + err.message);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SEAN TRANSACTION STORE — IRP5 / Payroll Item Approval Engine
+// ═══════════════════════════════════════════════════════════
+
+// Called from loadLearningPatterns() when Paytime is the selected app.
+async function loadIRP5StoreItems(listEl, proposalsCard) {
+    if (!listEl) listEl = document.getElementById('learningPatternsList');
+    if (!proposalsCard) proposalsCard = document.getElementById('proposalsCard');
+
+    const entityFilter = document.getElementById('storeEntityFilter')?.value || 'payroll_item';
+    const reviewCard   = document.getElementById('storeReviewCard');
+    const libraryCard  = document.getElementById('storeLibraryCard');
+
+    if (listEl) listEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;">Loading Paytime transaction store…</div>';
+    if (reviewCard)  reviewCard.style.display  = 'none';
+    if (libraryCard) libraryCard.style.display = 'none';
+
+    const statusChip = (status) => {
+        const cfg = {
+            pending:   { bg: '#f59e0b22', color: '#b45309', label: '⏳ Pending' },
+            approved:  { bg: '#10b98122', color: '#059669', label: '✅ Approved' },
+            discarded: { bg: '#6b728022', color: '#6b7280', label: '✗ Discarded' },
+        }[status] || { bg: '#6b728022', color: '#6b7280', label: status };
+        return `<span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;background:${cfg.bg};color:${cfg.color};">${cfg.label}</span>`;
+    };
+
+    try {
+        const qs = entityFilter ? `?entityType=${encodeURIComponent(entityFilter)}&sourceApp=paytime` : '?sourceApp=paytime';
+        const data = await api(`/sean/store${qs}`);
+        const items = data.items || [];
+        const pending   = items.filter(i => i.status === 'pending');
+        const approved  = items.filter(i => i.status === 'approved');
+        const discarded = items.filter(i => i.status === 'discarded');
+
+        if (listEl) {
+            if (!items.length) {
+                listEl.innerHTML = `
+                    <div style="padding:28px 20px;text-align:center;color:var(--text-muted);">
+                        <div style="font-size:2rem;margin-bottom:8px;">💼</div>
+                        <div style="font-weight:600;margin-bottom:6px;">No items in the Transaction Store yet</div>
+                        <div style="font-size:0.83rem;">Items appear here when payroll items are created or edited in Paytime with an IRP5 code.</div>
+                    </div>`;
+            } else {
+                listEl.innerHTML = `
+                    <div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap;">
+                        <div style="padding:10px 16px;border-radius:8px;background:var(--primary-light);flex:1;min-width:100px;text-align:center;">
+                            <div style="font-size:1.4rem;font-weight:700;color:var(--primary-dark);">${pending.length}</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted);">Pending Review</div>
+                        </div>
+                        <div style="padding:10px 16px;border-radius:8px;background:#d1fae5;flex:1;min-width:100px;text-align:center;">
+                            <div style="font-size:1.4rem;font-weight:700;color:#059669;">${approved.length}</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted);">Approved & Synced</div>
+                        </div>
+                        <div style="padding:10px 16px;border-radius:8px;background:#f3f4f6;flex:1;min-width:100px;text-align:center;">
+                            <div style="font-size:1.4rem;font-weight:700;color:#6b7280;">${discarded.length}</div>
+                            <div style="font-size:0.78rem;color:var(--text-muted);">Discarded</div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;">
+                        ${pending.length ? `<strong>${pending.length} item(s) await review</strong> — see review queue below.` : 'All items reviewed. Nothing pending.'}
+                    </div>
+                    <div class="table-wrap"><table>
+                        <thead><tr>
+                            <th>Item Name</th><th>IRP5 Code</th><th>Company</th>
+                            <th>Change</th><th>Submitted</th><th>Status</th>
+                        </tr></thead>
+                        <tbody>
+                            ${items.slice(0, 20).map(i => `<tr>
+                                <td><strong>${escHtml(i.item_name)}</strong></td>
+                                <td><code style="font-family:monospace;font-size:0.9rem;">${escHtml(i.proposed_value || '—')}</code></td>
+                                <td style="font-size:0.8rem;color:var(--text-muted);">${escHtml(String(i.company_id))}</td>
+                                <td style="font-size:0.78rem;">${escHtml(i.change_type || 'create')}</td>
+                                <td style="font-size:0.78rem;color:var(--text-muted);">${i.submitted_at ? new Date(i.submitted_at).toLocaleDateString() : '—'}</td>
+                                <td>${statusChip(i.status)}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table></div>
+                    ${items.length > 20 ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">Showing 20 of ${items.length}.</div>` : ''}
+                `;
+            }
+        }
+
+        // Review queue — pending items with action buttons
+        if (reviewCard) {
+            if (pending.length) {
+                reviewCard.style.display = 'block';
+                const reviewList = document.getElementById('storeReviewList');
+                if (reviewList) {
+                    reviewList.innerHTML = pending.map(i => {
+                        const p = i.payload || {};
+                        const safeItem = JSON.stringify(i).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+                        return `
+                        <div style="padding:14px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+                                <div style="flex:1;">
+                                    <div style="font-weight:600;font-size:0.95rem;margin-bottom:4px;">${escHtml(i.item_name)}</div>
+                                    <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:6px;">
+                                        Company: <strong>${escHtml(String(i.company_id))}</strong> &nbsp;·&nbsp;
+                                        App: <strong>${escHtml(i.source_app)}</strong> &nbsp;·&nbsp;
+                                        Change: <strong>${escHtml(i.change_type || 'create')}</strong>
+                                        ${i.submitted_by ? ` &nbsp;·&nbsp; By: ${escHtml(String(i.submitted_by))}` : ''}
+                                    </div>
+                                    <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.82rem;">
+                                        ${i.proposed_field ? `<span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:6px;">
+                                            ${escHtml(i.proposed_field)}: <strong>${escHtml(i.proposed_value || '—')}</strong>
+                                        </span>` : ''}
+                                        ${i.previous_value ? `<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:6px;text-decoration:line-through;">
+                                            was: ${escHtml(i.previous_value)}
+                                        </span>` : ''}
+                                        ${p.item_type ? `<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:6px;">${escHtml(p.item_type)}</span>` : ''}
+                                        ${p.is_taxable !== undefined ? `<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:6px;">${p.is_taxable ? 'Taxable' : 'Non-taxable'}</span>` : ''}
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:6px;flex-shrink:0;">
+                                    <button class="btn btn-primary btn-sm" style="font-size:0.8rem;"
+                                        onclick="approveStoreItem(${i.id})">✅ Approve &amp; Sync</button>
+                                    <button class="btn btn-outline btn-sm" style="font-size:0.8rem;color:#6366f1;border-color:#6366f1;"
+                                        onclick='editStoreItem(${i.id}, ${safeItem})'>✏️ Edit</button>
+                                    <button class="btn btn-outline btn-sm" style="font-size:0.8rem;color:#ef4444;"
+                                        onclick="discardStoreItem(${i.id})">✗ Discard</button>
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join('');
+                }
+            } else {
+                reviewCard.style.display = 'none';
+            }
+        }
+
+        // Global library
+        if (libraryCard) {
+            libraryCard.style.display = 'block';
+            await loadStoreGlobalLibrary();
+        }
+
+    } catch (err) {
+        if (listEl) listEl.innerHTML = `<div style="color:#ef4444;">${escHtml(err.message)}</div>`;
+    }
+}
+
+async function approveStoreItem(id) {
+    if (!confirm('Approve & Sync globally?\n\nThis IRP5 code will be added to the global library. All Paytime clients pick it up on next page load — but ONLY if their local value is currently blank. Clients with a different existing code are never overwritten.')) return;
+    try {
+        const data = await api(`/sean/store/${id}/approve`, { method: 'POST', body: JSON.stringify({}) });
+        const sync = data.sync || {};
+        alert('✅ Approved!\n\nSync method: ' + (sync.syncMethod || 'pending') + '\n\n' + (sync.note || ''));
+        loadLearningPatterns();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+async function discardStoreItem(id) {
+    const notes = prompt('Reason for discarding (optional):');
+    if (notes === null) return;
+    try {
+        await api(`/sean/store/${id}/discard`, { method: 'POST', body: JSON.stringify({ notes: notes || null }) });
+        alert('✗ Discarded. Item remains local only.');
+        loadLearningPatterns();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+function editStoreItem(id, itemRaw) {
+    const item = typeof itemRaw === 'string' ? JSON.parse(itemRaw) : itemRaw;
+    const currentValue = item.proposed_value || '';
+    const newValue = prompt(
+        'Edit the IRP5 code for "' + item.item_name + '" before approving globally.\n\nCurrent: ' + currentValue + '\n\nEnter correct SARS IRP5 code (4–6 digits):',
+        currentValue
+    );
+    if (newValue === null) return;
+    if (!newValue.trim() || !/^\d{4,6}$/.test(newValue.trim())) {
+        alert('Invalid IRP5 code. Must be 4–6 digits.');
+        return;
+    }
+    const payload = Object.assign({}, item.payload || {}, { irp5_code: newValue.trim() });
+    api('/sean/store/' + id + '/edit', {
+        method: 'POST',
+        body: JSON.stringify({
+            editedPayload: payload,
+            proposedValue: newValue.trim(),
+            notes: 'Edited by super admin: ' + currentValue + ' → ' + newValue.trim()
+        })
+    }).then(data => {
+        alert('✅ Edited and approved globally!\n\nIRP5 code: ' + newValue.trim() + '\n\n' + ((data.sync || {}).note || ''));
+        loadLearningPatterns();
+    }).catch(err => alert('Error: ' + err.message));
+}
+
+async function loadStoreGlobalLibrary() {
+    const listEl = document.getElementById('storeLibraryList');
+    if (!listEl) return;
+    try {
+        const data = await api('/sean/store/library?entityType=payroll_item');
+        const items = data.items || [];
+        if (!items.length) {
+            listEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No approved standard items yet. Approve a pending item above to populate the library.</div>';
+            return;
+        }
+        listEl.innerHTML = `<div class="table-wrap"><table>
+            <thead><tr>
+                <th>Item Name</th><th>Field</th><th>Standard Value</th>
+                <th>Approved By</th><th>Approved</th><th>Sync Count</th>
+            </tr></thead>
+            <tbody>
+                ${items.map(i => `<tr>
+                    <td><strong>${escHtml(i.item_name)}</strong></td>
+                    <td style="font-size:0.82rem;color:var(--text-muted);">${escHtml(i.standard_field)}</td>
+                    <td><code style="font-family:monospace;font-size:0.9rem;color:var(--primary-dark);">${escHtml(i.standard_value)}</code></td>
+                    <td style="font-size:0.8rem;">${escHtml(String(i.approved_by || '—'))}</td>
+                    <td style="font-size:0.8rem;color:var(--text-muted);">${i.approved_at ? new Date(i.approved_at).toLocaleDateString() : '—'}</td>
+                    <td style="text-align:center;">${i.sync_count || 0}</td>
+                </tr>`).join('')}
+            </tbody>
+        </table></div>`;
+    } catch (err) {
+        listEl.innerHTML = `<div style="color:#ef4444;">${escHtml(err.message)}</div>`;
     }
 }
 

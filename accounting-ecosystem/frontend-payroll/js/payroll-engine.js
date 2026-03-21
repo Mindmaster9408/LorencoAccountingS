@@ -513,10 +513,13 @@ const PayrollEngine = {
             }
         });
 
-        // Overtime (always taxable)
+        // Overtime (always taxable — calculated independently, never offset against short time)
         var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / PayrollEngine.HOURLY_DIVISOR : 0;
+        var overtimeAmount = 0;
         (overtime || []).forEach(function(ot) {
-            taxableGross += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
+            var otAmt = (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
+            taxableGross += otAmt;
+            overtimeAmount += otAmt;
         });
 
         // Multi-rate hours (always taxable)
@@ -524,9 +527,13 @@ const PayrollEngine = {
             taxableGross += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
         });
 
-        // Short time deductions
+        // Short time (earnings reduction — calculated independently, never offset against overtime)
+        // hours_missed × hourly_rate at 1.0x (straight deduction — no multiplier penalty)
+        var shortTimeAmount = 0;
         (shortTime || []).forEach(function(st) {
-            taxableGross -= (parseFloat(st.hours_missed) || 0) * hourlyRate;
+            var stAmt = (parseFloat(st.hours_missed) || 0) * hourlyRate;
+            taxableGross -= stAmt;
+            shortTimeAmount += stAmt;
         });
 
         if (taxableGross < 0) taxableGross = 0;
@@ -573,7 +580,10 @@ const PayrollEngine = {
             deductions: PayrollEngine.r2(deductions),
             net: PayrollEngine.r2(net),
             negativeNetPay: negativeNetPay,
-            medicalCredit: opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers) : 0
+            medicalCredit: opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers) : 0,
+            // Itemised components for payslip display — both are independent; neither offsets the other
+            overtimeAmount: PayrollEngine.r2(overtimeAmount),
+            shortTimeAmount: PayrollEngine.r2(shortTimeAmount)
         };
     },
 
@@ -928,3 +938,6 @@ const PayrollEngine = {
     }
 
 };
+
+// CommonJS export — allows Node.js/Jest testing without affecting browser behaviour
+if (typeof module !== 'undefined' && module.exports) { module.exports = PayrollEngine; }
