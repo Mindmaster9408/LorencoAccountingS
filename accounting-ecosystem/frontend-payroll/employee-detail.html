@@ -378,6 +378,8 @@
                     <h3>💰 Payroll Summary</h3>
                     <table>
                         <tr><td><strong>Gross Salary:</strong></td><td style="text-align: right;"><strong id="totalGross">R 0.00</strong></td></tr>
+                        <tr id="summaryOvertimeRow" style="display: none;"><td style="padding-left: 12px; font-size: 13px; color: #28a745;">↳ Overtime:</td><td style="text-align: right; color: #28a745; font-size: 13px;" id="summaryOvertimeAmt">R 0.00</td></tr>
+                        <tr id="summaryShortTimeRow" style="display: none;"><td style="padding-left: 12px; font-size: 13px; color: #dc3545;">↳ Short Time:</td><td style="text-align: right; color: #dc3545; font-size: 13px;" id="summaryShortTimeAmt">- R 0.00</td></tr>
                         <tr><td>PAYE:</td><td style="text-align: right;" id="totalPAYE">R 0.00</td></tr>
                         <tr id="medicalCreditRow" style="display: none;"><td>Medical Tax Credit:</td><td style="text-align: right; color: #28a745;" id="totalMedicalCredit">- R 0.00</td></tr>
                         <tr><td>UIF:</td><td style="text-align: right;" id="totalUIF">R 0.00</td></tr>
@@ -1062,7 +1064,10 @@
                 paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
                 deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
                 net: calc.net, source: 'finalized',
-                finalized_date: status.finalized_date, finalized_by: status.finalized_by
+                finalized_date: status.finalized_date, finalized_by: status.finalized_by,
+                // Preserve itemised components so payslip display remains correct after finalization
+                overtimeAmount: calc.overtimeAmount || 0,
+                shortTimeAmount: calc.shortTimeAmount || 0
             }));
             AuditTrail.logFinalize(currentCompanyId, 'payslip', 'Finalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
             updatePayslipUI();
@@ -1566,7 +1571,7 @@
                 try {
                     var snap = JSON.parse(frozen);
                     var frozenDeductions = (snap.deductions || []).reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0);
-                    var calc = { gross: snap.gross || 0, paye: snap.paye || 0, uif: snap.uif || 0, sdl: snap.sdl || 0, deductions: frozenDeductions, net: snap.net || 0, medicalCredit: 0, negativeNetPay: false };
+                    var calc = { gross: snap.gross || 0, paye: snap.paye || 0, uif: snap.uif || 0, sdl: snap.sdl || 0, deductions: frozenDeductions, net: snap.net || 0, medicalCredit: 0, negativeNetPay: false, overtimeAmount: snap.overtimeAmount || 0, shortTimeAmount: snap.shortTimeAmount || 0 };
                     document.getElementById('totalGross').textContent = formatMoney(calc.gross);
                     document.getElementById('totalPAYE').textContent = formatMoney(calc.paye);
                     document.getElementById('totalUIF').textContent = formatMoney(calc.uif);
@@ -1576,6 +1581,12 @@
                     document.getElementById('totalNet').style.color = '#28a745';
                     document.getElementById('negativeNetWarning').style.display = 'none';
                     document.getElementById('payslipActions').style.display = 'flex';
+                    // Show overtime/short time breakdown rows if present
+                    var sotR = document.getElementById('summaryOvertimeRow'), sstR = document.getElementById('summaryShortTimeRow');
+                    if (sotR) sotR.style.display = calc.overtimeAmount > 0 ? '' : 'none';
+                    if (sotR && calc.overtimeAmount > 0) document.getElementById('summaryOvertimeAmt').textContent = formatMoney(calc.overtimeAmount);
+                    if (sstR) sstR.style.display = calc.shortTimeAmount > 0 ? '' : 'none';
+                    if (sstR && calc.shortTimeAmount > 0) document.getElementById('summaryShortTimeAmt').textContent = '- ' + formatMoney(calc.shortTimeAmount);
                     return calc;
                 } catch(e) { /* fall through to live calculation */ }
             }
@@ -1611,6 +1622,18 @@
             document.getElementById('totalUIF').textContent = formatMoney(calc.uif);
             document.getElementById('totalDeductions').textContent = formatMoney(calc.deductions);
             document.getElementById('totalNet').textContent = formatMoney(calc.net);
+
+            // Overtime and short time breakdown rows (transparent display — they are independent components)
+            var sotR = document.getElementById('summaryOvertimeRow');
+            var sstR = document.getElementById('summaryShortTimeRow');
+            if (sotR) {
+                sotR.style.display = calc.overtimeAmount > 0 ? '' : 'none';
+                if (calc.overtimeAmount > 0) document.getElementById('summaryOvertimeAmt').textContent = formatMoney(calc.overtimeAmount);
+            }
+            if (sstR) {
+                sstR.style.display = calc.shortTimeAmount > 0 ? '' : 'none';
+                if (calc.shortTimeAmount > 0) document.getElementById('summaryShortTimeAmt').textContent = '- ' + formatMoney(calc.shortTimeAmount);
+            }
 
             // Medical credit display
             if (calc.medicalCredit > 0) {
@@ -1680,11 +1703,17 @@
                 if (ci.type === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
             });
 
-            // Calculate overtime amount
+            // Calculate overtime amount (for display — engine also returns this in calc.overtimeAmount)
             var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / 173.33 : 0;
             var overtimeAmount = 0;
             overtime.forEach(function(ot) {
                 overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
+            });
+
+            // Calculate short time amount (for display — independent of overtime, shown as earnings reduction)
+            var shortTimeAmount = 0;
+            shortTime.forEach(function(st) {
+                shortTimeAmount += (parseFloat(st.hours_missed) || 0) * hourlyRate;
             });
 
             // Calculate multi-rate amount
@@ -1701,6 +1730,7 @@
             calc.allowances = allowances;
             calc.deductionsList = deductionsList;
             calc.overtimeAmount = overtimeAmount;
+            calc.shortTimeAmount = shortTimeAmount;
             calc.totalDeductions = calc.deductions;
 
             return {
@@ -1769,10 +1799,16 @@
                 });
             }
 
-            // Overtime
+            // Overtime (independent earnings addition)
             if (calc.overtimeAmount > 0) {
                 html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
                 html += '<span>Overtime</span><span>' + formatMoney(calc.overtimeAmount) + '</span></div>';
+            }
+
+            // Short Time (independent earnings reduction — NOT a deduction, NOT offsetting overtime)
+            if (calc.shortTimeAmount > 0) {
+                html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; color: #dc3545;">';
+                html += '<span>Short Time</span><span>- ' + formatMoney(calc.shortTimeAmount) + '</span></div>';
             }
 
             // Total Gross

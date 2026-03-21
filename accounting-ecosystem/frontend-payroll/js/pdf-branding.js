@@ -141,10 +141,20 @@ const PDFBranding = {
             });
         }
 
-        // Overtime
+        // Overtime (independent earnings addition)
         if (calc.overtimeAmount > 0) {
             doc.text('Overtime', margin + 3, y);
             doc.text(this.formatMoney(calc.overtimeAmount), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(calc.overtimeAmount)), y);
+            y += 4.5;
+        }
+
+        // Short Time (independent earnings reduction — shown as negative in earnings, not in deductions)
+        if (calc.shortTimeAmount > 0) {
+            doc.setTextColor(220, 53, 69);
+            doc.text('Short Time', margin + 3, y);
+            var stStr = '-' + this.formatMoney(calc.shortTimeAmount);
+            doc.text(stStr, pageWidth - margin - 3 - doc.getTextWidth(stStr), y);
+            doc.setTextColor(60, 60, 60);
             y += 4.5;
         }
 

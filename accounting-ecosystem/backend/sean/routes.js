@@ -728,6 +728,11 @@ router.get('/import/:importId', async (req, res) => {
 const irp5Routes = require('./irp5-routes');
 router.use('/paytime', irp5Routes);
 
+// ─── Mount SEAN Transaction Store (Generic Approval Engine) ──────────────────
+// All routes prefixed with /store (so full path: /api/sean/store/...)
+const transactionStoreRoutes = require('./transaction-store-routes');
+router.use('/store', transactionStoreRoutes);
+
 // ═══════════════════════════════════════════════════════════════════════════
 // BANK LEARNING API — Ecosystem apps registry + allocation learning
 // ═══════════════════════════════════════════════════════════════════════════
