@@ -494,6 +494,13 @@ async function ensureAccountingSchema(pool) {
       )
     `);
 
+    // ── 22c-fix. Add code + description columns to coa_segments (missing from original schema) ──
+    // segments.js selects/inserts 'code' — this column was omitted from the CREATE TABLE above.
+    await client.query(`ALTER TABLE coa_segments ADD COLUMN IF NOT EXISTS code VARCHAR(50)`);
+    await client.query(`ALTER TABLE coa_segments ADD COLUMN IF NOT EXISTS description TEXT`);
+    // Backfill: give any existing rows without a code a generated one (idempotent)
+    await client.query(`UPDATE coa_segments SET code = 'SEG_' || id WHERE code IS NULL`);
+
     // ── 22d. Seed Standard SA Base COA Template (idempotent) ─────────────────
     await seedCOABaseTemplate(client);
 

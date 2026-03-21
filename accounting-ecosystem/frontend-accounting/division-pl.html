@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Division Profit & Loss - Lorenco Accounting</title>
+    <script src="js/navigation.js"></script>
+    <script src="js/theme-guard.js"></script>
+    <script src="js/polyfills.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; }
+
+        .top-bar { background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%); color: white; padding: 0; display: flex; justify-content: space-between; align-items: center; height: 60px; box-shadow: 0 2px 8px rgba(0,102,204,0.2); }
+        .brand-section { display: flex; align-items: center; gap: 20px; padding: 0 25px; }
+        .logo { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700; }
+        .logo-icon { width: 35px; height: 35px; background: white; color: #0066cc; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; }
+        .company-selector { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: rgba(255,255,255,0.15); border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+        .company-selector:hover { background: rgba(255,255,255,0.25); }
+        .right-section { display: flex; align-items: center; gap: 15px; padding: 0 25px; }
+        .nav-btn { background: rgba(255,255,255,0.15); border: none; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+        .nav-btn:hover { background: rgba(255,255,255,0.25); }
+
+        .content { max-width: 1400px; margin: 0 auto; padding: 30px 25px; }
+
+        .page-header { margin-bottom: 24px; }
+        .page-header h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; }
+        .page-header p { color: #6c757d; margin-top: 4px; font-size: 14px; }
+
+        .controls-bar { background: white; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 24px; display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        .control-group label { font-size: 12px; font-weight: 600; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
+        .control-group input { padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px; font-size: 14px; color: #333; min-width: 150px; }
+        .btn-generate { padding: 9px 24px; background: #0066cc; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-generate:hover { background: #0052a3; }
+        .btn-export { padding: 9px 16px; background: white; color: #0066cc; border: 1px solid #0066cc; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-export:hover { background: #e8f0fe; }
+
+        .error-msg { background: #fce8e6; color: #d32f2f; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; display: none; }
+
+        /* Division P&L table */
+        .report-card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+        .report-title { padding: 20px 24px 0; }
+        .report-title h2 { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+        .report-title .subtitle { font-size: 13px; color: #6c757d; margin-top: 4px; }
+
+        .table-wrap { overflow-x: auto; padding: 16px 0 24px; }
+        table.div-pl { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 700px; }
+        table.div-pl th { padding: 8px 14px; text-align: right; font-weight: 700; color: #fff; white-space: nowrap; border-bottom: 2px solid #e9ecef; }
+        table.div-pl th.col-label { text-align: left; background: #f8f9fa; color: #495057; width: 200px; }
+        table.div-pl th.col-div { background: #0066cc; }
+        table.div-pl th.col-untagged { background: #6c757d; }
+        table.div-pl th.col-total { background: #1a1a2e; }
+        table.div-pl td { padding: 6px 14px; text-align: right; color: #333; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
+        table.div-pl td.col-label { text-align: left; color: #495057; }
+        table.div-pl td.col-label.indent { padding-left: 28px; }
+        table.div-pl tr.section-header td { background: #f8f9fa; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; padding-top: 12px; }
+        table.div-pl tr.section-total td { background: #f0f4fa; font-weight: 700; border-top: 1px solid #dee2e6; color: #0066cc; }
+        table.div-pl tr.subtotal td { background: #e8f0fe; font-weight: 700; border-top: 2px solid #0066cc; color: #0052a3; }
+        table.div-pl tr.grand-total td { background: #1a1a2e; font-weight: 700; font-size: 14px; color: #fff; border-top: 2px solid #0066cc; }
+        table.div-pl tr.grand-total td.positive { color: #4caf50; }
+        table.div-pl tr.grand-total td.negative { color: #f44336; }
+        table.div-pl .amt-zero { color: #bbb; }
+        table.div-pl .amt-neg { color: #d32f2f; }
+
+        .no-divisions-notice { padding: 40px 24px; text-align: center; color: #6c757d; font-size: 14px; }
+        .no-divisions-notice a { color: #0066cc; }
+
+        @media print {
+            .top-bar, .controls-bar, .btn-export { display: none !important; }
+            body { background: white; }
+            .content { padding: 0; max-width: 100%; }
+            .report-card { box-shadow: none; border-radius: 0; }
+        }
+    </style>
+    <link rel="stylesheet" href="css/dark-theme.css">
+</head>
+<body>
+    <div id="navigationContainer"></div>
+
+    <div class="content">
+        <div class="page-header">
+            <h1>Division Profit &amp; Loss</h1>
+            <p>Side-by-side P&amp;L comparison across all business divisions</p>
+        </div>
+
+        <div class="controls-bar">
+            <div class="control-group">
+                <label>From Date</label>
+                <input type="date" id="dateFrom">
+            </div>
+            <div class="control-group">
+                <label>To Date</label>
+                <input type="date" id="dateTo">
+            </div>
+            <button class="btn-generate" onclick="generateReport()">Generate Report</button>
+            <button class="btn-export" onclick="window.print()" style="margin-left: auto;">Print / Export</button>
+        </div>
+
+        <div class="error-msg" id="errMsg"></div>
+
+        <div class="report-card" id="reportCard" style="display: none;">
+            <div class="report-title">
+                <h2>Division Profit &amp; Loss</h2>
+                <div class="subtitle" id="reportSubtitle"></div>
+            </div>
+            <div class="table-wrap">
+                <table class="div-pl" id="divPlTable">
+                    <thead id="divPlHead"></thead>
+                    <tbody id="divPlBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="noDivisionsNotice" style="display:none;" class="report-card">
+            <div class="no-divisions-notice">
+                No divisions configured for this company yet.<br>
+                <a href="/accounting/company.html">Set up divisions in Company Settings</a> to use this report.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) window.location.href = '/';
+
+        function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+
+        function fmt(n) {
+            if (n === null || n === undefined || n === 0) return '<span class="amt-zero">-</span>';
+            const abs = Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (n < 0) return '<span class="amt-neg">(R ' + abs + ')</span>';
+            return 'R ' + abs;
+        }
+
+        function fmtTotal(n) {
+            if (n === null || n === undefined) return '-';
+            const abs = Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (n < 0) return '(R ' + abs + ')';
+            return 'R ' + abs;
+        }
+
+        // Default date range: current financial year
+        (function () {
+            const now = new Date();
+            document.getElementById('dateFrom').value = (now.getFullYear() - 1) + '-01-01';
+            document.getElementById('dateTo').value = now.toISOString().slice(0, 10);
+        })();
+
+        async function generateReport() {
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate   = document.getElementById('dateTo').value;
+            const errEl    = document.getElementById('errMsg');
+            errEl.style.display = 'none';
+
+            if (!fromDate || !toDate) {
+                errEl.textContent = 'Please select both From Date and To Date.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            document.getElementById('reportCard').style.display = 'none';
+            document.getElementById('noDivisionsNotice').style.display = 'none';
+            document.getElementById('divPlBody').innerHTML =
+                '<tr><td colspan="20" style="text-align:center;padding:40px;color:#9aa0a6">Loading\u2026</td></tr>';
+            document.getElementById('reportCard').style.display = 'block';
+
+            try {
+                const url = '/api/accounting/reports/division-profit-loss?fromDate=' + encodeURIComponent(fromDate) + '&toDate=' + encodeURIComponent(toDate);
+                const res  = await fetch(url, { headers: authH() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+                if (!data.columns || data.columns.filter(c => c.id !== 'untagged' && c.id !== 'total').length === 0) {
+                    document.getElementById('reportCard').style.display = 'none';
+                    document.getElementById('noDivisionsNotice').style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('reportSubtitle').textContent = fromDate + ' to ' + toDate;
+                renderDivPL(data);
+            } catch (err) {
+                errEl.textContent = 'Failed to generate report: ' + err.message;
+                errEl.style.display = 'block';
+                document.getElementById('reportCard').style.display = 'none';
+            }
+        }
+
+        function renderDivPL(data) {
+            const cols = data.columns;  // [{ id, name, code, color }, ...]
+            const s    = data.sections;
+            const t    = data.totals;
+
+            // ── Header row ────────────────────────────────────────────────────
+            let headHtml = '<tr><th class="col-label">Account</th>';
+            cols.forEach(c => {
+                const cls = c.id === 'total' ? 'col-total' : c.id === 'untagged' ? 'col-untagged' : 'col-div';
+                const bg  = c.color && c.id !== 'untagged' && c.id !== 'total'
+                    ? ` style="background:${c.color}"` : '';
+                headHtml += `<th class="${cls}"${bg}>${escHtml(c.name)}</th>`;
+            });
+            headHtml += '</tr>';
+            document.getElementById('divPlHead').innerHTML = headHtml;
+
+            // ── Body ──────────────────────────────────────────────────────────
+            let html = '';
+
+            function sectionRows(rows, header) {
+                if (!rows || rows.length === 0) return '';
+                let out = `<tr class="section-header"><td class="col-label" colspan="${cols.length + 1}">${header}</td></tr>`;
+                rows.forEach(r => {
+                    out += `<tr><td class="col-label indent">${escHtml(r.code)} — ${escHtml(r.name)}</td>`;
+                    cols.forEach(c => { out += `<td>${fmt(r.values[c.id])}</td>`; });
+                    out += '</tr>';
+                });
+                return out;
+            }
+
+            function subtotalRow(label, key, cls) {
+                let out = `<tr class="${cls}"><td class="col-label">${label}</td>`;
+                cols.forEach(c => {
+                    out += `<td>${fmtTotal(t[c.id] ? t[c.id][key] : null)}</td>`;
+                });
+                return out + '</tr>';
+            }
+
+            html += sectionRows(s.operatingIncome, 'Revenue');
+            html += sectionRows(s.costOfSales,     'Cost of Sales');
+            html += subtotalRow('GROSS PROFIT', 'grossProfit', 'subtotal');
+
+            html += sectionRows(s.otherIncome,       'Other Income');
+            html += sectionRows(s.operatingExpenses, 'Operating Expenses');
+            html += sectionRows(s.depreciation,      'Depreciation & Amortisation');
+            html += subtotalRow('OPERATING PROFIT', 'operatingProfit', 'subtotal');
+
+            html += sectionRows(s.financeCosts, 'Finance Costs');
+
+            // Net profit row
+            html += '<tr class="grand-total">';
+            html += '<td class="col-label">NET PROFIT</td>';
+            cols.forEach(c => {
+                const np  = t[c.id] ? t[c.id].netProfit : 0;
+                const cls = np >= 0 ? 'positive' : 'negative';
+                html += `<td class="${cls}">${fmtTotal(np)}</td>`;
+            });
+            html += '</tr>';
+
+            document.getElementById('divPlBody').innerHTML = html;
+        }
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+    </script>
+</body>
+</html>
