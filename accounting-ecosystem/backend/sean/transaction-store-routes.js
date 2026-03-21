@@ -606,28 +606,123 @@ router.post('/sync-back/:companyId', async (req, res) => {
 // this function would also write to the DB directly for missing-value rows.
 
 async function _runGlobalSync(libItem, authorizedBy) {
-    // payroll_item: localStorage-based — sync happens via /sync-back on page load
-    // Record that the library was updated; actual application happens client-side.
     const syncResult = {
-        entityType:  libItem.entity_type,
-        itemKey:     libItem.item_key,
-        field:       libItem.standard_field,
-        value:       libItem.standard_value,
-        syncMethod:  libItem.entity_type === 'payroll_item' ? 'sync_back_on_load' : 'direct_db',
-        note:        libItem.entity_type === 'payroll_item'
-            ? 'Payroll items are localStorage-based. Each Paytime instance will pick up the standard value on next page load via /store/sync-back.'
-            : 'Direct DB sync not yet implemented for this entity type.',
+        entityType:   libItem.entity_type,
+        itemKey:      libItem.item_key,
+        field:        libItem.standard_field,
+        value:        libItem.standard_value,
         authorizedBy,
-        syncedAt: new Date().toISOString()
+        syncedAt:     new Date().toISOString(),
+        applied:      0,
+        skipped:      0,
+        exceptions:   0,
+        syncMethod:   'pending',
+        note:         ''
     };
+
+    // ── payroll_item irp5_code: direct DB sync ──────────────────────────────
+    // payroll_items_master IS server-backed — update directly.
+    // SAFETY (Rules B6/B9): only fill NULL codes; never overwrite existing codes.
+    if (libItem.entity_type === 'payroll_item' && libItem.standard_field === 'irp5_code') {
+        const { data: allItems, error: scanErr } = await supabase
+            .from('payroll_items_master')
+            .select('id, company_id, name, irp5_code')
+            .eq('is_active', true);
+
+        if (scanErr) {
+            syncResult.syncMethod = 'error';
+            syncResult.note = 'Scan failed: ' + scanErr.message;
+        } else {
+            const now = new Date().toISOString();
+            const logRows = [];
+
+            for (const item of (allItems || [])) {
+                if (normalizeKey(item.name) !== libItem.item_key) continue;
+
+                const existingCode = item.irp5_code;
+                const isBlank = existingCode === null || existingCode === undefined || String(existingCode).trim() === '';
+
+                if (!isBlank) {
+                    const isSame = String(existingCode).trim() === String(libItem.standard_value).trim();
+                    const action = isSame ? 'skipped_existing' : 'skipped_exception';
+                    if (!isSame) syncResult.exceptions++;
+                    else syncResult.skipped++;
+                    logRows.push({
+                        library_id:        libItem.id,
+                        target_company_id: item.company_id,
+                        action,
+                        field_written:     'irp5_code',
+                        value_written:     libItem.standard_value,
+                        previous_value:    String(existingCode),
+                        authorized_by:     String(authorizedBy),
+                        notes:             isSame
+                            ? `Already has correct code: ${existingCode}`
+                            : `Exception: has different code (${existingCode}). Manual review required.`
+                    });
+                    continue;
+                }
+
+                // NULL code — safe to fill
+                const { error: updateErr } = await supabase
+                    .from('payroll_items_master')
+                    .update({
+                        irp5_code:            libItem.standard_value,
+                        irp5_code_updated_at: now,
+                        irp5_code_updated_by: String(authorizedBy)
+                    })
+                    .eq('id', item.id);
+
+                if (updateErr) {
+                    logRows.push({
+                        library_id:        libItem.id,
+                        target_company_id: item.company_id,
+                        action:            'error',
+                        field_written:     'irp5_code',
+                        value_written:     libItem.standard_value,
+                        previous_value:    null,
+                        authorized_by:     String(authorizedBy),
+                        notes:             `Update failed: ${updateErr.message}`
+                    });
+                    continue;
+                }
+
+                syncResult.applied++;
+                logRows.push({
+                    library_id:        libItem.id,
+                    target_company_id: item.company_id,
+                    action:            'applied',
+                    field_written:     'irp5_code',
+                    value_written:     libItem.standard_value,
+                    previous_value:    null,
+                    authorized_by:     String(authorizedBy),
+                    notes:             `SEAN global sync: ${libItem.item_name} → ${libItem.standard_value}`
+                });
+            }
+
+            if (logRows.length > 0) {
+                await supabase.from('sean_sync_log').insert(logRows);
+            }
+
+            syncResult.syncMethod = 'direct_db';
+            const exNote = syncResult.exceptions > 0
+                ? ` ${syncResult.exceptions} exception(s) with conflicting codes were not overwritten.`
+                : '';
+            syncResult.note = `Applied IRP5 code ${libItem.standard_value} to ${syncResult.applied} payroll item(s). ${syncResult.skipped} already correct.${exNote}`;
+        }
+
+    } else {
+        // Other entity types: library updated; clients pick up via /sync-back on page load
+        syncResult.syncMethod = 'sync_back_on_load';
+        syncResult.note = 'Global library updated. Clients will receive this standard on next page load via /store/sync-back.';
+    }
 
     // Update library sync count
     await supabase
         .from('sean_global_library')
         .update({
-            sync_count:    libItem.sync_count + 1,
+            sync_count:     (libItem.sync_count || 0) + 1,
             last_synced_at: new Date().toISOString(),
-            updated_at:    new Date().toISOString()
+            updated_at:     new Date().toISOString()
         })
         .eq('id', libItem.id);
 

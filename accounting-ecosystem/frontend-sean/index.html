@@ -387,6 +387,35 @@
                         </p>
                         <div id="storeLibraryList"><div style="color:var(--text-muted);font-size:0.9rem;">Loading library…</div></div>
                     </div>
+
+                    <!-- Payroll Items Management — SEAN cross-client governance view -->
+                    <div class="card" id="payrollItemsCard" style="display:none;margin-top:16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                            <h3 style="margin:0;">💼 Payroll Items — All Clients</h3>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                <select id="piCompanyFilter" onchange="loadPayrollItems()" style="font-size:0.82rem;padding:4px 8px;">
+                                    <option value="">All Companies</option>
+                                </select>
+                                <select id="piTypeFilter" onchange="loadPayrollItems()" style="font-size:0.82rem;padding:4px 8px;">
+                                    <option value="">All Types</option>
+                                    <option value="earning">Earnings</option>
+                                    <option value="deduction">Deductions</option>
+                                    <option value="company_contribution">Company Contributions</option>
+                                </select>
+                                <label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;">
+                                    <input type="checkbox" id="piMissingOnly" onchange="loadPayrollItems()">
+                                    Missing IRP5 only
+                                </label>
+                                <button class="btn btn-outline btn-sm" onclick="loadPayrollItems()">🔄 Refresh</button>
+                            </div>
+                        </div>
+                        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 12px;">
+                            View and manage payroll items across all Paytime clients.
+                            Set IRP5 codes directly. Use "Make Global Standard" to propagate an approved code to all clients with a blank code — clients with a different existing code are never overwritten.
+                        </p>
+                        <div id="payrollItemsSummary" style="margin-bottom:12px;"></div>
+                        <div id="payrollItemsList"><div style="color:var(--text-muted);font-size:0.9rem;">Loading payroll items…</div></div>
+                    </div>
                 </div>
 
             </div>
@@ -748,6 +777,12 @@ const SEAN_MODULE_REGISTRY = {
         description: 'Payroll item IRP5 code standardization across all Paytime clients',
         apps:        ['paytime'],    // Active in Paytime — items flow from payroll-items.html
     },
+    payroll_items_management: {
+        label:       'Payroll Items Management',
+        icon:        '📋',
+        description: 'Cross-client payroll items governance — view, set IRP5 codes, make global standards',
+        apps:        ['paytime'],    // Paytime governance — always shown alongside irp5_learning
+    },
     // Future modules — not yet active.
     // salary_matching: {
     //     label: 'Salary Payment Matching',
@@ -869,12 +904,14 @@ async function loadLearningPatterns() {
     // ── Module visibility gate ─────────────────────────────────────────────
     // Route to the correct module based on selected app.
 
-    // IRP5 Learning — Paytime
+    // IRP5 Learning + Payroll Items Management — Paytime
     if (isModuleVisible('irp5_learning')) {
         if (filterCtrl) filterCtrl.style.display = 'none';
         if (proposalsCard) proposalsCard.style.display = 'none';
         if (titleEl) titleEl.innerHTML = '💼 IRP5 Code Learning — Paytime Transaction Store';
         await loadIRP5StoreItems(listEl, proposalsCard);
+        // Also render the payroll items governance panel below the transaction store
+        await loadPayrollItems();
         return;
     }
 
@@ -883,12 +920,18 @@ async function loadLearningPatterns() {
         if (titleEl)    titleEl.textContent = `🔮 SEAN — ${appDisplayName(_selectedLearningApp)}`;
         if (filterCtrl) filterCtrl.style.display = 'none';
         if (proposalsCard) proposalsCard.style.display = 'none';
+        // Hide Paytime-specific cards
+        const piCard = document.getElementById('payrollItemsCard');
+        if (piCard) piCard.style.display = 'none';
         listEl.innerHTML = renderNoModulePlaceholder(_selectedLearningApp);
         return;
     }
 
     // Restore filter controls (in case we're switching back from a non-accounting app)
     if (filterCtrl) filterCtrl.style.display = '';
+    // Hide Paytime-specific cards when in Accounting view
+    const piCardAcc = document.getElementById('payrollItemsCard');
+    if (piCardAcc) piCardAcc.style.display = 'none';
 
     const status = document.getElementById('patternStatusFilter')?.value || '';
     listEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;">Loading patterns…</div>';
@@ -1212,6 +1255,229 @@ async function loadStoreGlobalLibrary() {
         </table></div>`;
     } catch (err) {
         listEl.innerHTML = `<div style="color:#ef4444;">${escHtml(err.message)}</div>`;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAYROLL ITEMS MANAGEMENT
+// ═══════════════════════════════════════════════════════════
+
+let _payrollItemsCache = [];     // cached for inline edit without re-fetch
+let _payrollCompanies  = [];     // cached company list for filter dropdown
+
+async function loadPayrollItems() {
+    const card    = document.getElementById('payrollItemsCard');
+    const listEl  = document.getElementById('payrollItemsList');
+    const summEl  = document.getElementById('payrollItemsSummary');
+    if (!card) return;
+
+    card.style.display = 'block';
+    if (listEl) listEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;">Loading payroll items…</div>';
+    if (summEl) summEl.innerHTML = '';
+
+    const companyFilter = document.getElementById('piCompanyFilter')?.value || '';
+    const typeFilter    = document.getElementById('piTypeFilter')?.value    || '';
+    const missingOnly   = document.getElementById('piMissingOnly')?.checked  || false;
+
+    try {
+        let qs = '';
+        if (companyFilter) qs += `companyId=${encodeURIComponent(companyFilter)}&`;
+        if (typeFilter)    qs += `type=${encodeURIComponent(typeFilter)}&`;
+        if (missingOnly)   qs += `missingIrp5=true&`;
+        if (qs) qs = '?' + qs.slice(0, -1);
+
+        const data  = await api(`/sean/paytime/items${qs}`);
+        const items = data.items || [];
+        _payrollItemsCache = items;
+
+        // Build company dropdown once (first load or when unfiltered)
+        _buildCompanyDropdown(items);
+
+        // Summary row
+        const total   = data.count || 0;
+        const missing = data.missingIrp5Count || 0;
+        const coded   = total - missing;
+        if (summEl) {
+            summEl.innerHTML = `
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
+                    <div style="padding:8px 14px;border-radius:8px;background:#f0fdf4;text-align:center;min-width:80px;">
+                        <div style="font-size:1.3rem;font-weight:700;color:#059669;">${total}</div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);">Total Items</div>
+                    </div>
+                    <div style="padding:8px 14px;border-radius:8px;background:#d1fae5;text-align:center;min-width:80px;">
+                        <div style="font-size:1.3rem;font-weight:700;color:#10b981;">${coded}</div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);">IRP5 Coded</div>
+                    </div>
+                    ${missing > 0 ? `
+                    <div style="padding:8px 14px;border-radius:8px;background:#fef3c7;text-align:center;min-width:80px;">
+                        <div style="font-size:1.3rem;font-weight:700;color:#d97706;">${missing}</div>
+                        <div style="font-size:0.75rem;color:var(--text-muted);">Missing IRP5</div>
+                    </div>` : ''}
+                </div>`;
+        }
+
+        if (!items.length) {
+            if (listEl) listEl.innerHTML = `
+                <div style="padding:28px 20px;text-align:center;color:var(--text-muted);">
+                    <div style="font-size:2rem;margin-bottom:8px;">💼</div>
+                    <div style="font-weight:600;margin-bottom:6px;">No payroll items found</div>
+                    <div style="font-size:0.83rem;">Items appear here once payroll items are created in Paytime.</div>
+                </div>`;
+            return;
+        }
+
+        const typeLabel = { earning: 'Earning', deduction: 'Deduction', company_contribution: 'Contribution' };
+        const typeColor = { earning: '#10b981', deduction: '#ef4444', company_contribution: '#6366f1' };
+
+        if (listEl) {
+            listEl.innerHTML = `<div class="table-wrap"><table>
+                <thead><tr>
+                    <th>Item Name</th>
+                    <th>Type</th>
+                    <th>IRP5 Code</th>
+                    <th>Taxable</th>
+                    <th>Company</th>
+                    <th>Actions</th>
+                </tr></thead>
+                <tbody>
+                    ${items.map(item => {
+                        const codeBadge = item.irp5_code
+                            ? `<code style="font-family:monospace;font-size:0.9rem;background:#e0e7ff;color:#4338ca;padding:2px 7px;border-radius:5px;">${escHtml(item.irp5_code)}</code>`
+                            : `<span style="color:#d97706;font-size:0.82rem;font-weight:600;">⚠ Missing</span>`;
+                        const tBadge = (item.item_type && typeLabel[item.item_type])
+                            ? `<span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:0.75rem;font-weight:600;background:${typeColor[item.item_type]}22;color:${typeColor[item.item_type]};">${typeLabel[item.item_type]}</span>`
+                            : `<span style="font-size:0.82rem;color:var(--text-muted);">${escHtml(item.item_type||'—')}</span>`;
+                        const compName = (item.companies && item.companies.name) ? escHtml(item.companies.name) : `ID ${item.company_id}`;
+                        const safeId = parseInt(item.id, 10);
+                        const safeCode = (item.irp5_code || '').replace(/'/g, "\\'");
+                        const safeName = (item.name || '').replace(/'/g, "\\'");
+                        return `<tr>
+                            <td><strong>${escHtml(item.name)}</strong>
+                                ${item.category ? `<br><span style="font-size:0.75rem;color:var(--text-muted);">${escHtml(item.category)}</span>` : ''}
+                            </td>
+                            <td>${tBadge}</td>
+                            <td>${codeBadge}</td>
+                            <td style="font-size:0.82rem;">${item.is_taxable ? '✅' : '—'}</td>
+                            <td style="font-size:0.82rem;color:var(--text-muted);">${compName}</td>
+                            <td>
+                                <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                                    <button class="btn btn-outline btn-sm" style="font-size:0.75rem;padding:3px 8px;"
+                                        onclick="setPayrollItemIrp5(${safeId}, '${safeCode}', '${safeName}')">
+                                        ${item.irp5_code ? '✏️ Change' : '🔑 Set IRP5'}
+                                    </button>
+                                    ${item.irp5_code ? `
+                                    <button class="btn btn-outline btn-sm" style="font-size:0.75rem;padding:3px 8px;color:#10b981;border-color:#10b981;"
+                                        onclick="makePayrollItemGlobal(${safeId}, '${safeCode}', '${safeName}', ${item.company_id})">
+                                        🌐 Global
+                                    </button>` : ''}
+                                </div>
+                            </td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table></div>`;
+        }
+
+    } catch (err) {
+        if (listEl) listEl.innerHTML = `<div style="color:#ef4444;">${escHtml(err.message)}</div>`;
+    }
+}
+
+function _buildCompanyDropdown(items) {
+    const sel = document.getElementById('piCompanyFilter');
+    if (!sel) return;
+    const currentVal = sel.value;
+    // Build unique company list from items
+    const companies = {};
+    items.forEach(i => {
+        if (i.company_id) {
+            companies[i.company_id] = (i.companies && i.companies.name) ? i.companies.name : `Company ${i.company_id}`;
+        }
+    });
+    const opts = Object.entries(companies)
+        .sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([id, name]) => `<option value="${id}" ${String(currentVal) === String(id) ? 'selected' : ''}>${escHtml(name)}</option>`)
+        .join('');
+    // Only rebuild if we have new companies
+    if (opts && sel.querySelectorAll('option').length <= 1 + Object.keys(companies).length - 1) {
+        sel.innerHTML = `<option value="">All Companies</option>${opts}`;
+    }
+}
+
+async function setPayrollItemIrp5(id, currentCode, itemName) {
+    const newCode = prompt(
+        `Set IRP5 code for "${itemName}"\n\nCurrent: ${currentCode || 'None'}\n\nEnter SARS IRP5 code (4–6 digits):`,
+        currentCode || ''
+    );
+    if (newCode === null) return; // cancelled
+    const trimmed = String(newCode).trim();
+    if (!trimmed && !currentCode) return;
+    if (trimmed && !/^\d{4,6}$/.test(trimmed)) {
+        alert('Invalid IRP5 code. Must be 4–6 digits (SARS format).');
+        return;
+    }
+    try {
+        await api(`/sean/paytime/items/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ irp5_code: trimmed || null, reason: 'Set from SEAN governance view' })
+        });
+        alert(`✅ IRP5 code updated to ${trimmed || 'cleared'} for "${itemName}".`);
+        loadPayrollItems();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+async function makePayrollItemGlobal(id, irp5Code, itemName, companyId) {
+    if (!irp5Code) {
+        alert('Set an IRP5 code first before making it a global standard.');
+        return;
+    }
+    if (!confirm(
+        `Make "${itemName}" → IRP5 ${irp5Code} a GLOBAL STANDARD?\n\n` +
+        `This will:\n` +
+        `• Add it to the SEAN Global Library\n` +
+        `• Immediately apply IRP5 code ${irp5Code} to all other companies that have a matching item with NO IRP5 code\n` +
+        `• Companies that already have a different IRP5 code are NEVER overwritten\n\n` +
+        `Proceed?`
+    )) return;
+
+    try {
+        // Submit to transaction store
+        const submitData = await api('/sean/store/submit', {
+            method: 'POST',
+            body: JSON.stringify({
+                entityType:    'payroll_item',
+                sourceApp:     'paytime',
+                companyId:     companyId,
+                itemName:      itemName,
+                payload:       { item_id: id, irp5_code: irp5Code },
+                proposedField: 'irp5_code',
+                proposedValue: irp5Code,
+                changeType:    'update',
+                submittedBy:   user?.name || user?.email || 'sean_admin'
+            })
+        });
+
+        // Immediately approve (superadmin is doing this action)
+        const storeId = submitData.item?.id;
+        if (!storeId) throw new Error('Submit did not return a store item id');
+
+        const approveData = await api(`/sean/store/${storeId}/approve`, {
+            method: 'POST',
+            body: JSON.stringify({ notes: `Global standard set from SEAN governance view for ${itemName}` })
+        });
+
+        const sync = approveData.sync || {};
+        alert(
+            `✅ Global standard set!\n\n` +
+            `IRP5 code ${irp5Code} for "${itemName}" added to Global Library.\n\n` +
+            `Sync result: ${sync.note || 'Completed'}`
+        );
+        loadPayrollItems();
+        loadStoreGlobalLibrary();
+    } catch (err) {
+        alert('Error: ' + err.message);
     }
 }
 

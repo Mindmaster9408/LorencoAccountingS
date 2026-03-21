@@ -324,11 +324,170 @@ router.get('/log', requireSuperAdmin, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PAYROLL ITEMS MANAGEMENT — SEAN governance view
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── GET /items — Browse payroll items across companies ───────────────────────
+//
+// Super admin: returns items from ALL companies (or filtered by ?companyId=X).
+// Non-superadmin: returns own company's items only (requires valid company context).
+//
+// Query params:
+//   ?companyId=N         — filter to one company (superadmin only)
+//   ?type=earning        — filter by item_type (earning | deduction | company_contribution)
+//   ?missingIrp5=true    — only items where irp5_code IS NULL
+//   ?includeInactive=true — include is_active = false items (superadmin only)
+
+router.get('/items', async (req, res) => {
+  try {
+    const { supabase } = supabaseQuery2();
+    const isSuperAdmin = req.user?.isSuperAdmin === true;
+    const { companyId: queryCompanyId, type, missingIrp5, includeInactive } = req.query;
+
+    // Determine company scope
+    let targetCompanyId = null;
+    if (isSuperAdmin && queryCompanyId) {
+      targetCompanyId = parseInt(queryCompanyId, 10) || null;
+    } else if (!isSuperAdmin) {
+      // Non-superadmin: own company only
+      targetCompanyId = req.companyId || req.user?.companyId;
+      if (!targetCompanyId) {
+        return res.status(403).json({ error: 'Company context required' });
+      }
+    }
+    // isSuperAdmin && !queryCompanyId → all companies
+
+    let query = supabase
+      .from('payroll_items_master')
+      .select('id, name, item_type, category, irp5_code, is_taxable, is_recurring, is_active, company_id, companies(id, name)')
+      .order('company_id')
+      .order('item_type')
+      .order('name');
+
+    // Scope by company
+    if (targetCompanyId) {
+      query = query.eq('company_id', targetCompanyId);
+    }
+
+    // Active filter (superadmin can see inactive items if requested)
+    if (!isSuperAdmin || includeInactive !== 'true') {
+      query = query.eq('is_active', true);
+    }
+
+    if (type) query = query.eq('item_type', type);
+    if (missingIrp5 === 'true') query = query.is('irp5_code', null);
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    const items = data || [];
+
+    // Attach governance stats
+    const missingCount = items.filter(i => !i.irp5_code).length;
+
+    res.json({ count: items.length, missingIrp5Count: missingCount, items });
+  } catch (err) {
+    console.error('[Sean Paytime] GET /items error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── PUT /items/:id — Update payroll item IRP5 code from SEAN governance ──────
+//
+// Super admin only.
+// Applies the same IRP5 validation as items.js.
+// Emits an IRP5 learning event (non-blocking) after save.
+//
+// Body: {
+//   irp5_code: '3601'  — required (pass null to clear)
+//   reason?: string    — optional reason for the change (stored in notes)
+// }
+//
+// Does NOT automatically propagate globally — use the Transaction Store
+// (POST /api/sean/store/submit → approve → sync) for cross-client governance.
+
+router.put('/items/:id', requireSuperAdmin, async (req, res) => {
+  try {
+    const { supabase } = supabaseQuery2();
+    const id = parseInt(req.params.id, 10);
+    if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid item id' });
+
+    const { irp5_code, reason } = req.body;
+
+    if (irp5_code === undefined) {
+      return res.status(400).json({ error: 'irp5_code is required (pass null to clear)' });
+    }
+
+    const newCode = (irp5_code === null || irp5_code === '') ? null : String(irp5_code).trim();
+
+    if (newCode !== null && !/^\d{4,6}$/.test(newCode)) {
+      return res.status(400).json({
+        error: `Invalid IRP5 code: "${newCode}". Expected 4–6 digit SARS numeric code.`
+      });
+    }
+
+    // Fetch existing item — no company restriction (superadmin spans all)
+    const { data: existing, error: fetchErr } = await supabase
+      .from('payroll_items_master')
+      .select('id, company_id, name, item_type, category, irp5_code')
+      .eq('id', id)
+      .single();
+
+    if (fetchErr || !existing) {
+      return res.status(404).json({ error: 'Payroll item not found' });
+    }
+
+    const updates = {
+      irp5_code:            newCode,
+      irp5_code_updated_at: new Date().toISOString(),
+      irp5_code_updated_by: req.user?.userId || null
+    };
+
+    const { data, error } = await supabase
+      .from('payroll_items_master')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Emit IRP5 learning event if code was added or changed (not cleared)
+    if (newCode && newCode !== existing.irp5_code) {
+      const changeType = !existing.irp5_code ? 'code_added' : 'code_changed';
+      IRP5Learning.recordLearningEvent({
+        companyId:        existing.company_id,
+        payrollItemId:    id,
+        payrollItemName:  existing.name,
+        itemCategory:     existing.item_type || null,
+        previousIrp5Code: existing.irp5_code || null,
+        newIrp5Code:      newCode,
+        changeType,
+        changedBy:        req.user?.userId || null
+      }).catch(e => console.error('[Sean] IRP5 learn event (non-fatal):', e.message));
+    }
+
+    res.json({
+      success: true,
+      item:    data,
+      note:    reason || null
+    });
+  } catch (err) {
+    console.error('[Sean Paytime] PUT /items/:id error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ─── Helper — inline Supabase access ─────────────────────────────────────────
 
 function supabaseQuery() {
   const { supabase } = require('../config/database');
   return supabase;
+}
+
+function supabaseQuery2() {
+  return require('../config/database');
 }
 
 module.exports = router;
