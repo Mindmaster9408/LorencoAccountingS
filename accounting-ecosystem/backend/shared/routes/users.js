@@ -31,7 +31,7 @@ router.get('/', requirePermission('USERS.VIEW'), async (req, res) => {
       supabase
         .from('user_company_access')
         .select(`
-          role, is_primary,
+          role, is_primary, apps_access,
           users:user_id (id, username, email, full_name, is_active, created_at, last_login_at)
         `)
         .eq('company_id', companyId)
@@ -70,6 +70,7 @@ router.get('/', requirePermission('USERS.VIEW'), async (req, res) => {
       apps: appsByUser[d.users.id] || null,
       // clients[] is null when no explicit restriction is set (means: access all company clients)
       clients: clientsByUser[d.users.id] || null,
+      apps_access: d.apps_access || null,
     }));
 
     res.json({ users });
@@ -190,11 +191,12 @@ router.get('/:id', requirePermission('USERS.VIEW'), async (req, res) => {
  */
 router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
   try {
-    const { username, email, password, full_name, role, apps } = req.body;
+    const { username, email, password, full_name, role, apps, apps_access } = req.body;
 
-    if (!username || !email || !password || !full_name || !role) {
-      return res.status(400).json({ error: 'username, email, password, full_name, and role are required' });
+    if (!email || !password || !full_name || !role) {
+      return res.status(400).json({ error: 'email, password, full_name, and role are required' });
     }
+    const resolvedUsername = username || email;
 
     // Verify manager can assign this role
     if (!canManageRole(req.user.role, role)) {
@@ -205,7 +207,7 @@ router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
     const { data: existing } = await supabase
       .from('users')
       .select('id')
-      .or(`username.eq.${username},email.eq.${email}`)
+      .or(`username.eq.${resolvedUsername},email.eq.${email}`)
       .limit(1);
 
     if (existing && existing.length > 0) {
@@ -216,19 +218,20 @@ router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
 
     const { data: newUser, error } = await supabase
       .from('users')
-      .insert({ username, email, password_hash, full_name, is_active: true })
+      .insert({ username: resolvedUsername, email, password_hash, full_name, is_active: true })
       .select()
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Link to current company
+    // Link to current company with optional per-app access
     await supabase.from('user_company_access').insert({
       user_id: newUser.id,
       company_id: req.companyId,
       role,
       is_primary: true,
-      is_active: true
+      is_active: true,
+      apps_access: Array.isArray(apps_access) && apps_access.length > 0 ? apps_access : null
     });
 
     // If specific apps were provided, record per-user app access.
@@ -275,7 +278,18 @@ router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
 router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
   try {
     const userId = req.params.id;
-    const { full_name, email, role, is_active, company_ids } = req.body;
+    const { full_name, email, role, is_active, company_ids, apps_access, revoke_company_access } = req.body;
+
+    // Revoke this user's access from the current company (without deactivating them globally)
+    if (revoke_company_access) {
+      await supabase
+        .from('user_company_access')
+        .update({ is_active: false })
+        .eq('user_id', userId)
+        .eq('company_id', req.companyId);
+      await auditFromReq(req, 'UPDATE', 'user', userId, { metadata: { action: 'revoked_company_access', companyId: req.companyId } });
+      return res.json({ success: true, message: 'User access revoked from this company' });
+    }
 
     // Get old data for audit
     const { data: oldUser } = await supabase
@@ -302,15 +316,21 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Update role for current company
+    // Update role and/or apps_access for current company
+    const accessUpdates = {};
     if (role) {
       if (!canManageRole(req.user.role, role)) {
         return res.status(403).json({ error: 'You cannot assign this role level' });
       }
-
+      accessUpdates.role = role;
+    }
+    if (apps_access !== undefined) {
+      accessUpdates.apps_access = Array.isArray(apps_access) && apps_access.length > 0 ? apps_access : null;
+    }
+    if (Object.keys(accessUpdates).length > 0) {
       await supabase
         .from('user_company_access')
-        .update({ role })
+        .update(accessUpdates)
         .eq('user_id', userId)
         .eq('company_id', req.companyId);
     }

@@ -55,6 +55,7 @@ const adminPanelRoutes   = require('./shared/routes/admin-panel');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
+let inventoryRoutes, practiceRoutes;
 
 if (isModuleEnabled('pos')) {
   posRoutes = require('./modules/pos');
@@ -66,6 +67,8 @@ if (isModuleEnabled('payroll'))    payrollRoutes = require('./modules/payroll');
 if (isModuleEnabled('accounting')) accountingRoutes = require('./modules/accounting');
 if (isModuleEnabled('sean'))       seanRoutes = require('./sean/routes');
 if (isModuleEnabled('sean'))       interCompanyRoutes = require('./inter-company/routes');
+if (isModuleEnabled('inventory'))  inventoryRoutes = require('./modules/inventory');
+if (isModuleEnabled('practice'))   practiceRoutes = require('./modules/practice');
 
 // Coaching module — always loaded if COACHING_DATABASE_URL is set
 if (process.env.COACHING_DATABASE_URL || process.env.DATABASE_URL) {
@@ -296,6 +299,30 @@ if (coachingRoutes) {
   console.log('  ⬜ Coaching module — disabled (set COACHING_DATABASE_URL to enable)');
 }
 
+if (inventoryRoutes) {
+  app.use('/api/inventory',
+    authenticateToken,
+    requireModule('inventory'),
+    auditMiddleware,
+    inventoryRoutes
+  );
+  console.log('  ✅ Inventory module (Lorenco Storehouse) — ACTIVE');
+} else {
+  console.log('  ⬜ Inventory module (Lorenco Storehouse) — disabled');
+}
+
+if (practiceRoutes) {
+  app.use('/api/practice',
+    authenticateToken,
+    requireModule('practice'),
+    auditMiddleware,
+    practiceRoutes
+  );
+  console.log('  ✅ Practice module (Lorenco Practice) — ACTIVE');
+} else {
+  console.log('  ⬜ Practice module (Lorenco Practice) — disabled');
+}
+
 // ─── Static File Serving ─────────────────────────────────────────────────────
 
 const ecosystemFrontendPath = path.join(__dirname, '..', 'frontend-ecosystem');
@@ -304,6 +331,8 @@ const payrollFrontendPath   = path.join(__dirname, '..', 'frontend-payroll');
 const seanFrontendPath      = path.join(__dirname, '..', 'frontend-sean');
 const accountingFrontendPath = path.join(__dirname, '..', 'frontend-accounting');
 const coachingFrontendPath  = path.join(__dirname, '..', 'frontend-coaching');
+const inventoryFrontendPath = path.join(__dirname, '..', 'frontend-inventory');
+const practiceFrontendPath  = path.join(__dirname, '..', 'frontend-practice');
 
 // ── Cache-Control helper ──────────────────────────────────────────────────────
 // HTML files: never cache — browser must always revalidate on navigation.
@@ -406,6 +435,28 @@ app.get('/sean/*', (req, res) => {
     sendHtml(res, indexPath);
   } else {
     res.status(404).json({ error: 'SEAN frontend not found' });
+  }
+});
+
+// Inventory frontend
+app.use('/inventory', express.static(inventoryFrontendPath));
+app.get('/inventory/*', (req, res) => {
+  const indexPath = path.join(inventoryFrontendPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ error: 'Inventory frontend not found' });
+  }
+});
+
+// Practice frontend
+app.use('/practice', express.static(practiceFrontendPath));
+app.get('/practice/*', (req, res) => {
+  const indexPath = path.join(practiceFrontendPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ error: 'Practice frontend not found' });
   }
 });
 

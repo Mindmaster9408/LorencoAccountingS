@@ -93,6 +93,7 @@ router.post('/login', async (req, res) => {
         company_id,
         role,
         is_primary,
+        apps_access,
         companies:company_id (id, company_name, trading_name, modules_enabled)
       `)
       .eq('user_id', user.id)
@@ -110,7 +111,8 @@ router.post('/login', async (req, res) => {
         trading_name: c.companies.trading_name,
         modules_enabled: c.companies.modules_enabled,
         role: isSuperAdmin ? 'super_admin' : c.role,
-        is_primary: c.is_primary
+        is_primary: c.is_primary,
+        apps_access: c.apps_access || null,
       }))
       .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
 
@@ -404,13 +406,14 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Company not found or inactive' });
     }
 
+    let appsAccess = null;
     if (isSuperAdmin) {
       role = 'super_admin';
     } else {
       // Regular users — check direct user_company_access first
       const { data: access } = await supabase
         .from('user_company_access')
-        .select('role')
+        .select('role, apps_access')
         .eq('user_id', userId)
         .eq('company_id', parsedCompanyId)
         .eq('is_active', true)
@@ -418,6 +421,7 @@ router.post('/select-company', authenticateToken, async (req, res) => {
 
       if (access) {
         role = access.role;
+        appsAccess = access.apps_access || null;
       } else {
         // No direct row — check if the target company is a client company managed
         // by a practice the user belongs to.  This mirrors the sso-launch logic so
@@ -495,6 +499,7 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       token,
       companyId: parsedCompanyId,
       role,
+      apps_access: appsAccess,
       company: {
         id: company.id,
         company_name: company.company_name,
@@ -757,7 +762,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
     } else if (resolvedCompanyId) {
       const { data: access } = await supabase
         .from('user_company_access')
-        .select('*')
+        .select('role, apps_access')
         .eq('user_id', user.id)
         .eq('company_id', resolvedCompanyId)
         .eq('is_active', true)
@@ -836,11 +841,15 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
         }
       } else {
         role = access.role;
+        // Check per-app access (null = all apps allowed)
+        if (access.apps_access && !access.apps_access.includes(targetApp)) {
+          return res.status(403).json({ error: `You do not have access to the ${targetApp} app` });
+        }
       }
     } else {
       const { data: accessList } = await supabase
         .from('user_company_access')
-        .select('*')
+        .select('company_id, role, apps_access')
         .eq('user_id', user.id)
         .eq('is_active', true)
         .order('is_primary', { ascending: false });
@@ -848,6 +857,11 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
       if (accessList && accessList.length > 0) {
         resolvedCompanyId = accessList[0].company_id;
         role = accessList[0].role;
+
+        // Check per-app access
+        if (accessList[0].apps_access && !accessList[0].apps_access.includes(targetApp)) {
+          return res.status(403).json({ error: `You do not have access to the ${targetApp} app` });
+        }
       }
     }
 

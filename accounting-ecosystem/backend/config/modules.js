@@ -49,7 +49,25 @@ const modules = {
     description: 'Privacy-first AI accounting assistant — allocations, tax calculations, self-learning codex',
     routePrefix: '/api/sean',
     requiredTables: ['sean_codex_private', 'sean_patterns_global', 'sean_learning_log', 'sean_knowledge_items', 'sean_allocation_rules', 'sean_bank_transactions'],
-  }
+  },
+  inventory: {
+    name: 'Lorenco Storehouse',
+    key: 'inventory',
+    active: (process.env.MODULE_INVENTORY_ENABLED || '').toLowerCase() === 'true',
+    version: '1.0.0',
+    description: 'Inventory & warehouse management — stock items, movements, suppliers, purchase orders',
+    routePrefix: '/api/inventory',
+    requiredTables: ['inventory_items', 'warehouses', 'stock_movements', 'suppliers', 'purchase_orders', 'purchase_order_items'],
+  },
+  practice: {
+    name: 'Lorenco Practice',
+    key: 'practice',
+    active: (process.env.MODULE_PRACTICE_ENABLED || '').toLowerCase() === 'true',
+    version: '1.0.0',
+    description: 'Accounting practice management — client files, tasks, deadlines, time tracking, billing',
+    routePrefix: '/api/practice',
+    requiredTables: ['practice_clients', 'practice_tasks', 'practice_time_entries', 'practice_deadlines'],
+  },
 };
 
 /**

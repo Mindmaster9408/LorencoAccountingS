@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lorenco Practice — Practice Management</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f0a1a;
+            --surface: rgba(255,255,255,0.05);
+            --surface-hover: rgba(255,255,255,0.09);
+            --border: rgba(255,255,255,0.08);
+            --text: #f5f0ff;
+            --text-muted: rgba(245,240,255,0.5);
+            --accent: #a78bfa;
+            --accent-2: #7c3aed;
+            --accent-glow: rgba(167,139,250,0.25);
+            --danger: #f43f5e;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --info: #38bdf8;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg,#0f0a1a 0%,#1a0f2e 50%,#0f0f1e 100%); min-height: 100vh; color: var(--text); }
+
+        /* ── Topbar ── */
+        .topbar { background: rgba(0,0,0,0.4); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 58px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+        .topbar-left { display: flex; align-items: center; gap: 12px; }
+        .app-icon { width: 34px; height: 34px; background: linear-gradient(135deg,#a78bfa,#7c3aed); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+        .app-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.3px; }
+        .app-subtitle { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .company-badge { padding: 5px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; font-size: 0.78rem; color: var(--text-muted); }
+        .btn-back { padding: 7px 14px; background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.25); color: var(--accent); border-radius: 9px; cursor: pointer; font-size: 0.78rem; font-weight: 600; text-decoration: none; transition: all 0.2s; }
+        .btn-back:hover { background: rgba(167,139,250,0.2); }
+
+        /* ── Nav Tabs ── */
+        .nav-tabs { display: flex; gap: 4px; padding: 12px 24px 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
+        .nav-tab { padding: 10px 18px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; }
+        .nav-tab:hover { color: var(--text); }
+        .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        /* ── Main ── */
+        .main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
+
+        /* ── Stats ── */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px,1fr)); gap: 14px; margin-bottom: 28px; }
+        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+        .stat-value { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card.danger .stat-value { color: var(--danger); }
+        .stat-card.success .stat-value { color: var(--success); }
+        .stat-card.warning .stat-value { color: var(--warning); }
+
+        /* ── Section ── */
+        .section { display: none; }
+        .section.active { display: block; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
+        .section-title { font-size: 1.1rem; font-weight: 700; }
+
+        /* ── Controls ── */
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .search-input { padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; width: 220px; }
+        .search-input:focus { outline: none; border-color: var(--accent); }
+        .filter-select { padding: 9px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; }
+
+        /* ── Buttons ── */
+        .btn { padding: 9px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; }
+        .btn-primary { background: linear-gradient(135deg,var(--accent),var(--accent-2)); color: #fff; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px var(--accent-glow); }
+        .btn-ghost { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+        .btn-ghost:hover { background: var(--surface-hover); }
+        .btn-success { background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.3); color: #6ee7b7; }
+        .btn-danger { background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.3); color: #fda4af; }
+        .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+
+        /* ── Table ── */
+        .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+        td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.85rem; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+        .td-actions { display: flex; gap: 6px; }
+
+        /* ── Badges ── */
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+        .badge-open { background: rgba(56,189,248,0.15); color: #7dd3fc; }
+        .badge-in-progress { background: rgba(167,139,250,0.15); color: var(--accent); }
+        .badge-completed { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .badge-overdue { background: rgba(244,63,94,0.15); color: #fda4af; }
+        .badge-pending { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .badge-high { background: rgba(244,63,94,0.12); color: #fda4af; }
+        .badge-medium { background: rgba(245,158,11,0.12); color: #fbbf24; }
+        .badge-low { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+
+        /* ── Task card (kanban-like list) ── */
+        .task-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; transition: all 0.2s; }
+        .task-card:hover { border-color: rgba(167,139,250,0.3); transform: translateX(2px); }
+        .task-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+        .task-title { font-weight: 700; font-size: 0.9rem; }
+        .task-meta { font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap; }
+        .task-actions { display: flex; gap: 6px; margin-top: 10px; }
+        .overdue-row td { border-left: 3px solid var(--danger); }
+
+        /* ── Time entry form inline ── */
+        .inline-form { background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.15); border-radius: 12px; padding: 16px; margin-bottom: 18px; }
+        .inline-form-title { font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
+
+        /* ── Modal ── */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,10,26,0.85); backdrop-filter: blur(6px); z-index: 500; align-items: center; justify-content: center; padding: 20px; }
+        .modal-overlay.show { display: flex; }
+        .modal { background: #130d22; border: 1px solid var(--border); border-radius: 20px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+        .modal-header { padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { font-size: 1.1rem; font-weight: 700; }
+        .modal-close { width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; }
+        .modal-close:hover { background: rgba(244,63,94,0.2); color: #fda4af; }
+        .modal-body { padding: 20px 24px 24px; }
+
+        /* ── Form ── */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-grid.full { grid-template-columns: 1fr; }
+        .form-field { display: flex; flex-direction: column; gap: 5px; }
+        .form-field label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-field input, .form-field select, .form-field textarea { padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 0.88rem; font-family: inherit; }
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; border-color: var(--accent); }
+        .form-field textarea { resize: vertical; min-height: 60px; }
+        .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+
+        /* ── Empty ── */
+        .empty { text-align: center; padding: 48px; color: var(--text-muted); }
+        .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+        /* ── Toast ── */
+        .toast { position: fixed; bottom: 28px; right: 28px; padding: 13px 22px; background: var(--success); color: #fff; border-radius: 12px; font-weight: 600; font-size: 0.88rem; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 9999; transform: translateY(80px); opacity: 0; transition: all 0.3s; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: var(--danger); }
+
+        @media(max-width:768px) { .form-grid { grid-template-columns: 1fr; } .main { padding: 16px; } }
+    </style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+    <div class="topbar-left">
+        <div class="app-icon">📋</div>
+        <div>
+            <div class="app-title">Lorenco Practice</div>
+            <div class="app-subtitle">Practice Management</div>
+        </div>
+    </div>
+    <div class="topbar-right">
+        <span class="company-badge" id="companyBadge">Loading...</span>
+        <a href="/dashboard" class="btn-back">← ECO Hub</a>
+    </div>
+</div>
+
+<!-- Nav Tabs -->
+<div class="nav-tabs">
+    <div class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</div>
+    <div class="nav-tab" onclick="switchTab('tasks')">Tasks</div>
+    <div class="nav-tab" onclick="switchTab('clients')">Clients</div>
+    <div class="nav-tab" onclick="switchTab('time')">Time Tracking</div>
+    <div class="nav-tab" onclick="switchTab('deadlines')">Deadlines</div>
+</div>
+
+<div class="main">
+
+    <!-- ── DASHBOARD ── -->
+    <div class="section active" id="tab-dashboard">
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-value" id="statClients">–</div><div class="stat-label">Active Clients</div></div>
+            <div class="stat-card info"><div class="stat-value" id="statOpenTasks">–</div><div class="stat-label">Open Tasks</div></div>
+            <div class="stat-card danger"><div class="stat-value" id="statOverdue">–</div><div class="stat-label">Overdue</div></div>
+            <div class="stat-card warning"><div class="stat-value" id="statUpcoming">–</div><div class="stat-label">Due in 30 Days</div></div>
+            <div class="stat-card success"><div class="stat-value" id="statHours">–</div><div class="stat-label">Hours This Month</div></div>
+        </div>
+        <div style="color:var(--text-muted); font-size:0.88rem;">Select a tab above to manage your practice.</div>
+    </div>
+
+    <!-- ── TASKS ── -->
+    <div class="section" id="tab-tasks">
+        <div class="section-header">
+            <div class="section-title">Tasks</div>
+            <div class="controls">
+                <select class="filter-select" id="taskStatusFilter" onchange="loadTasks()">
+                    <option value="">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                </select>
+                <select class="filter-select" id="taskClientFilter" onchange="loadTasks()">
+                    <option value="">All Clients</option>
+                </select>
+                <select class="filter-select" id="taskTypeFilter" onchange="loadTasks()">
+                    <option value="">All Types</option>
+                    <option value="vat_return">VAT Return</option>
+                    <option value="annual_financials">Annual Financials</option>
+                    <option value="payroll">Payroll</option>
+                    <option value="tax_return">Tax Return</option>
+                    <option value="management_accounts">Management Accounts</option>
+                    <option value="audit">Audit</option>
+                    <option value="general">General</option>
+                </select>
+                <button class="btn btn-primary" onclick="openTaskModal()">+ Add Task</button>
+            </div>
+        </div>
+        <div id="tasksContainer"><div class="empty"><div class="empty-icon">📋</div><p>Loading...</p></div></div>
+    </div>
+
+    <!-- ── CLIENTS ── -->
+    <div class="section" id="tab-clients">
+        <div class="section-header">
+            <div class="section-title">Practice Clients</div>
+            <div class="controls">
+                <input class="search-input" id="clientSearch" placeholder="Search clients..." oninput="filterClients()">
+                <button class="btn btn-primary" onclick="openClientModal()">+ Add Client</button>
+            </div>
+        </div>
+        <div class="table-wrap" id="clientsTable"><div class="empty"><div class="empty-icon">👤</div><p>Loading...</p></div></div>
+    </div>
+
+    <!-- ── TIME TRACKING ── -->
+    <div class="section" id="tab-time">
+        <div class="section-header">
+            <div class="section-title">Time Tracking</div>
+        </div>
+
+        <!-- Quick log form -->
+        <div class="inline-form">
+            <div class="inline-form-title">⏱ Log Time</div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label>Client</label>
+                    <select id="teClient"><option value="">Select client...</option></select>
+                </div>
+                <div class="form-field">
+                    <label>Task (optional)</label>
+                    <select id="teTask"><option value="">None</option></select>
+                </div>
+                <div class="form-field">
+                    <label>Date *</label>
+                    <input type="date" id="teDate">
+                </div>
+                <div class="form-field">
+                    <label>Hours *</label>
+                    <input type="number" id="teHours" step="0.25" placeholder="e.g. 1.5">
+                </div>
+                <div class="form-field" style="grid-column:1/-1">
+                    <label>Description</label>
+                    <input id="teDesc" placeholder="What was done...">
+                </div>
+            </div>
+            <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer;">
+                    <input type="checkbox" id="teBillable" checked style="width:auto;"> Billable
+                </label>
+                <button class="btn btn-primary btn-sm" onclick="logTime()">Log Time</button>
+            </div>
+        </div>
+
+        <div class="section-header" style="margin-top:8px;">
+            <div style="font-size:0.85rem; color:var(--text-muted);">Recent entries</div>
+            <div class="controls">
+                <select class="filter-select" id="teClientFilter" onchange="loadTimeEntries()">
+                    <option value="">All Clients</option>
+                </select>
+                <input type="month" class="filter-select" id="teMonthFilter" onchange="loadTimeEntries()">
+            </div>
+        </div>
+        <div class="table-wrap" id="timeTable"><div class="empty"><div class="empty-icon">⏱</div><p>Loading...</p></div></div>
+        <div id="timeTotal" style="text-align:right;padding:12px 16px;font-weight:700;color:var(--accent);"></div>
+    </div>
+
+    <!-- ── DEADLINES ── -->
+    <div class="section" id="tab-deadlines">
+        <div class="section-header">
+            <div class="section-title">Deadlines</div>
+            <div class="controls">
+                <select class="filter-select" id="dlStatusFilter" onchange="loadDeadlines()">
+                    <option value="">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="done">Done</option>
+                </select>
+                <button class="btn btn-primary" onclick="openDeadlineModal()">+ Add Deadline</button>
+            </div>
+        </div>
+        <div class="table-wrap" id="deadlinesTable"><div class="empty"><div class="empty-icon">📅</div><p>Loading...</p></div></div>
+    </div>
+
+</div>
+
+<!-- ══ TASK MODAL ══ -->
+<div class="modal-overlay" id="taskModal">
+    <div class="modal">
+        <div class="modal-header"><h3 id="taskModalTitle">Add Task</h3><button class="modal-close" onclick="closeModal('taskModal')">✕</button></div>
+        <div class="modal-body">
+            <form onsubmit="return saveTask(event)">
+                <div class="form-grid">
+                    <div class="form-field" style="grid-column:1/-1"><label>Title *</label><input id="tTitle" required placeholder="e.g. VAT201 Feb 2026"></div>
+                    <div class="form-field"><label>Client</label><select id="tClient"><option value="">None</option></select></div>
+                    <div class="form-field"><label>Type</label>
+                        <select id="tType">
+                            <option value="general">General</option>
+                            <option value="vat_return">VAT Return</option>
+                            <option value="annual_financials">Annual Financials</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="tax_return">Tax Return</option>
+                            <option value="management_accounts">Management Accounts</option>
+                            <option value="audit">Audit</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Priority</label>
+                        <select id="tPriority">
+                            <option value="high">🔴 High</option>
+                            <option value="medium" selected>🟡 Medium</option>
+                            <option value="low">🟢 Low</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Status</label>
+                        <select id="tStatus">
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Due Date</label><input type="date" id="tDueDate"></div>
+                    <div class="form-field" style="grid-column:1/-1"><label>Description</label><textarea id="tDesc" rows="3"></textarea></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('taskModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Task</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ══ CLIENT MODAL ══ -->
+<div class="modal-overlay" id="clientModal">
+    <div class="modal">
+        <div class="modal-header"><h3 id="clientModalTitle">Add Client</h3><button class="modal-close" onclick="closeModal('clientModal')">✕</button></div>
+        <div class="modal-body">
+            <form onsubmit="return saveClient(event)">
+                <div class="form-grid">
+                    <div class="form-field" style="grid-column:1/-1"><label>Name *</label><input id="cName" required placeholder="e.g. Pennygrow (Pty) Ltd"></div>
+                    <div class="form-field"><label>Email</label><input id="cEmail" type="email"></div>
+                    <div class="form-field"><label>Phone</label><input id="cPhone"></div>
+                    <div class="form-field"><label>Industry</label><input id="cIndustry" placeholder="e.g. Retail"></div>
+                    <div class="form-field"><label>VAT Number</label><input id="cVat"></div>
+                    <div class="form-field"><label>Reg Number</label><input id="cReg"></div>
+                    <div class="form-field"><label>Fiscal Year End</label><input id="cFYE" placeholder="e.g. February"></div>
+                    <div class="form-field"><label>Address</label><input id="cAddress"></div>
+                    <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="cNotes" rows="2"></textarea></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('clientModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Client</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ══ DEADLINE MODAL ══ -->
+<div class="modal-overlay" id="deadlineModal">
+    <div class="modal" style="max-width:460px;">
+        <div class="modal-header"><h3 id="dlModalTitle">Add Deadline</h3><button class="modal-close" onclick="closeModal('deadlineModal')">✕</button></div>
+        <div class="modal-body">
+            <form onsubmit="return saveDeadline(event)">
+                <div class="form-grid full">
+                    <div class="form-field"><label>Title *</label><input id="dlTitle" required placeholder="e.g. VAT201 Submission"></div>
+                    <div class="form-field"><label>Client</label><select id="dlClient"><option value="">All / General</option></select></div>
+                    <div class="form-field"><label>Type</label>
+                        <select id="dlType">
+                            <option value="vat">VAT Return</option>
+                            <option value="tax">Income Tax</option>
+                            <option value="paye">PAYE/UIF</option>
+                            <option value="financials">Financial Statements</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="general">General</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Due Date *</label><input type="date" id="dlDueDate" required></div>
+                    <div class="form-field"><label>Notes</label><textarea id="dlNotes" rows="2"></textarea></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('deadlineModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin;
+let token = localStorage.getItem('token') || localStorage.getItem('practice_token');
+let allClients = [], allTasks = [];
+let editingClientId = null, editingTaskId = null, editingDlId = null;
+let activeTab = 'dashboard';
+
+function getHeaders() { return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }; }
+
+// ── Auth & Init ──────────────────────────────────────────────────────────────
+async function init() {
+    if (!token) { window.location.href = '/'; return; }
+    try {
+        const res = await fetch(`${API}/api/auth/me`, { headers: getHeaders() });
+        if (!res.ok) { window.location.href = '/'; return; }
+        const companyStr = localStorage.getItem('company');
+        const company = companyStr ? JSON.parse(companyStr) : null;
+        document.getElementById('companyBadge').textContent = company?.trading_name || company?.company_name || 'Practice';
+    } catch(e) { window.location.href = '/'; return; }
+    loadDashboard();
+    loadClients();
+    // Set default date on time form
+    document.getElementById('teDate').valueAsDate = new Date();
+    // Set default month filter
+    document.getElementById('teMonthFilter').value = new Date().toISOString().slice(0,7);
+}
+
+// ── Tab ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+    activeTab = tab;
+    const tabs = ['dashboard','tasks','clients','time','deadlines'];
+    document.querySelectorAll('.nav-tab').forEach((el, i) => el.classList.toggle('active', tabs[i] === tab));
+    document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    if (tab === 'tasks') loadTasks();
+    if (tab === 'clients') filterClients();
+    if (tab === 'time') loadTimeEntries();
+    if (tab === 'deadlines') loadDeadlines();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isError ? ' error' : '');
+    setTimeout(() => t.className = 'toast', 3500);
+}
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+    try {
+        const res = await fetch(`${API}/api/practice/dashboard`, { headers: getHeaders() });
+        if (!res.ok) return;
+        const d = await res.json();
+        document.getElementById('statClients').textContent = d.total_clients ?? '–';
+        document.getElementById('statOpenTasks').textContent = d.open_tasks ?? '–';
+        document.getElementById('statOverdue').textContent = d.overdue_tasks ?? '–';
+        document.getElementById('statUpcoming').textContent = d.upcoming_deadlines ?? '–';
+        document.getElementById('statHours').textContent = d.hours_this_month ?? '–';
+    } catch(e) {}
+}
+
+// ── Clients ───────────────────────────────────────────────────────────────────
+async function loadClients() {
+    try {
+        const res = await fetch(`${API}/api/practice/clients`, { headers: getHeaders() });
+        if (!res.ok) return;
+        const d = await res.json();
+        allClients = d.clients || [];
+        populateClientSelects();
+        if (activeTab === 'clients') filterClients();
+    } catch(e) {}
+}
+
+function populateClientSelects() {
+    const opts = allClients.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    ['tClient','teClient','teClientFilter','taskClientFilter','dlClient'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const prefix = id === 'taskClientFilter' ? '<option value="">All Clients</option>' : id === 'dlClient' ? '<option value="">All / General</option>' : '<option value="">None</option>';
+        el.innerHTML = prefix + opts;
+    });
+}
+
+function filterClients() {
+    const s = (document.getElementById('clientSearch')?.value || '').toLowerCase();
+    const filtered = s ? allClients.filter(c => c.name.toLowerCase().includes(s) || (c.email||'').toLowerCase().includes(s)) : allClients;
+    renderClients(filtered);
+}
+
+function renderClients(clients) {
+    const el = document.getElementById('clientsTable');
+    if (!clients.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">👤</div><p>No clients found.</p></div>`; return; }
+    el.innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Industry</th><th>VAT</th><th>FY End</th><th>Actions</th></tr></thead><tbody>
+        ${clients.map(c => `<tr>
+            <td><strong>${escHtml(c.name)}</strong></td>
+            <td>${escHtml(c.email||'–')}</td>
+            <td>${escHtml(c.phone||'–')}</td>
+            <td>${escHtml(c.industry||'–')}</td>
+            <td>${escHtml(c.vat_number||'–')}</td>
+            <td>${escHtml(c.fiscal_year_end||'–')}</td>
+            <td><div class="td-actions">
+                <button class="btn btn-ghost btn-sm" onclick="openClientModal(${c.id})">Edit</button>
+                <button class="btn btn-ghost btn-sm" onclick="switchTab('tasks'); document.getElementById('taskClientFilter').value='${c.id}'; loadTasks();">Tasks</button>
+            </div></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function openClientModal(id) {
+    editingClientId = id || null;
+    document.getElementById('clientModalTitle').textContent = id ? 'Edit Client' : 'Add Client';
+    const c = id ? allClients.find(x => x.id === id) : null;
+    document.getElementById('cName').value = c?.name||'';
+    document.getElementById('cEmail').value = c?.email||'';
+    document.getElementById('cPhone').value = c?.phone||'';
+    document.getElementById('cIndustry').value = c?.industry||'';
+    document.getElementById('cVat').value = c?.vat_number||'';
+    document.getElementById('cReg').value = c?.registration_number||'';
+    document.getElementById('cFYE').value = c?.fiscal_year_end||'';
+    document.getElementById('cAddress').value = c?.address||'';
+    document.getElementById('cNotes').value = c?.notes||'';
+    openModal('clientModal');
+}
+
+async function saveClient(e) {
+    e.preventDefault();
+    const body = { name: document.getElementById('cName').value.trim(), email: document.getElementById('cEmail').value.trim(), phone: document.getElementById('cPhone').value.trim(), industry: document.getElementById('cIndustry').value.trim(), vat_number: document.getElementById('cVat').value.trim(), registration_number: document.getElementById('cReg').value.trim(), fiscal_year_end: document.getElementById('cFYE').value.trim(), address: document.getElementById('cAddress').value.trim(), notes: document.getElementById('cNotes').value.trim() };
+    try {
+        const url = editingClientId ? `${API}/api/practice/clients/${editingClientId}` : `${API}/api/practice/clients`;
+        const res = await fetch(url, { method: editingClientId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        closeModal('clientModal');
+        showToast(editingClientId ? 'Client updated!' : `${body.name} added!`);
+        await loadClients(); loadDashboard();
+    } catch(err) { showToast('❌ ' + err.message, true); }
+    return false;
+}
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+async function loadTasks() {
+    const status = document.getElementById('taskStatusFilter')?.value || '';
+    const clientId = document.getElementById('taskClientFilter')?.value || '';
+    const type = document.getElementById('taskTypeFilter')?.value || '';
+    let url = `${API}/api/practice/tasks?limit=100`;
+    if (status) url += `&status=${status}`;
+    if (clientId) url += `&client_id=${clientId}`;
+    if (type) url += `&type=${type}`;
+    try {
+        const res = await fetch(url, { headers: getHeaders() });
+        const d = await res.json();
+        allTasks = d.tasks || [];
+        renderTasks(allTasks);
+    } catch(e) { document.getElementById('tasksContainer').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>Failed to load tasks</p></div>`; }
+}
+
+function renderTasks(tasks) {
+    const el = document.getElementById('tasksContainer');
+    if (!tasks.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><p>No tasks found.</p></div>`; return; }
+    const today = new Date().toISOString().split('T')[0];
+    const statusBadge = { open:'badge-open', in_progress:'badge-in-progress', completed:'badge-completed' };
+    const statusLabel = { open:'Open', in_progress:'In Progress', completed:'Completed' };
+    const priBadge = { high:'badge-high', medium:'badge-medium', low:'badge-low' };
+    const typeLabel = { vat_return:'VAT Return', annual_financials:'Annual Financials', payroll:'Payroll', tax_return:'Tax Return', management_accounts:'Mgmt Accounts', audit:'Audit', general:'General' };
+
+    el.innerHTML = tasks.map(t => {
+        const isOverdue = t.due_date && t.due_date < today && t.status !== 'completed';
+        const clientName = t.practice_clients?.name || '';
+        return `<div class="task-card ${isOverdue ? 'task-overdue' : ''}">
+            <div class="task-card-top">
+                <div>
+                    <div class="task-title">${escHtml(t.title)}</div>
+                    ${clientName ? `<div style="font-size:0.78rem;color:var(--accent);margin-top:2px;">👤 ${escHtml(clientName)}</div>` : ''}
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <span class="badge ${statusBadge[t.status]||'badge-open'}">${statusLabel[t.status]||t.status}</span>
+                    <span class="badge ${priBadge[t.priority]||'badge-medium'}">${t.priority||'medium'}</span>
+                    ${isOverdue ? '<span class="badge badge-overdue">OVERDUE</span>' : ''}
+                </div>
+            </div>
+            <div class="task-meta">
+                ${t.type ? `<span>📁 ${typeLabel[t.type]||t.type}</span>` : ''}
+                ${t.due_date ? `<span>📅 Due: ${t.due_date}</span>` : ''}
+                ${t.description ? `<span>${escHtml(t.description.slice(0,80))}${t.description.length>80?'…':''}</span>` : ''}
+            </div>
+            <div class="task-actions">
+                ${t.status !== 'in_progress' ? `<button class="btn btn-ghost btn-sm" onclick="updateTaskStatus(${t.id},'in_progress')">▶ Start</button>` : ''}
+                ${t.status !== 'completed' ? `<button class="btn btn-success btn-sm" onclick="updateTaskStatus(${t.id},'completed')">✓ Done</button>` : ''}
+                <button class="btn btn-ghost btn-sm" onclick="openTaskModal(${t.id})">Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteTask(${t.id},'${escHtml(t.title).replace(/'/g,"\\'")}')">Delete</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function updateTaskStatus(id, status) {
+    const res = await fetch(`${API}/api/practice/tasks/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ status }) });
+    if (res.ok) { showToast(`Task marked as ${status.replace('_',' ')}!`); loadTasks(); loadDashboard(); }
+    else showToast('❌ Failed to update task', true);
+}
+
+async function deleteTask(id, title) {
+    if (!confirm(`Delete task "${title}"?`)) return;
+    const res = await fetch(`${API}/api/practice/tasks/${id}`, { method: 'DELETE', headers: getHeaders() });
+    if (res.ok) { showToast('Task deleted.'); loadTasks(); loadDashboard(); }
+}
+
+function openTaskModal(id) {
+    editingTaskId = id || null;
+    document.getElementById('taskModalTitle').textContent = id ? 'Edit Task' : 'Add Task';
+    const t = id ? allTasks.find(x => x.id === id) : null;
+    document.getElementById('tTitle').value = t?.title||'';
+    document.getElementById('tClient').value = t?.client_id||'';
+    document.getElementById('tType').value = t?.type||'general';
+    document.getElementById('tPriority').value = t?.priority||'medium';
+    document.getElementById('tStatus').value = t?.status||'open';
+    document.getElementById('tDueDate').value = t?.due_date||'';
+    document.getElementById('tDesc').value = t?.description||'';
+    // Populate client options
+    document.getElementById('tClient').innerHTML = '<option value="">None</option>' + allClients.map(c => `<option value="${c.id}"${t?.client_id===c.id?' selected':''}>${escHtml(c.name)}</option>`).join('');
+    openModal('taskModal');
+}
+
+async function saveTask(e) {
+    e.preventDefault();
+    const body = { title: document.getElementById('tTitle').value.trim(), client_id: document.getElementById('tClient').value||null, type: document.getElementById('tType').value, priority: document.getElementById('tPriority').value, status: document.getElementById('tStatus').value, due_date: document.getElementById('tDueDate').value||null, description: document.getElementById('tDesc').value.trim() };
+    try {
+        const url = editingTaskId ? `${API}/api/practice/tasks/${editingTaskId}` : `${API}/api/practice/tasks`;
+        const res = await fetch(url, { method: editingTaskId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        closeModal('taskModal');
+        showToast(editingTaskId ? 'Task updated!' : 'Task created!');
+        loadTasks(); loadDashboard();
+    } catch(err) { showToast('❌ ' + err.message, true); }
+    return false;
+}
+
+// ── Time Tracking ─────────────────────────────────────────────────────────────
+async function logTime() {
+    const clientId = document.getElementById('teClient').value;
+    const taskId = document.getElementById('teTask').value;
+    const hours = document.getElementById('teHours').value;
+    const date = document.getElementById('teDate').value;
+    const desc = document.getElementById('teDesc').value.trim();
+    const billable = document.getElementById('teBillable').checked;
+    if (!hours || !date) { showToast('Hours and date are required', true); return; }
+    try {
+        const res = await fetch(`${API}/api/practice/time-entries`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ client_id: clientId||null, task_id: taskId||null, hours: parseFloat(hours), date, description: desc, billable }) });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        showToast(`${hours}h logged!`);
+        document.getElementById('teHours').value = '';
+        document.getElementById('teDesc').value = '';
+        loadTimeEntries(); loadDashboard();
+    } catch(err) { showToast('❌ ' + err.message, true); }
+}
+
+async function loadTimeEntries() {
+    const clientId = document.getElementById('teClientFilter')?.value || '';
+    const month = document.getElementById('teMonthFilter')?.value || '';
+    let url = `${API}/api/practice/time-entries`;
+    const params = [];
+    if (clientId) params.push(`client_id=${clientId}`);
+    if (month) { params.push(`date_from=${month}-01`); const [y,m] = month.split('-'); const last = new Date(+y, +m, 0).getDate(); params.push(`date_to=${month}-${last}`); }
+    if (params.length) url += '?' + params.join('&');
+    try {
+        const res = await fetch(url, { headers: getHeaders() });
+        const d = await res.json();
+        renderTimeEntries(d.time_entries||[], d.total_hours||0);
+    } catch(e) {}
+}
+
+function renderTimeEntries(entries, total) {
+    const el = document.getElementById('timeTable');
+    const totalEl = document.getElementById('timeTotal');
+    if (!entries.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">⏱</div><p>No time entries.</p></div>`; totalEl.textContent = ''; return; }
+    totalEl.textContent = `Total: ${total.toFixed(2)} hours`;
+    el.innerHTML = `<table><thead><tr><th>Date</th><th>Client</th><th>Task</th><th>Hours</th><th>Description</th><th>Billable</th><th></th></tr></thead><tbody>
+        ${entries.map(e => `<tr>
+            <td style="color:var(--text-muted);white-space:nowrap">${e.date}</td>
+            <td>${escHtml(e.practice_clients?.name||'–')}</td>
+            <td>${escHtml(e.practice_tasks?.title||'–')}</td>
+            <td><strong>${e.hours}h</strong></td>
+            <td>${escHtml(e.description||'–')}</td>
+            <td>${e.billable ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-neutral">No</span>'}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteTimeEntry(${e.id})">Del</button></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function deleteTimeEntry(id) {
+    if (!confirm('Delete this time entry?')) return;
+    const res = await fetch(`${API}/api/practice/time-entries/${id}`, { method: 'DELETE', headers: getHeaders() });
+    if (res.ok) { showToast('Entry deleted.'); loadTimeEntries(); loadDashboard(); }
+}
+
+// ── Deadlines ─────────────────────────────────────────────────────────────────
+async function loadDeadlines() {
+    const status = document.getElementById('dlStatusFilter')?.value || '';
+    let url = `${API}/api/practice/deadlines`;
+    if (status) url += `?status=${status}`;
+    try {
+        const res = await fetch(url, { headers: getHeaders() });
+        const d = await res.json();
+        renderDeadlines(d.deadlines||[]);
+    } catch(e) {}
+}
+
+function renderDeadlines(deadlines) {
+    const el = document.getElementById('deadlinesTable');
+    if (!deadlines.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📅</div><p>No deadlines set.</p></div>`; return; }
+    const today = new Date().toISOString().split('T')[0];
+    const statusClass = { pending:'badge-pending', done:'badge-completed' };
+    const typeLabel = { vat:'VAT', tax:'Income Tax', paye:'PAYE/UIF', financials:'Financials', payroll:'Payroll', general:'General' };
+    el.innerHTML = `<table><thead><tr><th>Title</th><th>Client</th><th>Type</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+        ${deadlines.map(dl => {
+            const isOverdue = dl.due_date < today && dl.status !== 'done';
+            return `<tr ${isOverdue ? 'class="overdue-row"' : ''}>
+                <td><strong>${escHtml(dl.title)}</strong>${isOverdue ? ' <span class="badge badge-overdue" style="margin-left:4px">OVERDUE</span>' : ''}</td>
+                <td>${escHtml(dl.practice_clients?.name||'General')}</td>
+                <td>${typeLabel[dl.type]||dl.type}</td>
+                <td><strong>${dl.due_date}</strong></td>
+                <td><span class="badge ${statusClass[dl.status]||'badge-pending'}">${dl.status}</span></td>
+                <td><div class="td-actions">
+                    ${dl.status !== 'done' ? `<button class="btn btn-success btn-sm" onclick="markDeadlineDone(${dl.id})">✓ Done</button>` : ''}
+                    <button class="btn btn-ghost btn-sm" onclick="openDeadlineModal(${dl.id})">Edit</button>
+                </div></td>
+            </tr>`;
+        }).join('')}
+    </tbody></table>`;
+}
+
+async function markDeadlineDone(id) {
+    const res = await fetch(`${API}/api/practice/deadlines/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ status: 'done' }) });
+    if (res.ok) { showToast('Deadline marked done!'); loadDeadlines(); loadDashboard(); }
+}
+
+let allDeadlines = [];
+function openDeadlineModal(id) {
+    editingDlId = id || null;
+    document.getElementById('dlModalTitle').textContent = id ? 'Edit Deadline' : 'Add Deadline';
+    document.getElementById('dlTitle').value = '';
+    document.getElementById('dlClient').value = '';
+    document.getElementById('dlType').value = 'vat';
+    document.getElementById('dlDueDate').value = '';
+    document.getElementById('dlNotes').value = '';
+    // populate client select
+    document.getElementById('dlClient').innerHTML = '<option value="">All / General</option>' + allClients.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    openModal('deadlineModal');
+}
+
+async function saveDeadline(e) {
+    e.preventDefault();
+    const body = { title: document.getElementById('dlTitle').value.trim(), client_id: document.getElementById('dlClient').value||null, type: document.getElementById('dlType').value, due_date: document.getElementById('dlDueDate').value, notes: document.getElementById('dlNotes').value.trim() };
+    try {
+        const url = editingDlId ? `${API}/api/practice/deadlines/${editingDlId}` : `${API}/api/practice/deadlines`;
+        const res = await fetch(url, { method: editingDlId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        closeModal('deadlineModal');
+        showToast('Deadline saved!');
+        loadDeadlines(); loadDashboard();
+    } catch(err) { showToast('❌ ' + err.message, true); }
+    return false;
+}
+
+function escHtml(str) { const d = document.createElement('div'); d.textContent = str||''; return d.innerHTML; }
+
+init();
+</script>
+</body>
+</html>

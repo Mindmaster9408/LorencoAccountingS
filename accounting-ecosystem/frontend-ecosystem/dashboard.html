@@ -300,12 +300,16 @@
         .app-card.accounting { --app-color: #f59e0b; --app-color-dark: #d97706; }
         .app-card.sean  { --app-color: #8b5cf6; --app-color-dark: #7c3aed; }
         .app-card.coaching { --app-color: #f97316; --app-color-dark: #ea580c; }
+        .app-card.inventory { --app-color: #22d3ee; --app-color-dark: #06b6d4; }
+        .app-card.practice  { --app-color: #a78bfa; --app-color-dark: #7c3aed; }
 
         .app-card.pos .app-icon   { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
         .app-card.payroll .app-icon { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
         .app-card.accounting .app-icon { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
         .app-card.sean .app-icon  { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
         .app-card.coaching .app-icon { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+        .app-card.inventory .app-icon { background: rgba(34, 211, 238, 0.15); color: #22d3ee; }
+        .app-card.practice .app-icon  { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
 
         /* ── Quick Stats ─────────────────────────────────────── */
         .stats-row {
@@ -730,6 +734,77 @@
             letter-spacing: 0.5px;
         }
 
+        /* ── User Management ─────────────────────────────────── */
+        .user-mgmt-section { margin-bottom: 40px; }
+        .users-panel { display: none; margin-top: 16px; }
+        .users-panel.show { display: block; }
+        .users-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .users-panel-header h3 { font-size: 1.1rem; font-weight: 700; }
+        .users-table { width: 100%; border-collapse: collapse; }
+        .users-table th {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            font-weight: 700;
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .users-table td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 0.88rem; vertical-align: middle; }
+        .users-table tr:last-child td { border-bottom: none; }
+        .users-table tr:hover td { background: rgba(255,255,255,0.02); }
+        .user-name-cell { font-weight: 700; }
+        .user-email-cell { color: var(--text-muted); font-size: 0.82rem; }
+        .role-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            background: rgba(102,126,234,0.15);
+            color: var(--accent);
+        }
+        .apps-access-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+        .access-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 7px;
+            border-radius: 5px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+        .access-chip.all { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .access-chip.pos { background: rgba(59,130,246,0.15); color: #60a5fa; }
+        .access-chip.payroll { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .access-chip.accounting { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .access-chip.sean { background: rgba(139,92,246,0.15); color: #a78bfa; }
+        .user-actions { display: flex; gap: 8px; }
+        .btn-user-action {
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            transition: all 0.2s;
+        }
+        .btn-user-action:hover { background: var(--surface-hover); }
+        .btn-user-action.danger { border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+        .btn-user-action.danger:hover { background: rgba(239,68,68,0.1); }
+
         /* ── Loading overlay ─────────────────────────────────── */
         .launch-overlay {
             display: none;
@@ -880,6 +955,24 @@
                     <div style="font-size:0.82rem;color:rgba(252,165,165,0.65);margin-top:2px;">View all clients across every firm · activate / deactivate accounts · manage the full platform</div>
                 </div>
                 <div style="margin-left:auto;font-size:1.2rem;color:#fca5a5;opacity:0.7;">→</div>
+        <!-- User Management (Super Admins & Business Owners) -->
+        <div id="userMgmtSection" class="hidden user-mgmt-section">
+            <div class="section-label">Team Members</div>
+            <div class="client-management">
+                <button type="button" class="btn-client primary" onclick="showAddUserModal()">
+                    <span>➕</span> Add User
+                </button>
+                <button type="button" class="btn-client" onclick="toggleUsersPanel()">
+                    <span>👥</span> Manage Users
+                </button>
+            </div>
+            <div class="users-panel" id="usersPanel">
+                <div class="users-panel-header">
+                    <h3 id="usersPanelTitle">Team Members</h3>
+                </div>
+                <div id="usersTableContainer">
+                    <!-- filled by JS -->
+                </div>
             </div>
         </div>
 
@@ -1161,8 +1254,134 @@
                     <div style="display:flex;gap:10px;justify-content:flex-end;">
                         <button type="button" onclick="closeCreateOwner()" style="padding:10px 20px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:10px;color:var(--text-muted);cursor:pointer;">Cancel</button>
                         <button type="submit" id="createOwnerSubmit" style="padding:10px 24px;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.35);border-radius:10px;color:#6ee7b7;cursor:pointer;font-weight:600;">Create Owner Account</button>
+    <!-- ═══════ ADD USER MODAL ═══════ -->
+    <div class="modal-overlay" id="addUserModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>➕ Add Team Member</h2>
+                <button class="modal-close" onclick="closeAddUserModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="addUserForm" onsubmit="return saveNewUser(event)">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Full Name *</label>
+                            <input type="text" id="auName" required placeholder="e.g. John Smith">
+                        </div>
+                        <div class="form-field">
+                            <label>Email *</label>
+                            <input type="email" id="auEmail" required placeholder="john@company.co.za">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Password *</label>
+                            <input type="password" id="auPassword" required placeholder="Min 6 characters" minlength="6">
+                        </div>
+                        <div class="form-field">
+                            <label>Role</label>
+                            <select id="auRole">
+                                <option value="employee">Employee</option>
+                                <option value="cashier">Cashier</option>
+                                <option value="store_manager">Store Manager</option>
+                                <option value="accountant">Accountant</option>
+                                <option value="business_owner">Business Owner</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row full">
+                        <div class="form-field">
+                            <label>App Access</label>
+                            <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">Leave all unchecked to grant access to all apps in this company.</p>
+                            <div class="app-checkboxes" id="auApps">
+                                <label class="app-check" onclick="toggleAppCheck(this)">
+                                    <input type="checkbox" name="auApps" value="pos">
+                                    <span class="app-check-icon">🛒</span>
+                                    <span class="app-check-label">POS</span>
+                                </label>
+                                <label class="app-check" onclick="toggleAppCheck(this)">
+                                    <input type="checkbox" name="auApps" value="payroll">
+                                    <span class="app-check-icon">💰</span>
+                                    <span class="app-check-label">Payroll</span>
+                                </label>
+                                <label class="app-check" onclick="toggleAppCheck(this)">
+                                    <input type="checkbox" name="auApps" value="accounting">
+                                    <span class="app-check-icon">📊</span>
+                                    <span class="app-check-label">Accounting</span>
+                                </label>
+                                <label class="app-check" onclick="toggleAppCheck(this)">
+                                    <input type="checkbox" name="auApps" value="sean">
+                                    <span class="app-check-icon">🤖</span>
+                                    <span class="app-check-label">SEAN AI</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="auCompanyNote" style="padding: 10px 14px; background: rgba(102,126,234,0.1); border-radius: 10px; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 4px; display: none;"></div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-form cancel" onclick="closeAddUserModal()">Cancel</button>
+                        <button type="submit" class="btn-form save" id="auSaveBtn">Add User</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ EDIT USER MODAL ═══════ -->
+    <div class="modal-overlay" id="editUserModal">
+        <div class="modal" style="max-width:480px;">
+            <div class="modal-header">
+                <h2>✏️ Edit User Access</h2>
+                <button class="modal-close" onclick="closeEditUserModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-muted); margin-bottom:16px; font-size:0.88rem;">
+                    Editing access for <strong id="editUserName"></strong>
+                </p>
+                <div class="form-row full">
+                    <div class="form-field">
+                        <label>Role</label>
+                        <select id="euRole">
+                            <option value="employee">Employee</option>
+                            <option value="cashier">Cashier</option>
+                            <option value="store_manager">Store Manager</option>
+                            <option value="accountant">Accountant</option>
+                            <option value="business_owner">Business Owner</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row full">
+                    <div class="form-field">
+                        <label>App Access</label>
+                        <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">Leave all unchecked to grant access to all apps.</p>
+                        <div class="app-checkboxes" id="euApps">
+                            <label class="app-check" onclick="toggleAppCheck(this)">
+                                <input type="checkbox" name="euApps" value="pos">
+                                <span class="app-check-icon">🛒</span>
+                                <span class="app-check-label">POS</span>
+                            </label>
+                            <label class="app-check" onclick="toggleAppCheck(this)">
+                                <input type="checkbox" name="euApps" value="payroll">
+                                <span class="app-check-icon">💰</span>
+                                <span class="app-check-label">Payroll</span>
+                            </label>
+                            <label class="app-check" onclick="toggleAppCheck(this)">
+                                <input type="checkbox" name="euApps" value="accounting">
+                                <span class="app-check-icon">📊</span>
+                                <span class="app-check-label">Accounting</span>
+                            </label>
+                            <label class="app-check" onclick="toggleAppCheck(this)">
+                                <input type="checkbox" name="euApps" value="sean">
+                                <span class="app-check-icon">🤖</span>
+                                <span class="app-check-label">SEAN AI</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-form cancel" onclick="closeEditUserModal()">Cancel</button>
+                    <button type="button" class="btn-form save" onclick="saveEditUser()">Save Changes</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1484,6 +1703,22 @@
                 desc: 'Personal business coaching portal — sessions, goals, progress tracking and resources.',
                 path: '/coaching',
                 cssClass: 'coaching',
+                key: 'inventory',
+                name: 'Lorenco Storehouse',
+                subtitle: 'Inventory Management',
+                icon: '&#128230;',
+                desc: 'Stock items, warehouses, movements, suppliers and purchase orders.',
+                path: '/inventory',
+                cssClass: 'inventory',
+            },
+            {
+                key: 'practice',
+                name: 'Lorenco Practice',
+                subtitle: 'Practice Management',
+                icon: '&#128203;',
+                desc: 'Client files, tasks, deadlines and time tracking for your accounting practice.',
+                path: '/practice',
+                cssClass: 'practice',
             }
         ];
 
@@ -1572,6 +1807,11 @@
             if (isSuperAdmin) {
                 document.getElementById('btnAdminPanel').style.display = '';
                 document.getElementById('superAdminSection').style.display = '';
+            }
+
+            // Show user management section for super admins & business owners
+            if (isSuperAdmin || (selectedCompany && ['business_owner', 'super_admin'].includes(selectedCompany.role))) {
+                document.getElementById('userMgmtSection').classList.remove('hidden');
             }
         }
 
@@ -1720,6 +1960,19 @@
             selectedCompany = companies[idx];
             document.getElementById('statRole').textContent = (selectedCompany.role || 'user').replace('_', ' ');
             renderApps();
+
+            // Show/hide user management section based on role in this company
+            const umSection = document.getElementById('userMgmtSection');
+            if (isSuperAdmin || ['business_owner', 'super_admin'].includes(selectedCompany.role)) {
+                umSection.classList.remove('hidden');
+            } else {
+                umSection.classList.add('hidden');
+            }
+
+            // Reload users if panel is open
+            if (document.getElementById('usersPanel').classList.contains('show')) {
+                loadUsers();
+            }
         }
 
         // ── Render Apps ──
@@ -1728,16 +1981,18 @@
             const companyModules = (selectedCompany && selectedCompany.modules_enabled) ? selectedCompany.modules_enabled : [];
             let activeCount = 0;
 
+            // Per-app access for the current user on this company (null = all apps)
+            const userAppsAccess = selectedCompany?.apps_access || null;
+
             container.innerHTML = APP_DEFS.map(app => {
                 // SEAN AI is only visible to super admins
                 if (app.key === 'sean' && !isSuperAdmin) return '';
 
-                // Coaching is only visible to super admins or Ruan specifically
-                if (app.key === 'coaching' && !isSuperAdmin && (!currentUser || currentUser.email !== 'ruanvlog@lorenco.co.za')) return '';
+                // Check per-app access: if user has a restriction, enforce it
+                const userCanAccess = isSuperAdmin || !userAppsAccess || userAppsAccess.includes(app.key);
 
-                // App is active if the company has it in modules_enabled
-                // Super admins can see all apps as active
-                const isActive = isSuperAdmin || companyModules.includes(app.key);
+                // App is active if the company has it in modules_enabled AND user can access it
+                const isActive = userCanAccess && (isSuperAdmin || companyModules.includes(app.key));
                 if (isActive) activeCount++;
 
                 const installBtn = (app.key === 'payroll' && isActive)
@@ -3672,39 +3927,163 @@
         async function addPracticeUser(e) {
             e.preventDefault();
             const token = localStorage.getItem('eco_token');
+        // USER MANAGEMENT
+        // ═══════════════════════════════════════════════════════════════════
+
+        let allUsers = [];
+        let editingUserId = null;
+
+        const ROLE_LABELS = {
+            'super_admin': 'Super Admin',
+            'business_owner': 'Owner',
+            'accountant': 'Accountant',
+            'store_manager': 'Store Manager',
+            'cashier': 'Cashier',
+            'employee': 'Employee'
+        };
+
+        function toggleUsersPanel() {
+            const panel = document.getElementById('usersPanel');
+            if (panel.classList.contains('show')) {
+                panel.classList.remove('show');
+            } else {
+                panel.classList.add('show');
+                loadUsers();
+            }
+        }
+
+        async function loadUsers() {
+            if (!selectedCompany) return;
+            const token = localStorage.getItem('eco_token');
+            const container = document.getElementById('usersTableContainer');
+            container.innerHTML = '<p style="color:var(--text-muted); padding:12px 0;">Loading...</p>';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/users`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'X-Company-Id': selectedCompany.id
+                    }
+                });
+                if (!res.ok) throw new Error('Failed to load users');
+                const data = await res.json();
+                allUsers = data.users || [];
+                renderUsers();
+            } catch (err) {
+                container.innerHTML = `<div class="clients-empty"><div class="icon">⚠️</div><p>${err.message}</p></div>`;
+            }
+        }
+
+        function renderUsers() {
+            const container = document.getElementById('usersTableContainer');
+            const title = document.getElementById('usersPanelTitle');
+            if (title && selectedCompany) {
+                title.textContent = `Team — ${selectedCompany.trading_name || selectedCompany.company_name}`;
+            }
+
+            if (allUsers.length === 0) {
+                container.innerHTML = `<div class="clients-empty"><div class="icon">👤</div><p>No users in this company yet. Click "Add User" to get started.</p></div>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>App Access</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${allUsers.map(u => {
+                            const appsChips = u.apps_access && u.apps_access.length > 0
+                                ? u.apps_access.map(a => `<span class="access-chip ${a}">${APP_ICONS[a] || ''} ${APP_LABELS[a] || a}</span>`).join('')
+                                : '<span class="access-chip all">✓ All Apps</span>';
+                            return `
+                                <tr>
+                                    <td><div class="user-name-cell">${escHtml(u.full_name)}</div></td>
+                                    <td><div class="user-email-cell">${escHtml(u.email || u.username)}</div></td>
+                                    <td><span class="role-badge">${ROLE_LABELS[u.role] || u.role}</span></td>
+                                    <td><div class="apps-access-chips">${appsChips}</div></td>
+                                    <td>
+                                        <div class="user-actions">
+                                            <button class="btn-user-action" onclick="openEditUserModal(${u.id})">Edit</button>
+                                            <button class="btn-user-action danger" onclick="removeUser(${u.id}, '${escHtml(u.full_name).replace(/'/g, "\\'")}')">Remove</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // ─── Add User ────────────────────────────────────────────────────────
+        function showAddUserModal() {
+            if (!selectedCompany) { showToast('Please select a company first.', true); return; }
+            document.getElementById('addUserForm').reset();
+            document.querySelectorAll('#auApps .app-check').forEach(el => {
+                el.classList.remove('checked');
+                el.querySelector('input').checked = false;
+            });
+            const note = document.getElementById('auCompanyNote');
+            note.textContent = `Adding user to: ${selectedCompany.trading_name || selectedCompany.company_name}`;
+            note.style.display = 'block';
+            document.getElementById('addUserModal').classList.add('show');
+            document.getElementById('auName').focus();
+        }
+
+        function closeAddUserModal() {
+            document.getElementById('addUserModal').classList.remove('show');
+        }
+
+        async function saveNewUser(e) {
+            e.preventDefault();
             const btn = document.getElementById('auSaveBtn');
             btn.disabled = true;
             btn.textContent = 'Adding...';
 
-            const fullName = document.getElementById('auFullName').value.trim();
-            const email    = document.getElementById('auEmail').value.trim().toLowerCase();
-            const password = document.getElementById('auPassword').value;
-            const role     = document.getElementById('auRole').value;
-
-            // Collect selected app access (null if none checked — means "allow all")
             const selectedApps = [];
-            document.querySelectorAll('#auApps input[name="userApps"]:checked').forEach(cb => selectedApps.push(cb.value));
-            const apps = selectedApps.length > 0 ? selectedApps : null;
+            document.querySelectorAll('#auApps input[name="auApps"]:checked').forEach(cb => selectedApps.push(cb.value));
+
+            const payload = {
+                full_name: document.getElementById('auName').value.trim(),
+                email: document.getElementById('auEmail').value.trim(),
+                username: document.getElementById('auEmail').value.trim(),
+                password: document.getElementById('auPassword').value,
+                role: document.getElementById('auRole').value,
+                apps_access: selectedApps.length > 0 ? selectedApps : null
+            };
 
             try {
+                const token = localStorage.getItem('eco_token');
                 const res = await fetch(`${API_BASE}/api/users`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ username: email, email, password, full_name: fullName, role, apps })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'X-Company-Id': selectedCompany?.id
+                    },
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to add user');
 
-                const appMsg = apps ? ` (apps: ${apps.join(', ')})` : '';
-                showToast(`${fullName} added to practice${appMsg}`);
-                document.getElementById('addUserForm').reset();
-                document.querySelectorAll('#auApps .app-check').forEach(el => el.classList.remove('checked'));
-                await loadPracticeUsers();
+                closeAddUserModal();
+                showToast(`${payload.full_name} added to ${selectedCompany.trading_name || selectedCompany.company_name}!`);
+
+                if (document.getElementById('usersPanel').classList.contains('show')) {
+                    await loadUsers();
+                }
             } catch (err) {
-                showToast(err.message, true);
+                showToast('❌ ' + err.message, true);
             } finally {
                 btn.disabled = false;
-                btn.textContent = 'Add User to Practice';
+                btn.textContent = 'Add User';
             }
             return false;
         }
@@ -3794,6 +4173,55 @@
                         renderPermissionMatrix();
                     }
                 }
+        // ─── Edit User ───────────────────────────────────────────────────────
+        function openEditUserModal(userId) {
+            const user = allUsers.find(u => u.id === userId);
+            if (!user) return;
+            editingUserId = userId;
+            document.getElementById('editUserName').textContent = user.full_name;
+            document.getElementById('euRole').value = user.role;
+
+            document.querySelectorAll('#euApps .app-check').forEach(label => {
+                const cb = label.querySelector('input');
+                cb.checked = user.apps_access ? user.apps_access.includes(cb.value) : false;
+                label.classList.toggle('checked', cb.checked);
+            });
+
+            document.getElementById('editUserModal').classList.add('show');
+        }
+
+        function closeEditUserModal() {
+            document.getElementById('editUserModal').classList.remove('show');
+            editingUserId = null;
+        }
+
+        async function saveEditUser() {
+            if (!editingUserId) return;
+            const selectedApps = [];
+            document.querySelectorAll('#euApps input[name="euApps"]:checked').forEach(cb => selectedApps.push(cb.value));
+
+            const payload = {
+                role: document.getElementById('euRole').value,
+                apps_access: selectedApps.length > 0 ? selectedApps : null
+            };
+
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/users/${editingUserId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'X-Company-Id': selectedCompany?.id
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to update user');
+
+                closeEditUserModal();
+                showToast('User access updated!');
+                await loadUsers();
             } catch (err) {
                 showToast('❌ ' + err.message, true);
             }
@@ -3826,6 +4254,31 @@
                 showToast('Lorenco Paytime installing...');
             }
             _paytimeInstallPrompt = null;
+        // ─── Remove User (revoke from this company only) ─────────────────────
+        async function removeUser(userId, userName) {
+            const compName = selectedCompany?.trading_name || selectedCompany?.company_name || 'this company';
+            if (!confirm(`Remove ${userName} from ${compName}?\n\nThey will lose access to all apps in this company. Their account in other companies will not be affected.`)) return;
+
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/users/${userId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'X-Company-Id': selectedCompany?.id
+                    },
+                    body: JSON.stringify({ revoke_company_access: true })
+                });
+                if (!res.ok) {
+                    const d = await res.json();
+                    throw new Error(d.error || 'Failed to remove user');
+                }
+                showToast(`${userName} removed from ${compName}.`);
+                await loadUsers();
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            }
         }
 
         // ── Start ──

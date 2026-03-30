@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lorenco Storehouse — Inventory</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0e1a;
+            --surface: rgba(255,255,255,0.05);
+            --surface-hover: rgba(255,255,255,0.09);
+            --border: rgba(255,255,255,0.08);
+            --text: #f0f4ff;
+            --text-muted: rgba(240,244,255,0.5);
+            --accent: #22d3ee;
+            --accent-glow: rgba(34,211,238,0.25);
+            --danger: #f43f5e;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg,#0a0e1a 0%,#0d1b2a 50%,#0a1628 100%); min-height: 100vh; color: var(--text); }
+
+        /* ── Topbar ── */
+        .topbar { background: rgba(0,0,0,0.4); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 58px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+        .topbar-left { display: flex; align-items: center; gap: 12px; }
+        .app-icon { width: 34px; height: 34px; background: linear-gradient(135deg,#22d3ee,#0891b2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+        .app-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.3px; }
+        .app-subtitle { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .company-badge { padding: 5px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; font-size: 0.78rem; color: var(--text-muted); }
+        .btn-back { padding: 7px 14px; background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.25); color: var(--accent); border-radius: 9px; cursor: pointer; font-size: 0.78rem; font-weight: 600; text-decoration: none; transition: all 0.2s; }
+        .btn-back:hover { background: rgba(34,211,238,0.2); }
+
+        /* ── Nav Tabs ── */
+        .nav-tabs { display: flex; gap: 4px; padding: 12px 24px 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
+        .nav-tab { padding: 10px 18px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; }
+        .nav-tab:hover { color: var(--text); }
+        .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        /* ── Main ── */
+        .main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
+
+        /* ── Stats ── */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 14px; margin-bottom: 28px; }
+        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+        .stat-value { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card.danger .stat-value { color: var(--danger); }
+        .stat-card.success .stat-value { color: var(--success); }
+        .stat-card.warning .stat-value { color: var(--warning); }
+
+        /* ── Section ── */
+        .section { display: none; }
+        .section.active { display: block; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
+        .section-title { font-size: 1.1rem; font-weight: 700; }
+
+        /* ── Search bar ── */
+        .search-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+        .search-input { padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; width: 240px; }
+        .search-input:focus { outline: none; border-color: var(--accent); }
+        .filter-select { padding: 9px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; }
+
+        /* ── Buttons ── */
+        .btn { padding: 9px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; }
+        .btn-primary { background: linear-gradient(135deg,var(--accent),#0891b2); color: #000; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px var(--accent-glow); }
+        .btn-ghost { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+        .btn-ghost:hover { background: var(--surface-hover); }
+        .btn-danger { background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.3); color: #fda4af; }
+        .btn-danger:hover { background: rgba(244,63,94,0.25); }
+        .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+
+        /* ── Table ── */
+        .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+        td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.85rem; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+        .td-actions { display: flex; gap: 6px; }
+
+        /* ── Badges ── */
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+        .badge-success { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .badge-warning { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .badge-danger { background: rgba(244,63,94,0.15); color: #fda4af; }
+        .badge-info { background: rgba(34,211,238,0.15); color: var(--accent); }
+        .badge-neutral { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+
+        /* ── Modal ── */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(10,14,26,0.85); backdrop-filter: blur(6px); z-index: 500; align-items: center; justify-content: center; padding: 20px; }
+        .modal-overlay.show { display: flex; }
+        .modal { background: #0d1b2a; border: 1px solid var(--border); border-radius: 20px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+        .modal-header { padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { font-size: 1.1rem; font-weight: 700; }
+        .modal-close { width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; }
+        .modal-close:hover { background: rgba(244,63,94,0.2); color: #fda4af; }
+        .modal-body { padding: 20px 24px 24px; }
+
+        /* ── Form ── */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-grid.full { grid-template-columns: 1fr; }
+        .form-field { display: flex; flex-direction: column; gap: 5px; }
+        .form-field label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-field input, .form-field select, .form-field textarea { padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 0.88rem; font-family: inherit; }
+        .form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; border-color: var(--accent); }
+        .form-field textarea { resize: vertical; min-height: 60px; }
+        .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+
+        /* ── Low stock highlight ── */
+        .low-stock { color: var(--danger); font-weight: 700; }
+
+        /* ── Empty state ── */
+        .empty { text-align: center; padding: 48px; color: var(--text-muted); }
+        .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+        /* ── Toast ── */
+        .toast { position: fixed; bottom: 28px; right: 28px; padding: 13px 22px; background: var(--success); color: #fff; border-radius: 12px; font-weight: 600; font-size: 0.88rem; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 9999; transform: translateY(80px); opacity: 0; transition: all 0.3s; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: var(--danger); }
+
+        @media(max-width:768px) { .form-grid { grid-template-columns: 1fr; } .main { padding: 16px; } }
+    </style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+    <div class="topbar-left">
+        <div class="app-icon">📦</div>
+        <div>
+            <div class="app-title">Lorenco Storehouse</div>
+            <div class="app-subtitle">Inventory Management</div>
+        </div>
+    </div>
+    <div class="topbar-right">
+        <span class="company-badge" id="companyBadge">Loading...</span>
+        <a href="/dashboard" class="btn-back">← ECO Hub</a>
+    </div>
+</div>
+
+<!-- Nav Tabs -->
+<div class="nav-tabs">
+    <div class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</div>
+    <div class="nav-tab" onclick="switchTab('items')">Stock Items</div>
+    <div class="nav-tab" onclick="switchTab('movements')">Movements</div>
+    <div class="nav-tab" onclick="switchTab('warehouses')">Warehouses</div>
+    <div class="nav-tab" onclick="switchTab('suppliers')">Suppliers</div>
+    <div class="nav-tab" onclick="switchTab('orders')">Purchase Orders</div>
+</div>
+
+<div class="main">
+
+    <!-- ── DASHBOARD ── -->
+    <div class="section active" id="tab-dashboard">
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-value" id="statItems">–</div><div class="stat-label">Stock Items</div></div>
+            <div class="stat-card warning"><div class="stat-value" id="statLowStock">–</div><div class="stat-label">Low Stock</div></div>
+            <div class="stat-card success"><div class="stat-value" id="statSuppliers">–</div><div class="stat-label">Suppliers</div></div>
+            <div class="stat-card"><div class="stat-value" id="statMovements">–</div><div class="stat-label">Movements</div></div>
+        </div>
+        <div style="color:var(--text-muted); font-size:0.88rem;">Select a tab above to manage your inventory.</div>
+    </div>
+
+    <!-- ── STOCK ITEMS ── -->
+    <div class="section" id="tab-items">
+        <div class="section-header">
+            <div class="section-title">Stock Items</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <input class="search-input" id="itemSearch" placeholder="Search name or SKU..." oninput="filterItems()">
+                <select class="filter-select" id="itemFilterWarehouse" onchange="filterItems()"><option value="">All Warehouses</option></select>
+                <button class="btn btn-ghost btn-sm" onclick="loadItems(true)">🔄 Refresh</button>
+                <button class="btn btn-primary" onclick="openItemModal()">+ Add Item</button>
+            </div>
+        </div>
+        <div class="table-wrap" id="itemsTable"><div class="empty"><div class="empty-icon">📦</div><p>Loading...</p></div></div>
+    </div>
+
+    <!-- ── MOVEMENTS ── -->
+    <div class="section" id="tab-movements">
+        <div class="section-header">
+            <div class="section-title">Stock Movements</div>
+            <div style="display:flex;gap:10px;">
+                <select class="filter-select" id="movTypeFilter" onchange="loadMovements()">
+                    <option value="">All Types</option>
+                    <option value="in">Stock In</option>
+                    <option value="out">Stock Out</option>
+                    <option value="adjustment">Adjustment</option>
+                    <option value="transfer">Transfer</option>
+                    <option value="return">Return</option>
+                </select>
+                <button class="btn btn-primary" onclick="openMovementModal()">+ Record Movement</button>
+            </div>
+        </div>
+        <div class="table-wrap" id="movementsTable"><div class="empty"><div class="empty-icon">🔄</div><p>Loading...</p></div></div>
+    </div>
+
+    <!-- ── WAREHOUSES ── -->
+    <div class="section" id="tab-warehouses">
+        <div class="section-header">
+            <div class="section-title">Warehouses & Locations</div>
+            <button class="btn btn-primary" onclick="openWarehouseModal()">+ Add Warehouse</button>
+        </div>
+        <div class="table-wrap" id="warehousesTable"><div class="empty"><div class="empty-icon">🏭</div><p>Loading...</p></div></div>
+    </div>
+
+    <!-- ── SUPPLIERS ── -->
+    <div class="section" id="tab-suppliers">
+        <div class="section-header">
+            <div class="section-title">Suppliers</div>
+            <button class="btn btn-primary" onclick="openSupplierModal()">+ Add Supplier</button>
+        </div>
+        <div class="table-wrap" id="suppliersTable"><div class="empty"><div class="empty-icon">🚚</div><p>Loading...</p></div></div>
+    </div>
+
+    <!-- ── PURCHASE ORDERS ── -->
+    <div class="section" id="tab-orders">
+        <div class="section-header">
+            <div class="section-title">Purchase Orders</div>
+            <select class="filter-select" id="poStatusFilter" onchange="loadOrders()">
+                <option value="">All Statuses</option>
+                <option value="draft">Draft</option>
+                <option value="sent">Sent</option>
+                <option value="received">Received</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+        <div class="table-wrap" id="ordersTable"><div class="empty"><div class="empty-icon">🛒</div><p>Loading...</p></div></div>
+    </div>
+
+</div>
+
+<!-- ══ ITEM MODAL ══ -->
+<div class="modal-overlay" id="itemModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="itemModalTitle">Add Stock Item</h3>
+            <button class="modal-close" onclick="closeModal('itemModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveItem(event)">
+                <div class="form-grid">
+                    <div class="form-field" style="grid-column:1/-1"><label>Name *</label><input id="iName" required placeholder="e.g. A4 Paper Ream"></div>
+                    <div class="form-field"><label>SKU</label><input id="iSku" placeholder="e.g. PPR-A4-500"></div>
+                    <div class="form-field"><label>Category</label><input id="iCategory" placeholder="e.g. Stationery"></div>
+                    <div class="form-field"><label>Unit</label><select id="iUnit"><option>unit</option><option>kg</option><option>litre</option><option>box</option><option>pallet</option><option>roll</option><option>metre</option></select></div>
+                    <div class="form-field"><label>Warehouse</label><select id="iWarehouse"><option value="">None</option></select></div>
+                    <div class="form-field"><label>Cost Price (R)</label><input id="iCostPrice" type="number" step="0.01" placeholder="0.00"></div>
+                    <div class="form-field"><label>Sell Price (R)</label><input id="iSellPrice" type="number" step="0.01" placeholder="0.00"></div>
+                    <div class="form-field"><label>Opening Stock</label><input id="iStock" type="number" step="0.001" placeholder="0"></div>
+                    <div class="form-field"><label>Min Stock (Alert)</label><input id="iMinStock" type="number" step="0.001" placeholder="0"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('itemModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="itemSaveBtn">Save Item</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ══ MOVEMENT MODAL ══ -->
+<div class="modal-overlay" id="movementModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Record Stock Movement</h3>
+            <button class="modal-close" onclick="closeModal('movementModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveMovement(event)">
+                <div class="form-grid">
+                    <div class="form-field" style="grid-column:1/-1"><label>Item *</label><select id="mItem" required><option value="">Select item...</option></select></div>
+                    <div class="form-field"><label>Movement Type *</label>
+                        <select id="mType" required>
+                            <option value="in">📥 Stock In</option>
+                            <option value="out">📤 Stock Out</option>
+                            <option value="adjustment">⚖️ Adjustment</option>
+                            <option value="return">↩️ Return</option>
+                            <option value="transfer">🔀 Transfer</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Quantity *</label><input id="mQty" type="number" step="0.001" required placeholder="0"></div>
+                    <div class="form-field"><label>Warehouse</label><select id="mWarehouse"><option value="">None</option></select></div>
+                    <div class="form-field"><label>Unit Cost (R)</label><input id="mCostPrice" type="number" step="0.01" placeholder="Optional"></div>
+                    <div class="form-field"><label>Reference</label><input id="mReference" placeholder="e.g. PO-001 / Delivery note"></div>
+                    <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="mNotes" rows="2" placeholder="Optional notes..."></textarea></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('movementModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ══ WAREHOUSE MODAL ══ -->
+<div class="modal-overlay" id="warehouseModal">
+    <div class="modal" style="max-width:440px;">
+        <div class="modal-header"><h3 id="whModalTitle">Add Warehouse</h3><button class="modal-close" onclick="closeModal('warehouseModal')">✕</button></div>
+        <div class="modal-body">
+            <form onsubmit="return saveWarehouse(event)">
+                <div class="form-grid full">
+                    <div class="form-field"><label>Name *</label><input id="whName" required placeholder="e.g. Main Warehouse"></div>
+                    <div class="form-field"><label>Address</label><input id="whAddress" placeholder="Street, City"></div>
+                    <div class="form-field"><label>Notes</label><textarea id="whNotes" rows="2"></textarea></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('warehouseModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ══ SUPPLIER MODAL ══ -->
+<div class="modal-overlay" id="supplierModal">
+    <div class="modal">
+        <div class="modal-header"><h3 id="supModalTitle">Add Supplier</h3><button class="modal-close" onclick="closeModal('supplierModal')">✕</button></div>
+        <div class="modal-body">
+            <form onsubmit="return saveSupplier(event)">
+                <div class="form-grid">
+                    <div class="form-field" style="grid-column:1/-1"><label>Company Name *</label><input id="supName" required placeholder="e.g. Acme Supplies"></div>
+                    <div class="form-field"><label>Contact Person</label><input id="supContact" placeholder="John Smith"></div>
+                    <div class="form-field"><label>Email</label><input id="supEmail" type="email" placeholder="orders@supplier.co.za"></div>
+                    <div class="form-field"><label>Phone</label><input id="supPhone" placeholder="011 000 0000"></div>
+                    <div class="form-field"><label>VAT Number</label><input id="supVat" placeholder="4123456789"></div>
+                    <div class="form-field"><label>Address</label><input id="supAddress" placeholder="Street, City"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('supplierModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin;
+let token = localStorage.getItem('token') || localStorage.getItem('inventory_token');
+let currentUser = null;
+let allItems = [], allWarehouses = [], allSuppliers = [];
+let editingItemId = null, editingWarehouseId = null, editingSupId = null;
+let activeTab = 'dashboard';
+
+// ── Auth & Init ──────────────────────────────────────────────────────────────
+function getHeaders() {
+    return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+}
+
+async function init() {
+    if (!token) { window.location.href = '/'; return; }
+    try {
+        const res = await fetch(`${API}/api/auth/me`, { headers: getHeaders() });
+        if (!res.ok) { window.location.href = '/'; return; }
+        const d = await res.json();
+        currentUser = d.user;
+        const companyStr = localStorage.getItem('company');
+        const company = companyStr ? JSON.parse(companyStr) : null;
+        document.getElementById('companyBadge').textContent = company?.trading_name || company?.company_name || 'Company';
+    } catch(e) { window.location.href = '/'; return; }
+    loadDashboard();
+    loadWarehouses();
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.nav-tab').forEach((el, i) => {
+        const tabs = ['dashboard','items','movements','warehouses','suppliers','orders'];
+        el.classList.toggle('active', tabs[i] === tab);
+    });
+    document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    if (tab === 'items') loadItems();
+    if (tab === 'movements') loadMovements();
+    if (tab === 'warehouses') loadWarehouses();
+    if (tab === 'suppliers') loadSuppliers();
+    if (tab === 'orders') loadOrders();
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isError ? ' error' : '');
+    setTimeout(() => t.className = 'toast', 3500);
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+    try {
+        const res = await fetch(`${API}/api/inventory/dashboard`, { headers: getHeaders() });
+        if (!res.ok) return;
+        const d = await res.json();
+        document.getElementById('statItems').textContent = d.total_items ?? '–';
+        document.getElementById('statLowStock').textContent = d.low_stock_count ?? '–';
+        document.getElementById('statSuppliers').textContent = d.total_suppliers ?? '–';
+        document.getElementById('statMovements').textContent = d.total_movements ?? '–';
+    } catch(e) {}
+}
+
+// ── Warehouses ───────────────────────────────────────────────────────────────
+async function loadWarehouses() {
+    try {
+        const res = await fetch(`${API}/api/inventory/warehouses`, { headers: getHeaders() });
+        if (!res.ok) return;
+        const d = await res.json();
+        allWarehouses = d.warehouses || [];
+        populateWarehouseSelects();
+        if (activeTab === 'warehouses') renderWarehouses();
+    } catch(e) {}
+}
+
+function populateWarehouseSelects() {
+    const opts = allWarehouses.map(w => `<option value="${w.id}">${escHtml(w.name)}</option>`).join('');
+    ['iWarehouse','mWarehouse','itemFilterWarehouse'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            const prefix = el.options[0]?.value === '' ? el.options[0].outerHTML : '';
+            el.innerHTML = (id === 'itemFilterWarehouse' ? '<option value="">All Warehouses</option>' : '<option value="">None</option>') + opts;
+        }
+    });
+}
+
+function renderWarehouses() {
+    const el = document.getElementById('warehousesTable');
+    if (!allWarehouses.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">🏭</div><p>No warehouses yet.</p></div>`; return; }
+    el.innerHTML = `<table><thead><tr><th>Name</th><th>Address</th><th>Notes</th><th>Actions</th></tr></thead><tbody>
+        ${allWarehouses.map(w => `<tr>
+            <td><strong>${escHtml(w.name)}</strong></td>
+            <td>${escHtml(w.address || '–')}</td>
+            <td>${escHtml(w.notes || '–')}</td>
+            <td><div class="td-actions">
+                <button class="btn btn-ghost btn-sm" onclick="openWarehouseModal(${w.id})">Edit</button>
+            </div></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function openWarehouseModal(id) {
+    editingWarehouseId = id || null;
+    document.getElementById('whModalTitle').textContent = id ? 'Edit Warehouse' : 'Add Warehouse';
+    const w = id ? allWarehouses.find(x => x.id === id) : null;
+    document.getElementById('whName').value = w?.name || '';
+    document.getElementById('whAddress').value = w?.address || '';
+    document.getElementById('whNotes').value = w?.notes || '';
+    openModal('warehouseModal');
+}
+
+async function saveWarehouse(e) {
+    e.preventDefault();
+    const body = { name: document.getElementById('whName').value.trim(), address: document.getElementById('whAddress').value.trim(), notes: document.getElementById('whNotes').value.trim() };
+    try {
+        const url = editingWarehouseId ? `${API}/api/inventory/warehouses/${editingWarehouseId}` : `${API}/api/inventory/warehouses`;
+        const res = await fetch(url, { method: editingWarehouseId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        closeModal('warehouseModal');
+        showToast(editingWarehouseId ? 'Warehouse updated!' : 'Warehouse added!');
+        await loadWarehouses();
+    } catch(err) { showToast('❌ ' + err.message, true); }
+    return false;
+}
+
+// ── Stock Items ──────────────────────────────────────────────────────────────
+async function loadItems(refresh) {
+    try {
+        const wid = document.getElementById('itemFilterWarehouse')?.value || '';
+        let url = `${API}/api/inventory/items?limit=200`;
+        if (wid) url += `&warehouse_id=${wid}`;
+        const res = await fetch(url, { headers: getHeaders() });
+        if (!res.ok) return;
+        const d = await res.json();
+        allItems = d.items || [];
+        populateItemSelect();
+        filterItems();
+    } catch(e) { document.getElementById('itemsTable').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>Failed to load items</p></div>`; }
+}
+
+function populateItemSelect() {
+    const el = document.getElementById('mItem');
+    if (!el) return;
+    el.innerHTML = '<option value="">Select item...</option>' + allItems.map(i => `<option value="${i.id}">${escHtml(i.name)}${i.sku ? ` (${escHtml(i.sku)})` : ''}</option>`).join('');
+}
+
+function filterItems() {
+    const search = (document.getElementById('itemSearch')?.value || '').toLowerCase();
+    let items = allItems;
+    if (search) items = items.filter(i => (i.name||'').toLowerCase().includes(search) || (i.sku||'').toLowerCase().includes(search));
+    renderItems(items);
+}
+
+function renderItems(items) {
+    const el = document.getElementById('itemsTable');
+    if (!items.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div><p>No items found.</p></div>`; return; }
+    el.innerHTML = `<table><thead><tr><th>Name</th><th>SKU</th><th>Category</th><th>Stock</th><th>Min</th><th>Cost</th><th>Sell</th><th>Warehouse</th><th>Actions</th></tr></thead><tbody>
+        ${items.map(i => {
+            const isLow = i.current_stock <= (i.min_stock || 0);
+            const stockBadge = isLow ? `<span class="badge badge-danger">${i.current_stock} ${i.unit}</span>` : `<span class="badge badge-success">${i.current_stock} ${i.unit}</span>`;
+            return `<tr>
+                <td><strong>${escHtml(i.name)}</strong></td>
+                <td><span style="color:var(--text-muted)">${escHtml(i.sku||'–')}</span></td>
+                <td>${escHtml(i.category||'–')}</td>
+                <td>${stockBadge}</td>
+                <td>${i.min_stock||0}</td>
+                <td>R${(i.cost_price||0).toFixed(2)}</td>
+                <td>R${(i.sell_price||0).toFixed(2)}</td>
+                <td>${escHtml(i.warehouses?.name||'–')}</td>
+                <td><div class="td-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="openItemModal(${i.id})">Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteItem(${i.id},'${escHtml(i.name)}')">Del</button>
+                </div></td>
+            </tr>`;
+        }).join('')}
+    </tbody></table>`;
+}
+
+function openItemModal(id) {
+    editingItemId = id || null;
+    document.getElementById('itemModalTitle').textContent = id ? 'Edit Item' : 'Add Stock Item';
+    const item = id ? allItems.find(x => x.id === id) : null;
+    document.getElementById('iName').value = item?.name || '';
+    document.getElementById('iSku').value = item?.sku || '';
+    document.getElementById('iCategory').value = item?.category || '';
+    document.getElementById('iUnit').value = item?.unit || 'unit';
+    document.getElementById('iWarehouse').value = item?.warehouse_id || '';
+    document.getElementById('iCostPrice').value = item?.cost_price || '';
+    document.getElementById('iSellPrice').value = item?.sell_price || '';
+    document.getElementById('iStock').value = item?.current_stock || '';
+    document.getElementById('iMinStock').value = item?.min_stock || '';
+    openModal('itemModal');
+}
+
+async function saveItem(e) {
+    e.preventDefault();
+    const btn = document.getElementById('itemSaveBtn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    const body = {
+        name: document.getElementById('iName').value.trim(),
+        sku: document.getElementById('iSku').value.trim(),
+        category: document.getElementById('iCategory').value.trim(),
+        unit: document.getElementById('iUnit').value,
+        warehouse_id: document.getElementById('iWarehouse').value || null,
+        cost_price: document.getElementById('iCostPrice').value,
+        sell_price: document.getElementById('iSellPrice').value,
+        current_stock: document.getElementById('iStock').value,
+        min_stock: document.getElementById('iMinStock').value,
+    };
+    try {
+        const url = editingItemId ? `${API}/api/inventory/items/${editingItemId}` : `${API}/api/inventory/items`;
+        const res = await fetch(url, { method: editingItemId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        closeModal('itemModal');
+        showToast(editingItemId ? 'Item updated!' : `${body.name} added!`);
+        await loadItems(); loadDashboard();
+    } catch(err) { showToast('❌ ' + err.message, true); }
+    finally { btn.disabled = false; btn.textContent = 'Save Item'; }
+    return false;
+}
+
+async function deleteItem(id, name) {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    const res = await fetch(`${API}/api/inventory/items/${id}`, { method: 'DELETE', headers: getHeaders() });
+    if (res.ok) { showToast(`${name} deleted.`); await loadItems(); loadDashboard(); }
+    else showToast('❌ Failed to delete item', true);
+}
+
+// ── Movements ────────────────────────────────────────────────────────────────
+async function loadMovements() {
+    const type = document.getElementById('movTypeFilter')?.value || '';
+    let url = `${API}/api/inventory/movements?limit=80`;
+    if (type) url += `&type=${type}`;
+    try {
+        const res = await fetch(url, { headers: getHeaders() });
+        const d = await res.json();
+        renderMovements(d.movements || []);
+    } catch(e) {}
+}
+
+function renderMovements(movements) {
+    const el = document.getElementById('movementsTable');
+    if (!movements.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">🔄</div><p>No movements recorded.</p></div>`; return; }
+    const typeMap = { in:'📥 In', out:'📤 Out', adjustment:'⚖️ Adjust', transfer:'🔀 Transfer', return:'↩️ Return' };
+    const typeClass = { in:'badge-success', out:'badge-danger', adjustment:'badge-info', transfer:'badge-neutral', return:'badge-warning' };
+    el.innerHTML = `<table><thead><tr><th>Date</th><th>Item</th><th>Type</th><th>Qty</th><th>Warehouse</th><th>Reference</th><th>Notes</th></tr></thead><tbody>
+        ${movements.map(m => `<tr>
+            <td style="color:var(--text-muted);white-space:nowrap">${new Date(m.created_at).toLocaleDateString('en-ZA')}</td>
+            <td><strong>${escHtml(m.inventory_items?.name||'–')}</strong>${m.inventory_items?.sku ? `<br><span style="color:var(--text-muted);font-size:0.75rem">${escHtml(m.inventory_items.sku)}</span>` : ''}</td>
+            <td><span class="badge ${typeClass[m.type]||'badge-neutral'}">${typeMap[m.type]||m.type}</span></td>
+            <td><strong>${m.quantity}</strong></td>
+            <td>${escHtml(m.warehouses?.name||'–')}</td>
+            <td>${escHtml(m.reference||'–')}</td>
+            <td>${escHtml(m.notes||'–')}</td>
+        </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function openMovementModal() {
+    document.getElementById('mItem').value = '';
+    document.getElementById('mType').value = 'in';
+    document.getElementById('mQty').value = '';
+    document.getElementById('mWarehouse').value = '';
+    document.getElementById('mCostPrice').value = '';
+    document.getElementById('mReference').value = '';
+    document.getElementById('mNotes').value = '';
+    openModal('movementModal');
+}
+
+async function saveMovement(e) {
+    e.preventDefault();
+    const body = {
+        item_id: document.getElementById('mItem').value,
+        type: document.getElementById('mType').value,
+        quantity: document.getElementById('mQty').value,
+        warehouse_id: document.getElementById('mWarehouse').value || null,
+        cost_price: document.getElementById('mCostPrice').value || null,
+        reference: document.getElementById('mReference').value.trim(),
+        notes: document.getElementById('mNotes').value.trim(),
+    };
+    try {
+        const res = await fetch(`${API}/api/inventory/movements`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        closeModal('movementModal');
+        showToast('Movement recorded!');
+        await loadMovements(); loadItems(); loadDashboard();
+    } catch(err) { showToast('❌ ' + err.message, true); }
+    return false;
+}
+
+// ── Suppliers ────────────────────────────────────────────────────────────────
+async function loadSuppliers() {
+    try {
+        const res = await fetch(`${API}/api/inventory/suppliers`, { headers: getHeaders() });
+        const d = await res.json();
+        allSuppliers = d.suppliers || [];
+        renderSuppliers();
+    } catch(e) {}
+}
+
+function renderSuppliers() {
+    const el = document.getElementById('suppliersTable');
+    if (!allSuppliers.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">🚚</div><p>No suppliers yet.</p></div>`; return; }
+    el.innerHTML = `<table><thead><tr><th>Name</th><th>Contact</th><th>Email</th><th>Phone</th><th>VAT</th><th>Actions</th></tr></thead><tbody>
+        ${allSuppliers.map(s => `<tr>
+            <td><strong>${escHtml(s.name)}</strong></td>
+            <td>${escHtml(s.contact_name||'–')}</td>
+            <td>${escHtml(s.email||'–')}</td>
+            <td>${escHtml(s.phone||'–')}</td>
+            <td>${escHtml(s.vat_number||'–')}</td>
+            <td><div class="td-actions"><button class="btn btn-ghost btn-sm" onclick="openSupplierModal(${s.id})">Edit</button></div></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function openSupplierModal(id) {
+    editingSupId = id || null;
+    document.getElementById('supModalTitle').textContent = id ? 'Edit Supplier' : 'Add Supplier';
+    const s = id ? allSuppliers.find(x => x.id === id) : null;
+    document.getElementById('supName').value = s?.name || '';
+    document.getElementById('supContact').value = s?.contact_name || '';
+    document.getElementById('supEmail').value = s?.email || '';
+    document.getElementById('supPhone').value = s?.phone || '';
+    document.getElementById('supVat').value = s?.vat_number || '';
+    document.getElementById('supAddress').value = s?.address || '';
+    openModal('supplierModal');
+}
+
+async function saveSupplier(e) {
+    e.preventDefault();
+    const body = { name: document.getElementById('supName').value.trim(), contact_name: document.getElementById('supContact').value.trim(), email: document.getElementById('supEmail').value.trim(), phone: document.getElementById('supPhone').value.trim(), vat_number: document.getElementById('supVat').value.trim(), address: document.getElementById('supAddress').value.trim() };
+    try {
+        const url = editingSupId ? `${API}/api/inventory/suppliers/${editingSupId}` : `${API}/api/inventory/suppliers`;
+        const res = await fetch(url, { method: editingSupId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error);
+        closeModal('supplierModal');
+        showToast(editingSupId ? 'Supplier updated!' : 'Supplier added!');
+        await loadSuppliers();
+    } catch(err) { showToast('❌ ' + err.message, true); }
+    return false;
+}
+
+// ── Purchase Orders ──────────────────────────────────────────────────────────
+async function loadOrders() {
+    const status = document.getElementById('poStatusFilter')?.value || '';
+    let url = `${API}/api/inventory/purchase-orders`;
+    if (status) url += `?status=${status}`;
+    try {
+        const res = await fetch(url, { headers: getHeaders() });
+        const d = await res.json();
+        renderOrders(d.purchase_orders || []);
+    } catch(e) {}
+}
+
+function renderOrders(orders) {
+    const el = document.getElementById('ordersTable');
+    if (!orders.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">🛒</div><p>No purchase orders yet.</p></div>`; return; }
+    const statusClass = { draft:'badge-neutral', sent:'badge-info', received:'badge-success', cancelled:'badge-danger' };
+    el.innerHTML = `<table><thead><tr><th>Date</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th><th>Actions</th></tr></thead><tbody>
+        ${orders.map(o => `<tr>
+            <td style="color:var(--text-muted)">${new Date(o.created_at).toLocaleDateString('en-ZA')}</td>
+            <td><strong>${escHtml(o.suppliers?.name||'–')}</strong></td>
+            <td><span class="badge ${statusClass[o.status]||'badge-neutral'}">${o.status}</span></td>
+            <td>R${(o.total_amount||0).toFixed(2)}</td>
+            <td>${o.expected_date||'–'}</td>
+            <td><div class="td-actions">
+                <select class="filter-select" style="padding:4px 8px;font-size:0.75rem;" onchange="updateOrderStatus(${o.id},this.value)">
+                    <option value="">Change Status</option>
+                    <option value="draft">Draft</option>
+                    <option value="sent">Sent</option>
+                    <option value="received">Received</option>
+                    <option value="cancelled">Cancel</option>
+                </select>
+            </div></td>
+        </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function updateOrderStatus(id, status) {
+    if (!status) return;
+    const res = await fetch(`${API}/api/inventory/purchase-orders/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ status }) });
+    if (res.ok) { showToast('Order status updated!'); loadOrders(); }
+}
+
+function escHtml(str) { const d = document.createElement('div'); d.textContent = str||''; return d.innerHTML; }
+
+init();
+</script>
+</body>
+</html>
