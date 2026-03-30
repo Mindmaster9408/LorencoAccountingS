@@ -1712,6 +1712,8 @@
                 desc: 'Personal business coaching portal — sessions, goals, progress tracking and resources.',
                 path: '/coaching',
                 cssClass: 'coaching',
+            },
+            {
                 key: 'inventory',
                 name: 'Lorenco Storehouse',
                 subtitle: 'Inventory Management',
@@ -4182,6 +4184,11 @@
                         renderPermissionMatrix();
                     }
                 }
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        }
+
         // ─── Edit User ───────────────────────────────────────────────────────
         function openEditUserModal(userId) {
             const user = allUsers.find(u => u.id === userId);
@@ -4263,6 +4270,8 @@
                 showToast('Lorenco Paytime installing...');
             }
             _paytimeInstallPrompt = null;
+        }
+
         // ─── Remove User (revoke from this company only) ─────────────────────
         async function removeUser(userId, userName) {
             const compName = selectedCompany?.trading_name || selectedCompany?.company_name || 'this company';

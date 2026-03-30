@@ -37,7 +37,9 @@
       "Bash(node --check /workspaces/LorencoAccountingS/accounting-ecosystem/backend/modules/accounting/routes/bank.js)",
       "Bash(node_modules/.bin/jest tests/vat-period.test.js --no-coverage)",
       "Bash(backend/node_modules/.bin/jest tests/vat-period.test.js --no-coverage)",
-      "Bash(backend/node_modules/.bin/jest --no-coverage)"
+      "Bash(backend/node_modules/.bin/jest --no-coverage)",
+      "Bash(python -c:*)",
+      "Bash(node --version)"
     ]
   }
 }

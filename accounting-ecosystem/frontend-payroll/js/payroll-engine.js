@@ -568,13 +568,49 @@ const PayrollEngine = {
             if (ci.type === 'deduction') deductions += parseFloat(ci.amount) || 0;
         });
 
-        var net = gross - paye - uif - deductions;
+        // === VOLUNTARY TAX OVER-DEDUCTION (NEW) ===
+        // This logic assumes voluntary config is passed in employeeOptions.voluntaryTaxConfig (if present)
+        var voluntaryOverDeduction = 0;
+        var voluntaryConfig = employeeOptions && employeeOptions.voluntaryTaxConfig;
+        if (voluntaryConfig && voluntaryConfig.type) {
+            if (voluntaryConfig.type === 'fixed') {
+                voluntaryOverDeduction = parseFloat(voluntaryConfig.fixed_amount) || 0;
+            } else if (voluntaryConfig.type === 'bonus_linked') {
+                // Bonus-linked logic: recalculate monthly adjustment if needed
+                // Inputs: expected_bonus, bonus_month, start_month, salary, current PAYE, period
+                var monthsInTaxYear = 12;
+                var periodParts = (period || '').split('-');
+                var currentMonth = parseInt(periodParts[1], 10) || 1;
+                var startMonth = parseInt(voluntaryConfig.start_month, 10) || currentMonth;
+                var bonusMonth = parseInt(voluntaryConfig.bonus_month, 10) || 8; // Default August
+                var monthsRemaining = monthsInTaxYear - (startMonth - 1);
+                if (currentMonth > bonusMonth) {
+                    // If bonus month has passed, only spread over remaining months
+                    monthsRemaining = monthsInTaxYear - (currentMonth - 1);
+                }
+                if (monthsRemaining < 1) monthsRemaining = 1;
+
+                var annualSalary = (payrollData.basic_salary || 0) * monthsInTaxYear;
+                var adjustedAnnualIncome = annualSalary + (parseFloat(voluntaryConfig.expected_bonus) || 0);
+                var annualTax = PayrollEngine.calculateAnnualPAYE(adjustedAnnualIncome, employeeOptions.age, tables);
+                var currentMonthlyPAYE = paye;
+                var taxPaidOrExpected = currentMonthlyPAYE * monthsRemaining;
+                var shortfall = annualTax - taxPaidOrExpected;
+                voluntaryOverDeduction = shortfall / monthsRemaining;
+                if (voluntaryOverDeduction < 0) voluntaryOverDeduction = 0;
+            }
+        }
+        // Add voluntary over-deduction to PAYE only (not to UIF/SDL)
+        var payeWithVoluntary = paye + voluntaryOverDeduction;
+        var net = gross - payeWithVoluntary - uif - deductions;
         var negativeNetPay = net < 0;
 
         return {
             gross: PayrollEngine.r2(gross),
             taxableGross: PayrollEngine.r2(taxableGross),
-            paye: paye,
+            paye: PayrollEngine.r2(payeWithVoluntary),
+            paye_base: PayrollEngine.r2(paye), // for breakdown
+            voluntary_overdeduction: PayrollEngine.r2(voluntaryOverDeduction),
             uif: uif,
             sdl: sdl,
             deductions: PayrollEngine.r2(deductions),

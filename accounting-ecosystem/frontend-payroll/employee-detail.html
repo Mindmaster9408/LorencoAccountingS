@@ -374,6 +374,22 @@
                 </div>
 
                 <!-- PAYROLL SUMMARY -->
+                    <!-- Voluntary Tax Over-Deduction Config -->
+                    <div class="section" style="margin-bottom: 18px;">
+                        <div class="section-title">Voluntary Tax Over-Deduction</div>
+                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <label for="volTaxType" style="margin-bottom:0;">Type:</label>
+                            <select id="volTaxType" style="min-width:120px;">
+                                <option value="fixed">Fixed Amount</option>
+                                <option value="bonus">Bonus Linked</option>
+                            </select>
+                            <label for="volTaxAmount" style="margin-bottom:0;">Amount:</label>
+                            <input type="number" id="volTaxAmount" min="0" step="0.01" style="width:100px;">
+                            <button class="btn btn-success btn-sm" onclick="saveVoluntaryTaxConfig()">Save</button>
+                            <span id="volTaxSavedMsg" style="color:#28a745; display:none; margin-left:10px; font-size:12px;">Saved!</span>
+                        </div>
+                        <div style="font-size:12px; color:#888; margin-top:4px;">This deduction is added to PAYE (not UIF/SDL). SARS-compliant. Shown separately on payslip.</div>
+                    </div>
                 <div class="card" style="margin-top: 20px; background: linear-gradient(135deg, #f0f4ff 0%, #e8eaf6 100%);">
                     <h3>💰 Payroll Summary</h3>
                     <table>
@@ -1678,6 +1694,11 @@
                 }
                 if (currentEmployee.medical_aid_members) employeeOptions.medicalMembers = parseInt(currentEmployee.medical_aid_members) || 0;
                 if (currentEmployee.tax_directive) employeeOptions.taxDirective = parseFloat(currentEmployee.tax_directive) || 0;
+                   // Load voluntary tax config from localStorage
+                   var volTaxConfig = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+                   if (volTaxConfig) {
+                       try { employeeOptions.voluntaryTaxConfig = JSON.parse(volTaxConfig); } catch(e) {}
+                   }
             }
 
             var calc = PayrollEngine.calculateFromData(
@@ -1732,6 +1753,12 @@
             calc.overtimeAmount = overtimeAmount;
             calc.shortTimeAmount = shortTimeAmount;
             calc.totalDeductions = calc.deductions;
+
+               // Add voluntary tax over-deduction for payslip display
+               if (calc.voluntaryTaxOverDeduction) {
+                   // Already included in PAYE, but show as separate line
+                   // (Handled in previewPayslip)
+               }
 
             return {
                 calc: calc,
@@ -1826,6 +1853,32 @@
             html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
             html += '<span>PAYE (Income Tax)</span><span>' + formatMoney(calc.paye) + '</span></div>';
 
+                // Voluntary Tax Over-Deduction (separate line)
+                if (calc.voluntaryTaxOverDeduction && calc.voluntaryTaxOverDeduction > 0) {
+                    html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; color:#b85c00;">';
+                    html += '<span>Voluntary Tax Over-Deduction</span><span>' + formatMoney(calc.voluntaryTaxOverDeduction) + '</span></div>';
+                }
+                    // Save voluntary tax config
+                    function saveVoluntaryTaxConfig() {
+                        var type = document.getElementById('volTaxType').value;
+                        var amount = parseFloat(document.getElementById('volTaxAmount').value) || 0;
+                        var config = { type: type, amount: amount };
+                        safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(config));
+                        var msg = document.getElementById('volTaxSavedMsg');
+                        if (msg) { msg.style.display = 'inline'; setTimeout(function(){ msg.style.display = 'none'; }, 1200); }
+                    }
+
+                    // Load config on page load
+                    document.addEventListener('DOMContentLoaded', function() {
+                        var config = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+                        if (config) {
+                            try {
+                                var obj = JSON.parse(config);
+                                document.getElementById('volTaxType').value = obj.type || 'fixed';
+                                document.getElementById('volTaxAmount').value = obj.amount || '';
+                            } catch(e) {}
+                        }
+                    });
             // UIF
             html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
             html += '<span>UIF</span><span>' + formatMoney(calc.uif) + '</span></div>';

@@ -128,9 +128,18 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
+
+    // Extract all required company fields from request body
     const {
-      company_name, trading_name, registration_number, vat_number,
-      contact_email, contact_phone, address, modules_enabled
+      company_name, trading_name, registration_number, nature_of_business, financial_year_end,
+      paye_reference_number, uif_reference_number, sdl_reference_number, coid_reference_number, income_tax_number,
+      contact_email, contact_phone, website, contact_person,
+      address_street, address_suburb, address_city, address_province, address_postal_code,
+      bank_name, bank_account_holder, bank_account_number, bank_branch_code, bank_account_type,
+      pay_frequencies, pay_day, normal_work_hours,
+      logo_url, payslip_display_name, payslip_address_line1,
+      registration_date, directors,
+      modules_enabled
     } = req.body;
 
     if (!company_name) {
@@ -163,10 +172,35 @@ router.post('/', async (req, res) => {
         company_name,
         trading_name: trading_name || company_name,
         registration_number: registration_number || null,
-        vat_number: vat_number || null,
+        nature_of_business: nature_of_business || null,
+        financial_year_end: financial_year_end || null,
+        paye_reference_number: paye_reference_number || null,
+        uif_reference_number: uif_reference_number || null,
+        sdl_reference_number: sdl_reference_number || null,
+        coid_reference_number: coid_reference_number || null,
+        income_tax_number: income_tax_number || null,
         contact_email: contact_email || null,
         contact_phone: contact_phone || null,
-        address: address || null,
+        website: website || null,
+        contact_person: contact_person || null,
+        address_street: address_street || null,
+        address_suburb: address_suburb || null,
+        address_city: address_city || null,
+        address_province: address_province || null,
+        address_postal_code: address_postal_code || null,
+        bank_name: bank_name || null,
+        bank_account_holder: bank_account_holder || null,
+        bank_account_number: bank_account_number || null,
+        bank_branch_code: bank_branch_code || null,
+        bank_account_type: bank_account_type || null,
+        pay_frequencies: pay_frequencies || null,
+        pay_day: pay_day || null,
+        normal_work_hours: normal_work_hours || null,
+        logo_url: logo_url || null,
+        payslip_display_name: payslip_display_name || null,
+        payslip_address_line1: payslip_address_line1 || null,
+        registration_date: registration_date || null,
+        directors: directors || null,
         modules_enabled: modules_enabled || ['pos', 'payroll', 'accounting', 'sean'],
         is_active: true,
         subscription_status: 'active'
@@ -214,9 +248,20 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
     // Get old values for audit
     const { data: old } = await supabase.from('companies').select('*').eq('id', id).single();
 
+
+    // Allow updating all company fields
+    const allowed = [
+      'company_name', 'trading_name', 'registration_number', 'nature_of_business', 'financial_year_end',
+      'paye_reference_number', 'uif_reference_number', 'sdl_reference_number', 'coid_reference_number', 'income_tax_number',
+      'contact_email', 'contact_phone', 'website', 'contact_person',
+      'address_street', 'address_suburb', 'address_city', 'address_province', 'address_postal_code',
+      'bank_name', 'bank_account_holder', 'bank_account_number', 'bank_branch_code', 'bank_account_type',
+      'pay_frequencies', 'pay_day', 'normal_work_hours',
+      'logo_url', 'payslip_display_name', 'payslip_address_line1',
+      'registration_date', 'directors',
+      'modules_enabled', 'is_active'
+    ];
     const updates = {};
-    const allowed = ['company_name', 'trading_name', 'registration_number', 'vat_number',
-      'contact_email', 'contact_phone', 'address', 'modules_enabled', 'is_active'];
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
