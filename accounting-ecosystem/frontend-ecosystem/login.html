@@ -102,31 +102,46 @@
 
         .brand-logo {
             display: inline-block;
-            margin-bottom: 20px;
+            margin-bottom: 22px;
             animation: logoIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
-            filter: drop-shadow(0 0 18px rgba(91, 61, 245, 0.5));
+            filter: drop-shadow(0 0 28px rgba(154, 124, 255, 0.55))
+                    drop-shadow(0 0 60px rgba(255, 107, 234, 0.2));
         }
         @keyframes logoIn {
             from { opacity: 0; transform: scale(0.78); }
             to   { opacity: 1; transform: scale(1); }
         }
 
-        .brand h1 {
-            font-size: 1.85rem;
+        /* "LORENCO" — bold white, wide tracking */
+        .brand-name {
+            font-size: 2rem;
             font-weight: 800;
-            letter-spacing: -0.6px;
-            background: linear-gradient(135deg, #e8eeff 30%, #a8b8ff 100%);
+            letter-spacing: 6px;
+            color: #ffffff;
+            text-transform: uppercase;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+
+        /* "ECOSYSTEM" — gradient text, spaced */
+        .brand-sub {
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 7px;
+            text-transform: uppercase;
+            background: linear-gradient(90deg, #FF6BEA 0%, #9A7CFF 50%, #33B8FF 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            line-height: 1.2;
+            margin-bottom: 10px;
         }
+
         .brand p {
             color: var(--muted);
-            font-size: 0.92rem;
+            font-size: 0.88rem;
             font-weight: 400;
-            margin-top: 7px;
-            letter-spacing: 0.1px;
+            margin-top: 4px;
+            letter-spacing: 0.2px;
         }
 
         /* ── Card ──────────────────────────────────────────────────────────── */
@@ -797,7 +812,7 @@
         /* ── Responsive ────────────────────────────────────────────────────── */
         @media (max-width: 600px) {
             .login-card        { padding: 32px 24px 28px; }
-            .brand h1          { font-size: 1.55rem; }
+            .brand-name        { font-size: 1.6rem; letter-spacing: 4px; }
             .app-links         { grid-template-columns: 1fr; }
             .reg-modal         { width: 95vw; }
             .type-cards        { grid-template-columns: 1fr; }
@@ -826,74 +841,86 @@
             <!-- Brand -->
             <div class="brand">
                 <div class="brand-logo">
-                    <svg width="96" height="96" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="108" height="108" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <defs>
-                        <linearGradient id="bgGlow" x1="200" y1="120" x2="860" y2="880" gradientUnits="userSpaceOnUse">
+                        <linearGradient id="lgo_bg" x1="200" y1="120" x2="860" y2="880" gradientUnits="userSpaceOnUse">
                           <stop offset="0%" stop-color="#1A0D47"/>
                           <stop offset="55%" stop-color="#0B0F3C"/>
                           <stop offset="100%" stop-color="#05081F"/>
                         </linearGradient>
-                        <linearGradient id="brandGradient" x1="260" y1="240" x2="770" y2="760" gradientUnits="userSpaceOnUse">
+                        <linearGradient id="lgo_brand" x1="260" y1="240" x2="770" y2="760" gradientUnits="userSpaceOnUse">
                           <stop offset="0%" stop-color="#FF6BEA"/>
                           <stop offset="48%" stop-color="#9A7CFF"/>
                           <stop offset="100%" stop-color="#33B8FF"/>
                         </linearGradient>
-                        <linearGradient id="blueArc" x1="590" y1="360" x2="790" y2="700" gradientUnits="userSpaceOnUse">
+                        <linearGradient id="lgo_blue" x1="590" y1="360" x2="790" y2="700" gradientUnits="userSpaceOnUse">
                           <stop offset="0%" stop-color="#5D7FFF"/>
                           <stop offset="100%" stop-color="#31C8FF"/>
                         </linearGradient>
-                        <radialGradient id="centerGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 310) rotate(90) scale(420 420)">
+                        <radialGradient id="lgo_cglow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 310) rotate(90) scale(420 420)">
                           <stop offset="0%" stop-color="#4D2BFF" stop-opacity="0.22"/>
                           <stop offset="0.55" stop-color="#1D2C9B" stop-opacity="0.14"/>
                           <stop offset="1" stop-color="#05081F" stop-opacity="0"/>
                         </radialGradient>
-                        <radialGradient id="pinkNodeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(90) scale(1)">
+                        <radialGradient id="lgo_pink" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(90) scale(1)">
                           <stop offset="0%" stop-color="#FFD6FF"/>
                           <stop offset="38%" stop-color="#FF8BFB"/>
                           <stop offset="100%" stop-color="#FF5FE8" stop-opacity="0"/>
                         </radialGradient>
-                        <radialGradient id="blueNodeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(90) scale(1)">
+                        <radialGradient id="lgo_bnode" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(90) scale(1)">
                           <stop offset="0%" stop-color="#E4FFFF"/>
                           <stop offset="35%" stop-color="#7DE7FF"/>
                           <stop offset="100%" stop-color="#31C8FF" stop-opacity="0"/>
                         </radialGradient>
-                        <filter id="softBlur" x="-60%" y="-60%" width="220%" height="220%">
+                        <filter id="lgo_sb" x="-60%" y="-60%" width="220%" height="220%">
                           <feGaussianBlur stdDeviation="10" result="blur"/>
                           <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
                         </filter>
-                        <filter id="strongGlow" x="-100%" y="-100%" width="300%" height="300%">
-                          <feGaussianBlur stdDeviation="18" result="blur1"/>
-                          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur2"/>
-                          <feMerge><feMergeNode in="blur1"/><feMergeNode in="blur2"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        <filter id="lgo_sg" x="-100%" y="-100%" width="300%" height="300%">
+                          <feGaussianBlur stdDeviation="18" result="b1"/>
+                          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b2"/>
+                          <feMerge><feMergeNode in="b1"/><feMergeNode in="b2"/><feMergeNode in="SourceGraphic"/></feMerge>
                         </filter>
-                        <style>.brand-stroke{stroke:url(#brandGradient);stroke-linecap:round;stroke-linejoin:round;fill:none}.thin-glow{stroke:url(#brandGradient);stroke-linecap:round;fill:none;opacity:0.95}</style>
                       </defs>
                       <rect width="1024" height="1024" rx="180" fill="#05081F"/>
                       <rect width="1024" height="1024" rx="180" fill="url(#bgGlow)"/>
                       <circle cx="512" cy="320" r="430" fill="url(#centerGlow)"/>
+                      <rect width="1024" height="1024" rx="180" fill="#05081F"/>
+                      <rect width="1024" height="1024" rx="180" fill="url(#lgo_bg)"/>
+                      <circle cx="512" cy="320" r="430" fill="url(#lgo_cglow)"/>
                       <g transform="translate(0 8)">
-                        <circle cx="512" cy="304" r="218" stroke="url(#brandGradient)" stroke-width="7" stroke-linecap="round" stroke-dasharray="1 18" opacity="0.92"/>
-                        <path d="M278 165C348 95,470 65,590 81C710 97,804 162,829 269C850 361,826 462,744 533C675 593,582 620,492 611C373 598,270 534,221 434C178 347,190 239,278 165Z" class="thin-glow" stroke-width="8" filter="url(#softBlur)" opacity="0.95"/>
-                        <path d="M235 442C202 366,199 281,230 210C257 148,304 108,356 91" class="thin-glow" stroke-width="16" filter="url(#strongGlow)" opacity="0.78"/>
-                        <path d="M545 168C622 166,692 194,742 248C792 303,811 376,796 445C782 510,735 567,664 594C601 618,520 616,446 602" stroke="url(#blueArc)" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.78" filter="url(#softBlur)"/>
-                        <path d="M392 180V474" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
-                        <path d="M392 180H496" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
-                        <path d="M496 180V406" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
-                        <path d="M496 406H686" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
-                        <path d="M686 406C696 420,703 437,706 456C709 484,703 516,683 542" stroke="url(#blueArc)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#strongGlow)"/>
-                        <path d="M392 474H540" class="brand-stroke" stroke-width="11" filter="url(#softBlur)" opacity="0.95"/>
-                        <path d="M540 474H607" stroke="url(#brandGradient)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.92" filter="url(#softBlur)"/>
-                        <path d="M607 474C635 474,656 496,664 522" stroke="url(#blueArc)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.95" filter="url(#softBlur)"/>
-                        <g><circle cx="392" cy="180" r="15" fill="#FFD9FF" opacity="0.95"/><circle cx="392" cy="180" r="36" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
-                        <g><circle cx="496" cy="180" r="20" fill="#FFF8FF"/><circle cx="496" cy="180" r="56" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
-                        <g><circle cx="392" cy="327" r="12" fill="#F1E8FF"/><circle cx="392" cy="327" r="22" fill="url(#pinkNodeGlow)" opacity="0.55"/></g>
-                        <g><circle cx="496" cy="327" r="12" fill="#F3F4FF"/><circle cx="496" cy="327" r="20" fill="url(#pinkNodeGlow)" opacity="0.45"/></g>
-                        <g><circle cx="392" cy="474" r="16" fill="#FFF1FF"/><circle cx="392" cy="474" r="34" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
-                        <g><circle cx="540" cy="474" r="12" fill="#FFF1FF"/><circle cx="540" cy="474" r="20" fill="url(#pinkNodeGlow)" opacity="0.5"/></g>
-                        <g><circle cx="686" cy="406" r="22" fill="#F4FFFF"/><circle cx="686" cy="406" r="70" fill="url(#blueNodeGlow)" filter="url(#strongGlow)"/></g>
-                        <g><circle cx="708" cy="520" r="11" fill="#DFFBFF"/><circle cx="708" cy="520" r="20" fill="url(#blueNodeGlow)" opacity="0.6"/></g>
-                        <g><circle cx="706" cy="270" r="10" fill="#DDF8FF"/><circle cx="706" cy="270" r="18" fill="url(#blueNodeGlow)" opacity="0.55"/></g>
-                        <g filter="url(#softBlur)">
+                        <!-- Dotted ring -->
+                        <circle cx="512" cy="304" r="218" stroke="url(#lgo_brand)" stroke-width="7" stroke-linecap="round" stroke-dasharray="1 18" fill="none" opacity="0.92"/>
+                        <!-- Outer orbit -->
+                        <path d="M278 165C348 95,470 65,590 81C710 97,804 162,829 269C850 361,826 462,744 533C675 593,582 620,492 611C373 598,270 534,221 434C178 347,190 239,278 165Z" stroke="url(#lgo_brand)" stroke-linecap="round" stroke-width="8" fill="none" filter="url(#lgo_sb)" opacity="0.95"/>
+                        <!-- Orbit accent sweep -->
+                        <path d="M235 442C202 366,199 281,230 210C257 148,304 108,356 91" stroke="url(#lgo_brand)" stroke-linecap="round" stroke-width="16" fill="none" filter="url(#lgo_sg)" opacity="0.78"/>
+                        <!-- Inner blue arc -->
+                        <path d="M545 168C622 166,692 194,742 248C792 303,811 376,796 445C782 510,735 567,664 594C601 618,520 616,446 602" stroke="url(#lgo_blue)" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.78" filter="url(#lgo_sb)"/>
+                        <!-- L strokes — all inline, no class dependency -->
+                        <path d="M392 180V474" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
+                        <path d="M392 180H496" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
+                        <path d="M496 180V406" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
+                        <path d="M496 406H686" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
+                        <!-- Blue curved connector to node -->
+                        <path d="M686 406C696 420,703 437,706 456C709 484,703 516,683 542" stroke="url(#lgo_blue)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
+                        <!-- Bottom L base -->
+                        <path d="M392 474H540" stroke="url(#lgo_brand)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sb)" opacity="0.95"/>
+                        <path d="M540 474H607" stroke="url(#lgo_brand)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.92" filter="url(#lgo_sb)"/>
+                        <path d="M607 474C635 474,656 496,664 522" stroke="url(#lgo_blue)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.95" filter="url(#lgo_sb)"/>
+                        <!-- Nodes -->
+                        <g><circle cx="392" cy="180" r="15" fill="#FFD9FF" opacity="0.95"/><circle cx="392" cy="180" r="36" fill="url(#lgo_pink)" filter="url(#lgo_sg)"/></g>
+                        <g><circle cx="496" cy="180" r="20" fill="#FFF8FF"/><circle cx="496" cy="180" r="56" fill="url(#lgo_pink)" filter="url(#lgo_sg)"/></g>
+                        <g><circle cx="392" cy="327" r="12" fill="#F1E8FF"/><circle cx="392" cy="327" r="22" fill="url(#lgo_pink)" opacity="0.55"/></g>
+                        <g><circle cx="496" cy="327" r="12" fill="#F3F4FF"/><circle cx="496" cy="327" r="20" fill="url(#lgo_pink)" opacity="0.45"/></g>
+                        <g><circle cx="392" cy="474" r="16" fill="#FFF1FF"/><circle cx="392" cy="474" r="34" fill="url(#lgo_pink)" filter="url(#lgo_sg)"/></g>
+                        <g><circle cx="540" cy="474" r="12" fill="#FFF1FF"/><circle cx="540" cy="474" r="20" fill="url(#lgo_pink)" opacity="0.5"/></g>
+                        <!-- Big blue node -->
+                        <g><circle cx="686" cy="406" r="22" fill="#F4FFFF"/><circle cx="686" cy="406" r="70" fill="url(#lgo_bnode)" filter="url(#lgo_sg)"/></g>
+                        <g><circle cx="708" cy="520" r="11" fill="#DFFBFF"/><circle cx="708" cy="520" r="20" fill="url(#lgo_bnode)" opacity="0.6"/></g>
+                        <g><circle cx="706" cy="270" r="10" fill="#DDF8FF"/><circle cx="706" cy="270" r="18" fill="url(#lgo_bnode)" opacity="0.55"/></g>
+                        <!-- Dotted ring highlight nodes -->
+                        <g filter="url(#lgo_sb)">
                           <circle cx="286" cy="205" r="10" fill="#FF91F6"/>
                           <circle cx="260" cy="282" r="8" fill="#B86CFF"/>
                           <circle cx="290" cy="420" r="9" fill="#D17DFF"/>
@@ -906,7 +933,8 @@
                       </g>
                     </svg>
                 </div>
-                <h1>Lorenco Ecosystem</h1>
+                <div class="brand-name">Lorenco</div>
+                <div class="brand-sub">Ecosystem</div>
                 <p>All your business tools — one login</p>
             </div>
 
