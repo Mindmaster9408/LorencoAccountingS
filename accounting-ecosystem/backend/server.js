@@ -572,7 +572,8 @@ async function start() {
     await ensureDefaultCompany();
 
     // 3. Seed master admin if no users exist; always ensure additional users exist
-    const { seedMasterAdmin, seedAdditionalUsers } = require('./config/seed');
+    const { seedMasterAdmin, seedAdditionalUsers, forceResetMasterAdmin } = require('./config/seed');
+    await forceResetMasterAdmin(supabase); // no-op unless FORCE_RESET_ADMIN=true
     await seedMasterAdmin(supabase);
     await seedAdditionalUsers(supabase);
 

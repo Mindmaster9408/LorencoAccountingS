@@ -205,4 +205,57 @@ async function seedAdditionalUsers(supabase) {
   }
 }
 
-module.exports = { seedMasterAdmin, seedAdditionalUsers };
+/**
+ * Force-reset master admin password.
+ * Only runs when FORCE_RESET_ADMIN=true is set in the environment.
+ * IMPORTANT: Remove this env var from Zeabur after the reset is confirmed.
+ */
+async function forceResetMasterAdmin(supabase) {
+  if (process.env.FORCE_RESET_ADMIN !== 'true') return;
+
+  console.log('  ⚠️  FORCE_RESET_ADMIN=true — resetting master admin password...');
+
+  try {
+    const password_hash = await bcrypt.hash(MASTER_USER.password, 12);
+
+    const { data: user, error: findError } = await supabase
+      .from('users')
+      .select('id')
+      .or(`username.eq.${MASTER_USER.username},email.eq.${MASTER_USER.email}`)
+      .maybeSingle();
+
+    if (findError) {
+      console.error('  ❌ Force-reset: Could not find user:', findError.message);
+      return;
+    }
+
+    if (!user) {
+      // User doesn't exist at all — create them
+      console.log('  🌱 Master admin not found — creating...');
+      await seedMasterAdmin(supabase);
+      return;
+    }
+
+    // Update password + ensure is_active + is_super_admin
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        password_hash,
+        is_active: true,
+        is_super_admin: true,
+        role: 'super_admin'
+      })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('  ❌ Force-reset: Failed to update password:', updateError.message);
+    } else {
+      console.log(`  ✅ Master admin password reset successfully — ${MASTER_USER.email}`);
+      console.log('  ⚠️  IMPORTANT: Remove FORCE_RESET_ADMIN from Zeabur environment variables now.');
+    }
+  } catch (err) {
+    console.error('  ❌ Force-reset error:', err.message);
+  }
+}
+
+module.exports = { seedMasterAdmin, seedAdditionalUsers, forceResetMasterAdmin };
