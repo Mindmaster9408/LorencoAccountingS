@@ -416,4 +416,355 @@ router.delete('/:id/narrative', requirePermission('PAYROLL.CREATE'), async (req,
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLASSIFICATION (Director, Contractor, Work Hours Type, UIF Exempt)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/payroll/employees/:id/classification
+ */
+router.get('/:id/classification', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+
+    const { data: emp, error: empErr } = await supabase
+      .from('employees')
+      .select('id, classification, is_director, is_contractor, employment_type')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (empErr || !emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied' });
+
+    const { data: payrollSetup } = await supabase
+      .from('employee_payroll_setup')
+      .select('uif_exempt')
+      .eq('employee_id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    res.json({
+      classification: {
+        is_director:     emp.is_director    || false,
+        is_contractor:   emp.is_contractor  || false,
+        uif_exempt:      payrollSetup?.uif_exempt || false,
+        employment_type: emp.employment_type || 'full_time',
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/payroll/employees/:id/classification
+ * Body: { is_director, is_contractor, uif_exempt, employment_type }
+ */
+router.put('/:id/classification', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+    const { is_director, is_contractor, uif_exempt, employment_type } = req.body;
+
+    const { data: emp } = await supabase
+      .from('employees')
+      .select('id, classification, is_director, is_contractor')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied' });
+
+    // Update employees table
+    const empUpdates = { updated_at: new Date().toISOString() };
+    if (is_director   !== undefined) empUpdates.is_director   = is_director;
+    if (is_contractor !== undefined) empUpdates.is_contractor = is_contractor;
+    if (employment_type !== undefined) empUpdates.employment_type = employment_type;
+
+    const { error: empErr } = await supabase
+      .from('employees')
+      .update(empUpdates)
+      .eq('id', empId)
+      .eq('company_id', req.companyId);
+
+    if (empErr) return res.status(500).json({ error: empErr.message });
+
+    // Upsert uif_exempt in employee_payroll_setup
+    if (uif_exempt !== undefined) {
+      const { error: psErr } = await supabase
+        .from('employee_payroll_setup')
+        .upsert({
+          employee_id: empId,
+          company_id:  req.companyId,
+          uif_exempt,
+          updated_at:  new Date().toISOString()
+        }, { onConflict: 'employee_id,company_id' });
+
+      if (psErr) return res.status(500).json({ error: psErr.message });
+    }
+
+    await auditFromReq(req, 'UPDATE', 'employee_classification', empId, {
+      module: 'payroll',
+      newValue: { is_director, is_contractor, uif_exempt, employment_type }
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WORK SCHEDULE (Regular Hours)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const DEFAULT_WORKING_DAYS = [
+  { day: 'mon', enabled: true,  type: 'normal', partial_hours: null },
+  { day: 'tue', enabled: true,  type: 'normal', partial_hours: null },
+  { day: 'wed', enabled: true,  type: 'normal', partial_hours: null },
+  { day: 'thu', enabled: true,  type: 'normal', partial_hours: null },
+  { day: 'fri', enabled: true,  type: 'normal', partial_hours: null },
+  { day: 'sat', enabled: false, type: 'normal', partial_hours: null },
+  { day: 'sun', enabled: false, type: 'normal', partial_hours: null },
+];
+
+function calcFullDaysPerWeek(workingDays, hoursPerDay) {
+  if (!hoursPerDay || hoursPerDay <= 0) return 0;
+  return workingDays.reduce((sum, d) => {
+    if (!d.enabled) return sum;
+    if (d.type === 'partial' && d.partial_hours != null) {
+      return sum + (d.partial_hours / hoursPerDay);
+    }
+    return sum + 1;
+  }, 0);
+}
+
+/**
+ * GET /api/payroll/employees/:id/work-schedule
+ */
+router.get('/:id/work-schedule', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+
+    const { data: emp } = await supabase
+      .from('employees')
+      .select('id, classification')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied' });
+
+    const { data } = await supabase
+      .from('employee_work_schedule')
+      .select('*')
+      .eq('employee_id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    res.json({
+      work_schedule: data || {
+        is_hourly_paid:     false,
+        hours_per_day:      8.0,
+        schedule_type:      'fixed',
+        working_days:       DEFAULT_WORKING_DAYS,
+        full_days_per_week: 5.0,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/payroll/employees/:id/work-schedule
+ * Body: { is_hourly_paid, hours_per_day, schedule_type, working_days }
+ */
+router.put('/:id/work-schedule', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+    const { is_hourly_paid, hours_per_day, schedule_type, working_days } = req.body;
+
+    const { data: emp } = await supabase
+      .from('employees')
+      .select('id, classification')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied' });
+
+    const days = working_days || DEFAULT_WORKING_DAYS;
+    const hpd  = parseFloat(hours_per_day) || 8.0;
+    const fdpw = Math.round(calcFullDaysPerWeek(days, hpd) * 1000) / 1000;
+
+    const { error } = await supabase
+      .from('employee_work_schedule')
+      .upsert({
+        employee_id:        empId,
+        company_id:         req.companyId,
+        is_hourly_paid:     is_hourly_paid || false,
+        hours_per_day:      hpd,
+        schedule_type:      schedule_type || 'fixed',
+        working_days:       days,
+        full_days_per_week: fdpw,
+        updated_at:         new Date().toISOString()
+      }, { onConflict: 'employee_id,company_id' });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'UPDATE', 'employee_work_schedule', empId, {
+      module: 'payroll',
+      newValue: { is_hourly_paid, hours_per_day: hpd, schedule_type, full_days_per_week: fdpw }
+    });
+
+    res.json({ success: true, full_days_per_week: fdpw });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ETI (Employment Tax Incentive)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/payroll/employees/:id/eti
+ */
+router.get('/:id/eti', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+
+    const { data: emp } = await supabase
+      .from('employees')
+      .select('id, classification')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied' });
+
+    const { data } = await supabase
+      .from('employee_eti')
+      .select('*')
+      .eq('employee_id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    res.json({
+      eti: data || {
+        status:                   'qualified_not_claiming',
+        min_wage_input_type:      'company_setup',
+        min_wage_amount:          null,
+        original_employment_date: null,
+        disqualified_months_before: 0,
+        sez_post_march_2019:      false,
+        sez_pre_march_2019:       false,
+        effective_date:           new Date().toISOString().split('T')[0],
+        history:                  [],
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/payroll/employees/:id/eti
+ * Body: { status, min_wage_input_type, min_wage_amount, original_employment_date,
+ *         disqualified_months_before, sez_post_march_2019, sez_pre_march_2019, effective_date }
+ * Automatically records a history entry when status changes.
+ */
+router.put('/:id/eti', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+    const {
+      status, min_wage_input_type, min_wage_amount,
+      original_employment_date, disqualified_months_before,
+      sez_post_march_2019, sez_pre_march_2019, effective_date
+    } = req.body;
+
+    const { data: emp } = await supabase
+      .from('employees')
+      .select('id, classification')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied' });
+
+    // Load existing record to build history entry
+    const { data: existing } = await supabase
+      .from('employee_eti')
+      .select('*')
+      .eq('employee_id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    const existingHistory = existing?.history || [];
+    const changes = {};
+
+    if (status !== undefined && status !== existing?.status) {
+      changes.status = { from: existing?.status || null, to: status };
+    }
+
+    // Only append history when status changes
+    const newHistory = Object.keys(changes).length > 0
+      ? [...existingHistory, {
+          effective_date: effective_date || new Date().toISOString().split('T')[0],
+          changes,
+          recorded_at: new Date().toISOString(),
+          recorded_by: req.user.userId
+        }]
+      : existingHistory;
+
+    const payload = {
+      employee_id:               empId,
+      company_id:                req.companyId,
+      status:                    status                    ?? existing?.status                    ?? 'qualified_not_claiming',
+      min_wage_input_type:       min_wage_input_type       ?? existing?.min_wage_input_type       ?? 'company_setup',
+      min_wage_amount:           min_wage_amount           ?? existing?.min_wage_amount           ?? null,
+      original_employment_date:  original_employment_date  ?? existing?.original_employment_date  ?? null,
+      disqualified_months_before: disqualified_months_before ?? existing?.disqualified_months_before ?? 0,
+      sez_post_march_2019:       sez_post_march_2019       ?? existing?.sez_post_march_2019       ?? false,
+      sez_pre_march_2019:        sez_pre_march_2019        ?? existing?.sez_pre_march_2019        ?? false,
+      effective_date:            effective_date            ?? existing?.effective_date            ?? new Date().toISOString().split('T')[0],
+      history:                   newHistory,
+      updated_at:                new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('employee_eti')
+      .upsert(payload, { onConflict: 'employee_id,company_id' });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'UPDATE', 'employee_eti', empId, {
+      module: 'payroll',
+      newValue: { status, min_wage_input_type, effective_date }
+    });
+
+    res.json({ success: true, history: newHistory });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -78,6 +78,16 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
+        /* Edit Info sub-tabs */
+        .edit-subtab-btn {
+            padding: 9px 20px; background: transparent; border: none;
+            border-bottom: 3px solid transparent; cursor: pointer;
+            font-size: 0.92rem; font-weight: 600; color: #888; transition: all 0.2s;
+            margin-bottom: -2px;
+        }
+        .edit-subtab-btn:hover { color: #667eea; }
+        .edit-subtab-btn.active { color: #667eea; border-bottom-color: #667eea; }
+
         /* CARD */
         .card {
             background: white; padding: 25px; border-radius: 15px;
@@ -430,33 +440,235 @@
 
         <!-- ==================== EDIT INFO TAB ==================== -->
         <div id="edit-tab" class="tab-content">
-            <div class="card">
-                <h3>Employee Information</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <div>
-                        <h4 style="color: #667eea; margin-bottom: 10px;">Personal Information</h4>
-                        <div class="info-item"><div class="info-label">Full Name</div><div class="info-value" id="editFullName">-</div></div>
-                        <div class="info-item"><div class="info-label">ID Number</div><div class="info-value" id="editIdNumber">-</div></div>
-                        <div class="info-item"><div class="info-label">Tax Number</div><div class="info-value" id="editTaxNumber">-</div></div>
-                        <div class="info-item"><div class="info-label">Email</div><div class="info-value" id="editEmail">-</div></div>
-                        <div class="info-item"><div class="info-label">Phone</div><div class="info-value" id="editPhone">-</div></div>
-                    </div>
-                    <div>
-                        <h4 style="color: #667eea; margin-bottom: 10px;">Work Information</h4>
-                        <div class="info-item"><div class="info-label">Employee Number</div><div class="info-value" id="editEmpNumber">-</div></div>
-                        <div class="info-item"><div class="info-label">Job Title</div><div class="info-value" id="editJobTitle">-</div></div>
-                        <div class="info-item"><div class="info-label">Department</div><div class="info-value" id="editDepartment">-</div></div>
-                        <div class="info-item"><div class="info-label">Date Appointed</div><div class="info-value" id="editDateAppointed">-</div></div>
-                        <div class="info-item"><div class="info-label">Payment Method</div><div class="info-value" id="editPayMethod">-</div></div>
-                        <div class="info-item"><div class="info-label">Medical Aid Members</div><div class="info-value" id="editMedicalMembers">0</div></div>
-                        <div class="info-item"><div class="info-label">Tax Directive (%)</div><div class="info-value" id="editTaxDirective">0</div></div>
-                        <div class="info-item" id="editBankSection" style="display: none;">
-                            <div class="info-label">Bank Details</div><div class="info-value" id="editBankDetails">-</div>
+
+            <!-- Edit Info sub-navigation -->
+            <div style="display:flex; gap:4px; margin-bottom:16px; border-bottom:2px solid #e8eaf6; padding-bottom:0;">
+                <button class="edit-subtab-btn active" id="estBtn-basic"          onclick="switchEditSub('basic')">Basic Info</button>
+                <button class="edit-subtab-btn"        id="estBtn-classification" onclick="switchEditSub('classification')">Classification</button>
+                <button class="edit-subtab-btn"        id="estBtn-hours"          onclick="switchEditSub('hours')">Regular Hours</button>
+                <button class="edit-subtab-btn"        id="estBtn-eti"            onclick="switchEditSub('eti')">ETI</button>
+            </div>
+
+            <!-- ── Basic Info (existing read-only display + edit button) ── -->
+            <div id="est-basic" class="edit-subtab-panel">
+                <div class="card">
+                    <h3>Employee Information</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <h4 style="color: #667eea; margin-bottom: 10px;">Personal Information</h4>
+                            <div class="info-item"><div class="info-label">Full Name</div><div class="info-value" id="editFullName">-</div></div>
+                            <div class="info-item"><div class="info-label">ID Number</div><div class="info-value" id="editIdNumber">-</div></div>
+                            <div class="info-item"><div class="info-label">Tax Number</div><div class="info-value" id="editTaxNumber">-</div></div>
+                            <div class="info-item"><div class="info-label">Email</div><div class="info-value" id="editEmail">-</div></div>
+                            <div class="info-item"><div class="info-label">Phone</div><div class="info-value" id="editPhone">-</div></div>
+                        </div>
+                        <div>
+                            <h4 style="color: #667eea; margin-bottom: 10px;">Work Information</h4>
+                            <div class="info-item"><div class="info-label">Employee Number</div><div class="info-value" id="editEmpNumber">-</div></div>
+                            <div class="info-item"><div class="info-label">Job Title</div><div class="info-value" id="editJobTitle">-</div></div>
+                            <div class="info-item"><div class="info-label">Department</div><div class="info-value" id="editDepartment">-</div></div>
+                            <div class="info-item"><div class="info-label">Date Appointed</div><div class="info-value" id="editDateAppointed">-</div></div>
+                            <div class="info-item"><div class="info-label">Payment Method</div><div class="info-value" id="editPayMethod">-</div></div>
+                            <div class="info-item"><div class="info-label">Medical Aid Members</div><div class="info-value" id="editMedicalMembers">0</div></div>
+                            <div class="info-item"><div class="info-label">Tax Directive (%)</div><div class="info-value" id="editTaxDirective">0</div></div>
+                            <div class="info-item" id="editBankSection" style="display: none;">
+                                <div class="info-label">Bank Details</div><div class="info-value" id="editBankDetails">-</div>
+                            </div>
                         </div>
                     </div>
+                    <div style="margin-top: 20px;"><button class="btn" onclick="openEditEmployeeModal()">Edit Information</button></div>
                 </div>
-                <div style="margin-top: 20px;"><button class="btn" onclick="openEditEmployeeModal()">Edit Information</button></div>
             </div>
+
+            <!-- ── Classification ── -->
+            <div id="est-classification" class="edit-subtab-panel" style="display:none;">
+                <div class="card">
+                    <p style="color:#555; font-size:0.92rem; margin-bottom:20px;">These questions will help Paytime perform the correct calculations for this employee.</p>
+
+                    <div style="margin-bottom:16px;">
+                        <label style="display:flex; align-items:center; gap:10px; font-weight:500; cursor:pointer;">
+                            <input type="checkbox" id="clf_director" style="width:16px; height:16px; cursor:pointer;">
+                            Director
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;">When does the employee normally work?</label>
+                        <select id="clf_employment_type" style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem; min-width:260px;">
+                            <option value="full_time">Full time</option>
+                            <option value="part_time">Less than 22 hours per week</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <label style="display:flex; align-items:center; gap:10px; font-weight:500; cursor:pointer;">
+                            <input type="checkbox" id="clf_contractor" style="width:16px; height:16px; cursor:pointer;">
+                            Independent Contractor
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom:24px;">
+                        <label style="display:flex; align-items:center; gap:10px; font-weight:500; color:#667eea; cursor:pointer;">
+                            <input type="checkbox" id="clf_uif_exempt" style="width:16px; height:16px; cursor:pointer;">
+                            UIF Exempt
+                        </label>
+                    </div>
+
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn btn-secondary" onclick="switchEditSub('basic')">Cancel</button>
+                        <button class="btn" onclick="saveClassification()">Continue</button>
+                    </div>
+                    <div id="clfMsg" style="margin-top:10px; font-size:0.9rem; display:none;"></div>
+                </div>
+            </div>
+
+            <!-- ── Regular Hours ── -->
+            <div id="est-hours" class="edit-subtab-panel" style="display:none;">
+                <div class="card">
+
+                    <div style="margin-bottom:16px;">
+                        <label style="display:flex; align-items:center; gap:10px; font-weight:500; cursor:pointer;">
+                            <input type="checkbox" id="hrs_hourly_paid" onchange="onHourlyPaidChange()" style="width:16px; height:16px; cursor:pointer;">
+                            Hourly paid
+                        </label>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; align-items:end;">
+                        <div>
+                            <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;">Hours per day</label>
+                            <input type="number" id="hrs_hours_per_day" min="0.5" max="24" step="0.5" value="8" oninput="recalcFullDays()"
+                                style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem; width:120px;">
+                            <span style="font-size:0.8rem; color:#999; display:block; margin-top:4px;">Zero regular hours will result in a zero hourly rate for unpaid leave.</span>
+                        </div>
+                        <div>
+                            <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;">Schedule</label>
+                            <select id="hrs_schedule_type" style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem;">
+                                <option value="fixed">Fixed</option>
+                                <option value="flexible">Flexible</option>
+                                <option value="roster">Roster</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:8px;">
+                        <label style="display:block; font-weight:600; color:#333; margin-bottom:10px;">Regular Working Days</label>
+                        <table style="width:100%; border-collapse:collapse; font-size:0.93rem;">
+                            <thead>
+                                <tr style="border-bottom:2px solid #e8eaf6;">
+                                    <th style="text-align:left; padding:6px 8px; width:40px;"></th>
+                                    <th style="text-align:left; padding:6px 8px; width:60px;">Day</th>
+                                    <th style="text-align:left; padding:6px 8px;">Day Type</th>
+                                    <th style="text-align:left; padding:6px 8px;" id="partialHoursHeader">Hours</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workingDaysTable">
+                                <!-- Rows injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:10px 0; border-top:1px solid #e8eaf6;">
+                        <span style="font-weight:600; color:#333;">Full days per week</span>
+                        <span id="hrs_full_days" style="font-weight:700; color:#667eea; font-size:1.05rem;">5.000</span>
+                        <a href="#" onclick="overrideFullDays(event)" style="font-size:0.85rem; color:#667eea;">Override</a>
+                        <input type="number" id="hrs_full_days_override" style="display:none; padding:6px 10px; border:2px solid #f0a500; border-radius:6px; font-size:0.9rem; width:90px;" step="0.125" min="0" max="7" oninput="applyOverrideFullDays()">
+                    </div>
+
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn btn-secondary" onclick="switchEditSub('basic')">Cancel</button>
+                        <button class="btn" onclick="saveWorkSchedule()">Continue</button>
+                    </div>
+                    <div id="hrsMsg" style="margin-top:10px; font-size:0.9rem; display:none;"></div>
+                </div>
+            </div>
+
+            <!-- ── ETI ── -->
+            <div id="est-eti" class="edit-subtab-panel" style="display:none;">
+                <div class="card">
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+                        <div>
+                            <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;">Status</label>
+                            <select id="eti_status" style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem; width:100%;">
+                                <option value="qualified_not_claiming">Qualified - Not Claiming</option>
+                                <option value="qualified_claiming">Qualified - Claiming</option>
+                                <option value="disqualified">Disqualified</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;">Employee minimum wage inputs</label>
+                            <select id="eti_min_wage_type" onchange="onMinWageTypeChange()" style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem; width:100%;">
+                                <option value="company_setup">No override (use company setup)</option>
+                                <option value="monthly_amount">Monthly Amount</option>
+                                <option value="hourly_rate">Hourly Rate</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="eti_min_wage_amount_row" style="display:none; margin-bottom:16px;">
+                        <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;" id="eti_min_wage_amount_label">Amount (R)</label>
+                        <input type="number" id="eti_min_wage_amount" min="0" step="0.01" placeholder="0.00"
+                            style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem; width:200px;">
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+                        <div>
+                            <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;">
+                                Original Employment Date
+                                <span style="font-size:0.8rem; color:#999; font-weight:400; margin-left:4px;">(date employee first joined for ETI)</span>
+                            </label>
+                            <input type="date" id="eti_original_employment_date"
+                                style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;">
+                                Disqualified months before starting to use the system
+                                <span style="font-size:0.8rem; color:#999; font-weight:400; display:block;">months</span>
+                            </label>
+                            <input type="number" id="eti_disqualified_months" min="0" max="24" value="0"
+                                style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem; width:100px;">
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <label style="display:flex; align-items:flex-start; gap:10px; font-weight:500; cursor:pointer; margin-bottom:10px;">
+                            <input type="checkbox" id="eti_sez_post" style="width:16px; height:16px; cursor:pointer; margin-top:2px; flex-shrink:0;">
+                            Employee works in the same SEZ as the employer for more than 50% of the year <em style="font-weight:400; color:#888;">(Applicable from March 2019)</em>
+                        </label>
+                        <label style="display:flex; align-items:flex-start; gap:10px; font-weight:500; cursor:pointer;">
+                            <input type="checkbox" id="eti_sez_pre" style="width:16px; height:16px; cursor:pointer; margin-top:2px; flex-shrink:0;">
+                            Works in a Special Economic Zone <em style="font-weight:400; color:#888;">(Prior to March 2019)</em>
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom:24px;">
+                        <label style="display:block; font-weight:600; color:#333; margin-bottom:6px;">Effective from</label>
+                        <input type="date" id="eti_effective_date"
+                            style="padding:9px 12px; border:2px solid #e0e0e0; border-radius:8px; font-size:0.95rem;">
+                    </div>
+
+                    <div style="display:flex; gap:10px; margin-bottom:24px;">
+                        <button class="btn btn-secondary" onclick="switchEditSub('basic')">Cancel</button>
+                        <button class="btn" onclick="saveETI()">Save</button>
+                    </div>
+                    <div id="etiMsg" style="margin-top:10px; font-size:0.9rem; display:none;"></div>
+
+                    <!-- ETI History -->
+                    <div id="etiHistorySection" style="display:none;">
+                        <h4 style="color:#667eea; margin-bottom:12px;">History</h4>
+                        <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+                            <thead>
+                                <tr style="border-bottom:2px solid #e8eaf6;">
+                                    <th style="text-align:left; padding:8px 10px;">Effective</th>
+                                    <th style="text-align:left; padding:8px 10px;">Changes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="etiHistoryBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <!-- ==================== LEAVE TAB ==================== -->
@@ -944,6 +1156,325 @@
             event.target.classList.add('active');
             document.getElementById(tab + '-tab').classList.add('active');
             if (tab === 'attendance') loadEmployeeAttendance();
+        }
+
+        // ========== EDIT INFO SUB-TABS ==========
+        var _editSubLoaded = {};
+
+        function switchEditSub(name) {
+            document.querySelectorAll('.edit-subtab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.edit-subtab-panel').forEach(p => p.style.display = 'none');
+            document.getElementById('estBtn-' + name).classList.add('active');
+            document.getElementById('est-' + name).style.display = '';
+            // Lazy-load each section once
+            if (!_editSubLoaded[name]) {
+                _editSubLoaded[name] = true;
+                if (name === 'classification') loadClassification();
+                if (name === 'hours')          loadWorkSchedule();
+                if (name === 'eti')            loadETI();
+            }
+        }
+
+        // ── CLASSIFICATION ──────────────────────────────────────────────────
+        async function loadClassification() {
+            try {
+                var token = AUTH.getToken ? AUTH.getToken() : (AUTH.getSession ? AUTH.getSession().token : null);
+                var r = await fetch('/api/payroll/employees/' + currentEmpId + '/classification', {
+                    headers: { 'Authorization': 'Bearer ' + token, 'x-company-id': currentCompanyId }
+                });
+                if (!r.ok) throw new Error(await r.text());
+                var d = (await r.json()).classification;
+                document.getElementById('clf_director').checked       = !!d.is_director;
+                document.getElementById('clf_contractor').checked     = !!d.is_contractor;
+                document.getElementById('clf_uif_exempt').checked     = !!d.uif_exempt;
+                document.getElementById('clf_employment_type').value  = d.employment_type || 'full_time';
+            } catch (e) {
+                console.error('loadClassification:', e);
+            }
+        }
+
+        async function saveClassification() {
+            var msg = document.getElementById('clfMsg');
+            msg.style.display = 'none';
+            try {
+                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
+                var r = await fetch('/api/payroll/employees/' + currentEmpId + '/classification', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'x-company-id': currentCompanyId,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        is_director:     document.getElementById('clf_director').checked,
+                        is_contractor:   document.getElementById('clf_contractor').checked,
+                        uif_exempt:      document.getElementById('clf_uif_exempt').checked,
+                        employment_type: document.getElementById('clf_employment_type').value
+                    })
+                });
+                if (!r.ok) throw new Error(await r.text());
+                msg.style.color = '#28a745';
+                msg.textContent = '✓ Classification saved.';
+                msg.style.display = 'block';
+                setTimeout(() => { msg.style.display = 'none'; }, 3000);
+            } catch (e) {
+                msg.style.color = '#dc3545';
+                msg.textContent = 'Error: ' + e.message;
+                msg.style.display = 'block';
+            }
+        }
+
+        // ── REGULAR HOURS ────────────────────────────────────────────────────
+        var _workingDaysData = [
+            { day:'mon', label:'Mon', enabled:true,  type:'normal', partial_hours:null },
+            { day:'tue', label:'Tue', enabled:true,  type:'normal', partial_hours:null },
+            { day:'wed', label:'Wed', enabled:true,  type:'normal', partial_hours:null },
+            { day:'thu', label:'Thu', enabled:true,  type:'normal', partial_hours:null },
+            { day:'fri', label:'Fri', enabled:true,  type:'normal', partial_hours:null },
+            { day:'sat', label:'Sat', enabled:false, type:'normal', partial_hours:null },
+            { day:'sun', label:'Sun', enabled:false, type:'normal', partial_hours:null },
+        ];
+        var _fullDaysOverride = null;
+
+        function renderWorkingDaysTable() {
+            var tbody = document.getElementById('workingDaysTable');
+            tbody.innerHTML = '';
+            _workingDaysData.forEach(function(d, i) {
+                var row = document.createElement('tr');
+                row.style.borderBottom = '1px solid #f0f0f0';
+                var isPartial = d.type === 'partial';
+                row.innerHTML =
+                    '<td style="padding:6px 8px;">' +
+                        '<input type="checkbox" ' + (d.enabled ? 'checked' : '') + ' onchange="onDayToggle(' + i + ', this.checked)" style="cursor:pointer;">' +
+                    '</td>' +
+                    '<td style="padding:6px 8px; font-weight:600;">' + d.label + '</td>' +
+                    '<td style="padding:6px 8px;">' +
+                        '<select onchange="onDayTypeChange(' + i + ', this.value)" style="padding:5px 8px; border:1px solid #e0e0e0; border-radius:6px; font-size:0.88rem;" ' + (d.enabled ? '' : 'disabled') + '>' +
+                            '<option value="normal"'  + (!isPartial ? ' selected' : '') + '>Normal Day</option>' +
+                            '<option value="partial"' + ( isPartial ? ' selected' : '') + '>Partial Day</option>' +
+                        '</select>' +
+                    '</td>' +
+                    '<td style="padding:6px 8px;">' +
+                        (isPartial && d.enabled ?
+                            '<input type="number" value="' + (d.partial_hours || '') + '" min="0.5" max="23.5" step="0.5" oninput="onPartialHoursChange(' + i + ', this.value)" style="padding:5px 8px; border:1px solid #e0e0e0; border-radius:6px; font-size:0.88rem; width:80px;">' :
+                            '<span style="color:#ccc;">—</span>') +
+                    '</td>';
+                tbody.appendChild(row);
+            });
+            recalcFullDays();
+        }
+
+        function onDayToggle(i, checked) {
+            _workingDaysData[i].enabled = checked;
+            _fullDaysOverride = null;
+            renderWorkingDaysTable();
+        }
+        function onDayTypeChange(i, val) {
+            _workingDaysData[i].type = val;
+            if (val === 'normal') _workingDaysData[i].partial_hours = null;
+            _fullDaysOverride = null;
+            renderWorkingDaysTable();
+        }
+        function onPartialHoursChange(i, val) {
+            _workingDaysData[i].partial_hours = parseFloat(val) || null;
+            _fullDaysOverride = null;
+            recalcFullDays();
+        }
+        function onHourlyPaidChange() { /* can extend later */ }
+
+        function recalcFullDays() {
+            if (_fullDaysOverride !== null) {
+                document.getElementById('hrs_full_days').textContent = parseFloat(_fullDaysOverride).toFixed(3);
+                return;
+            }
+            var hpd = parseFloat(document.getElementById('hrs_hours_per_day').value) || 8;
+            var total = 0;
+            _workingDaysData.forEach(function(d) {
+                if (!d.enabled) return;
+                if (d.type === 'partial' && d.partial_hours) {
+                    total += d.partial_hours / hpd;
+                } else {
+                    total += 1;
+                }
+            });
+            document.getElementById('hrs_full_days').textContent = total.toFixed(3);
+        }
+
+        function overrideFullDays(e) {
+            e.preventDefault();
+            var inp = document.getElementById('hrs_full_days_override');
+            inp.style.display = inp.style.display === 'none' ? '' : 'none';
+            if (inp.style.display !== 'none') inp.value = parseFloat(document.getElementById('hrs_full_days').textContent).toFixed(3);
+        }
+        function applyOverrideFullDays() {
+            _fullDaysOverride = parseFloat(document.getElementById('hrs_full_days_override').value) || null;
+            if (_fullDaysOverride !== null) document.getElementById('hrs_full_days').textContent = _fullDaysOverride.toFixed(3);
+        }
+
+        async function loadWorkSchedule() {
+            try {
+                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
+                var r = await fetch('/api/payroll/employees/' + currentEmpId + '/work-schedule', {
+                    headers: { 'Authorization': 'Bearer ' + token, 'x-company-id': currentCompanyId }
+                });
+                if (!r.ok) throw new Error(await r.text());
+                var ws = (await r.json()).work_schedule;
+                document.getElementById('hrs_hourly_paid').checked    = !!ws.is_hourly_paid;
+                document.getElementById('hrs_hours_per_day').value    = ws.hours_per_day || 8;
+                document.getElementById('hrs_schedule_type').value    = ws.schedule_type || 'fixed';
+                if (ws.working_days && ws.working_days.length === 7) {
+                    _workingDaysData = ws.working_days.map(function(d, i) {
+                        return Object.assign({}, _workingDaysData[i], d);
+                    });
+                }
+            } catch (e) {
+                console.error('loadWorkSchedule:', e);
+            }
+            renderWorkingDaysTable();
+        }
+
+        async function saveWorkSchedule() {
+            var msg = document.getElementById('hrsMsg');
+            msg.style.display = 'none';
+            try {
+                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
+                var r = await fetch('/api/payroll/employees/' + currentEmpId + '/work-schedule', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'x-company-id': currentCompanyId,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        is_hourly_paid:  document.getElementById('hrs_hourly_paid').checked,
+                        hours_per_day:   parseFloat(document.getElementById('hrs_hours_per_day').value) || 8,
+                        schedule_type:   document.getElementById('hrs_schedule_type').value,
+                        working_days:    _workingDaysData
+                    })
+                });
+                if (!r.ok) throw new Error(await r.text());
+                var res = await r.json();
+                document.getElementById('hrs_full_days').textContent = parseFloat(res.full_days_per_week || 0).toFixed(3);
+                msg.style.color = '#28a745';
+                msg.textContent = '✓ Work schedule saved.';
+                msg.style.display = 'block';
+                setTimeout(() => { msg.style.display = 'none'; }, 3000);
+            } catch (e) {
+                msg.style.color = '#dc3545';
+                msg.textContent = 'Error: ' + e.message;
+                msg.style.display = 'block';
+            }
+        }
+
+        // ── ETI ──────────────────────────────────────────────────────────────
+        function onMinWageTypeChange() {
+            var t = document.getElementById('eti_min_wage_type').value;
+            var row = document.getElementById('eti_min_wage_amount_row');
+            var lbl = document.getElementById('eti_min_wage_amount_label');
+            if (t === 'monthly_amount') {
+                row.style.display = '';
+                lbl.textContent = 'Monthly Amount (R)';
+            } else if (t === 'hourly_rate') {
+                row.style.display = '';
+                lbl.textContent = 'Hourly Rate (R)';
+            } else {
+                row.style.display = 'none';
+            }
+        }
+
+        function renderETIHistory(history) {
+            var section = document.getElementById('etiHistorySection');
+            var tbody   = document.getElementById('etiHistoryBody');
+            if (!history || !history.length) { section.style.display = 'none'; return; }
+            section.style.display = '';
+            tbody.innerHTML = '';
+            var STATUS_LABELS = {
+                qualified_not_claiming: 'Qualified - Not Claiming',
+                qualified_claiming:     'Qualified - Claiming',
+                disqualified:           'Disqualified'
+            };
+            history.slice().reverse().forEach(function(entry) {
+                var changeText = Object.keys(entry.changes || {}).map(function(field) {
+                    var c = entry.changes[field];
+                    var from = STATUS_LABELS[c.from] || c.from || '—';
+                    var to   = STATUS_LABELS[c.to]   || c.to   || '—';
+                    return 'Status: ' + to;
+                }).join('; ');
+                var row = document.createElement('tr');
+                row.style.borderBottom = '1px solid #f0f0f0';
+                row.innerHTML =
+                    '<td style="padding:8px 10px; color:#555;">' + (entry.effective_date || '—') + '</td>' +
+                    '<td style="padding:8px 10px;">' + changeText + '</td>';
+                tbody.appendChild(row);
+            });
+            // Initial value row
+            var initRow = document.createElement('tr');
+            initRow.style.borderBottom = '1px solid #f0f0f0';
+            var firstStatus = history.length ? (history[0].changes?.status?.from || '—') : '—';
+            initRow.innerHTML =
+                '<td style="padding:8px 10px; color:#888; font-style:italic;">Initial Value</td>' +
+                '<td style="padding:8px 10px; color:#888;">Status: ' + (STATUS_LABELS[firstStatus] || firstStatus) + '</td>';
+            tbody.appendChild(initRow);
+        }
+
+        async function loadETI() {
+            try {
+                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
+                var r = await fetch('/api/payroll/employees/' + currentEmpId + '/eti', {
+                    headers: { 'Authorization': 'Bearer ' + token, 'x-company-id': currentCompanyId }
+                });
+                if (!r.ok) throw new Error(await r.text());
+                var eti = (await r.json()).eti;
+                document.getElementById('eti_status').value            = eti.status || 'qualified_not_claiming';
+                document.getElementById('eti_min_wage_type').value     = eti.min_wage_input_type || 'company_setup';
+                document.getElementById('eti_min_wage_amount').value   = eti.min_wage_amount || '';
+                document.getElementById('eti_original_employment_date').value = eti.original_employment_date || '';
+                document.getElementById('eti_disqualified_months').value      = eti.disqualified_months_before || 0;
+                document.getElementById('eti_sez_post').checked        = !!eti.sez_post_march_2019;
+                document.getElementById('eti_sez_pre').checked         = !!eti.sez_pre_march_2019;
+                document.getElementById('eti_effective_date').value    = eti.effective_date || new Date().toISOString().split('T')[0];
+                onMinWageTypeChange();
+                renderETIHistory(eti.history || []);
+            } catch (e) {
+                console.error('loadETI:', e);
+            }
+        }
+
+        async function saveETI() {
+            var msg = document.getElementById('etiMsg');
+            msg.style.display = 'none';
+            try {
+                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
+                var r = await fetch('/api/payroll/employees/' + currentEmpId + '/eti', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'x-company-id': currentCompanyId,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        status:                     document.getElementById('eti_status').value,
+                        min_wage_input_type:        document.getElementById('eti_min_wage_type').value,
+                        min_wage_amount:            parseFloat(document.getElementById('eti_min_wage_amount').value) || null,
+                        original_employment_date:   document.getElementById('eti_original_employment_date').value || null,
+                        disqualified_months_before: parseInt(document.getElementById('eti_disqualified_months').value) || 0,
+                        sez_post_march_2019:        document.getElementById('eti_sez_post').checked,
+                        sez_pre_march_2019:         document.getElementById('eti_sez_pre').checked,
+                        effective_date:             document.getElementById('eti_effective_date').value
+                    })
+                });
+                if (!r.ok) throw new Error(await r.text());
+                var res = await r.json();
+                renderETIHistory(res.history || []);
+                msg.style.color = '#28a745';
+                msg.textContent = '✓ ETI saved.';
+                msg.style.display = 'block';
+                setTimeout(() => { msg.style.display = 'none'; }, 3000);
+            } catch (e) {
+                msg.style.color = '#dc3545';
+                msg.textContent = 'Error: ' + e.message;
+                msg.style.display = 'block';
+            }
         }
 
         // ========== PERIOD SELECT ==========

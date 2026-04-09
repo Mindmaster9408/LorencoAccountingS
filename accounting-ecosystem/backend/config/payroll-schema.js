@@ -36,7 +36,7 @@ async function ensurePayrollSchema(pool) {
       ALTER TABLE payroll_kv_store_eco ENABLE ROW LEVEL SECURITY
     `);
 
-    // ── employees.classification ──────────────────────────────────────────────
+    // ── employees: classification + director/contractor flags ────────────────
     // Payroll confidentiality classification for each employee.
     // 'public'       — visible to all Paytime users with PAYROLL.VIEW (default)
     // 'confidential' — visible only to users with can_view_confidential = true
@@ -46,6 +46,70 @@ async function ensurePayrollSchema(pool) {
       ADD COLUMN IF NOT EXISTS classification VARCHAR(20)
         NOT NULL DEFAULT 'public'
         CHECK (classification IN ('public', 'confidential', 'executive'))
+    `);
+
+    await client.query(`
+      ALTER TABLE employees
+      ADD COLUMN IF NOT EXISTS is_director   BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS is_contractor BOOLEAN NOT NULL DEFAULT false
+    `);
+
+    // ── employee_work_schedule ────────────────────────────────────────────────
+    // Per-employee work schedule: hourly flag, hours/day, Mon-Sun day types.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS employee_work_schedule (
+        id              BIGSERIAL PRIMARY KEY,
+        employee_id     INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        company_id      INTEGER NOT NULL REFERENCES companies(id)  ON DELETE CASCADE,
+        is_hourly_paid  BOOLEAN      NOT NULL DEFAULT false,
+        hours_per_day   DECIMAL(5,2) NOT NULL DEFAULT 8.0,
+        schedule_type   VARCHAR(20)  NOT NULL DEFAULT 'fixed'
+                          CHECK (schedule_type IN ('fixed', 'flexible', 'roster')),
+        working_days    JSONB NOT NULL DEFAULT '[
+          {"day":"mon","enabled":true, "type":"normal","partial_hours":null},
+          {"day":"tue","enabled":true, "type":"normal","partial_hours":null},
+          {"day":"wed","enabled":true, "type":"normal","partial_hours":null},
+          {"day":"thu","enabled":true, "type":"normal","partial_hours":null},
+          {"day":"fri","enabled":true, "type":"normal","partial_hours":null},
+          {"day":"sat","enabled":false,"type":"normal","partial_hours":null},
+          {"day":"sun","enabled":false,"type":"normal","partial_hours":null}
+        ]',
+        full_days_per_week DECIMAL(5,3),
+        updated_at      TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (employee_id, company_id)
+      )
+    `);
+
+    // ── employee_eti ──────────────────────────────────────────────────────────
+    // Employment Tax Incentive per employee: status, minimum wage, SEZ flags,
+    // effective date, and full JSONB audit history of status changes.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS employee_eti (
+        id              BIGSERIAL PRIMARY KEY,
+        employee_id     INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        company_id      INTEGER NOT NULL REFERENCES companies(id)  ON DELETE CASCADE,
+        status          VARCHAR(30) NOT NULL DEFAULT 'qualified_not_claiming'
+                          CHECK (status IN (
+                            'qualified_not_claiming',
+                            'qualified_claiming',
+                            'disqualified'
+                          )),
+        min_wage_input_type VARCHAR(20) NOT NULL DEFAULT 'company_setup'
+                          CHECK (min_wage_input_type IN (
+                            'company_setup',
+                            'monthly_amount',
+                            'hourly_rate'
+                          )),
+        min_wage_amount             DECIMAL(12,2),
+        original_employment_date    DATE,
+        disqualified_months_before  INTEGER NOT NULL DEFAULT 0,
+        sez_post_march_2019         BOOLEAN NOT NULL DEFAULT false,
+        sez_pre_march_2019          BOOLEAN NOT NULL DEFAULT false,
+        effective_date              DATE NOT NULL DEFAULT CURRENT_DATE,
+        history                     JSONB NOT NULL DEFAULT '[]',
+        updated_at                  TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (employee_id, company_id)
+      )
     `);
 
     // ── paytime_user_config ───────────────────────────────────────────────────
