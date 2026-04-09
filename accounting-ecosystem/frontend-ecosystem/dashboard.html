@@ -3938,6 +3938,40 @@
         async function addPracticeUser(e) {
             e.preventDefault();
             const token = localStorage.getItem('eco_token');
+            const btn = document.getElementById('auSaveBtn');
+            if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
+
+            const fullName = document.getElementById('auFullName').value.trim();
+            const email    = document.getElementById('auEmail').value.trim().toLowerCase();
+            const password = document.getElementById('auPassword').value;
+            const role     = document.getElementById('auRole').value;
+
+            const selectedApps = [];
+            document.querySelectorAll('#auApps input[name="userApps"]:checked').forEach(cb => selectedApps.push(cb.value));
+            const apps = selectedApps.length > 0 ? selectedApps : null;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/users`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ username: email, email, password, full_name: fullName, role, apps })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to add user');
+
+                const appMsg = apps ? ` (apps: ${apps.join(', ')})` : '';
+                showToast(`${fullName} added to practice${appMsg}`);
+                document.getElementById('addUserForm').reset();
+                document.querySelectorAll('#auApps .app-check').forEach(el => el.classList.remove('checked'));
+                await loadPracticeUsers();
+            } catch (err) {
+                showToast(err.message, true);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Add User to Practice'; }
+            }
+            return false;
+        }
+
         // USER MANAGEMENT
         // ═══════════════════════════════════════════════════════════════════
 
