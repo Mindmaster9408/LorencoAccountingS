@@ -841,11 +841,142 @@
             <!-- Brand -->
             <div class="brand">
                 <div class="brand-logo">
-                    <img
-                      src="/lorenco-logo-cropped.png"
-                      alt="Lorenco Ecosystem"
-                      class="logo-image"
-                    />
+                    <svg width="108" height="108" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <!-- Pink→Purple→Blue diagonal brand gradient -->
+                        <linearGradient id="lgo_brand" x1="260" y1="200" x2="790" y2="780" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%"   stop-color="#FF6BEA"/>
+                          <stop offset="48%"  stop-color="#9A7CFF"/>
+                          <stop offset="100%" stop-color="#33B8FF"/>
+                        </linearGradient>
+                        <!-- Blue arc gradient for right-side elements -->
+                        <linearGradient id="lgo_blue" x1="590" y1="340" x2="800" y2="720" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%"   stop-color="#5D7FFF"/>
+                          <stop offset="100%" stop-color="#31C8FF"/>
+                        </linearGradient>
+                        <!-- Subtle centre radial glow (background only) -->
+                        <radialGradient id="lgo_cglow" cx="512" cy="310" r="420" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%"   stop-color="#2D1A8F" stop-opacity="0.28"/>
+                          <stop offset="55%"  stop-color="#1D2C9B" stop-opacity="0.10"/>
+                          <stop offset="100%" stop-color="#05081F" stop-opacity="0"/>
+                        </radialGradient>
+                      </defs>
+
+                      <!-- Background -->
+                      <rect width="1024" height="1024" fill="#050914"/>
+                      <rect width="1024" height="1024" fill="url(#lgo_cglow)"/>
+
+                      <g transform="translate(0 8)">
+                        <!-- ── ORBIT RINGS ─────────────────────────────────── -->
+                        <!-- Outer dotted ring -->
+                        <circle cx="512" cy="304" r="218" stroke="url(#lgo_brand)" stroke-width="6" stroke-linecap="round" stroke-dasharray="3 22" fill="none" opacity="0.85"/>
+
+                        <!-- Outer orbit shape — glow halo then crisp stroke -->
+                        <path d="M278 165C348 95,470 65,590 81C710 97,804 162,829 269C850 361,826 462,744 533C675 593,582 620,492 611C373 598,270 534,221 434C178 347,190 239,278 165Z" stroke="url(#lgo_brand)" stroke-width="44" stroke-linecap="round" fill="none" opacity="0.07"/>
+                        <path d="M278 165C348 95,470 65,590 81C710 97,804 162,829 269C850 361,826 462,744 533C675 593,582 620,492 611C373 598,270 534,221 434C178 347,190 239,278 165Z" stroke="url(#lgo_brand)" stroke-width="8"  stroke-linecap="round" fill="none" opacity="0.88"/>
+
+                        <!-- Accent sweep — glow then stroke -->
+                        <path d="M235 442C202 366,199 281,230 210C257 148,304 108,356 91" stroke="url(#lgo_brand)" stroke-width="52" stroke-linecap="round" fill="none" opacity="0.11"/>
+                        <path d="M235 442C202 366,199 281,230 210C257 148,304 108,356 91" stroke="url(#lgo_brand)" stroke-width="16" stroke-linecap="round" fill="none" opacity="0.72"/>
+
+                        <!-- Inner blue arc — glow then stroke -->
+                        <path d="M545 168C622 166,692 194,742 248C792 303,811 376,796 445C782 510,735 567,664 594C601 618,520 616,446 602" stroke="url(#lgo_blue)" stroke-width="32" stroke-linecap="round" fill="none" opacity="0.10"/>
+                        <path d="M545 168C622 166,692 194,742 248C792 303,811 376,796 445C782 510,735 567,664 594C601 618,520 616,446 602" stroke="url(#lgo_blue)" stroke-width="6"  stroke-linecap="round" fill="none" opacity="0.70"/>
+
+                        <!-- ── L CIRCUIT PATHS (glow layer + core layer) ───── -->
+                        <!-- Vertical left -->
+                        <path d="M392 180V474" stroke="url(#lgo_brand)" stroke-width="64" stroke-linecap="round" fill="none" opacity="0.09"/>
+                        <path d="M392 180V474" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" fill="none"/>
+                        <!-- Top cap -->
+                        <path d="M392 180H496" stroke="url(#lgo_brand)" stroke-width="64" stroke-linecap="round" fill="none" opacity="0.09"/>
+                        <path d="M392 180H496" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" fill="none"/>
+                        <!-- Vertical right -->
+                        <path d="M496 180V406" stroke="url(#lgo_brand)" stroke-width="64" stroke-linecap="round" fill="none" opacity="0.09"/>
+                        <path d="M496 180V406" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" fill="none"/>
+                        <!-- Horizontal arm -->
+                        <path d="M496 406H686" stroke="url(#lgo_brand)" stroke-width="64" stroke-linecap="round" fill="none" opacity="0.09"/>
+                        <path d="M496 406H686" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" fill="none"/>
+                        <!-- Blue curved connector -->
+                        <path d="M686 406C696 420,703 437,706 456C709 484,703 516,683 542" stroke="url(#lgo_blue)" stroke-width="52" stroke-linecap="round" fill="none" opacity="0.10"/>
+                        <path d="M686 406C696 420,703 437,706 456C709 484,703 516,683 542" stroke="url(#lgo_blue)" stroke-width="17" stroke-linecap="round" fill="none"/>
+                        <!-- Floor extension -->
+                        <path d="M392 474H607" stroke="url(#lgo_brand)" stroke-width="48" stroke-linecap="round" fill="none" opacity="0.08"/>
+                        <path d="M392 474H607" stroke="url(#lgo_brand)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.90"/>
+                        <!-- Floor blue corner -->
+                        <path d="M607 474C635 474,656 496,664 522" stroke="url(#lgo_blue)" stroke-width="44" stroke-linecap="round" fill="none" opacity="0.09"/>
+                        <path d="M607 474C635 474,656 496,664 522" stroke="url(#lgo_blue)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.90"/>
+
+                        <!-- ── NODES — layered circles, outermost first ────── -->
+
+                        <!-- (392,180) pink — medium -->
+                        <circle cx="392" cy="180" r="88"  fill="#FF6BEA" opacity="0.06"/>
+                        <circle cx="392" cy="180" r="54"  fill="#FF6BEA" opacity="0.14"/>
+                        <circle cx="392" cy="180" r="30"  fill="#FF9FF7" opacity="0.52"/>
+                        <circle cx="392" cy="180" r="13"  fill="#FFE8FF"/>
+
+                        <!-- (496,180) pink — large (dominant top node) -->
+                        <circle cx="496" cy="180" r="118" fill="#FF6BEA" opacity="0.06"/>
+                        <circle cx="496" cy="180" r="74"  fill="#FF6BEA" opacity="0.15"/>
+                        <circle cx="496" cy="180" r="42"  fill="#FF9FF7" opacity="0.55"/>
+                        <circle cx="496" cy="180" r="19"  fill="#FFF8FF"/>
+
+                        <!-- (392,327) purple — small mid -->
+                        <circle cx="392" cy="327" r="42"  fill="#C890FF" opacity="0.10"/>
+                        <circle cx="392" cy="327" r="24"  fill="#C890FF" opacity="0.30"/>
+                        <circle cx="392" cy="327" r="11"  fill="#E8CCFF" opacity="0.88"/>
+
+                        <!-- (496,327) purple — small mid -->
+                        <circle cx="496" cy="327" r="38"  fill="#C890FF" opacity="0.10"/>
+                        <circle cx="496" cy="327" r="21"  fill="#C890FF" opacity="0.30"/>
+                        <circle cx="496" cy="327" r="10"  fill="#EDD8FF" opacity="0.85"/>
+
+                        <!-- (392,474) pink — medium (base of vertical) -->
+                        <circle cx="392" cy="474" r="84"  fill="#FF6BEA" opacity="0.07"/>
+                        <circle cx="392" cy="474" r="52"  fill="#FF6BEA" opacity="0.15"/>
+                        <circle cx="392" cy="474" r="28"  fill="#FF9FF7" opacity="0.52"/>
+                        <circle cx="392" cy="474" r="13"  fill="#FFE8FF"/>
+
+                        <!-- (540,474) purple — small floor -->
+                        <circle cx="540" cy="474" r="38"  fill="#C890FF" opacity="0.10"/>
+                        <circle cx="540" cy="474" r="22"  fill="#C890FF" opacity="0.28"/>
+                        <circle cx="540" cy="474" r="10"  fill="#EDD8FF" opacity="0.85"/>
+
+                        <!-- (686,406) DOMINANT blue node — 5 layers -->
+                        <circle cx="686" cy="406" r="165" fill="#33B8FF" opacity="0.05"/>
+                        <circle cx="686" cy="406" r="112" fill="#33B8FF" opacity="0.10"/>
+                        <circle cx="686" cy="406" r="72"  fill="#5DD8FF" opacity="0.22"/>
+                        <circle cx="686" cy="406" r="40"  fill="#9EEEFF" opacity="0.52"/>
+                        <circle cx="686" cy="406" r="20"  fill="#E4FFFF"/>
+
+                        <!-- (708,520) small blue trailing -->
+                        <circle cx="708" cy="520" r="44"  fill="#33B8FF" opacity="0.09"/>
+                        <circle cx="708" cy="520" r="25"  fill="#7DE7FF" opacity="0.30"/>
+                        <circle cx="708" cy="520" r="11"  fill="#DFFBFF" opacity="0.90"/>
+
+                        <!-- (706,270) small blue upper -->
+                        <circle cx="706" cy="270" r="40"  fill="#33B8FF" opacity="0.09"/>
+                        <circle cx="706" cy="270" r="22"  fill="#7DE7FF" opacity="0.28"/>
+                        <circle cx="706" cy="270" r="10"  fill="#DDF8FF" opacity="0.88"/>
+
+                        <!-- ── ORBIT RING ACCENT DOTS (2 layers each) ──────── -->
+                        <circle cx="286" cy="205" r="18"  fill="#FF6BEA" opacity="0.30"/>
+                        <circle cx="286" cy="205" r="9"   fill="#FFD6FF"/>
+                        <circle cx="260" cy="282" r="14"  fill="#B86CFF" opacity="0.35"/>
+                        <circle cx="260" cy="282" r="7"   fill="#DDB8FF"/>
+                        <circle cx="290" cy="420" r="15"  fill="#D17DFF" opacity="0.32"/>
+                        <circle cx="290" cy="420" r="7"   fill="#E8C4FF"/>
+                        <circle cx="392" cy="112" r="13"  fill="#FF97F8" opacity="0.35"/>
+                        <circle cx="392" cy="112" r="6"   fill="#FFD4FF"/>
+                        <circle cx="590" cy="103" r="12"  fill="#8F8EFF" opacity="0.35"/>
+                        <circle cx="590" cy="103" r="5"   fill="#C4C4FF"/>
+                        <circle cx="724" cy="155" r="15"  fill="#7FD0FF" opacity="0.35"/>
+                        <circle cx="724" cy="155" r="7"   fill="#C8EEFF"/>
+                        <circle cx="787" cy="284" r="13"  fill="#4AB6FF" opacity="0.35"/>
+                        <circle cx="787" cy="284" r="6"   fill="#B8E4FF"/>
+                        <circle cx="732" cy="457" r="14"  fill="#33B8FF" opacity="0.35"/>
+                        <circle cx="732" cy="457" r="6"   fill="#A8DCFF"/>
+                      </g>
+                    </svg>
                 </div>
                 <div class="brand-name">Lorenco</div>
                 <div class="brand-sub">Ecosystem</div>
