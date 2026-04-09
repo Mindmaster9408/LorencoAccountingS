@@ -883,8 +883,6 @@
                         </filter>
                       </defs>
                       <rect width="1024" height="1024" rx="180" fill="#05081F"/>
-                      <rect width="1024" height="1024" rx="180" fill="url(#bgGlow)"/>
-                      <circle cx="512" cy="320" r="430" fill="url(#centerGlow)"/>
                       <rect width="1024" height="1024" rx="180" fill="#05081F"/>
                       <rect width="1024" height="1024" rx="180" fill="url(#lgo_bg)"/>
                       <circle cx="512" cy="320" r="430" fill="url(#lgo_cglow)"/>
@@ -892,44 +890,51 @@
                         <!-- Dotted ring -->
                         <circle cx="512" cy="304" r="218" stroke="url(#lgo_brand)" stroke-width="7" stroke-linecap="round" stroke-dasharray="1 18" fill="none" opacity="0.92"/>
                         <!-- Outer orbit -->
-                        <path d="M278 165C348 95,470 65,590 81C710 97,804 162,829 269C850 361,826 462,744 533C675 593,582 620,492 611C373 598,270 534,221 434C178 347,190 239,278 165Z" stroke="url(#lgo_brand)" stroke-linecap="round" stroke-width="8" fill="none" filter="url(#lgo_sb)" opacity="0.95"/>
+                        <path d="M278 165C348 95,470 65,590 81C710 97,804 162,829 269C850 361,826 462,744 533C675 593,582 620,492 611C373 598,270 534,221 434C178 347,190 239,278 165Z" stroke="url(#lgo_brand)" stroke-linecap="round" stroke-width="8" fill="none" opacity="0.95"/>
                         <!-- Orbit accent sweep -->
-                        <path d="M235 442C202 366,199 281,230 210C257 148,304 108,356 91" stroke="url(#lgo_brand)" stroke-linecap="round" stroke-width="16" fill="none" filter="url(#lgo_sg)" opacity="0.78"/>
+                        <path d="M235 442C202 366,199 281,230 210C257 148,304 108,356 91" stroke="url(#lgo_brand)" stroke-linecap="round" stroke-width="16" fill="none" opacity="0.78"/>
                         <!-- Inner blue arc -->
-                        <path d="M545 168C622 166,692 194,742 248C792 303,811 376,796 445C782 510,735 567,664 594C601 618,520 616,446 602" stroke="url(#lgo_blue)" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.78" filter="url(#lgo_sb)"/>
-                        <!-- L strokes — all inline, no class dependency -->
-                        <path d="M392 180V474" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
-                        <path d="M392 180H496" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
-                        <path d="M496 180V406" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
-                        <path d="M496 406H686" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
-                        <!-- Blue curved connector to node -->
-                        <path d="M686 406C696 420,703 437,706 456C709 484,703 516,683 542" stroke="url(#lgo_blue)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sg)"/>
+                        <path d="M545 168C622 166,692 194,742 248C792 303,811 376,796 445C782 510,735 567,664 594C601 618,520 616,446 602" stroke="url(#lgo_blue)" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.78"/>
+                        <!-- L strokes -->
+                        <path d="M392 180V474" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <path d="M392 180H496" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <path d="M496 180V406" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <path d="M496 406H686" stroke="url(#lgo_brand)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <!-- Blue curved connector -->
+                        <path d="M686 406C696 420,703 437,706 456C709 484,703 516,683 542" stroke="url(#lgo_blue)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
                         <!-- Bottom L base -->
-                        <path d="M392 474H540" stroke="url(#lgo_brand)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#lgo_sb)" opacity="0.95"/>
-                        <path d="M540 474H607" stroke="url(#lgo_brand)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.92" filter="url(#lgo_sb)"/>
-                        <path d="M607 474C635 474,656 496,664 522" stroke="url(#lgo_blue)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.95" filter="url(#lgo_sb)"/>
-                        <!-- Nodes -->
-                        <g><circle cx="392" cy="180" r="15" fill="#FFD9FF" opacity="0.95"/><circle cx="392" cy="180" r="36" fill="url(#lgo_pink)" filter="url(#lgo_sg)"/></g>
-                        <g><circle cx="496" cy="180" r="20" fill="#FFF8FF"/><circle cx="496" cy="180" r="56" fill="url(#lgo_pink)" filter="url(#lgo_sg)"/></g>
-                        <g><circle cx="392" cy="327" r="12" fill="#F1E8FF"/><circle cx="392" cy="327" r="22" fill="url(#lgo_pink)" opacity="0.55"/></g>
-                        <g><circle cx="496" cy="327" r="12" fill="#F3F4FF"/><circle cx="496" cy="327" r="20" fill="url(#lgo_pink)" opacity="0.45"/></g>
-                        <g><circle cx="392" cy="474" r="16" fill="#FFF1FF"/><circle cx="392" cy="474" r="34" fill="url(#lgo_pink)" filter="url(#lgo_sg)"/></g>
-                        <g><circle cx="540" cy="474" r="12" fill="#FFF1FF"/><circle cx="540" cy="474" r="20" fill="url(#lgo_pink)" opacity="0.5"/></g>
+                        <path d="M392 474H540" stroke="url(#lgo_brand)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.95"/>
+                        <path d="M540 474H607" stroke="url(#lgo_brand)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.92"/>
+                        <path d="M607 474C635 474,656 496,664 522" stroke="url(#lgo_blue)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.95"/>
+                        <!-- Pink nodes -->
+                        <circle cx="392" cy="180" r="15" fill="#FFD9FF" opacity="0.95"/>
+                        <circle cx="392" cy="180" r="36" fill="url(#lgo_pink)" opacity="0.8"/>
+                        <circle cx="496" cy="180" r="20" fill="#FFF8FF"/>
+                        <circle cx="496" cy="180" r="56" fill="url(#lgo_pink)" opacity="0.8"/>
+                        <circle cx="392" cy="327" r="12" fill="#F1E8FF"/>
+                        <circle cx="392" cy="327" r="22" fill="url(#lgo_pink)" opacity="0.55"/>
+                        <circle cx="496" cy="327" r="12" fill="#F3F4FF"/>
+                        <circle cx="496" cy="327" r="20" fill="url(#lgo_pink)" opacity="0.45"/>
+                        <circle cx="392" cy="474" r="16" fill="#FFF1FF"/>
+                        <circle cx="392" cy="474" r="34" fill="url(#lgo_pink)" opacity="0.75"/>
+                        <circle cx="540" cy="474" r="12" fill="#FFF1FF"/>
+                        <circle cx="540" cy="474" r="20" fill="url(#lgo_pink)" opacity="0.5"/>
                         <!-- Big blue node -->
-                        <g><circle cx="686" cy="406" r="22" fill="#F4FFFF"/><circle cx="686" cy="406" r="70" fill="url(#lgo_bnode)" filter="url(#lgo_sg)"/></g>
-                        <g><circle cx="708" cy="520" r="11" fill="#DFFBFF"/><circle cx="708" cy="520" r="20" fill="url(#lgo_bnode)" opacity="0.6"/></g>
-                        <g><circle cx="706" cy="270" r="10" fill="#DDF8FF"/><circle cx="706" cy="270" r="18" fill="url(#lgo_bnode)" opacity="0.55"/></g>
+                        <circle cx="686" cy="406" r="22" fill="#F4FFFF"/>
+                        <circle cx="686" cy="406" r="70" fill="url(#lgo_bnode)" opacity="0.85"/>
+                        <circle cx="708" cy="520" r="11" fill="#DFFBFF"/>
+                        <circle cx="708" cy="520" r="20" fill="url(#lgo_bnode)" opacity="0.6"/>
+                        <circle cx="706" cy="270" r="10" fill="#DDF8FF"/>
+                        <circle cx="706" cy="270" r="18" fill="url(#lgo_bnode)" opacity="0.55"/>
                         <!-- Dotted ring highlight nodes -->
-                        <g filter="url(#lgo_sb)">
-                          <circle cx="286" cy="205" r="10" fill="#FF91F6"/>
-                          <circle cx="260" cy="282" r="8" fill="#B86CFF"/>
-                          <circle cx="290" cy="420" r="9" fill="#D17DFF"/>
-                          <circle cx="392" cy="112" r="8" fill="#FF97F8"/>
-                          <circle cx="590" cy="103" r="7" fill="#8F8EFF"/>
-                          <circle cx="724" cy="155" r="10" fill="#7FD0FF"/>
-                          <circle cx="787" cy="284" r="8" fill="#4AB6FF"/>
-                          <circle cx="732" cy="457" r="9" fill="#33B8FF"/>
-                        </g>
+                        <circle cx="286" cy="205" r="10" fill="#FF91F6"/>
+                        <circle cx="260" cy="282" r="8" fill="#B86CFF"/>
+                        <circle cx="290" cy="420" r="9" fill="#D17DFF"/>
+                        <circle cx="392" cy="112" r="8" fill="#FF97F8"/>
+                        <circle cx="590" cy="103" r="7" fill="#8F8EFF"/>
+                        <circle cx="724" cy="155" r="10" fill="#7FD0FF"/>
+                        <circle cx="787" cy="284" r="8" fill="#4AB6FF"/>
+                        <circle cx="732" cy="457" r="9" fill="#33B8FF"/>
                       </g>
                     </svg>
                 </div>
