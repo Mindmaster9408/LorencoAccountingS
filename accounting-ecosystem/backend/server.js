@@ -165,6 +165,49 @@ app.get('/api/version', (req, res) => {
   res.json({ version: BUILD_VERSION, timestamp: new Date().toISOString() });
 });
 
+// ─── One-time admin password reset endpoint ───────────────────────────────────
+// Protected by FORCE_RESET_ADMIN env var. Remove env var after use.
+app.get('/api/admin/reset-master', async (req, res) => {
+  if (process.env.FORCE_RESET_ADMIN !== 'true') {
+    return res.status(403).json({ error: 'Disabled' });
+  }
+  try {
+    const bcrypt = require('bcrypt');
+    const { supabase } = require('./config/database');
+    const email = 'ruanvlog@lorenco.co.za';
+    const password = 'Mindmaster@277477';
+    const password_hash = await bcrypt.hash(password, 12);
+
+    // Check if user exists
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id, email, is_active, is_super_admin')
+      .or(`email.eq.${email},username.eq.${email}`)
+      .maybeSingle();
+
+    if (!existing) {
+      // Create the user
+      const { data: newUser, error: createErr } = await supabase
+        .from('users')
+        .insert({ username: email, email, full_name: 'Ruan', password_hash, role: 'super_admin', is_super_admin: true, is_active: true })
+        .select('id').single();
+      if (createErr) return res.status(500).json({ error: createErr.message });
+      return res.json({ success: true, action: 'created', id: newUser.id });
+    }
+
+    // Update existing user
+    const { error: updateErr } = await supabase
+      .from('users')
+      .update({ password_hash, is_active: true, is_super_admin: true, role: 'super_admin' })
+      .eq('id', existing.id);
+
+    if (updateErr) return res.status(500).json({ error: updateErr.message });
+    res.json({ success: true, action: 'updated', id: existing.id, was_active: existing.is_active, was_super_admin: existing.is_super_admin });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Shared Routes (always active) ──────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', authenticateToken, companiesRoutes);
