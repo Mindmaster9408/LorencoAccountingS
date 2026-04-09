@@ -605,9 +605,15 @@ async function start() {
   console.log('🔌 Connecting to Supabase...');
   const connected = await checkConnection(5, 3000);
   if (!connected) {
-    console.warn('⚠️  Could not reach Supabase after 5 attempts.');
-    console.warn('   Server will start anyway — DB-dependent routes will fail until connection is restored.');
-    console.warn('   Check your SUPABASE_URL and SUPABASE_SERVICE_KEY in .env\n');
+    console.error('❌ Could not reach Supabase after multiple attempts.');
+    console.error('   Check SUPABASE_URL and SUPABASE_SERVICE_KEY in your environment/Zeabur Variables.');
+    console.error('   If running in production the server will abort to avoid running in a degraded state.');
+    // In production, fail-fast so deployments do not silently run without DB connectivity.
+    if (process.env.NODE_ENV === 'production') {
+      console.error('❌ Production environment detected and Supabase is unreachable — aborting startup.');
+      process.exit(1);
+    }
+    console.warn('⚠️  Starting in degraded mode (non-production). DB-dependent routes will fail until connection is restored.');
   } else {
     console.log('✅ Supabase connection verified\n');
 

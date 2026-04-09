@@ -10,11 +10,36 @@
 const jwt = require('jsonwebtoken');
 const { hasPermission } = require('../config/permissions');
 
-if (!process.env.JWT_SECRET) {
+// Support common env-var casing mistakes (Zeabur UI sometimes uses mixed-case)
+const _rawJwt = process.env.JWT_SECRET || process.env.JWT_Secret || process.env.JWTsecret || process.env.Jwt_Secret;
+if (!_rawJwt) {
   console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
+  console.error('Set JWT_SECRET (all-caps) in your environment or Zeabur Variables.');
   process.exit(1);
 }
+
+// Promote the discovered value to the canonical env name so other modules read it
+if (!process.env.JWT_SECRET && _rawJwt) {
+  console.warn('⚠️  Warning: JWT secret found using non-standard env-var name; normalising to JWT_SECRET.');
+  process.env.JWT_SECRET = _rawJwt;
+}
 const JWT_SECRET = process.env.JWT_SECRET;
+
+// Detect obviously insecure placeholder secrets and fail fast in production
+const insecurePatterns = [/change-this-secret/i, /your_jwt/i, /placeholder/i, /123456/];
+if (process.env.NODE_ENV === 'production') {
+  const tooShort = typeof JWT_SECRET === 'string' && JWT_SECRET.length < 32;
+  const matchesInsecure = insecurePatterns.some(rx => rx.test(JWT_SECRET));
+  if (tooShort || matchesInsecure) {
+    console.error('❌ FATAL SECURITY ERROR: JWT_SECRET appears insecure or placeholder-like.');
+    console.error('   Set a strong random JWT_SECRET (>=32 chars) in Zeabur Variables before deploying.');
+    process.exit(1);
+  }
+} else {
+  if (typeof JWT_SECRET === 'string' && JWT_SECRET.length < 32) {
+    console.warn('⚠️  WARNING: JWT_SECRET is short (<32). Consider using a 32+ char secret for production.');
+  }
+}
 
 /**
  * Authenticate JWT token — extracts user info and attaches to req

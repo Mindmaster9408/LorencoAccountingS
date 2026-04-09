@@ -1,0 +1,131 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGlow" x1="200" y1="120" x2="860" y2="880" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1A0D47"/>
+      <stop offset="55%" stop-color="#0B0F3C"/>
+      <stop offset="100%" stop-color="#05081F"/>
+    </linearGradient>
+
+    <linearGradient id="brandGradient" x1="260" y1="240" x2="770" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF6BEA"/>
+      <stop offset="48%" stop-color="#9A7CFF"/>
+      <stop offset="100%" stop-color="#33B8FF"/>
+    </linearGradient>
+
+    <linearGradient id="blueArc" x1="590" y1="360" x2="790" y2="700" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5D7FFF"/>
+      <stop offset="100%" stop-color="#31C8FF"/>
+    </linearGradient>
+
+    <radialGradient id="centerGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 310) rotate(90) scale(420 420)">
+      <stop offset="0%" stop-color="#4D2BFF" stop-opacity="0.22"/>
+      <stop offset="0.55" stop-color="#1D2C9B" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#05081F" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="pinkNodeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(90) scale(1)">
+      <stop offset="0%" stop-color="#FFD6FF"/>
+      <stop offset="38%" stop-color="#FF8BFB"/>
+      <stop offset="100%" stop-color="#FF5FE8" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="blueNodeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(90) scale(1)">
+      <stop offset="0%" stop-color="#E4FFFF"/>
+      <stop offset="35%" stop-color="#7DE7FF"/>
+      <stop offset="100%" stop-color="#31C8FF" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="softBlur" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="strongGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="18" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <style>
+      .brand-stroke {
+        stroke: url(#brandGradient);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        fill: none;
+      }
+      .thin-glow {
+        stroke: url(#brandGradient);
+        stroke-linecap: round;
+        fill: none;
+        opacity: 0.95;
+      }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="180" fill="#05081F"/>
+  <rect width="1024" height="1024" rx="180" fill="url(#bgGlow)"/>
+  <circle cx="512" cy="320" r="430" fill="url(#centerGlow)"/>
+
+  <!-- Main logo group -->
+  <g transform="translate(0 8)">
+    <!-- Dotted ring -->
+    <circle cx="512" cy="304" r="218" stroke="url(#brandGradient)" stroke-width="7" stroke-linecap="round" stroke-dasharray="1 18" opacity="0.92"/>
+
+    <!-- Outer orbit -->
+    <path d="M278 165C348 95,470 65,590 81C710 97,804 162,829 269C850 361,826 462,744 533C675 593,582 620,492 611C373 598,270 534,221 434C178 347,190 239,278 165Z" class="thin-glow" stroke-width="8" filter="url(#softBlur)" opacity="0.95"/>
+
+    <!-- Orbit accent sweep -->
+    <path d="M235 442C202 366,199 281,230 210C257 148,304 108,356 91" class="thin-glow" stroke-width="16" filter="url(#strongGlow)" opacity="0.78"/>
+
+    <!-- Inner orbit line -->
+    <path d="M545 168C622 166,692 194,742 248C792 303,811 376,796 445C782 510,735 567,664 594C601 618,520 616,446 602" stroke="url(#blueArc)" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.78" filter="url(#softBlur)"/>
+
+    <!-- L vertical left -->
+    <path d="M392 180V474" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
+    <!-- L top connector -->
+    <path d="M392 180H496" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
+    <!-- L vertical right -->
+    <path d="M496 180V406" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
+    <!-- L horizontal bottom -->
+    <path d="M496 406H686" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
+
+    <!-- Curved connector to blue node -->
+    <path d="M686 406C696 420,703 437,706 456C709 484,703 516,683 542" stroke="url(#blueArc)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#strongGlow)"/>
+
+    <!-- Bottom orbit floor -->
+    <path d="M392 474H540" class="brand-stroke" stroke-width="11" filter="url(#softBlur)" opacity="0.95"/>
+    <path d="M540 474H607" stroke="url(#brandGradient)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.92" filter="url(#softBlur)"/>
+    <path d="M607 474C635 474,656 496,664 522" stroke="url(#blueArc)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.95" filter="url(#softBlur)"/>
+
+    <!-- Nodes -->
+    <g><circle cx="392" cy="180" r="15" fill="#FFD9FF" opacity="0.95"/><circle cx="392" cy="180" r="36" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
+    <g><circle cx="496" cy="180" r="20" fill="#FFF8FF"/><circle cx="496" cy="180" r="56" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
+    <g><circle cx="392" cy="327" r="12" fill="#F1E8FF"/><circle cx="392" cy="327" r="22" fill="url(#pinkNodeGlow)" opacity="0.55"/></g>
+    <g><circle cx="496" cy="327" r="12" fill="#F3F4FF"/><circle cx="496" cy="327" r="20" fill="url(#pinkNodeGlow)" opacity="0.45"/></g>
+    <g><circle cx="392" cy="474" r="16" fill="#FFF1FF"/><circle cx="392" cy="474" r="34" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
+    <g><circle cx="540" cy="474" r="12" fill="#FFF1FF"/><circle cx="540" cy="474" r="20" fill="url(#pinkNodeGlow)" opacity="0.5"/></g>
+    <g><circle cx="686" cy="406" r="22" fill="#F4FFFF"/><circle cx="686" cy="406" r="70" fill="url(#blueNodeGlow)" filter="url(#strongGlow)"/></g>
+    <g><circle cx="708" cy="520" r="11" fill="#DFFBFF"/><circle cx="708" cy="520" r="20" fill="url(#blueNodeGlow)" opacity="0.6"/></g>
+    <g><circle cx="706" cy="270" r="10" fill="#DDF8FF"/><circle cx="706" cy="270" r="18" fill="url(#blueNodeGlow)" opacity="0.55"/></g>
+
+    <!-- Dotted ring highlight nodes -->
+    <g filter="url(#softBlur)">
+      <circle cx="286" cy="205" r="10" fill="#FF91F6"/>
+      <circle cx="260" cy="282" r="8" fill="#B86CFF"/>
+      <circle cx="290" cy="420" r="9" fill="#D17DFF"/>
+      <circle cx="392" cy="112" r="8" fill="#FF97F8"/>
+      <circle cx="590" cy="103" r="7" fill="#8F8EFF"/>
+      <circle cx="724" cy="155" r="10" fill="#7FD0FF"/>
+      <circle cx="787" cy="284" r="8" fill="#4AB6FF"/>
+      <circle cx="732" cy="457" r="9" fill="#33B8FF"/>
+    </g>
+  </g>
+</svg>

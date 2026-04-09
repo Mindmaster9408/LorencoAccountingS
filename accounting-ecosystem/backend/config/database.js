@@ -42,16 +42,20 @@ async function dbQuery(table) {
  * Retries up to maxRetries times with a delay between attempts.
  */
 async function checkConnection(maxRetries = 5, delayMs = 3000) {
+  // Exponential backoff with jitter to avoid thundering herd on platform restarts
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const { data, error } = await supabase.from('companies').select('id').limit(1);
       if (error) throw error;
       return true;
     } catch (err) {
+      const wait = Math.min(delayMs * Math.pow(2, attempt - 1), 30000);
+      const jitter = Math.floor(Math.random() * 1000);
+      const totalWait = wait + jitter;
       console.error(`❌ Supabase connection attempt ${attempt}/${maxRetries} failed: ${err.message}`);
       if (attempt < maxRetries) {
-        console.log(`   Retrying in ${delayMs / 1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        console.log(`   Retrying in ${(totalWait / 1000).toFixed(1)}s...`);
+        await new Promise(resolve => setTimeout(resolve, totalWait));
       }
     }
   }

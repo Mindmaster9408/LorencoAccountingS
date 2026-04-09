@@ -4,312 +4,429 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Lorenco Ecosystem — Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-            overflow: hidden;
-            position: relative;
+        :root {
+            --bg:        #090d18;
+            --surface:   rgba(255, 255, 255, 0.05);
+            --border:    rgba(255, 255, 255, 0.09);
+            --primary1:  #5b3df5;
+            --primary2:  #3da5ff;
+            --text:      #f0f4ff;
+            --muted:     rgba(200, 210, 255, 0.45);
+            --glow1:     rgba(91, 61, 245, 0.22);
+            --glow2:     rgba(61, 165, 255, 0.18);
         }
 
-        /* Animated background particles */
-        .bg-particles {
+        html, body {
+            height: 100%;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow-x: hidden;
+        }
+
+        /* ── Background layer ──────────────────────────────────────────────── */
+        #bgCanvas {
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .bg-glow {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
             pointer-events: none;
             z-index: 0;
+            animation: glowPulse 8s ease-in-out infinite;
         }
-        .particle {
-            position: absolute;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.05);
-            animation: float 20s infinite ease-in-out;
+        .bg-glow.g1 {
+            width: 560px; height: 560px;
+            top: -120px; left: -140px;
+            background: var(--glow1);
+            animation-delay: 0s;
         }
-        .particle:nth-child(1) { width: 300px; height: 300px; top: -50px; left: -50px; animation-delay: 0s; }
-        .particle:nth-child(2) { width: 200px; height: 200px; top: 50%; right: -40px; animation-delay: -5s; }
-        .particle:nth-child(3) { width: 150px; height: 150px; bottom: -30px; left: 30%; animation-delay: -10s; }
-        .particle:nth-child(4) { width: 250px; height: 250px; top: 20%; left: 60%; animation-delay: -15s; }
-        @keyframes float {
-            0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.03; }
-            50% { transform: translateY(-40px) rotate(180deg); opacity: 0.08; }
+        .bg-glow.g2 {
+            width: 500px; height: 500px;
+            bottom: -100px; right: -120px;
+            background: var(--glow2);
+            animation-delay: -4s;
+        }
+        .bg-glow.g3 {
+            width: 360px; height: 360px;
+            top: 40%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(91, 61, 245, 0.08);
+            animation-delay: -2s;
+        }
+        @keyframes glowPulse {
+            0%, 100% { opacity: 0.7; transform: scale(1); }
+            50%       { opacity: 1;   transform: scale(1.06); }
         }
 
-        .login-container {
+        /* ── Page wrapper ──────────────────────────────────────────────────── */
+        .page {
             position: relative;
             z-index: 1;
-            width: 100%;
-            max-width: 460px;
-            padding: 20px;
-        }
-
-        /* Logo / Brand */
-        .brand {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-        .brand-icon {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 20px;
+            min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 20px;
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-            font-size: 36px;
-            color: white;
-            transform: rotate(-5deg);
-            transition: transform 0.3s;
+            padding: 32px 20px;
         }
-        .brand-icon:hover { transform: rotate(0deg) scale(1.05); }
+
+        /* ── Login container ───────────────────────────────────────────────── */
+        .login-container {
+            width: 100%;
+            max-width: 460px;
+            animation: fadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(28px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Brand ─────────────────────────────────────────────────────────── */
+        .brand {
+            text-align: center;
+            margin-bottom: 36px;
+            animation: fadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+        }
+
+        .brand-logo {
+            display: inline-block;
+            margin-bottom: 20px;
+            animation: logoIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+            filter: drop-shadow(0 0 18px rgba(91, 61, 245, 0.5));
+        }
+        @keyframes logoIn {
+            from { opacity: 0; transform: scale(0.78); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
         .brand h1 {
-            color: white;
-            font-size: 2rem;
-            font-weight: 700;
-            letter-spacing: -0.5px;
+            font-size: 1.85rem;
+            font-weight: 800;
+            letter-spacing: -0.6px;
+            background: linear-gradient(135deg, #e8eeff 30%, #a8b8ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
         }
         .brand p {
-            color: rgba(255,255,255,0.5);
-            font-size: 0.95rem;
-            margin-top: 6px;
+            color: var(--muted);
+            font-size: 0.92rem;
+            font-weight: 400;
+            margin-top: 7px;
+            letter-spacing: 0.1px;
         }
 
-        /* Card */
+        /* ── Card ──────────────────────────────────────────────────────────── */
         .login-card {
-            background: rgba(255,255,255,0.08);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 24px;
-            padding: 40px 36px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            background: rgba(14, 18, 38, 0.7);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border: 1px solid var(--border);
+            border-radius: 28px;
+            padding: 44px 40px 36px;
+            box-shadow:
+                0 4px 6px rgba(0,0,0,0.12),
+                0 16px 48px rgba(0,0,0,0.38),
+                inset 0 1px 0 rgba(255,255,255,0.07);
+            animation: fadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
         }
 
-        .login-card h2 {
-            color: white;
-            font-size: 1.4rem;
-            margin-bottom: 8px;
-        }
-        .login-card .subtitle {
-            color: rgba(255,255,255,0.5);
-            font-size: 0.85rem;
-            margin-bottom: 28px;
-        }
-
-        /* Form */
-        .form-group {
-            margin-bottom: 20px;
-            position: relative;
-        }
-        .form-group label {
-            display: block;
-            color: rgba(255,255,255,0.7);
-            font-size: 0.82rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 8px;
-        }
-        .form-group input {
-            width: 100%;
-            padding: 14px 16px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 12px;
-            color: white;
-            font-size: 1rem;
-            transition: all 0.3s;
-            outline: none;
-        }
-        .form-group input::placeholder {
-            color: rgba(255,255,255,0.3);
-        }
-        .form-group input:focus {
-            border-color: #667eea;
-            background: rgba(102, 126, 234, 0.08);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
-        }
-
-        .form-group .toggle-password {
-            position: absolute;
-            right: 14px;
-            top: 38px;
-            color: rgba(255,255,255,0.4);
-            cursor: pointer;
-            font-size: 1.1rem;
-            user-select: none;
-        }
-        .form-group .toggle-password:hover { color: rgba(255,255,255,0.7); }
-
-        .remember-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-        }
-        .remember-row label {
-            color: rgba(255,255,255,0.6);
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-        }
-        .remember-row input[type="checkbox"] {
-            accent-color: #667eea;
-            width: 16px;
-            height: 16px;
-        }
-
-        .btn-login {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 14px;
-            font-size: 1.05rem;
+        .card-header { margin-bottom: 32px; }
+        .card-header h2 {
+            color: var(--text);
+            font-size: 1.3rem;
             font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-            letter-spacing: 0.3px;
-            position: relative;
-            overflow: hidden;
+            letter-spacing: -0.3px;
         }
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        .card-header .subtitle {
+            color: var(--muted);
+            font-size: 0.84rem;
+            margin-top: 5px;
+            font-weight: 400;
         }
-        .btn-login:active { transform: translateY(0); }
-        .btn-login:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .btn-login .spinner {
-            display: none;
-            width: 20px; height: 20px;
-            border: 3px solid rgba(255,255,255,0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto;
-        }
-        .btn-login.loading .btn-text { display: none; }
-        .btn-login.loading .spinner { display: inline-block; }
-        @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* ── Error ─────────────────────────────────────────────────────────── */
         .error-msg {
             display: none;
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.28);
             color: #fca5a5;
             padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 0.88rem;
-            margin-bottom: 20px;
+            border-radius: 14px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 22px;
             text-align: center;
         }
         .error-msg.show { display: block; }
 
-        /* Divider */
+        /* ── Form ──────────────────────────────────────────────────────────── */
+        .form-group {
+            margin-bottom: 18px;
+            position: relative;
+        }
+        .form-group label {
+            display: block;
+            color: rgba(200, 210, 255, 0.65);
+            font-size: 0.73rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            margin-bottom: 8px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px 18px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            color: var(--text);
+            font-size: 0.95rem;
+            font-family: 'Inter', sans-serif;
+            font-weight: 400;
+            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+        .form-group input::placeholder {
+            color: rgba(200, 210, 255, 0.28);
+            font-weight: 400;
+        }
+        .form-group input:focus {
+            border-color: rgba(91, 61, 245, 0.7);
+            background: rgba(91, 61, 245, 0.06);
+            box-shadow: 0 0 0 3.5px rgba(91, 61, 245, 0.14), 0 0 12px rgba(61, 165, 255, 0.08);
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 16px;
+            top: 39px;
+            color: rgba(200, 210, 255, 0.35);
+            cursor: pointer;
+            font-size: 1rem;
+            user-select: none;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        .toggle-password:hover { color: rgba(200, 210, 255, 0.7); }
+
+        /* ── Remember row ──────────────────────────────────────────────────── */
+        .remember-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 26px;
+        }
+        .remember-row label {
+            color: var(--muted);
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            cursor: pointer;
+            font-weight: 400;
+        }
+        .remember-row input[type="checkbox"] {
+            accent-color: var(--primary1);
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* ── Sign-in button ────────────────────────────────────────────────── */
+        .btn-login {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--primary1) 0%, var(--primary2) 100%);
+            color: #fff;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.97rem;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 0.2px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 20px rgba(91, 61, 245, 0.35);
+        }
+        .btn-login::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.13) 0%, transparent 60%);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(91, 61, 245, 0.5);
+        }
+        .btn-login:hover::before { opacity: 1; }
+        .btn-login:active         { transform: translateY(0); }
+        .btn-login:disabled       { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+        .btn-login .spinner {
+            display: none;
+            width: 20px; height: 20px;
+            border: 2.5px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+            margin: 0 auto;
+        }
+        .btn-login.loading .btn-text { display: none; }
+        .btn-login.loading .spinner  { display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Divider ───────────────────────────────────────────────────────── */
         .divider {
             display: flex;
             align-items: center;
-            margin: 28px 0;
-            gap: 16px;
+            margin: 26px 0;
+            gap: 14px;
         }
         .divider::before, .divider::after {
             content: '';
             flex: 1;
             height: 1px;
-            background: rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.08);
         }
         .divider span {
-            color: rgba(255,255,255,0.35);
-            font-size: 0.8rem;
+            color: rgba(200, 210, 255, 0.3);
+            font-size: 0.75rem;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.2px;
+            font-weight: 500;
+            white-space: nowrap;
         }
 
-        /* Direct app links */
+        /* ── App links ─────────────────────────────────────────────────────── */
         .app-links {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: repeat(3, 1fr);
             gap: 10px;
         }
         .app-link {
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 10px;
-            padding: 12px 14px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px;
-            color: rgba(255,255,255,0.6);
+            gap: 8px;
+            padding: 14px 10px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 16px;
+            color: rgba(200, 210, 255, 0.55);
             text-decoration: none;
-            font-size: 0.82rem;
-            transition: all 0.2s;
+            font-size: 0.74rem;
+            font-weight: 500;
+            text-align: center;
+            transition: all 0.22s;
         }
         .app-link:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.15);
-            color: white;
+            background: rgba(255,255,255,0.07);
+            border-color: rgba(255,255,255,0.14);
+            color: var(--text);
+            transform: translateY(-2px);
         }
         .app-link .icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
+            width: 36px; height: 36px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px;
+            font-size: 17px;
             flex-shrink: 0;
         }
-        .app-link.pos .icon { background: rgba(59, 130, 246, 0.2); }
-        .app-link.payroll .icon { background: rgba(16, 185, 129, 0.2); }
-        .app-link.accounting .icon { background: rgba(245, 158, 11, 0.2); }
-        .app-link.accounting {
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px;
-        }
+        .app-link.pos .icon        { background: rgba(59, 130, 246, 0.18); }
+        .app-link.payroll .icon    { background: rgba(16, 185, 129, 0.18); }
+        .app-link.accounting .icon { background: rgba(245, 158, 11, 0.18); }
 
-        /* ── Register Button ─────────────────────────────────── */
+        /* ── Register button ───────────────────────────────────────────────── */
         .btn-register {
             width: 100%;
             padding: 14px;
             background: transparent;
-            border: 2px solid rgba(102, 126, 234, 0.4);
-            color: #a3b1f0;
-            border-radius: 14px;
-            font-size: 0.95rem;
-            font-weight: 700;
+            border: 1.5px solid rgba(91, 61, 245, 0.35);
+            color: rgba(168, 184, 255, 0.8);
+            border-radius: 16px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
             cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 14px;
+            transition: all 0.22s;
+            margin-top: 12px;
         }
         .btn-register:hover {
-            border-color: #667eea;
-            background: rgba(102, 126, 234, 0.1);
-            color: white;
-            transform: translateY(-2px);
+            border-color: var(--primary1);
+            background: rgba(91, 61, 245, 0.08);
+            color: var(--text);
+            transform: translateY(-1px);
         }
 
-        /* ── Registration Modal ──────────────────────────────── */
+        /* ── Sean AI badge ─────────────────────────────────────────────────── */
+        .sean-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        .sean-badge .dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary1), var(--primary2));
+            box-shadow: 0 0 6px rgba(91, 61, 245, 0.7);
+            animation: seanPulse 2.4s ease-in-out infinite;
+        }
+        @keyframes seanPulse {
+            0%, 100% { box-shadow: 0 0 4px rgba(91, 61, 245, 0.6); }
+            50%       { box-shadow: 0 0 10px rgba(61, 165, 255, 0.8); }
+        }
+        .sean-badge span {
+            font-size: 0.73rem;
+            font-weight: 500;
+            color: rgba(200, 210, 255, 0.3);
+            letter-spacing: 0.3px;
+        }
+        .sean-badge span strong {
+            color: rgba(168, 184, 255, 0.55);
+            font-weight: 600;
+        }
+
+        /* ── Footer ────────────────────────────────────────────────────────── */
+        .footer {
+            text-align: center;
+            margin-top: 24px;
+            color: rgba(200, 210, 255, 0.2);
+            font-size: 0.72rem;
+            font-weight: 400;
+        }
+
+        /* ── Registration Modal ────────────────────────────────────────────── */
         .reg-overlay {
             display: none;
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(15, 12, 41, 0.92);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            inset: 0;
+            background: rgba(9, 13, 24, 0.88);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             z-index: 500;
             align-items: flex-start;
             justify-content: center;
@@ -318,12 +435,12 @@
         }
         .reg-overlay.show { display: flex; }
         .reg-modal {
-            background: #1e1b3a;
+            background: #0f1428;
             border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 24px;
+            border-radius: 28px;
             width: 100%;
             max-width: 560px;
-            box-shadow: 0 25px 80px rgba(0,0,0,0.5);
+            box-shadow: 0 32px 80px rgba(0,0,0,0.55);
             margin: auto;
         }
         .reg-header {
@@ -333,44 +450,43 @@
             align-items: center;
         }
         .reg-header h2 {
-            color: white;
-            font-size: 1.3rem;
+            color: var(--text);
+            font-size: 1.25rem;
             font-weight: 700;
         }
         .reg-close {
             width: 36px; height: 36px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.09);
+            color: var(--muted);
             border-radius: 10px;
             cursor: pointer;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             display: flex; align-items: center; justify-content: center;
             transition: all 0.2s;
         }
-        .reg-close:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
+        .reg-close:hover { background: rgba(239,68,68,0.18); color: #fca5a5; }
         .reg-body { padding: 24px 28px 28px; }
 
-        /* ── Steps / Progress ────────────────────────────────── */
+        /* Steps */
         .reg-steps {
             display: flex;
             gap: 8px;
             margin-bottom: 28px;
         }
         .reg-step {
-            flex: 1;
-            height: 4px;
+            flex: 1; height: 4px;
             border-radius: 4px;
-            background: rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.08);
             transition: background 0.3s;
         }
-        .reg-step.active { background: linear-gradient(135deg, #667eea, #764ba2); }
-        .reg-step.done { background: #10b981; }
+        .reg-step.active { background: linear-gradient(135deg, var(--primary1), var(--primary2)); }
+        .reg-step.done   { background: #10b981; }
 
-        /* ── Demo App Selection Cards ─────────────────────────── */
+        /* Demo app selection */
         .demo-notice {
-            background: rgba(245,158,11,0.1);
-            border: 1px solid rgba(245,158,11,0.25);
+            background: rgba(245,158,11,0.08);
+            border: 1px solid rgba(245,158,11,0.2);
             border-radius: 12px;
             padding: 12px 16px;
             margin-bottom: 20px;
@@ -387,50 +503,30 @@
         }
         .demo-app-card {
             padding: 16px 14px;
-            background: rgba(255,255,255,0.04);
-            border: 2px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.03);
+            border: 2px solid rgba(255,255,255,0.07);
             border-radius: 14px;
             cursor: pointer;
-            transition: all 0.25s;
+            transition: all 0.22s;
             text-align: center;
         }
         .demo-app-card:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.07);
+            border-color: rgba(255,255,255,0.14);
             transform: translateY(-2px);
         }
         .demo-app-card.selected {
             border-color: #10b981;
-            background: rgba(16, 185, 129, 0.1);
-            box-shadow: 0 0 16px rgba(16, 185, 129, 0.15);
+            background: rgba(16, 185, 129, 0.09);
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.13);
         }
-        .demo-app-card .demo-icon {
-            font-size: 1.8rem;
-            margin-bottom: 6px;
-        }
-        .demo-app-card .demo-name {
-            color: white;
-            font-weight: 700;
-            font-size: 0.88rem;
-            margin-bottom: 2px;
-        }
-        .demo-app-card .demo-desc {
-            color: rgba(255,255,255,0.45);
-            font-size: 0.72rem;
-            line-height: 1.3;
-        }
-        .demo-app-card .demo-check {
-            display: none;
-            margin-top: 6px;
-            font-size: 0.75rem;
-            color: #10b981;
-            font-weight: 700;
-        }
-        .demo-app-card.selected .demo-check {
-            display: block;
-        }
+        .demo-app-card .demo-icon   { font-size: 1.8rem; margin-bottom: 6px; }
+        .demo-app-card .demo-name   { color: var(--text); font-weight: 700; font-size: 0.88rem; margin-bottom: 2px; }
+        .demo-app-card .demo-desc   { color: var(--muted); font-size: 0.72rem; line-height: 1.3; }
+        .demo-app-card .demo-check  { display: none; margin-top: 6px; font-size: 0.75rem; color: #10b981; font-weight: 700; }
+        .demo-app-card.selected .demo-check { display: block; }
 
-        /* ── Type Selector ───────────────────────────────────── */
+        /* Type selector */
         .type-cards {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -439,40 +535,28 @@
         }
         .type-card {
             padding: 24px 18px;
-            background: rgba(255,255,255,0.04);
-            border: 2px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.03);
+            border: 2px solid rgba(255,255,255,0.07);
             border-radius: 16px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.25s;
+            transition: all 0.22s;
         }
         .type-card:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.07);
+            border-color: rgba(255,255,255,0.14);
             transform: translateY(-2px);
         }
         .type-card.selected {
-            border-color: #667eea;
-            background: rgba(102, 126, 234, 0.12);
-            box-shadow: 0 0 20px rgba(102, 126, 234, 0.2);
+            border-color: var(--primary1);
+            background: rgba(91, 61, 245, 0.1);
+            box-shadow: 0 0 20px rgba(91, 61, 245, 0.18);
         }
-        .type-card .type-icon {
-            font-size: 2.4rem;
-            margin-bottom: 10px;
-        }
-        .type-card .type-title {
-            color: white;
-            font-weight: 700;
-            font-size: 1rem;
-            margin-bottom: 4px;
-        }
-        .type-card .type-desc {
-            color: rgba(255,255,255,0.5);
-            font-size: 0.78rem;
-            line-height: 1.4;
-        }
+        .type-card .type-icon  { font-size: 2.4rem; margin-bottom: 10px; }
+        .type-card .type-title { color: var(--text); font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+        .type-card .type-desc  { color: var(--muted); font-size: 0.78rem; line-height: 1.4; }
 
-        /* ── Reg Form Fields ─────────────────────────────────── */
+        /* Reg fields */
         .reg-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -482,8 +566,8 @@
         .reg-row.full { grid-template-columns: 1fr; }
         .reg-field label {
             display: block;
-            color: rgba(255,255,255,0.6);
-            font-size: 0.78rem;
+            color: rgba(200,210,255,0.55);
+            font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -491,28 +575,28 @@
         }
         .reg-field input, .reg-field select {
             width: 100%;
-            padding: 12px 14px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
+            padding: 11px 14px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 10px;
-            color: white;
-            font-size: 0.9rem;
-            font-family: inherit;
-            transition: border-color 0.2s;
-        }
-        .reg-field input::placeholder { color: rgba(255,255,255,0.3); }
-        .reg-field input:focus, .reg-field select:focus {
+            color: var(--text);
+            font-size: 0.88rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color 0.2s, background 0.2s;
             outline: none;
-            border-color: #667eea;
-            background: rgba(102, 126, 234, 0.06);
         }
-        .reg-field select option { background: #1e1b3a; color: white; }
+        .reg-field input::placeholder { color: rgba(200,210,255,0.28); }
+        .reg-field input:focus, .reg-field select:focus {
+            border-color: var(--primary1);
+            background: rgba(91, 61, 245, 0.06);
+        }
+        .reg-field select option { background: #0f1428; color: var(--text); }
 
-        /* ── Step Panels ─────────────────────────────────────── */
+        /* Step panels */
         .step-panel { display: none; }
         .step-panel.active { display: block; }
 
-        /* ── Reg Buttons ─────────────────────────────────────── */
+        /* Reg buttons */
         .reg-actions {
             display: flex;
             gap: 12px;
@@ -520,64 +604,69 @@
             margin-top: 24px;
         }
         .btn-reg {
-            padding: 12px 28px;
+            padding: 11px 26px;
             border-radius: 12px;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
             font-weight: 700;
+            font-family: 'Inter', sans-serif;
             cursor: pointer;
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.09);
             transition: all 0.2s;
         }
         .btn-reg.back {
             background: transparent;
-            color: rgba(255,255,255,0.5);
+            color: var(--muted);
         }
-        .btn-reg.back:hover { color: white; }
+        .btn-reg.back:hover { color: var(--text); }
         .btn-reg.next {
-            background: linear-gradient(135deg, #667eea, #764ba2);
+            background: linear-gradient(135deg, var(--primary1), var(--primary2));
             color: white;
             border: none;
         }
-        .btn-reg.next:hover { box-shadow: 0 4px 15px rgba(102,126,234,0.4); transform: translateY(-1px); }
+        .btn-reg.next:hover {
+            box-shadow: 0 4px 16px rgba(91,61,245,0.4);
+            transform: translateY(-1px);
+        }
         .btn-reg.next:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-        /* ── User Row (Add Users step) ───────────────────────── */
+        /* Users list */
         .users-list { margin-bottom: 16px; }
         .user-row {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 12px 14px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
+            padding: 11px 14px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
             border-radius: 12px;
             margin-bottom: 8px;
         }
         .user-row .user-info { flex: 1; }
-        .user-row .user-name { color: white; font-weight: 600; font-size: 0.9rem; }
-        .user-row .user-email { color: rgba(255,255,255,0.4); font-size: 0.78rem; }
-        .user-row .user-role {
-            font-size: 0.72rem;
+        .user-row .user-name  { color: var(--text); font-weight: 600; font-size: 0.88rem; }
+        .user-row .user-email { color: var(--muted); font-size: 0.76rem; }
+        .user-row .user-role  {
+            font-size: 0.7rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            padding: 4px 10px;
+            padding: 3px 10px;
             border-radius: 6px;
-            background: rgba(102,126,234,0.15);
+            background: rgba(91,61,245,0.15);
             color: #a3b1f0;
         }
         .user-row .btn-remove-user {
             width: 28px; height: 28px;
-            background: rgba(239,68,68,0.15);
+            background: rgba(239,68,68,0.12);
             border: none;
             border-radius: 8px;
             color: #fca5a5;
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
             display: flex; align-items: center; justify-content: center;
             transition: all 0.2s;
         }
-        .user-row .btn-remove-user:hover { background: rgba(239,68,68,0.3); }
+        .user-row .btn-remove-user:hover { background: rgba(239,68,68,0.28); }
+
         .add-user-form {
             display: grid;
             grid-template-columns: 1fr 1fr auto auto;
@@ -586,145 +675,136 @@
         }
         .add-user-form input, .add-user-form select {
             padding: 10px 12px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 10px;
-            color: white;
-            font-size: 0.85rem;
-            font-family: inherit;
-        }
-        .add-user-form input::placeholder { color: rgba(255,255,255,0.3); }
-        .add-user-form input:focus, .add-user-form select:focus {
+            color: var(--text);
+            font-size: 0.84rem;
+            font-family: 'Inter', sans-serif;
             outline: none;
-            border-color: #667eea;
         }
-        .add-user-form select option { background: #1e1b3a; color: white; }
+        .add-user-form input::placeholder { color: rgba(200,210,255,0.28); }
+        .add-user-form input:focus, .add-user-form select:focus {
+            border-color: var(--primary1);
+        }
+        .add-user-form select option { background: #0f1428; color: var(--text); }
+
         .btn-add-user {
             padding: 10px 16px;
-            background: rgba(16,185,129,0.15);
-            border: 1px solid rgba(16,185,129,0.3);
+            background: rgba(16,185,129,0.13);
+            border: 1px solid rgba(16,185,129,0.28);
             color: #6ee7b7;
             border-radius: 10px;
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: 0.84rem;
             font-weight: 700;
+            font-family: 'Inter', sans-serif;
             transition: all 0.2s;
             white-space: nowrap;
         }
-        .btn-add-user:hover { background: rgba(16,185,129,0.25); }
+        .btn-add-user:hover { background: rgba(16,185,129,0.22); }
 
         .accountant-link-notice {
-            padding: 14px 16px;
-            background: rgba(102,126,234,0.1);
-            border: 1px solid rgba(102,126,234,0.2);
+            padding: 12px 16px;
+            background: rgba(91,61,245,0.08);
+            border: 1px solid rgba(91,61,245,0.2);
             border-radius: 12px;
             color: #a3b1f0;
-            font-size: 0.85rem;
+            font-size: 0.84rem;
             margin-top: 12px;
             display: none;
         }
         .accountant-link-notice.show { display: block; }
 
-        /* ── Success screen ──────────────────────────────────── */
-        .reg-success {
-            text-align: center;
-            padding: 20px 0;
-        }
-        .reg-success .icon { font-size: 3.5rem; margin-bottom: 16px; }
-        .reg-success h3 { color: white; font-size: 1.3rem; margin-bottom: 8px; }
-        .reg-success p { color: rgba(255,255,255,0.5); margin-bottom: 24px; line-height: 1.5; }
+        /* Success */
+        .reg-success { text-align: center; padding: 20px 0; }
+        .reg-success .icon  { font-size: 3.5rem; margin-bottom: 16px; }
+        .reg-success h3     { color: var(--text); font-size: 1.3rem; margin-bottom: 8px; }
+        .reg-success p      { color: var(--muted); margin-bottom: 24px; line-height: 1.5; }
 
-        /* ── Toast ────────────────────────────────────────────── */
-        .toast {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            padding: 14px 24px;
-            background: #10b981;
-            color: white;
-            border-radius: 14px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
-            z-index: 9999;
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.3s;
-        }
-        .toast.show { transform: translateY(0); opacity: 1; }
-        .toast.error { background: #ef4444; }
-
-        @media (max-width: 500px) {
-            .type-cards { grid-template-columns: 1fr; }
-            .add-user-form { grid-template-columns: 1fr; }
-            .reg-row { grid-template-columns: 1fr; }
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 24px;
-            color: rgba(255,255,255,0.25);
-            font-size: 0.75rem;
-        }
-
-        /* Account toggle (step 2) */
+        /* Account toggle */
         .account-toggle {
             display: flex;
             gap: 0;
             margin-bottom: 20px;
             border-radius: 10px;
             overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.09);
         }
         .toggle-btn {
             flex: 1;
             padding: 10px 12px;
-            background: rgba(255,255,255,0.03);
+            background: rgba(255,255,255,0.02);
             border: none;
-            color: rgba(255,255,255,0.4);
+            color: var(--muted);
             cursor: pointer;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             font-weight: 600;
+            font-family: 'Inter', sans-serif;
             transition: all 0.2s;
         }
         .toggle-btn.active {
-            background: linear-gradient(135deg, rgba(16,185,129,0.25), rgba(59,130,246,0.25));
-            color: #fff;
+            background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(59,130,246,0.2));
+            color: var(--text);
         }
         .toggle-btn:hover:not(.active) {
-            background: rgba(255,255,255,0.06);
-            color: rgba(255,255,255,0.7);
+            background: rgba(255,255,255,0.05);
+            color: rgba(200,210,255,0.7);
         }
+
         .existing-verified {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 12px 16px;
-            background: rgba(16,185,129,0.12);
-            border: 1px solid rgba(16,185,129,0.3);
+            padding: 11px 14px;
+            background: rgba(16,185,129,0.1);
+            border: 1px solid rgba(16,185,129,0.28);
             border-radius: 8px;
             margin-top: 12px;
             color: #10b981;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
         }
         .verified-badge {
             background: #10b981;
             color: #000;
             padding: 2px 10px;
             border-radius: 20px;
-            font-size: 0.75rem;
+            font-size: 0.73rem;
             font-weight: 700;
         }
 
-        /* Responsive */
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 13px 22px;
+            background: #10b981;
+            color: white;
+            border-radius: 14px;
+            font-weight: 600;
+            font-size: 0.88rem;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            z-index: 9999;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .toast.show  { transform: translateY(0); opacity: 1; }
+        .toast.error { background: #ef4444; }
+
+        /* ── Responsive ────────────────────────────────────────────────────── */
         @media (max-width: 600px) {
-            .login-card { padding: 30px 24px; }
-            .brand h1 { font-size: 1.6rem; }
-            .app-links { grid-template-columns: 1fr; }
-            .reg-modal { width: 95vw; max-height: 90vh; }
-            .type-cards { flex-direction: column; }
-            .reg-row { flex-direction: column; }
-            .add-user-form { flex-direction: column; }
+            .login-card        { padding: 32px 24px 28px; }
+            .brand h1          { font-size: 1.55rem; }
+            .app-links         { grid-template-columns: 1fr; }
+            .reg-modal         { width: 95vw; }
+            .type-cards        { grid-template-columns: 1fr; }
+            .reg-row           { grid-template-columns: 1fr; }
+            .add-user-form     { grid-template-columns: 1fr; }
+            .bg-glow.g1        { width: 280px; height: 280px; }
+            .bg-glow.g2        { width: 250px; height: 250px; }
         }
     </style>
     <script src="js/polyfills.js"></script>
@@ -732,71 +812,165 @@
 </head>
 <body>
 
-    <div class="bg-particles">
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
-        <div class="particle"></div>
-    </div>
+    <!-- Background glows -->
+    <div class="bg-glow g1"></div>
+    <div class="bg-glow g2"></div>
+    <div class="bg-glow g3"></div>
 
-    <div class="login-container">
-        <div class="brand">
-            <div class="brand-icon">&#9670;</div>
-            <h1>Lorenco Ecosystem</h1>
-            <p>All your business tools — one login</p>
-        </div>
+    <!-- Particle canvas -->
+    <canvas id="bgCanvas"></canvas>
 
-        <div class="login-card">
-            <h2>Sign In</h2>
-            <p class="subtitle">Access your dashboard & all connected apps</p>
+    <div class="page">
+        <div class="login-container">
 
-            <div class="error-msg" id="errorMsg"></div>
-
-            <form id="loginForm" onsubmit="handleLogin(event)">
-                <div class="form-group">
-                    <label>Email / Username</label>
-                    <input type="text" id="loginId" placeholder="you@company.co.za" autocomplete="email" required autofocus>
+            <!-- Brand -->
+            <div class="brand">
+                <div class="brand-logo">
+                    <svg width="96" height="96" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <linearGradient id="bgGlow" x1="200" y1="120" x2="860" y2="880" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stop-color="#1A0D47"/>
+                          <stop offset="55%" stop-color="#0B0F3C"/>
+                          <stop offset="100%" stop-color="#05081F"/>
+                        </linearGradient>
+                        <linearGradient id="brandGradient" x1="260" y1="240" x2="770" y2="760" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stop-color="#FF6BEA"/>
+                          <stop offset="48%" stop-color="#9A7CFF"/>
+                          <stop offset="100%" stop-color="#33B8FF"/>
+                        </linearGradient>
+                        <linearGradient id="blueArc" x1="590" y1="360" x2="790" y2="700" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stop-color="#5D7FFF"/>
+                          <stop offset="100%" stop-color="#31C8FF"/>
+                        </linearGradient>
+                        <radialGradient id="centerGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 310) rotate(90) scale(420 420)">
+                          <stop offset="0%" stop-color="#4D2BFF" stop-opacity="0.22"/>
+                          <stop offset="0.55" stop-color="#1D2C9B" stop-opacity="0.14"/>
+                          <stop offset="1" stop-color="#05081F" stop-opacity="0"/>
+                        </radialGradient>
+                        <radialGradient id="pinkNodeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(90) scale(1)">
+                          <stop offset="0%" stop-color="#FFD6FF"/>
+                          <stop offset="38%" stop-color="#FF8BFB"/>
+                          <stop offset="100%" stop-color="#FF5FE8" stop-opacity="0"/>
+                        </radialGradient>
+                        <radialGradient id="blueNodeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(90) scale(1)">
+                          <stop offset="0%" stop-color="#E4FFFF"/>
+                          <stop offset="35%" stop-color="#7DE7FF"/>
+                          <stop offset="100%" stop-color="#31C8FF" stop-opacity="0"/>
+                        </radialGradient>
+                        <filter id="softBlur" x="-60%" y="-60%" width="220%" height="220%">
+                          <feGaussianBlur stdDeviation="10" result="blur"/>
+                          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                        <filter id="strongGlow" x="-100%" y="-100%" width="300%" height="300%">
+                          <feGaussianBlur stdDeviation="18" result="blur1"/>
+                          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur2"/>
+                          <feMerge><feMergeNode in="blur1"/><feMergeNode in="blur2"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                        <style>.brand-stroke{stroke:url(#brandGradient);stroke-linecap:round;stroke-linejoin:round;fill:none}.thin-glow{stroke:url(#brandGradient);stroke-linecap:round;fill:none;opacity:0.95}</style>
+                      </defs>
+                      <rect width="1024" height="1024" rx="180" fill="#05081F"/>
+                      <rect width="1024" height="1024" rx="180" fill="url(#bgGlow)"/>
+                      <circle cx="512" cy="320" r="430" fill="url(#centerGlow)"/>
+                      <g transform="translate(0 8)">
+                        <circle cx="512" cy="304" r="218" stroke="url(#brandGradient)" stroke-width="7" stroke-linecap="round" stroke-dasharray="1 18" opacity="0.92"/>
+                        <path d="M278 165C348 95,470 65,590 81C710 97,804 162,829 269C850 361,826 462,744 533C675 593,582 620,492 611C373 598,270 534,221 434C178 347,190 239,278 165Z" class="thin-glow" stroke-width="8" filter="url(#softBlur)" opacity="0.95"/>
+                        <path d="M235 442C202 366,199 281,230 210C257 148,304 108,356 91" class="thin-glow" stroke-width="16" filter="url(#strongGlow)" opacity="0.78"/>
+                        <path d="M545 168C622 166,692 194,742 248C792 303,811 376,796 445C782 510,735 567,664 594C601 618,520 616,446 602" stroke="url(#blueArc)" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.78" filter="url(#softBlur)"/>
+                        <path d="M392 180V474" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
+                        <path d="M392 180H496" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
+                        <path d="M496 180V406" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
+                        <path d="M496 406H686" class="brand-stroke" stroke-width="17" filter="url(#strongGlow)"/>
+                        <path d="M686 406C696 420,703 437,706 456C709 484,703 516,683 542" stroke="url(#blueArc)" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#strongGlow)"/>
+                        <path d="M392 474H540" class="brand-stroke" stroke-width="11" filter="url(#softBlur)" opacity="0.95"/>
+                        <path d="M540 474H607" stroke="url(#brandGradient)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.92" filter="url(#softBlur)"/>
+                        <path d="M607 474C635 474,656 496,664 522" stroke="url(#blueArc)" stroke-width="11" stroke-linecap="round" fill="none" opacity="0.95" filter="url(#softBlur)"/>
+                        <g><circle cx="392" cy="180" r="15" fill="#FFD9FF" opacity="0.95"/><circle cx="392" cy="180" r="36" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
+                        <g><circle cx="496" cy="180" r="20" fill="#FFF8FF"/><circle cx="496" cy="180" r="56" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
+                        <g><circle cx="392" cy="327" r="12" fill="#F1E8FF"/><circle cx="392" cy="327" r="22" fill="url(#pinkNodeGlow)" opacity="0.55"/></g>
+                        <g><circle cx="496" cy="327" r="12" fill="#F3F4FF"/><circle cx="496" cy="327" r="20" fill="url(#pinkNodeGlow)" opacity="0.45"/></g>
+                        <g><circle cx="392" cy="474" r="16" fill="#FFF1FF"/><circle cx="392" cy="474" r="34" fill="url(#pinkNodeGlow)" filter="url(#strongGlow)"/></g>
+                        <g><circle cx="540" cy="474" r="12" fill="#FFF1FF"/><circle cx="540" cy="474" r="20" fill="url(#pinkNodeGlow)" opacity="0.5"/></g>
+                        <g><circle cx="686" cy="406" r="22" fill="#F4FFFF"/><circle cx="686" cy="406" r="70" fill="url(#blueNodeGlow)" filter="url(#strongGlow)"/></g>
+                        <g><circle cx="708" cy="520" r="11" fill="#DFFBFF"/><circle cx="708" cy="520" r="20" fill="url(#blueNodeGlow)" opacity="0.6"/></g>
+                        <g><circle cx="706" cy="270" r="10" fill="#DDF8FF"/><circle cx="706" cy="270" r="18" fill="url(#blueNodeGlow)" opacity="0.55"/></g>
+                        <g filter="url(#softBlur)">
+                          <circle cx="286" cy="205" r="10" fill="#FF91F6"/>
+                          <circle cx="260" cy="282" r="8" fill="#B86CFF"/>
+                          <circle cx="290" cy="420" r="9" fill="#D17DFF"/>
+                          <circle cx="392" cy="112" r="8" fill="#FF97F8"/>
+                          <circle cx="590" cy="103" r="7" fill="#8F8EFF"/>
+                          <circle cx="724" cy="155" r="10" fill="#7FD0FF"/>
+                          <circle cx="787" cy="284" r="8" fill="#4AB6FF"/>
+                          <circle cx="732" cy="457" r="9" fill="#33B8FF"/>
+                        </g>
+                      </g>
+                    </svg>
                 </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" required>
-                    <span class="toggle-password" onclick="togglePassword()">&#128065;</span>
-                </div>
-
-                <div class="remember-row">
-                    <label><input type="checkbox" id="rememberMe" checked> Remember me</label>
-                </div>
-
-                <button type="submit" class="btn-login" id="btnLogin">
-                    <span class="btn-text">Sign In to Ecosystem</span>
-                    <span class="spinner"></span>
-                </button>
-            </form>
-
-            <div class="divider"><span>or login directly to</span></div>
-
-            <div class="app-links">
-                <a href="/pos" class="app-link pos">
-                    <div class="icon">&#128722;</div>
-                    <span>Checkout Charlie</span>
-                </a>
-                <a href="/payroll/login.html" class="app-link payroll">
-                    <div class="icon">&#128176;</div>
-                    <span>Lorenco Paytime</span>
-                </a>
-                <a href="/accounting" class="app-link accounting">
-                    <div class="icon">&#128200;</div>
-                    <span>Accounting</span>
-                </a>
+                <h1>Lorenco Ecosystem</h1>
+                <p>All your business tools — one login</p>
             </div>
 
-            <button type="button" class="btn-register" onclick="openRegister()">
-                Create an Account
-            </button>
-        </div>
+            <!-- Login Card -->
+            <div class="login-card">
+                <div class="card-header">
+                    <h2>Sign In</h2>
+                    <p class="subtitle">Access your dashboard &amp; all connected apps</p>
+                </div>
 
-        <div class="footer">
-            &copy; 2025 The Infinite Legacy &middot; Lorenco Ecosystem v1.0
+                <div class="error-msg" id="errorMsg"></div>
+
+                <form id="loginForm" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label>Email / Username</label>
+                        <input type="text" id="loginId" placeholder="you@company.co.za" autocomplete="email" required autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" required>
+                        <span class="toggle-password" onclick="togglePassword()">&#128065;</span>
+                    </div>
+
+                    <div class="remember-row">
+                        <label><input type="checkbox" id="rememberMe" checked> Remember me</label>
+                    </div>
+
+                    <button type="submit" class="btn-login" id="btnLogin">
+                        <span class="btn-text">Sign In to Ecosystem</span>
+                        <span class="spinner"></span>
+                    </button>
+                </form>
+
+                <div class="divider"><span>or login directly to</span></div>
+
+                <div class="app-links">
+                    <a href="/pos" class="app-link pos">
+                        <div class="icon">&#128722;</div>
+                        <span>Checkout Charlie</span>
+                    </a>
+                    <a href="/payroll/login.html" class="app-link payroll">
+                        <div class="icon">&#128176;</div>
+                        <span>Lorenco Paytime</span>
+                    </a>
+                    <a href="/accounting" class="app-link accounting">
+                        <div class="icon">&#128200;</div>
+                        <span>Accounting</span>
+                    </a>
+                </div>
+
+                <button type="button" class="btn-register" onclick="openRegister()">
+                    Create an Account
+                </button>
+
+                <!-- Sean AI badge -->
+                <div class="sean-badge">
+                    <div class="dot"></div>
+                    <span>Powered by <strong>Sean AI</strong></span>
+                </div>
+            </div>
+
+            <div class="footer">
+                &copy; 2025 The Infinite Legacy &middot; Lorenco Ecosystem
+            </div>
         </div>
     </div>
 
@@ -821,7 +995,7 @@
 
                 <!-- STEP 1: Choose Account Type -->
                 <div class="step-panel active" id="step1">
-                    <p style="color:rgba(255,255,255,0.5); margin-bottom:18px; font-size:0.9rem;">
+                    <p style="color:var(--muted); margin-bottom:18px; font-size:0.88rem;">
                         What type of account are you creating?
                     </p>
                     <div class="type-cards">
@@ -841,17 +1015,14 @@
                     </div>
                 </div>
 
-                <!-- STEP 2: Your Details (login credentials) -->
+                <!-- STEP 2: Your Details -->
                 <div class="step-panel" id="step2">
-                    <!-- Toggle: new vs existing account -->
                     <div class="account-toggle">
                         <button type="button" class="toggle-btn active" id="toggleNew" onclick="toggleAccountMode('new')">Create New Account</button>
                         <button type="button" class="toggle-btn" id="toggleExisting" onclick="toggleAccountMode('existing')">I Already Have an Account</button>
                     </div>
-
-                    <!-- NEW account fields -->
                     <div id="newAccountFields">
-                        <p style="color:rgba(255,255,255,0.5); margin-bottom:18px; font-size:0.9rem;">
+                        <p style="color:var(--muted); margin-bottom:18px; font-size:0.88rem;">
                             Create your personal login credentials.
                         </p>
                         <div class="reg-row">
@@ -875,10 +1046,8 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- EXISTING account fields -->
                     <div id="existingAccountFields" style="display:none;">
-                        <p style="color:rgba(255,255,255,0.5); margin-bottom:18px; font-size:0.9rem;">
+                        <p style="color:var(--muted); margin-bottom:18px; font-size:0.88rem;">
                             Sign in with your existing account to register a new practice or business.
                         </p>
                         <div class="reg-row">
@@ -896,7 +1065,6 @@
                             <span id="existingUserName"></span>
                         </div>
                     </div>
-
                     <div class="reg-actions">
                         <button type="button" class="btn-reg back" onclick="goToStep(1)">← Back</button>
                         <button type="button" class="btn-reg next" onclick="validateStep2()">Continue →</button>
@@ -905,9 +1073,8 @@
 
                 <!-- STEP 3: Practice / Business Details -->
                 <div class="step-panel" id="step3">
-                    <!-- Accountant Practice -->
                     <div id="step3Accountant" style="display:none;">
-                        <p style="color:rgba(255,255,255,0.5); margin-bottom:18px; font-size:0.9rem;">
+                        <p style="color:var(--muted); margin-bottom:18px; font-size:0.88rem;">
                             Enter your accounting practice details.
                         </p>
                         <div class="reg-row full">
@@ -947,10 +1114,8 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- Business Owner -->
                     <div id="step3Business" style="display:none;">
-                        <p style="color:rgba(255,255,255,0.5); margin-bottom:18px; font-size:0.9rem;">
+                        <p style="color:var(--muted); margin-bottom:18px; font-size:0.88rem;">
                             Enter your business details.
                         </p>
                         <div class="reg-row full">
@@ -990,7 +1155,6 @@
                             </div>
                         </div>
                     </div>
-
                     <div class="reg-actions">
                         <button type="button" class="btn-reg back" onclick="goToStep(2)">← Back</button>
                         <button type="button" class="btn-reg next" onclick="validateStep3()">Continue →</button>
@@ -1022,7 +1186,7 @@
                             <div class="demo-check">✓ Selected</div>
                         </div>
                     </div>
-                    <p style="color:rgba(255,255,255,0.35); font-size:0.75rem; text-align:center; margin-bottom:16px;">You can skip this step and activate demos later from your dashboard.</p>
+                    <p style="color:rgba(200,210,255,0.3); font-size:0.73rem; text-align:center; margin-bottom:16px;">You can skip this step and activate demos later from your dashboard.</p>
                     <div class="reg-actions">
                         <button type="button" class="btn-reg back" onclick="goToStep(3)">← Back</button>
                         <button type="button" class="btn-reg next" onclick="goToStep(5)">Continue →</button>
@@ -1031,15 +1195,11 @@
 
                 <!-- STEP 5: Add Users -->
                 <div class="step-panel" id="step5">
-                    <p style="color:rgba(255,255,255,0.5); margin-bottom:6px; font-size:0.9rem;" id="step5Subtitle">
+                    <p style="color:var(--muted); margin-bottom:6px; font-size:0.88rem;" id="step5Subtitle">
                         Add team members to your practice (you can also do this later).
                     </p>
-
-                    <div class="users-list" id="usersList">
-                        <!-- JS-populated -->
-                    </div>
-
-                    <p style="color:rgba(255,255,255,0.4); font-size:0.78rem; margin-bottom:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
+                    <div class="users-list" id="usersList"></div>
+                    <p style="color:rgba(200,210,255,0.38); font-size:0.74rem; margin-bottom:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
                         Add a Team Member
                     </p>
                     <div class="add-user-form" id="addUserForm">
@@ -1049,12 +1209,10 @@
                         <select id="newUserRole"></select>
                         <button type="button" class="btn-add-user" onclick="addUserToList()">+ Add</button>
                     </div>
-
                     <div class="accountant-link-notice" id="accountantLinkNotice">
                         🔗 <strong id="linkedAccountantName"></strong> already has an account.
                         This company will be added to their client list automatically.
                     </div>
-
                     <div class="reg-actions">
                         <button type="button" class="btn-reg back" onclick="goToStep(4)">← Back</button>
                         <button type="button" class="btn-reg next" id="regSubmitBtn" onclick="submitRegistration()">
@@ -1078,6 +1236,50 @@
 
     <!-- Toast -->
     <div class="toast" id="toast"></div>
+
+    <script>
+        /* ── Particle canvas background ── */
+        (function initParticles() {
+            const canvas = document.getElementById('bgCanvas');
+            const ctx    = canvas.getContext('2d');
+            let W, H, particles = [];
+
+            function resize() {
+                W = canvas.width  = window.innerWidth;
+                H = canvas.height = window.innerHeight;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            const COUNT = 55;
+            for (let i = 0; i < COUNT; i++) {
+                particles.push({
+                    x:  Math.random() * 1400,
+                    y:  Math.random() * 900,
+                    r:  Math.random() * 1.4 + 0.4,
+                    dx: (Math.random() - 0.5) * 0.22,
+                    dy: (Math.random() - 0.5) * 0.22,
+                    o:  Math.random() * 0.4 + 0.08
+                });
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, W, H);
+                particles.forEach(p => {
+                    p.x += p.dx; p.y += p.dy;
+                    if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+                    if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(168, 184, 255, ${p.o})`;
+                    ctx.fill();
+                });
+                requestAnimationFrame(draw);
+            }
+            draw();
+        })();
+    </script>
 
     <script>
         const API_BASE = window.location.origin;
@@ -1145,10 +1347,10 @@
            ═══════════════════════════════════════════════════════════════════ */
         let regState = {
             currentStep: 1,
-            accountType: null,       // 'accountant' | 'business'
-            accountMode: 'new',      // 'new' | 'existing'
-            existingUser: null,      // verified existing user data
-            users: [],               // {name, email, role, password, isLinked}
+            accountType: null,
+            accountMode: 'new',
+            existingUser: null,
+            users: [],
             linkedAccountant: null
         };
 
@@ -1165,7 +1367,6 @@
             { value: 'accountant', label: 'Accountant' }
         ];
 
-        /* ── open / close ── */
         function openRegister() {
             document.getElementById('regOverlay').classList.add('show');
             resetRegistration();
@@ -1185,7 +1386,6 @@
             document.getElementById('accountantLinkNotice').style.display = 'none';
             document.getElementById('existingVerified').style.display = 'none';
             toggleAccountMode('new');
-            // Clear inputs
             ['regFullName','regEmail','regPassword','regPasswordConfirm',
              'existingEmail','existingPassword',
              'regPracticeName','regPracticeTradingName','regPracticeRegNumber',
@@ -1197,7 +1397,6 @@
             document.getElementById('usersList').innerHTML = '';
         }
 
-        /* ── account mode toggle (step 2) ── */
         function toggleAccountMode(mode) {
             regState.accountMode = mode;
             regState.existingUser = null;
@@ -1208,7 +1407,6 @@
             document.getElementById('existingVerified').style.display = 'none';
         }
 
-        /* ── account type selection (step 1) ── */
         function selectAccountType(type) {
             regState.accountType = type;
             document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
@@ -1216,7 +1414,6 @@
             document.getElementById('step1Next').disabled = false;
         }
 
-        /* ── step navigation ── */
         function goToStep(n) {
             document.querySelectorAll('.reg-step').forEach(s => {
                 const sn = +s.dataset.step;
@@ -1241,16 +1438,12 @@
             }
         }
 
-        /* ── validation helpers ── */
         async function validateStep2() {
             if (regState.accountMode === 'existing') {
-                // Verify existing account via login
                 const email = document.getElementById('existingEmail').value.trim();
                 const pw    = document.getElementById('existingPassword').value;
-
                 if (!email) return toast('Please enter your email.', 'error');
                 if (!pw)    return toast('Please enter your password.', 'error');
-
                 try {
                     const res = await fetch(`${API_BASE}/api/auth/login`, {
                         method: 'POST',
@@ -1259,8 +1452,6 @@
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Invalid credentials');
-
-                    // Store verified user
                     regState.existingUser = {
                         id: data.user.id,
                         email: data.user.email,
@@ -1276,19 +1467,15 @@
                 }
                 return;
             }
-
-            // New account validation
             const name  = document.getElementById('regFullName').value.trim();
             const email = document.getElementById('regEmail').value.trim();
             const pw    = document.getElementById('regPassword').value;
             const pw2   = document.getElementById('regPasswordConfirm').value;
-
             if (!name)                return toast('Please enter your full name.', 'error');
             if (!email)               return toast('Please enter your email address.', 'error');
             if (!/\S+@\S+\.\S+/.test(email)) return toast('Please enter a valid email address.', 'error');
             if (pw.length < 8)        return toast('Password must be at least 8 characters.', 'error');
             if (pw !== pw2)           return toast('Passwords do not match.', 'error');
-
             goToStep(3);
         }
 
@@ -1303,7 +1490,6 @@
             goToStep(4);
         }
 
-        /* ── Demo App Selection ── */
         let selectedDemos = new Set();
 
         function toggleDemoApp(card, appKey) {
@@ -1324,27 +1510,22 @@
             });
         }
 
-        /* ── add / remove users (step 4) ── */
         function addUserToList() {
             const name     = document.getElementById('newUserName').value.trim();
             const email    = document.getElementById('newUserEmail').value.trim();
             const password = document.getElementById('newUserPassword').value;
             const role     = document.getElementById('newUserRole').value;
-
             if (!name || !email || !role) return toast('Please fill in name, email and role.', 'error');
             if (!/\S+@\S+\.\S+/.test(email)) return toast('Please enter a valid email.', 'error');
             if (password && password.length < 6) return toast('Password must be at least 6 characters.', 'error');
             if (regState.users.find(u => u.email.toLowerCase() === email.toLowerCase()))
                 return toast('This email is already added.', 'error');
-
             const user = { name, email, password, role, isLinked: false };
-
-            // If business adds someone as accountant, check if they already exist
             if (regState.accountType === 'business' && role === 'accountant') {
                 checkAccountantExists(email, name).then(exists => {
                     if (exists) {
                         user.isLinked = true;
-                        user.password = null; // existing user keeps their password
+                        user.password = null;
                         regState.linkedAccountant = { name: exists.name || name, email };
                     }
                     pushUser(user);
@@ -1375,25 +1556,23 @@
         function renderUsers() {
             const list = document.getElementById('usersList');
             if (regState.users.length === 0) {
-                list.innerHTML = '<p style="color:rgba(255,255,255,0.3); text-align:center; padding:12px; font-size:0.85rem;">No team members added yet.</p>';
+                list.innerHTML = '<p style="color:rgba(200,210,255,0.28); text-align:center; padding:12px; font-size:0.84rem;">No team members added yet.</p>';
                 return;
             }
             const roleLabels = {};
             [...accountantRoles, ...businessRoles].forEach(r => roleLabels[r.value] = r.label);
-
             list.innerHTML = regState.users.map((u, i) => `
                 <div class="user-row">
                     <div class="user-info">
-                        <strong>${u.name}</strong>
-                        <span>${u.email}</span>
+                        <div class="user-name">${u.name}</div>
+                        <div class="user-email">${u.email}</div>
                     </div>
                     <span class="user-role">${roleLabels[u.role] || u.role}${u.isLinked ? ' 🔗' : ''}</span>
-                    <button type="button" onclick="removeUser(${i})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;" title="Remove">✕</button>
+                    <button type="button" class="btn-remove-user" onclick="removeUser(${i})" title="Remove">✕</button>
                 </div>
             `).join('');
         }
 
-        /* ── check if accountant already exists ── */
         async function checkAccountantExists(email, fallbackName) {
             try {
                 const res = await fetch(`${API_BASE}/api/auth/check-accountant?email=${encodeURIComponent(email)}`);
@@ -1410,7 +1589,6 @@
             return null;
         }
 
-        /* ── submit registration ── */
         async function submitRegistration() {
             const btn = document.getElementById('regSubmitBtn');
             btn.disabled = true;
@@ -1427,12 +1605,10 @@
                 }))
             };
 
-            // Existing account mode — use verified user ID
             if (regState.accountMode === 'existing' && regState.existingUser) {
                 payload.existing_user_id = regState.existingUser.id;
                 payload.email = regState.existingUser.email;
                 payload.full_name = regState.existingUser.full_name;
-                // No password needed — existing user already authenticated
             } else {
                 payload.full_name = document.getElementById('regFullName').value.trim();
                 payload.email = document.getElementById('regEmail').value.trim();
@@ -1442,7 +1618,6 @@
 
             console.log('[REG] Submitting payload:', JSON.stringify({...payload, password: payload.password ? '***' : undefined}));
 
-            // Attach practice or business details
             if (regState.accountType === 'accountant') {
                 payload.practice = {
                     name:            document.getElementById('regPracticeName').value.trim(),
@@ -1478,7 +1653,6 @@
                     ? payload.practice.name
                     : payload.business.name;
 
-                // Save selected demos with activation timestamp
                 if (selectedDemos.size > 0) {
                     const now = new Date().toISOString();
                     const demos = {};
@@ -1503,7 +1677,6 @@
             }
         }
 
-        /* ── fill login from registration ── */
         function fillLoginFromReg() {
             const email = regState.accountMode === 'existing'
                 ? (regState.existingUser ? regState.existingUser.email : '')
@@ -1511,7 +1684,6 @@
             if (email) document.getElementById('loginId').value = email;
         }
 
-        /* ── toast helper ── */
         function toast(msg, type = 'info') {
             const el = document.getElementById('toast');
             el.textContent = msg;
