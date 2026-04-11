@@ -1161,6 +1161,20 @@
         // ========== EDIT INFO SUB-TABS ==========
         var _editSubLoaded = {};
 
+        // Helper: get the auth token the same way the rest of this page does
+        function _getAuthToken() {
+            // Token is stored separately under 'token' key, not inside the session object
+            return safeLocalStorage.getItem('token') || '';
+        }
+
+        function _authHeaders() {
+            return {
+                'Authorization': 'Bearer ' + _getAuthToken(),
+                'x-company-id': String(currentCompanyId),
+                'Content-Type': 'application/json'
+            };
+        }
+
         function switchEditSub(name) {
             document.querySelectorAll('.edit-subtab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.edit-subtab-panel').forEach(p => p.style.display = 'none');
@@ -1178,9 +1192,8 @@
         // ── CLASSIFICATION ──────────────────────────────────────────────────
         async function loadClassification() {
             try {
-                var token = AUTH.getToken ? AUTH.getToken() : (AUTH.getSession ? AUTH.getSession().token : null);
                 var r = await fetch('/api/payroll/employees/' + currentEmpId + '/classification', {
-                    headers: { 'Authorization': 'Bearer ' + token, 'x-company-id': currentCompanyId }
+                    headers: _authHeaders()
                 });
                 if (!r.ok) throw new Error(await r.text());
                 var d = (await r.json()).classification;
@@ -1197,14 +1210,9 @@
             var msg = document.getElementById('clfMsg');
             msg.style.display = 'none';
             try {
-                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
                 var r = await fetch('/api/payroll/employees/' + currentEmpId + '/classification', {
                     method: 'PUT',
-                    headers: {
-                        'Authorization': 'Bearer ' + token,
-                        'x-company-id': currentCompanyId,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: _authHeaders(),
                     body: JSON.stringify({
                         is_director:     document.getElementById('clf_director').checked,
                         is_contractor:   document.getElementById('clf_contractor').checked,
@@ -1313,9 +1321,8 @@
 
         async function loadWorkSchedule() {
             try {
-                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
                 var r = await fetch('/api/payroll/employees/' + currentEmpId + '/work-schedule', {
-                    headers: { 'Authorization': 'Bearer ' + token, 'x-company-id': currentCompanyId }
+                    headers: _authHeaders()
                 });
                 if (!r.ok) throw new Error(await r.text());
                 var ws = (await r.json()).work_schedule;
@@ -1337,14 +1344,9 @@
             var msg = document.getElementById('hrsMsg');
             msg.style.display = 'none';
             try {
-                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
                 var r = await fetch('/api/payroll/employees/' + currentEmpId + '/work-schedule', {
                     method: 'PUT',
-                    headers: {
-                        'Authorization': 'Bearer ' + token,
-                        'x-company-id': currentCompanyId,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: _authHeaders(),
                     body: JSON.stringify({
                         is_hourly_paid:  document.getElementById('hrs_hourly_paid').checked,
                         hours_per_day:   parseFloat(document.getElementById('hrs_hours_per_day').value) || 8,
@@ -1419,9 +1421,8 @@
 
         async function loadETI() {
             try {
-                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
                 var r = await fetch('/api/payroll/employees/' + currentEmpId + '/eti', {
-                    headers: { 'Authorization': 'Bearer ' + token, 'x-company-id': currentCompanyId }
+                    headers: _authHeaders()
                 });
                 if (!r.ok) throw new Error(await r.text());
                 var eti = (await r.json()).eti;
@@ -1444,14 +1445,9 @@
             var msg = document.getElementById('etiMsg');
             msg.style.display = 'none';
             try {
-                var token = AUTH.getToken ? AUTH.getToken() : AUTH.getSession().token;
                 var r = await fetch('/api/payroll/employees/' + currentEmpId + '/eti', {
                     method: 'PUT',
-                    headers: {
-                        'Authorization': 'Bearer ' + token,
-                        'x-company-id': currentCompanyId,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: _authHeaders(),
                     body: JSON.stringify({
                         status:                     document.getElementById('eti_status').value,
                         min_wage_input_type:        document.getElementById('eti_min_wage_type').value,
