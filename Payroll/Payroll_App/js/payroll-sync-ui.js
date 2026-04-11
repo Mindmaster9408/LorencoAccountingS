@@ -44,6 +44,7 @@
     init: function(options) {
       const opts = options || {};
       this.companyId = opts.companyId;
+      this.containerId = opts.containerId || null; // Stored so showSyncBanner can access it
       this.onSyncComplete = opts.onSyncComplete || (() => { location.reload(); });
       this.onError = opts.onError || console.error;
 
@@ -114,7 +115,7 @@
       `;
 
       // Insert into page (if container exists, use it; otherwise prepend to main content)
-      const container = document.getElementById(opts.containerId || 'sync-container')
+      const container = document.getElementById(this.containerId || 'sync-container')
         || document.querySelector('.main-content')
         || document.querySelector('.content')
         || document.body;

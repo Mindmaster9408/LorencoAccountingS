@@ -337,8 +337,8 @@
             </div>
 
             <div class="top-tabs">
-                <button class="top-tab active" onclick="switchTopTab('payslips')">📄 Payslips</button>
-                <button class="top-tab" onclick="switchTopTab('payruns')">💰 Payroll Runs</button>
+                <button class="top-tab active" onclick="switchTopTab('payslips', this)">📄 Payslips</button>
+                <button class="top-tab" onclick="switchTopTab('payruns', this)">💰 Payroll Runs</button>
             </div>
 
             <!-- PAYSLIPS TAB -->
@@ -570,6 +570,16 @@
             loadEmployees();
             loadPayruns();
             Permissions.enforceUI();
+            // Restore the tab the user was on before navigating away
+            try {
+                var savedTab = sessionStorage.getItem('payruns_active_tab');
+                if (savedTab && savedTab !== 'payslips') {
+                    // Delay slightly so DOM is ready
+                    setTimeout(function() {
+                        switchTopTab(savedTab, null);
+                    }, 0);
+                }
+            } catch(e) {}
         });
 
         // ========== SIDEBAR ==========
@@ -621,11 +631,25 @@
         }
 
         // ========== TOP TABS ==========
-        function switchTopTab(tab) {
+        // btn = `this` from the onclick attribute — always the button element itself,
+        // even when the user clicks the emoji text inside it. Never use event.target here.
+        function switchTopTab(tab, btn) {
             document.querySelectorAll('.top-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
-            event.target.classList.add('active');
+            if (btn) {
+                btn.classList.add('active');
+            } else {
+                // Fallback when called programmatically without a button reference
+                var allTabs = document.querySelectorAll('.top-tab');
+                var tabIndex = tab === 'payslips' ? 0 : 1;
+                if (allTabs[tabIndex]) allTabs[tabIndex].classList.add('active');
+            }
             document.getElementById(tab + '-view').classList.add('active');
+            // Persist so the same tab is restored when the user navigates back
+            try { sessionStorage.setItem('payruns_active_tab', tab); } catch(e) {}
+            // Refresh data on each tab switch to ensure fresh state
+            if (tab === 'payslips') loadEmployees();
+            if (tab === 'payruns')  loadPayruns();
         }
 
         // ========== PAYSLIPS TAB ==========

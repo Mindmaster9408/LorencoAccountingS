@@ -303,11 +303,11 @@
 
         <!-- TABS -->
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('payroll')">💰 Payroll</button>
-            <button class="tab" onclick="switchTab('edit')">✏️ Edit Info</button>
-            <button class="tab" onclick="switchTab('leave')">🏖️ Leave</button>
-            <button class="tab" onclick="switchTab('attendance')">⏰ Attendance</button>
-            <button class="tab" onclick="switchTab('notes')">📝 Notes</button>
+            <button class="tab active" onclick="switchTab('payroll', this)">💰 Payroll</button>
+            <button class="tab" onclick="switchTab('edit', this)">✏️ Edit Info</button>
+            <button class="tab" onclick="switchTab('leave', this)">🏖️ Leave</button>
+            <button class="tab" onclick="switchTab('attendance', this)">⏰ Attendance</button>
+            <button class="tab" onclick="switchTab('notes', this)">📝 Notes</button>
         </div>
 
         <!-- ==================== PAYROLL TAB ==================== -->
@@ -915,10 +915,19 @@
         }
 
         // ========== TAB SWITCHING ==========
-        function switchTab(tab) {
+        // btn = `this` from the onclick attribute — always the button element, never event.target
+        function switchTab(tab, btn) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            event.target.classList.add('active');
+            if (btn) {
+                btn.classList.add('active');
+            } else {
+                // Fallback: activate by tab name
+                var allTabs = document.querySelectorAll('.tab');
+                var names = ['payroll', 'edit', 'leave', 'attendance', 'notes'];
+                var idx = names.indexOf(tab);
+                if (idx >= 0 && allTabs[idx]) allTabs[idx].classList.add('active');
+            }
             document.getElementById(tab + '-tab').classList.add('active');
             if (tab === 'attendance') loadEmployeeAttendance();
         }
@@ -1531,7 +1540,7 @@
 
         // ========== TOGGLE ==========
         function toggleAdditionalHours() { document.getElementById('additionalHoursSection').style.display = document.getElementById('showAdditionalHours').checked ? 'block' : 'none'; }
-        function toggleSection(el) { if (event.target.tagName === 'BUTTON') return; el.classList.toggle('expanded'); }
+        function toggleSection(el, evt) { if (evt && evt.target && evt.target.tagName === 'BUTTON') return; el.classList.toggle('expanded'); }
 
         // ========== CALCULATE PAYSLIP ==========
         function calculatePayslip() {
