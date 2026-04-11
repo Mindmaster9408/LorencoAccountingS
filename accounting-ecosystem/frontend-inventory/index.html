@@ -1,742 +1,1551 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Lorenco Storehouse — Inventory</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-            --bg: #0a0e1a;
-            --surface: rgba(255,255,255,0.05);
-            --surface-hover: rgba(255,255,255,0.09);
-            --border: rgba(255,255,255,0.08);
-            --text: #f0f4ff;
-            --text-muted: rgba(240,244,255,0.5);
-            --accent: #22d3ee;
-            --accent-glow: rgba(34,211,238,0.25);
-            --danger: #f43f5e;
-            --success: #10b981;
-            --warning: #f59e0b;
-        }
-        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg,#0a0e1a 0%,#0d1b2a 50%,#0a1628 100%); min-height: 100vh; color: var(--text); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lorenco Storehouse — Inventory & MRP</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0e1a;
+  --surface: rgba(255,255,255,0.05);
+  --surface-hover: rgba(255,255,255,0.09);
+  --border: rgba(255,255,255,0.08);
+  --text: #f0f4ff;
+  --text-muted: rgba(240,244,255,0.5);
+  --accent: #22d3ee;
+  --accent-glow: rgba(34,211,238,0.25);
+  --danger: #f43f5e;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --purple: #a78bfa;
+}
+body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg,#0a0e1a 0%,#0d1b2a 50%,#0a1628 100%); min-height: 100vh; color: var(--text); }
 
-        /* ── Topbar ── */
-        .topbar { background: rgba(0,0,0,0.4); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 58px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
-        .topbar-left { display: flex; align-items: center; gap: 12px; }
-        .app-icon { width: 34px; height: 34px; background: linear-gradient(135deg,#22d3ee,#0891b2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
-        .app-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.3px; }
-        .app-subtitle { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
-        .topbar-right { display: flex; align-items: center; gap: 12px; }
-        .company-badge { padding: 5px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; font-size: 0.78rem; color: var(--text-muted); }
-        .btn-back { padding: 7px 14px; background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.25); color: var(--accent); border-radius: 9px; cursor: pointer; font-size: 0.78rem; font-weight: 600; text-decoration: none; transition: all 0.2s; }
-        .btn-back:hover { background: rgba(34,211,238,0.2); }
+/* ── Topbar ── */
+.topbar { background: rgba(0,0,0,0.4); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 58px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.app-icon { width: 34px; height: 34px; background: linear-gradient(135deg,#22d3ee,#0891b2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.app-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.3px; }
+.app-subtitle { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.company-badge { padding: 5px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; font-size: 0.78rem; color: var(--text-muted); }
+.btn-back { padding: 7px 14px; background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.25); color: var(--accent); border-radius: 9px; cursor: pointer; font-size: 0.78rem; font-weight: 600; text-decoration: none; transition: all 0.2s; }
+.btn-back:hover { background: rgba(34,211,238,0.2); }
 
-        /* ── Nav Tabs ── */
-        .nav-tabs { display: flex; gap: 4px; padding: 12px 24px 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
-        .nav-tab { padding: 10px 18px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; }
-        .nav-tab:hover { color: var(--text); }
-        .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* ── Nav Tabs ── */
+.nav-tabs { display: flex; gap: 4px; padding: 12px 24px 0; border-bottom: 1px solid var(--border); overflow-x: auto; background: rgba(0,0,0,0.2); }
+.nav-tab { padding: 10px 18px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; }
+.nav-tab:hover { color: var(--text); }
+.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.nav-tab.manufacturing { color: var(--text-muted); }
+.nav-tab.manufacturing.active { color: var(--purple); border-bottom-color: var(--purple); }
+.tab-sep { width: 1px; background: var(--border); margin: 8px 4px; align-self: stretch; }
 
-        /* ── Main ── */
-        .main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
+/* ── Main ── */
+.main { max-width: 1360px; margin: 0 auto; padding: 28px 24px; }
 
-        /* ── Stats ── */
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 14px; margin-bottom: 28px; }
-        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
-        .stat-value { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
-        .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .stat-card.danger .stat-value { color: var(--danger); }
-        .stat-card.success .stat-value { color: var(--success); }
-        .stat-card.warning .stat-value { color: var(--warning); }
+/* ── Stats ── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px,1fr)); gap: 14px; margin-bottom: 28px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; cursor: pointer; transition: all 0.2s; }
+.stat-card:hover { background: var(--surface-hover); border-color: rgba(255,255,255,0.15); }
+.stat-value { font-size: 1.9rem; font-weight: 800; color: var(--accent); }
+.stat-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-card.danger .stat-value { color: var(--danger); }
+.stat-card.success .stat-value { color: var(--success); }
+.stat-card.warning .stat-value { color: var(--warning); }
+.stat-card.purple .stat-value { color: var(--purple); }
 
-        /* ── Section ── */
-        .section { display: none; }
-        .section.active { display: block; }
-        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
-        .section-title { font-size: 1.1rem; font-weight: 700; }
+/* ── Section ── */
+.section { display: none; }
+.section.active { display: block; }
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
+.section-title { font-size: 1.1rem; font-weight: 700; }
 
-        /* ── Search bar ── */
-        .search-bar { display: flex; gap: 10px; flex-wrap: wrap; }
-        .search-input { padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; width: 240px; }
-        .search-input:focus { outline: none; border-color: var(--accent); }
-        .filter-select { padding: 9px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; }
+/* ── Toolbar ── */
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.search-input { padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; width: 230px; }
+.search-input:focus { outline: none; border-color: var(--accent); }
+.filter-select { padding: 9px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; }
 
-        /* ── Buttons ── */
-        .btn { padding: 9px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; }
-        .btn-primary { background: linear-gradient(135deg,var(--accent),#0891b2); color: #000; }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px var(--accent-glow); }
-        .btn-ghost { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
-        .btn-ghost:hover { background: var(--surface-hover); }
-        .btn-danger { background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.3); color: #fda4af; }
-        .btn-danger:hover { background: rgba(244,63,94,0.25); }
-        .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+/* ── Buttons ── */
+.btn { padding: 9px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; }
+.btn-primary { background: linear-gradient(135deg,var(--accent),#0891b2); color: #000; }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px var(--accent-glow); }
+.btn-purple { background: linear-gradient(135deg,#a78bfa,#7c3aed); color: #fff; }
+.btn-purple:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(167,139,250,0.35); }
+.btn-ghost { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.btn-ghost:hover { background: var(--surface-hover); }
+.btn-danger { background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.3); color: #fda4af; }
+.btn-danger:hover { background: rgba(244,63,94,0.25); }
+.btn-success { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: #6ee7b7; }
+.btn-success:hover { background: rgba(16,185,129,0.25); }
+.btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+.btn-xs { padding: 3px 9px; font-size: 0.72rem; border-radius: 7px; }
 
-        /* ── Table ── */
-        .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
-        table { width: 100%; border-collapse: collapse; }
-        th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
-        td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.85rem; vertical-align: middle; }
-        tr:last-child td { border-bottom: none; }
-        tr:hover td { background: rgba(255,255,255,0.02); }
-        .td-actions { display: flex; gap: 6px; }
+/* ── Table ── */
+.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 11px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.85rem; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+.td-actions { display: flex; gap: 6px; align-items: center; }
 
-        /* ── Badges ── */
-        .badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
-        .badge-success { background: rgba(16,185,129,0.15); color: #6ee7b7; }
-        .badge-warning { background: rgba(245,158,11,0.15); color: #fbbf24; }
-        .badge-danger { background: rgba(244,63,94,0.15); color: #fda4af; }
-        .badge-info { background: rgba(34,211,238,0.15); color: var(--accent); }
-        .badge-neutral { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+/* ── Badges ── */
+.badge { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; }
+.badge-success { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+.badge-warning { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.badge-danger { background: rgba(244,63,94,0.15); color: #fda4af; }
+.badge-info { background: rgba(34,211,238,0.15); color: var(--accent); }
+.badge-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
+.badge-neutral { background: rgba(255,255,255,0.08); color: var(--text-muted); }
 
-        /* ── Modal ── */
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(10,14,26,0.85); backdrop-filter: blur(6px); z-index: 500; align-items: center; justify-content: center; padding: 20px; }
-        .modal-overlay.show { display: flex; }
-        .modal { background: #0d1b2a; border: 1px solid var(--border); border-radius: 20px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
-        .modal-header { padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center; }
-        .modal-header h3 { font-size: 1.1rem; font-weight: 700; }
-        .modal-close { width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; }
-        .modal-close:hover { background: rgba(244,63,94,0.2); color: #fda4af; }
-        .modal-body { padding: 20px 24px 24px; }
+/* ── Modal ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(10,14,26,0.85); backdrop-filter: blur(6px); z-index: 500; align-items: center; justify-content: center; padding: 20px; }
+.modal-overlay.show { display: flex; }
+.modal { background: #0d1b2a; border: 1px solid var(--border); border-radius: 20px; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+.modal-lg { max-width: 720px; }
+.modal-xl { max-width: 900px; }
+.modal-header { padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #0d1b2a; padding-bottom: 16px; border-bottom: 1px solid var(--border); z-index: 1; }
+.modal-header h3 { font-size: 1.1rem; font-weight: 700; }
+.modal-close { width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; }
+.modal-close:hover { background: rgba(244,63,94,0.2); color: #fda4af; }
+.modal-body { padding: 20px 24px 24px; }
 
-        /* ── Form ── */
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        .form-grid.full { grid-template-columns: 1fr; }
-        .form-field { display: flex; flex-direction: column; gap: 5px; }
-        .form-field label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-        .form-field input, .form-field select, .form-field textarea { padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 0.88rem; font-family: inherit; }
-        .form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; border-color: var(--accent); }
-        .form-field textarea { resize: vertical; min-height: 60px; }
-        .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+/* ── Form ── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid.cols3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-grid.full { grid-template-columns: 1fr; }
+.form-field { display: flex; flex-direction: column; gap: 5px; }
+.form-field label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.form-field input, .form-field select, .form-field textarea { padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 0.88rem; font-family: inherit; }
+.form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; border-color: var(--accent); }
+.form-field textarea { resize: vertical; min-height: 60px; }
+.form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.form-section { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.form-section-title { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
+.checkbox-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
 
-        /* ── Low stock highlight ── */
-        .low-stock { color: var(--danger); font-weight: 700; }
+/* ── BOM Lines Editor ── */
+.bom-lines-header { display: grid; grid-template-columns: 1fr 120px 90px 90px 32px; gap: 8px; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; padding: 8px 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.bom-line-row { display: grid; grid-template-columns: 1fr 120px 90px 90px 32px; gap: 8px; align-items: center; margin-bottom: 6px; }
+.bom-line-row input, .bom-line-row select { padding: 7px 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.82rem; width: 100%; }
+.bom-line-row input:focus, .bom-line-row select:focus { outline: none; border-color: var(--accent); }
+.bom-line-remove { width: 28px; height: 28px; background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.25); color: #fda4af; border-radius: 7px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }
+.bom-line-remove:hover { background: rgba(244,63,94,0.25); }
 
-        /* ── Empty state ── */
-        .empty { text-align: center; padding: 48px; color: var(--text-muted); }
-        .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+/* ── WO Materials Table (read-only) ── */
+.materials-grid { display: grid; grid-template-columns: 1fr 100px 100px 100px; gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 0.82rem; }
+.materials-grid-header, .materials-grid-row { display: contents; }
+.materials-grid-header > div { background: rgba(255,255,255,0.06); padding: 8px 12px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.materials-grid-row > div { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.materials-grid-row:last-child > div { border-bottom: none; }
 
-        /* ── Toast ── */
-        .toast { position: fixed; bottom: 28px; right: 28px; padding: 13px 22px; background: var(--success); color: #fff; border-radius: 12px; font-weight: 600; font-size: 0.88rem; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 9999; transform: translateY(80px); opacity: 0; transition: all 0.3s; }
-        .toast.show { transform: translateY(0); opacity: 1; }
-        .toast.error { background: var(--danger); }
+/* ── Status timeline (WO detail) ── */
+.status-timeline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+.timeline-step { padding: 5px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; border: 1px solid var(--border); color: var(--text-muted); }
+.timeline-step.done { background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.3); color: #6ee7b7; }
+.timeline-step.active { background: rgba(34,211,238,0.15); border-color: rgba(34,211,238,0.3); color: var(--accent); }
+.timeline-sep { color: var(--text-muted); font-size: 0.7rem; }
 
-        @media(max-width:768px) { .form-grid { grid-template-columns: 1fr; } .main { padding: 16px; } }
-    </style>
+/* ── Quick action button strip ── */
+.action-strip { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+
+/* ── Info rows ── */
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.detail-grid.cols3 { grid-template-columns: 1fr 1fr 1fr; }
+.detail-row { background: rgba(255,255,255,0.04); border-radius: 10px; padding: 12px 14px; }
+.detail-row .label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; margin-bottom: 4px; }
+.detail-row .value { font-size: 0.92rem; font-weight: 600; }
+
+/* ── Low stock highlight ── */
+.low-stock { color: var(--danger); font-weight: 700; }
+
+/* ── Empty state ── */
+.empty { text-align: center; padding: 48px; color: var(--text-muted); }
+.empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+/* ── Toast ── */
+.toast { position: fixed; bottom: 28px; right: 28px; padding: 13px 22px; background: var(--success); color: #fff; border-radius: 12px; font-weight: 600; font-size: 0.88rem; box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 9999; transform: translateY(80px); opacity: 0; transition: all 0.3s; pointer-events: none; }
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.error { background: var(--danger); }
+
+/* ── Dashboard quick links ── */
+.quick-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 12px; margin-top: 24px; }
+.quick-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 14px; }
+.quick-card:hover { background: var(--surface-hover); border-color: var(--accent); transform: translateY(-2px); }
+.quick-card.manufacturing:hover { border-color: var(--purple); }
+.quick-card-icon { font-size: 1.6rem; }
+.quick-card-label { font-size: 0.9rem; font-weight: 700; }
+.quick-card-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+
+@media(max-width:768px) { .form-grid { grid-template-columns: 1fr; } .form-grid.cols3 { grid-template-columns: 1fr; } .main { padding: 16px; } .bom-line-row { grid-template-columns: 1fr 80px 70px 70px 32px; } }
+</style>
 </head>
 <body>
 
 <!-- Topbar -->
 <div class="topbar">
-    <div class="topbar-left">
-        <div class="app-icon">📦</div>
-        <div>
-            <div class="app-title">Lorenco Storehouse</div>
-            <div class="app-subtitle">Inventory Management</div>
-        </div>
+  <div class="topbar-left">
+    <div class="app-icon">📦</div>
+    <div>
+      <div class="app-title">Lorenco Storehouse</div>
+      <div class="app-subtitle">Inventory & MRP</div>
     </div>
-    <div class="topbar-right">
-        <span class="company-badge" id="companyBadge">Loading...</span>
-        <a href="/dashboard" class="btn-back">← ECO Hub</a>
-    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="company-badge" id="companyBadge">Loading...</span>
+    <a href="/dashboard" class="btn-back">← ECO Hub</a>
+  </div>
 </div>
 
 <!-- Nav Tabs -->
 <div class="nav-tabs">
-    <div class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</div>
-    <div class="nav-tab" onclick="switchTab('items')">Stock Items</div>
-    <div class="nav-tab" onclick="switchTab('movements')">Movements</div>
-    <div class="nav-tab" onclick="switchTab('warehouses')">Warehouses</div>
-    <div class="nav-tab" onclick="switchTab('suppliers')">Suppliers</div>
-    <div class="nav-tab" onclick="switchTab('orders')">Purchase Orders</div>
+  <div class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</div>
+  <div class="nav-tab" onclick="switchTab('items')">Items</div>
+  <div class="nav-tab" onclick="switchTab('movements')">Movements</div>
+  <div class="nav-tab" onclick="switchTab('warehouses')">Locations</div>
+  <div class="nav-tab" onclick="switchTab('suppliers')">Suppliers</div>
+  <div class="nav-tab" onclick="switchTab('orders')">Purchase Orders</div>
+  <div class="tab-sep"></div>
+  <div class="nav-tab manufacturing" onclick="switchTab('boms')">📋 BOMs</div>
+  <div class="nav-tab manufacturing" onclick="switchTab('workorders')">⚙️ Work Orders</div>
 </div>
 
 <div class="main">
 
-    <!-- ── DASHBOARD ── -->
-    <div class="section active" id="tab-dashboard">
-        <div class="stats-grid">
-            <div class="stat-card"><div class="stat-value" id="statItems">–</div><div class="stat-label">Stock Items</div></div>
-            <div class="stat-card warning"><div class="stat-value" id="statLowStock">–</div><div class="stat-label">Low Stock</div></div>
-            <div class="stat-card success"><div class="stat-value" id="statSuppliers">–</div><div class="stat-label">Suppliers</div></div>
-            <div class="stat-card"><div class="stat-value" id="statMovements">–</div><div class="stat-label">Movements</div></div>
-        </div>
-        <div style="color:var(--text-muted); font-size:0.88rem;">Select a tab above to manage your inventory.</div>
-    </div>
-
-    <!-- ── STOCK ITEMS ── -->
-    <div class="section" id="tab-items">
-        <div class="section-header">
-            <div class="section-title">Stock Items</div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                <input class="search-input" id="itemSearch" placeholder="Search name or SKU..." oninput="filterItems()">
-                <select class="filter-select" id="itemFilterWarehouse" onchange="filterItems()"><option value="">All Warehouses</option></select>
-                <button class="btn btn-ghost btn-sm" onclick="loadItems(true)">🔄 Refresh</button>
-                <button class="btn btn-primary" onclick="openItemModal()">+ Add Item</button>
-            </div>
-        </div>
-        <div class="table-wrap" id="itemsTable"><div class="empty"><div class="empty-icon">📦</div><p>Loading...</p></div></div>
-    </div>
-
-    <!-- ── MOVEMENTS ── -->
-    <div class="section" id="tab-movements">
-        <div class="section-header">
-            <div class="section-title">Stock Movements</div>
-            <div style="display:flex;gap:10px;">
-                <select class="filter-select" id="movTypeFilter" onchange="loadMovements()">
-                    <option value="">All Types</option>
-                    <option value="in">Stock In</option>
-                    <option value="out">Stock Out</option>
-                    <option value="adjustment">Adjustment</option>
-                    <option value="transfer">Transfer</option>
-                    <option value="return">Return</option>
-                </select>
-                <button class="btn btn-primary" onclick="openMovementModal()">+ Record Movement</button>
-            </div>
-        </div>
-        <div class="table-wrap" id="movementsTable"><div class="empty"><div class="empty-icon">🔄</div><p>Loading...</p></div></div>
-    </div>
-
-    <!-- ── WAREHOUSES ── -->
-    <div class="section" id="tab-warehouses">
-        <div class="section-header">
-            <div class="section-title">Warehouses & Locations</div>
-            <button class="btn btn-primary" onclick="openWarehouseModal()">+ Add Warehouse</button>
-        </div>
-        <div class="table-wrap" id="warehousesTable"><div class="empty"><div class="empty-icon">🏭</div><p>Loading...</p></div></div>
-    </div>
-
-    <!-- ── SUPPLIERS ── -->
-    <div class="section" id="tab-suppliers">
-        <div class="section-header">
-            <div class="section-title">Suppliers</div>
-            <button class="btn btn-primary" onclick="openSupplierModal()">+ Add Supplier</button>
-        </div>
-        <div class="table-wrap" id="suppliersTable"><div class="empty"><div class="empty-icon">🚚</div><p>Loading...</p></div></div>
-    </div>
-
-    <!-- ── PURCHASE ORDERS ── -->
-    <div class="section" id="tab-orders">
-        <div class="section-header">
-            <div class="section-title">Purchase Orders</div>
-            <select class="filter-select" id="poStatusFilter" onchange="loadOrders()">
-                <option value="">All Statuses</option>
-                <option value="draft">Draft</option>
-                <option value="sent">Sent</option>
-                <option value="received">Received</option>
-                <option value="cancelled">Cancelled</option>
-            </select>
-        </div>
-        <div class="table-wrap" id="ordersTable"><div class="empty"><div class="empty-icon">🛒</div><p>Loading...</p></div></div>
-    </div>
-
+<!-- ══════════════════════════════════════════════════════════
+     DASHBOARD
+══════════════════════════════════════════════════════════ -->
+<div class="section active" id="tab-dashboard">
+  <div class="stats-grid">
+    <div class="stat-card" onclick="switchTab('items')"><div class="stat-value" id="statItems">–</div><div class="stat-label">Stock Items</div></div>
+    <div class="stat-card danger" onclick="switchTab('items')"><div class="stat-value" id="statLowStock">–</div><div class="stat-label">Low Stock</div></div>
+    <div class="stat-card success" onclick="switchTab('suppliers')"><div class="stat-value" id="statSuppliers">–</div><div class="stat-label">Suppliers</div></div>
+    <div class="stat-card" onclick="switchTab('movements')"><div class="stat-value" id="statMovements">–</div><div class="stat-label">Movements</div></div>
+    <div class="stat-card warning" onclick="switchTab('workorders')"><div class="stat-value" id="statOpenWOs">–</div><div class="stat-label">Open Work Orders</div></div>
+    <div class="stat-card purple" onclick="switchTab('boms')"><div class="stat-value" id="statBOMs">–</div><div class="stat-label">Active BOMs</div></div>
+  </div>
+  <div class="quick-links">
+    <div class="quick-card" onclick="switchTab('items'); openItemModal()"><div class="quick-card-icon">➕</div><div><div class="quick-card-label">Add Stock Item</div><div class="quick-card-sub">Create a new inventory item</div></div></div>
+    <div class="quick-card" onclick="switchTab('movements'); openMovementModal()"><div class="quick-card-icon">📥</div><div><div class="quick-card-label">Record Movement</div><div class="quick-card-sub">Stock in, out, adjustment</div></div></div>
+    <div class="quick-card manufacturing" onclick="switchTab('boms'); openBomModal()"><div class="quick-card-icon">📋</div><div><div class="quick-card-label">Create BOM</div><div class="quick-card-sub">Define product recipe</div></div></div>
+    <div class="quick-card manufacturing" onclick="switchTab('workorders'); openWoModal()"><div class="quick-card-icon">⚙️</div><div><div class="quick-card-label">New Work Order</div><div class="quick-card-sub">Start a production run</div></div></div>
+  </div>
 </div>
 
-<!-- ══ ITEM MODAL ══ -->
+<!-- ══════════════════════════════════════════════════════════
+     STOCK ITEMS
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-items">
+  <div class="section-header">
+    <div class="section-title">Stock Items</div>
+    <div class="toolbar">
+      <input class="search-input" id="itemSearch" placeholder="Search name or SKU…" oninput="filterItems()">
+      <select class="filter-select" id="itemTypeFilter" onchange="filterItems()">
+        <option value="">All Types</option>
+        <option value="raw_material">Raw Material</option>
+        <option value="finished_good">Finished Good</option>
+        <option value="sub_assembly">Sub-Assembly</option>
+        <option value="consumable">Consumable</option>
+        <option value="service">Service</option>
+      </select>
+      <select class="filter-select" id="itemFilterWarehouse" onchange="filterItems()"><option value="">All Locations</option></select>
+      <button class="btn btn-ghost btn-sm" onclick="loadItems(true)">↺ Refresh</button>
+      <button class="btn btn-primary" onclick="openItemModal()">+ Add Item</button>
+    </div>
+  </div>
+  <div class="table-wrap" id="itemsTable"><div class="empty"><div class="empty-icon">📦</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MOVEMENTS
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-movements">
+  <div class="section-header">
+    <div class="section-title">Stock Movements</div>
+    <div class="toolbar">
+      <select class="filter-select" id="movTypeFilter" onchange="loadMovements()">
+        <option value="">All Types</option>
+        <option value="in">Stock In</option>
+        <option value="out">Stock Out</option>
+        <option value="adjustment">Adjustment</option>
+        <option value="transfer">Transfer</option>
+        <option value="return">Return</option>
+      </select>
+      <button class="btn btn-primary" onclick="openMovementModal()">+ Record Movement</button>
+    </div>
+  </div>
+  <div class="table-wrap" id="movementsTable"><div class="empty"><div class="empty-icon">🔄</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     WAREHOUSES / LOCATIONS
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-warehouses">
+  <div class="section-header">
+    <div class="section-title">Warehouses & Locations</div>
+    <button class="btn btn-primary" onclick="openWarehouseModal()">+ Add Location</button>
+  </div>
+  <div class="table-wrap" id="warehousesTable"><div class="empty"><div class="empty-icon">🏭</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     SUPPLIERS
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-suppliers">
+  <div class="section-header">
+    <div class="section-title">Suppliers</div>
+    <button class="btn btn-primary" onclick="openSupplierModal()">+ Add Supplier</button>
+  </div>
+  <div class="table-wrap" id="suppliersTable"><div class="empty"><div class="empty-icon">🚚</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     PURCHASE ORDERS
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-orders">
+  <div class="section-header">
+    <div class="section-title">Purchase Orders</div>
+    <div class="toolbar">
+      <select class="filter-select" id="poStatusFilter" onchange="loadOrders()">
+        <option value="">All Statuses</option>
+        <option value="draft">Draft</option>
+        <option value="sent">Sent</option>
+        <option value="received">Received</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+    </div>
+  </div>
+  <div class="table-wrap" id="ordersTable"><div class="empty"><div class="empty-icon">🛒</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     BILL OF MATERIALS
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-boms">
+  <div class="section-header">
+    <div class="section-title">Bill of Materials</div>
+    <div class="toolbar">
+      <select class="filter-select" id="bomStatusFilter" onchange="loadBoms()">
+        <option value="">All Statuses</option>
+        <option value="draft">Draft</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="loadBoms()">↺ Refresh</button>
+      <button class="btn btn-purple" onclick="openBomModal()">+ Create BOM</button>
+    </div>
+  </div>
+  <div class="table-wrap" id="bomsTable"><div class="empty"><div class="empty-icon">📋</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     WORK ORDERS
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-workorders">
+  <div class="section-header">
+    <div class="section-title">Work Orders</div>
+    <div class="toolbar">
+      <select class="filter-select" id="woStatusFilter" onchange="loadWorkOrders()">
+        <option value="">All Statuses</option>
+        <option value="draft">Draft</option>
+        <option value="released">Released</option>
+        <option value="in_progress">In Progress</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="loadWorkOrders()">↺ Refresh</button>
+      <button class="btn btn-purple" onclick="openWoModal()">+ New Work Order</button>
+    </div>
+  </div>
+  <div class="table-wrap" id="workordersTable"><div class="empty"><div class="empty-icon">⚙️</div><p>Loading…</p></div></div>
+</div>
+
+</div><!-- /.main -->
+
+<!-- ════════════════════════════════════════════════════════════════════
+     MODALS
+════════════════════════════════════════════════════════════════════ -->
+
+<!-- ITEM MODAL -->
 <div class="modal-overlay" id="itemModal">
-    <div class="modal">
-        <div class="modal-header">
-            <h3 id="itemModalTitle">Add Stock Item</h3>
-            <button class="modal-close" onclick="closeModal('itemModal')">✕</button>
-        </div>
-        <div class="modal-body">
-            <form onsubmit="return saveItem(event)">
-                <div class="form-grid">
-                    <div class="form-field" style="grid-column:1/-1"><label>Name *</label><input id="iName" required placeholder="e.g. A4 Paper Ream"></div>
-                    <div class="form-field"><label>SKU</label><input id="iSku" placeholder="e.g. PPR-A4-500"></div>
-                    <div class="form-field"><label>Category</label><input id="iCategory" placeholder="e.g. Stationery"></div>
-                    <div class="form-field"><label>Unit</label><select id="iUnit"><option>unit</option><option>kg</option><option>litre</option><option>box</option><option>pallet</option><option>roll</option><option>metre</option></select></div>
-                    <div class="form-field"><label>Warehouse</label><select id="iWarehouse"><option value="">None</option></select></div>
-                    <div class="form-field"><label>Cost Price (R)</label><input id="iCostPrice" type="number" step="0.01" placeholder="0.00"></div>
-                    <div class="form-field"><label>Sell Price (R)</label><input id="iSellPrice" type="number" step="0.01" placeholder="0.00"></div>
-                    <div class="form-field"><label>Opening Stock</label><input id="iStock" type="number" step="0.001" placeholder="0"></div>
-                    <div class="form-field"><label>Min Stock (Alert)</label><input id="iMinStock" type="number" step="0.001" placeholder="0"></div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-ghost" onclick="closeModal('itemModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="itemSaveBtn">Save Item</button>
-                </div>
-            </form>
-        </div>
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 id="itemModalTitle">Add Stock Item</h3>
+      <button class="modal-close" onclick="closeModal('itemModal')">✕</button>
     </div>
+    <div class="modal-body">
+      <form onsubmit="return saveItem(event)">
+        <div class="form-section-title">Basic Details</div>
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1"><label>Name *</label><input id="iName" required placeholder="e.g. A4 Paper Ream"></div>
+          <div class="form-field"><label>SKU</label><input id="iSku" placeholder="e.g. PPR-A4-500"></div>
+          <div class="form-field"><label>Barcode</label><input id="iBarcode" placeholder="e.g. 6001234567890"></div>
+          <div class="form-field"><label>Category</label><input id="iCategory" placeholder="e.g. Stationery"></div>
+          <div class="form-field"><label>Item Type</label>
+            <select id="iItemType">
+              <option value="finished_good">Finished Good</option>
+              <option value="raw_material">Raw Material</option>
+              <option value="sub_assembly">Sub-Assembly</option>
+              <option value="consumable">Consumable</option>
+              <option value="service">Service</option>
+            </select>
+          </div>
+          <div class="form-field"><label>Unit</label>
+            <select id="iUnit"><option>unit</option><option>kg</option><option>g</option><option>litre</option><option>ml</option><option>box</option><option>pallet</option><option>roll</option><option>metre</option><option>m²</option></select>
+          </div>
+          <div class="form-field"><label>Location</label><select id="iWarehouse"><option value="">None</option></select></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">Pricing & Stock</div>
+          <div class="form-grid cols3">
+            <div class="form-field"><label>Cost Price (R)</label><input id="iCostPrice" type="number" step="0.01" placeholder="0.00"></div>
+            <div class="form-field"><label>Sell Price (R)</label><input id="iSellPrice" type="number" step="0.01" placeholder="0.00"></div>
+            <div class="form-field"><label>Costing Method</label>
+              <select id="iCostingMethod"><option value="average">Weighted Average</option><option value="fifo">FIFO</option><option value="standard">Standard</option></select>
+            </div>
+            <div class="form-field"><label>Opening Stock</label><input id="iStock" type="number" step="0.001" placeholder="0"></div>
+            <div class="form-field"><label>Min Stock (Alert)</label><input id="iMinStock" type="number" step="0.001" placeholder="0"></div>
+            <div class="form-field"><label>Lead Time (days)</label><input id="iLeadTime" type="number" step="1" placeholder="0"></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">Tracking</div>
+          <div style="display:flex; gap:24px; flex-wrap:wrap;">
+            <label class="checkbox-row"><input type="checkbox" id="iTrackLots"> Track Lots / Batches</label>
+            <label class="checkbox-row"><input type="checkbox" id="iTrackSerials"> Track Serial Numbers</label>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('itemModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="itemSaveBtn">Save Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
-<!-- ══ MOVEMENT MODAL ══ -->
+<!-- MOVEMENT MODAL -->
 <div class="modal-overlay" id="movementModal">
-    <div class="modal">
-        <div class="modal-header">
-            <h3>Record Stock Movement</h3>
-            <button class="modal-close" onclick="closeModal('movementModal')">✕</button>
-        </div>
-        <div class="modal-body">
-            <form onsubmit="return saveMovement(event)">
-                <div class="form-grid">
-                    <div class="form-field" style="grid-column:1/-1"><label>Item *</label><select id="mItem" required><option value="">Select item...</option></select></div>
-                    <div class="form-field"><label>Movement Type *</label>
-                        <select id="mType" required>
-                            <option value="in">📥 Stock In</option>
-                            <option value="out">📤 Stock Out</option>
-                            <option value="adjustment">⚖️ Adjustment</option>
-                            <option value="return">↩️ Return</option>
-                            <option value="transfer">🔀 Transfer</option>
-                        </select>
-                    </div>
-                    <div class="form-field"><label>Quantity *</label><input id="mQty" type="number" step="0.001" required placeholder="0"></div>
-                    <div class="form-field"><label>Warehouse</label><select id="mWarehouse"><option value="">None</option></select></div>
-                    <div class="form-field"><label>Unit Cost (R)</label><input id="mCostPrice" type="number" step="0.01" placeholder="Optional"></div>
-                    <div class="form-field"><label>Reference</label><input id="mReference" placeholder="e.g. PO-001 / Delivery note"></div>
-                    <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="mNotes" rows="2" placeholder="Optional notes..."></textarea></div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-ghost" onclick="closeModal('movementModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-            </form>
-        </div>
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Record Stock Movement</h3>
+      <button class="modal-close" onclick="closeModal('movementModal')">✕</button>
     </div>
+    <div class="modal-body">
+      <form onsubmit="return saveMovement(event)">
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1"><label>Item *</label><select id="mItem" required><option value="">— Select —</option></select></div>
+          <div class="form-field"><label>Type *</label>
+            <select id="mType" required>
+              <option value="in">Stock In</option>
+              <option value="out">Stock Out</option>
+              <option value="adjustment">Adjustment</option>
+              <option value="transfer">Transfer</option>
+              <option value="return">Return</option>
+            </select>
+          </div>
+          <div class="form-field"><label>Quantity *</label><input id="mQty" type="number" step="0.001" required placeholder="0"></div>
+          <div class="form-field"><label>Location</label><select id="mWarehouse"><option value="">None</option></select></div>
+          <div class="form-field"><label>Cost Price (R)</label><input id="mCostPrice" type="number" step="0.01" placeholder="0.00"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Reference</label><input id="mRef" placeholder="e.g. PO-001"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="mNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('movementModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Movement</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
-<!-- ══ WAREHOUSE MODAL ══ -->
+<!-- WAREHOUSE MODAL -->
 <div class="modal-overlay" id="warehouseModal">
-    <div class="modal" style="max-width:440px;">
-        <div class="modal-header"><h3 id="whModalTitle">Add Warehouse</h3><button class="modal-close" onclick="closeModal('warehouseModal')">✕</button></div>
-        <div class="modal-body">
-            <form onsubmit="return saveWarehouse(event)">
-                <div class="form-grid full">
-                    <div class="form-field"><label>Name *</label><input id="whName" required placeholder="e.g. Main Warehouse"></div>
-                    <div class="form-field"><label>Address</label><input id="whAddress" placeholder="Street, City"></div>
-                    <div class="form-field"><label>Notes</label><textarea id="whNotes" rows="2"></textarea></div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-ghost" onclick="closeModal('warehouseModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-            </form>
-        </div>
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="whModalTitle">Add Location</h3>
+      <button class="modal-close" onclick="closeModal('warehouseModal')">✕</button>
     </div>
+    <div class="modal-body">
+      <form onsubmit="return saveWarehouse(event)">
+        <div class="form-grid full">
+          <div class="form-field"><label>Name *</label><input id="whName" required placeholder="e.g. Main Warehouse"></div>
+          <div class="form-field"><label>Location Type</label>
+            <select id="whType">
+              <option value="warehouse">Warehouse</option>
+              <option value="store">Store</option>
+              <option value="wip">WIP (Work In Progress)</option>
+              <option value="quarantine">Quarantine</option>
+              <option value="dispatch">Dispatch</option>
+            </select>
+          </div>
+          <div class="form-field"><label>Address</label><input id="whAddress" placeholder="Physical address"></div>
+          <div class="form-field"><label>Notes</label><textarea id="whNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('warehouseModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="whSaveBtn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
-<!-- ══ SUPPLIER MODAL ══ -->
+<!-- SUPPLIER MODAL -->
 <div class="modal-overlay" id="supplierModal">
-    <div class="modal">
-        <div class="modal-header"><h3 id="supModalTitle">Add Supplier</h3><button class="modal-close" onclick="closeModal('supplierModal')">✕</button></div>
-        <div class="modal-body">
-            <form onsubmit="return saveSupplier(event)">
-                <div class="form-grid">
-                    <div class="form-field" style="grid-column:1/-1"><label>Company Name *</label><input id="supName" required placeholder="e.g. Acme Supplies"></div>
-                    <div class="form-field"><label>Contact Person</label><input id="supContact" placeholder="John Smith"></div>
-                    <div class="form-field"><label>Email</label><input id="supEmail" type="email" placeholder="orders@supplier.co.za"></div>
-                    <div class="form-field"><label>Phone</label><input id="supPhone" placeholder="011 000 0000"></div>
-                    <div class="form-field"><label>VAT Number</label><input id="supVat" placeholder="4123456789"></div>
-                    <div class="form-field"><label>Address</label><input id="supAddress" placeholder="Street, City"></div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-ghost" onclick="closeModal('supplierModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-            </form>
-        </div>
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="supModalTitle">Add Supplier</h3>
+      <button class="modal-close" onclick="closeModal('supplierModal')">✕</button>
     </div>
+    <div class="modal-body">
+      <form onsubmit="return saveSupplier(event)">
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1"><label>Company Name *</label><input id="supName" required placeholder="e.g. Acme Supplies"></div>
+          <div class="form-field"><label>Contact Name</label><input id="supContact" placeholder="Full name"></div>
+          <div class="form-field"><label>Email</label><input id="supEmail" type="email" placeholder="supplier@example.com"></div>
+          <div class="form-field"><label>Phone</label><input id="supPhone" placeholder="+27 ..."></div>
+          <div class="form-field"><label>VAT Number</label><input id="supVat" placeholder="e.g. 4123456789"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Address</label><input id="supAddress" placeholder="Physical address"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="supNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('supplierModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="supSaveBtn">Save Supplier</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
+<!-- BOM MODAL -->
+<div class="modal-overlay" id="bomModal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <h3 id="bomModalTitle">Create Bill of Materials</h3>
+      <button class="modal-close" onclick="closeModal('bomModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="return saveBom(event)">
+        <div class="form-section-title">BOM Header</div>
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1"><label>Finished Product *</label><select id="bomItem" required><option value="">— Select Item —</option></select></div>
+          <div class="form-field" style="grid-column:1/-1"><label>BOM Name *</label><input id="bomName" required placeholder="e.g. Widget A — Standard Recipe"></div>
+          <div class="form-field"><label>Version</label><input id="bomVersion" placeholder="1.0" value="1.0"></div>
+          <div class="form-field"><label>Output Qty (units produced)</label><input id="bomOutputQty" type="number" step="0.001" value="1" min="0.001"></div>
+          <div class="form-field"><label>Overall Scrap %</label><input id="bomScrap" type="number" step="0.01" value="0" min="0" max="100"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="bomNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div class="form-section-title" style="margin-bottom:0;">Component Lines</div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="addBomLine()">+ Add Component</button>
+          </div>
+          <div class="bom-lines-header">
+            <div>Component Item</div><div>Quantity</div><div>Scrap %</div><div>Notes</div><div></div>
+          </div>
+          <div id="bomLinesContainer"></div>
+          <div id="bomLinesEmpty" style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">No components added yet. Click "+ Add Component".</div>
+        </div>
+        <input type="hidden" id="bomEditId">
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('bomModal')">Cancel</button>
+          <button type="submit" class="btn btn-purple" id="bomSaveBtn">Save BOM</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- BOM DETAIL MODAL (view with lines) -->
+<div class="modal-overlay" id="bomDetailModal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <h3 id="bomDetailTitle">BOM Detail</h3>
+      <button class="modal-close" onclick="closeModal('bomDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="bomDetailBody"></div>
+  </div>
+</div>
+
+<!-- WORK ORDER MODAL (create) -->
+<div class="modal-overlay" id="woModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3>Create Work Order</h3>
+      <button class="modal-close" onclick="closeModal('woModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="return saveWo(event)">
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1"><label>Product to Produce *</label><select id="woItem" required onchange="loadBomsForItem()" ><option value="">— Select Item —</option></select></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Bill of Materials (optional)</label><select id="woBom"><option value="">— No BOM / Manual —</option></select></div>
+          <div class="form-field"><label>Quantity to Produce *</label><input id="woQty" type="number" step="0.001" min="0.001" required placeholder="e.g. 100"></div>
+          <div class="form-field"><label>Planned Start Date</label><input id="woStartDate" type="date"></div>
+          <div class="form-field"><label>Planned End Date</label><input id="woEndDate" type="date"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="woNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('woModal')">Cancel</button>
+          <button type="submit" class="btn btn-purple">Create Work Order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- WORK ORDER DETAIL MODAL -->
+<div class="modal-overlay" id="woDetailModal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <h3 id="woDetailTitle">Work Order</h3>
+      <button class="modal-close" onclick="closeModal('woDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="woDetailBody"></div>
+  </div>
+</div>
+
+<!-- COMPLETE WO MODAL -->
+<div class="modal-overlay" id="woCompleteModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Complete Work Order</h3>
+      <button class="modal-close" onclick="closeModal('woCompleteModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-field" style="margin-bottom:16px;">
+        <label>Quantity Actually Produced</label>
+        <input id="woCompleteQty" type="number" step="0.001" min="0.001">
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">Leave as planned qty or enter actual produced quantity. Finished goods will be received into stock.</div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('woCompleteModal')">Cancel</button>
+        <button type="button" class="btn btn-success" onclick="confirmCompleteWo()">Receive & Complete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
 <div class="toast" id="toast"></div>
 
 <script>
-const API = window.location.origin;
-let token = localStorage.getItem('token') || localStorage.getItem('inventory_token');
-let currentUser = null;
-let allItems = [], allWarehouses = [], allSuppliers = [];
-let editingItemId = null, editingWarehouseId = null, editingSupId = null;
-let activeTab = 'dashboard';
+// ════════════════════════════════════════════════════════════════════════════
+// STATE & HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+const API = '/api/inventory';
+let token = null;
+let allItems = [];
+let allWarehouses = [];
+let _itemEditId = null;
+let _whEditId = null;
+let _supEditId = null;
+let _bomEditId = null;
+let _woCompleteId = null;
 
-// ── Auth & Init ──────────────────────────────────────────────────────────────
-function getHeaders() {
-    return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+function getToken() {
+  if (!token) token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  return token;
 }
 
-async function init() {
-    if (!token) { window.location.href = '/'; return; }
-    try {
-        const res = await fetch(`${API}/api/auth/me`, { headers: getHeaders() });
-        if (!res.ok) { window.location.href = '/'; return; }
-        const d = await res.json();
-        currentUser = d.user;
-        const companyStr = localStorage.getItem('company');
-        const company = companyStr ? JSON.parse(companyStr) : null;
-        document.getElementById('companyBadge').textContent = company?.trading_name || company?.company_name || 'Company';
-    } catch(e) { window.location.href = '/'; return; }
-    loadDashboard();
-    loadWarehouses();
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json', ...opts.headers },
+    ...opts
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
 }
 
-// ── Tab switching ────────────────────────────────────────────────────────────
-function switchTab(tab) {
-    activeTab = tab;
-    document.querySelectorAll('.nav-tab').forEach((el, i) => {
-        const tabs = ['dashboard','items','movements','warehouses','suppliers','orders'];
-        el.classList.toggle('active', tabs[i] === tab);
-    });
-    document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
-    document.getElementById(`tab-${tab}`).classList.add('active');
-    if (tab === 'items') loadItems();
-    if (tab === 'movements') loadMovements();
-    if (tab === 'warehouses') loadWarehouses();
-    if (tab === 'suppliers') loadSuppliers();
-    if (tab === 'orders') loadOrders();
-}
-
-// ── Toast ────────────────────────────────────────────────────────────────────
-function showToast(msg, isError) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.className = 'toast show' + (isError ? ' error' : '');
-    setTimeout(() => t.className = 'toast', 3500);
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3400);
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-function openModal(id) { document.getElementById(id).classList.add('show'); }
+function openModal(id)  { document.getElementById(id).classList.add('show'); }
 
-// ── Dashboard ────────────────────────────────────────────────────────────────
-async function loadDashboard() {
-    try {
-        const res = await fetch(`${API}/api/inventory/dashboard`, { headers: getHeaders() });
-        if (!res.ok) return;
-        const d = await res.json();
-        document.getElementById('statItems').textContent = d.total_items ?? '–';
-        document.getElementById('statLowStock').textContent = d.low_stock_count ?? '–';
-        document.getElementById('statSuppliers').textContent = d.total_suppliers ?? '–';
-        document.getElementById('statMovements').textContent = d.total_movements ?? '–';
-    } catch(e) {}
+function fmtQty(v, unit='') { return (parseFloat(v)||0).toLocaleString('en-ZA',{maximumFractionDigits:3}) + (unit ? ' '+unit : ''); }
+function fmtR(v) { return 'R ' + (parseFloat(v)||0).toFixed(2); }
+function fmtDate(d) { return d ? d.split('T')[0] : '—'; }
+
+function itemTypeBadge(t) {
+  const map = { raw_material:'badge-warning', finished_good:'badge-success', sub_assembly:'badge-purple', consumable:'badge-info', service:'badge-neutral' };
+  const label = (t||'').replace('_',' ');
+  return `<span class="badge ${map[t]||'badge-neutral'}">${label}</span>`;
+}
+function statusBadge(s) {
+  const map = { draft:'badge-neutral', active:'badge-success', inactive:'badge-neutral', released:'badge-info', in_progress:'badge-warning', completed:'badge-success', cancelled:'badge-danger', sent:'badge-info', received:'badge-success' };
+  return `<span class="badge ${map[s]||'badge-neutral'}">${(s||'').replace('_',' ')}</span>`;
 }
 
-// ── Warehouses ───────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async () => {
+  // Company badge
+  try {
+    const user = JSON.parse(atob((getToken().split('.')[1]||'e30=')));
+    document.getElementById('companyBadge').textContent = user.companyName || user.company || 'Company';
+  } catch(e) {}
+
+  await loadDashboard();
+  await loadWarehouses();
+  await loadItems();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// TAB SWITCHING
+// ════════════════════════════════════════════════════════════════════════════
+const _tabLoaded = {};
+async function switchTab(name) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  const tabEl = document.querySelector(`.nav-tab[onclick*="'${name}'"]`);
+  if (tabEl) tabEl.classList.add('active');
+  const sec = document.getElementById('tab-' + name);
+  if (sec) sec.classList.add('active');
+  if (!_tabLoaded[name]) {
+    _tabLoaded[name] = true;
+    if (name === 'movements')  await loadMovements();
+    if (name === 'warehouses') {} // already loaded
+    if (name === 'suppliers')  await loadSuppliers();
+    if (name === 'orders')     await loadOrders();
+    if (name === 'boms')       await loadBoms();
+    if (name === 'workorders') await loadWorkOrders();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════════════════════════════════════════
+async function loadDashboard() {
+  try {
+    const d = await apiFetch('/dashboard');
+    document.getElementById('statItems').textContent    = d.total_items     ?? 0;
+    document.getElementById('statLowStock').textContent = d.low_stock_count ?? 0;
+    document.getElementById('statSuppliers').textContent= d.total_suppliers ?? 0;
+    document.getElementById('statMovements').textContent= d.total_movements ?? 0;
+    document.getElementById('statOpenWOs').textContent  = d.open_work_orders?? 0;
+    document.getElementById('statBOMs').textContent     = d.active_boms     ?? 0;
+  } catch(e) { console.error('Dashboard load failed', e); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WAREHOUSES
+// ════════════════════════════════════════════════════════════════════════════
 async function loadWarehouses() {
-    try {
-        const res = await fetch(`${API}/api/inventory/warehouses`, { headers: getHeaders() });
-        if (!res.ok) return;
-        const d = await res.json();
-        allWarehouses = d.warehouses || [];
-        populateWarehouseSelects();
-        if (activeTab === 'warehouses') renderWarehouses();
-    } catch(e) {}
+  try {
+    const d = await apiFetch('/warehouses');
+    allWarehouses = d.warehouses || [];
+    populateWarehouseSelects();
+    renderWarehousesTable();
+  } catch(e) { console.error('Warehouses load failed', e); }
 }
 
 function populateWarehouseSelects() {
-    const opts = allWarehouses.map(w => `<option value="${w.id}">${escHtml(w.name)}</option>`).join('');
-    ['iWarehouse','mWarehouse','itemFilterWarehouse'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            const prefix = el.options[0]?.value === '' ? el.options[0].outerHTML : '';
-            el.innerHTML = (id === 'itemFilterWarehouse' ? '<option value="">All Warehouses</option>' : '<option value="">None</option>') + opts;
-        }
+  const selects = [
+    document.getElementById('itemFilterWarehouse'),
+    document.getElementById('iWarehouse'),
+    document.getElementById('mWarehouse')
+  ];
+  selects.forEach(sel => {
+    if (!sel) return;
+    const cur = sel.value;
+    const firstOpt = sel.querySelector('option[value=""]');
+    sel.innerHTML = '';
+    if (firstOpt) sel.appendChild(firstOpt);
+    allWarehouses.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w.id;
+      o.textContent = w.name;
+      sel.appendChild(o);
     });
+    if (cur) sel.value = cur;
+  });
 }
 
-function renderWarehouses() {
-    const el = document.getElementById('warehousesTable');
-    if (!allWarehouses.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">🏭</div><p>No warehouses yet.</p></div>`; return; }
-    el.innerHTML = `<table><thead><tr><th>Name</th><th>Address</th><th>Notes</th><th>Actions</th></tr></thead><tbody>
-        ${allWarehouses.map(w => `<tr>
-            <td><strong>${escHtml(w.name)}</strong></td>
-            <td>${escHtml(w.address || '–')}</td>
-            <td>${escHtml(w.notes || '–')}</td>
-            <td><div class="td-actions">
-                <button class="btn btn-ghost btn-sm" onclick="openWarehouseModal(${w.id})">Edit</button>
-            </div></td>
-        </tr>`).join('')}
-    </tbody></table>`;
+function renderWarehousesTable() {
+  const wrap = document.getElementById('warehousesTable');
+  if (!allWarehouses.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">🏭</div><p>No locations yet.</p></div>'; return; }
+  wrap.innerHTML = `<table><thead><tr>
+    <th>Name</th><th>Type</th><th>Address</th><th>Actions</th>
+  </tr></thead><tbody>${allWarehouses.map(w=>`<tr>
+    <td><strong>${esc(w.name)}</strong></td>
+    <td>${statusBadge(w.location_type||'warehouse')}</td>
+    <td>${esc(w.address||'—')}</td>
+    <td class="td-actions">
+      <button class="btn btn-ghost btn-xs" onclick="editWarehouse(${w.id})">Edit</button>
+    </td>
+  </tr>`).join('')}</tbody></table>`;
 }
 
 function openWarehouseModal(id) {
-    editingWarehouseId = id || null;
-    document.getElementById('whModalTitle').textContent = id ? 'Edit Warehouse' : 'Add Warehouse';
-    const w = id ? allWarehouses.find(x => x.id === id) : null;
-    document.getElementById('whName').value = w?.name || '';
-    document.getElementById('whAddress').value = w?.address || '';
-    document.getElementById('whNotes').value = w?.notes || '';
-    openModal('warehouseModal');
+  _whEditId = null;
+  document.getElementById('whModalTitle').textContent = 'Add Location';
+  document.getElementById('whSaveBtn').textContent = 'Save';
+  document.getElementById('whName').value = '';
+  document.getElementById('whType').value = 'warehouse';
+  document.getElementById('whAddress').value = '';
+  document.getElementById('whNotes').value = '';
+  openModal('warehouseModal');
+}
+
+async function editWarehouse(id) {
+  const w = allWarehouses.find(x=>x.id===id);
+  if (!w) return;
+  _whEditId = id;
+  document.getElementById('whModalTitle').textContent = 'Edit Location';
+  document.getElementById('whSaveBtn').textContent = 'Save Changes';
+  document.getElementById('whName').value = w.name||'';
+  document.getElementById('whType').value = w.location_type||'warehouse';
+  document.getElementById('whAddress').value = w.address||'';
+  document.getElementById('whNotes').value = w.notes||'';
+  openModal('warehouseModal');
 }
 
 async function saveWarehouse(e) {
-    e.preventDefault();
-    const body = { name: document.getElementById('whName').value.trim(), address: document.getElementById('whAddress').value.trim(), notes: document.getElementById('whNotes').value.trim() };
-    try {
-        const url = editingWarehouseId ? `${API}/api/inventory/warehouses/${editingWarehouseId}` : `${API}/api/inventory/warehouses`;
-        const res = await fetch(url, { method: editingWarehouseId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error);
-        closeModal('warehouseModal');
-        showToast(editingWarehouseId ? 'Warehouse updated!' : 'Warehouse added!');
-        await loadWarehouses();
-    } catch(err) { showToast('❌ ' + err.message, true); }
-    return false;
+  e.preventDefault();
+  const body = {
+    name: document.getElementById('whName').value.trim(),
+    location_type: document.getElementById('whType').value,
+    address: document.getElementById('whAddress').value.trim(),
+    notes: document.getElementById('whNotes').value.trim()
+  };
+  try {
+    if (_whEditId) await apiFetch('/warehouses/'+_whEditId, { method:'PUT', body: JSON.stringify(body) });
+    else await apiFetch('/warehouses', { method:'POST', body: JSON.stringify(body) });
+    closeModal('warehouseModal');
+    showToast('Location saved.');
+    await loadWarehouses();
+  } catch(e) { showToast(e.message, true); }
+  return false;
 }
 
-// ── Stock Items ──────────────────────────────────────────────────────────────
-async function loadItems(refresh) {
-    try {
-        const wid = document.getElementById('itemFilterWarehouse')?.value || '';
-        let url = `${API}/api/inventory/items?limit=200`;
-        if (wid) url += `&warehouse_id=${wid}`;
-        const res = await fetch(url, { headers: getHeaders() });
-        if (!res.ok) return;
-        const d = await res.json();
-        allItems = d.items || [];
-        populateItemSelect();
-        filterItems();
-    } catch(e) { document.getElementById('itemsTable').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>Failed to load items</p></div>`; }
-}
-
-function populateItemSelect() {
-    const el = document.getElementById('mItem');
-    if (!el) return;
-    el.innerHTML = '<option value="">Select item...</option>' + allItems.map(i => `<option value="${i.id}">${escHtml(i.name)}${i.sku ? ` (${escHtml(i.sku)})` : ''}</option>`).join('');
+// ════════════════════════════════════════════════════════════════════════════
+// STOCK ITEMS
+// ════════════════════════════════════════════════════════════════════════════
+async function loadItems(force) {
+  try {
+    const d = await apiFetch('/items');
+    allItems = d.items || [];
+    filterItems();
+    // Populate item selects in other modals
+    const movSel = document.getElementById('mItem');
+    movSel.innerHTML = '<option value="">— Select Item —</option>';
+    allItems.forEach(i => {
+      const o = document.createElement('option');
+      o.value = i.id;
+      o.textContent = i.name + (i.sku ? ` (${i.sku})` : '');
+      movSel.appendChild(o);
+    });
+  } catch(e) { showToast('Failed to load items', true); }
 }
 
 function filterItems() {
-    const search = (document.getElementById('itemSearch')?.value || '').toLowerCase();
-    let items = allItems;
-    if (search) items = items.filter(i => (i.name||'').toLowerCase().includes(search) || (i.sku||'').toLowerCase().includes(search));
-    renderItems(items);
+  const search = (document.getElementById('itemSearch').value||'').toLowerCase();
+  const typeFilter = document.getElementById('itemTypeFilter').value;
+  const whFilter = document.getElementById('itemFilterWarehouse').value;
+  let results = allItems;
+  if (search)    results = results.filter(i => (i.name||'').toLowerCase().includes(search)||(i.sku||'').toLowerCase().includes(search)||(i.barcode||'').toLowerCase().includes(search));
+  if (typeFilter) results = results.filter(i => i.item_type === typeFilter);
+  if (whFilter)  results = results.filter(i => String(i.warehouse_id) === whFilter);
+  renderItemsTable(results);
 }
 
-function renderItems(items) {
-    const el = document.getElementById('itemsTable');
-    if (!items.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div><p>No items found.</p></div>`; return; }
-    el.innerHTML = `<table><thead><tr><th>Name</th><th>SKU</th><th>Category</th><th>Stock</th><th>Min</th><th>Cost</th><th>Sell</th><th>Warehouse</th><th>Actions</th></tr></thead><tbody>
-        ${items.map(i => {
-            const isLow = i.current_stock <= (i.min_stock || 0);
-            const stockBadge = isLow ? `<span class="badge badge-danger">${i.current_stock} ${i.unit}</span>` : `<span class="badge badge-success">${i.current_stock} ${i.unit}</span>`;
-            return `<tr>
-                <td><strong>${escHtml(i.name)}</strong></td>
-                <td><span style="color:var(--text-muted)">${escHtml(i.sku||'–')}</span></td>
-                <td>${escHtml(i.category||'–')}</td>
-                <td>${stockBadge}</td>
-                <td>${i.min_stock||0}</td>
-                <td>R${(i.cost_price||0).toFixed(2)}</td>
-                <td>R${(i.sell_price||0).toFixed(2)}</td>
-                <td>${escHtml(i.warehouses?.name||'–')}</td>
-                <td><div class="td-actions">
-                    <button class="btn btn-ghost btn-sm" onclick="openItemModal(${i.id})">Edit</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteItem(${i.id},'${escHtml(i.name)}')">Del</button>
-                </div></td>
-            </tr>`;
-        }).join('')}
-    </tbody></table>`;
+function renderItemsTable(items) {
+  const wrap = document.getElementById('itemsTable');
+  if (!items.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><p>No items found.</p></div>'; return; }
+  wrap.innerHTML = `<table><thead><tr>
+    <th>Name / SKU</th><th>Type</th><th>Unit</th><th>Cost</th><th>Stock</th><th>Min</th><th>Location</th><th>Actions</th>
+  </tr></thead><tbody>${items.map(i=>{
+    const low = parseFloat(i.current_stock||0) <= parseFloat(i.min_stock||0);
+    return `<tr>
+      <td><div style="font-weight:700">${esc(i.name)}</div>${i.sku?`<div style="font-size:0.72rem;color:var(--text-muted)">${esc(i.sku)}</div>`:''}${i.barcode?`<div style="font-size:0.7rem;color:var(--text-muted)">🔲 ${esc(i.barcode)}</div>`:''}</td>
+      <td>${itemTypeBadge(i.item_type)}</td>
+      <td>${esc(i.unit||'unit')}</td>
+      <td>${fmtR(i.cost_price)}</td>
+      <td class="${low?'low-stock':''}">${fmtQty(i.current_stock)}</td>
+      <td>${fmtQty(i.min_stock)}</td>
+      <td>${esc(i.warehouses?.name||'—')}</td>
+      <td class="td-actions">
+        <button class="btn btn-ghost btn-xs" onclick="editItem(${i.id})">Edit</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteItem(${i.id})">Remove</button>
+      </td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
 }
 
-function openItemModal(id) {
-    editingItemId = id || null;
-    document.getElementById('itemModalTitle').textContent = id ? 'Edit Item' : 'Add Stock Item';
-    const item = id ? allItems.find(x => x.id === id) : null;
-    document.getElementById('iName').value = item?.name || '';
-    document.getElementById('iSku').value = item?.sku || '';
-    document.getElementById('iCategory').value = item?.category || '';
-    document.getElementById('iUnit').value = item?.unit || 'unit';
-    document.getElementById('iWarehouse').value = item?.warehouse_id || '';
-    document.getElementById('iCostPrice').value = item?.cost_price || '';
-    document.getElementById('iSellPrice').value = item?.sell_price || '';
-    document.getElementById('iStock').value = item?.current_stock || '';
-    document.getElementById('iMinStock').value = item?.min_stock || '';
-    openModal('itemModal');
+function openItemModal() {
+  _itemEditId = null;
+  document.getElementById('itemModalTitle').textContent = 'Add Stock Item';
+  document.getElementById('itemSaveBtn').textContent = 'Save Item';
+  ['iName','iSku','iBarcode','iCategory'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('iItemType').value = 'finished_good';
+  document.getElementById('iUnit').value = 'unit';
+  document.getElementById('iCostingMethod').value = 'average';
+  document.getElementById('iCostPrice').value = '';
+  document.getElementById('iSellPrice').value = '';
+  document.getElementById('iStock').value = '';
+  document.getElementById('iMinStock').value = '';
+  document.getElementById('iLeadTime').value = '';
+  document.getElementById('iTrackLots').checked = false;
+  document.getElementById('iTrackSerials').checked = false;
+  document.getElementById('iWarehouse').value = '';
+  openModal('itemModal');
+}
+
+function editItem(id) {
+  const i = allItems.find(x=>x.id===id);
+  if (!i) return;
+  _itemEditId = id;
+  document.getElementById('itemModalTitle').textContent = 'Edit Item';
+  document.getElementById('itemSaveBtn').textContent = 'Save Changes';
+  document.getElementById('iName').value = i.name||'';
+  document.getElementById('iSku').value = i.sku||'';
+  document.getElementById('iBarcode').value = i.barcode||'';
+  document.getElementById('iCategory').value = i.category||'';
+  document.getElementById('iItemType').value = i.item_type||'finished_good';
+  document.getElementById('iUnit').value = i.unit||'unit';
+  document.getElementById('iCostingMethod').value = i.costing_method||'average';
+  document.getElementById('iCostPrice').value = i.cost_price||'';
+  document.getElementById('iSellPrice').value = i.sell_price||'';
+  document.getElementById('iStock').value = '';  // don't prefill current stock on edit
+  document.getElementById('iMinStock').value = i.min_stock||'';
+  document.getElementById('iLeadTime').value = i.lead_time_days||'';
+  document.getElementById('iTrackLots').checked = !!i.track_lots;
+  document.getElementById('iTrackSerials').checked = !!i.track_serials;
+  document.getElementById('iWarehouse').value = i.warehouse_id||'';
+  openModal('itemModal');
 }
 
 async function saveItem(e) {
-    e.preventDefault();
-    const btn = document.getElementById('itemSaveBtn');
-    btn.disabled = true; btn.textContent = 'Saving...';
-    const body = {
-        name: document.getElementById('iName').value.trim(),
-        sku: document.getElementById('iSku').value.trim(),
-        category: document.getElementById('iCategory').value.trim(),
-        unit: document.getElementById('iUnit').value,
-        warehouse_id: document.getElementById('iWarehouse').value || null,
-        cost_price: document.getElementById('iCostPrice').value,
-        sell_price: document.getElementById('iSellPrice').value,
-        current_stock: document.getElementById('iStock').value,
-        min_stock: document.getElementById('iMinStock').value,
-    };
-    try {
-        const url = editingItemId ? `${API}/api/inventory/items/${editingItemId}` : `${API}/api/inventory/items`;
-        const res = await fetch(url, { method: editingItemId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error);
-        closeModal('itemModal');
-        showToast(editingItemId ? 'Item updated!' : `${body.name} added!`);
-        await loadItems(); loadDashboard();
-    } catch(err) { showToast('❌ ' + err.message, true); }
-    finally { btn.disabled = false; btn.textContent = 'Save Item'; }
-    return false;
+  e.preventDefault();
+  const body = {
+    name:           document.getElementById('iName').value.trim(),
+    sku:            document.getElementById('iSku').value.trim(),
+    barcode:        document.getElementById('iBarcode').value.trim(),
+    category:       document.getElementById('iCategory').value.trim(),
+    item_type:      document.getElementById('iItemType').value,
+    unit:           document.getElementById('iUnit').value,
+    costing_method: document.getElementById('iCostingMethod').value,
+    cost_price:     document.getElementById('iCostPrice').value,
+    sell_price:     document.getElementById('iSellPrice').value,
+    min_stock:      document.getElementById('iMinStock').value,
+    warehouse_id:   document.getElementById('iWarehouse').value||null,
+    track_lots:     document.getElementById('iTrackLots').checked,
+    track_serials:  document.getElementById('iTrackSerials').checked,
+    lead_time_days: document.getElementById('iLeadTime').value||0
+  };
+  if (!_itemEditId) {
+    body.current_stock = document.getElementById('iStock').value||0;
+  }
+  try {
+    if (_itemEditId) await apiFetch('/items/'+_itemEditId, { method:'PUT', body: JSON.stringify(body) });
+    else await apiFetch('/items', { method:'POST', body: JSON.stringify(body) });
+    closeModal('itemModal');
+    showToast('Item saved.');
+    await loadItems();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+  return false;
 }
 
-async function deleteItem(id, name) {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    const res = await fetch(`${API}/api/inventory/items/${id}`, { method: 'DELETE', headers: getHeaders() });
-    if (res.ok) { showToast(`${name} deleted.`); await loadItems(); loadDashboard(); }
-    else showToast('❌ Failed to delete item', true);
+async function deleteItem(id) {
+  if (!confirm('Remove this item from inventory?')) return;
+  try {
+    await apiFetch('/items/'+id, { method:'DELETE' });
+    showToast('Item removed.');
+    await loadItems();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
 }
 
-// ── Movements ────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// MOVEMENTS
+// ════════════════════════════════════════════════════════════════════════════
 async function loadMovements() {
-    const type = document.getElementById('movTypeFilter')?.value || '';
-    let url = `${API}/api/inventory/movements?limit=80`;
-    if (type) url += `&type=${type}`;
-    try {
-        const res = await fetch(url, { headers: getHeaders() });
-        const d = await res.json();
-        renderMovements(d.movements || []);
-    } catch(e) {}
-}
-
-function renderMovements(movements) {
-    const el = document.getElementById('movementsTable');
-    if (!movements.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">🔄</div><p>No movements recorded.</p></div>`; return; }
-    const typeMap = { in:'📥 In', out:'📤 Out', adjustment:'⚖️ Adjust', transfer:'🔀 Transfer', return:'↩️ Return' };
-    const typeClass = { in:'badge-success', out:'badge-danger', adjustment:'badge-info', transfer:'badge-neutral', return:'badge-warning' };
-    el.innerHTML = `<table><thead><tr><th>Date</th><th>Item</th><th>Type</th><th>Qty</th><th>Warehouse</th><th>Reference</th><th>Notes</th></tr></thead><tbody>
-        ${movements.map(m => `<tr>
-            <td style="color:var(--text-muted);white-space:nowrap">${new Date(m.created_at).toLocaleDateString('en-ZA')}</td>
-            <td><strong>${escHtml(m.inventory_items?.name||'–')}</strong>${m.inventory_items?.sku ? `<br><span style="color:var(--text-muted);font-size:0.75rem">${escHtml(m.inventory_items.sku)}</span>` : ''}</td>
-            <td><span class="badge ${typeClass[m.type]||'badge-neutral'}">${typeMap[m.type]||m.type}</span></td>
-            <td><strong>${m.quantity}</strong></td>
-            <td>${escHtml(m.warehouses?.name||'–')}</td>
-            <td>${escHtml(m.reference||'–')}</td>
-            <td>${escHtml(m.notes||'–')}</td>
-        </tr>`).join('')}
-    </tbody></table>`;
+  const type = document.getElementById('movTypeFilter').value;
+  try {
+    const d = await apiFetch('/movements?limit=200' + (type ? '&type='+type : ''));
+    const m = d.movements || [];
+    const wrap = document.getElementById('movementsTable');
+    if (!m.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">🔄</div><p>No movements found.</p></div>'; return; }
+    const typeColors = { in:'badge-success', out:'badge-danger', adjustment:'badge-info', transfer:'badge-warning', return:'badge-purple' };
+    wrap.innerHTML = `<table><thead><tr>
+      <th>Date</th><th>Item</th><th>Type</th><th>Qty</th><th>Location</th><th>Reference</th><th>Notes</th>
+    </tr></thead><tbody>${m.map(mv=>`<tr>
+      <td style="white-space:nowrap">${fmtDate(mv.created_at)}</td>
+      <td>${esc(mv.inventory_items?.name||'?')}</td>
+      <td><span class="badge ${typeColors[mv.type]||'badge-neutral'}">${mv.type}</span></td>
+      <td><strong>${fmtQty(mv.quantity)}</strong></td>
+      <td>${esc(mv.warehouses?.name||'—')}</td>
+      <td>${esc(mv.reference||'—')}</td>
+      <td>${esc(mv.notes||'—')}</td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch(e) { showToast('Failed to load movements', true); }
 }
 
 function openMovementModal() {
-    document.getElementById('mItem').value = '';
-    document.getElementById('mType').value = 'in';
-    document.getElementById('mQty').value = '';
-    document.getElementById('mWarehouse').value = '';
-    document.getElementById('mCostPrice').value = '';
-    document.getElementById('mReference').value = '';
-    document.getElementById('mNotes').value = '';
-    openModal('movementModal');
+  ['mQty','mCostPrice','mRef','mNotes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('mType').value = 'in';
+  document.getElementById('mItem').value = '';
+  document.getElementById('mWarehouse').value = '';
+  openModal('movementModal');
 }
 
 async function saveMovement(e) {
-    e.preventDefault();
-    const body = {
-        item_id: document.getElementById('mItem').value,
-        type: document.getElementById('mType').value,
-        quantity: document.getElementById('mQty').value,
-        warehouse_id: document.getElementById('mWarehouse').value || null,
-        cost_price: document.getElementById('mCostPrice').value || null,
-        reference: document.getElementById('mReference').value.trim(),
-        notes: document.getElementById('mNotes').value.trim(),
-    };
-    try {
-        const res = await fetch(`${API}/api/inventory/movements`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error);
-        closeModal('movementModal');
-        showToast('Movement recorded!');
-        await loadMovements(); loadItems(); loadDashboard();
-    } catch(err) { showToast('❌ ' + err.message, true); }
-    return false;
+  e.preventDefault();
+  const body = {
+    item_id:     document.getElementById('mItem').value,
+    type:        document.getElementById('mType').value,
+    quantity:    document.getElementById('mQty').value,
+    warehouse_id:document.getElementById('mWarehouse').value||null,
+    cost_price:  document.getElementById('mCostPrice').value||null,
+    reference:   document.getElementById('mRef').value,
+    notes:       document.getElementById('mNotes').value
+  };
+  try {
+    await apiFetch('/movements', { method:'POST', body: JSON.stringify(body) });
+    closeModal('movementModal');
+    showToast('Movement recorded.');
+    allItems = [];
+    _tabLoaded['items'] = false;
+    await loadItems();
+    await loadMovements();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+  return false;
 }
 
-// ── Suppliers ────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// SUPPLIERS
+// ════════════════════════════════════════════════════════════════════════════
+let _suppliersCache = [];
 async function loadSuppliers() {
-    try {
-        const res = await fetch(`${API}/api/inventory/suppliers`, { headers: getHeaders() });
-        const d = await res.json();
-        allSuppliers = d.suppliers || [];
-        renderSuppliers();
-    } catch(e) {}
+  try {
+    const d = await apiFetch('/suppliers');
+    _suppliersCache = d.suppliers||[];
+    const wrap = document.getElementById('suppliersTable');
+    if (!_suppliersCache.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">🚚</div><p>No suppliers yet.</p></div>'; return; }
+    wrap.innerHTML = `<table><thead><tr>
+      <th>Name</th><th>Contact</th><th>Email</th><th>Phone</th><th>VAT</th><th>Actions</th>
+    </tr></thead><tbody>${_suppliersCache.map(s=>`<tr>
+      <td><strong>${esc(s.name)}</strong></td>
+      <td>${esc(s.contact_name||'—')}</td>
+      <td>${esc(s.email||'—')}</td>
+      <td>${esc(s.phone||'—')}</td>
+      <td>${esc(s.vat_number||'—')}</td>
+      <td class="td-actions">
+        <button class="btn btn-ghost btn-xs" onclick="editSupplier(${s.id})">Edit</button>
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch(e) { showToast('Failed to load suppliers', true); }
 }
 
-function renderSuppliers() {
-    const el = document.getElementById('suppliersTable');
-    if (!allSuppliers.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">🚚</div><p>No suppliers yet.</p></div>`; return; }
-    el.innerHTML = `<table><thead><tr><th>Name</th><th>Contact</th><th>Email</th><th>Phone</th><th>VAT</th><th>Actions</th></tr></thead><tbody>
-        ${allSuppliers.map(s => `<tr>
-            <td><strong>${escHtml(s.name)}</strong></td>
-            <td>${escHtml(s.contact_name||'–')}</td>
-            <td>${escHtml(s.email||'–')}</td>
-            <td>${escHtml(s.phone||'–')}</td>
-            <td>${escHtml(s.vat_number||'–')}</td>
-            <td><div class="td-actions"><button class="btn btn-ghost btn-sm" onclick="openSupplierModal(${s.id})">Edit</button></div></td>
-        </tr>`).join('')}
-    </tbody></table>`;
+function openSupplierModal() {
+  _supEditId = null;
+  document.getElementById('supModalTitle').textContent = 'Add Supplier';
+  document.getElementById('supSaveBtn').textContent = 'Save Supplier';
+  ['supName','supContact','supEmail','supPhone','supVat','supAddress','supNotes'].forEach(id=>document.getElementById(id).value='');
+  openModal('supplierModal');
 }
 
-function openSupplierModal(id) {
-    editingSupId = id || null;
-    document.getElementById('supModalTitle').textContent = id ? 'Edit Supplier' : 'Add Supplier';
-    const s = id ? allSuppliers.find(x => x.id === id) : null;
-    document.getElementById('supName').value = s?.name || '';
-    document.getElementById('supContact').value = s?.contact_name || '';
-    document.getElementById('supEmail').value = s?.email || '';
-    document.getElementById('supPhone').value = s?.phone || '';
-    document.getElementById('supVat').value = s?.vat_number || '';
-    document.getElementById('supAddress').value = s?.address || '';
-    openModal('supplierModal');
+function editSupplier(id) {
+  const s = _suppliersCache.find(x=>x.id===id);
+  if (!s) return;
+  _supEditId = id;
+  document.getElementById('supModalTitle').textContent = 'Edit Supplier';
+  document.getElementById('supSaveBtn').textContent = 'Save Changes';
+  document.getElementById('supName').value = s.name||'';
+  document.getElementById('supContact').value = s.contact_name||'';
+  document.getElementById('supEmail').value = s.email||'';
+  document.getElementById('supPhone').value = s.phone||'';
+  document.getElementById('supVat').value = s.vat_number||'';
+  document.getElementById('supAddress').value = s.address||'';
+  document.getElementById('supNotes').value = s.notes||'';
+  openModal('supplierModal');
 }
 
 async function saveSupplier(e) {
-    e.preventDefault();
-    const body = { name: document.getElementById('supName').value.trim(), contact_name: document.getElementById('supContact').value.trim(), email: document.getElementById('supEmail').value.trim(), phone: document.getElementById('supPhone').value.trim(), vat_number: document.getElementById('supVat').value.trim(), address: document.getElementById('supAddress').value.trim() };
-    try {
-        const url = editingSupId ? `${API}/api/inventory/suppliers/${editingSupId}` : `${API}/api/inventory/suppliers`;
-        const res = await fetch(url, { method: editingSupId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error);
-        closeModal('supplierModal');
-        showToast(editingSupId ? 'Supplier updated!' : 'Supplier added!');
-        await loadSuppliers();
-    } catch(err) { showToast('❌ ' + err.message, true); }
-    return false;
+  e.preventDefault();
+  const body = {
+    name: document.getElementById('supName').value.trim(),
+    contact_name: document.getElementById('supContact').value.trim(),
+    email: document.getElementById('supEmail').value.trim(),
+    phone: document.getElementById('supPhone').value.trim(),
+    vat_number: document.getElementById('supVat').value.trim(),
+    address: document.getElementById('supAddress').value.trim(),
+    notes: document.getElementById('supNotes').value.trim()
+  };
+  try {
+    if (_supEditId) await apiFetch('/suppliers/'+_supEditId, { method:'PUT', body: JSON.stringify(body) });
+    else await apiFetch('/suppliers', { method:'POST', body: JSON.stringify(body) });
+    closeModal('supplierModal');
+    showToast('Supplier saved.');
+    await loadSuppliers();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+  return false;
 }
 
-// ── Purchase Orders ──────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// PURCHASE ORDERS
+// ════════════════════════════════════════════════════════════════════════════
 async function loadOrders() {
-    const status = document.getElementById('poStatusFilter')?.value || '';
-    let url = `${API}/api/inventory/purchase-orders`;
-    if (status) url += `?status=${status}`;
-    try {
-        const res = await fetch(url, { headers: getHeaders() });
-        const d = await res.json();
-        renderOrders(d.purchase_orders || []);
-    } catch(e) {}
+  const status = document.getElementById('poStatusFilter').value;
+  try {
+    const d = await apiFetch('/purchase-orders' + (status ? '?status='+status : ''));
+    const pos = d.purchase_orders||[];
+    const wrap = document.getElementById('ordersTable');
+    if (!pos.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">🛒</div><p>No purchase orders found.</p></div>'; return; }
+    wrap.innerHTML = `<table><thead><tr>
+      <th>Date</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th>
+    </tr></thead><tbody>${pos.map(p=>`<tr>
+      <td>${fmtDate(p.created_at)}</td>
+      <td>${esc(p.suppliers?.name||'—')}</td>
+      <td>${statusBadge(p.status)}</td>
+      <td>${fmtR(p.total_amount)}</td>
+      <td>${fmtDate(p.expected_date)}</td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch(e) { showToast('Failed to load purchase orders', true); }
 }
 
-function renderOrders(orders) {
-    const el = document.getElementById('ordersTable');
-    if (!orders.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">🛒</div><p>No purchase orders yet.</p></div>`; return; }
-    const statusClass = { draft:'badge-neutral', sent:'badge-info', received:'badge-success', cancelled:'badge-danger' };
-    el.innerHTML = `<table><thead><tr><th>Date</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th><th>Actions</th></tr></thead><tbody>
-        ${orders.map(o => `<tr>
-            <td style="color:var(--text-muted)">${new Date(o.created_at).toLocaleDateString('en-ZA')}</td>
-            <td><strong>${escHtml(o.suppliers?.name||'–')}</strong></td>
-            <td><span class="badge ${statusClass[o.status]||'badge-neutral'}">${o.status}</span></td>
-            <td>R${(o.total_amount||0).toFixed(2)}</td>
-            <td>${o.expected_date||'–'}</td>
-            <td><div class="td-actions">
-                <select class="filter-select" style="padding:4px 8px;font-size:0.75rem;" onchange="updateOrderStatus(${o.id},this.value)">
-                    <option value="">Change Status</option>
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="received">Received</option>
-                    <option value="cancelled">Cancel</option>
-                </select>
-            </div></td>
-        </tr>`).join('')}
-    </tbody></table>`;
+// ════════════════════════════════════════════════════════════════════════════
+// BILL OF MATERIALS
+// ════════════════════════════════════════════════════════════════════════════
+let _bomsCache = [];
+
+async function loadBoms() {
+  const status = document.getElementById('bomStatusFilter').value;
+  try {
+    const d = await apiFetch('/boms' + (status ? '?status='+status : ''));
+    _bomsCache = d.boms||[];
+    renderBomsTable();
+  } catch(e) { showToast('Failed to load BOMs', true); }
 }
 
-async function updateOrderStatus(id, status) {
-    if (!status) return;
-    const res = await fetch(`${API}/api/inventory/purchase-orders/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ status }) });
-    if (res.ok) { showToast('Order status updated!'); loadOrders(); }
+function renderBomsTable() {
+  const wrap = document.getElementById('bomsTable');
+  if (!_bomsCache.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><p>No BOMs yet. Create one to define your product recipes.</p></div>'; return; }
+  wrap.innerHTML = `<table><thead><tr>
+    <th>BOM Name</th><th>Product</th><th>Version</th><th>Output Qty</th><th>Status</th><th>Actions</th>
+  </tr></thead><tbody>${_bomsCache.map(b=>`<tr>
+    <td><strong>${esc(b.name)}</strong></td>
+    <td>${esc(b.inventory_items?.name||'?')} <span style="color:var(--text-muted);font-size:0.75rem">${esc(b.inventory_items?.sku||'')}</span></td>
+    <td><span class="badge badge-neutral">${esc(b.version)}</span></td>
+    <td>${fmtQty(b.output_qty, b.inventory_items?.unit||'')}</td>
+    <td>${statusBadge(b.status)}</td>
+    <td class="td-actions">
+      <button class="btn btn-ghost btn-xs" onclick="viewBom(${b.id})">View</button>
+      ${b.status!=='active'?`<button class="btn btn-success btn-xs" onclick="activateBom(${b.id})">Activate</button>`:''}
+      ${b.status==='draft'?`<button class="btn btn-ghost btn-xs" onclick="editBom(${b.id})">Edit</button>`:''}
+      <button class="btn btn-danger btn-xs" onclick="deleteBom(${b.id})">Remove</button>
+    </td>
+  </tr>`).join('')}</tbody></table>`;
 }
 
-function escHtml(str) { const d = document.createElement('div'); d.textContent = str||''; return d.innerHTML; }
+function openBomModal() {
+  _bomEditId = null;
+  document.getElementById('bomModalTitle').textContent = 'Create Bill of Materials';
+  document.getElementById('bomSaveBtn').textContent = 'Save BOM';
+  document.getElementById('bomEditId').value = '';
+  document.getElementById('bomName').value = '';
+  document.getElementById('bomVersion').value = '1.0';
+  document.getElementById('bomOutputQty').value = '1';
+  document.getElementById('bomScrap').value = '0';
+  document.getElementById('bomNotes').value = '';
 
-init();
+  // Populate item select — finished goods and sub-assemblies
+  const sel = document.getElementById('bomItem');
+  sel.innerHTML = '<option value="">— Select Item —</option>';
+  allItems.filter(i=>['finished_good','sub_assembly'].includes(i.item_type||'finished_good')).forEach(i=>{
+    const o = document.createElement('option');
+    o.value = i.id;
+    o.textContent = i.name + (i.sku?` (${i.sku})`:'');
+    sel.appendChild(o);
+  });
+
+  document.getElementById('bomLinesContainer').innerHTML = '';
+  document.getElementById('bomLinesEmpty').style.display = 'block';
+  openModal('bomModal');
+}
+
+async function editBom(id) {
+  try {
+    const d = await apiFetch('/boms/'+id);
+    const b = d.bom;
+    openBomModal(); // sets defaults
+    _bomEditId = id;
+    document.getElementById('bomEditId').value = id;
+    document.getElementById('bomModalTitle').textContent = 'Edit BOM';
+    document.getElementById('bomSaveBtn').textContent = 'Save Changes';
+    document.getElementById('bomItem').value = b.item_id;
+    document.getElementById('bomName').value = b.name;
+    document.getElementById('bomVersion').value = b.version;
+    document.getElementById('bomOutputQty').value = b.output_qty;
+    document.getElementById('bomScrap').value = b.scrap_percent;
+    document.getElementById('bomNotes').value = b.notes||'';
+    // Add existing lines
+    (b.lines||[]).forEach(l => addBomLine(l));
+  } catch(e) { showToast(e.message, true); }
+}
+
+let _bomLineCount = 0;
+function addBomLine(prefill) {
+  _bomLineCount++;
+  const id = _bomLineCount;
+  document.getElementById('bomLinesEmpty').style.display = 'none';
+  const container = document.getElementById('bomLinesContainer');
+  const row = document.createElement('div');
+  row.className = 'bom-line-row';
+  row.id = 'bom-line-'+id;
+
+  // Item select
+  const selHtml = `<select class="bom-line-item" data-line="${id}">
+    <option value="">— Select —</option>
+    ${allItems.map(i=>`<option value="${i.id}" ${prefill&&prefill.item_id==i.id?'selected':''}>${esc(i.name)}${i.sku?' ('+esc(i.sku)+')':''}</option>`).join('')}
+  </select>`;
+
+  row.innerHTML = `
+    ${selHtml}
+    <input type="number" step="0.0001" min="0" placeholder="Qty" class="bom-line-qty" value="${prefill?prefill.quantity:''}">
+    <input type="number" step="0.01" min="0" max="100" placeholder="0%" class="bom-line-scrap" value="${prefill?(prefill.scrap_percent||0):'0'}">
+    <input type="text" placeholder="Notes" class="bom-line-notes" value="${prefill?esc(prefill.notes||''):''}">
+    <button type="button" class="bom-line-remove" onclick="removeBomLine(${id})">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function removeBomLine(id) {
+  const el = document.getElementById('bom-line-'+id);
+  if (el) el.remove();
+  if (!document.querySelectorAll('.bom-line-row').length) {
+    document.getElementById('bomLinesEmpty').style.display = 'block';
+  }
+}
+
+function collectBomLines() {
+  return Array.from(document.querySelectorAll('.bom-line-row')).map(row => ({
+    item_id:       row.querySelector('.bom-line-item').value,
+    quantity:      row.querySelector('.bom-line-qty').value,
+    scrap_percent: row.querySelector('.bom-line-scrap').value||0,
+    notes:         row.querySelector('.bom-line-notes').value
+  }));
+}
+
+async function saveBom(e) {
+  e.preventDefault();
+  const lines = collectBomLines();
+  const hasInvalid = lines.some(l => !l.item_id || !l.quantity);
+  if (hasInvalid) { showToast('Each component line needs an item and quantity.', true); return false; }
+
+  const body = {
+    item_id:      document.getElementById('bomItem').value,
+    name:         document.getElementById('bomName').value.trim(),
+    version:      document.getElementById('bomVersion').value.trim()||'1.0',
+    output_qty:   document.getElementById('bomOutputQty').value,
+    scrap_percent:document.getElementById('bomScrap').value,
+    notes:        document.getElementById('bomNotes').value.trim(),
+    lines
+  };
+  const editId = document.getElementById('bomEditId').value;
+  try {
+    if (editId) await apiFetch('/boms/'+editId, { method:'PUT', body: JSON.stringify(body) });
+    else await apiFetch('/boms', { method:'POST', body: JSON.stringify(body) });
+    closeModal('bomModal');
+    showToast('BOM saved.');
+    await loadBoms();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+  return false;
+}
+
+async function viewBom(id) {
+  try {
+    const d = await apiFetch('/boms/'+id);
+    const b = d.bom;
+    document.getElementById('bomDetailTitle').textContent = b.name + ' v' + b.version;
+    let html = `
+      <div class="detail-grid cols3" style="margin-bottom:18px;">
+        <div class="detail-row"><div class="label">Product</div><div class="value">${esc(b.inventory_items?.name||'?')}</div></div>
+        <div class="detail-row"><div class="label">Output Qty</div><div class="value">${fmtQty(b.output_qty, b.inventory_items?.unit||'')}</div></div>
+        <div class="detail-row"><div class="label">Scrap %</div><div class="value">${b.scrap_percent}%</div></div>
+        <div class="detail-row"><div class="label">Status</div><div class="value">${statusBadge(b.status)}</div></div>
+        <div class="detail-row"><div class="label">Version</div><div class="value">${esc(b.version)}</div></div>
+        <div class="detail-row"><div class="label">Notes</div><div class="value">${esc(b.notes||'—')}</div></div>
+      </div>
+      <div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Components (${(b.lines||[]).length})</div>
+      <div class="materials-grid">
+        <div class="materials-grid-header"><div>Component</div><div>SKU</div><div>Req. Qty / output</div><div>Scrap %</div></div>
+        ${(b.lines||[]).map(l=>`<div class="materials-grid-row">
+          <div>${esc(l.inventory_items?.name||'?')} ${itemTypeBadge(l.inventory_items?.item_type)}</div>
+          <div>${esc(l.inventory_items?.sku||'—')}</div>
+          <div><strong>${fmtQty(l.quantity)} ${esc(l.inventory_items?.unit||'')}</strong></div>
+          <div>${l.scrap_percent||0}%</div>
+        </div>`).join('')}
+      </div>`;
+    if (b.status !== 'active') {
+      html += `<div style="margin-top:18px;display:flex;gap:10px;">
+        <button class="btn btn-success" onclick="activateBom(${b.id}); closeModal('bomDetailModal');">✓ Activate this BOM</button>
+        <button class="btn btn-ghost" onclick="closeModal('bomDetailModal'); editBom(${b.id})">Edit</button>
+      </div>`;
+    } else {
+      html += `<div style="margin-top:14px;">
+        <button class="btn btn-purple" onclick="closeModal('bomDetailModal'); switchTab('workorders'); openWoModal(${b.item_id})">⚙️ Create Work Order with this BOM</button>
+      </div>`;
+    }
+    document.getElementById('bomDetailBody').innerHTML = html;
+    openModal('bomDetailModal');
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function activateBom(id) {
+  try {
+    await apiFetch('/boms/'+id+'/activate', { method:'POST' });
+    showToast('BOM activated.');
+    await loadBoms();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function deleteBom(id) {
+  if (!confirm('Deactivate this BOM?')) return;
+  try {
+    await apiFetch('/boms/'+id, { method:'DELETE' });
+    showToast('BOM deactivated.');
+    await loadBoms();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WORK ORDERS
+// ════════════════════════════════════════════════════════════════════════════
+let _woCache = [];
+
+async function loadWorkOrders() {
+  const status = document.getElementById('woStatusFilter').value;
+  try {
+    const d = await apiFetch('/work-orders' + (status ? '?status='+status : ''));
+    _woCache = d.work_orders||[];
+    renderWoTable();
+  } catch(e) { showToast('Failed to load work orders', true); }
+}
+
+function renderWoTable() {
+  const wrap = document.getElementById('workordersTable');
+  if (!_woCache.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">⚙️</div><p>No work orders yet.</p></div>'; return; }
+  wrap.innerHTML = `<table><thead><tr>
+    <th>WO #</th><th>Product</th><th>BOM</th><th>Qty</th><th>Produced</th><th>Status</th><th>Planned Start</th><th>Actions</th>
+  </tr></thead><tbody>${_woCache.map(w=>`<tr>
+    <td><strong>${esc(w.wo_number)}</strong></td>
+    <td>${esc(w.inventory_items?.name||'?')}</td>
+    <td>${w.bom_headers?esc(w.bom_headers.name+' v'+w.bom_headers.version):'<span style="color:var(--text-muted)">—</span>'}</td>
+    <td>${fmtQty(w.quantity_to_produce,w.inventory_items?.unit||'')}</td>
+    <td>${w.status==='completed'?fmtQty(w.quantity_produced,w.inventory_items?.unit||''):'<span style="color:var(--text-muted)">—</span>'}</td>
+    <td>${statusBadge(w.status)}</td>
+    <td>${fmtDate(w.planned_start_date)}</td>
+    <td class="td-actions">
+      <button class="btn btn-ghost btn-xs" onclick="viewWo(${w.id})">View</button>
+      ${woActionBtn(w)}
+    </td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+function woActionBtn(w) {
+  if (w.status==='draft')       return `<button class="btn btn-info btn-xs" onclick="releaseWo(${w.id})" style="background:rgba(34,211,238,0.15);border:1px solid rgba(34,211,238,0.3);color:var(--accent)">Release</button>`;
+  if (w.status==='released')    return `<button class="btn btn-warning btn-xs" onclick="startWo(${w.id})" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24">Start</button>`;
+  if (w.status==='in_progress') return `<button class="btn btn-success btn-xs" onclick="openCompleteModal(${w.id},${w.quantity_to_produce})">Complete</button>`;
+  return '';
+}
+
+function openWoModal(prefillItemId) {
+  ['woQty','woStartDate','woEndDate','woNotes'].forEach(id=>document.getElementById(id).value='');
+  const sel = document.getElementById('woItem');
+  sel.innerHTML = '<option value="">— Select Item —</option>';
+  allItems.filter(i=>['finished_good','sub_assembly'].includes(i.item_type||'finished_good')).forEach(i=>{
+    const o = document.createElement('option');
+    o.value = i.id;
+    o.textContent = i.name + (i.sku?` (${i.sku})`:'');
+    sel.appendChild(o);
+  });
+  if (prefillItemId) {
+    sel.value = prefillItemId;
+    loadBomsForItem();
+  } else {
+    document.getElementById('woBom').innerHTML = '<option value="">— No BOM / Manual —</option>';
+  }
+  openModal('woModal');
+}
+
+async function loadBomsForItem() {
+  const itemId = document.getElementById('woItem').value;
+  const sel = document.getElementById('woBom');
+  sel.innerHTML = '<option value="">— No BOM / Manual —</option>';
+  if (!itemId) return;
+  try {
+    const d = await apiFetch('/boms?item_id='+itemId+'&status=active');
+    (d.boms||[]).forEach(b=>{
+      const o = document.createElement('option');
+      o.value = b.id;
+      o.textContent = b.name + ' v' + b.version;
+      sel.appendChild(o);
+    });
+    // Also include draft BOMs
+    const d2 = await apiFetch('/boms?item_id='+itemId+'&status=draft');
+    (d2.boms||[]).forEach(b=>{
+      const o = document.createElement('option');
+      o.value = b.id;
+      o.textContent = b.name + ' v' + b.version + ' (draft)';
+      sel.appendChild(o);
+    });
+  } catch(e) {}
+}
+
+async function saveWo(e) {
+  e.preventDefault();
+  const body = {
+    item_id:             document.getElementById('woItem').value,
+    bom_id:              document.getElementById('woBom').value||null,
+    quantity_to_produce: document.getElementById('woQty').value,
+    planned_start_date:  document.getElementById('woStartDate').value||null,
+    planned_end_date:    document.getElementById('woEndDate').value||null,
+    notes:               document.getElementById('woNotes').value.trim()
+  };
+  try {
+    await apiFetch('/work-orders', { method:'POST', body: JSON.stringify(body) });
+    closeModal('woModal');
+    showToast('Work order created.');
+    await loadWorkOrders();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+  return false;
+}
+
+async function viewWo(id) {
+  try {
+    const d = await apiFetch('/work-orders/'+id);
+    const w = d.work_order;
+    const steps = ['draft','released','in_progress','completed'];
+    const curIdx = steps.indexOf(w.status==='cancelled'?'draft':w.status);
+    const timelineHtml = steps.map((s,i)=>{
+      const cls = i < curIdx ? 'done' : i === curIdx && w.status !== 'cancelled' ? 'active' : '';
+      return `<div class="timeline-step ${cls}">${s.replace('_',' ')}</div>${i<steps.length-1?'<span class="timeline-sep">›</span>':''}`;
+    }).join('');
+
+    let actionHtml = '';
+    if (w.status==='draft')       actionHtml = `<button class="btn btn-primary btn-sm" onclick="releaseWo(${w.id}); closeModal('woDetailModal')">Release</button>`;
+    if (w.status==='released')    actionHtml = `<button class="btn btn-primary btn-sm" onclick="startWo(${w.id}); closeModal('woDetailModal')">Start Production</button>`;
+    if (w.status==='in_progress') actionHtml = `<button class="btn btn-success btn-sm" onclick="closeModal('woDetailModal'); openCompleteModal(${w.id},${w.quantity_to_produce})">Receive & Complete</button>`;
+    if (['draft','released','in_progress'].includes(w.status)) {
+      actionHtml += ` <button class="btn btn-danger btn-sm" onclick="cancelWo(${w.id}); closeModal('woDetailModal')">Cancel WO</button>`;
+    }
+
+    const matHtml = (w.materials||[]).length ? `
+      <div style="font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 10px;">Material Requirements</div>
+      <div class="materials-grid">
+        <div class="materials-grid-header"><div>Component</div><div>Required</div><div>Issued</div><div>Remaining</div></div>
+        ${w.materials.map(m=>{
+          const rem = Math.max(0, parseFloat(m.required_qty||0)-parseFloat(m.issued_qty||0));
+          return `<div class="materials-grid-row">
+            <div>${esc(m.inventory_items?.name||'?')}</div>
+            <div>${fmtQty(m.required_qty,m.inventory_items?.unit||'')}</div>
+            <div>${fmtQty(m.issued_qty,m.inventory_items?.unit||'')}</div>
+            <div ${rem>0?'style="color:var(--warning)"':'style="color:var(--success)"'}>${fmtQty(rem)}</div>
+          </div>`;
+        }).join('')}
+      </div>` : '<div style="color:var(--text-muted);font-size:0.85rem;margin-top:14px;">No material requirements linked (no BOM selected).</div>';
+
+    document.getElementById('woDetailTitle').textContent = w.wo_number + ' — ' + (w.inventory_items?.name||'?');
+    document.getElementById('woDetailBody').innerHTML = `
+      ${w.status==='cancelled'?`<div style="background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;color:#fda4af;font-size:0.85rem;">This work order has been cancelled.</div>`:''}
+      <div class="status-timeline">${timelineHtml}</div>
+      <div class="detail-grid cols3">
+        <div class="detail-row"><div class="label">Product</div><div class="value">${esc(w.inventory_items?.name||'?')}</div></div>
+        <div class="detail-row"><div class="label">Qty to Produce</div><div class="value">${fmtQty(w.quantity_to_produce,w.inventory_items?.unit||'')}</div></div>
+        <div class="detail-row"><div class="label">Qty Produced</div><div class="value">${w.status==='completed'?fmtQty(w.quantity_produced,w.inventory_items?.unit||''):'—'}</div></div>
+        <div class="detail-row"><div class="label">BOM</div><div class="value">${w.bom_headers?esc(w.bom_headers.name+' v'+w.bom_headers.version):'—'}</div></div>
+        <div class="detail-row"><div class="label">Planned Start</div><div class="value">${fmtDate(w.planned_start_date)}</div></div>
+        <div class="detail-row"><div class="label">Planned End</div><div class="value">${fmtDate(w.planned_end_date)}</div></div>
+        <div class="detail-row"><div class="label">Actual Start</div><div class="value">${fmtDate(w.actual_start_date)}</div></div>
+        <div class="detail-row"><div class="label">Actual End</div><div class="value">${fmtDate(w.actual_end_date)}</div></div>
+        <div class="detail-row"><div class="label">Notes</div><div class="value">${esc(w.notes||'—')}</div></div>
+      </div>
+      ${matHtml}
+      ${actionHtml?`<div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">${actionHtml}</div>`:''}
+    `;
+    openModal('woDetailModal');
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function releaseWo(id) {
+  try {
+    await apiFetch('/work-orders/'+id+'/release', { method:'POST' });
+    showToast('Work order released.');
+    await loadWorkOrders(); await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+async function startWo(id) {
+  try {
+    await apiFetch('/work-orders/'+id+'/start', { method:'POST' });
+    showToast('Work order started.');
+    await loadWorkOrders(); await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+async function cancelWo(id) {
+  if (!confirm('Cancel this work order?')) return;
+  try {
+    await apiFetch('/work-orders/'+id+'/cancel', { method:'POST' });
+    showToast('Work order cancelled.');
+    await loadWorkOrders(); await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+function openCompleteModal(id, qtyPlanned) {
+  _woCompleteId = id;
+  document.getElementById('woCompleteQty').value = qtyPlanned;
+  openModal('woCompleteModal');
+}
+
+async function confirmCompleteWo() {
+  const qty = document.getElementById('woCompleteQty').value;
+  if (!qty || parseFloat(qty) <= 0) { showToast('Enter a valid quantity.', true); return; }
+  try {
+    await apiFetch('/work-orders/'+_woCompleteId+'/complete', {
+      method:'POST',
+      body: JSON.stringify({ quantity_produced: parseFloat(qty) })
+    });
+    closeModal('woCompleteModal');
+    showToast('Work order completed. Stock updated.');
+    await loadWorkOrders(); await loadItems(); await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// UTILITY
+// ════════════════════════════════════════════════════════════════════════════
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('show');
+  });
+});
 </script>
 </body>
 </html>

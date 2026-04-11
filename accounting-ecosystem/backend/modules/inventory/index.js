@@ -10,29 +10,39 @@
 const express = require('express');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
+const bomRoutes = require('./routes/boms');
+const workOrderRoutes = require('./routes/work-orders');
 
 const router = express.Router();
 
+// ─── Sub-routers ──────────────────────────────────────────────────────────────
+router.use('/boms', bomRoutes);
+router.use('/work-orders', workOrderRoutes);
+
 // ─── Health ──────────────────────────────────────────────────────────────────
 router.get('/status', (req, res) => {
-  res.json({ module: 'inventory', status: 'active', version: '1.0.0' });
+  res.json({ module: 'inventory', status: 'active', version: '2.0.0' });
 });
 
 // ─── Dashboard Stats ─────────────────────────────────────────────────────────
 router.get('/dashboard', async (req, res) => {
   const cid = req.companyId;
   try {
-    const [items, movements, suppliers, lowStock] = await Promise.all([
+    const [items, movements, suppliers, lowStock, openWOs, activeBoMs] = await Promise.all([
       supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true),
       supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('company_id', cid),
       supabase.from('suppliers').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true),
       supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true).filter('current_stock', 'lte', 'min_stock'),
+      supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('company_id', cid).in('status', ['released', 'in_progress']),
+      supabase.from('bom_headers').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('status', 'active'),
     ]);
     res.json({
-      total_items: items.count || 0,
+      total_items:     items.count     || 0,
       total_movements: movements.count || 0,
       total_suppliers: suppliers.count || 0,
-      low_stock_count: lowStock.count || 0,
+      low_stock_count: lowStock.count  || 0,
+      open_work_orders: openWOs.count  || 0,
+      active_boms:     activeBoMs.count || 0,
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -124,20 +134,42 @@ router.get('/items/:id', async (req, res) => {
 });
 
 router.post('/items', async (req, res) => {
-  const { name, sku, description, category, unit, cost_price, sell_price, current_stock, min_stock, warehouse_id } = req.body;
+  const {
+    name, sku, description, category, unit,
+    cost_price, sell_price, current_stock, min_stock, warehouse_id,
+    // Manufacturing fields
+    item_type, barcode, track_lots, track_serials,
+    costing_method, lead_time_days
+  } = req.body;
   if (!name) return res.status(400).json({ error: 'Item name is required' });
+
+  const validItemTypes = ['raw_material', 'finished_good', 'sub_assembly', 'consumable', 'service'];
+  if (item_type && !validItemTypes.includes(item_type)) {
+    return res.status(400).json({ error: `item_type must be one of: ${validItemTypes.join(', ')}` });
+  }
+
   const { data, error } = await supabase
     .from('inventory_items')
     .insert({
-      company_id: req.companyId,
-      name, sku: sku || null, description: description || null,
-      category: category || null, unit: unit || 'unit',
-      cost_price: parseFloat(cost_price) || 0,
-      sell_price: parseFloat(sell_price) || 0,
-      current_stock: parseFloat(current_stock) || 0,
-      min_stock: parseFloat(min_stock) || 0,
-      warehouse_id: warehouse_id ? parseInt(warehouse_id) : null,
-      is_active: true
+      company_id:     req.companyId,
+      name,
+      sku:            sku || null,
+      description:    description || null,
+      category:       category || null,
+      unit:           unit || 'unit',
+      cost_price:     parseFloat(cost_price) || 0,
+      sell_price:     parseFloat(sell_price) || 0,
+      current_stock:  parseFloat(current_stock) || 0,
+      min_stock:      parseFloat(min_stock) || 0,
+      warehouse_id:   warehouse_id ? parseInt(warehouse_id) : null,
+      is_active:      true,
+      // Manufacturing fields
+      item_type:      item_type || 'finished_good',
+      barcode:        barcode || null,
+      track_lots:     track_lots === true || track_lots === 'true',
+      track_serials:  track_serials === true || track_serials === 'true',
+      costing_method: costing_method || 'average',
+      lead_time_days: parseInt(lead_time_days) || 0
     })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -146,7 +178,12 @@ router.post('/items', async (req, res) => {
 });
 
 router.put('/items/:id', async (req, res) => {
-  const allowed = ['name', 'sku', 'description', 'category', 'unit', 'cost_price', 'sell_price', 'min_stock', 'warehouse_id', 'is_active'];
+  const allowed = [
+    'name', 'sku', 'description', 'category', 'unit',
+    'cost_price', 'sell_price', 'min_stock', 'warehouse_id', 'is_active',
+    // Manufacturing fields
+    'item_type', 'barcode', 'track_lots', 'track_serials', 'costing_method', 'lead_time_days'
+  ];
   const updates = { updated_at: new Date().toISOString() };
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
   const { data, error } = await supabase
