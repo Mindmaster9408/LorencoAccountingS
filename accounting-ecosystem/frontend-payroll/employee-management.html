@@ -819,13 +819,14 @@
                     html += `
                         <tr>
                             <td><strong>${emp.employee_number}</strong></td>
-                            <td>${emp.first_name} ${emp.last_name}</td>
+                            <td><a href="employee-detail.html?id=${emp.id}" style="color:#667eea; font-weight:600; text-decoration:none;">${emp.first_name} ${emp.last_name}</a></td>
                             <td>${emp.id_number || '-'}</td>
                             <td>${emp.tax_number ? emp.tax_number : '<span style="color:#dc3545;font-weight:600;">⚠ Missing</span>'}</td>
                             <td>${emp.position || '-'}</td>
                             <td>${emp.department || '-'}</td>
                             <td>${emp.payment_method || 'EFT'}</td>
                             <td>
+                                <button class="btn-small" style="background:#667eea;color:white;" onclick="window.location.href='employee-detail.html?id=${emp.id}'">Open</button>
                                 <button class="btn-small btn-edit" onclick="editEmployee('${emp.id}')">Edit</button>
                                 <button class="btn-small btn-delete" data-permission="DELETE_EMPLOYEES" onclick="deleteEmployee('${emp.id}')">Delete</button>
                             </td>
