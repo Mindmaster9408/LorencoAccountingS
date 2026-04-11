@@ -39,7 +39,8 @@
       "Bash(backend/node_modules/.bin/jest tests/vat-period.test.js --no-coverage)",
       "Bash(backend/node_modules/.bin/jest --no-coverage)",
       "Bash(python -c:*)",
-      "Bash(node --version)"
+      "Bash(node --version)",
+      "Bash(grep -E \"\\\\.\\(sql|js\\)$\")"
     ]
   }
 }
