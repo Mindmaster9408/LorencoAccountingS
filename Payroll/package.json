@@ -1,7 +1,7 @@
 {
   "name": "lorenco-paytime",
-  "version": "2.0.0",
-  "description": "Lorenco Paytime — Payroll system with Supabase cloud storage",
+  "version": "2.1.0",
+  "description": "Lorenco Paytime — Payroll system with Supabase cloud storage and offline update system",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -19,8 +19,25 @@ const express = require('express');
 const cors    = require('cors');
 const helmet  = require('helmet');
 const path    = require('path');
+const fs      = require('fs');
 
 const { supabase, checkConnection } = require('./config/database');
+const { createPool } = require('pg');
+const { registerPayrollEmployeeSyncRoutes } = require('./routes/payroll-employee-sync');
+
+// ── Database Pool for Employee Sync ───────────────────────────────────────────
+// Create a dedicated pool for sync operations
+const dbPool = createPool({
+    connectionString: process.env.DATABASE_URL,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000
+});
+
+// ── Build Version ────────────────────────────────────────────────────────────
+// Each server restart = new timestamp = new SW bytes = browsers detect update.
+// Override with BUILD_VERSION env var for deterministic versioning.
+const BUILD_VERSION = process.env.BUILD_VERSION || Date.now().toString(36);
 
 const app  = express();
 const PORT = process.env.PORT || 3131;
@@ -34,6 +51,12 @@ app.use(express.json({ limit: '10mb' }));
 app.get('/api/health', async (req, res) => {
     const ok = await checkConnection(1, 0);
     res.json({ status: ok ? 'ok' : 'degraded', database: ok ? 'connected' : 'unreachable' });
+});
+
+// ── Version check for app updates ──────────────────────────────────────────
+app.get('/api/version', (req, res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.json({ version: BUILD_VERSION, timestamp: new Date().toISOString() });
 });
 
 // ── GET /api/storage  →  return all stored key/value pairs ───────────────────
@@ -143,11 +166,39 @@ app.delete('/api/storage/:key', async (req, res) => {
     }
 });
 
+// ── Service Worker Dynamic Version Injection ──────────────────────────────
+// Serve service-worker.js with __BUILD_VERSION__ replaced at request time.
+// This guarantees the SW bytes change on every server restart → browser
+// detects new SW → installs + activates → deletes old caches automatically.
+app.get('/service-worker.js', (req, res) => {
+    const swPath = path.join(__dirname, 'Payroll_App', 'service-worker.js');
+    try {
+        const content = fs.readFileSync(swPath, 'utf8').replace(/__BUILD_VERSION__/g, BUILD_VERSION);
+        res.type('application/javascript');
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.send(content);
+    } catch (err) {
+        console.error('Service worker not found:', err.message);
+        res.status(404).json({ error: 'Service worker not found' });
+    }
+});
+
+// ── Payroll Employee Sync Routes ──────────────────────────────────────────────
+// Register sync detection and execution endpoints
+registerPayrollEmployeeSyncRoutes(app, dbPool);
+
+// ── HTML Cache Control ────────────────────────────────────────────────────────
+// Ensure HTML is never cached by browser — always check for new version.
+app.get('*.html', (req, res, next) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    next();
+});
+
 // ── Static file serving (Payroll_App frontend) ───────────────────────────────
 const STATIC_DIR = path.join(__dirname, 'Payroll_App');
 app.use(express.static(STATIC_DIR, { extensions: ['html'] }));
 
-// Fallback: serve index.html for unmatched routes (SPA support)
+// ── Fallback: serve index.html for unmatched routes (SPA support) ─────────────
 app.get('*', (req, res) => {
     res.sendFile(path.join(STATIC_DIR, 'index.html'));
 });
