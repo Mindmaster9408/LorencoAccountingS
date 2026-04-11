@@ -353,6 +353,10 @@
                             <span class="salary-label">Basic Salary</span>
                             <span class="salary-value" id="basicSalary">R 0.00</span>
                         </div>
+                        <div class="salary-item" style="background:#f8f9ff; border-left:3px solid #667eea; padding:6px 10px; margin:4px 0;">
+                            <span class="salary-label" style="font-size:12px; color:#667eea;">Calculated Hourly Rate (Based on Schedule)</span>
+                            <span style="font-size:12px; color:#444; font-weight:600;" id="calculatedHourlyRate">—</span>
+                        </div>
                         <div id="regularInputsList"></div>
                     </div>
                     <div class="section">
@@ -1313,6 +1317,7 @@
             { day:'sat', label:'Sat', enabled:false, type:'normal', partial_hours:null },
             { day:'sun', label:'Sun', enabled:false, type:'normal', partial_hours:null },
         ];
+        var _workScheduleHoursPerDay = 8; // Updated when work schedule is loaded
         var _fullDaysOverride = null;
 
         function renderWorkingDaysTable() {
@@ -1400,11 +1405,14 @@
                 document.getElementById('hrs_hourly_paid').checked    = !!ws.is_hourly_paid;
                 document.getElementById('hrs_hours_per_day').value    = ws.hours_per_day || 8;
                 document.getElementById('hrs_schedule_type').value    = ws.schedule_type || 'fixed';
+                _workScheduleHoursPerDay = parseFloat(ws.hours_per_day) || 8;
                 if (ws.working_days && ws.working_days.length === 7) {
                     _workingDaysData = ws.working_days.map(function(d, i) {
                         return Object.assign({}, _workingDaysData[i], d);
                     });
                 }
+                // Update hourly rate display on payroll tab when schedule is freshly loaded
+                _updateHourlyRateDisplay();
             } catch (e) {
                 console.error('loadWorkSchedule:', e);
             }
@@ -1427,7 +1435,9 @@
                 });
                 if (!r.ok) throw new Error(await r.text());
                 var res = await r.json();
+                _workScheduleHoursPerDay = parseFloat(document.getElementById('hrs_hours_per_day').value) || 8;
                 document.getElementById('hrs_full_days').textContent = parseFloat(res.full_days_per_week || 0).toFixed(3);
+                _updateHourlyRateDisplay();
                 msg.style.color = '#28a745';
                 msg.textContent = '✓ Work schedule saved.';
                 msg.style.display = 'block';
@@ -1788,6 +1798,20 @@
             }
         }
 
+        // ========== HOURLY RATE DISPLAY ==========
+        function _updateHourlyRateDisplay() {
+            var el = document.getElementById('calculatedHourlyRate');
+            if (!el) return;
+            var salary = payrollData ? parseFloat(payrollData.basic_salary) || 0 : 0;
+            if (salary <= 0) { el.textContent = '—'; return; }
+            var weeklyHours = PayrollEngine.calcWeeklyHours(_workingDaysData, _workScheduleHoursPerDay);
+            var rate = PayrollEngine.calcHourlyRate(salary, _workingDaysData, _workScheduleHoursPerDay);
+            var basis = weeklyHours > 0
+                ? weeklyHours.toFixed(1) + 'h/wk × 4.33'
+                : 'fallback ÷ ' + PayrollEngine.HOURLY_DIVISOR;
+            el.textContent = 'R ' + rate.toFixed(2) + '/hr  (' + basis + ')';
+        }
+
         function renderPayroll() {
             try {
                 // Defensive checks for cross-browser compatibility
@@ -1878,6 +1902,7 @@
             const multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
             mrList.innerHTML = multiRate.length === 0 ? '<p style="color:#999;font-size:14px;">No multi-rate hours recorded</p>' :
                 multiRate.map(mr => '<div class="salary-item"><span class="salary-label">' + mr.description + ' - ' + mr.hours + 'hrs @ R' + parseFloat(mr.hourly_rate).toFixed(2) + '/hr</span><span><span class="salary-value">' + formatMoney(mr.hours * mr.hourly_rate) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteMultiRate(\'' + mr.id + '\')">x</button></span></div>').join('');
+            _updateHourlyRateDisplay();
             Permissions.enforceUI();
         }
         } catch(e) {
@@ -2226,8 +2251,12 @@
                 }
             }
 
+            var _calcPayrollData = Object.assign({}, payrollData, {
+                workSchedule: _workingDaysData,
+                hours_per_day: _workScheduleHoursPerDay
+            });
             var calc = PayrollEngine.calculateFromData(
-                payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod,
+                _calcPayrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod,
                 PayrollEngine.getYTDData(currentCompanyId, currentEmpId, currentPeriod)
             );
 
@@ -2299,8 +2328,12 @@
                    }
             }
 
+            var _calcPayrollData = Object.assign({}, payrollData, {
+                workSchedule: _workingDaysData,
+                hours_per_day: _workScheduleHoursPerDay
+            });
             var calc = PayrollEngine.calculateFromData(
-                payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod,
+                _calcPayrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod,
                 PayrollEngine.getYTDData(currentCompanyId, currentEmpId, currentPeriod)
             );
 
@@ -2323,7 +2356,7 @@
             });
 
             // Calculate overtime amount (for display — engine also returns this in calc.overtimeAmount)
-            var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / 173.33 : 0;
+            var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
             var overtimeAmount = 0;
             overtime.forEach(function(ot) {
                 overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
@@ -2539,7 +2572,7 @@
             };
 
             // Calculate overtime amount
-            var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / 173.33 : 0;
+            var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
             JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').forEach(function(ot) {
                 currentCalc.overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
             });
@@ -2562,9 +2595,13 @@
         }
 
         async function calculatePeriodSilent(period) {
-            var calc = await PayrollEngine.calculateEmployeePeriod(currentCompanyId, currentEmpId, period, payrollData);
+            var _calcPayrollData = Object.assign({}, payrollData, {
+                workSchedule: _workingDaysData,
+                hours_per_day: _workScheduleHoursPerDay
+            });
+            var calc = await PayrollEngine.calculateEmployeePeriod(currentCompanyId, currentEmpId, period, _calcPayrollData);
             // Calculate overtime amount separately for narrative
-            var hr = payrollData.basic_salary ? payrollData.basic_salary / PayrollEngine.HOURLY_DIVISOR : 0;
+            var hr = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
             var otKey = 'emp_overtime_' + currentCompanyId + '_' + currentEmpId + '_' + period;
             var otAmount = 0;
             JSON.parse(safeLocalStorage.getItem(otKey) || '[]').forEach(function(ot) {

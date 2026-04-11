@@ -195,6 +195,43 @@ const PayrollEngine = {
     },
 
     /**
+     * Calculate total weekly hours from a work schedule array.
+     * Each entry: { day, enabled, type: 'normal'|'partial', partial_hours }
+     * Normal days use hoursPerDay (default 8). Partial days use partial_hours.
+     * Disabled days contribute 0 hours.
+     */
+    calcWeeklyHours: function(workSchedule, hoursPerDay) {
+        if (!workSchedule || !workSchedule.length) return 0;
+        var hpd = parseFloat(hoursPerDay) || 8;
+        return workSchedule.reduce(function(sum, d) {
+            if (!d.enabled) return sum;
+            if (d.type === 'partial' && d.partial_hours != null && parseFloat(d.partial_hours) > 0) {
+                return sum + parseFloat(d.partial_hours);
+            }
+            return sum + hpd;
+        }, 0);
+    },
+
+    /**
+     * Calculate hourly rate from monthly salary and work schedule.
+     * Formula: monthly_salary ÷ (weekly_hours × 4.33)
+     * Falls back to HOURLY_DIVISOR (173.33) when no schedule or zero hours.
+     * @param {number} monthlySalary
+     * @param {Array} [workSchedule] - Array from employee_work_schedule table
+     * @param {number} [hoursPerDay] - Hours for a normal day (default 8)
+     * @returns {number} Hourly rate rounded to 2 decimal places
+     */
+    calcHourlyRate: function(monthlySalary, workSchedule, hoursPerDay) {
+        var salary = parseFloat(monthlySalary) || 0;
+        if (salary <= 0) return 0;
+        var weeklyHours = this.calcWeeklyHours(workSchedule, hoursPerDay);
+        if (weeklyHours <= 0) {
+            return this.r2(salary / this.HOURLY_DIVISOR);
+        }
+        return this.r2(salary / (weeklyHours * 4.33));
+    },
+
+    /**
      * Calculate age from SA ID number at a given date.
      * SA ID format: YYMMDD followed by 7 digits.
      * Returns age in years, or null if ID is invalid.
@@ -472,7 +509,9 @@ const PayrollEngine = {
      * Calculate full payroll for a period from raw data.
      * Pure function - accepts all data as parameters.
      *
-     * @param {Object} payrollData - { basic_salary, regular_inputs[] }
+     * @param {Object} payrollData - { basic_salary, regular_inputs[], workSchedule?, hours_per_day? }
+     *   workSchedule: Array from employee_work_schedule — enables schedule-based hourly rate.
+     *   hours_per_day: Override hours for a normal day (default 8). Ignored if not provided.
      * @param {Array} currentInputs - Current period additions/deductions
      * @param {Array} overtime - Overtime entries { hours, rate_multiplier }
      * @param {Array} multiRate - Multi-rate entries { hours, hourly_rate }
@@ -514,7 +553,8 @@ const PayrollEngine = {
         });
 
         // Overtime (always taxable — calculated independently, never offset against short time)
-        var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / PayrollEngine.HOURLY_DIVISOR : 0;
+        // Use schedule-based hourly rate when workSchedule is provided; fall back to HOURLY_DIVISOR (173.33)
+        var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, payrollData.workSchedule, payrollData.hours_per_day);
         var overtimeAmount = 0;
         (overtime || []).forEach(function(ot) {
             var otAmt = (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
