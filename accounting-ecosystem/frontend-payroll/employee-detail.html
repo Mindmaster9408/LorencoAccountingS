@@ -316,11 +316,11 @@
 
         <!-- TABS -->
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('payroll')">💰 Payroll</button>
-            <button class="tab" onclick="switchTab('edit')">✏️ Edit Info</button>
-            <button class="tab" onclick="switchTab('leave')">🏖️ Leave</button>
-            <button class="tab" onclick="switchTab('attendance')">⏰ Attendance</button>
-            <button class="tab" onclick="switchTab('notes')">📝 Notes</button>
+            <button class="tab active" onclick="switchTab('payroll',event)">💰 Payroll</button>
+            <button class="tab" onclick="switchTab('edit',event)">✏️ Edit Info</button>
+            <button class="tab" onclick="switchTab('leave',event)">🏖️ Leave</button>
+            <button class="tab" onclick="switchTab('attendance',event)">⏰ Attendance</button>
+            <button class="tab" onclick="switchTab('notes',event)">📝 Notes</button>
         </div>
 
         <!-- ==================== PAYROLL TAB ==================== -->
@@ -1058,12 +1058,53 @@
             if (confirm('Are you sure you want to logout?')) { AUTH.logout(); }
         }
 
+        // Holds the real Supabase integer ID (may differ from currentEmpId if
+        // this page was opened with an old localStorage-format ID like "emp-abc123")
+        let _supabaseEmpId = null;
+
         function loadEmployee() {
             const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             const employees = stored ? JSON.parse(stored) : [];
             currentEmployee = employees.find(e => e.id === currentEmpId);
             if (!currentEmployee) { alert('Employee not found'); window.location.href = 'payruns.html'; return; }
             renderEmployeeDetails();
+
+            // If the ID looks like a Supabase integer, use it directly.
+            // Otherwise (old localStorage IDs like "emp-abc123"), resolve the real
+            // Supabase ID by fetching the employee via employee_number from the API.
+            if (/^\d+$/.test(String(currentEmpId))) {
+                _supabaseEmpId = currentEmpId;
+            } else {
+                _resolveSupabaseEmpId();
+            }
+        }
+
+        async function _resolveSupabaseEmpId() {
+            // Look up by employee_number (most reliable unique key per company)
+            const empNum = currentEmployee.employee_number;
+            if (!empNum) return; // can't resolve without employee_number
+            try {
+                const token = safeLocalStorage.getItem('token') || '';
+                const r = await fetch('/api/payroll/employees?_all=1', {
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'x-company-id': String(currentCompanyId)
+                    }
+                });
+                if (!r.ok) return;
+                const d = await r.json();
+                const match = (d.employees || []).find(e =>
+                    e.employee_number === empNum ||
+                    (currentEmployee.id_number && e.id_number === currentEmployee.id_number)
+                );
+                if (match) {
+                    _supabaseEmpId = match.id;
+                    // Also update currentEmpId so nav and other calls use the real ID
+                    currentEmpId = String(match.id);
+                }
+            } catch(e) {
+                console.warn('_resolveSupabaseEmpId failed:', e);
+            }
         }
 
         function renderEmployeeDetails() {
@@ -1150,10 +1191,11 @@
         }
 
         // ========== TAB SWITCHING ==========
-        function switchTab(tab) {
+        function switchTab(tab, evt) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            event.target.classList.add('active');
+            var btn = (evt && evt.target) ? evt.target : (window.event && window.event.target);
+            if (btn) btn.classList.add('active');
             document.getElementById(tab + '-tab').classList.add('active');
             if (tab === 'attendance') loadEmployeeAttendance();
         }
@@ -1180,13 +1222,42 @@
             document.querySelectorAll('.edit-subtab-panel').forEach(p => p.style.display = 'none');
             document.getElementById('estBtn-' + name).classList.add('active');
             document.getElementById('est-' + name).style.display = '';
-            // Lazy-load each section once
+            // Lazy-load each section once — but only after we have a real Supabase ID
             if (!_editSubLoaded[name]) {
                 _editSubLoaded[name] = true;
-                if (name === 'classification') loadClassification();
-                if (name === 'hours')          loadWorkSchedule();
-                if (name === 'eti')            loadETI();
+                if (name === 'classification' || name === 'hours' || name === 'eti') {
+                    _withSupabaseId(function() {
+                        if (name === 'classification') loadClassification();
+                        if (name === 'hours')          loadWorkSchedule();
+                        if (name === 'eti')            loadETI();
+                    });
+                }
             }
+        }
+
+        // Run callback once _supabaseEmpId is available (or give up after 3s)
+        function _withSupabaseId(cb) {
+            if (_supabaseEmpId || /^\d+$/.test(String(currentEmpId))) {
+                cb();
+                return;
+            }
+            var attempts = 0;
+            var poll = setInterval(function() {
+                attempts++;
+                if (_supabaseEmpId || /^\d+$/.test(String(currentEmpId))) {
+                    clearInterval(poll);
+                    cb();
+                } else if (attempts >= 30) {
+                    clearInterval(poll);
+                    // Show a helpful message in the panel
+                    var msgs = document.querySelectorAll('#clfMsg, #hrsMsg, #etiMsg');
+                    msgs.forEach(function(m) {
+                        m.style.color = '#dc3545';
+                        m.textContent = 'This employee has not been migrated to Supabase yet. Please re-add via the Employees page.';
+                        m.style.display = 'block';
+                    });
+                }
+            }, 100);
         }
 
         // ── CLASSIFICATION ──────────────────────────────────────────────────
