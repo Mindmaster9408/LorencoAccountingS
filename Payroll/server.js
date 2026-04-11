@@ -22,17 +22,7 @@ const path    = require('path');
 const fs      = require('fs');
 
 const { supabase, checkConnection } = require('./config/database');
-const { createPool } = require('pg');
 const { registerPayrollEmployeeSyncRoutes } = require('./routes/payroll-employee-sync');
-
-// ── Database Pool for Employee Sync ───────────────────────────────────────────
-// Create a dedicated pool for sync operations
-const dbPool = createPool({
-    connectionString: process.env.DATABASE_URL,
-    max: 5,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000
-});
 
 // ── Build Version ────────────────────────────────────────────────────────────
 // Each server restart = new timestamp = new SW bytes = browsers detect update.
@@ -185,7 +175,7 @@ app.get('/service-worker.js', (req, res) => {
 
 // ── Payroll Employee Sync Routes ──────────────────────────────────────────────
 // Register sync detection and execution endpoints
-registerPayrollEmployeeSyncRoutes(app, dbPool);
+registerPayrollEmployeeSyncRoutes(app, supabase);
 
 // ── HTML Cache Control ────────────────────────────────────────────────────────
 // Ensure HTML is never cached by browser — always check for new version.
