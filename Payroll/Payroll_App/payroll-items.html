@@ -471,6 +471,7 @@
         }
     </style>
     <link rel="stylesheet" href="css/mobile-responsive.css">
+    <link rel="stylesheet" href="css/paytime-ux.css">
 </head>
 <body>
     <button id="mobile-hamburger" class="mobile-hamburger"><span style="font-size:20px;">&#9776;</span></button>
@@ -512,6 +513,13 @@
 
         <!-- MAIN CONTENT -->
         <div class="main-content">
+            <!-- Sync error banner (shown by paytime-ux.js if cloud write fails) -->
+            <div id="payrollSyncErrorBanner" class="pt-sync-banner" role="alert">
+                <span class="pt-sync-icon">⚠</span>
+                <span class="pt-sync-text">Payroll item changes may not have saved to the cloud. Check your connection.</span>
+                <button class="pt-sync-dismiss" title="Dismiss">×</button>
+            </div>
+
             <div class="page-header">
                 <div>
                     <h1>💰 Payroll Items (IRP5 Compliant)</h1>
@@ -664,6 +672,7 @@
     <script src="js/audit.js"></script>
     <script src="js/demo-company-seed.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/paytime-ux.js"></script>
     <script>
         let currentCompanyId = null;
         let currentItems = [];
@@ -690,6 +699,7 @@
 
             loadCompaniesCarousel();
             loadItems();
+            if (typeof initSyncErrorBanner === 'function') initSyncErrorBanner();
         }
 
         function loadCompaniesCarousel() {
@@ -939,6 +949,10 @@
             successDiv.textContent = isEdit ? 'Item successfully updated!' : 'Item successfully added!';
             successDiv.style.display = 'block';
             setTimeout(() => { successDiv.style.display = 'none'; }, 3000);
+
+            if (typeof showSaveToast === 'function') {
+                showSaveToast(isEdit ? '✓ Payroll item updated' : '✓ Payroll item added');
+            }
 
             closeItemModal();
             displayItemsByCategory();

@@ -292,6 +292,7 @@
         .search-bar:focus { outline: none; border-color: #667eea; }
     </style>
     <link rel="stylesheet" href="css/mobile-responsive.css">
+    <link rel="stylesheet" href="css/paytime-ux.css">
 </head>
 <body>
     <button id="mobile-hamburger" class="mobile-hamburger"><span style="font-size:20px;">&#9776;</span></button>
@@ -329,6 +330,13 @@
 
         <!-- MAIN CONTENT -->
         <div class="main-content">
+            <!-- Sync error banner (shown by paytime-ux.js if cloud write fails) -->
+            <div id="payrollSyncErrorBanner" class="pt-sync-banner" role="alert">
+                <span class="pt-sync-icon">⚠</span>
+                <span class="pt-sync-text">Pay run data may not have saved to the cloud. Check your connection — local data is intact.</span>
+                <button class="pt-sync-dismiss" title="Dismiss">×</button>
+            </div>
+
             <div class="page-header">
                 <div>
                     <h1>💵 Pay Runs</h1>
@@ -552,6 +560,7 @@
     <script src="js/auth.js"></script>
     <script src="js/payroll-engine.js"></script>
     <script src="js/payroll-validation.js"></script>
+    <script src="js/paytime-ux.js"></script>
     <script>
         let currentCompanyId = null;
         let employees = [];
@@ -571,6 +580,7 @@
             loadEmployees();
             loadPayruns();
             Permissions.enforceUI();
+            if (typeof initSyncErrorBanner === 'function') initSyncErrorBanner();
             // Restore the tab the user was on before navigating away
             try {
                 var savedTab = sessionStorage.getItem('payruns_active_tab');

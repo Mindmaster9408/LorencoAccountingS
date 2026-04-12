@@ -237,6 +237,7 @@
         }
     </style>
     <link rel="stylesheet" href="css/mobile-responsive.css">
+    <link rel="stylesheet" href="css/paytime-ux.css">
 </head>
 <body>
     <button id="mobile-hamburger" class="mobile-hamburger"><span style="font-size:20px;">&#9776;</span></button>
@@ -274,6 +275,14 @@
 
         <!-- MAIN CONTENT -->
         <div class="main-content">
+
+        <!-- Sync error banner (shown by paytime-ux.js if cloud write fails) -->
+        <div id="payrollSyncErrorBanner" class="pt-sync-banner" role="alert">
+            <span class="pt-sync-icon">⚠</span>
+            <span class="pt-sync-text">Changes may not have saved to the cloud. Check your connection — your data is safe locally but please retry or export a backup.</span>
+            <button class="pt-sync-dismiss" title="Dismiss">×</button>
+        </div>
+
         <!-- HEADER -->
         <div class="header">
             <div class="header-top">
@@ -321,7 +330,7 @@
                 <div id="payrollContent">
                 <div class="section-grid">
                     <div class="section">
-                        <div class="section-title"><span>📅 Regular Inputs (Monthly)</span><button class="btn btn-sm btn-success" onclick="openAddRegularInput()">+ Add</button></div>
+                        <div class="section-title"><span>📅 Recurring Pay Items <span class="pt-section-badge recurring">Monthly</span></span><button class="btn btn-sm btn-success" onclick="openAddRegularInput()">+ Add</button></div>
                         <div class="salary-item editable" data-permission="VIEW_PAYROLL" onclick="editBasicSalary()">
                             <span class="salary-label">Basic Salary</span>
                             <span class="salary-value" id="basicSalary">R 0.00</span>
@@ -329,17 +338,17 @@
                         <div id="regularInputsList"></div>
                     </div>
                     <div class="section">
-                        <div class="section-title"><span>📊 Current Inputs (This Month)</span><button class="btn btn-sm btn-success" onclick="openAddCurrentInput()">+ Add</button></div>
+                        <div class="section-title"><span>📊 One-off Additions <span class="pt-section-badge oneoff">This period</span></span><button class="btn btn-sm btn-success" onclick="openAddCurrentInput()">+ Add</button></div>
                         <div id="currentInputsList"><p style="color: #999; font-size: 14px;">No current inputs for this period</p></div>
                     </div>
                 </div>
 
                 <!-- ADDITIONAL HOURS -->
                 <div class="card" style="margin-top: 20px;">
-                    <div class="checkbox">
-                        <input type="checkbox" id="showAdditionalHours" onchange="toggleAdditionalHours()">
-                        <label for="showAdditionalHours" style="margin: 0; cursor: pointer;">Pay for Additional Hours</label>
-                    </div>
+                    <label class="pt-hours-toggle" id="additionalHoursToggle" for="showAdditionalHours">
+                        <input type="checkbox" id="showAdditionalHours" onchange="toggleAdditionalHours(); document.getElementById('additionalHoursToggle').classList.toggle('active', this.checked);">
+                        <span>⏰ Overtime, Short Time &amp; Varied Rate — click to add</span>
+                    </label>
                     <div id="additionalHoursSection" style="display: none; margin-top: 15px;">
                         <div class="section">
                             <div class="section-title">⏰ Overtime <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); openAddOvertime()">+ Add</button></div>
@@ -754,6 +763,7 @@
     <script src="js/auth.js"></script>
     <script src="js/payroll-engine.js"></script>
     <script src="js/payroll-items-helper.js"></script>
+    <script src="js/paytime-ux.js"></script>
     <script>
         let currentCompanyId = null;
         let currentEmployee = null;
@@ -779,6 +789,8 @@
                 loadPayrollData();
                 loadLeaveData();
                 loadNotes();
+                // Wire sync error banner (shows if cloud writes fail)
+                if (typeof initSyncErrorBanner === 'function') initSyncErrorBanner();
             }, 50);
         });
 
@@ -1041,7 +1053,7 @@
                 content.classList.add('locked-overlay');
             } else {
                 // Draft
-                statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 Draft — Finalize this payslip to include it in a pay run.</div>';
+                statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 <strong>Draft</strong><span class="status-hint">— Click Calculate to preview, then Finalize Payslip to lock and include in a pay run.</span></div>';
                 btnArea.innerHTML = '<button class="btn-finalize" data-permission="FINALIZE_PAYSLIP" onclick="finalizePayslip()">✓ Finalize Payslip</button>';
             }
             Permissions.enforceUI();
@@ -1410,6 +1422,11 @@
             if (typeof AuditTrail !== 'undefined') {
                 AuditTrail.logSalaryChange(currentCompanyId, currentEmpId, empName, salaryBefore, payrollData.basic_salary);
             }
+
+            // Confirm save to operator
+            if (typeof showSaveToast === 'function') {
+                showSaveToast('✓ Salary saved — R ' + payrollData.basic_salary.toFixed(2));
+            }
         }
 
         // ========== REGULAR INPUTS ==========
@@ -1489,6 +1506,7 @@
             payrollData.regular_inputs.push(input);
             savePayrollData(); renderPayroll(); closeModal('addRegularModal');
             AuditTrail.logCreate(currentCompanyId, 'regular_input', 'Added regular input "' + desc + '" (' + input.type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+            if (typeof showSaveToast === 'function') showSaveToast('✓ Recurring item added');
         }
         function deleteRegularInput(id) {
             if (!confirm('Delete this regular input?')) return;
@@ -1562,6 +1580,7 @@
             items.push(input);
             safeLocalStorage.setItem(getCurrentKey(), JSON.stringify(items)); renderPayroll(); closeModal('addCurrentModal');
             AuditTrail.logCreate(currentCompanyId, 'current_input', 'Added current input "' + desc + '" (' + input.type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + currentPeriod);
+            if (typeof showSaveToast === 'function') showSaveToast('✓ Addition saved for this period');
         }
         function deleteCurrentInput(id) {
             if (!confirm('Delete this current input?')) return;

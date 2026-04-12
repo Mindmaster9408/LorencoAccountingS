@@ -478,6 +478,7 @@
         }
     </style>
     <link rel="stylesheet" href="css/mobile-responsive.css">
+    <link rel="stylesheet" href="css/paytime-ux.css">
 </head>
 <body>
     <button id="mobile-hamburger" class="mobile-hamburger"><span style="font-size:20px;">&#9776;</span></button>
@@ -529,6 +530,19 @@
                     <button class="btn" data-permission="EDIT_EMPLOYEES" onclick="openBulkUploadModal()">Upload CSV/Excel</button>
                     <button class="btn btn-success" data-permission="EDIT_EMPLOYEES" onclick="openAddEmployeeModal()">+ Add Employee</button>
                 </div>
+            </div>
+
+            <!-- Sync error banner (shown by paytime-ux.js if cloud write fails) -->
+            <div id="payrollSyncErrorBanner" class="pt-sync-banner" role="alert">
+                <span class="pt-sync-icon">⚠</span>
+                <span class="pt-sync-text">Data may not have saved to the cloud. Check your connection and try again, or export a backup.</span>
+                <button class="pt-sync-dismiss" title="Dismiss">×</button>
+            </div>
+
+            <!-- Search row -->
+            <div class="pt-search-row">
+                <input type="text" id="empSearchInput" class="pt-search-input" placeholder="Search by name or employee number…" autocomplete="off">
+                <span class="pt-search-count" id="empSearchCount"></span>
             </div>
 
             <table class="employee-table" id="employee-table">
@@ -720,6 +734,7 @@
     <script src="js/demo-company-seed.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/payroll-sync-ui.js"></script>
+    <script src="js/paytime-ux.js"></script>
     <script>
         let employees = [];
         let currentCompanyId = null;
@@ -749,6 +764,10 @@
             loadCompaniesCarousel();
             loadEmployeesFromStorage();
             displayEmployees();
+
+            // Wire live search and sync error banner (UX utilities)
+            initEmployeeSearch('empSearchInput', 'employee-list', 'empSearchCount');
+            initSyncErrorBanner();
 
             // Initialize employee sync UI (detect & sync unsynced employees)
             PayrollSyncUI.init({
@@ -819,7 +838,14 @@
         function displayEmployees() {
             let html = '';
             if (employees.length === 0) {
-                html = '<tr><td colspan="8" class="empty-message">No employees yet. Click "Add Employee" to get started.</td></tr>';
+                html = `<tr><td colspan="8" style="padding:0;">
+                    <div class="pt-empty-state">
+                        <span class="pt-empty-icon">👥</span>
+                        <div class="pt-empty-title">No employees yet</div>
+                        <div class="pt-empty-sub">Add your first employee to start processing payroll.</div>
+                        <button class="pt-empty-action" onclick="openAddEmployeeModal()">+ Add Employee</button>
+                    </div>
+                </td></tr>`;
             } else {
                 employees.forEach(emp => {
                     html += `
@@ -841,6 +867,14 @@
             }
             document.getElementById('employee-list').innerHTML = html;
             Permissions.enforceUI();
+            // Re-apply current search filter after re-render, and refresh counter
+            if (typeof initEmployeeSearch === 'function') {
+                var searchInput = document.getElementById('empSearchInput');
+                if (searchInput) {
+                    // Trigger the filter without re-binding (input event)
+                    searchInput.dispatchEvent(new Event('input'));
+                }
+            }
         }
 
         function openAddEmployeeModal() {
@@ -985,10 +1019,15 @@
             successDiv.textContent = isEdit ? 'Employee updated successfully!' : 'Employee added successfully!';
             successDiv.style.display = 'block';
 
+            // Show save toast and close after brief confirmation
+            if (typeof showSaveToast === 'function') {
+                showSaveToast(isEdit ? '✓ Employee updated' : '✓ Employee added');
+            }
+
             setTimeout(() => {
                 closeEmployeeModal();
                 displayEmployees();
-            }, 1500);
+            }, 1200);
         }
 
         function deleteEmployee(id) {
