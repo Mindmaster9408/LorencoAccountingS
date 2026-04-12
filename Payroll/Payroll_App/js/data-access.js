@@ -112,7 +112,24 @@ var DataAccess = {
             var x = new XMLHttpRequest();
             x.open('PUT', (window._payrollServerUrl || window.location.origin) + '/api/storage/' + encodeURIComponent(key), true);
             x.setRequestHeader('Content-Type', 'application/json');
-            x.onerror = function() { window._payrollServerOnline = false; };
+            x.onload = function() {
+                if (x.status >= 500) {
+                    // Server-side failure — data is safe in localStorage but cloud sync failed
+                    console.error('DataAccess.set: server error ' + x.status + ' for key ' + key);
+                    window._payrollWriteError = true;
+                    // Surface a visible (non-blocking) warning once per page load
+                    if (!window._payrollWriteWarnShown) {
+                        window._payrollWriteWarnShown = true;
+                        console.warn('Payroll data may not have synced to the cloud. Please check your connection and try again.');
+                        var banner = document.getElementById('payrollSyncErrorBanner');
+                        if (banner) { banner.style.display = 'block'; }
+                    }
+                }
+            };
+            x.onerror = function() {
+                window._payrollServerOnline = false;
+                console.warn('DataAccess.set: network error writing key ' + key);
+            };
             x.send(JSON.stringify({ value: jsonValue }));
         }
     },

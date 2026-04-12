@@ -193,6 +193,10 @@ const AUTH = {
                 company_id: defaultCompanyId
             });
             this.setSession(saSession);
+            // Audit super-admin login
+            if (typeof AuditTrail !== 'undefined') {
+                AuditTrail.logLogin(defaultCompanyId, matchedSuperAdmin.email, matchedSuperAdmin.name, 'super_admin');
+            }
             // BYPASSED: Super admins now go to normal app flow with elevated access
             // Admin dashboard code preserved for future use
             // Previously: redirect: 'super-admin-dashboard.html'
@@ -218,6 +222,10 @@ const AUTH = {
         if (user && user.active) {
             this.setSession(user);
             var ids = user.company_ids || (user.company_id ? [user.company_id] : []);
+            // Audit login event (fire-and-forget; AuditTrail may not exist on login page)
+            if (typeof AuditTrail !== 'undefined') {
+                AuditTrail.logLogin(user.company_id || null, user.email, user.name, user.role);
+            }
             var redirect = ids.length > 1 ? 'company-selection.html' : 'company-dashboard.html';
             return { success: true, user: user, redirect: redirect };
         }
@@ -334,6 +342,10 @@ const AUTH = {
 
     // Logout
     logout: function() {
+        var session = this.getSession();
+        if (session && typeof AuditTrail !== 'undefined') {
+            AuditTrail.logLogout(session.company_id || null, session.email);
+        }
         safeLocalStorage.removeItem('session');
         window.location.href = 'login.html';
     },

@@ -749,6 +749,7 @@
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
+    <script src="js/payroll-validation.js"></script>
     <script src="js/demo-company-seed.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/payroll-engine.js"></script>
@@ -1052,7 +1053,38 @@
             var calc = calculatePayslip();
             var session = AUTH.getSession();
             if (!session) { alert('Session expired. Please log in again.'); window.location.href = 'login.html'; return; }
-            if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '?\nIt will be locked for editing and a PDF payslip will be downloaded.')) return;
+
+            // === PRE-FINALIZE SAFETY CHECKLIST ===
+            if (typeof PayrollValidation !== 'undefined') {
+                var preCheck = PayrollValidation.preFinalizeSafetyCheck(payrollData, calc, currentEmployee);
+
+                // Hard blocks — cannot finalize
+                if (!preCheck.canFinalize) {
+                    var blockMsg = 'Cannot finalize payslip. Please fix the following:\n\n';
+                    blockMsg += preCheck.blocking.map(function(e) { return '• ' + e; }).join('\n');
+                    alert(blockMsg);
+                    AuditTrail.logValidationFail(currentCompanyId, 'payslip',
+                        'Pre-finalize check blocked finalization for ' +
+                        (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) +
+                        ' - ' + formatPeriodLabel(currentPeriod),
+                        preCheck.blocking
+                    );
+                    return;
+                }
+
+                // Soft warnings — show but allow user to proceed
+                if (preCheck.warnings.length > 0) {
+                    var warnMsg = 'Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '?\n\n';
+                    warnMsg += '⚠ Warnings (payslip can still be finalized):\n';
+                    warnMsg += preCheck.warnings.map(function(w) { return '• ' + w; }).join('\n');
+                    warnMsg += '\n\nClick OK to finalize anyway, or Cancel to review.';
+                    if (!confirm(warnMsg)) return;
+                } else {
+                    if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '?\nIt will be locked for editing and a PDF payslip will be downloaded.')) return;
+                }
+            } else {
+                if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '?\nIt will be locked for editing and a PDF payslip will be downloaded.')) return;
+            }
             var status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
             safeLocalStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
             // Save frozen snapshot so salary changes don't affect this period
@@ -1151,6 +1183,20 @@
             safeLocalStorage.removeItem(getPayslipStatusKey());
             closeModal('managerAuthModal');
             updatePayslipUI();
+
+            // Audit: log sensitive action — who unlocked this payslip, when, and with what authority
+            if (typeof AuditTrail !== 'undefined') {
+                var empName = currentEmployee ? (currentEmployee.first_name + ' ' + currentEmployee.last_name) : currentEmpId;
+                AuditTrail.logSensitiveAction(
+                    currentCompanyId,
+                    'payslip',
+                    'Payslip unlocked for ' + empName + ' period ' + formatPeriodLabel(currentPeriod) + ' by ' + email,
+                    email,
+                    role,
+                    { emp_id: currentEmpId, period: currentPeriod, unlocked_by_email: email, unlocked_by_role: role }
+                );
+            }
+
             alert('Payslip unlocked by ' + email + '. You can now make changes.');
         }
 
@@ -1336,9 +1382,34 @@
             if (!payrollData) {
                 payrollData = { basic_salary: 0, regular_inputs: [] };
             }
-            payrollData.basic_salary = parseFloat(document.getElementById('editBasicValue').value) || 0;
+            var rawValue = document.getElementById('editBasicValue').value;
+            var newSalary = parseFloat(rawValue);
+
+            // Validate before saving
+            if (typeof PayrollValidation !== 'undefined') {
+                var valResult = PayrollValidation.validateBasicSalary(rawValue);
+                if (!valResult.valid) {
+                    alert('Cannot save salary:\n\n' + valResult.errors.join('\n'));
+                    AuditTrail.logValidationFail(currentCompanyId, 'payroll',
+                        'Basic salary validation failed for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId),
+                        valResult.errors
+                    );
+                    return;
+                }
+            } else if (isNaN(newSalary) || newSalary < 0) {
+                alert('Basic salary must be a valid positive number.');
+                return;
+            }
+
+            var salaryBefore = payrollData.basic_salary || 0;
+            payrollData.basic_salary = isNaN(newSalary) ? 0 : newSalary;
             savePayrollData(); renderPayroll(); closeModal('editBasicModal');
-            AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + payrollData.basic_salary.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+
+            // Audit: log salary change with before/after snapshot
+            var empName = currentEmployee ? (currentEmployee.first_name + ' ' + currentEmployee.last_name) : currentEmpId;
+            if (typeof AuditTrail !== 'undefined') {
+                AuditTrail.logSalaryChange(currentCompanyId, currentEmpId, empName, salaryBefore, payrollData.basic_salary);
+            }
         }
 
         // ========== REGULAR INPUTS ==========

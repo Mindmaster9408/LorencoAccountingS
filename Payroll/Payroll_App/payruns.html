@@ -551,6 +551,7 @@
     <script src="js/demo-company-seed.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/payroll-engine.js"></script>
+    <script src="js/payroll-validation.js"></script>
     <script>
         let currentCompanyId = null;
         let employees = [];
@@ -1248,6 +1249,43 @@
                 }
             });
 
+            // === PRE-FINALIZE PAY RUN SAFETY CHECK ===
+            let totalGross = 0, totalPaye = 0, totalUif = 0, totalNet = 0;
+            finalizedEmps.forEach(emp => {
+                const pd = getEmployeePayroll(emp.id);
+                const calc = calculateEmployeePeriod(emp.id, run.period, pd);
+                totalGross += calc.gross;
+                totalPaye += calc.paye;
+                totalUif += calc.uif;
+                totalNet += calc.net;
+            });
+
+            if (typeof PayrollValidation !== 'undefined') {
+                const companyDetails = getCompanyDetails();
+                const totals = { totalGross: totalGross, totalNet: totalNet, totalPaye: totalPaye };
+                const runCheck = PayrollValidation.preFinalizePayRunCheck(finalizedEmps, totals, companyDetails);
+
+                if (!runCheck.canFinalize) {
+                    let blockMsg = 'Cannot finalize pay run. Please fix the following:\n\n';
+                    blockMsg += runCheck.blocking.map(e => '• ' + e).join('\n');
+                    alert(blockMsg);
+                    if (typeof AuditTrail !== 'undefined') {
+                        AuditTrail.logValidationFail(currentCompanyId, 'payrun',
+                            'Pre-finalize check blocked pay run for ' + formatPeriod(run.period),
+                            runCheck.blocking
+                        );
+                    }
+                    return;
+                }
+
+                if (runCheck.warnings.length > 0) {
+                    let warnMsg = 'Pay run warnings for ' + formatPeriod(run.period) + ':\n\n';
+                    warnMsg += runCheck.warnings.map(w => '⚠ ' + w).join('\n');
+                    warnMsg += '\n\nThese are warnings only. Click OK to proceed with finalization, or Cancel to review.';
+                    if (!confirm(warnMsg)) return;
+                }
+            }
+
             if (finalizedEmps.length === 0) {
                 alert('Cannot finalize pay run: No employees have finalized payslips for ' + formatPeriod(run.period) + '.\n\nGo to each employee\'s payroll and click "Finalize Payslip" first.');
                 return;
@@ -1259,16 +1297,6 @@
                 warningMsg = '\n\n⚠ ' + unfinalizedEmps.length + ' employee(s) have unfinalized payslips and will NOT be included:\n' +
                     unfinalizedEmps.map(e => '  - ' + e.first_name + ' ' + e.last_name).join('\n');
             }
-
-            let totalGross = 0, totalPaye = 0, totalUif = 0, totalNet = 0;
-            finalizedEmps.forEach(emp => {
-                const pd = getEmployeePayroll(emp.id);
-                const calc = calculateEmployeePeriod(emp.id, run.period, pd);
-                totalGross += calc.gross;
-                totalPaye += calc.paye;
-                totalUif += calc.uif;
-                totalNet += calc.net;
-            });
 
             if (!confirm('Finalize pay run for ' + formatPeriod(run.period) + '?\n\nFinalized Employees: ' + finalizedEmps.length + '\nGross: ' + formatMoney(totalGross) + '\nPAYE: ' + formatMoney(totalPaye) + '\nUIF: ' + formatMoney(totalUif) + '\nNet: ' + formatMoney(totalNet) + warningMsg)) return;
 

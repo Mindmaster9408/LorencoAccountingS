@@ -716,6 +716,7 @@
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
+    <script src="js/payroll-validation.js"></script>
     <script src="js/demo-company-seed.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/payroll-sync-ui.js"></script>
@@ -895,43 +896,90 @@
 
             const newEmployee = {
                 id: employeeId || 'emp-' + Math.random().toString(36).substr(2, 9),
-                employee_number: document.getElementById('employee_number').value,
-                first_name: document.getElementById('first_name').value,
-                last_name: document.getElementById('last_name').value,
-                id_number: document.getElementById('id_number').value || null,
+                employee_number: (document.getElementById('employee_number').value || '').trim(),
+                first_name: (document.getElementById('first_name').value || '').trim(),
+                last_name: (document.getElementById('last_name').value || '').trim(),
+                id_number: document.getElementById('id_number').value.trim() || null,
                 tax_number: document.getElementById('tax_number').value.trim() || null,
-                email: document.getElementById('email').value || null,
-                phone: document.getElementById('phone').value || null,
-                job_title: document.getElementById('job_title').value || null,
-                department: document.getElementById('department').value || null,
-                position: document.getElementById('position').value || null,
+                email: document.getElementById('email').value.trim() || null,
+                phone: document.getElementById('phone').value.trim() || null,
+                job_title: document.getElementById('job_title').value.trim() || null,
+                department: document.getElementById('department').value.trim() || null,
+                position: document.getElementById('position').value.trim() || null,
                 payment_method: document.getElementById('payment_method').value,
-                bank_name: document.getElementById('bank_name').value || null,
-                account_holder: document.getElementById('account_holder').value || null,
-                account_number: document.getElementById('account_number').value || null,
-                branch_code: document.getElementById('branch_code').value || null,
+                bank_name: document.getElementById('bank_name').value.trim() || null,
+                account_holder: document.getElementById('account_holder').value.trim() || null,
+                account_number: document.getElementById('account_number').value.trim() || null,
+                branch_code: document.getElementById('branch_code').value.trim() || null,
                 date_appointed: document.getElementById('date_appointed').value || null,
                 medical_aid_members: parseInt(document.getElementById('medical_aid_members').value) || 0,
                 tax_directive: parseFloat(document.getElementById('tax_directive').value) || 0
             };
 
+            // === VALIDATION ===
+            if (typeof PayrollValidation !== 'undefined') {
+                var vResult = PayrollValidation.validateEmployee(newEmployee, employees, isEdit);
+                if (!vResult.valid) {
+                    // Show validation errors
+                    errorDiv.innerHTML = '<strong>Please fix the following:</strong>' +
+                        PayrollValidation.formatErrorsAsHTML(vResult.errors);
+                    errorDiv.style.display = 'block';
+                    // Audit failed validation attempt
+                    AuditTrail.logValidationFail(currentCompanyId, 'employee',
+                        'Validation failed on ' + (isEdit ? 'edit' : 'create') + ' employee',
+                        vResult.errors);
+                    return;
+                }
+            } else {
+                // Fallback validation if module not loaded
+                if (!newEmployee.employee_number || !newEmployee.first_name || !newEmployee.last_name) {
+                    errorDiv.textContent = 'Employee number, first name and last name are required.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                // Duplicate check fallback
+                var dupEmpNum = employees.find(function(e) {
+                    if (isEdit && e.id === newEmployee.id) return false;
+                    return (e.employee_number || '').toUpperCase() === newEmployee.employee_number.toUpperCase();
+                });
+                if (dupEmpNum) {
+                    errorDiv.textContent = 'Employee number "' + newEmployee.employee_number + '" already exists.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+            }
+
+            // === SAVE ===
             if (isEdit) {
                 const index = employees.findIndex(e => e.id === employeeId);
                 if (index !== -1) {
+                    // Capture before value for audit trail
+                    var beforeEmp = employees[index];
                     employees[index] = newEmployee;
+                    AuditTrail.logUpdate(currentCompanyId, 'employee',
+                        'Updated employee ' + newEmployee.first_name + ' ' + newEmployee.last_name + ' (' + newEmployee.employee_number + ')',
+                        {
+                            emp_id: newEmployee.id,
+                            before: { employee_number: beforeEmp.employee_number, first_name: beforeEmp.first_name, last_name: beforeEmp.last_name, tax_number: beforeEmp.tax_number },
+                            after:  { employee_number: newEmployee.employee_number, first_name: newEmployee.first_name, last_name: newEmployee.last_name, tax_number: newEmployee.tax_number }
+                        }
+                    );
                 }
             } else {
                 employees.push(newEmployee);
+                AuditTrail.logCreate(currentCompanyId, 'employee',
+                    'Created employee ' + newEmployee.first_name + ' ' + newEmployee.last_name + ' (' + newEmployee.employee_number + ')',
+                    { emp_id: newEmployee.id }
+                );
             }
 
-            // Store in localStorage
-            safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
-
-            // Audit log
-            if (isEdit) {
-                AuditTrail.logUpdate(currentCompanyId, 'employee', 'Updated employee ' + newEmployee.first_name + ' ' + newEmployee.last_name + ' (' + newEmployee.employee_number + ')');
-            } else {
-                AuditTrail.logCreate(currentCompanyId, 'employee', 'Created employee ' + newEmployee.first_name + ' ' + newEmployee.last_name + ' (' + newEmployee.employee_number + ')');
+            // Store to cloud/localStorage
+            try {
+                safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
+            } catch(e) {
+                errorDiv.textContent = 'Failed to save employee data. Please try again. (' + e.message + ')';
+                errorDiv.style.display = 'block';
+                return;
             }
 
             successDiv.textContent = isEdit ? 'Employee updated successfully!' : 'Employee added successfully!';
