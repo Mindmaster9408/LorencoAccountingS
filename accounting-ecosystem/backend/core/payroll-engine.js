@@ -818,6 +818,143 @@ const PayrollEngine = {
             negativeNetPay: resultData.negativeNetPay,
             iterations: iterations
         };
+    },
+
+    // === PRO-RATA CALCULATION (Schedule-Based) ===
+    // IMPORTANT: Pro-rata is SCHEDULE-BASED, not calendar-based.
+    // It factors in the work_schedule array to determine expected working days.
+    //
+    // Pro-rata is used when an employee:
+    // - Joins mid-month (start_date after 1st of month)
+    // - Leaves mid-month (end_date before last day of month)
+    // - Works partial hours during a period
+    //
+    // PRO-RATA FORMULA:
+    // factor = worked_days_in_period / expected_days_in_period
+    // Where:
+    //   worked_days = calendar days between start_date and end_date that match work_schedule
+    //   expected_days = calendar days in entire period that match work_schedule
+    //
+    // Then basic_salary_pro_rata = basic_salary * factor
+
+    /**
+     * Count working days between two dates based on a work schedule.
+     * @param {Date|string} startDate - First day of period (inclusive)
+     * @param {Date|string} endDate   - Last day of period (inclusive)
+     * @param {Array} workSchedule    - Work schedule array: [{ day:'MON', enabled:true, type:'normal', partial_hours: null }, ...]
+     * @returns {number} Count of working days in [startDate, endDate]
+     */
+    countWorkingDays: function(startDate, endDate, workSchedule) {
+        if (!workSchedule || !workSchedule.length) return 0;
+        var start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+        var end   = typeof endDate === 'string' ? new Date(endDate)     : endDate;
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+
+        var dayMap = { 'SUN': 0, 'MON': 1, 'TUE': 2, 'WED': 3, 'THU': 4, 'FRI': 5, 'SAT': 6 };
+        var workDays = {};
+        // Build map of which days of week are work days
+        workSchedule.forEach(function(sd) {
+            if (sd.enabled) {
+                var dayIdx = dayMap[sd.day];
+                if (dayIdx != null) workDays[dayIdx] = true;
+            }
+        });
+
+        var count = 0;
+        var current = new Date(start);
+        while (current <= end) {
+            var dayOfWeek = current.getDay();
+            if (workDays[dayOfWeek]) count++;
+            current.setDate(current.getDate() + 1);
+        }
+        return count;
+    },
+
+    /**
+     * Calculate pro-rata factor for a period.
+     * @param {string} startDate       - Employee start date in period (YYYY-MM-DD); null/empty = 1st of month
+     * @param {string} endDate         - Employee end date in period (YYYY-MM-DD); null/empty = last day of month
+     * @param {string} period          - Pay period (YYYY-MM)
+     * @param {Array} workSchedule     - Work schedule array
+     * @returns {Object} { factor, expectedDays, workedDays }
+     */
+    calculateProRataFactor: function(startDate, endDate, period, workSchedule) {
+        if (!period) return { factor: 1, expectedDays: 0, workedDays: 0 };
+
+        // Parse period to get first and last days
+        var periodParts = period.split('-');
+        var year = parseInt(periodParts[0], 10);
+        var month = parseInt(periodParts[1], 10) - 1; // JS months are 0-indexed
+        if (isNaN(year) || isNaN(month)) return { factor: 1, expectedDays: 0, workedDays: 0 };
+
+        var periodStart = new Date(year, month, 1);
+        var periodEnd = new Date(year, month + 1, 0); // Last day of month
+
+        var actualStart = startDate && startDate.trim()
+            ? new Date(startDate)
+            : new Date(periodStart);
+        var actualEnd = endDate && endDate.trim()
+            ? new Date(endDate)
+            : new Date(periodEnd);
+
+        // Clamp to period boundaries
+        if (actualStart < periodStart) actualStart = new Date(periodStart);
+        if (actualEnd > periodEnd) actualEnd = new Date(periodEnd);
+
+        var expectedDays = this.countWorkingDays(periodStart, periodEnd, workSchedule);
+        var workedDays = this.countWorkingDays(actualStart, actualEnd, workSchedule);
+
+        if (expectedDays <= 0) {
+            // Edge case: no working days in period (all non-work days)
+            return { factor: 0, expectedDays: 0, workedDays: 0 };
+        }
+
+        var factor = workedDays / expectedDays;
+        return { factor: this.r2(factor), expectedDays: expectedDays, workedDays: workedDays };
+    },
+
+    /**
+     * Calculate payroll WITH pro-rata support.
+     * Wrapper around calculateFromData that pre-applies pro-rata factor to basic_salary.
+     *
+     * @param {Object} payrollData     - Full payroll data including basic_salary, workSchedule
+     * @param {string} [startDate]     - Employee start date (YYYY-MM-DD); null = 1st of month
+     * @param {string} [endDate]       - Employee end date (YYYY-MM-DD); null = last day of month
+     * @param {Array} currentInputs    - Current period inputs
+     * @param {Array} overtime         - Overtime entries
+     * @param {Array} multiRate        - Multi-rate entries
+     * @param {Array} shortTime        - Short-time entries
+     * @param {Object} employeeOptions - Employee options
+     * @param {string} period          - Pay period (YYYY-MM)
+     * @param {Object} ytdData         - YTD data (if using SARS method)
+     * @returns {Object} Payroll output with pro_rata_factor, expected_days, worked_days fields added
+     */
+    calculateWithProRata: function(payrollData, startDate, endDate, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData) {
+        // Calculate pro-rata factor
+        var prorataInfo = this.calculateProRataFactor(startDate, endDate, period, payrollData.workSchedule);
+
+        // Apply pro-rata to basic salary
+        var adjustedPayrollData = Object.assign({}, payrollData);
+        adjustedPayrollData.basic_salary = (payrollData.basic_salary || 0) * prorataInfo.factor;
+
+        // Calculate with adjusted salary
+        var result = this.calculateFromData(
+            adjustedPayrollData,
+            currentInputs,
+            overtime,
+            multiRate,
+            shortTime,
+            employeeOptions,
+            period,
+            ytdData
+        );
+
+        // Add pro-rata fields (ADDITIVE — no removal of existing 13 fields)
+        result.prorataFactor = prorataInfo.factor;
+        result.expectedDaysInPeriod = prorataInfo.expectedDays;
+        result.workedDaysInPeriod = prorataInfo.workedDays;
+
+        return result;
     }
 };
 

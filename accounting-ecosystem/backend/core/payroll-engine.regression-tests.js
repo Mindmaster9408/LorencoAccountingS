@@ -244,6 +244,129 @@ const REGRESSION_SCENARIOS = [
 ];
 
 /**
+ * PRO-RATA TEST SCENARIOS (STEP 5)
+ * Test schedule-based pro-rata calculation for:
+ * 1. Mid-month start (new starter)
+ * 2. Mid-month termination (resignation)
+ * 3. Partial scheduled hours (works 6hrs/day only)
+ * 4. Zero expected hours edge case
+ */
+const PRO_RATA_SCENARIOS = [
+    {
+        id: 'PR-1',
+        name: 'Mid-month start (new starter April 10-30)',
+        payrollData: {
+            basic_salary: 20000,
+            regular_inputs: [],
+            workSchedule: [
+                { day: 'MON', enabled: true, type: 'normal' },
+                { day: 'TUE', enabled: true, type: 'normal' },
+                { day: 'WED', enabled: true, type: 'normal' },
+                { day: 'THU', enabled: true, type: 'normal' },
+                { day: 'FRI', enabled: true, type: 'normal' },
+                { day: 'SAT', enabled: false },
+                { day: 'SUN', enabled: false }
+            ]
+        },
+        startDate: '2026-04-10',
+        endDate: '2026-04-30',
+        currentInputs: [],
+        overtime: [],
+        multiRate: [],
+        shortTime: [],
+        employeeOptions: { age: 35, medicalMembers: 1 },
+        period: '2026-04',
+        ytdData: null,
+        expectedProrataFactor: 0.64, // April 2026: 14 working days (10-30) / 22 total = 0.636 ≈ 0.64
+        description: 'Total April 2026: 22 working days Mon-Fri. Employee starts Apr 10 (Fri). Apr 10-30 = 14 working days. Pro-rata: 14/22 = 0.64'
+    },
+    {
+        id: 'PR-2',
+        name: 'Mid-month termination (April 1-15)',
+        payrollData: {
+            basic_salary: 20000,
+            regular_inputs: [],
+            workSchedule: [
+                { day: 'MON', enabled: true, type: 'normal' },
+                { day: 'TUE', enabled: true, type: 'normal' },
+                { day: 'WED', enabled: true, type: 'normal' },
+                { day: 'THU', enabled: true, type: 'normal' },
+                { day: 'FRI', enabled: true, type: 'normal' },
+                { day: 'SAT', enabled: false },
+                { day: 'SUN', enabled: false }
+            ]
+        },
+        startDate: '2026-04-01',
+        endDate: '2026-04-15',
+        currentInputs: [],
+        overtime: [],
+        multiRate: [],
+        shortTime: [],
+        employeeOptions: { age: 35, medicalMembers: 1 },
+        period: '2026-04',
+        ytdData: null,
+        expectedProrataFactor: 0.50, // April 2026: 11 working days (1-15) / 22 total working days = 0.5
+        description: 'Employee leaves Apr 15. April 1 = Wed, so Apr 1-15 has 11 working days (Wed-Fri, then Mon-Fri, then Mon-Wed). Total Apr = 22. Pro-rata: 11/22 = 0.50'
+    },
+    {
+        id: 'PR-3',
+        name: 'Partial scheduled hours (6hrs/day)',
+        payrollData: {
+            basic_salary: 20000,
+            regular_inputs: [],
+            workSchedule: [
+                { day: 'MON', enabled: true, type: 'partial', partial_hours: 6 },
+                { day: 'TUE', enabled: true, type: 'partial', partial_hours: 6 },
+                { day: 'WED', enabled: true, type: 'partial', partial_hours: 6 },
+                { day: 'THU', enabled: true, type: 'partial', partial_hours: 6 },
+                { day: 'FRI', enabled: true, type: 'partial', partial_hours: 6 },
+                { day: 'SAT', enabled: false },
+                { day: 'SUN', enabled: false }
+            ]
+        },
+        startDate: null,
+        endDate: null,
+        currentInputs: [],
+        overtime: [],
+        multiRate: [],
+        shortTime: [],
+        employeeOptions: { age: 35, medicalMembers: 1 },
+        period: '2026-04',
+        ytdData: null,
+        expectedProrataFactor: 1.0, // Full month, full period. Pro-rata factor should be 1.0
+        description: 'Works 6hrs/day Mon-Fri. Full April 2026. Pro-rata should be 1.0 (full month)'
+    },
+    {
+        id: 'PR-4',
+        name: 'Zero expected hours (all non-work days)',
+        payrollData: {
+            basic_salary: 20000,
+            regular_inputs: [],
+            workSchedule: [
+                { day: 'MON', enabled: false },
+                { day: 'TUE', enabled: false },
+                { day: 'WED', enabled: false },
+                { day: 'THU', enabled: false },
+                { day: 'FRI', enabled: false },
+                { day: 'SAT', enabled: false },
+                { day: 'SUN', enabled: false }
+            ]
+        },
+        startDate: null,
+        endDate: null,
+        currentInputs: [],
+        overtime: [],
+        multiRate: [],
+        shortTime: [],
+        employeeOptions: { age: 35, medicalMembers: 1 },
+        period: '2026-04',
+        ytdData: null,
+        expectedProrataFactor: 0.0, // Zero working days in schedule
+        description: 'Edge case: schedule has no work days enabled. Pro-rata factor should be 0.0'
+    }
+];
+
+/**
  * Run regression tests: compare unified engine output vs baseline
  * @param {Object} PayrollEngine - The unified engine module
  * @returns {Object} { passed, failed, total, results: [] }
@@ -307,12 +430,88 @@ function runRegressionTests(PayrollEngine) {
 }
 
 /**
+ * Run pro-rata tests
+ * @param {Object} PayrollEngine - The unified engine module
+ * @returns {Object} { passed, failed, total, results: [] }
+ */
+function runProRataTests(PayrollEngine) {
+    var results = [];
+    var passed = 0, failed = 0;
+    var tolerance = 0.01;
+
+    PRO_RATA_SCENARIOS.forEach(function(scenario) {
+        var output = PayrollEngine.calculateWithProRata(
+            scenario.payrollData,
+            scenario.startDate,
+            scenario.endDate,
+            scenario.currentInputs,
+            scenario.overtime,
+            scenario.multiRate,
+            scenario.shortTime,
+            scenario.employeeOptions,
+            scenario.period,
+            scenario.ytdData
+        );
+
+        var testPassed = true;
+        var errorMsg = null;
+
+        // Check pro-rata factor
+        if (Math.abs(output.prorataFactor - scenario.expectedProrataFactor) > tolerance) {
+            testPassed = false;
+            errorMsg = 'Pro-rata factor mismatch: expected ' + scenario.expectedProrataFactor.toFixed(2) + ', got ' + output.prorataFactor.toFixed(2);
+        }
+
+        // Verify that all original 13 fields still exist
+        var requiredFields = ['gross', 'taxableGross', 'paye', 'paye_base', 'voluntary_overdeduction', 'uif', 'sdl', 'deductions', 'net', 'negativeNetPay', 'medicalCredit', 'overtimeAmount', 'shortTimeAmount'];
+        requiredFields.forEach(function(field) {
+            if (output[field] === undefined) {
+                testPassed = false;
+                errorMsg = (errorMsg || '') + '\nMissing required field: ' + field;
+            }
+        });
+
+        // Verify pro-rata fields added (additive)
+        var prorataFields = ['prorataFactor', 'expectedDaysInPeriod', 'workedDaysInPeriod'];
+        prorataFields.forEach(function(field) {
+            if (output[field] === undefined) {
+                testPassed = false;
+                errorMsg = (errorMsg || '') + '\nMissing pro-rata field: ' + field;
+            }
+        });
+
+        if (testPassed) {
+            passed++;
+        } else {
+            failed++;
+        }
+
+        results.push({
+            id: scenario.id,
+            name: scenario.name,
+            passed: testPassed,
+            errorMsg: errorMsg,
+            prorataFactor: output.prorataFactor,
+            expectedDaysInPeriod: output.expectedDaysInPeriod,
+            workedDaysInPeriod: output.workedDaysInPeriod
+        });
+    });
+
+    return {
+        passed: passed,
+        failed: failed,
+        total: PRO_RATA_SCENARIOS.length,
+        results: results
+    };
+}
+
+/**
  * Format regression report for console output
  */
 function formatRegressionReport(testResults) {
     var report = [];
     report.push('\n' + '='.repeat(70));
-    report.push('PAYROLL ENGINE REGRESSION TEST RESULTS');
+    report.push('PAYROLL ENGINE REGRESSION TEST RESULTS (UNCHANGED SCENARIOS)');
     report.push('='.repeat(70));
     report.push('');
     report.push('Test Summary: ' + testResults.passed + '/' + testResults.total + ' PASSED');
@@ -341,11 +540,48 @@ function formatRegressionReport(testResults) {
     return report.join('\n');
 }
 
+/**
+ * Format pro-rata test report for console output
+ */
+function formatProRataReport(testResults) {
+    var report = [];
+    report.push('\n' + '='.repeat(70));
+    report.push('PRO-RATA TEST RESULTS (STEP 5)');
+    report.push('='.repeat(70));
+    report.push('');
+    report.push('Test Summary: ' + testResults.passed + '/' + testResults.total + ' PASSED');
+    report.push('');
+
+    if (testResults.failed > 0) {
+        report.push('⛔ ' + testResults.failed + ' TEST(S) FAILED\n');
+    } else {
+        report.push('✅ ALL PRO-RATA TESTS PASSED\n');
+    }
+
+    testResults.results.forEach(function(result) {
+        var status = result.passed ? '✅ PASS' : '❌ FAIL';
+        report.push(status + ' — Scenario ' + result.id + ': ' + result.name);
+
+        if (!result.passed) {
+            report.push('     ⚠️  ' + (result.errorMsg || 'Test failed'));
+        } else {
+            report.push('     Pro-rata factor: ' + result.prorataFactor.toFixed(4) + ' (Expected: ' + result.expectedDaysInPeriod + ' days, Worked: ' + result.workedDaysInPeriod + ' days)');
+        }
+        report.push('');
+    });
+
+    report.push('='.repeat(70));
+    return report.join('\n');
+}
+
 // Export for Node.js test runners
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         REGRESSION_SCENARIOS: REGRESSION_SCENARIOS,
+        PRO_RATA_SCENARIOS: PRO_RATA_SCENARIOS,
         runRegressionTests: runRegressionTests,
-        formatRegressionReport: formatRegressionReport
+        runProRataTests: runProRataTests,
+        formatRegressionReport: formatRegressionReport,
+        formatProRataReport: formatProRataReport
     };
 }
