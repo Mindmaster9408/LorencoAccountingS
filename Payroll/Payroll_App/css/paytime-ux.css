@@ -324,3 +324,462 @@
 .pt-badge-locked   { background: #f8d7da; color: #721c24; border: 1px solid #f5a3ab; }
 .pt-badge-warning  { background: #fff3cd; color: #6d4c00; border: 1px solid #ffe082; }
 .pt-badge-info     { background: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; }
+
+/* ==========================================================
+   PHASE 2 — WORKFLOW CLARITY & OPERATOR SPEED
+   ========================================================== */
+
+/* ----------------------------------------------------------
+   A. PAYROLL WORKFLOW STATE STRIP
+   Shows: Draft → Calculated → Ready to Finalize → Finalized → In Pay Run
+   Usage: <div class="pt-workflow-strip"> ... <div class="pt-workflow-step done"> ...
+   ---------------------------------------------------------- */
+.pt-workflow-strip {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 18px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e0e0e0;
+    background: #f5f5f5;
+    font-size: 12px;
+}
+.pt-workflow-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 8px 9px;
+    gap: 4px;
+    color: #bbb;
+    background: #f5f5f5;
+    border-right: 1px solid #e0e0e0;
+    text-align: center;
+    position: relative;
+    transition: background 0.2s, color 0.2s;
+    font-weight: 600;
+    cursor: default;
+}
+.pt-workflow-step:last-child {
+    border-right: none;
+}
+.pt-workflow-step .pt-wf-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+.pt-workflow-step .pt-wf-label {
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+/* Completed step */
+.pt-workflow-step.done {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+.pt-workflow-step.done .pt-wf-icon::after {
+    content: " ";
+}
+/* Active / current step */
+.pt-workflow-step.current {
+    background: #667eea;
+    color: #fff;
+    box-shadow: inset 0 -3px 0 rgba(0,0,0,0.15);
+}
+/* Future locked step */
+.pt-workflow-step.locked-step {
+    background: #f5f5f5;
+    color: #ccc;
+}
+/* In pay run special */
+.pt-workflow-step.in-payrun {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+/* Finalized */
+.pt-workflow-step.finalized-step {
+    background: #d4edda;
+    color: #155724;
+}
+
+/* ----------------------------------------------------------
+   B. PAY RUN PROGRESS BAR
+   Summary: X total / X finalized / X pending
+   Usage: <div class="pt-payrun-progress"> ... </div>
+   ---------------------------------------------------------- */
+.pt-payrun-progress {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 12px 18px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+.pt-payrun-progress .pt-prog-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 64px;
+}
+.pt-payrun-progress .pt-prog-num {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #333;
+}
+.pt-payrun-progress .pt-prog-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #999;
+    margin-top: 2px;
+}
+.pt-payrun-progress .pt-prog-divider {
+    width: 1px;
+    height: 36px;
+    background: #e0e0e0;
+    align-self: center;
+}
+.pt-payrun-progress .pt-prog-num.finalized { color: #28a745; }
+.pt-payrun-progress .pt-prog-num.pending   { color: #e0a800; }
+.pt-payrun-progress .pt-prog-bar-wrap {
+    flex: 1;
+    min-width: 100px;
+}
+.pt-payrun-progress .pt-prog-bar-track {
+    height: 8px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.pt-payrun-progress .pt-prog-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #51cf66);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+/* ----------------------------------------------------------
+   C. FINALIZE SUCCESS OVERLAY
+   Full-screen momentary feedback after finalize completes.
+   Shown via JS: document.getElementById('ptFinalizeSuccess').classList.add('show')
+   ---------------------------------------------------------- */
+@keyframes ptFinalizeIn {
+    0%   { opacity: 0; transform: scale(0.85); }
+    60%  { opacity: 1; transform: scale(1.04); }
+    100% { opacity: 1; transform: scale(1); }
+}
+@keyframes ptFinalizeOut {
+    0%   { opacity: 1; }
+    100% { opacity: 0; pointer-events: none; }
+}
+.pt-finalize-success {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(40, 167, 69, 0.92);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: #fff;
+    gap: 14px;
+    pointer-events: none;
+}
+.pt-finalize-success.show {
+    display: flex;
+    animation: ptFinalizeIn 0.4s ease forwards;
+}
+.pt-finalize-success.hide {
+    animation: ptFinalizeOut 0.4s ease 1.4s forwards;
+}
+.pt-finalize-success .pt-fs-icon {
+    font-size: 64px;
+    line-height: 1;
+}
+.pt-finalize-success .pt-fs-title {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+.pt-finalize-success .pt-fs-sub {
+    font-size: 15px;
+    opacity: 0.88;
+}
+
+/* ----------------------------------------------------------
+   D. STICKY CALCULATE BAR
+   Stays visible at bottom of payroll card as user scrolls.
+   ---------------------------------------------------------- */
+.pt-sticky-calc-bar {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    padding: 12px 0 4px;
+    border-top: 1px solid #e0e0e0;
+    margin-top: 16px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.pt-sticky-calc-bar .pt-calc-hint {
+    flex: 1;
+    font-size: 12px;
+    color: #999;
+    font-style: italic;
+}
+.btn-calculate {
+    padding: 10px 22px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(102,126,234,0.35);
+    transition: transform 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+}
+.btn-calculate:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 16px rgba(102,126,234,0.45);
+}
+.btn-calculate:active {
+    transform: translateY(0);
+}
+.btn-calculate:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* ----------------------------------------------------------
+   E. PAYROLL ITEM SEARCH IN DROPDOWN
+   Wraps <select> with a search input to filter options.
+   ---------------------------------------------------------- */
+.pt-item-select-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.pt-item-search {
+    padding: 8px 12px 8px 32px;
+    border: 2px solid #e0e0e0;
+    border-radius: 7px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%23999' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.856a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z'/%3E%3C/svg%3E") no-repeat 10px center;
+    transition: border-color 0.2s;
+    width: 100%;
+    box-sizing: border-box;
+}
+.pt-item-search:focus {
+    outline: none;
+    border-color: #667eea;
+}
+.pt-item-search::placeholder {
+    color: #bbb;
+}
+
+/* ----------------------------------------------------------
+   F. ACTION BUTTON HIERARCHY
+   Three tiers: primary action, finalize (commitment), danger
+   ---------------------------------------------------------- */
+.btn-action-primary {
+    padding: 9px 18px;
+    background: #667eea;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+    white-space: nowrap;
+}
+.btn-action-primary:hover {
+    background: #5a6fd6;
+    transform: translateY(-1px);
+}
+.btn-action-primary:active { transform: translateY(0); }
+
+.btn-action-finalize {
+    padding: 9px 18px;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(40,167,69,0.3);
+    transition: transform 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+}
+.btn-action-finalize:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 16px rgba(40,167,69,0.4);
+}
+.btn-action-finalize:active { transform: translateY(0); }
+.btn-action-finalize:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-action-danger {
+    padding: 9px 18px;
+    background: #fff;
+    color: #dc3545;
+    border: 2px solid #dc3545;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, transform 0.15s;
+    white-space: nowrap;
+}
+.btn-action-danger:hover {
+    background: #dc3545;
+    color: #fff;
+    transform: translateY(-1px);
+}
+.btn-action-danger:active { transform: translateY(0); }
+
+/* ----------------------------------------------------------
+   G. VISUAL LOCK INDICATOR
+   Overlay shown over payslip editing area when finalized.
+   Usage: <div class="pt-lock-indicator"> in the section wrap
+   ---------------------------------------------------------- */
+.pt-locked-section {
+    position: relative;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.pt-locked-section::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
+    z-index: 5;
+}
+.pt-lock-indicator {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: #fff8f8;
+    border: 1.5px solid #f5a3ab;
+    border-radius: 8px;
+    color: #880e4f;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+.pt-lock-indicator.show {
+    display: flex;
+}
+.pt-lock-indicator .pt-lock-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+/* ----------------------------------------------------------
+   H. MULTI-STEP GUIDANCE STRIP
+   "Step 1: Add items  →  Step 2: Calculate  →  Step 3: Finalize"
+   ---------------------------------------------------------- */
+.pt-guidance-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: #f0f4ff;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #667eea;
+    font-weight: 600;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    border: 1px solid #d5dfff;
+}
+.pt-guidance-strip .pt-gs-step {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+.pt-guidance-strip .pt-gs-step.done {
+    color: #28a745;
+    text-decoration: line-through;
+    opacity: 0.75;
+}
+.pt-guidance-strip .pt-gs-step.active {
+    color: #764ba2;
+    font-weight: 700;
+}
+.pt-guidance-strip .pt-gs-arrow {
+    color: #ccc;
+    font-size: 14px;
+}
+
+/* ----------------------------------------------------------
+   I. BULK ACTION PLACEHOLDER (structure-ready, hidden)
+   Checkbox column in employee grid for future bulk select.
+   ---------------------------------------------------------- */
+.pt-bulk-check-col {
+    width: 36px;
+    text-align: center;
+    vertical-align: middle;
+}
+.pt-bulk-check-col input[type="checkbox"] {
+    accent-color: #667eea;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+.pt-bulk-action-bar {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #667eea;
+    color: #fff;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+.pt-bulk-action-bar.show {
+    display: flex;
+}
+.pt-bulk-action-bar .pt-bulk-count {
+    flex: 1;
+}
+.pt-bulk-action-bar button {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.pt-bulk-action-bar button:hover {
+    background: rgba(255,255,255,0.35);
+}
