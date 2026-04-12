@@ -780,7 +780,7 @@
             }, 500);
         }
 
-        function handleLogin(event) {
+        async function handleLogin(event) {
             event.preventDefault();
 
             const email = document.getElementById('login-email').value;
@@ -791,20 +791,24 @@
             document.getElementById('login-loading').style.display = 'block';
             document.getElementById('login-btn').disabled = true;
 
-            // Simulate network delay
-            setTimeout(() => {
-                const result = AUTH.login(email, password);
-
+            // AUTH.login verifies credentials server-side (async)
+            try {
+                const result = await AUTH.login(email, password);
                 if (result.success) {
                     errorDiv.classList.remove('show');
                     window.location.href = result.redirect;
                 } else {
-                    errorDiv.textContent = result.message;
+                    errorDiv.textContent = result.message || 'Invalid email or password';
                     errorDiv.classList.add('show');
                     document.getElementById('login-loading').style.display = 'none';
                     document.getElementById('login-btn').disabled = false;
                 }
-            }, 500);
+            } catch (e) {
+                errorDiv.textContent = 'Login failed — please try again.';
+                errorDiv.classList.add('show');
+                document.getElementById('login-loading').style.display = 'none';
+                document.getElementById('login-btn').disabled = false;
+            }
         }
 
         // ===== FORGOT PASSWORD FUNCTIONS =====

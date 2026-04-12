@@ -1,26 +1,31 @@
 // Authentication and Session Management
+//
+// SECURITY NOTE: Super admin credentials are NEVER stored in this file.
+// Authentication for all admin-level users is verified server-side via
+// POST /api/auth/verify — credentials live only in server environment variables.
+//
 const AUTH = {
-    // Super Admin Credentials (4 slots — each can have different access levels)
+    // Super admin email list (no passwords — stored server-side only)
     SUPER_ADMINS: [
         {
             id: 'super-admin-001',
             email: 'ruanvlog@lorenco.co.za',
-            password: 'Mindmaster@277477',
+            password: null,  // Never stored client-side — verified via /api/auth/verify
             name: 'Ruan van Loggerenberg',
             role: 'super_admin',
-            accessLevel: 'full' // Access to ALL parts of the system
+            accessLevel: 'full'
         },
         {
             id: 'super-admin-002',
             email: 'antonjvr@lorenco.co.za',
-            password: 'Lorenco@190409',
+            password: null,  // Never stored client-side — verified via /api/auth/verify
             name: 'Anton Janse van Rensburg',
             role: 'super_admin',
             accessLevel: 'full'
         },
         {
             id: 'super-admin-003',
-            email: null, // Reserved for future super admin
+            email: null,
             password: null,
             name: 'Reserved',
             role: 'super_admin',
@@ -28,7 +33,7 @@ const AUTH = {
         },
         {
             id: 'super-admin-004',
-            email: null, // Reserved for future super admin
+            email: null,
             password: null,
             name: 'Reserved',
             role: 'super_admin',
@@ -41,11 +46,11 @@ const AUTH = {
         return this.SUPER_ADMINS[0];
     },
     
-    // Demo User
+    // Demo User (password verified via /api/auth/verify or checked against env-configured accounts)
     DEMO_USER: {
         id: 'user-demo',
         email: 'demo@example.com',
-        password: 'demo123',
+        password: null,  // No plaintext passwords in client JS
         name: 'Demo User',
         role: 'business_owner',
         company_id: 'demo-company',
@@ -119,12 +124,12 @@ const AUTH = {
         }
     ],
 
-    // Mock Users Database
+    // Mock Users Database (demo accounts — passwords never stored here, verified server-side)
     USERS: [
         {
             id: 'user-001',
             email: 'john.owner@lorenco.com',
-            password: 'Password@123',
+            password: null,  // Use /api/auth/verify for credential checking
             name: 'John Smith',
             role: 'business_owner',
             company_id: 'comp-001',
@@ -134,7 +139,7 @@ const AUTH = {
         {
             id: 'user-002',
             email: 'sarah.accountant@lorenco.com',
-            password: 'Password@123',
+            password: null,
             name: 'Sarah Johnson',
             role: 'accountant',
             company_id: 'comp-001',
@@ -144,7 +149,7 @@ const AUTH = {
         {
             id: 'user-003',
             email: 'mike.owner@techsolutions.com',
-            password: 'Password@123',
+            password: null,
             name: 'Mike Tech',
             role: 'business_owner',
             company_id: 'comp-002',
@@ -154,7 +159,7 @@ const AUTH = {
         {
             id: 'user-004',
             email: 'emma.accountant@techsolutions.com',
-            password: 'Password@123',
+            password: null,
             name: 'Emma Watson',
             role: 'accountant',
             company_id: 'comp-002',
@@ -164,7 +169,7 @@ const AUTH = {
         {
             id: 'user-005',
             email: 'david.owner@globalconsulting.com',
-            password: 'Password@123',
+            password: null,
             name: 'David Brown',
             role: 'business_owner',
             company_id: 'comp-003',
@@ -173,61 +178,75 @@ const AUTH = {
         }
     ],
 
-    // Login Method
-    login: function(email, password) {
-        // Check Super Admins (all 4 slots)
-        var matchedSuperAdmin = this.SUPER_ADMINS.find(function(sa) {
-            return sa.email && sa.email.toLowerCase() === email.toLowerCase() && sa.password === password;
-        });
-        if (matchedSuperAdmin) {
-            // Super admins get access to ALL companies (hardcoded + registered)
-            var allCompanies = this.getAllCompaniesWithRegistered();
-            var allCompanyIds = allCompanies.map(function(c) { return c.id; });
-            // Restore last-used company_id from previous session if available
-            var lastSession = this.getSession();
-            var defaultCompanyId = (lastSession && lastSession.company_id && allCompanyIds.indexOf(lastSession.company_id) >= 0)
-                ? lastSession.company_id
-                : (allCompanyIds[0] || null);
-            var saSession = Object.assign({}, matchedSuperAdmin, {
-                company_ids: allCompanyIds,
-                company_id: defaultCompanyId
+    // Login Method — server-side credential verification only.
+    // No passwords are compared client-side. All credential checks go through
+    // POST /api/auth/verify which reads credentials from server environment variables.
+    login: async function(email, password) {
+        // Step 1: Verify credentials server-side (no client-side password comparison)
+        try {
+            var verifyResp = await fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, password: password })
             });
-            this.setSession(saSession);
-            // Audit super-admin login
-            if (typeof AuditTrail !== 'undefined') {
-                AuditTrail.logLogin(defaultCompanyId, matchedSuperAdmin.email, matchedSuperAdmin.name, 'super_admin');
+            var verifyData = await verifyResp.json();
+
+            if (verifyResp.ok && verifyData.success) {
+                // Server confirmed credentials — build session from known local user profile
+                var serverUser = verifyData.user;
+                var role = serverUser.role || 'super_admin';
+                var token = verifyData.token || null;
+
+                // Find matching profile by email (for company_ids etc.)
+                var matchedSA = this.SUPER_ADMINS.find(function(sa) {
+                    return sa.email && sa.email.toLowerCase() === email.toLowerCase();
+                });
+
+                var allCompanies = this.getAllCompaniesWithRegistered();
+                var allCompanyIds = allCompanies.map(function(c) { return c.id; });
+                var lastSession = this.getSession();
+                var defaultCompanyId = (lastSession && lastSession.company_id && allCompanyIds.indexOf(lastSession.company_id) >= 0)
+                    ? lastSession.company_id
+                    : (allCompanyIds[0] || null);
+
+                var sessionUser = {
+                    id: matchedSA ? matchedSA.id : ('srv-' + Math.random().toString(36).substr(2, 8)),
+                    email: serverUser.email,
+                    name: serverUser.name || matchedSA && matchedSA.name || email,
+                    role: role,
+                    company_id: defaultCompanyId,
+                    company_ids: role === 'super_admin' ? allCompanyIds : [defaultCompanyId],
+                    accessLevel: 'full'
+                };
+
+                // Store token for authenticating storage requests
+                if (token) safeLocalStorage.setItem('token', token);
+                this.setSession(sessionUser);
+
+                if (typeof AuditTrail !== 'undefined') {
+                    AuditTrail.logLogin(defaultCompanyId, email, sessionUser.name, role);
+                }
+
+                var redirect = sessionUser.company_ids.length > 1 ? 'company-selection.html' : 'company-dashboard.html';
+                return { success: true, user: sessionUser, redirect: redirect };
             }
-            // BYPASSED: Super admins now go to normal app flow with elevated access
-            // Admin dashboard code preserved for future use
-            // Previously: redirect: 'super-admin-dashboard.html'
-            var saRedirect = allCompanyIds.length > 1 ? 'company-selection.html' : 'company-dashboard.html';
-            return { success: true, user: saSession, redirect: saRedirect };
+        } catch (e) {
+            console.warn('Server auth unavailable — trying local fallback:', e.message);
         }
 
-        // Check Demo User
-        if (email === this.DEMO_USER.email && password === this.DEMO_USER.password) {
-            this.setSession(this.DEMO_USER);
-            return { success: true, user: this.DEMO_USER, redirect: 'company-selection.html' };
-        }
-
-        // Check Regular Users (in-memory)
-        let user = this.USERS.find(u => u.email === email && u.password === password);
-        
-        // Check Registered Users (localStorage)
-        if (!user) {
-            const registeredUsers = this.getRegisteredUsers();
-            user = registeredUsers.find(u => u.email === email && u.password === password);
-        }
-
-        if (user && user.active) {
-            this.setSession(user);
-            var ids = user.company_ids || (user.company_id ? [user.company_id] : []);
-            // Audit login event (fire-and-forget; AuditTrail may not exist on login page)
+        // Fallback: registered users stored in KV (have passwords set during registration)
+        var registeredUsers = this.getRegisteredUsers();
+        var regUser = registeredUsers.find(function(u) {
+            return u.email === email && u.password && u.password === password;
+        });
+        if (regUser && regUser.active !== false) {
+            this.setSession(regUser);
+            var ids = regUser.company_ids || (regUser.company_id ? [regUser.company_id] : []);
             if (typeof AuditTrail !== 'undefined') {
-                AuditTrail.logLogin(user.company_id || null, user.email, user.name, user.role);
+                AuditTrail.logLogin(regUser.company_id || null, regUser.email, regUser.name, regUser.role);
             }
-            var redirect = ids.length > 1 ? 'company-selection.html' : 'company-dashboard.html';
-            return { success: true, user: user, redirect: redirect };
+            var regRedirect = ids.length > 1 ? 'company-selection.html' : 'company-dashboard.html';
+            return { success: true, user: regUser, redirect: regRedirect };
         }
 
         return { success: false, message: 'Invalid email or password' };

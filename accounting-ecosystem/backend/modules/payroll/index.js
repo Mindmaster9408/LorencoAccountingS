@@ -12,6 +12,7 @@ const itemsRoutes = require('./routes/items');
 const attendanceRoutes = require('./routes/attendance');
 const kvRoutes = require('./routes/kv');
 const reconRoutes = require('./routes/recon');
+const unlockRoutes = require('./routes/unlock');
 
 const router = express.Router();
 
@@ -22,6 +23,8 @@ router.use('/items', itemsRoutes);
 router.use('/attendance', attendanceRoutes);
 router.use('/kv', kvRoutes);
 router.use('/recon', reconRoutes);
+// Server-side payslip unlock — replaces client-controlled KV delete pattern
+router.use('/unlock', unlockRoutes);
 
 // Health check for Payroll module
 router.get('/status', (req, res) => {

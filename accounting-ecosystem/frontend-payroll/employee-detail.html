@@ -1718,41 +1718,52 @@
             const password = document.getElementById('authPassword').value;
             if (!email || !password) { alert('Please enter both email and password'); return; }
 
-            // Verify credentials against the server WITHOUT overwriting the current session
-            try {
-                const loginResp = await fetch(window.location.origin + '/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: email, password })
-                });
-                const loginData = await loginResp.json();
-                if (!loginResp.ok || !loginData.token) {
-                    alert('Invalid credentials — authorization denied.');
-                    return;
-                }
-                // Check returned role — require at least a management-level role
-                const allowedRoles = ['super_admin', 'business_owner', 'accountant', 'manager', 'admin'];
-                const role = (loginData.user && loginData.user.role) || '';
-                if (role && !allowedRoles.includes(role)) {
-                    alert('Authorization denied. Only business owners, managers, and admins can unlock payslips.');
-                    return;
-                }
-                // NOTE: the returned token/session is intentionally NOT stored — current user session is preserved
-            } catch(e) {
-                alert('Could not verify credentials: ' + e.message);
-                return;
-            }
+            // Disable submit button during verification
+            var submitBtn = document.querySelector('#managerAuthModal button[onclick="verifyManagerAuth()"]');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Verifying...'; }
 
-            // Unlock: remove finalized payslip status AND the frozen snapshot
-            safeLocalStorage.removeItem(getPayslipStatusKey());
-            safeLocalStorage.removeItem('emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod);
-            AuditTrail.logUnfinalize(currentCompanyId, 'payslip', 'Manager unlock by ' + email + ' for ' +
-                (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) +
-                ' - ' + formatPeriodLabel(currentPeriod));
-            closeModal('managerAuthModal');
-            loadPayrollData();   // reload so payroll inputs are live again
-            updatePayslipUI();
-            alert('✅ Payslip unlocked by ' + email + '. You can now make changes.');
+            try {
+                // SERVER-SIDE UNLOCK: credentials are verified and state is mutated on the server.
+                // The client never directly deletes payslip state keys — the server owns this decision.
+                const token = safeLocalStorage.getItem('token');
+                const unlockResp = await fetch(window.location.origin + '/api/payroll/unlock', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': token ? 'Bearer ' + token : ''
+                    },
+                    body: JSON.stringify({
+                        empId: currentEmpId,
+                        period: currentPeriod,
+                        managerEmail: email,
+                        managerPassword: password
+                    })
+                });
+
+                const unlockData = await unlockResp.json();
+
+                if (!unlockResp.ok) {
+                    const msg = unlockData.error || 'Authorization denied';
+                    alert('Unlock failed: ' + msg);
+                    return;
+                }
+
+                // Success — server has removed the finalization state
+                const authorizedByName = (unlockData.unlockedBy && unlockData.unlockedBy.authorizedByName) || email;
+                closeModal('managerAuthModal');
+                loadPayrollData();   // reload so payroll inputs are live again
+                updatePayslipUI();
+                if (typeof showSaveToast === 'function') {
+                    showSaveToast('Payslip unlocked by ' + authorizedByName, 'warning', 4000);
+                } else {
+                    alert('Payslip unlocked by ' + authorizedByName + '. You can now make changes.');
+                }
+
+            } catch(e) {
+                alert('Unlock failed — server error: ' + e.message);
+            } finally {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Authorize Unlock'; }
+            }
         }
 
         function formatPeriodLabel(period) {

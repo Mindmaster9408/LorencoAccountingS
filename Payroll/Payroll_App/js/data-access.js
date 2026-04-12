@@ -25,10 +25,22 @@
     // In-memory cache for fast reads (populated from Supabase on every page load)
     window._payrollCache = {};
 
+    // Retrieve stored token for authenticated storage requests
+    // (token is set by auth.js on login, stored in native localStorage)
+    function getStorageToken() {
+        try {
+            return window._payrollNativeLocalStorage
+                ? window._payrollNativeLocalStorage.getItem('token')
+                : localStorage.getItem('token');
+        } catch (_) { return null; }
+    }
+
     try {
         // Load ALL data from Supabase via server (synchronous on page load)
         var xhr = new XMLHttpRequest();
         xhr.open('GET', SERVER_URL + '/api/storage', false);   // false = synchronous
+        var initToken = getStorageToken();
+        if (initToken) xhr.setRequestHeader('Authorization', 'Bearer ' + initToken);
         xhr.send(null);
 
         if (xhr.status !== 200) throw new Error('Server returned ' + xhr.status);
@@ -112,6 +124,8 @@ var DataAccess = {
             var x = new XMLHttpRequest();
             x.open('PUT', (window._payrollServerUrl || window.location.origin) + '/api/storage/' + encodeURIComponent(key), true);
             x.setRequestHeader('Content-Type', 'application/json');
+            var writeToken = getStorageToken();
+            if (writeToken) x.setRequestHeader('Authorization', 'Bearer ' + writeToken);
             x.onload = function() {
                 if (x.status >= 500) {
                     // Server-side failure — data is safe in localStorage but cloud sync failed
@@ -144,6 +158,8 @@ var DataAccess = {
         if (window._payrollServerOnline) {
             var x = new XMLHttpRequest();
             x.open('DELETE', (window._payrollServerUrl || window.location.origin) + '/api/storage/' + encodeURIComponent(key), true);
+            var delToken = getStorageToken();
+            if (delToken) x.setRequestHeader('Authorization', 'Bearer ' + delToken);
             x.onerror = function() { window._payrollServerOnline = false; };
             x.send(null);
         }

@@ -37,6 +37,84 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// ── Security: API authentication ─────────────────────────────────────────────
+//
+// PAYROLL_API_SECRET in .env gates all /api/storage routes.
+// If the env var is not set, storage routes remain OPEN (backward compat for
+// local dev — emit a loud warning instead of silently accepting all traffic).
+//
+// Clients must send one of:
+//   Authorization: Bearer <PAYROLL_API_SECRET>
+//   X-Payroll-Secret: <PAYROLL_API_SECRET>
+//
+const PAYROLL_API_SECRET = process.env.PAYROLL_API_SECRET || null;
+if (!PAYROLL_API_SECRET) {
+    console.warn('');
+    console.warn('  ⚠️  WARNING: PAYROLL_API_SECRET is not set.');
+    console.warn('  Storage endpoints are UNPROTECTED. Set PAYROLL_API_SECRET in .env to enable auth.');
+    console.warn('');
+}
+
+function requireStorageAuth(req, res, next) {
+    if (!PAYROLL_API_SECRET) {
+        // Not configured — allow access but log it (dev mode only)
+        return next();
+    }
+    const authHeader = req.headers['authorization'] || '';
+    const headerSecret = req.headers['x-payroll-secret'] || '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    const provided = bearerToken || headerSecret;
+
+    if (!provided) {
+        return res.status(401).json({ error: 'Authentication required', hint: 'Send Authorization: Bearer <token>' });
+    }
+    if (provided !== PAYROLL_API_SECRET) {
+        return res.status(403).json({ error: 'Invalid credentials' });
+    }
+    next();
+}
+
+// ── Admin user list for server-side auth (loaded from env, never in client JS) ──
+// Set ADMIN_USERS as JSON in .env:  [{"email":"a@b.com","password":"secret","role":"super_admin","name":"Admin"}]
+// Falls back to a single ADMIN_EMAIL / ADMIN_PASSWORD pair for simpler configs.
+function getAdminUsers() {
+    try {
+        const raw = process.env.ADMIN_USERS;
+        if (raw) return JSON.parse(raw);
+    } catch (e) {
+        console.error('ADMIN_USERS env var is not valid JSON:', e.message);
+    }
+    // Simple single-admin fallback
+    const email    = process.env.ADMIN_EMAIL;
+    const password = process.env.ADMIN_PASSWORD;
+    const role     = process.env.ADMIN_ROLE || 'super_admin';
+    const name     = process.env.ADMIN_NAME || 'Admin';
+    if (email && password) return [{ email, password, role, name }];
+    return [];
+}
+
+// ── POST /api/auth/verify  →  verify admin credentials (server-side only) ──────
+// Used by the Paytime frontend to authenticate WITHOUT exposing passwords in JS.
+// Returns a minimal session token (the API secret) on success.
+app.post('/api/auth/verify', (req, res) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+        return res.status(400).json({ success: false, error: 'Email and password required' });
+    }
+    const admins = getAdminUsers();
+    const match = admins.find(a => a.email && a.email.toLowerCase() === email.toLowerCase() && a.password === password);
+    if (!match) {
+        return res.status(401).json({ success: false, error: 'Invalid email or password' });
+    }
+    // Return session info (never return the password back)
+    res.json({
+        success: true,
+        user: { email: match.email, name: match.name || '', role: match.role || 'super_admin' },
+        // Provide the API secret as a bearer token so the client can authenticate storage requests
+        token: PAYROLL_API_SECRET || 'dev-mode'
+    });
+});
+
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', async (req, res) => {
     const ok = await checkConnection(1, 0);
@@ -50,7 +128,7 @@ app.get('/api/version', (req, res) => {
 });
 
 // ── GET /api/storage  →  return all stored key/value pairs ───────────────────
-app.get('/api/storage', async (req, res) => {
+app.get('/api/storage', requireStorageAuth, async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('payroll_kv_store')
@@ -70,7 +148,7 @@ app.get('/api/storage', async (req, res) => {
 });
 
 // ── POST /api/storage-bulk  →  write many keys at once ───────────────────────
-app.post('/api/storage-bulk', async (req, res) => {
+app.post('/api/storage-bulk', requireStorageAuth, async (req, res) => {
     try {
         const body = req.body;
         if (!body || typeof body !== 'object') {
@@ -99,7 +177,7 @@ app.post('/api/storage-bulk', async (req, res) => {
 });
 
 // ── GET /api/storage/:key  →  get a single key ──────────────────────────────
-app.get('/api/storage/:key', async (req, res) => {
+app.get('/api/storage/:key', requireStorageAuth, async (req, res) => {
     try {
         const key = req.params.key;
         const { data, error } = await supabase
@@ -117,7 +195,7 @@ app.get('/api/storage/:key', async (req, res) => {
 });
 
 // ── PUT /api/storage/:key  →  create or update a single key ─────────────────
-app.put('/api/storage/:key', async (req, res) => {
+app.put('/api/storage/:key', requireStorageAuth, async (req, res) => {
     try {
         const key = req.params.key;
         let val = req.body.value;
@@ -140,7 +218,7 @@ app.put('/api/storage/:key', async (req, res) => {
 });
 
 // ── DELETE /api/storage/:key  →  remove a key ────────────────────────────────
-app.delete('/api/storage/:key', async (req, res) => {
+app.delete('/api/storage/:key', requireStorageAuth, async (req, res) => {
     try {
         const key = req.params.key;
         const { error } = await supabase

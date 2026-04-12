@@ -21,16 +21,57 @@
 
 const express = require('express');
 const { supabase } = require('../../../config/database');
-const { authenticateToken, requireCompany } = require('../../../middleware/auth');
+const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 
 const router = express.Router();
 const TABLE = 'payroll_kv_store_eco';
 
+// SECURITY: All KV routes require authentication and company context.
+// Read operations require PAYROLL.VIEW; write/delete operations require PAYROLL.CREATE.
 router.use(authenticateToken);
 router.use(requireCompany);
 
+// ── Sensitive key guard ───────────────────────────────────────────────────────
+// Certain key patterns represent critical finalization state and require elevated
+// permissions to mutate (PAYROLL.APPROVE). These keys cannot be freely deleted
+// by any PAYROLL.CREATE user — they must use the dedicated unlock endpoint.
+//
+// Protected patterns:
+//   emp_payslip_status_*   — payslip finalization state
+//   emp_historical_*       — frozen payroll snapshots
+//   payslip_archive_*      — long-term payslip archive (11-year retention)
+//
+const SENSITIVE_KEY_PATTERNS = [
+    /^emp_payslip_status_/,
+    /^emp_historical_/,
+    /^payslip_archive_/,
+];
+
+function isSensitiveKey(key) {
+    return SENSITIVE_KEY_PATTERNS.some(pattern => pattern.test(key));
+}
+
+// Middleware: block direct mutations of sensitive finalization-state keys
+// unless the user has PAYROLL.APPROVE (business_owner / super_admin).
+function guardSensitiveKey(req, res, next) {
+    const key = req.params.key;
+    if (!key || !isSensitiveKey(key)) return next();
+
+    const userRole = req.user && req.user.role;
+    const approveRoles = ['super_admin', 'business_owner'];
+    if (!approveRoles.includes(userRole)) {
+        return res.status(403).json({
+            error: 'Insufficient permissions to modify payslip state directly',
+            hint: 'Use the dedicated payslip unlock endpoint for authorized state changes',
+            required: 'PAYROLL.APPROVE',
+            userRole
+        });
+    }
+    next();
+}
+
 // ── GET /api/payroll/kv  →  all key/value pairs for this company ─────────────
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     try {
         const { data, error } = await supabase
             .from(TABLE)
@@ -51,7 +92,7 @@ router.get('/', async (req, res) => {
 });
 
 // ── PUT /api/payroll/kv/:key  →  upsert a single key ─────────────────────────
-router.put('/:key', async (req, res) => {
+router.put('/:key', requirePermission('PAYROLL.CREATE'), guardSensitiveKey, async (req, res) => {
     try {
         const key = req.params.key;
         let val = req.body.value;
@@ -75,7 +116,7 @@ router.put('/:key', async (req, res) => {
 });
 
 // ── DELETE /api/payroll/kv/:key  →  remove a key ─────────────────────────────
-router.delete('/:key', async (req, res) => {
+router.delete('/:key', requirePermission('PAYROLL.CREATE'), guardSensitiveKey, async (req, res) => {
     try {
         const key = req.params.key;
 

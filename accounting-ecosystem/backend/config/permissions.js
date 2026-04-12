@@ -134,6 +134,9 @@ const PERMISSIONS = {
   PAYSLIPS: {
     VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
     GENERATE: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
+    // UNLOCK: who may authorize manager-unlock of a finalized payslip.
+    // Accountants included because they routinely perform corrections under business owner delegation.
+    UNLOCK: ['super_admin', 'business_owner', 'accountant'],
   },
   ATTENDANCE: {
     VIEW: SUPERVISOR_ROLES,
