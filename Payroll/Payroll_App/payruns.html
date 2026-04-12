@@ -351,6 +351,28 @@
 
             <!-- PAYSLIPS TAB -->
             <div id="payslips-view" class="tab-view active">
+                <!-- PHASE 2B: Pay run progress summary bar -->
+                <div class="pt-payrun-progress" id="ptPayrunProgress">
+                    <div class="pt-prog-stat">
+                        <span class="pt-prog-num" id="ptProgTotal">0</span>
+                        <span class="pt-prog-label">Total</span>
+                    </div>
+                    <div class="pt-prog-divider"></div>
+                    <div class="pt-prog-stat">
+                        <span class="pt-prog-num finalized" id="ptProgFinalized">0</span>
+                        <span class="pt-prog-label">Finalized</span>
+                    </div>
+                    <div class="pt-prog-divider"></div>
+                    <div class="pt-prog-stat">
+                        <span class="pt-prog-num pending" id="ptProgPending">0</span>
+                        <span class="pt-prog-label">Draft</span>
+                    </div>
+                    <div class="pt-prog-bar-wrap">
+                        <div class="pt-prog-bar-track">
+                            <div class="pt-prog-bar-fill" id="ptProgBarFill" style="width:0%;"></div>
+                        </div>
+                    </div>
+                </div>
                 <input type="text" class="search-bar" placeholder="Search employees by name, number, or department..." oninput="filterEmployees(this.value)">
                 <div class="employee-grid" id="employee-grid"></div>
             </div>
@@ -675,15 +697,19 @@
             list = list || employees;
             if (list.length === 0) {
                 grid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><div class="empty-icon">👥</div><div class="empty-text">No employees found</div><div class="empty-sub">Add employees from the Employee Management page first.</div></div>';
+                updatePayrunProgressBar(0, 0);
                 return;
             }
             // Get current period for status check
             const now = new Date();
             const currentPeriod = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+            var finalizedCount = 0;
             grid.innerHTML = list.map(emp => {
                 const badgeClass = emp.payment_method === 'Cash' ? 'badge-cash' : emp.payment_method === 'Cheque' ? 'badge-cheque' : 'badge-eft';
                 const psStatus = getPayslipStatus(emp.id, currentPeriod);
-                const statusBadge = psStatus.status === 'finalized'
+                const isFinalized = psStatus.status === 'finalized';
+                if (isFinalized) finalizedCount++;
+                const statusBadge = isFinalized
                     ? '<span class="emp-payment-badge badge-finalized">✓ Finalized</span>'
                     : '<span class="emp-payment-badge badge-draft">Draft</span>';
                 return '<div class="employee-card" onclick="openEmployeeDetail(\'' + emp.id + '\')">' +
@@ -699,6 +725,24 @@
                     '</div>' +
                 '</div>';
             }).join('');
+            // PHASE 2B: update progress bar
+            updatePayrunProgressBar(list.length, finalizedCount);
+        }
+
+        function updatePayrunProgressBar(total, finalized) {
+            var bar = document.getElementById('ptPayrunProgress');
+            if (!bar) return;
+            var pending = total - finalized;
+            var pct = total > 0 ? Math.round((finalized / total) * 100) : 0;
+            bar.classList.toggle('show', total > 0);
+            var elTotal = document.getElementById('ptProgTotal');
+            var elFin   = document.getElementById('ptProgFinalized');
+            var elPend  = document.getElementById('ptProgPending');
+            var elFill  = document.getElementById('ptProgBarFill');
+            if (elTotal) elTotal.textContent = total;
+            if (elFin)   elFin.textContent   = finalized;
+            if (elPend)  elPend.textContent  = pending;
+            if (elFill)  elFill.style.width  = pct + '%';
         }
 
         function filterEmployees(query) {

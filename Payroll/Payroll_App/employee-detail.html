@@ -328,6 +328,31 @@
                 </h3>
                 <div id="payslipStatusBar"></div>
                 <div id="payrollContent">
+
+                <!-- PHASE 2: Payroll workflow state strip -->
+                <div id="ptWorkflowStrip" class="pt-workflow-strip">
+                    <div class="pt-workflow-step locked-step" id="ptWfDraft"><span class="pt-wf-icon">📝</span><span class="pt-wf-label">Draft</span></div>
+                    <div class="pt-workflow-step locked-step" id="ptWfCalculated"><span class="pt-wf-icon">🧮</span><span class="pt-wf-label">Calculated</span></div>
+                    <div class="pt-workflow-step locked-step" id="ptWfReady"><span class="pt-wf-icon">✔</span><span class="pt-wf-label">Ready</span></div>
+                    <div class="pt-workflow-step locked-step" id="ptWfFinalized"><span class="pt-wf-icon">🔒</span><span class="pt-wf-label">Finalized</span></div>
+                    <div class="pt-workflow-step locked-step" id="ptWfInPayrun"><span class="pt-wf-icon">💸</span><span class="pt-wf-label">In Pay Run</span></div>
+                </div>
+
+                <!-- PHASE 2: Lock indicator (shown when finalized/locked) -->
+                <div class="pt-lock-indicator" id="ptLockIndicator">
+                    <span class="pt-lock-icon">🔒</span>
+                    <span id="ptLockMsg">Payslip locked — requires manager unlock to make changes.</span>
+                </div>
+
+                <!-- PHASE 2: Multi-step guidance strip (shown in draft mode) -->
+                <div class="pt-guidance-strip" id="ptGuidanceStrip">
+                    <div class="pt-gs-step" id="ptGsAdd"><span>Step 1:</span> Add pay items above</div>
+                    <div class="pt-gs-arrow">→</div>
+                    <div class="pt-gs-step" id="ptGsCalc"><span>Step 2:</span> Calculate</div>
+                    <div class="pt-gs-arrow">→</div>
+                    <div class="pt-gs-step active" id="ptGsFinalize"><span>Step 3:</span> Finalize Payslip</div>
+                </div>
+
                 <div class="section-grid">
                     <div class="section">
                         <div class="section-title"><span>📅 Recurring Pay Items <span class="pt-section-badge recurring">Monthly</span></span><button class="btn btn-sm btn-success" onclick="openAddRegularInput()">+ Add</button></div>
@@ -414,7 +439,11 @@
                     </table>
                     <!-- Hidden compat span kept for JS that sets totalDeductions -->
                     <span id="totalDeductions" style="display: none;"></span>
-                    <button class="btn btn-success" style="width: 100%; margin-top: 15px;" onclick="calculatePayslip()">Calculate Payslip</button>
+                    <!-- PHASE 2: Sticky calculate bar — always visible at bottom of summary card -->
+                    <div class="pt-sticky-calc-bar">
+                        <span class="pt-calc-hint" id="ptCalcHint">Add items above, then calculate to preview totals.</span>
+                        <button class="btn-calculate" id="ptCalcBtn" onclick="calculatePayslip()">🧮 Calculate</button>
+                    </div>
                     <div id="payslipActions" style="display: none; margin-top: 10px; gap: 10px;">
                         <button class="btn" style="flex: 1;" onclick="previewPayslip()">Preview Payslip</button>
                         <button class="btn btn-success" style="flex: 1;" onclick="downloadPayslipPDF()">Download PDF</button>
@@ -557,6 +586,13 @@
 
     <!-- ==================== MODALS ==================== -->
 
+    <!-- PHASE 2: Finalize success overlay -->
+    <div id="ptFinalizeSuccess" class="pt-finalize-success" aria-hidden="true">
+        <div class="pt-fs-icon">✅</div>
+        <div class="pt-fs-title">Payslip Finalized</div>
+        <div class="pt-fs-sub" id="ptFsSubtext">Payslip locked — PDF is downloading...</div>
+    </div>
+
     <!-- Edit Basic Salary -->
     <div id="editBasicModal" class="modal">
         <div class="modal-content">
@@ -570,7 +606,13 @@
     <div id="addRegularModal" class="modal">
         <div class="modal-content">
             <div class="modal-header"><h3>Add Regular Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addRegularModal')">Close</button></div>
-            <div class="form-group"><label>Payroll Item</label><select id="regularItemSelect" onchange="onRegularItemSelect()"></select></div>
+            <div class="form-group">
+                <label>Payroll Item</label>
+                <div class="pt-item-select-wrap">
+                    <input type="text" class="pt-item-search" id="regularItemSearch" placeholder="Type to filter items...">
+                    <select id="regularItemSelect" onchange="onRegularItemSelect()"></select>
+                </div>
+            </div>
             <div id="regularCustomFields">
                 <div class="form-group"><label>Type</label><select id="regularInputType"><option value="allowance">Allowance</option><option value="deduction">Deduction</option></select></div>
                 <div class="form-group"><label>Description</label><input type="text" id="regularInputDesc" placeholder="e.g. Housing Allowance"></div>
@@ -587,7 +629,13 @@
     <div id="addCurrentModal" class="modal">
         <div class="modal-content">
             <div class="modal-header"><h3>Add Current Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addCurrentModal')">Close</button></div>
-            <div class="form-group"><label>Payroll Item</label><select id="currentItemSelect" onchange="onCurrentItemSelect()"></select></div>
+            <div class="form-group">
+                <label>Payroll Item</label>
+                <div class="pt-item-select-wrap">
+                    <input type="text" class="pt-item-search" id="currentItemSearch" placeholder="Type to filter items...">
+                    <select id="currentItemSelect" onchange="onCurrentItemSelect()"></select>
+                </div>
+            </div>
             <div id="currentCustomFields">
                 <div class="form-group"><label>Type</label><select id="currentInputType"><option value="bonus">Bonus</option><option value="commission">Commission</option><option value="allowance">Allowance</option><option value="deduction">Deduction</option><option value="other">Other</option></select></div>
                 <div class="form-group"><label>Description</label><input type="text" id="currentInputDesc"></div>
@@ -1057,6 +1105,94 @@
                 btnArea.innerHTML = '<button class="btn-finalize" data-permission="FINALIZE_PAYSLIP" onclick="finalizePayslip()">✓ Finalize Payslip</button>';
             }
             Permissions.enforceUI();
+
+            // PHASE 2: update workflow strip and lock indicator
+            updateWorkflowStrip(psStatus, lockedRun);
+        }
+
+        // PHASE 2: Workflow strip — set step states based on payslip status
+        function updateWorkflowStrip(psStatus, lockedRun) {
+            var steps = ['ptWfDraft','ptWfCalculated','ptWfReady','ptWfFinalized','ptWfInPayrun'];
+            steps.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) { el.className = 'pt-workflow-step locked-step'; }
+            });
+            var guidanceStrip = document.getElementById('ptGuidanceStrip');
+            var lockIndicator = document.getElementById('ptLockIndicator');
+            var calcBtn = document.getElementById('ptCalcBtn');
+            var calcHint = document.getElementById('ptCalcHint');
+
+            function setStep(id, cls) {
+                var el = document.getElementById(id); if (el) el.className = 'pt-workflow-step ' + cls;
+            }
+
+            if (lockedRun && psStatus.status === 'finalized') {
+                // Fully locked — in pay run
+                setStep('ptWfDraft', 'done'); setStep('ptWfCalculated', 'done');
+                setStep('ptWfReady', 'done'); setStep('ptWfFinalized', 'done');
+                setStep('ptWfInPayrun', 'in-payrun current');
+                if (guidanceStrip) guidanceStrip.style.display = 'none';
+                if (lockIndicator) {
+                    lockIndicator.classList.add('show');
+                    var lockMsg = document.getElementById('ptLockMsg');
+                    if (lockMsg) lockMsg.textContent = 'Payslip locked in pay run — manager unlock required.';
+                }
+                if (calcBtn) calcBtn.disabled = true;
+                if (calcHint) calcHint.textContent = 'Payslip is locked in an active pay run.';
+            } else if (psStatus.status === 'finalized') {
+                setStep('ptWfDraft', 'done'); setStep('ptWfCalculated', 'done');
+                setStep('ptWfReady', 'done'); setStep('ptWfFinalized', 'finalized-step current');
+                if (guidanceStrip) guidanceStrip.style.display = 'none';
+                if (lockIndicator) {
+                    lockIndicator.classList.add('show');
+                    var lockMsg2 = document.getElementById('ptLockMsg');
+                    if (lockMsg2) lockMsg2.textContent = 'Payslip finalized — click Unfinalize to make changes.';
+                }
+                if (calcBtn) calcBtn.disabled = false;
+                if (calcHint) calcHint.textContent = 'Finalized. Recalculate to refresh totals display.';
+            } else {
+                // Draft mode
+                var calculated = (window._ptLastCalculatedPeriod === currentPeriod);
+                if (calculated) {
+                    setStep('ptWfDraft', 'done'); setStep('ptWfCalculated', 'done');
+                    setStep('ptWfReady', 'current');
+                    if (guidanceStrip) {
+                        guidanceStrip.style.display = '';
+                        var s1 = document.getElementById('ptGsAdd'); if (s1) s1.classList.add('done');
+                        var s2 = document.getElementById('ptGsCalc'); if (s2) s2.classList.add('done');
+                        var s3 = document.getElementById('ptGsFinalize'); if (s3) s3.classList.add('active');
+                    }
+                    if (calcHint) calcHint.textContent = 'Ready to finalize. Recalculate any time to refresh.';
+                } else {
+                    setStep('ptWfDraft', 'current');
+                    if (guidanceStrip) {
+                        guidanceStrip.style.display = '';
+                        var gs1 = document.getElementById('ptGsAdd'); if (gs1) gs1.classList.remove('done');
+                        var gs2 = document.getElementById('ptGsCalc'); if (gs2) gs2.classList.remove('done');
+                        var gs3 = document.getElementById('ptGsFinalize'); if (gs3) gs3.classList.remove('active');
+                    }
+                    if (calcHint) calcHint.textContent = 'Add items above, then calculate to preview totals.';
+                }
+                if (lockIndicator) lockIndicator.classList.remove('show');
+                if (calcBtn) calcBtn.disabled = false;
+            }
+        }
+
+        // PHASE 2: Finalize success overlay — momentary full-screen confirmation
+        function showFinalizeSuccess(empName, period) {
+            var overlay = document.getElementById('ptFinalizeSuccess');
+            if (!overlay) return;
+            var sub = document.getElementById('ptFsSubtext');
+            if (sub) sub.textContent = (empName || 'Employee') + ' — ' + (period || '') + ' — PDF downloading...';
+            overlay.classList.remove('hide');
+            overlay.classList.add('show');
+            // Auto-dismiss after 2.2s
+            setTimeout(function() {
+                overlay.classList.add('hide');
+                setTimeout(function() {
+                    overlay.classList.remove('show','hide');
+                }, 500);
+            }, 2200);
         }
 
         function finalizePayslip() {
@@ -1147,6 +1283,12 @@
 
             AuditTrail.logFinalize(currentCompanyId, 'payslip', 'Finalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
             updatePayslipUI();
+            // PHASE 2: set calculated flag so workflow strip shows Ready→Finalized
+            window._ptLastCalculatedPeriod = currentPeriod;
+            showFinalizeSuccess(
+                currentEmployee ? (currentEmployee.first_name + ' ' + currentEmployee.last_name) : currentEmpId,
+                formatPeriodLabel(currentPeriod)
+            );
 
             // Auto-download PDF payslip after finalization
             try {
@@ -1228,6 +1370,10 @@
                     return;
                 }
                 currentPeriod = periodSelect.value;
+                // PHASE 2: reset calculated flag on period change so workflow strip starts fresh
+                if (window._ptLastCalculatedPeriod !== currentPeriod) {
+                    window._ptLastCalculatedPeriod = null;
+                }
                 const stored = safeLocalStorage.getItem(getPayrollKey());
                 payrollData = stored ? JSON.parse(stored) : { basic_salary: 0, regular_inputs: [] };
                 
@@ -1440,6 +1586,11 @@
             document.getElementById('regularCustomFields').style.display = '';
             document.getElementById('regularItemInfo').style.display = 'none';
             document.getElementById('addRegularModal').classList.add('show');
+            // PHASE 2: wire item search
+            if (typeof initItemSearch === 'function') {
+                document.getElementById('regularItemSearch').value = '';
+                initItemSearch('regularItemSearch', 'regularItemSelect');
+            }
         }
         function onRegularItemSelect() {
             var val = document.getElementById('regularItemSelect').value;
@@ -1527,6 +1678,11 @@
             document.getElementById('currentCustomFields').style.display = '';
             document.getElementById('currentItemInfo').style.display = 'none';
             document.getElementById('addCurrentModal').classList.add('show');
+            // PHASE 2: wire item search
+            if (typeof initItemSearch === 'function') {
+                document.getElementById('currentItemSearch').value = '';
+                initItemSearch('currentItemSearch', 'currentItemSelect');
+            }
         }
         function onCurrentItemSelect() {
             var val = document.getElementById('currentItemSelect').value;
@@ -1849,6 +2005,16 @@
 
             // Show payslip action buttons
             document.getElementById('payslipActions').style.display = 'flex';
+
+            // PHASE 2: mark this period as calculated so workflow strip advances
+            window._ptLastCalculatedPeriod = currentPeriod;
+            var psNow = getPayslipStatus();
+            var lrNow = isPayrunLockedForPeriod();
+            if (typeof updateWorkflowStrip === 'function') updateWorkflowStrip(psNow, lrNow);
+            // Update calc hint
+            var calcHintEl = document.getElementById('ptCalcHint');
+            if (calcHintEl && psNow.status !== 'finalized') calcHintEl.textContent = 'Calculated. Review totals, then Finalize Payslip.';
+
             return calc;
         }
 

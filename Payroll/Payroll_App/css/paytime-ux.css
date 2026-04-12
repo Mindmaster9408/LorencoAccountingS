@@ -410,6 +410,9 @@
    Usage: <div class="pt-payrun-progress"> ... </div>
    ---------------------------------------------------------- */
 .pt-payrun-progress {
+    display: none;
+}
+.pt-payrun-progress.show {
     display: flex;
     align-items: center;
     gap: 20px;
@@ -477,7 +480,7 @@
 }
 @keyframes ptFinalizeOut {
     0%   { opacity: 1; }
-    100% { opacity: 0; pointer-events: none; }
+    100% { opacity: 0; }
 }
 .pt-finalize-success {
     display: none;

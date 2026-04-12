@@ -124,3 +124,59 @@ function initCardSearch(inputId, cardSelector) {
         });
     });
 }
+
+// ----------------------------------------------------------
+// PAYROLL ITEM SELECT SEARCH
+// Filters <option> elements in a <select> by the text typed
+// in a search input. Options that don't match are hidden.
+// Call after populating the select each time the modal opens.
+//
+// Usage:
+//   initItemSearch('regularItemSearch', 'regularItemSelect');
+// ----------------------------------------------------------
+function initItemSearch(inputId, selectId) {
+    var input = document.getElementById(inputId);
+    var select = document.getElementById(selectId);
+    if (!input || !select) return;
+
+    // Store original options for reset
+    var allOptions = Array.from(select.options).map(function(opt) {
+        return { value: opt.value, text: opt.text };
+    });
+
+    // Remove old listener if re-initialized
+    if (input._itemSearchHandler) {
+        input.removeEventListener('input', input._itemSearchHandler);
+    }
+
+    input._itemSearchHandler = function() {
+        var q = input.value.trim().toLowerCase();
+        // Rebuild options matching query
+        select.innerHTML = '';
+        var matched = 0;
+        allOptions.forEach(function(o) {
+            if (!q || o.text.toLowerCase().indexOf(q) !== -1 || o.value === '__custom__') {
+                var opt = document.createElement('option');
+                opt.value = o.value;
+                opt.textContent = o.text;
+                select.appendChild(opt);
+                matched++;
+            }
+        });
+        // Auto-select first real match when filtered
+        if (q && select.options.length > 0) {
+            select.selectedIndex = 0;
+            // Trigger onchange so item info loads
+            select.dispatchEvent(new Event('change'));
+        }
+    };
+
+    input.addEventListener('input', input._itemSearchHandler);
+
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            input.value = '';
+            input._itemSearchHandler();
+        }
+    });
+}
