@@ -1565,7 +1565,7 @@
                     // Itemized breakdown – frozen snapshot
                     var snapBasic = snap.basic_salary !== undefined ? snap.basic_salary : (snap.basic || 0);
                     document.getElementById('detailBasicSalary').textContent = formatMoney(snapBasic);
-                    var snapHourly = snapBasic ? snapBasic / 173.33 : 0;
+                    var snapHourly = snapBasic ? snapBasic / PayrollEngine.HOURLY_DIVISOR : 0;
                     var otSnapHTML = '';
                     if (snap.overtime_hours && parseFloat(snap.overtime_hours) > 0) {
                         var otRate = snap.overtime_rate || 1.5;
@@ -1852,7 +1852,7 @@
                     }
                     var pdfExtraDeductions = pdfDeductions.reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0);
                     var basicAmt = snapPDF.basic_salary !== undefined ? snapPDF.basic_salary : (snapPDF.basic || 0);
-                    var hourlyRate = basicAmt ? basicAmt / 173.33 : 0;
+                    var hourlyRate = basicAmt ? basicAmt / PayrollEngine.HOURLY_DIVISOR : 0;
                     var overtimeAmt = (snapPDF.overtime_hours || 0) * hourlyRate * (snapPDF.overtime_rate || 1.5);
                     var pdfCalc = {
                         gross: snapPDF.gross || 0, paye: snapPDF.paye || 0, uif: snapPDF.uif || 0,
@@ -1902,7 +1902,7 @@
             });
 
             // Calculate overtime amount
-            var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / 173.33 : 0;
+            var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / PayrollEngine.HOURLY_DIVISOR : 0;
             var overtimeAmount = 0;
             overtime.forEach(function(ot) {
                 overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
@@ -1917,11 +1917,21 @@
                 allowances.push({ description: 'Paid at Different Rate', amount: multiRateAmount });
             }
 
+            // Calculate short-time deduction amount (shows as negative deduction line on payslip)
+            var shortTimeAmount = 0;
+            shortTime.forEach(function(st) {
+                shortTimeAmount += (parseFloat(st.hours_missed) || 0) * hourlyRate;
+            });
+            if (shortTimeAmount > 0) {
+                deductionsList.push({ description: 'Short Time Deduction', amount: shortTimeAmount });
+            }
+
             // Enrich calc with itemized data for PDF
             calc.basicSalary = payrollData.basic_salary || 0;
             calc.allowances = allowances;
             calc.deductionsList = deductionsList;
             calc.overtimeAmount = overtimeAmount;
+            calc.shortTimeAmount = shortTimeAmount;
             calc.totalDeductions = calc.deductions;
 
             return {
@@ -2073,7 +2083,7 @@
             };
 
             // Calculate overtime amount
-            var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / 173.33 : 0;
+            var hourlyRate = payrollData.basic_salary ? payrollData.basic_salary / PayrollEngine.HOURLY_DIVISOR : 0;
             JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').forEach(function(ot) {
                 currentCalc.overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
             });
