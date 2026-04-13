@@ -225,7 +225,9 @@ function validateSnapshot(snapshot) {
   const requiredFields = [
     'company_id',
     'employee_id',
-    'period_id',
+    // NOTE: period_id is NOT a DB column — do not add it here.
+    // It exists on in-memory prepareSnapshot() objects but is not persisted.
+    // Use period_key (which IS stored) for period identification.
     'period_key',
     'status',
     'is_locked',
@@ -320,24 +322,36 @@ function compareSnapshots(snapshot1, snapshot2) {
  * @returns {object} API-safe snapshot format
  */
 function formatForResponse(snapshot) {
+  // metadata is not a DB column — reconstruct from calculation_output.
+  // calculation_output._meta and pro-rata fields carry this data.
+  const output = snapshot.calculation_output || {};
+  const meta   = output._meta || {};
+  const reconstructedMetadata = {
+    calculation_method:    meta.calculationMethod  || 'standard',
+    pro_rata_factor:       output.prorataFactor      !== undefined ? output.prorataFactor      : null,
+    expected_hours:        output.expectedHoursInPeriod !== undefined ? output.expectedHoursInPeriod : null,
+    worked_hours:          output.workedHoursInPeriod   !== undefined ? output.workedHoursInPeriod   : null,
+    pro_rata_start_date:   meta.startDate          || null,
+    pro_rata_end_date:     meta.endDate            || null
+  };
+
   return {
-    id: snapshot.id,
-    company_id: snapshot.company_id,
-    employee_id: snapshot.employee_id,
-    period_key: snapshot.period_key,
-    status: snapshot.status,
-    is_locked: snapshot.is_locked,
+    id:             snapshot.id,
+    company_id:     snapshot.company_id,
+    employee_id:    snapshot.employee_id,
+    period_key:     snapshot.period_key,
+    status:         snapshot.status,
+    is_locked:      snapshot.is_locked,
     engine_version: snapshot.engine_version,
     schema_version: snapshot.schema_version,
-    created_at: snapshot.created_at,
-    created_by: snapshot.created_by,
-    finalized_at: snapshot.finalized_at,
-    finalized_by: snapshot.finalized_by,
-    metadata: snapshot.metadata,
-    // Include calculation output for payslip rendering
+    created_at:     snapshot.created_at,
+    created_by:     snapshot.created_by,
+    finalized_at:   snapshot.finalized_at,
+    finalized_by:   snapshot.finalized_by,
+    metadata:       reconstructedMetadata,
+    // Full calculation output for payslip rendering (all 16 fields)
     calculation_output: snapshot.calculation_output,
-    // calculation_input is internal; typically not exposed to frontend
-    // but available for audit/debug if needed
+    // calculation_input is internal — not exposed to frontend by default
     _includes_input: !!snapshot.calculation_input
   };
 }

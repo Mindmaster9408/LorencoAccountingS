@@ -93,9 +93,17 @@ router.post(
         return res.status(400).json({ success: false, error: 'Maximum 200 employees per run' });
       }
 
-      const parsedIds = employee_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
+      const parsedIds = [...new Set(
+        employee_ids.map(id => parseInt(id)).filter(id => !isNaN(id))
+      )];
       if (parsedIds.length !== employee_ids.length) {
-        return res.status(400).json({ success: false, error: 'All employee_ids must be integers' });
+        // Either non-integer values present, or duplicates were silently removed
+        // Re-check for non-integer specifically
+        const nonInt = employee_ids.some(id => isNaN(parseInt(id)));
+        if (nonInt) {
+          return res.status(400).json({ success: false, error: 'All employee_ids must be integers' });
+        }
+        // Duplicates were removed — proceed with deduplicated list (no error)
       }
 
       // ── Guard: no re-run if period already finalized ──────────────────────
@@ -129,6 +137,21 @@ router.post(
       }
 
       const deniedIds = parsedIds.filter(id => !visibleIds.includes(id));
+
+      // ── Fetch period record once (used by every employee snapshot) ────────
+      // Hoisted out of the per-employee loop — constant for all employees.
+      let period;
+      try {
+        period = await PayrollDataService.fetchPeriod(req.companyId, period_key, supabase);
+      } catch (err) {
+        period = null;
+      }
+      if (!period) {
+        return res.status(404).json({
+          success: false,
+          error: `Period ${period_key} not found for this company`
+        });
+      }
 
       // ── Create payroll_run header ─────────────────────────────────────────
       const run = await PayrollHistoryService.createPayrollRun(
@@ -176,10 +199,7 @@ router.post(
           PayrollCalculationService.validateOutput(calcResult);
 
           // Prepare snapshot (pure function, no DB)
-          const period = await PayrollDataService.fetchPeriod(
-            req.companyId, period_key, supabase
-          );
-
+          // `period` was fetched once before the loop — reuse it here.
           const snapshot = PayrollHistoryService.prepareSnapshot(
             req.companyId, empId, period.id, period_key,
             normalizedInputs, calcResult, req.user.userId
