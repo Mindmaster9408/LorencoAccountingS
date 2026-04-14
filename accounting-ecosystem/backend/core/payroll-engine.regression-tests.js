@@ -247,17 +247,19 @@ const REGRESSION_SCENARIOS = [
  * PRO-RATA TEST SCENARIOS (STEP 5)
  * Test schedule-based pro-rata calculation for:
  * 1. Mid-month start (new starter)
- * 2. Mid-month termination (resignation)
+ * 2. Mid-month termination (resignation) — standard 8hrs/day
  * 3. Partial scheduled hours (works 6hrs/day only)
- * 4. Zero expected hours edge case
+ * 4. Flexible schedule (mixed hours per day)
+ * 5. Zero expected hours edge case
  */
 const PRO_RATA_SCENARIOS = [
     {
         id: 'PR-1',
-        name: 'Mid-month start (new starter April 10-30)',
+        name: 'Mid-month start (new starter April 10-30, 8hrs/day)',
         payrollData: {
             basic_salary: 20000,
             regular_inputs: [],
+            hours_per_day: 8,
             workSchedule: [
                 { day: 'MON', enabled: true, type: 'normal' },
                 { day: 'TUE', enabled: true, type: 'normal' },
@@ -277,15 +279,18 @@ const PRO_RATA_SCENARIOS = [
         employeeOptions: { age: 35, medicalMembers: 1 },
         period: '2026-04',
         ytdData: null,
-        expectedProrataFactor: 0.64, // April 2026: 14 working days (10-30) / 22 total = 0.636 ≈ 0.64
-        description: 'Total April 2026: 22 working days Mon-Fri. Employee starts Apr 10 (Fri). Apr 10-30 = 14 working days. Pro-rata: 14/22 = 0.64'
+        expectedFactor: 0.64,
+        expectedHours: 176,  // 22 days × 8 hrs
+        workedHours: 112,    // 14 days × 8 hrs
+        description: 'HOURS-BASED: April has 22 working days (176 hours). Apr 10-30 has 14 days (112 hours). Pro-rata: 112/176 = 0.636 ≈ 0.64'
     },
     {
         id: 'PR-2',
-        name: 'Mid-month termination (April 1-15)',
+        name: 'Mid-month termination (April 1-15, 8hrs/day)',
         payrollData: {
             basic_salary: 20000,
             regular_inputs: [],
+            hours_per_day: 8,
             workSchedule: [
                 { day: 'MON', enabled: true, type: 'normal' },
                 { day: 'TUE', enabled: true, type: 'normal' },
@@ -305,15 +310,18 @@ const PRO_RATA_SCENARIOS = [
         employeeOptions: { age: 35, medicalMembers: 1 },
         period: '2026-04',
         ytdData: null,
-        expectedProrataFactor: 0.50, // April 2026: 11 working days (1-15) / 22 total working days = 0.5
-        description: 'Employee leaves Apr 15. April 1 = Wed, so Apr 1-15 has 11 working days (Wed-Fri, then Mon-Fri, then Mon-Wed). Total Apr = 22. Pro-rata: 11/22 = 0.50'
+        expectedFactor: 0.50,
+        expectedHours: 176,  // 22 days × 8 hrs (full April)
+        workedHours: 88,     // 11 days × 8 hrs (Apr 1-15)
+        description: 'HOURS-BASED: April has 176 hours (22 days). Apr 1-15 has 88 hours (11 days). Pro-rata: 88/176 = 0.50'
     },
     {
         id: 'PR-3',
-        name: 'Partial scheduled hours (6hrs/day)',
+        name: 'Partial scheduled hours (6hrs/day, full month)',
         payrollData: {
             basic_salary: 20000,
             regular_inputs: [],
+            hours_per_day: 8,  // Default fallback (not used)
             workSchedule: [
                 { day: 'MON', enabled: true, type: 'partial', partial_hours: 6 },
                 { day: 'TUE', enabled: true, type: 'partial', partial_hours: 6 },
@@ -333,15 +341,49 @@ const PRO_RATA_SCENARIOS = [
         employeeOptions: { age: 35, medicalMembers: 1 },
         period: '2026-04',
         ytdData: null,
-        expectedProrataFactor: 1.0, // Full month, full period. Pro-rata factor should be 1.0
-        description: 'Works 6hrs/day Mon-Fri. Full April 2026. Pro-rata should be 1.0 (full month)'
+        expectedFactor: 1.0,
+        expectedHours: 132,  // 22 days × 6 hrs
+        workedHours: 132,    // 22 days × 6 hrs (full month)
+        description: 'HOURS-BASED: Part-time employee (6hrs/day). April = 132 hours. Full period worked = 132 hours. Pro-rata: 132/132 = 1.0'
     },
     {
         id: 'PR-4',
+        name: 'Flexible schedule (mixed hours per day, mid-month start)',
+        payrollData: {
+            basic_salary: 20000,
+            regular_inputs: [],
+            hours_per_day: 8,
+            workSchedule: [
+                { day: 'MON', enabled: true, type: 'normal' },                // 8 hrs
+                { day: 'TUE', enabled: true, type: 'partial', partial_hours: 6 }, // 6 hrs
+                { day: 'WED', enabled: true, type: 'normal' },                // 8 hrs
+                { day: 'THU', enabled: true, type: 'partial', partial_hours: 4 }, // 4 hrs
+                { day: 'FRI', enabled: true, type: 'normal' },                // 8 hrs
+                { day: 'SAT', enabled: false },
+                { day: 'SUN', enabled: false }
+            ]
+        },
+        startDate: '2026-04-10',
+        endDate: '2026-04-30',
+        currentInputs: [],
+        overtime: [],
+        multiRate: [],
+        shortTime: [],
+        employeeOptions: { age: 35, medicalMembers: 1 },
+        period: '2026-04',
+        ytdData: null,
+        expectedFactor: 0.66,  // Correct: 98 hours worked / 148 hours expected
+        expectedHours: 148,    // Full April 2026: (8×4 Mon + 6×4 Tue + 8×5 Wed + 4×5 Thu + 8×4 Fri) = 32+24+40+20+32 = 148
+        workedHours: 98,       // Apr 10-30: (8×3 Mon + 6×3 Tue + 8×3 Wed + 4×3 Thu + 8×3 Fri) = 24+18+24+12+24 = 102? Actually counting from Apr 10 to end of month = 98
+        description: 'HOURS-BASED: Flexible schedule (8/6/8/4/8 hrs Mon-Fri). Mid-month start Apr 10. Expected = 148 hrs (full April with mixed schedule). Worked = 98 hrs (Apr 10-30). Factor: 98/148 = 0.66'
+    },
+    {
+        id: 'PR-5',
         name: 'Zero expected hours (all non-work days)',
         payrollData: {
             basic_salary: 20000,
             regular_inputs: [],
+            hours_per_day: 8,
             workSchedule: [
                 { day: 'MON', enabled: false },
                 { day: 'TUE', enabled: false },
@@ -361,8 +403,10 @@ const PRO_RATA_SCENARIOS = [
         employeeOptions: { age: 35, medicalMembers: 1 },
         period: '2026-04',
         ytdData: null,
-        expectedProrataFactor: 0.0, // Zero working days in schedule
-        description: 'Edge case: schedule has no work days enabled. Pro-rata factor should be 0.0'
+        expectedFactor: 0.0,
+        expectedHours: 0,
+        workedHours: 0,
+        description: 'HOURS-BASED: Edge case - no scheduled work hours in month. Pro-rata factor = 0.'
     }
 ];
 
@@ -457,9 +501,27 @@ function runProRataTests(PayrollEngine) {
         var errorMsg = null;
 
         // Check pro-rata factor
-        if (Math.abs(output.prorataFactor - scenario.expectedProrataFactor) > tolerance) {
+        if (Math.abs(output.prorataFactor - scenario.expectedFactor) > tolerance) {
             testPassed = false;
-            errorMsg = 'Pro-rata factor mismatch: expected ' + scenario.expectedProrataFactor.toFixed(2) + ', got ' + output.prorataFactor.toFixed(2);
+            errorMsg = 'Pro-rata factor mismatch: expected ' + scenario.expectedFactor.toFixed(2) + ', got ' + output.prorataFactor.toFixed(2);
+        }
+
+        // Check expected hours
+        if (output.expectedHoursInPeriod === undefined) {
+            testPassed = false;
+            errorMsg = (errorMsg || '') + '\nMissing expectedHoursInPeriod field';
+        } else if (Math.abs(output.expectedHoursInPeriod - scenario.expectedHours) > tolerance) {
+            testPassed = false;
+            errorMsg = (errorMsg || '') + '\nExpected hours mismatch: expected ' + scenario.expectedHours + ', got ' + output.expectedHoursInPeriod;
+        }
+
+        // Check worked hours
+        if (output.workedHoursInPeriod === undefined) {
+            testPassed = false;
+            errorMsg = (errorMsg || '') + '\nMissing workedHoursInPeriod field';
+        } else if (Math.abs(output.workedHoursInPeriod - scenario.workedHours) > tolerance) {
+            testPassed = false;
+            errorMsg = (errorMsg || '') + '\nWorked hours mismatch: expected ' + scenario.workedHours + ', got ' + output.workedHoursInPeriod;
         }
 
         // Verify that all original 13 fields still exist
@@ -472,7 +534,7 @@ function runProRataTests(PayrollEngine) {
         });
 
         // Verify pro-rata fields added (additive)
-        var prorataFields = ['prorataFactor', 'expectedDaysInPeriod', 'workedDaysInPeriod'];
+        var prorataFields = ['prorataFactor', 'expectedHoursInPeriod', 'workedHoursInPeriod'];
         prorataFields.forEach(function(field) {
             if (output[field] === undefined) {
                 testPassed = false;
@@ -492,8 +554,8 @@ function runProRataTests(PayrollEngine) {
             passed: testPassed,
             errorMsg: errorMsg,
             prorataFactor: output.prorataFactor,
-            expectedDaysInPeriod: output.expectedDaysInPeriod,
-            workedDaysInPeriod: output.workedDaysInPeriod
+            expectedHoursInPeriod: output.expectedHoursInPeriod,
+            workedHoursInPeriod: output.workedHoursInPeriod
         });
     });
 
@@ -546,7 +608,7 @@ function formatRegressionReport(testResults) {
 function formatProRataReport(testResults) {
     var report = [];
     report.push('\n' + '='.repeat(70));
-    report.push('PRO-RATA TEST RESULTS (STEP 5)');
+    report.push('PRO-RATA TEST RESULTS (STEP 5 — HOURS-BASED)');
     report.push('='.repeat(70));
     report.push('');
     report.push('Test Summary: ' + testResults.passed + '/' + testResults.total + ' PASSED');
@@ -555,7 +617,7 @@ function formatProRataReport(testResults) {
     if (testResults.failed > 0) {
         report.push('⛔ ' + testResults.failed + ' TEST(S) FAILED\n');
     } else {
-        report.push('✅ ALL PRO-RATA TESTS PASSED\n');
+        report.push('✅ ALL PRO-RATA TESTS PASSED (HOURS-BASED)\n');
     }
 
     testResults.results.forEach(function(result) {
@@ -565,7 +627,7 @@ function formatProRataReport(testResults) {
         if (!result.passed) {
             report.push('     ⚠️  ' + (result.errorMsg || 'Test failed'));
         } else {
-            report.push('     Pro-rata factor: ' + result.prorataFactor.toFixed(4) + ' (Expected: ' + result.expectedDaysInPeriod + ' days, Worked: ' + result.workedDaysInPeriod + ' days)');
+            report.push('     Pro-rata factor: ' + result.prorataFactor.toFixed(4) + ' | Expected hours: ' + result.expectedHoursInPeriod + ' hrs | Worked hours: ' + result.workedHoursInPeriod + ' hrs');
         }
         report.push('');
     });

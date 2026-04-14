@@ -6,6 +6,18 @@
 // Version: 2026-04-12-v1
 // Schema Version: 1.0 (locked for backward compatibility)
 //
+// ============================================================
+// TIME INPUT STANDARD (MANDATORY)
+// ============================================================
+// All payroll time values must use DECIMAL HOURS inside this engine.
+// Reference conversion table:
+//   15 minutes = 0.25 hours
+//   30 minutes = 0.50 hours
+//   45 minutes = 0.75 hours
+//   1 hour    = 1.00 hours
+// Do NOT use HH:MM format as the calculation basis.
+// workSchedule partial_hours field must be in decimal format.
+//
 // This is the single source of truth for all payroll calculations
 // across the Lorenco ecosystem.
 //
@@ -820,72 +832,92 @@ const PayrollEngine = {
         };
     },
 
-    // === PRO-RATA CALCULATION (Schedule-Based) ===
-    // IMPORTANT: Pro-rata is SCHEDULE-BASED, not calendar-based.
-    // It factors in the work_schedule array to determine expected working days.
+    // === PRO-RATA CALCULATION (HOURS-BASED, SCHEDULE-AWARE) ===
+    // IMPORTANT: Pro-rata is HOURS-BASED, respecting the schedule_based payroll model.
+    // It factors in the work_schedule array to determine expected scheduled hours.
     //
     // Pro-rata is used when an employee:
     // - Joins mid-month (start_date after 1st of month)
     // - Leaves mid-month (end_date before last day of month)
     // - Works partial hours during a period
     //
-    // PRO-RATA FORMULA:
-    // factor = worked_days_in_period / expected_days_in_period
+    // PRO-RATA FORMULA (HOURS-BASED):
+    // factor = workedScheduledHours / expectedScheduledHours
     // Where:
-    //   worked_days = calendar days between start_date and end_date that match work_schedule
-    //   expected_days = calendar days in entire period that match work_schedule
+    //   expectedScheduledHours = sum of scheduled hours for all dates in full period
+    //   workedScheduledHours = sum of scheduled hours for dates between start_date and end_date
+    //
+    // This respects partial_hours field in work_schedule and aligns with:
+    // - Hourly rate calculation: salary / (weeklyHours × 4.33)
+    // - Overtime model: hours × rate × hourly_rate
+    // - Short-time model: hours × hourly_rate
     //
     // Then basic_salary_pro_rata = basic_salary * factor
 
     /**
-     * Count working days between two dates based on a work schedule.
-     * @param {Date|string} startDate - First day of period (inclusive)
-     * @param {Date|string} endDate   - Last day of period (inclusive)
-     * @param {Array} workSchedule    - Work schedule array: [{ day:'MON', enabled:true, type:'normal', partial_hours: null }, ...]
-     * @returns {number} Count of working days in [startDate, endDate]
+     * Count scheduled hours between two dates based on a work schedule.
+     * HOURS-BASED: Respects partial_hours field for part-time employees.
+     * 
+     * @param {Date|string} startDate      - First day of period (inclusive)
+     * @param {Date|string} endDate        - Last day of period (inclusive)
+     * @param {Array} workSchedule         - Work schedule array: [{ day:'MON', enabled:true, type:'normal|partial', partial_hours: 6 }, ...]
+     * @param {number} [defaultHoursPerDay] - Default hours for 'normal' type days (default 8)
+     * @returns {number} Total scheduled hours in [startDate, endDate]
      */
-    countWorkingDays: function(startDate, endDate, workSchedule) {
+    countScheduledHours: function(startDate, endDate, workSchedule, defaultHoursPerDay) {
         if (!workSchedule || !workSchedule.length) return 0;
         var start = typeof startDate === 'string' ? new Date(startDate) : startDate;
         var end   = typeof endDate === 'string' ? new Date(endDate)     : endDate;
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
 
         var dayMap = { 'SUN': 0, 'MON': 1, 'TUE': 2, 'WED': 3, 'THU': 4, 'FRI': 5, 'SAT': 6 };
-        var workDays = {};
-        // Build map of which days of week are work days
+        var scheduleHours = {}; // dayOfWeek -> hours for that day
+        var hpd = parseFloat(defaultHoursPerDay) || 8;
+
+        // Build map of hours per day of week
         workSchedule.forEach(function(sd) {
             if (sd.enabled) {
                 var dayIdx = dayMap[sd.day];
-                if (dayIdx != null) workDays[dayIdx] = true;
+                if (dayIdx != null) {
+                    // If partial type with specified hours, use those; otherwise use default
+                    if (sd.type === 'partial' && sd.partial_hours != null) {
+                        scheduleHours[dayIdx] = parseFloat(sd.partial_hours);
+                    } else {
+                        scheduleHours[dayIdx] = hpd;
+                    }
+                }
             }
         });
 
-        var count = 0;
+        var totalHours = 0;
         var current = new Date(start);
         while (current <= end) {
             var dayOfWeek = current.getDay();
-            if (workDays[dayOfWeek]) count++;
+            if (scheduleHours[dayOfWeek] != null) {
+                totalHours += scheduleHours[dayOfWeek];
+            }
             current.setDate(current.getDate() + 1);
         }
-        return count;
+        return this.r2(totalHours);
     },
 
     /**
-     * Calculate pro-rata factor for a period.
-     * @param {string} startDate       - Employee start date in period (YYYY-MM-DD); null/empty = 1st of month
-     * @param {string} endDate         - Employee end date in period (YYYY-MM-DD); null/empty = last day of month
-     * @param {string} period          - Pay period (YYYY-MM)
-     * @param {Array} workSchedule     - Work schedule array
-     * @returns {Object} { factor, expectedDays, workedDays }
+     * Calculate pro-rata factor for a period (HOURS-BASED).
+     * @param {string} startDate            - Employee start date in period (YYYY-MM-DD); null/empty = 1st of month
+     * @param {string} endDate              - Employee end date in period (YYYY-MM-DD); null/empty = last day of month
+     * @param {string} period               - Pay period (YYYY-MM)
+     * @param {Array} workSchedule          - Work schedule array
+     * @param {number} [defaultHoursPerDay] - Default hours per day (default 8)
+     * @returns {Object} { factor, expectedHours, workedHours }
      */
-    calculateProRataFactor: function(startDate, endDate, period, workSchedule) {
-        if (!period) return { factor: 1, expectedDays: 0, workedDays: 0 };
+    calculateProRataFactor: function(startDate, endDate, period, workSchedule, defaultHoursPerDay) {
+        if (!period) return { factor: 1, expectedHours: 0, workedHours: 0 };
 
         // Parse period to get first and last days
         var periodParts = period.split('-');
         var year = parseInt(periodParts[0], 10);
         var month = parseInt(periodParts[1], 10) - 1; // JS months are 0-indexed
-        if (isNaN(year) || isNaN(month)) return { factor: 1, expectedDays: 0, workedDays: 0 };
+        if (isNaN(year) || isNaN(month)) return { factor: 1, expectedHours: 0, workedHours: 0 };
 
         var periodStart = new Date(year, month, 1);
         var periodEnd = new Date(year, month + 1, 0); // Last day of month
@@ -901,43 +933,46 @@ const PayrollEngine = {
         if (actualStart < periodStart) actualStart = new Date(periodStart);
         if (actualEnd > periodEnd) actualEnd = new Date(periodEnd);
 
-        var expectedDays = this.countWorkingDays(periodStart, periodEnd, workSchedule);
-        var workedDays = this.countWorkingDays(actualStart, actualEnd, workSchedule);
+        var expectedHours = this.countScheduledHours(periodStart, periodEnd, workSchedule, defaultHoursPerDay);
+        var workedHours = this.countScheduledHours(actualStart, actualEnd, workSchedule, defaultHoursPerDay);
 
-        if (expectedDays <= 0) {
-            // Edge case: no working days in period (all non-work days)
-            return { factor: 0, expectedDays: 0, workedDays: 0 };
+        if (expectedHours <= 0) {
+            // Edge case: no scheduled hours in period (all non-work days or disabled schedule)
+            return { factor: 0, expectedHours: 0, workedHours: 0 };
         }
 
-        var factor = workedDays / expectedDays;
-        return { factor: this.r2(factor), expectedDays: expectedDays, workedDays: workedDays };
+        var factor = this.r2(workedHours / expectedHours);
+        return { factor: factor, expectedHours: expectedHours, workedHours: workedHours };
     },
 
     /**
-     * Calculate payroll WITH pro-rata support.
+     * Calculate payroll WITH pro-rata support (HOURS-BASED).
      * Wrapper around calculateFromData that pre-applies pro-rata factor to basic_salary.
+     * Pro-rata is applied ONLY to basic salary; overtime, short-time, allowances, and deductions are NOT pro-rated.
      *
-     * @param {Object} payrollData     - Full payroll data including basic_salary, workSchedule
-     * @param {string} [startDate]     - Employee start date (YYYY-MM-DD); null = 1st of month
-     * @param {string} [endDate]       - Employee end date (YYYY-MM-DD); null = last day of month
-     * @param {Array} currentInputs    - Current period inputs
-     * @param {Array} overtime         - Overtime entries
-     * @param {Array} multiRate        - Multi-rate entries
-     * @param {Array} shortTime        - Short-time entries
-     * @param {Object} employeeOptions - Employee options
-     * @param {string} period          - Pay period (YYYY-MM)
-     * @param {Object} ytdData         - YTD data (if using SARS method)
-     * @returns {Object} Payroll output with pro_rata_factor, expected_days, worked_days fields added
+     * @param {Object} payrollData           - Full payroll data including basic_salary, workSchedule, hours_per_day
+     * @param {string} [startDate]           - Employee start date (YYYY-MM-DD); null = 1st of month
+     * @param {string} [endDate]             - Employee end date (YYYY-MM-DD); null = last day of month
+     * @param {Array} currentInputs          - Current period inputs
+     * @param {Array} overtime               - Overtime entries (NOT pro-rated)
+     * @param {Array} multiRate              - Multi-rate entries (NOT pro-rated)
+     * @param {Array} shortTime              - Short-time entries (NOT pro-rated)
+     * @param {Object} employeeOptions       - Employee options
+     * @param {string} period                - Pay period (YYYY-MM)
+     * @param {Object} ytdData               - YTD data (if using SARS method)
+     * @returns {Object} Payroll output with prorataFactor, expectedHoursInPeriod, workedHoursInPeriod fields added
      */
     calculateWithProRata: function(payrollData, startDate, endDate, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData) {
-        // Calculate pro-rata factor
-        var prorataInfo = this.calculateProRataFactor(startDate, endDate, period, payrollData.workSchedule);
+        // Calculate pro-rata factor (HOURS-BASED)
+        var defaultHrs = payrollData.hours_per_day || 8;
+        var prorataInfo = this.calculateProRataFactor(startDate, endDate, period, payrollData.workSchedule, defaultHrs);
 
-        // Apply pro-rata to basic salary
+        // Apply pro-rata to basic salary ONLY
         var adjustedPayrollData = Object.assign({}, payrollData);
         adjustedPayrollData.basic_salary = (payrollData.basic_salary || 0) * prorataInfo.factor;
 
         // Calculate with adjusted salary
+        // Overtime, short-time, allowances, deductions are NOT pro-rated
         var result = this.calculateFromData(
             adjustedPayrollData,
             currentInputs,
@@ -951,8 +986,8 @@ const PayrollEngine = {
 
         // Add pro-rata fields (ADDITIVE — no removal of existing 13 fields)
         result.prorataFactor = prorataInfo.factor;
-        result.expectedDaysInPeriod = prorataInfo.expectedDays;
-        result.workedDaysInPeriod = prorataInfo.workedDays;
+        result.expectedHoursInPeriod = prorataInfo.expectedHours;
+        result.workedHoursInPeriod = prorataInfo.workedHours;
 
         return result;
     }
