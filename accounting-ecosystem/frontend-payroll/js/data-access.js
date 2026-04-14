@@ -157,7 +157,10 @@ var DataAccess = (function() {
                 cacheSet('employees_' + companyId, employees);
                 return employees;
             } catch(e) {
-                return cacheGet('employees_' + companyId) || [];
+                // Try API response cache first; fall back to localStorage-managed employees
+                // (written by employee-management.html under the non-prefixed key)
+                return cacheGet('employees_' + companyId) ||
+                    JSON.parse(safeLocalStorage.getItem('employees_' + companyId) || '[]');
             }
         },
 
