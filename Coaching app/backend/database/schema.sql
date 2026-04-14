@@ -67,6 +67,8 @@ CREATE TABLE clients (
     progress_completed INTEGER DEFAULT 0,
     progress_total INTEGER DEFAULT 15,
     last_session DATE,
+    exercise_data JSONB DEFAULT '{}'::jsonb,
+    journey_progress JSONB DEFAULT '{"currentStep": 1, "completedSteps": [], "stepNotes": {}, "stepCompletionDates": {}}'::jsonb,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     archived_at TIMESTAMP,
@@ -145,6 +147,8 @@ CREATE TABLE ai_conversations (
 -- Create indexes for better performance
 CREATE INDEX idx_clients_coach_id ON clients(coach_id);
 CREATE INDEX idx_clients_status ON clients(status);
+CREATE INDEX idx_clients_has_exercise_data ON clients USING gin(exercise_data);
+CREATE INDEX idx_clients_has_journey_progress ON clients USING gin(journey_progress);
 CREATE INDEX idx_client_steps_client_id ON client_steps(client_id);
 CREATE INDEX idx_client_gauges_client_id ON client_gauges(client_id);
 CREATE INDEX idx_client_sessions_client_id ON client_sessions(client_id);

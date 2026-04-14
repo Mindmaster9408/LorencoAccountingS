@@ -3,13 +3,18 @@
 // Switch browsers freely — same data everywhere.
 import { JOURNEY_STEPS } from './config.js';
 import { api, isAuthenticated } from './api.js';
+import { normalizeClientCoachingState } from './journey-data.js';
 
 export async function readStore() {
     // Always fetch from Supabase backend
     try {
         const data = await api.getClients('all');
+        // Normalize each client: maps DB snake_case keys to camelCase and ensures
+        // all coaching sub-fields (exerciseData, journeyProgress, completedSteps, etc.)
+        // are safe objects/arrays before any UI code touches them.
+        const clients = (data.clients || []).map(c => normalizeClientCoachingState(c));
         return {
-            clients: data.clients || [],
+            clients,
             training: { uploads: [], prompts: [] }
         };
     } catch (error) {
@@ -31,6 +36,12 @@ export function ensureStore() {
 
 export async function saveClient(client) {
     try {
+        // Normalize before write: ensures camelCase coaching fields are populated,
+        // all sub-fields (completedSteps, stepNotes, exerciseData) are safe objects/arrays,
+        // and current_step is in sync with journeyProgress.currentStep.
+        // This is the final safety net before any data reaches the API.
+        normalizeClientCoachingState(client);
+
         if (client.id && typeof client.id === 'number') {
             // Update existing client in Supabase
             await api.updateClient(client.id, client);
@@ -58,7 +69,7 @@ export function createNewClient(name) {
         progress: {completed: 0, total: JOURNEY_STEPS.length},
         progress_completed: 0,
         progress_total: JOURNEY_STEPS.length,
-        current_step: 0,
+        current_step: 1,
         steps: JOURNEY_STEPS.map(s => ({
             id: s.id,
             name: s.name,
@@ -77,6 +88,14 @@ export function createNewClient(name) {
             positive: 50,
             negative: 50,
             nav: 50
+        },
+        // Initialize exercise data and journey progress for persistence
+        exerciseData: {},
+        journeyProgress: {
+            currentStep: 1,
+            completedSteps: [],
+            stepNotes: {},
+            stepCompletionDates: {}
         }
     };
 }

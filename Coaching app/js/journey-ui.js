@@ -239,6 +239,13 @@ async function completeStep(client, stepNum) {
         initializeJourneyProgress(client);
     }
 
+    // LIGHT GUARD: Four Quadrants (Step 1) must be completed first
+    // Allow Step 1 to always be completed, but other steps only if Step 1 is done
+    if (stepNum !== 1 && !client.journeyProgress.completedSteps.includes(1)) {
+        alert('⚠️ Four Quadrants (Step 1) must be completed first.\n\nThis is the foundation exercise that unlocks all other steps in your coaching journey.');
+        return;
+    }
+
     // Add to completed steps if not already there
     if (!client.journeyProgress.completedSteps.includes(stepNum)) {
         client.journeyProgress.completedSteps.push(stepNum);
@@ -298,6 +305,14 @@ async function saveStepNotes(client, stepNum, notes) {
 }
 
 async function openExercise(client, stepNum) {
+    // LIGHT GUARD: Four Quadrants (Step 1) must be completed first
+    if (stepNum !== 1) {
+        if (!client.journeyProgress || !client.journeyProgress.completedSteps.includes(1)) {
+            alert('⚠️ Four Quadrants (Step 1) must be completed first.\n\nThis foundation exercise unlocks all other steps in your coaching journey.');
+            return;
+        }
+    }
+
     // Import exercise renderer
     const { renderExercise } = await import('./journey-exercises.js');
     const { setCurrentClient } = await import('./journey-helpers.js');

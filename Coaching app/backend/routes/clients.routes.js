@@ -10,6 +10,23 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(requireCoach);
 
+// Normalize a raw DB client row before sending to the frontend.
+// Ensures exercise_data and journey_progress are never null (old rows pre-migration).
+// This is defensive — new rows always have these columns populated via DEFAULT.
+function normalizeClientRow(row) {
+    if (!row) return row;
+    return {
+        ...row,
+        exercise_data: row.exercise_data || {},
+        journey_progress: row.journey_progress || {
+            currentStep: row.current_step || 1,
+            completedSteps: [],
+            stepNotes: {},
+            stepCompletionDates: {}
+        }
+    };
+}
+
 // Get all clients for the logged-in coach
 router.get('/', async (req, res) => {
     try {
@@ -38,7 +55,7 @@ router.get('/', async (req, res) => {
 
         res.json({
             success: true,
-            clients: result.rows
+            clients: result.rows.map(normalizeClientRow)
         });
 
     } catch (error) {
@@ -63,8 +80,6 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
         }
 
         const client = clientResult.rows[0];
-
-        // Get client steps
         const stepsResult = await query(
             'SELECT * FROM client_steps WHERE client_id = $1 ORDER BY step_order',
             [clientId]
@@ -97,7 +112,7 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
         res.json({
             success: true,
             client: {
-                ...client,
+                ...normalizeClientRow(client),
                 steps: stepsResult.rows,
                 gauges,
                 sessions: sessionsResult.rows
@@ -127,10 +142,10 @@ router.post('/',
 
             const { name, email, phone, preferred_lang, dream } = req.body;
 
-            // Create client
+            // Create client with initial journey_progress (step 1 is Four Quadrants)
             const result = await query(
-                `INSERT INTO clients (coach_id, name, email, phone, preferred_lang, dream, last_session)
-                 VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE)
+                `INSERT INTO clients (coach_id, name, email, phone, preferred_lang, dream, current_step, exercise_data, journey_progress, last_session)
+                 VALUES ($1, $2, $3, $4, $5, $6, 1, '{}'::jsonb, '{"currentStep": 1, "completedSteps": [], "stepNotes": {}, "stepCompletionDates": {}}'::jsonb, CURRENT_DATE)
                  RETURNING *`,
                 [req.user.id, name, email || null, phone || null, preferred_lang || 'English', dream || '']
             );
@@ -177,7 +192,7 @@ router.post('/',
             res.status(201).json({
                 success: true,
                 message: 'Client created successfully',
-                client: newClient
+                client: normalizeClientRow(newClient)
             });
 
         } catch (error) {
@@ -193,7 +208,67 @@ router.put('/:clientId',
     async (req, res) => {
         try {
             const { clientId } = req.params;
-            const { name, email, phone, preferred_lang, status, dream, current_step, progress_completed } = req.body;
+            const { name, email, phone, preferred_lang, status, dream, current_step, progress_completed, exerciseData, journeyProgress } = req.body;
+
+            // Validate JSONB fields if provided
+            if (exerciseData !== undefined && (typeof exerciseData !== 'object' || exerciseData === null)) {
+                return res.status(400).json({ error: 'exerciseData must be an object' });
+            }
+            if (journeyProgress !== undefined && (typeof journeyProgress !== 'object' || journeyProgress === null)) {
+                return res.status(400).json({ error: 'journeyProgress must be an object' });
+            }
+
+            // SERVER-SIDE STEP-1 ENFORCEMENT:
+            // Four Quadrants (Step 1) must be completed before any other step can be
+            // marked as current or completed. This mirrors the UI guard but is enforced
+            // server-side so API calls cannot bypass it.
+            if (journeyProgress) {
+                const jpCompletedSteps = Array.isArray(journeyProgress.completedSteps)
+                    ? journeyProgress.completedSteps
+                    : [];
+                const jpCurrentStep = journeyProgress.currentStep || 1;
+
+                if (jpCurrentStep > 1 && !jpCompletedSteps.includes(1)) {
+                    return res.status(400).json({
+                        error: 'Step 1 (Four Quadrants) must be completed before advancing to another step'
+                    });
+                }
+                if (jpCompletedSteps.some(s => s > 1) && !jpCompletedSteps.includes(1)) {
+                    return res.status(400).json({
+                        error: 'Step 1 (Four Quadrants) must be completed before completing other steps'
+                    });
+                }
+            }
+
+            // EXTEND STEP-1 ENFORCEMENT: cover current_step-only updates (journeyProgress absent).
+            // If a raw current_step > 1 is sent without journeyProgress, we must verify the persisted
+            // journey_progress still has step 1 completed. This prevents bypassing the UI guard via
+            // a direct API call with only current_step in the payload.
+            if (current_step !== undefined && Number(current_step) > 1 && !journeyProgress) {
+                const progressResult = await query(
+                    'SELECT journey_progress FROM clients WHERE id = $1',
+                    [clientId]
+                );
+                if (progressResult.rows.length > 0) {
+                    const persistedJP = progressResult.rows[0].journey_progress;
+                    const persistedCompleted = (persistedJP && Array.isArray(persistedJP.completedSteps))
+                        ? persistedJP.completedSteps
+                        : [];
+                    if (!persistedCompleted.includes(1)) {
+                        return res.status(400).json({
+                            error: 'Four Quadrants (Step 1) must be completed before progressing to later steps.'
+                        });
+                    }
+                }
+            }
+
+            // SOURCE-OF-TRUTH SYNC: journeyProgress.currentStep is the single source of truth.
+            // When journeyProgress is provided, derive current_step from it to prevent drift
+            // between the current_step column and journeyProgress.currentStep in JSONB.
+            let safeCurrentStep = current_step;
+            if (journeyProgress && journeyProgress.currentStep) {
+                safeCurrentStep = journeyProgress.currentStep;
+            }
 
             const result = await query(
                 `UPDATE clients
@@ -205,10 +280,15 @@ router.put('/:clientId',
                      dream = COALESCE($6, dream),
                      current_step = COALESCE($7, current_step),
                      progress_completed = COALESCE($8, progress_completed),
+                     exercise_data = COALESCE($9::jsonb, exercise_data),
+                     journey_progress = COALESCE($10::jsonb, journey_progress),
                      last_session = CURRENT_DATE
-                 WHERE id = $9
+                 WHERE id = $11
                  RETURNING *`,
-                [name, email, phone, preferred_lang, status, dream, current_step, progress_completed, clientId]
+                [name, email, phone, preferred_lang, status, dream, safeCurrentStep, progress_completed,
+                 exerciseData ? JSON.stringify(exerciseData) : null,
+                 journeyProgress ? JSON.stringify(journeyProgress) : null,
+                 clientId]
             );
 
             if (result.rows.length === 0) {
@@ -218,7 +298,7 @@ router.put('/:clientId',
             res.json({
                 success: true,
                 message: 'Client updated successfully',
-                client: result.rows[0]
+                client: normalizeClientRow(result.rows[0])
             });
 
         } catch (error) {

@@ -251,3 +251,76 @@ export function initializeJourneyProgress(client) {
     }
     return client;
 }
+
+// Normalize coaching state for a client object fetched from the API.
+// The backend returns snake_case DB columns (exercise_data, journey_progress).
+// This function maps them to camelCase and ensures all sub-fields are safe arrays/objects.
+// Must be called once per fetched client before any coaching code accesses the client.
+export function normalizeClientCoachingState(client) {
+    if (!client) return client;
+
+    // Map snake_case DB columns to camelCase if camelCase keys are missing
+    if (client.exerciseData === undefined) {
+        client.exerciseData = client.exercise_data || {};
+    }
+    if (client.journeyProgress === undefined) {
+        client.journeyProgress = client.journey_progress || null;
+    }
+
+    // Ensure exerciseData is a plain object
+    if (!client.exerciseData || typeof client.exerciseData !== 'object') {
+        client.exerciseData = {};
+    }
+
+    // Ensure journeyProgress exists with all required sub-fields
+    if (!client.journeyProgress || typeof client.journeyProgress !== 'object') {
+        client.journeyProgress = {
+            currentStep: client.current_step || 1,
+            completedSteps: [],
+            stepNotes: {},
+            stepCompletionDates: {}
+        };
+    } else {
+        if (!Array.isArray(client.journeyProgress.completedSteps)) {
+            client.journeyProgress.completedSteps = [];
+        }
+        if (!client.journeyProgress.stepNotes || typeof client.journeyProgress.stepNotes !== 'object') {
+            client.journeyProgress.stepNotes = {};
+        }
+        if (!client.journeyProgress.stepCompletionDates || typeof client.journeyProgress.stepCompletionDates !== 'object') {
+            client.journeyProgress.stepCompletionDates = {};
+        }
+        if (!client.journeyProgress.currentStep) {
+            client.journeyProgress.currentStep = client.current_step || 1;
+        }
+    }
+
+    // Sync current_step from journeyProgress (source of truth is journeyProgress)
+    client.current_step = client.journeyProgress.currentStep;
+
+    return client;
+}
+
+// Ensures a named exercise branch exists on client.exerciseData with optional default sub-fields.
+// Returns the branch object for immediate use. Idempotent — safe to call multiple times.
+// Use this before any helper that accesses a specific exercise branch (presentGapFuture, flightPlan, etc.).
+export function ensureExerciseBranch(client, branchName, defaults = {}) {
+    if (!client.exerciseData || typeof client.exerciseData !== 'object') {
+        client.exerciseData = {};
+    }
+    if (!client.exerciseData[branchName] || typeof client.exerciseData[branchName] !== 'object') {
+        client.exerciseData[branchName] = {};
+    }
+    const branch = client.exerciseData[branchName];
+    // Merge default sub-fields only where missing or wrong type
+    for (const [key, val] of Object.entries(defaults)) {
+        if (Array.isArray(val)) {
+            if (!Array.isArray(branch[key])) branch[key] = [];
+        } else if (val !== null && typeof val === 'object') {
+            if (!branch[key] || typeof branch[key] !== 'object') branch[key] = {};
+        } else if (branch[key] === undefined || branch[key] === null) {
+            branch[key] = val;
+        }
+    }
+    return branch;
+}

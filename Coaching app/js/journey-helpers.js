@@ -1,6 +1,7 @@
 // Helper functions for journey exercises
 import { $, escapeHtml } from './config.js';
 import { saveClient } from './storage.js';
+import { normalizeClientCoachingState, ensureExerciseBranch } from './journey-data.js';
 
 // Global current client reference
 let currentClient = null;
@@ -27,8 +28,10 @@ export function renderAIChat(chatHistory) {
 }
 
 // Set current client
+// Normalize immediately so exerciseData is always {} and journeyProgress sub-fields are
+// always safe objects/arrays before any helper function accesses them.
 export function setCurrentClient(client) {
-    currentClient = client;
+    currentClient = client ? normalizeClientCoachingState(client) : null;
 }
 
 // Global helper functions for 4 Quadrant Exercise
@@ -53,6 +56,10 @@ window.save4QuadrantExercise = async function() {
         aiCoachNotes: (((currentClient.exerciseData || {}).fourQuadrant || {}).aiCoachNotes) || []
     };
 
+    // Ensure exerciseData is initialized before writing (defensive guard for pre-normalization use)
+    if (!currentClient.exerciseData || typeof currentClient.exerciseData !== 'object') {
+        currentClient.exerciseData = {};
+    }
     currentClient.exerciseData.fourQuadrant = data;
 
     // Update client dream if dream summary is filled
@@ -99,8 +106,14 @@ window.sendAIMessage = async function() {
     const message = input.value.trim();
     input.value = '';
 
-    // Initialize AI chat if not exists
-    if (!currentClient.exerciseData.fourQuadrant.aiCoachNotes) {
+    // Initialize AI chat if not exists (defensive guard for exerciseData and fourQuadrant)
+    if (!currentClient.exerciseData || typeof currentClient.exerciseData !== 'object') {
+        currentClient.exerciseData = {};
+    }
+    if (!currentClient.exerciseData.fourQuadrant || typeof currentClient.exerciseData.fourQuadrant !== 'object') {
+        currentClient.exerciseData.fourQuadrant = {};
+    }
+    if (!Array.isArray(currentClient.exerciseData.fourQuadrant.aiCoachNotes)) {
         currentClient.exerciseData.fourQuadrant.aiCoachNotes = [];
     }
 
@@ -157,13 +170,10 @@ window.sendAIMessagePGF = async function() {
     const message = input.value.trim();
     input.value = '';
 
-    // Initialize AI chat if not exists
-    if (!currentClient.exerciseData.presentGapFuture.aiCoachNotes) {
-        currentClient.exerciseData.presentGapFuture.aiCoachNotes = [];
-    }
+    const pgfBranch = ensureExerciseBranch(currentClient, 'presentGapFuture', { aiCoachNotes: [] });
 
     // Add user message
-    currentClient.exerciseData.presentGapFuture.aiCoachNotes.push({
+    pgfBranch.aiCoachNotes.push({
         role: 'user',
         content: message,
         timestamp: new Date().toISOString()
@@ -181,7 +191,7 @@ Regarding: "${message}"
 I can see the client is navigating the gap between their current situation and future aspirations. The Present-Gap-Future framework helps identify specific obstacles and opportunities. Would you like me to analyze patterns or suggest coaching interventions?`;
 
     // Add AI response
-    currentClient.exerciseData.presentGapFuture.aiCoachNotes.push({
+    pgfBranch.aiCoachNotes.push({
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date().toISOString()
@@ -190,7 +200,7 @@ I can see the client is navigating the gap between their current situation and f
     // Re-render chat
     const container = document.getElementById('ai-chat-pgf');
     if (container) {
-        container.innerHTML = currentClient.exerciseData.presentGapFuture.aiCoachNotes.map(msg => `
+        container.innerHTML = pgfBranch.aiCoachNotes.map(msg => `
             <div class="ai-message ${msg.role}">
                 <div class="message-avatar">${msg.role === 'user' ? '👤' : '🤖'}</div>
                 <div class="message-content">
@@ -276,13 +286,10 @@ window.sendAIMessageFP = async function() {
     const message = input.value.trim();
     input.value = '';
 
-    // Initialize AI chat if not exists
-    if (!currentClient.exerciseData.flightPlan.aiCoachNotes) {
-        currentClient.exerciseData.flightPlan.aiCoachNotes = [];
-    }
+    const fpBranch = ensureExerciseBranch(currentClient, 'flightPlan', { aiCoachNotes: [] });
 
     // Add user message
-    currentClient.exerciseData.flightPlan.aiCoachNotes.push({
+    fpBranch.aiCoachNotes.push({
         role: 'user',
         content: message,
         timestamp: new Date().toISOString()
@@ -300,7 +307,7 @@ Regarding: "${message}"
 The Flight Plan visualizes the journey from current reality to dream achievement through actionable steps. The 1% Rule ensures consistent progress. Would you like me to help refine the flight plan steps or suggest implementation strategies?`;
 
     // Add AI response
-    currentClient.exerciseData.flightPlan.aiCoachNotes.push({
+    fpBranch.aiCoachNotes.push({
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date().toISOString()
@@ -309,7 +316,7 @@ The Flight Plan visualizes the journey from current reality to dream achievement
     // Re-render chat
     const container = document.getElementById('ai-chat-fp');
     if (container) {
-        container.innerHTML = currentClient.exerciseData.flightPlan.aiCoachNotes.map(msg => `
+        container.innerHTML = fpBranch.aiCoachNotes.map(msg => `
             <div class="ai-message ${msg.role}">
                 <div class="message-avatar">${msg.role === 'user' ? '👤' : '🤖'}</div>
                 <div class="message-content">
@@ -451,13 +458,10 @@ window.sendAIMessageDD = async function() {
     const message = input.value.trim();
     input.value = '';
 
-    // Initialize AI chat if not exists
-    if (!currentClient.exerciseData.deepDive.aiCoachNotes) {
-        currentClient.exerciseData.deepDive.aiCoachNotes = [];
-    }
+    const ddBranch = ensureExerciseBranch(currentClient, 'deepDive', { deepDiveItems: [], aiCoachNotes: [] });
 
     // Add user message
-    currentClient.exerciseData.deepDive.aiCoachNotes.push({
+    ddBranch.aiCoachNotes.push({
         role: 'user',
         content: message,
         timestamp: new Date().toISOString()
@@ -475,7 +479,7 @@ Regarding: "${message}"
 The Deep Dive process uncovers the core values and motivations behind the dream. By repeatedly asking "What is most important?", we help clients discover their deepest drivers. Would you like me to suggest coaching strategies or analyze the patterns emerging?`;
 
     // Add AI response
-    currentClient.exerciseData.deepDive.aiCoachNotes.push({
+    ddBranch.aiCoachNotes.push({
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date().toISOString()
@@ -484,7 +488,7 @@ The Deep Dive process uncovers the core values and motivations behind the dream.
     // Re-render chat
     const container = document.getElementById('ai-chat-dd');
     if (container) {
-        container.innerHTML = currentClient.exerciseData.deepDive.aiCoachNotes.map(msg => `
+        container.innerHTML = ddBranch.aiCoachNotes.map(msg => `
             <div class="ai-message ${msg.role}">
                 <div class="message-avatar">${msg.role === 'user' ? '👤' : '🤖'}</div>
                 <div class="message-content">
@@ -502,7 +506,8 @@ The Deep Dive process uncovers the core values and motivations behind the dream.
 window.saveDeepDive = async function() {
     if (!currentClient) return;
 
-    const deepDiveItems = currentClient.exerciseData.deepDive.deepDiveItems.map((item, i) => ({
+    const ddSaveBranch = ensureExerciseBranch(currentClient, 'deepDive', { deepDiveItems: [], aiCoachNotes: [] });
+    const deepDiveItems = ddSaveBranch.deepDiveItems.map((item, i) => ({
         question: `What is most important${i > 0 ? ' about that' : ''}?`,
         answer: getInputValue(`#dd-answer-${i}`) || ''
     }));
@@ -704,11 +709,9 @@ window.sendAIMessageEco = async function() {
     const message = input.value.trim();
     input.value = '';
 
-    if (!currentClient.exerciseData.ecochart.aiCoachNotes) {
-        currentClient.exerciseData.ecochart.aiCoachNotes = [];
-    }
+    const ecoBranch = ensureExerciseBranch(currentClient, 'ecochart', { blocks: [], aiCoachNotes: [] });
 
-    currentClient.exerciseData.ecochart.aiCoachNotes.push({
+    ecoBranch.aiCoachNotes.push({
         role: 'user',
         content: message,
         timestamp: new Date().toISOString()
@@ -722,7 +725,7 @@ window.sendAIMessageEco = async function() {
         'you\'re mapping your relationship ecosystem. This visual representation helps identify imbalances and opportunities for growth.'
     }`;
 
-    currentClient.exerciseData.ecochart.aiCoachNotes.push({
+    ecoBranch.aiCoachNotes.push({
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date().toISOString()
@@ -731,7 +734,7 @@ window.sendAIMessageEco = async function() {
     // Re-render chat
     const container = document.getElementById('ai-chat-eco');
     if (container) {
-        container.innerHTML = currentClient.exerciseData.ecochart.aiCoachNotes.map(msg => `
+        container.innerHTML = ecoBranch.aiCoachNotes.map(msg => `
             <div class="ai-message ${msg.role}">
                 <div class="message-avatar">${msg.role === 'user' ? '👤' : '🤖'}</div>
                 <div class="message-content">
@@ -885,11 +888,9 @@ window.sendAIMessageAssess = async function() {
     const message = input.value.trim();
     input.value = '';
 
-    if (!currentClient.exerciseData.assessments.aiCoachNotes) {
-        currentClient.exerciseData.assessments.aiCoachNotes = [];
-    }
+    const assessBranch = ensureExerciseBranch(currentClient, 'assessments', { aiCoachNotes: [] });
 
-    currentClient.exerciseData.assessments.aiCoachNotes.push({
+    assessBranch.aiCoachNotes.push({
         role: 'user',
         content: message,
         timestamp: new Date().toISOString()
@@ -903,7 +904,7 @@ window.sendAIMessageAssess = async function() {
         'the comprehensive assessment provides valuable insights into multiple dimensions of psychological functioning.'
     }`;
 
-    currentClient.exerciseData.assessments.aiCoachNotes.push({
+    assessBranch.aiCoachNotes.push({
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date().toISOString()
@@ -912,7 +913,7 @@ window.sendAIMessageAssess = async function() {
     // Re-render chat
     const container = document.getElementById('ai-chat-assess');
     if (container) {
-        container.innerHTML = currentClient.exerciseData.assessments.aiCoachNotes.map(msg => `
+        container.innerHTML = assessBranch.aiCoachNotes.map(msg => `
             <div class="ai-message ${msg.role}">
                 <div class="message-avatar">${msg.role === 'user' ? '👤' : '🤖'}</div>
                 <div class="message-content">
@@ -940,10 +941,8 @@ window.startMLNPSession = function() {
     if (startBtn) startBtn.style.display = 'none';
     if (history) history.style.display = 'block';
 
-    // Initialize first session
-    if (!currentClient.exerciseData.mlnp.sessions) {
-        currentClient.exerciseData.mlnp.sessions = [];
-    }
+    // Initialize MLNP branch and sessions array if not already present
+    ensureExerciseBranch(currentClient, 'mlnp', { sessions: [], aiCoachNotes: [] });
 };
 
 window.openEmotionWindow = function(emotionId, emotionName, emotionEmoji) {
@@ -997,10 +996,8 @@ window.saveEmotionWork = async function() {
     };
 
     // Add to sessions
-    if (!currentClient.exerciseData.mlnp.sessions) {
-        currentClient.exerciseData.mlnp.sessions = [];
-    }
-    currentClient.exerciseData.mlnp.sessions.push(emotionData);
+    const mlnpSaveBranch = ensureExerciseBranch(currentClient, 'mlnp', { sessions: [], aiCoachNotes: [] });
+    mlnpSaveBranch.sessions.push(emotionData);
 
     await saveClient(currentClient);
     alert(`✓ Work on "${currentEmotionWork.emotionName}" saved successfully!`);
@@ -1016,7 +1013,8 @@ window.renderSessionHistory = function() {
     const historyList = $('#session-history-list');
     if (!historyList) return;
 
-    const sessions = currentClient.exerciseData.mlnp.sessions || [];
+    const mlnpRenderBranch = ensureExerciseBranch(currentClient, 'mlnp', { sessions: [], aiCoachNotes: [] });
+    const sessions = mlnpRenderBranch.sessions;
 
     if (sessions.length === 0) {
         historyList.innerHTML = '<p style="color: #94a3b8;">No emotions explored yet. Click on emotion faces above to start.</p>';
@@ -1039,8 +1037,9 @@ window.renderSessionHistory = function() {
 };
 
 window.saveMLNP = async function() {
+    const mlnpBranch = ensureExerciseBranch(currentClient, 'mlnp', { sessions: [], aiCoachNotes: [] });
     const data = {
-        sessions: currentClient.exerciseData.mlnp.sessions || [],
+        sessions: mlnpBranch.sessions,
         evaluations: {
             experience: getInputValue('#mlnp-eval-experience') || '',
             insights: getInputValue('#mlnp-eval-insights') || '',
@@ -1049,7 +1048,7 @@ window.saveMLNP = async function() {
             next24Hours: getInputValue('#mlnp-eval-next24') || ''
         },
         sessionNotes: getInputValue('#mlnp-session-notes') || '',
-        aiCoachNotes: currentClient.exerciseData.mlnp.aiCoachNotes || []
+        aiCoachNotes: mlnpBranch.aiCoachNotes
     };
 
     currentClient.exerciseData.mlnp = data;
@@ -1083,13 +1082,10 @@ window.sendAIMessageMLNP = async function() {
     const message = input.value.trim();
     if (!message) return;
 
-    // Initialize AI notes if needed
-    if (!currentClient.exerciseData.mlnp.aiCoachNotes) {
-        currentClient.exerciseData.mlnp.aiCoachNotes = [];
-    }
+    const mlnpAIBranch = ensureExerciseBranch(currentClient, 'mlnp', { sessions: [], aiCoachNotes: [] });
 
     // Add user message
-    currentClient.exerciseData.mlnp.aiCoachNotes.push({
+    mlnpAIBranch.aiCoachNotes.push({
         role: 'user',
         content: message,
         timestamp: new Date().toISOString()
@@ -1097,7 +1093,7 @@ window.sendAIMessageMLNP = async function() {
 
     // Simulate AI response based on MLNP context
     let aiResponse = '';
-    const sessionCount = (currentClient.exerciseData.mlnp.sessions && currentClient.exerciseData.mlnp.sessions.length) || 0;
+    const sessionCount = mlnpAIBranch.sessions.length || 0;
 
     if (message.toLowerCase().includes('pattern') || message.toLowerCase().includes('notice')) {
         aiResponse = `Based on your ${sessionCount} emotion exploration(s), I notice you're becoming more aware of your emotional patterns. This awareness is the first step in rewiring neural pathways. What specific pattern would you like to shift?`;
@@ -1109,7 +1105,7 @@ window.sendAIMessageMLNP = async function() {
         aiResponse = `That's a valuable reflection. Through MLNP, you're creating new neural pathways by consciously choosing different responses to emotions. Each time you practice this, you strengthen these new pathways. What emotion would you like to explore next?`;
     }
 
-    currentClient.exerciseData.mlnp.aiCoachNotes.push({
+    mlnpAIBranch.aiCoachNotes.push({
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date().toISOString()
@@ -1118,7 +1114,7 @@ window.sendAIMessageMLNP = async function() {
     // Re-render chat
     const chatContainer = $('#mlnp-ai-chat');
     if (chatContainer) {
-        chatContainer.innerHTML = renderAIChat(currentClient.exerciseData.mlnp.aiCoachNotes);
+        chatContainer.innerHTML = renderAIChat(mlnpAIBranch.aiCoachNotes);
     }
 
     // Clear input and save
