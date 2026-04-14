@@ -63,7 +63,7 @@ router.use(requireCompany);
  *     // Metadata
  *     _meta: { calculatedAt, engineVersion, ... }
  *   },
- *   snapshot: { /* full snapshot if include_snapshot: true */ },
+ *   snapshot: { },  // full snapshot if include_snapshot: true
  *   timestamp: ISO-8601
  * }
  *
@@ -274,7 +274,7 @@ router.post('/batch', requirePermission('PAYROLL.APPROVE'), (req, res) => {
  * Response:
  * {
  *   success: boolean,
- *   snapshot: { /* full snapshot with calculation output */ },
+ *   snapshot: { },  // full snapshot if include_snapshot: true
  *   timestamp: ISO-8601
  * }
  */
