@@ -168,6 +168,21 @@ var DataAccess = (function() {
             cacheSet('employees_' + companyId, employees);
         },
 
+        createEmployee: async function(data) {
+            const result = await POST('/employees', data);
+            return result.employee || result.data || result;
+        },
+
+        updateEmployee: async function(id, data) {
+            const result = await PUT('/employees/' + id, data);
+            return result.employee || result.data || result;
+        },
+
+        deactivateEmployee: async function(id) {
+            await DELETE('/employees/' + id);
+            return { success: true };
+        },
+
         getEmployeeById: async function(companyId, empId) {
             try {
                 const result = await GET('/employees/' + empId);

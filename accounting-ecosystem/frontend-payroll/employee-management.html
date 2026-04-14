@@ -495,6 +495,7 @@
                 <a href="company-dashboard.html" class="sidebar-link">📊 Dashboard</a>
                 <a href="employee-management.html" class="sidebar-link active">👥 Employees</a>
                 <a href="payruns.html" class="sidebar-link">💵 Pay Runs</a>
+                <a href="payroll-execution.html" class="sidebar-link">⚙️ Execute Payroll</a>
                 <a href="payruns.html" class="sidebar-link">📄 Payslips</a>
                 <a href="payroll-items.html" class="sidebar-link">📋 Payroll Items</a>
                 <a href="attendance.html" class="sidebar-link">&#x23F0; Attendance</a>
@@ -745,15 +746,12 @@
             const session = AUTH.getSession();
             const company = AUTH.getCompanyById(session.company_id);
 
-            // Set company info
             if (company) {
                 document.getElementById('company-name-header').textContent = company.name || company.company_name || company.trading_name || 'Unnamed';
             }
 
-            // Load sidebar
             loadCompaniesCarousel();
-            loadEmployeesFromStorage();
-            displayEmployees();
+            loadEmployeesFromBackend();
         }
 
         function loadCompaniesCarousel() {
@@ -797,17 +795,22 @@
             location.reload();
         }
 
-        function loadEmployeesFromStorage() {
-            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
-            if (stored) {
-                try {
-                    employees = JSON.parse(stored);
-                } catch (e) {
-                    employees = [];
-                }
-            } else {
-                employees = [];
+        async function loadEmployeesFromBackend() {
+            document.getElementById('employee-list').innerHTML =
+                '<tr><td colspan="8" class="empty-message">Loading employees…</td></tr>';
+
+            employees = await DataAccess.getEmployees(currentCompanyId);
+
+            // Detect if we're showing stale localStorage-only records (fake 'emp-xxx' IDs)
+            var hasLocalOnly = employees.some(function(e) {
+                return typeof e.id === 'string' && e.id.indexOf('emp-') === 0;
+            });
+            if (hasLocalOnly) {
+                showBanner('Some employees are stored locally only and have not been synced to the server. ' +
+                    'Re-enter them using the Add Employee button to sync them to the backend.');
             }
+
+            displayEmployees();
         }
 
         function displayEmployees() {
@@ -852,7 +855,7 @@
         }
 
         function editEmployee(id) {
-            const emp = employees.find(e => e.id === id);
+            const emp = employees.find(e => String(e.id) === String(id));
             if (emp) {
                 document.getElementById('modalTitle').textContent = 'Edit Employee';
                 document.getElementById('employeeId').value = emp.id;
@@ -879,76 +882,157 @@
             }
         }
 
-        function saveEmployee(event) {
+        async function saveEmployee(event) {
             event.preventDefault();
 
-            const successDiv = document.getElementById('modalSuccess');
-            const errorDiv = document.getElementById('modalError');
+            var successDiv = document.getElementById('modalSuccess');
+            var errorDiv   = document.getElementById('modalError');
             successDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
+            errorDiv.style.display   = 'none';
 
-            const employeeId = document.getElementById('employeeId').value;
-            const isEdit = employeeId !== '';
+            var employeeId = document.getElementById('employeeId').value;
+            var isEdit     = employeeId !== '';
 
-            const newEmployee = {
-                id: employeeId || 'emp-' + Math.random().toString(36).substr(2, 9),
-                employee_number: document.getElementById('employee_number').value,
-                first_name: document.getElementById('first_name').value,
-                last_name: document.getElementById('last_name').value,
-                id_number: document.getElementById('id_number').value || null,
-                tax_number: document.getElementById('tax_number').value.trim() || null,
-                uif_number: document.getElementById('uif_number').value.trim() || null,
-                email: document.getElementById('email').value || null,
-                phone: document.getElementById('phone').value || null,
-                job_title: document.getElementById('job_title').value || null,
-                department: document.getElementById('department').value || null,
-                position: document.getElementById('position').value || null,
-                payment_method: document.getElementById('payment_method').value,
-                bank_name: document.getElementById('bank_name').value || null,
-                account_holder: document.getElementById('account_holder').value || null,
-                account_number: document.getElementById('account_number').value || null,
-                branch_code: document.getElementById('branch_code').value || null,
-                date_appointed: document.getElementById('date_appointed').value || null,
-                medical_aid_members: parseInt(document.getElementById('medical_aid_members').value) || 0,
-                tax_directive: parseFloat(document.getElementById('tax_directive').value) || 0
+            var submitBtn = event.target.querySelector('[type="submit"]');
+            submitBtn.disabled    = true;
+            submitBtn.textContent = isEdit ? 'Saving…' : 'Adding…';
+
+            var firstName  = document.getElementById('first_name').value.trim();
+            var lastName   = document.getElementById('last_name').value.trim();
+            var taxNumber  = document.getElementById('tax_number').value.trim();
+            var position   = document.getElementById('position').value.trim();
+            var jobTitle   = document.getElementById('job_title').value.trim();
+
+            // Frontend validation
+            if (!firstName || !lastName) {
+                errorDiv.textContent = 'First name and last name are required.';
+                errorDiv.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save Employee';
+                return;
+            }
+            if (!taxNumber) {
+                errorDiv.textContent = 'Tax number is required for PAYE compliance.';
+                errorDiv.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save Employee';
+                return;
+            }
+
+            var payload = {
+                first_name:      firstName,
+                last_name:       lastName,
+                employee_number: document.getElementById('employee_number').value.trim(),
+                id_number:       document.getElementById('id_number').value.trim()    || null,
+                tax_number:      taxNumber,
+                email:           document.getElementById('email').value.trim()        || null,
+                phone:           document.getElementById('phone').value.trim()        || null,
+                department:      document.getElementById('department').value.trim()   || null,
+                position:        position || jobTitle                                 || null,
+                hire_date:       document.getElementById('date_appointed').value      || null
             };
 
-            if (isEdit) {
-                const index = employees.findIndex(e => e.id === employeeId);
-                if (index !== -1) {
-                    employees[index] = newEmployee;
+            // Bank details — submitted separately to /api/payroll/employees/:id/bank-details
+            var bankData = {
+                bank_name:      document.getElementById('bank_name').value.trim()      || null,
+                account_number: document.getElementById('account_number').value.trim() || null,
+                branch_code:    document.getElementById('branch_code').value.trim()    || null
+            };
+            var hasBankData = bankData.bank_name || bankData.account_number || bankData.branch_code;
+
+            // FOLLOW-UP NOTE: uif_number, payment_method, medical_aid_members, tax_directive,
+            // account_holder are not in the core employees schema. They are collected by this
+            // form but not yet persisted to the backend. A future migration and route extension
+            // is required to support these fields server-side.
+
+            try {
+                var saved;
+                if (isEdit) {
+                    saved = await DataAccess.updateEmployee(employeeId, payload);
+                } else {
+                    saved = await DataAccess.createEmployee(payload);
                 }
-            } else {
-                employees.push(newEmployee);
+
+                // Save bank details if provided (non-blocking — employee is already created)
+                if (hasBankData && saved && saved.id) {
+                    try {
+                        await saveBankDetails(saved.id, bankData);
+                    } catch (bankErr) {
+                        console.warn('Bank details not saved:', bankErr.message);
+                    }
+                }
+
+                AuditTrail.logCreate(currentCompanyId, 'employee',
+                    (isEdit ? 'Updated' : 'Created') + ' employee ' + firstName + ' ' + lastName);
+
+                successDiv.textContent = isEdit ? 'Employee updated successfully!' : 'Employee added successfully!';
+                successDiv.style.display = 'block';
+
+                await loadEmployeesFromBackend();
+                setTimeout(function() { closeEmployeeModal(); }, 1200);
+
+            } catch (err) {
+                var msg = err.message || 'Save failed. Please try again.';
+                if (msg.indexOf('tax_number') !== -1 || msg.indexOf('PAYE') !== -1) {
+                    msg = 'Tax number is required for PAYE compliance.';
+                } else if (msg.indexOf('unique') !== -1 || msg.indexOf('duplicate') !== -1 || msg.indexOf('23505') !== -1) {
+                    msg = 'An employee with this employee number already exists.';
+                } else if (msg.indexOf('first_name') !== -1 || msg.indexOf('last_name') !== -1) {
+                    msg = 'Employee name is required.';
+                }
+                errorDiv.textContent = msg;
+                errorDiv.style.display = 'block';
             }
 
-            // Store in localStorage
-            safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
-
-            // Audit log
-            if (isEdit) {
-                AuditTrail.logUpdate(currentCompanyId, 'employee', 'Updated employee ' + newEmployee.first_name + ' ' + newEmployee.last_name + ' (' + newEmployee.employee_number + ')');
-            } else {
-                AuditTrail.logCreate(currentCompanyId, 'employee', 'Created employee ' + newEmployee.first_name + ' ' + newEmployee.last_name + ' (' + newEmployee.employee_number + ')');
-            }
-
-            successDiv.textContent = isEdit ? 'Employee updated successfully!' : 'Employee added successfully!';
-            successDiv.style.display = 'block';
-
-            setTimeout(() => {
-                closeEmployeeModal();
-                displayEmployees();
-            }, 1500);
+            submitBtn.disabled    = false;
+            submitBtn.textContent = 'Save Employee';
         }
 
-        function deleteEmployee(id) {
+        async function saveBankDetails(empId, bankData) {
+            var token = safeLocalStorage.getItem('token');
+            var headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            var res = await fetch(window.location.origin + '/api/payroll/employees/' + empId + '/bank-details', {
+                method: 'PUT',
+                headers: headers,
+                body: JSON.stringify({
+                    bank_name:      bankData.bank_name,
+                    account_number: bankData.account_number,
+                    branch_code:    bankData.branch_code,
+                    account_type:   'savings'
+                })
+            });
+            if (!res.ok) {
+                var data = await res.json();
+                throw new Error(data.error || 'Bank details save failed');
+            }
+        }
+
+        async function deleteEmployee(id) {
             if (!Permissions.require('DELETE_EMPLOYEES')) return;
-            var emp = employees.find(function(e) { return e.id === id; });
-            if (confirm('Are you sure you want to delete this employee?')) {
-                employees = employees.filter(e => e.id !== id);
-                safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
-                AuditTrail.logDelete(currentCompanyId, 'employee', 'Deleted employee ' + (emp ? emp.first_name + ' ' + emp.last_name + ' (' + emp.employee_number + ')' : id));
-                displayEmployees();
+
+            var emp = employees.find(function(e) { return String(e.id) === String(id); });
+            var empName = emp
+                ? (emp.first_name || '') + ' ' + (emp.last_name || '') + ' (' + (emp.employee_number || emp.employee_code || id) + ')'
+                : String(id);
+
+            // Legacy localStorage-only employees (fake IDs) — remove locally
+            if (emp && typeof emp.id === 'string' && emp.id.indexOf('emp-') === 0) {
+                if (confirm('This employee is stored locally only and has not been synced to the server.\nRemove from local data?')) {
+                    employees = employees.filter(function(e) { return e.id !== id; });
+                    displayEmployees();
+                }
+                return;
+            }
+
+            if (!confirm('Deactivate employee ' + empName + '?\n\nPayroll history will be preserved. The employee will be marked inactive.')) return;
+
+            try {
+                await DataAccess.deactivateEmployee(id);
+                AuditTrail.logDelete(currentCompanyId, 'employee', 'Deactivated employee ' + empName);
+                await loadEmployeesFromBackend();
+            } catch (err) {
+                alert('Failed to deactivate employee: ' + (err.message || 'Server error'));
             }
         }
 
@@ -1047,7 +1131,8 @@
 
             var existingNumbers = {};
             employees.forEach(function(e) {
-                existingNumbers[e.employee_number.toUpperCase()] = true;
+                var num = e.employee_number || e.employee_code || '';
+                if (num) existingNumbers[String(num).toUpperCase()] = true;
             });
 
             var valid = [];
@@ -1155,39 +1240,58 @@
             document.getElementById('bulkStep3').style.display = 'block';
         }
 
-        function confirmEmployeeImport() {
+        async function confirmEmployeeImport() {
             if (!bulkParsedData || bulkParsedData.valid.length === 0) return;
 
+            var btn = document.getElementById('confirmImportBtn');
+            btn.disabled    = true;
+            btn.textContent = 'Importing…';
+
             var imported = 0;
-            bulkParsedData.valid.forEach(function(row) {
-                var emp = {
-                    id: BulkImportUtils.generateId('emp'),
-                    employee_number: row.employee_number,
-                    first_name: row.first_name,
-                    last_name: row.last_name,
-                    id_number: row.id_number,
-                    email: row.email,
-                    phone: row.phone,
-                    job_title: row.job_title,
-                    department: row.department,
-                    position: row.position,
-                    payment_method: row.payment_method,
-                    bank_name: row.bank_name,
-                    account_holder: row.account_holder,
-                    account_number: row.account_number,
-                    branch_code: row.branch_code,
-                    date_appointed: row.date_appointed
-                };
-                employees.push(emp);
-                imported++;
-            });
+            var failed   = [];
 
-            safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
-            BulkImportUtils.logAudit(currentCompanyId, 'BULK_IMPORT', 'Imported ' + imported + ' employees from CSV/Excel');
+            for (var i = 0; i < bulkParsedData.valid.length; i++) {
+                var row = bulkParsedData.valid[i];
+                try {
+                    await DataAccess.createEmployee({
+                        first_name:      row.first_name,
+                        last_name:       row.last_name,
+                        employee_number: row.employee_number,
+                        id_number:       row.id_number       || null,
+                        email:           row.email           || null,
+                        phone:           row.phone           || null,
+                        department:      row.department      || null,
+                        position:        row.position || row.job_title || null,
+                        hire_date:       row.date_appointed  || null,
+                        tax_number:      row.tax_number      || null
+                    });
+                    imported++;
+                } catch (err) {
+                    failed.push({ row: row._row, number: row.employee_number, error: err.message || 'Unknown error' });
+                }
+            }
 
+            BulkImportUtils.logAudit(currentCompanyId, 'BULK_IMPORT',
+                'Imported ' + imported + ' employees to backend' +
+                (failed.length > 0 ? ', ' + failed.length + ' failed' : ''));
+
+            await loadEmployeesFromBackend();
             closeBulkUpload();
-            displayEmployees();
-            alert('Successfully imported ' + imported + ' employees!' + (bulkParsedData.errors.length > 0 ? '\n' + bulkParsedData.errors.length + ' rows were skipped due to errors.' : ''));
+
+            btn.disabled    = false;
+            btn.textContent = 'Import Employees';
+
+            var msg = 'Successfully imported ' + imported + ' employees.';
+            if (bulkParsedData.errors.length > 0) {
+                msg += '\n' + bulkParsedData.errors.length + ' row(s) skipped during validation.';
+            }
+            if (failed.length > 0) {
+                msg += '\n\n' + failed.length + ' failed to save:\n' +
+                    failed.map(function(f) {
+                        return 'Row ' + f.row + ' (Emp# ' + f.number + '): ' + f.error;
+                    }).join('\n');
+            }
+            alert(msg);
         }
 
         function downloadEmployeeTemplate() {
@@ -1199,6 +1303,19 @@
                     ['EMP002', 'Jane', 'Doe', '9502024001089', 'jane@example.com', '0839876543', 'Accountant', 'Finance', 'Senior Accountant', 'EFT', 'FNB', 'Jane Doe', '6234567890', '250655', '2023-06-01']
                 ]
             );
+        }
+
+        // ---- UI Helpers ----
+
+        function showBanner(message) {
+            var existing = document.getElementById('page-banner');
+            if (existing) existing.remove();
+            var banner = document.createElement('div');
+            banner.id = 'page-banner';
+            banner.style.cssText = 'background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:8px;padding:12px 18px;margin-bottom:16px;font-size:0.9rem;';
+            banner.textContent = '⚠ ' + message;
+            var content = document.querySelector('.main-content');
+            if (content) content.insertBefore(banner, content.firstChild);
         }
 
         // ---- Add Company Modal ----

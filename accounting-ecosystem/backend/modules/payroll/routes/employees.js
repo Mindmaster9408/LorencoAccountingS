@@ -32,7 +32,7 @@ router.get('/', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll
       .select('*, employee_bank_details(*)')
       .eq('company_id', req.companyId)
       .eq('is_active', true)
-      .order('full_name');
+      .order('last_name');
 
     query = applyFilter(query, filter);
 

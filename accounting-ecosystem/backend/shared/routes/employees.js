@@ -38,15 +38,21 @@ router.get('/', requirePermission('EMPLOYEES.VIEW'), async (req, res) => {
       query = query.eq('department', department);
     }
     if (search) {
-      query = query.or(`full_name.ilike.%${search}%,employee_number.ilike.%${search}%,email.ilike.%${search}%`);
+      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,employee_code.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
-    query = query.order('full_name');
+    query = query.order('last_name');
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
 
-    res.json({ employees: data || [] });
+    // Alias employee_code → employee_number so all frontend consumers use consistent field name
+    const employees = (data || []).map(emp => ({
+      ...emp,
+      employee_number: emp.employee_number || emp.employee_code || ''
+    }));
+
+    res.json({ employees });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -65,7 +71,7 @@ router.get('/:id', requirePermission('EMPLOYEES.VIEW'), async (req, res) => {
       .single();
 
     if (error || !data) return res.status(404).json({ error: 'Employee not found' });
-    res.json({ employee: data });
+    res.json({ employee: { ...data, employee_number: data.employee_number || data.employee_code || '' } });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -78,14 +84,13 @@ router.get('/:id', requirePermission('EMPLOYEES.VIEW'), async (req, res) => {
 router.post('/', requirePermission('EMPLOYEES.CREATE'), async (req, res) => {
   try {
     const {
-      full_name, email, phone, id_number, employee_number,
+      first_name, last_name, email, phone, id_number, employee_number,
       department, position, employment_status, hire_date,
-      basic_salary, hourly_rate, payment_frequency,
-      tax_number, uif_number
+      hourly_rate, tax_number
     } = req.body;
 
-    if (!full_name) {
-      return res.status(400).json({ error: 'full_name is required' });
+    if (!first_name || !last_name) {
+      return res.status(400).json({ error: 'first_name and last_name are required' });
     }
     if (!tax_number) {
       return res.status(400).json({ error: 'tax_number is required — all employees must have a SARS tax reference number for PAYE compliance' });
@@ -95,20 +100,19 @@ router.post('/', requirePermission('EMPLOYEES.CREATE'), async (req, res) => {
       .from('employees')
       .insert({
         company_id: req.companyId,
-        full_name,
+        first_name,
+        last_name,
         email,
         phone,
         id_number,
-        employee_number: employee_number || `EMP-${Date.now()}`,
+        employee_code: employee_number || `EMP-${Date.now()}`,
         department,
         position,
         employment_status: employment_status || 'active',
         hire_date: hire_date || new Date().toISOString().split('T')[0],
-        basic_salary: basic_salary || 0,
         hourly_rate: hourly_rate || 0,
-        payment_frequency: payment_frequency || 'monthly',
+        salary: 0,
         tax_number,
-        uif_number,
         is_active: true
       })
       .select()
@@ -117,7 +121,7 @@ router.post('/', requirePermission('EMPLOYEES.CREATE'), async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await auditFromReq(req, 'CREATE', 'employee', data.id, { newValue: data });
-    res.status(201).json({ employee: data });
+    res.status(201).json({ employee: { ...data, employee_number: data.employee_number || data.employee_code || '' } });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -141,15 +145,16 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
     if (!old) return res.status(404).json({ error: 'Employee not found' });
 
     const allowed = [
-      'full_name', 'email', 'phone', 'id_number', 'employee_number',
+      'first_name', 'last_name', 'email', 'phone', 'id_number',
       'department', 'position', 'employment_status', 'hire_date', 'termination_date',
-      'basic_salary', 'hourly_rate', 'payment_frequency',
-      'tax_number', 'uif_number', 'is_active'
+      'hourly_rate', 'salary', 'tax_number', 'is_active'
     ];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
+    // Map employee_number → employee_code (DB column name)
+    if (req.body.employee_number !== undefined) updates.employee_code = req.body.employee_number;
     updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
@@ -163,7 +168,7 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await auditFromReq(req, 'UPDATE', 'employee', id, { oldValue: old, newValue: data });
-    res.json({ employee: data });
+    res.json({ employee: { ...data, employee_number: data.employee_number || data.employee_code || '' } });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
