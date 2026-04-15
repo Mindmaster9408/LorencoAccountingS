@@ -452,7 +452,7 @@
         }
 
         // ========== INIT ==========
-        window.addEventListener('load', function() {
+        window.addEventListener('load', async function() {
             // Always wire up file drop zones first — independent of auth state
             // so drag-and-drop and Browse button work even if auth init throws
             setupDragDropZones();
@@ -473,7 +473,7 @@
             var company = AUTH.getCompanyById(currentCompanyId);
             document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown Company';
             loadCompaniesCarousel();
-            loadEmployees();
+            await loadEmployees();       // backend-authoritative — same source as Employee Management
             populateManualEntryControls();
             loadImportLog();
         });
@@ -527,9 +527,15 @@
         }
 
         // ========== DATA LOADING ==========
-        function loadEmployees() {
-            var stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
-            employees = stored ? JSON.parse(stored) : [];
+        // Source: backend /api/employees — same authoritative source as Employee Management,
+        // Pay Runs, and Payroll Execution. NOT the old safeLocalStorage KV key.
+        async function loadEmployees() {
+            try {
+                employees = await DataAccess.getEmployees(currentCompanyId);
+            } catch(e) {
+                employees = [];
+                console.error('Import: could not load employees from server:', e.message);
+            }
         }
 
         function findEmployeeByNumber(empNum) {
@@ -1287,39 +1293,63 @@
         function closeQuickAddEmployee() {
             document.getElementById('pdfQuickAddEmpModal').style.display = 'none';
         }
-        function saveQuickAddEmployee() {
-            var first  = document.getElementById('qaEmpFirst').value.trim();
-            var last   = document.getElementById('qaEmpLast').value.trim();
-            var idNum  = document.getElementById('qaEmpId').value.trim();
-            var job    = document.getElementById('qaEmpJob').value.trim();
-            var empNo  = document.getElementById('qaEmpEmpNo').value.trim();
-            var rowIdx = parseInt(document.getElementById('qaEmpRowIdx').value);
-            var errEl  = document.getElementById('qaEmpError');
+        async function saveQuickAddEmployee() {
+            var first   = document.getElementById('qaEmpFirst').value.trim();
+            var last    = document.getElementById('qaEmpLast').value.trim();
+            var taxNum  = document.getElementById('qaEmpTaxNum').value.trim();
+            var idNum   = document.getElementById('qaEmpId').value.trim();
+            var job     = document.getElementById('qaEmpJob').value.trim();
+            var empNo   = document.getElementById('qaEmpEmpNo').value.trim();
+            var rowIdx  = parseInt(document.getElementById('qaEmpRowIdx').value);
+            var errEl   = document.getElementById('qaEmpError');
+            var saveBtn = document.getElementById('qaEmpSaveBtn');
+
             if (!first || !last) { errEl.textContent = 'First name and last name are required.'; return; }
+            if (!taxNum) { errEl.textContent = 'Tax number is required for PAYE compliance.'; return; }
+
             // Auto-generate employee number if blank
-            if (!empNo) empNo = 'EMP-' + Math.random().toString(36).substr(2, 5).toUpperCase();
-            var newEmp = {
-                id: 'emp-' + Math.random().toString(36).substr(2, 9),
-                employee_number: empNo,
-                first_name: first,
-                last_name: last,
-                id_number: idNum || null,
-                job_title: job || null,
-                email: null, phone: null, department: null, position: null,
-                payment_method: 'bank_transfer',
-                bank_name: null, account_holder: null, account_number: null, branch_code: null,
-                date_appointed: null, medical_aid_members: 0, tax_directive: 0
-            };
-            employees.push(newEmp);
-            safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
-            closeQuickAddEmployee();
-            // Re-render so new employee appears in all dropdowns and gets selected for this row
-            renderPdfResults();
-            // Select the new employee in the correct row
-            setTimeout(function() {
-                var sel = document.getElementById('pdf_emp_' + rowIdx);
-                if (sel) sel.value = newEmp.id;
-            }, 50);
+            if (!empNo) empNo = 'IMP-' + Date.now().toString().slice(-6);
+
+            saveBtn.disabled    = true;
+            saveBtn.textContent = 'Saving…';
+            errEl.textContent   = '';
+
+            try {
+                var newEmp = await DataAccess.createEmployee({
+                    first_name:      first,
+                    last_name:       last,
+                    tax_number:      taxNum,
+                    employee_number: empNo,
+                    id_number:       idNum || null,
+                    position:        job   || null
+                });
+
+                // Refresh employee list from backend — keeps import in sync with rest of app
+                await loadEmployees();
+
+                closeQuickAddEmployee();
+
+                // Re-render so new employee appears in all dropdowns
+                renderPdfResults();
+
+                // Select the new employee in the correct row
+                setTimeout(function() {
+                    var sel = document.getElementById('pdf_emp_' + rowIdx);
+                    if (sel && newEmp && newEmp.id) sel.value = String(newEmp.id);
+                }, 50);
+
+            } catch(err) {
+                var msg = err.message || 'Could not save employee. Please try again.';
+                if (msg.indexOf('unique') !== -1 || msg.indexOf('duplicate') !== -1 || msg.indexOf('23505') !== -1) {
+                    msg = 'An employee with this employee number already exists.';
+                } else if (msg.indexOf('tax_number') !== -1) {
+                    msg = 'Tax number is required for PAYE compliance.';
+                }
+                errEl.textContent = msg;
+            } finally {
+                saveBtn.disabled    = false;
+                saveBtn.textContent = '✓ Save Employee & Link Payslip';
+            }
         }
 
         var _pdfItemCtr = 0;
@@ -2084,12 +2114,16 @@
                     <input type="text" id="qaEmpEmpNo" placeholder="Auto-generated if blank" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box; margin-top:3px;">
                 </div>
                 <div style="grid-column:1/-1;">
+                    <label style="font-size:12px; font-weight:600; color:#555;">Tax Number (SARS) *</label>
+                    <input type="text" id="qaEmpTaxNum" maxlength="10" placeholder="e.g. 1234567890" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box; margin-top:3px;">
+                </div>
+                <div style="grid-column:1/-1;">
                     <label style="font-size:12px; font-weight:600; color:#555;">Job Title</label>
                     <input type="text" id="qaEmpJob" placeholder="e.g. Locum Speech Pathologist" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:6px; font-size:0.9rem; box-sizing:border-box; margin-top:3px;">
                 </div>
             </div>
             <div id="qaEmpError" style="color:#dc3545; font-size:12px; margin-bottom:8px;"></div>
-            <button onclick="saveQuickAddEmployee()" style="width:100%; padding:12px; background:linear-gradient(135deg,#667eea,#764ba2); color:white; border:none; border-radius:8px; font-size:1rem; font-weight:700; cursor:pointer;">✓ Save Employee &amp; Link Payslip</button>
+            <button id="qaEmpSaveBtn" type="button" onclick="saveQuickAddEmployee()" style="width:100%; padding:12px; background:linear-gradient(135deg,#667eea,#764ba2); color:white; border:none; border-radius:8px; font-size:1rem; font-weight:700; cursor:pointer;">✓ Save Employee &amp; Link Payslip</button>
         </div>
     </div>
 
