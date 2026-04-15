@@ -157,10 +157,11 @@ var DataAccess = (function() {
                 cacheSet('employees_' + companyId, employees);
                 return employees;
             } catch(e) {
-                // Try API response cache first; fall back to localStorage-managed employees
-                // (written by employee-management.html under the non-prefixed key)
-                return cacheGet('employees_' + companyId) ||
-                    JSON.parse(safeLocalStorage.getItem('employees_' + companyId) || '[]');
+                // Offline fallback: last successful API response (cache_ prefix stays in native localStorage)
+                var cached = cacheGet('employees_' + companyId);
+                if (cached !== null) return cached;
+                // No cache and API failed — propagate so callers can show a real error state
+                throw e;
             }
         },
 

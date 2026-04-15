@@ -788,8 +788,7 @@
         }
 
         function seanShowEmployeeCostPicker() {
-            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
-            const emps = stored ? JSON.parse(stored) : [];
+            const emps = employees; // already loaded from backend by loadEmployees()
             if (emps.length === 0) {
                 document.getElementById('sean-results').innerHTML =
                     '<div class="sean-panel"><div class="sean-alert error">No employees found. Add employees first.</div></div>';
@@ -823,10 +822,20 @@
         }
 
         // ========== PAYSLIPS TAB ==========
-        function loadEmployees() {
-            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
-            employees = stored ? JSON.parse(stored) : [];
-            displayEmployees(employees);
+        async function loadEmployees() {
+            const grid = document.getElementById('employee-grid');
+            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-text">Loading employees…</div></div>';
+            try {
+                employees = await DataAccess.getEmployees(currentCompanyId);
+                displayEmployees(employees);
+            } catch(e) {
+                employees = [];
+                grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">' +
+                    '<div class="empty-icon">⚠️</div>' +
+                    '<div class="empty-text">Could not load employees from server</div>' +
+                    '<div class="empty-sub">Check your connection and refresh. (' + (e.message || 'Network error') + ')</div>' +
+                    '</div>';
+            }
         }
 
         function displayEmployees(list) {

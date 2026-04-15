@@ -50,19 +50,19 @@
         .btn-logout:hover { background: #ddd; }
 
         /* MAIN CONTENT */
-        .main-content { flex: 1; min-width: 0; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px; }
-        .header h1 { color: white; font-size: 1.8rem; }
-        .header p { color: rgba(255,255,255,0.8); }
-        .user-info { text-align: right; color: white; }
+        .main-content { flex: 1; min-width: 0; background: white; border-radius: 15px; padding: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px; padding-bottom: 20px; border-bottom: 2px solid #eee; }
+        .header h1 { color: #667eea; font-size: 1.8rem; }
+        .header p { color: #666; }
+        .user-info { text-align: right; color: #555; }
         .user-info strong { display: block; }
 
         /* TABS */
-        .att-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-        .att-tab { padding: 12px 24px; border-radius: 10px 10px 0 0; border: none; background: rgba(255,255,255,0.3); color: white; font-weight: 600; cursor: pointer; font-size: 0.95rem; transition: all 0.3s ease; }
-        .att-tab:hover { background: rgba(255,255,255,0.5); }
-        .att-tab.active { background: white; color: #333; }
-        .att-tab-content { display: none; background: white; border-radius: 0 15px 15px 15px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .att-tabs { display: flex; gap: 8px; margin-bottom: 0; flex-wrap: wrap; }
+        .att-tab { padding: 12px 24px; border-radius: 10px 10px 0 0; border: 2px solid transparent; border-bottom: none; background: #f0f4ff; color: #667eea; font-weight: 600; cursor: pointer; font-size: 0.95rem; transition: all 0.3s ease; }
+        .att-tab:hover { background: #e0e8ff; }
+        .att-tab.active { background: #667eea; color: white; }
+        .att-tab-content { display: none; background: #f8f9fa; border-radius: 0 15px 15px 15px; padding: 25px; margin-bottom: 20px; }
         .att-tab-content:first-of-type { border-radius: 0 15px 15px 15px; }
 
         /* CARDS */
@@ -70,7 +70,7 @@
 
         /* STATS */
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: white; border-radius: 12px; padding: 18px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        .stat-card { background: #f8f9fa; border-radius: 12px; padding: 18px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
         .stat-card .stat-value { font-size: 2rem; font-weight: 700; color: #667eea; }
         .stat-card .stat-label { font-size: 0.85rem; color: #888; margin-top: 4px; }
 
@@ -199,7 +199,7 @@
             <div class="header">
                 <div>
                     <h1>&#x23F0; Attendance Management</h1>
-                    <p style="color: rgba(255,255,255,0.8);" id="company-name-header"></p>
+                    <p id="company-name-header"></p>
                 </div>
                 <div class="user-info">
                     <p>Logged in as</p>

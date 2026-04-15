@@ -799,7 +799,15 @@
             document.getElementById('employee-list').innerHTML =
                 '<tr><td colspan="8" class="empty-message">Loading employees…</td></tr>';
 
-            employees = await DataAccess.getEmployees(currentCompanyId);
+            try {
+                employees = await DataAccess.getEmployees(currentCompanyId);
+            } catch(e) {
+                document.getElementById('employee-list').innerHTML =
+                    '<tr><td colspan="8" class="empty-message" style="color:#dc3545;">' +
+                    '⚠️ Could not load employees from server. Check your connection and refresh the page. ' +
+                    '(Detail: ' + (e.message || 'Network error') + ')</td></tr>';
+                return;
+            }
 
             // Detect if we're showing stale localStorage-only records (fake 'emp-xxx' IDs)
             var hasLocalOnly = employees.some(function(e) {
