@@ -27,7 +27,8 @@ FROM node:22-alpine
 
 # OCR dependencies: tesseract (engine + English data) + poppler-utils (pdftoppm for PDF→image)
 # tesseract-ocr-data-eng: ~15MB — add more langs e.g. tesseract-ocr-data-afr for Afrikaans
-RUN apk add --no-cache \
+# Cache-bust: 2026-04-15 — force fresh layer to ensure tesseract is installed in container
+RUN apk update && apk add --no-cache \
     tesseract-ocr \
     tesseract-ocr-data-eng \
     poppler-utils
