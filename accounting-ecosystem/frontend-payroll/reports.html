@@ -262,6 +262,7 @@
     <script src="js/auth.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/payroll-engine.js"></script>
+    <script src="js/payroll-api.js"></script>
     <script>
         let currentCompanyId = null;
         let employees = [];
@@ -270,14 +271,14 @@
         let currentReportData = { headers: [], rows: [], title: '' };
 
         // ========== INIT ==========
-        window.addEventListener('load', function() {
+        window.addEventListener('load', async function() {
             if (!AUTH.isLoggedIn()) { window.location.href = 'login.html'; return; }
             const session = AUTH.getSession();
             currentCompanyId = session.company_id;
             const company = AUTH.getCompanyById(currentCompanyId);
             document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown';
             loadCompaniesCarousel();
-            loadData();
+            await loadData();
         });
 
         // ========== SIDEBAR ==========
@@ -324,9 +325,17 @@
         function handleLogout() { if (confirm('Are you sure you want to logout?')) AUTH.logout(); }
 
         // ========== DATA LOADING ==========
-        function loadData() {
-            employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
-            payruns = JSON.parse(safeLocalStorage.getItem('payruns_' + currentCompanyId) || '[]');
+        // Employee list is backend-authoritative — loaded from /api/employees.
+        // payruns is no longer read from localStorage (ghost data); period selection
+        // relies on the last-12-months auto-range in getAvailablePeriods().
+        async function loadData() {
+            try {
+                employees = await DataAccess.getEmployees(currentCompanyId);
+            } catch (e) {
+                employees = [];
+                console.error('[Reports] Failed to load employees from backend:', e.message);
+            }
+            payruns = [];
         }
 
         function getEmployeePayroll(empId) {
@@ -489,6 +498,9 @@
         }
 
         // ========== REPORT 1: TRANSACTION HISTORY ==========
+        // Data source: backend payroll snapshots via PayrollAPI.getHistory().
+        // NEVER recalculates — displays already-finalized/draft snapshot values only.
+        // Voluntary tax breakdown (paye_base + voluntary_overdeduction) is shown separately.
         async function generateTransactionHistory() {
             const fromPeriod = document.getElementById('filter-from').value;
             const toPeriod = document.getElementById('filter-to').value;
@@ -497,29 +509,78 @@
             const statusFilter = document.getElementById('filter-status').value;
 
             const periods = getAvailablePeriods().filter(p => p >= toPeriod && p <= fromPeriod);
-            let filteredEmps = employees.filter(e => {
-                if (empFilter && e.id !== empFilter) return false;
-                if (deptFilter && e.department !== deptFilter) return false;
-                return true;
-            });
 
-            const headers = ['Period', 'Employee #', 'Employee Name', 'Department', 'Gross Pay', 'PAYE', 'UIF', 'Deductions', 'Net Pay', 'Status'];
+            // Build employee lookup map for joining snapshots with employee master
+            const empMap = {};
+            employees.forEach(e => { empMap[e.id] = e; });
+
+            const headers = [
+                'Period', 'Employee #', 'Employee Name', 'Department',
+                'Gross Pay', 'PAYE Base', 'Vol. Tax', 'Total PAYE',
+                'UIF', 'SDL', 'Deductions', 'Net Pay', 'Status'
+            ];
             const rows = [];
-            let totals = { gross: 0, paye: 0, uif: 0, deductions: 0, net: 0 };
+            let totals = { gross: 0, paye_base: 0, voluntary: 0, paye: 0, uif: 0, sdl: 0, deductions: 0, net: 0 };
 
             for (const period of periods) {
-                for (const emp of filteredEmps) {
-                    const calc = await calculateEmployeePeriod(emp.id, period);
-                    if (calc.gross <= 0) continue;
-                    const ps = getPayslipStatus(emp.id, period);
-                    if (statusFilter && ps.status !== statusFilter) continue;
+                // Fetch finalized/draft snapshots from backend for this period
+                const result = await PayrollAPI.getHistory(period);
+                if (!result.ok) continue;
+
+                const snapshots = (result.data && result.data.snapshots) || [];
+                for (const snap of snapshots) {
+                    const emp = empMap[snap.employee_id];
+
+                    // Apply employee filter
+                    if (empFilter && String(snap.employee_id) !== String(empFilter)) continue;
+                    // Apply department filter (requires employee record)
+                    if (deptFilter && (!emp || emp.department !== deptFilter)) continue;
+
+                    // Derive status from snapshot fields
+                    const status = snap.is_locked ? 'finalized' : (snap.status || 'draft');
+                    if (statusFilter && status !== statusFilter) continue;
+
+                    // Read calculation output — never recalculate
+                    const out = snap.calculation_output || {};
+                    const gross      = out.gross      || 0;
+                    const paye_base  = out.paye_base  || 0;
+                    const voluntary  = out.voluntary_overdeduction || 0;
+                    const totalPaye  = out.paye       || 0;
+                    const uif        = out.uif        || 0;
+                    const sdl        = out.sdl        || 0;
+                    const deductions = out.deductions || 0;
+                    const net        = out.net        || 0;
+
+                    if (gross <= 0) continue;
+
+                    const empName   = emp ? (emp.first_name + ' ' + emp.last_name) : ('Employee ' + snap.employee_id);
+                    const empNumber = emp ? (emp.employee_number || '-') : '-';
+                    const dept      = emp ? (emp.department || '-') : '-';
+
                     rows.push([
-                        formatPeriod(period), emp.employee_number, emp.first_name + ' ' + emp.last_name,
-                        emp.department || '-', formatMoney(calc.gross), formatMoney(calc.paye),
-                        formatMoney(calc.uif), formatMoney(calc.deductions), formatMoney(calc.net), ps.status
+                        formatPeriod(period),
+                        empNumber,
+                        empName,
+                        dept,
+                        formatMoney(gross),
+                        formatMoney(paye_base),
+                        formatMoney(voluntary),
+                        formatMoney(totalPaye),
+                        formatMoney(uif),
+                        formatMoney(sdl),
+                        formatMoney(deductions),
+                        formatMoney(net),
+                        status
                     ]);
-                    totals.gross += calc.gross; totals.paye += calc.paye; totals.uif += calc.uif;
-                    totals.deductions += calc.deductions; totals.net += calc.net;
+
+                    totals.gross      += gross;
+                    totals.paye_base  += paye_base;
+                    totals.voluntary  += voluntary;
+                    totals.paye       += totalPaye;
+                    totals.uif        += uif;
+                    totals.sdl        += sdl;
+                    totals.deductions += deductions;
+                    totals.net        += net;
                 }
             }
 
@@ -535,8 +596,16 @@
                 '</div>';
 
             renderTable(headers, rows, [
-                '', '', '', 'TOTALS:', formatMoney(totals.gross), formatMoney(totals.paye),
-                formatMoney(totals.uif), formatMoney(totals.deductions), formatMoney(totals.net), ''
+                '', '', '', 'TOTALS:',
+                formatMoney(totals.gross),
+                formatMoney(totals.paye_base),
+                formatMoney(totals.voluntary),
+                formatMoney(totals.paye),
+                formatMoney(totals.uif),
+                formatMoney(totals.sdl),
+                formatMoney(totals.deductions),
+                formatMoney(totals.net),
+                ''
             ]);
             logReportGeneration('Transaction History', { from: fromPeriod, to: toPeriod, employee: empFilter, department: deptFilter });
         }

@@ -991,6 +991,7 @@
         let currentEmployee = null;
         let currentEmpId = null;
         let payrollData = { basic_salary: 0, regular_inputs: [] };
+        let _empList = []; // backend-authoritative employee list for this company
         var _currentItemIsVariable = false;
         let currentPeriod = '';
 
@@ -1004,10 +1005,10 @@
             if (!currentEmpId) { alert('No employee specified'); window.location.href = 'payruns.html'; return; }
             
             // Use setTimeout to ensure DOM is fully ready (Edge compatibility)
-            setTimeout(function() {
+            setTimeout(async function() {
                 // Load custom tax tables from Supabase KV (super-admin can update annually)
                 PayrollEngine.loadTaxConfig();
-                loadEmployee();
+                await loadEmployee();
                 loadEmployeeNav();
                 // If coming via SSO, availableCompanies may be empty — fetch async then render
                 var cachedCos = AUTH.getCompaniesForUser();
@@ -1073,10 +1074,17 @@
         // this page was opened with an old localStorage-format ID like "emp-abc123")
         let _supabaseEmpId = null;
 
-        function loadEmployee() {
-            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
-            const employees = stored ? JSON.parse(stored) : [];
-            currentEmployee = employees.find(e => e.id === currentEmpId);
+        async function loadEmployee() {
+            // Employee list is backend-authoritative — loaded from /api/employees.
+            // Reading from 'employees_${companyId}' (old localStorage key) is no longer valid;
+            // DataAccess caches under 'cache_employees_${companyId}'.
+            try {
+                _empList = await DataAccess.getEmployees(currentCompanyId);
+            } catch(e) {
+                _empList = [];
+                console.error('[EmployeeDetail] Failed to load employees from backend:', e.message);
+            }
+            currentEmployee = _empList.find(e => String(e.id) === String(currentEmpId));
             if (!currentEmployee) { alert('Employee not found'); window.location.href = 'payruns.html'; return; }
             renderEmployeeDetails();
 
@@ -1162,8 +1170,8 @@
 
         // ========== EMPLOYEE QUICK NAV ==========
         function getEmployeesSorted() {
-            var stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
-            var employees = stored ? JSON.parse(stored) : [];
+            // Use the backend-fetched list populated by loadEmployee().
+            var employees = _empList.slice();
             employees.sort(function(a, b) {
                 var nameA = ((a.first_name || '') + ' ' + (a.last_name || '')).toLowerCase();
                 var nameB = ((b.first_name || '') + ' ' + (b.last_name || '')).toLowerCase();
