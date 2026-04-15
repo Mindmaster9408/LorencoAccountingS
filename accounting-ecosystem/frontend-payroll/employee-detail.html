@@ -2559,7 +2559,7 @@
             var map = { fixed: 'Fixed', variable: 'Variable', bonus_spread: 'Spread' };
             if (map[type]) {
                 var panel = document.getElementById('volTaxPanel' + map[type]);
-                if (panel) panel.style.display = 'block';
+                if (panel) panel.style.display = 'flex';
             }
             ['volTaxTabFixed','volTaxTabVariable','volTaxTabSpread'].forEach(function(id) {
                 var el = document.getElementById(id);
