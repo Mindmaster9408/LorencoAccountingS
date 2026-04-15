@@ -1616,3 +1616,88 @@ b[style*="color:#667eea"] {
 .diff-zero    { color: var(--accent-light) !important; background: transparent !important; }
 .diff-nonzero { color: #fca5a5 !important; background: rgba(239,68,68,0.15) !important; }
 .diff-warn    { color: #fbbf24 !important; background: rgba(251,191,36,0.12) !important; }
+
+/* ── Net-to-Gross Calculator Page ──────────────────────────────────────────── */
+/* .panel is unique to net-to-gross — was not overridden, stayed light on dark bg */
+.panel {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+.panel-title {
+    color: var(--text-muted) !important;
+}
+/* Step number badge inside panel-title keeps accent colour */
+.panel-title span {
+    background: var(--accent) !important;
+    color: white !important;
+}
+/* Hint text under inputs */
+.form-group .hint {
+    color: var(--text-muted) !important;
+}
+/* Add-item dashed button */
+.btn-add-item {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+    border-color: rgba(16,185,129,0.4) !important;
+}
+.btn-add-item:hover {
+    background: var(--accent) !important;
+    color: white !important;
+    border-color: var(--accent) !important;
+}
+/* Remove row button */
+.btn-remove {
+    color: #fca5a5 !important;
+}
+.btn-remove:hover {
+    background: rgba(239,68,68,0.15) !important;
+}
+/* Empty items row */
+.items-empty {
+    color: var(--text-muted) !important;
+}
+/* Taxable/non-taxable/deduction badges in items table */
+.badge-taxable {
+    background: rgba(21,101,192,0.2) !important;
+    color: #93c5fd !important;
+}
+.badge-nontaxable {
+    background: rgba(123,31,162,0.2) !important;
+    color: #c4b5fd !important;
+}
+.badge-deduction {
+    background: rgba(198,40,40,0.2) !important;
+    color: #fca5a5 !important;
+}
+/* Apply result panel */
+.apply-panel {
+    background: var(--accent-subtle) !important;
+    border-color: rgba(16,185,129,0.3) !important;
+}
+.apply-panel-title {
+    color: var(--accent-light) !important;
+}
+.apply-note {
+    color: var(--text-muted) !important;
+}
+/* Error panel */
+.error-panel {
+    background: rgba(239,68,68,0.1) !important;
+    border-color: rgba(239,68,68,0.2) !important;
+}
+.error-panel-msg {
+    color: #fca5a5 !important;
+}
+.error-panel-hint {
+    color: var(--text-muted) !important;
+}
+/* Verification chips in result breakdown */
+.chip-ok {
+    background: rgba(16,185,129,0.2) !important;
+    color: var(--accent-light) !important;
+}
+.chip-warn {
+    background: rgba(245,158,11,0.2) !important;
+    color: #fbbf24 !important;
+}
