@@ -7,6 +7,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const PdfStatementImportService = require('../../../sean/pdf-statement-import-service');
+const ImageStatementImportService = require('../../../sean/image-statement-import-service');
 const bankLearning = require('../../../sean/bank-learning');
 
 const router = express.Router();
@@ -113,6 +114,19 @@ const pdfUpload = multer({
       path.extname(file.originalname).toLowerCase() === '.pdf';
     if (isPdf) return cb(null, true);
     cb(new Error('Only PDF files are accepted for PDF import'));
+  }
+});
+
+// ─── Multer: memory storage for image OCR parsing (buffer only, no disk write) ─
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
+  fileFilter: (req, file, cb) => {
+    const isImage =
+      /^image\/(jpeg|jpg|png|webp)$/.test(file.mimetype) ||
+      /\.(jpg|jpeg|png|webp)$/i.test(file.originalname);
+    if (isImage) return cb(null, true);
+    cb(new Error('Only image files are accepted for image import (JPG, PNG, WEBP)'));
   }
 });
 
@@ -683,6 +697,88 @@ router.post('/import/pdf',
         return res.status(400).json({ error: err.message });
       }
       return res.status(500).json({ error: 'Failed to process PDF statement' });
+    }
+  }
+);
+
+/**
+ * POST /api/bank/import/image
+ * OCR a bank statement photo/image and return structured transactions for review.
+ * Does NOT write to the database — result is returned to the frontend for
+ * user review and optional CSV export only.
+ *
+ * Request: multipart/form-data
+ *   file   — Image file (JPG, JPEG, PNG, WEBP), max 15 MB
+ *
+ * Response 200:
+ *   { success, isImageOcr, bank, parserId, parserConfidence, isGenericFallback,
+ *     isLowQuality, accountNumber, statementPeriod, transactions, warnings, skippedLines }
+ *
+ * Response 422:
+ *   { error, isLowQuality, warnings }  — when OCR produced insufficient text
+ *
+ * Response 400:
+ *   { error }  — bad file type or missing file
+ *
+ * Response 503:
+ *   { error }  — OCR service unavailable (tesseract not installed)
+ */
+router.post('/import/image',
+  authenticate,
+  hasPermission('bank.import'),
+  imageUpload.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No image file uploaded' });
+      }
+
+      // Secondary validation (belt-and-suspenders beyond multer fileFilter)
+      if (!ImageStatementImportService.isAllowedFile(req.file.mimetype, req.file.originalname)) {
+        return res.status(400).json({
+          error: 'Unsupported file type. Please upload a JPG, PNG, or WEBP image.'
+        });
+      }
+
+      const result = await ImageStatementImportService.parseImage(
+        req.file.buffer,
+        req.file.originalname
+      );
+
+      if (!result.success) {
+        const status = result.error && result.error.includes('not available') ? 503 : 422;
+        return res.status(status).json({
+          error: result.error,
+          isLowQuality: result.isLowQuality || false,
+          warnings: result.warnings || []
+        });
+      }
+
+      await AuditLogger.logUserAction(
+        req,
+        'PARSE',
+        'IMAGE_STATEMENT',
+        null,
+        null,
+        {
+          filename: req.file.originalname,
+          bank: result.bank,
+          parserId: result.parserId,
+          confidence: result.parserConfidence,
+          transactionCount: result.transactions.length,
+          warnings: result.warnings
+        },
+        'Image bank statement parsed for review via OCR'
+      );
+
+      return res.json(result);
+
+    } catch (err) {
+      console.error('[image import] Error:', err);
+      if (err.message && err.message.includes('Only image files')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: 'Failed to process image statement' });
     }
   }
 );

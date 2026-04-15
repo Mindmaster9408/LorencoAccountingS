@@ -1490,8 +1490,35 @@
             color: white;
         }
 
-        .import-type-btn:first-child {
+        /* Draw dividers between all toggle buttons (not after last) */
+        .import-type-btn:not(:last-child) {
             border-right: 1px solid #e8eaed;
+        }
+
+        /* ── Image OCR status ── */
+        .image-ocr-status {
+            padding: 20px;
+            background: #f0f4ff;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .image-ocr-status .status-icon {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+
+        /* ── Image quality warning (low OCR confidence) ── */
+        .image-quality-warning {
+            background: #fff8e1;
+            border: 1px solid #f9a825;
+            border-left: 4px solid #f9a825;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #7f5a00;
         }
 
         /* ── PDF parse status ── */
@@ -2299,19 +2326,29 @@ Click OK to simulate uploading a file.`;
         // IMPORT MODE (CSV vs PDF)
         // ===================================
 
-        let importMode = 'csv';  // 'csv' | 'pdf'
+        let importMode = 'csv';  // 'csv' | 'pdf' | 'image'
         let pdfParseResult = null;
+        let imageParseResult = null;
 
         function switchImportMode(mode) {
             importMode = mode;
             document.getElementById('importTypeCSV').classList.toggle('active', mode === 'csv');
             document.getElementById('importTypePDF').classList.toggle('active', mode === 'pdf');
+            document.getElementById('importTypeImage').classList.toggle('active', mode === 'image');
             document.getElementById('csvImportSection').style.display = mode === 'csv' ? 'block' : 'none';
             document.getElementById('pdfImportSection').style.display = mode === 'pdf' ? 'block' : 'none';
+            document.getElementById('imageImportSection').style.display = mode === 'image' ? 'block' : 'none';
             const step2Label = document.getElementById('step2Label');
-            if (step2Label) step2Label.textContent = mode === 'pdf' ? 'Review' : 'Map Columns';
+            if (step2Label) {
+                if (mode === 'pdf' || mode === 'image') step2Label.textContent = 'Review';
+                else step2Label.textContent = 'Map Columns';
+            }
             const nextBtn = document.getElementById('step1NextBtn');
-            if (nextBtn) nextBtn.textContent = mode === 'pdf' ? 'Parse PDF →' : 'Next: Map Columns →';
+            if (nextBtn) {
+                if (mode === 'pdf') nextBtn.textContent = 'Parse PDF →';
+                else if (mode === 'image') nextBtn.textContent = 'Extract Transactions →';
+                else nextBtn.textContent = 'Next: Map Columns →';
+            }
             // Populate bank accounts list when switching to PDF
             if (mode === 'pdf') loadBankAccountsForPdfImport();
         }
@@ -2508,6 +2545,207 @@ Click OK to simulate uploading a file.`;
             updateStepIndicators(1);
         }
 
+        // ===================================
+        // IMAGE IMPORT FUNCTIONS
+        // ===================================
+
+        function triggerImageUpload() {
+            document.getElementById('imageFileInput').click();
+        }
+
+        function handleImageFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const ext = file.name.toLowerCase().split('.').pop();
+            const allowed = ['jpg', 'jpeg', 'png', 'webp'];
+            if (!allowed.includes(ext)) {
+                alert('Please select a JPEG, PNG, or WEBP image file.');
+                event.target.value = '';
+                return;
+            }
+            if (file.size > 15 * 1024 * 1024) {
+                alert('Image file is too large. Maximum allowed size is 15 MB.');
+                event.target.value = '';
+                return;
+            }
+            importData.file = file;
+            document.getElementById('imageUploadArea').style.display = 'none';
+            document.getElementById('imageFileInfo').style.display = 'flex';
+            document.getElementById('imageFileName').textContent = file.name;
+            document.getElementById('imageFileMeta').textContent = formatFileSize(file.size) + ' • ' + ext.toUpperCase() + ' Image';
+        }
+
+        function removeImageFile() {
+            importData.file = null;
+            imageParseResult = null;
+            document.getElementById('imageFileInput').value = '';
+            document.getElementById('imageFileInfo').style.display = 'none';
+            document.getElementById('imageUploadArea').style.display = 'block';
+            document.getElementById('imageOcrStatus').style.display = 'none';
+        }
+
+        async function goToStep2Image() {
+            if (!importData.file) {
+                alert('Please upload an image file first.');
+                return;
+            }
+
+            const statusEl = document.getElementById('imageOcrStatus');
+            const statusText = document.getElementById('imageOcrStatusText');
+            const nextBtn = document.getElementById('step1NextBtn');
+
+            statusEl.style.display = 'block';
+            statusText.textContent = 'Running OCR — extracting text from image... please wait.';
+            if (nextBtn) nextBtn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('file', importData.file);
+
+                const response = await fetch('/api/accounting/bank/import/image', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.status === 503) {
+                    statusEl.style.display = 'none';
+                    alert('OCR service is not available on this server. Please contact your system administrator.');
+                    if (nextBtn) nextBtn.disabled = false;
+                    return;
+                }
+                if (response.status === 422) {
+                    statusEl.style.display = 'none';
+                    alert('Unable to extract transactions from this image.\n\n' +
+                        (data.message || 'The image may be too blurry, low-resolution, or lack sufficient text.') +
+                        '\n\nTips:\n• Take the photo in good lighting\n• Keep the camera steady and level\n• Ensure the entire statement page is visible\n• Use JPEG or PNG at full resolution');
+                    if (nextBtn) nextBtn.disabled = false;
+                    return;
+                }
+                if (!response.ok || !data.success) {
+                    statusEl.style.display = 'none';
+                    alert('Image parsing failed: ' + (data.message || data.error || 'Unknown error.'));
+                    if (nextBtn) nextBtn.disabled = false;
+                    return;
+                }
+
+                imageParseResult = data;
+                statusEl.style.display = 'none';
+                if (nextBtn) nextBtn.disabled = false;
+
+                document.getElementById('importStep1').style.display = 'none';
+                document.getElementById('importStep2Image').style.display = 'block';
+                updateStepIndicators(2);
+                renderImageReview(data);
+
+            } catch (err) {
+                statusEl.style.display = 'none';
+                if (nextBtn) nextBtn.disabled = false;
+                alert('Network error while parsing image: ' + err.message);
+            }
+        }
+
+        function renderImageReview(result) {
+            // Bank detected badge
+            const bankEl = document.getElementById('imageBankDetected');
+            if (result.isGenericFallback) {
+                bankEl.innerHTML = '<div style="background:#fff3e0;border:1px solid #fb8c00;border-radius:8px;padding:10px 14px;font-size:13px;">' +
+                    '⚠️ <strong>Bank not recognised</strong> — Generic extraction used. ' +
+                    'Review all transactions carefully as column detection may not be accurate.</div>';
+            } else if (result.bank) {
+                bankEl.innerHTML = '<div style="background:#e3f2fd;border:1px solid #1e88e5;border-radius:8px;padding:10px 14px;font-size:13px;">' +
+                    '🏦 <strong>' + escapeHtml(result.bank) + '</strong> statement detected' +
+                    (result.parserConfidence ? ' (<span style="color:#1e88e5;">' + Math.round(result.parserConfidence * 100) + '% confidence</span>)' : '') +
+                    '</div>';
+            } else {
+                bankEl.innerHTML = '';
+            }
+
+            // Quality warning
+            const qualityEl = document.getElementById('imageQualityWarning');
+            const qualityText = document.getElementById('imageQualityText');
+            if (result.isLowQuality) {
+                qualityText.textContent = 'Only ' + (result.transactions ? result.transactions.length : 0) +
+                    ' transaction(s) extracted. Low word count detected in OCR output — ' +
+                    'accuracy may be reduced. Verify all amounts and dates before using this data.';
+                qualityEl.style.display = 'block';
+            } else {
+                qualityEl.style.display = 'none';
+            }
+
+            // Warnings
+            const warnEl = document.getElementById('imageWarningBanner');
+            const warnList = document.getElementById('imageWarningList');
+            if (result.warnings && result.warnings.length > 0) {
+                warnList.innerHTML = result.warnings.map(w => '<li>' + escapeHtml(w) + '</li>').join('');
+                warnEl.style.display = 'block';
+            } else {
+                warnEl.style.display = 'none';
+            }
+
+            // Transaction count
+            const txns = result.transactions || [];
+            document.getElementById('imageTxnCount').textContent =
+                txns.length + ' transaction' + (txns.length !== 1 ? 's' : '') + ' extracted';
+
+            // Render table rows
+            const tbody = document.getElementById('imageReviewBody');
+            tbody.innerHTML = '';
+            if (txns.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9aa0a6;padding:20px;">No transactions were extracted from this image.</td></tr>';
+                return;
+            }
+            txns.forEach(txn => {
+                const tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' + escapeHtml(txn.date || '') + '</td>' +
+                    '<td>' + escapeHtml(txn.description || '') + '</td>' +
+                    '<td>' + escapeHtml(txn.reference || '') + '</td>' +
+                    '<td style="text-align:right;color:#1e8a30;">' + (txn.moneyIn != null ? 'R&nbsp;' + Number(txn.moneyIn).toFixed(2) : '') + '</td>' +
+                    '<td style="text-align:right;color:#c62828;">' + (txn.moneyOut != null ? 'R&nbsp;' + Number(txn.moneyOut).toFixed(2) : '') + '</td>' +
+                    '<td style="text-align:right;">' + (txn.balance != null ? 'R&nbsp;' + Number(txn.balance).toFixed(2) : '') + '</td>';
+                tbody.appendChild(tr);
+            });
+        }
+
+        function goBackToImageStep1() {
+            document.getElementById('importStep2Image').style.display = 'none';
+            document.getElementById('importStep1').style.display = 'block';
+            updateStepIndicators(1);
+        }
+
+        function exportImageTransactionsToCSV() {
+            if (!imageParseResult || !imageParseResult.transactions || imageParseResult.transactions.length === 0) {
+                alert('No transactions available to export.');
+                return;
+            }
+            const txns = imageParseResult.transactions;
+            const header = ['Date', 'Description', 'Reference', 'Money In (R)', 'Money Out (R)', 'Balance (R)', 'Amount (R)'];
+            const rows = txns.map(t => [
+                t.date || '',
+                '"' + (t.description || '').replace(/"/g, '""') + '"',
+                '"' + (t.reference || '').replace(/"/g, '""') + '"',
+                t.moneyIn != null ? Number(t.moneyIn).toFixed(2) : '',
+                t.moneyOut != null ? Number(t.moneyOut).toFixed(2) : '',
+                t.balance != null ? Number(t.balance).toFixed(2) : '',
+                t.amount != null ? Number(t.amount).toFixed(2) : ''
+            ]);
+            const csv = [header, ...rows].map(r => r.join(',')).join('\r\n');
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const datePart = new Date().toISOString().slice(0, 10);
+            const bankPart = imageParseResult.bank ? imageParseResult.bank.replace(/\s+/g, '-').toLowerCase() + '-' : '';
+            a.download = 'bank-statement-ocr-' + bankPart + datePart + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
         function pdfGoToConfirm() {
             const selected = Array.from(document.querySelectorAll('.pdf-txn-check:checked'));
             if (selected.length === 0) {
@@ -2649,12 +2887,15 @@ Click OK to simulate uploading a file.`;
         function resetImportWizard() {
             importData = { file: null, rows: [], headers: [], mapping: {}, bankFormat: 'custom' };
             pdfParseResult = null;
+            imageParseResult = null;
             // Reset mode to CSV
             importMode = 'csv';
             document.getElementById('importTypeCSV').classList.add('active');
             document.getElementById('importTypePDF').classList.remove('active');
+            document.getElementById('importTypeImage').classList.remove('active');
             document.getElementById('csvImportSection').style.display = 'block';
             document.getElementById('pdfImportSection').style.display = 'none';
+            document.getElementById('imageImportSection').style.display = 'none';
             const step2Label = document.getElementById('step2Label');
             if (step2Label) step2Label.textContent = 'Map Columns';
             const nextBtn = document.getElementById('step1NextBtn');
@@ -2662,6 +2903,7 @@ Click OK to simulate uploading a file.`;
             document.getElementById('importStep1').style.display = 'block';
             document.getElementById('importStep2').style.display = 'none';
             document.getElementById('importStep2Pdf').style.display = 'none';
+            document.getElementById('importStep2Image').style.display = 'none';
             document.getElementById('importStep3').style.display = 'none';
             updateStepIndicators(1);
             document.getElementById('csvFileInput').value = '';
@@ -2672,6 +2914,15 @@ Click OK to simulate uploading a file.`;
             document.getElementById('pdfFileInfo').style.display = 'none';
             document.getElementById('pdfUploadArea').style.display = 'block';
             document.getElementById('pdfParseStatus').style.display = 'none';
+            // Reset image file state
+            const imgInput = document.getElementById('imageFileInput');
+            if (imgInput) imgInput.value = '';
+            const imgFileInfo = document.getElementById('imageFileInfo');
+            if (imgFileInfo) imgFileInfo.style.display = 'none';
+            const imgUploadArea = document.getElementById('imageUploadArea');
+            if (imgUploadArea) imgUploadArea.style.display = 'block';
+            const imgOcrStatus = document.getElementById('imageOcrStatus');
+            if (imgOcrStatus) imgOcrStatus.style.display = 'none';
         }
 
         function updateStepIndicators(step) {
@@ -2775,6 +3026,10 @@ Click OK to simulate uploading a file.`;
             // Branch on import mode
             if (importMode === 'pdf') {
                 goToStep2Pdf();
+                return;
+            }
+            if (importMode === 'image') {
+                goToStep2Image();
                 return;
             }
 
@@ -4734,13 +4989,16 @@ Click OK to simulate uploading a file.`;
                 <!-- Step 1: Upload -->
                 <div id="importStep1" class="import-content">
 
-                    <!-- Import type toggle: CSV vs PDF -->
+                    <!-- Import type toggle: CSV / PDF / Photo -->
                     <div class="import-type-toggle">
                         <button id="importTypeCSV" class="import-type-btn active" onclick="switchImportMode('csv')">
                             📊 CSV / Excel
                         </button>
                         <button id="importTypePDF" class="import-type-btn" onclick="switchImportMode('pdf')">
                             📋 PDF Statement
+                        </button>
+                        <button id="importTypeImage" class="import-type-btn" onclick="switchImportMode('image')">
+                            📸 Photo / Image
                         </button>
                     </div>
 
@@ -4816,6 +5074,48 @@ Click OK to simulate uploading a file.`;
                         <div id="pdfParseStatus" style="display: none;" class="pdf-parse-status">
                             <div class="status-icon">⏳</div>
                             <div id="pdfParseStatusText">Parsing PDF statement...</div>
+                        </div>
+                    </div>
+
+                    <!-- Image section -->
+                    <div id="imageImportSection" style="display: none;">
+                        <div class="info-box" style="border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px;">
+                            <strong>📸 Bank Statement Photo Import</strong><br>
+                            Take a clear, high-resolution photo of your printed bank statement and upload it here.
+                            The system will use OCR to extract transactions for review and CSV export.
+                            <br><br>
+                            <strong>Tips for best results:</strong>
+                            <ul style="margin: 6px 0 0 18px;">
+                                <li>Use good lighting — avoid shadows and glare</li>
+                                <li>Hold the camera steady; ensure text is sharp and in focus</li>
+                                <li>Capture the full page — do not cut off rows or columns</li>
+                                <li>Supported formats: JPG, PNG, WEBP (max 15 MB)</li>
+                            </ul>
+                        </div>
+
+                        <div id="imageUploadArea" class="upload-area" onclick="triggerImageUpload()" style="cursor: pointer;">
+                            <div class="upload-icon">📸</div>
+                            <div><strong>Click to upload</strong> or drag and drop</div>
+                            <div style="font-size: 12px; color: #5f6368; margin-top: 5px;">
+                                JPG, PNG, WEBP — bank statement photo (max 15 MB)
+                            </div>
+                        </div>
+                        <input type="file" id="imageFileInput" style="display: none;"
+                               onchange="handleImageFile(event)"
+                               accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+
+                        <div id="imageFileInfo" class="file-info" style="display: none;">
+                            <div class="file-info-icon">📸</div>
+                            <div class="file-info-details">
+                                <div class="file-info-name" id="imageFileName"></div>
+                                <div class="file-info-meta" id="imageFileMeta"></div>
+                            </div>
+                            <span class="file-info-remove" onclick="removeImageFile()" title="Remove file">×</span>
+                        </div>
+
+                        <div id="imageOcrStatus" style="display: none;" class="image-ocr-status">
+                            <div class="status-icon">⏳</div>
+                            <div id="imageOcrStatusText">Running OCR — please wait...</div>
                         </div>
                     </div>
 
@@ -4923,6 +5223,55 @@ Click OK to simulate uploading a file.`;
                     <div class="import-actions">
                         <button class="btn-secondary" onclick="goBackToPdfStep1()">← Back</button>
                         <button class="btn-primary" onclick="pdfGoToConfirm()">Next: Confirm Import →</button>
+                    </div>
+                </div>
+
+                <!-- Step 2 Image: Review OCR-extracted transactions + Export CSV -->
+                <div id="importStep2Image" class="import-content" style="display: none;">
+                    <div id="imageBankDetected" style="margin-bottom: 15px;"></div>
+
+                    <div id="imageQualityWarning" style="display: none;" class="image-quality-warning">
+                        <strong>⚠️ Low OCR Quality Warning</strong><br>
+                        <span id="imageQualityText"></span><br>
+                        Review every extracted transaction carefully. Amounts and dates may contain OCR errors.
+                    </div>
+
+                    <div id="imageWarningBanner" style="display: none;" class="pdf-warning-banner">
+                        <strong>⚠️ Extraction Warnings</strong>
+                        <ul id="imageWarningList"></ul>
+                    </div>
+
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                        <h3 style="margin: 0;">Extracted Transactions — Review Before Exporting</h3>
+                        <span id="imageTxnCount" style="font-size: 13px; color: #5f6368;"></span>
+                    </div>
+
+                    <div style="overflow-x: auto; max-height: 380px; overflow-y: auto; border-radius: 8px; border: 1px solid #e8eaed; margin-bottom: 12px;">
+                        <table class="pdf-review-table">
+                            <thead style="position: sticky; top: 0; z-index: 1;">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Reference</th>
+                                    <th>Money In (R)</th>
+                                    <th>Money Out (R)</th>
+                                    <th>Balance (R)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="imageReviewBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div style="background: #e6f4ea; border: 1px solid #34a853; border-radius: 8px; padding: 12px 16px; margin-bottom: 15px; font-size: 13px;">
+                        <strong>📤 Export to CSV</strong> — Download all extracted transactions as a CSV file for review, manual correction, or upload into accounting software.
+                        This does <strong>not</strong> import transactions into your bank accounts or create any journals.
+                    </div>
+
+                    <div class="import-actions">
+                        <button class="btn-secondary" onclick="goBackToImageStep1()">← Back</button>
+                        <button class="btn-primary" id="imageExportCsvBtn" onclick="exportImageTransactionsToCSV()">
+                            📥 Export to CSV
+                        </button>
                     </div>
                 </div>
 
