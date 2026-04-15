@@ -36,8 +36,13 @@ const execFileAsync = promisify(execFile);
 // ── Capability detection (runs once at module load) ─────────────────────────
 
 function _checkBin(bin, args) {
-  try { execFileSync(bin, args, { stdio: 'ignore', timeout: 3000 }); return true; }
-  catch { return false; }
+  try { execFileSync(bin, args, { stdio: 'pipe', timeout: 3000 }); return true; }
+  catch (e) {
+    // ENOENT  → binary not installed at all → false
+    // Any other error (e.g. non-zero exit) → binary exists but returned non-zero
+    // tesseract --version exits with code 1 on many Alpine builds even when fully functional
+    return e.code !== 'ENOENT';
+  }
 }
 
 const HAS_TESSERACT = _checkBin('tesseract', ['--version']);
