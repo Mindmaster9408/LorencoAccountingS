@@ -60,11 +60,15 @@ var PayrollAPI = (function () {
         // 200: { success, run_id, period_key, processed[], errors[], totals, timestamp }
         // 404: period not found
         // 409: period already finalized
-        run: function (periodKey, employeeIds) {
-            return request('POST', BASE + '/run', {
+        run: function (periodKey, employeeIds, voluntaryConfigs) {
+            var body = {
                 period_key:   periodKey,
                 employee_ids: employeeIds
-            });
+            };
+            if (voluntaryConfigs && Object.keys(voluntaryConfigs).length > 0) {
+                body.voluntary_configs = voluntaryConfigs;
+            }
+            return request('POST', BASE + '/run', body);
         },
 
         // POST /api/payroll/finalize

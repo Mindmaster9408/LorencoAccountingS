@@ -636,14 +636,213 @@ function formatProRataReport(testResults) {
     return report.join('\n');
 }
 
+// =============================================================================
+// VOLUNTARY TAX OVER-DEDUCTION TESTS
+// =============================================================================
+
+var VOLUNTARY_TAX_SCENARIOS = [
+    {
+        id: 'VOL-01',
+        name: 'No voluntary config — voluntary_overdeduction should be zero',
+        employeeOptions: { age: 35, medicalMembers: 0, taxDirective: 0 },
+        basicSalary: 30000,
+        period: '2026-04',
+        expectedVoluntary: 0,
+        expectPAYEMatchPAYEBase: true
+    },
+    {
+        id: 'VOL-02',
+        name: 'Fixed scenario — R500 every period',
+        employeeOptions: {
+            age: 35, medicalMembers: 0, taxDirective: 0,
+            voluntaryTaxConfig: { type: 'fixed', fixed_amount: 500 }
+        },
+        basicSalary: 30000,
+        period: '2026-04',
+        expectedVoluntary: 500
+    },
+    {
+        id: 'VOL-03',
+        name: 'Variable scenario — R750 only for matching period',
+        employeeOptions: {
+            age: 35, medicalMembers: 0, taxDirective: 0,
+            voluntaryTaxConfig: { type: 'variable', variable_amount: 750, period: '2026-04' }
+        },
+        basicSalary: 30000,
+        period: '2026-04',
+        expectedVoluntary: 750
+    },
+    {
+        id: 'VOL-04',
+        name: 'Variable scenario — R0 for non-matching period',
+        employeeOptions: {
+            age: 35, medicalMembers: 0, taxDirective: 0,
+            voluntaryTaxConfig: { type: 'variable', variable_amount: 750, period: '2026-03' }
+        },
+        basicSalary: 30000,
+        period: '2026-04',
+        expectedVoluntary: 0
+    },
+    {
+        id: 'VOL-05',
+        name: 'Bonus spread — R600/month within range',
+        employeeOptions: {
+            age: 35, medicalMembers: 0, taxDirective: 0,
+            voluntaryTaxConfig: { type: 'bonus_spread', monthly_spread_amount: 600, start_period: '2026-03', end_period: '2026-08' }
+        },
+        basicSalary: 30000,
+        period: '2026-05',
+        expectedVoluntary: 600
+    },
+    {
+        id: 'VOL-06',
+        name: 'Bonus spread — R0 before range start',
+        employeeOptions: {
+            age: 35, medicalMembers: 0, taxDirective: 0,
+            voluntaryTaxConfig: { type: 'bonus_spread', monthly_spread_amount: 600, start_period: '2026-03', end_period: '2026-08' }
+        },
+        basicSalary: 30000,
+        period: '2026-02',
+        expectedVoluntary: 0
+    },
+    {
+        id: 'VOL-07',
+        name: 'Bonus spread — R0 after range end',
+        employeeOptions: {
+            age: 35, medicalMembers: 0, taxDirective: 0,
+            voluntaryTaxConfig: { type: 'bonus_spread', monthly_spread_amount: 600, start_period: '2026-03', end_period: '2026-08' }
+        },
+        basicSalary: 30000,
+        period: '2026-09',
+        expectedVoluntary: 0
+    },
+    {
+        id: 'VOL-08',
+        name: 'paye = paye_base + voluntary_overdeduction',
+        employeeOptions: {
+            age: 35, medicalMembers: 0, taxDirective: 0,
+            voluntaryTaxConfig: { type: 'fixed', fixed_amount: 300 }
+        },
+        basicSalary: 30000,
+        period: '2026-04',
+        expectedVoluntary: 300,
+        verifyPAYETotals: true
+    }
+];
+
+/**
+ * Run voluntary tax over-deduction tests against the payroll engine.
+ */
+function runVoluntaryTaxTests(PayrollEngine) {
+    var testResults = { total: 0, passed: 0, failed: 0, results: [] };
+
+    VOLUNTARY_TAX_SCENARIOS.forEach(function(scenario) {
+        testResults.total++;
+        var testPassed = true;
+        var errorMsg = null;
+
+        try {
+            var output = PayrollEngine.calculateFromData(
+                { basic_salary: scenario.basicSalary, regular_inputs: [] },
+                [],                          // currentInputs
+                [],                          // overtime
+                [],                          // multiRate
+                [],                          // shortTime
+                scenario.employeeOptions,    // employeeOptions (contains voluntaryTaxConfig)
+                scenario.period,             // period 'YYYY-MM'
+                null                         // ytdData
+            );
+
+            // Voluntary field present
+            if (output.voluntary_overdeduction === undefined) {
+                testPassed = false;
+                errorMsg = 'Missing voluntary_overdeduction in output';
+            }
+
+            // Expected voluntary amount
+            if (testPassed && Math.abs(output.voluntary_overdeduction - scenario.expectedVoluntary) > 0.01) {
+                testPassed = false;
+                errorMsg = 'voluntary_overdeduction: expected ' + scenario.expectedVoluntary + ', got ' + output.voluntary_overdeduction;
+            }
+
+            // When no voluntary config, paye should equal paye_base
+            if (testPassed && scenario.expectPAYEMatchPAYEBase) {
+                if (Math.abs(output.paye - output.paye_base) > 0.01) {
+                    testPassed = false;
+                    errorMsg = 'Expected paye === paye_base when no voluntary config, got paye=' + output.paye + ' paye_base=' + output.paye_base;
+                }
+            }
+
+            // paye = paye_base + voluntary_overdeduction
+            if (testPassed && scenario.verifyPAYETotals) {
+                var expectedPaye = output.paye_base + output.voluntary_overdeduction;
+                if (Math.abs(output.paye - expectedPaye) > 0.01) {
+                    testPassed = false;
+                    errorMsg = 'paye should equal paye_base + voluntary_overdeduction. Got paye=' + output.paye + ', paye_base=' + output.paye_base + ', voluntary=' + output.voluntary_overdeduction;
+                }
+            }
+
+        } catch(e) {
+            testPassed = false;
+            errorMsg = 'Exception: ' + (e.message || String(e));
+        }
+
+        if (testPassed) testResults.passed++;
+        else testResults.failed++;
+
+        testResults.results.push({
+            id:       scenario.id,
+            name:     scenario.name,
+            passed:   testPassed,
+            errorMsg: errorMsg
+        });
+    });
+
+    return testResults;
+}
+
+/**
+ * Format voluntary tax test report for console output.
+ */
+function formatVoluntaryTaxReport(testResults) {
+    var report = [];
+    report.push('\n' + '='.repeat(70));
+    report.push('VOLUNTARY TAX OVER-DEDUCTION TEST RESULTS');
+    report.push('='.repeat(70));
+    report.push('');
+    report.push('Test Summary: ' + testResults.passed + '/' + testResults.total + ' PASSED');
+    report.push('');
+
+    if (testResults.failed > 0) {
+        report.push('\u26D4 ' + testResults.failed + ' TEST(S) FAILED\n');
+    } else {
+        report.push('\u2705 ALL VOLUNTARY TAX TESTS PASSED\n');
+    }
+
+    testResults.results.forEach(function(result) {
+        var status = result.passed ? '\u2705 PASS' : '\u274C FAIL';
+        report.push(status + ' \u2014 ' + result.id + ': ' + result.name);
+        if (!result.passed) {
+            report.push('     \u26A0\uFE0F  ' + (result.errorMsg || 'Test failed'));
+        }
+        report.push('');
+    });
+
+    report.push('='.repeat(70));
+    return report.join('\n');
+}
+
 // Export for Node.js test runners
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         REGRESSION_SCENARIOS: REGRESSION_SCENARIOS,
         PRO_RATA_SCENARIOS: PRO_RATA_SCENARIOS,
+        VOLUNTARY_TAX_SCENARIOS: VOLUNTARY_TAX_SCENARIOS,
         runRegressionTests: runRegressionTests,
         runProRataTests: runProRataTests,
+        runVoluntaryTaxTests: runVoluntaryTaxTests,
         formatRegressionReport: formatRegressionReport,
-        formatProRataReport: formatProRataReport
+        formatProRataReport: formatProRataReport,
+        formatVoluntaryTaxReport: formatVoluntaryTaxReport
     };
 }

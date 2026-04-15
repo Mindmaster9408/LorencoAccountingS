@@ -360,18 +360,55 @@
                     <!-- Voluntary Tax Over-Deduction Config -->
                     <div class="section" style="margin-bottom: 18px;">
                         <div class="section-title">Voluntary Tax Over-Deduction</div>
-                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                            <label for="volTaxType" style="margin-bottom:0;">Type:</label>
-                            <select id="volTaxType" style="min-width:120px;">
-                                <option value="fixed">Fixed Amount</option>
-                                <option value="bonus">Bonus Linked</option>
-                            </select>
-                            <label for="volTaxAmount" style="margin-bottom:0;">Amount:</label>
-                            <input type="number" id="volTaxAmount" min="0" step="0.01" style="width:100px;">
-                            <button class="btn btn-success btn-sm" onclick="saveVoluntaryTaxConfig()">Save</button>
-                            <span id="volTaxSavedMsg" style="color:#28a745; display:none; margin-left:10px; font-size:12px;">Saved!</span>
+                        <div style="font-size:12px; color:#b85c00; background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:7px 10px; margin-bottom:10px;">
+                            ⚠ This increases PAYE paid to SARS — it is <strong>not</strong> a standard deduction. It appears as a separate line on the payslip.
                         </div>
-                        <div style="font-size:12px; color:#888; margin-top:4px;">This deduction is added to PAYE (not UIF/SDL). SARS-compliant. Shown separately on payslip.</div>
+
+                        <!-- Scenario selector -->
+                        <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+                            <button type="button" id="volTaxTabFixed"    class="btn btn-sm" onclick="switchVolTaxTab('fixed')"        style="font-size:12px;">Fixed Monthly</button>
+                            <button type="button" id="volTaxTabVariable" class="btn btn-sm" onclick="switchVolTaxTab('variable')"     style="font-size:12px;">Variable (This Period)</button>
+                            <button type="button" id="volTaxTabSpread"   class="btn btn-sm" onclick="switchVolTaxTab('bonus_spread')" style="font-size:12px;">Bonus Spread</button>
+                            <button type="button" id="volTaxTabClear"    class="btn btn-sm" onclick="clearVoluntaryTaxConfig()"       style="font-size:12px; background:#eee; color:#666;">✕ Clear</button>
+                        </div>
+
+                        <!-- Scenario 1: Fixed Monthly -->
+                        <div id="volTaxPanelFixed" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0;">
+                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">Extra PAYE per month:</label>
+                            <span style="font-size:13px;">R</span>
+                            <input type="number" id="volFixedAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
+                            <button class="btn btn-success btn-sm" onclick="saveVoluntaryTaxConfig()" style="font-size:12px;">Save Fixed</button>
+                            <span id="volTaxSavedMsg" style="color:#28a745; display:none; margin-left:6px; font-size:12px;">✓ Saved</span>
+                        </div>
+
+                        <!-- Scenario 2: Variable (current period only) -->
+                        <div id="volTaxPanelVariable" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0;">
+                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">Extra PAYE for period:</label>
+                            <input type="month" id="volVariablePeriod" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
+                            <span style="font-size:13px;">R</span>
+                            <input type="number" id="volVariableAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
+                            <button class="btn btn-success btn-sm" onclick="saveVoluntaryTaxConfig()" style="font-size:12px;">Save Variable</button>
+                            <span id="volTaxSavedMsgVar" style="color:#28a745; display:none; margin-left:6px; font-size:12px;">✓ Saved</span>
+                            <div style="width:100%; font-size:11px; color:#888; margin-top:4px;">This extra tax applies <strong>only</strong> to the selected period. It does not carry forward.</div>
+                        </div>
+
+                        <!-- Scenario 3: Bonus Spread -->
+                        <div id="volTaxPanelSpread" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0;">
+                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">Monthly spread amount:</label>
+                            <span style="font-size:13px;">R</span>
+                            <input type="number" id="volSpreadAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
+                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">From:</label>
+                            <input type="month" id="volSpreadStart" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
+                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">To:</label>
+                            <input type="month" id="volSpreadEnd" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
+                            <input type="text" id="volSpreadRef" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:12px; width:160px;" placeholder="Reference note (optional)">
+                            <button class="btn btn-success btn-sm" onclick="saveVoluntaryTaxConfig()" style="font-size:12px;">Save Spread</button>
+                            <span id="volTaxSavedMsgSpread" style="color:#28a745; display:none; margin-left:6px; font-size:12px;">✓ Saved</span>
+                            <div style="width:100%; font-size:11px; color:#888; margin-top:4px;">Applies the same fixed amount each period between the From and To months (inclusive).</div>
+                        </div>
+
+                        <!-- Active config display -->
+                        <div id="volTaxActiveDisplay" style="display:none; margin-top:8px; font-size:12px; color:#555; padding:6px 10px; background:#e8f5e9; border-radius:4px; border-left:3px solid #28a745;"></div>
                     </div>
                 <div class="card" style="margin-top: 20px; background: linear-gradient(135deg, #f0f4ff 0%, #e8eaf6 100%);">
                     <h3>💰 Payroll Summary</h3>
@@ -1051,6 +1088,9 @@
             } else {
                 _resolveSupabaseEmpId();
             }
+
+            // Load voluntary tax config for this employee (companyId + empId now known)
+            loadVoluntaryTaxConfig();
         }
 
         async function _resolveSupabaseEmpId() {
@@ -2366,11 +2406,8 @@
             calc.shortTimeAmount = shortTimeAmount;
             calc.totalDeductions = calc.deductions;
 
-               // Add voluntary tax over-deduction for payslip display
-               if (calc.voluntaryTaxOverDeduction) {
-                   // Already included in PAYE, but show as separate line
-                   // (Handled in previewPayslip)
-               }
+               // voluntary_overdeduction is already included in calc.paye by the engine
+               // — shown as a breakdown line in previewPayslip
 
             return {
                 calc: calc,
@@ -2461,36 +2498,15 @@
             html += '<span>DEDUCTIONS</span><span>Amount</span></div>';
             html += '<div style="border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 6px 6px; padding: 8px 15px;">';
 
-            // PAYE
+            // PAYE base line
             html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
-            html += '<span>PAYE (Income Tax)</span><span>' + formatMoney(calc.paye) + '</span></div>';
+            html += '<span>PAYE (Income Tax)</span><span>' + formatMoney(calc.paye_base) + '</span></div>';
 
-                // Voluntary Tax Over-Deduction (separate line)
-                if (calc.voluntaryTaxOverDeduction && calc.voluntaryTaxOverDeduction > 0) {
-                    html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; color:#b85c00;">';
-                    html += '<span>Voluntary Tax Over-Deduction</span><span>' + formatMoney(calc.voluntaryTaxOverDeduction) + '</span></div>';
-                }
-                    // Save voluntary tax config
-                    function saveVoluntaryTaxConfig() {
-                        var type = document.getElementById('volTaxType').value;
-                        var amount = parseFloat(document.getElementById('volTaxAmount').value) || 0;
-                        var config = { type: type, amount: amount };
-                        safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(config));
-                        var msg = document.getElementById('volTaxSavedMsg');
-                        if (msg) { msg.style.display = 'inline'; setTimeout(function(){ msg.style.display = 'none'; }, 1200); }
-                    }
-
-                    // Load config on page load
-                    document.addEventListener('DOMContentLoaded', function() {
-                        var config = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-                        if (config) {
-                            try {
-                                var obj = JSON.parse(config);
-                                document.getElementById('volTaxType').value = obj.type || 'fixed';
-                                document.getElementById('volTaxAmount').value = obj.amount || '';
-                            } catch(e) {}
-                        }
-                    });
+            // Voluntary Tax Over-Deduction (separate line — field snake_case from engine)
+            if (calc.voluntary_overdeduction && calc.voluntary_overdeduction > 0) {
+                html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; color:#b85c00;">';
+                html += '<span style="padding-left:12px;">↳ Voluntary Tax Extra</span><span>' + formatMoney(calc.voluntary_overdeduction) + '</span></div>';
+            }
             // UIF
             html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
             html += '<span>UIF</span><span>' + formatMoney(calc.uif) + '</span></div>';
@@ -2509,7 +2525,7 @@
                 });
             }
 
-            // Total Deductions
+            // Total Deductions (calc.paye = paye_base + voluntary — engine handles combined total)
             var totalDed = (calc.paye || 0) + (calc.uif || 0) + (calc.deductions || 0);
             html += '<div style="border-top: 2px solid #333; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">';
             html += '<span>TOTAL DEDUCTIONS</span><span>' + formatMoney(totalDed) + '</span></div>';
@@ -2530,6 +2546,128 @@
             document.getElementById('payslipPreviewBody').innerHTML = html;
             document.getElementById('payslipPreviewModal').classList.add('show');
         }
+
+        // ============================================================
+        // VOLUNTARY TAX OVER-DEDUCTION — UI Functions
+        // ============================================================
+
+        function switchVolTaxTab(type) {
+            ['Fixed','Variable','Spread'].forEach(function(t) {
+                var el = document.getElementById('volTaxPanel' + t);
+                if (el) el.style.display = 'none';
+            });
+            var map = { fixed: 'Fixed', variable: 'Variable', bonus_spread: 'Spread' };
+            if (map[type]) {
+                var panel = document.getElementById('volTaxPanel' + map[type]);
+                if (panel) panel.style.display = 'block';
+            }
+            ['volTaxTabFixed','volTaxTabVariable','volTaxTabSpread'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) { el.style.background = ''; el.style.color = ''; }
+            });
+            var activeMap = { fixed: 'volTaxTabFixed', variable: 'volTaxTabVariable', bonus_spread: 'volTaxTabSpread' };
+            if (activeMap[type]) {
+                var btn = document.getElementById(activeMap[type]);
+                if (btn) { btn.style.background = '#667eea'; btn.style.color = 'white'; }
+            }
+        }
+
+        function saveVoluntaryTaxConfig() {
+            var config = null;
+            var savedMsgId = 'volTaxSavedMsg';
+            var fixedPanel   = document.getElementById('volTaxPanelFixed');
+            var varPanel     = document.getElementById('volTaxPanelVariable');
+            var spreadPanel  = document.getElementById('volTaxPanelSpread');
+            if (fixedPanel && fixedPanel.style.display !== 'none') {
+                var amt = parseFloat(document.getElementById('volFixedAmount').value) || 0;
+                config = { type: 'fixed', fixed_amount: amt };
+                savedMsgId = 'volTaxSavedMsg';
+            } else if (varPanel && varPanel.style.display !== 'none') {
+                var varAmt    = parseFloat(document.getElementById('volVariableAmount').value) || 0;
+                var varPeriod = document.getElementById('volVariablePeriod').value;
+                config = { type: 'variable', variable_amount: varAmt, period: varPeriod };
+                savedMsgId = 'volTaxSavedMsgVar';
+            } else if (spreadPanel && spreadPanel.style.display !== 'none') {
+                var sAmt   = parseFloat(document.getElementById('volSpreadAmount').value) || 0;
+                var sStart = document.getElementById('volSpreadStart').value;
+                var sEnd   = document.getElementById('volSpreadEnd').value;
+                var sRef   = document.getElementById('volSpreadRef').value;
+                config = { type: 'bonus_spread', monthly_spread_amount: sAmt, start_period: sStart, end_period: sEnd, reference: sRef };
+                savedMsgId = 'volTaxSavedMsgSpread';
+            }
+            if (!config) return;
+            safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(config));
+            updateVolTaxActiveDisplay(config);
+            var msg = document.getElementById(savedMsgId);
+            if (msg) { msg.style.display = 'inline'; setTimeout(function(){ msg.style.display = 'none'; }, 1500); }
+        }
+
+        function clearVoluntaryTaxConfig() {
+            safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+            ['Fixed','Variable','Spread'].forEach(function(t) {
+                var el = document.getElementById('volTaxPanel' + t);
+                if (el) el.style.display = 'none';
+            });
+            ['volTaxTabFixed','volTaxTabVariable','volTaxTabSpread'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) { el.style.background = ''; el.style.color = ''; }
+            });
+            var disp = document.getElementById('volTaxActiveDisplay');
+            if (disp) disp.style.display = 'none';
+        }
+
+        function updateVolTaxActiveDisplay(config) {
+            var disp = document.getElementById('volTaxActiveDisplay');
+            if (!disp) return;
+            if (!config || !config.type) { disp.style.display = 'none'; return; }
+            var msg = '';
+            if (config.type === 'fixed') {
+                msg = '\u2713 Active: Fixed R' + (parseFloat(config.fixed_amount) || 0).toFixed(2) + ' extra PAYE per month';
+            } else if (config.type === 'variable') {
+                msg = '\u2713 Active: Variable R' + (parseFloat(config.variable_amount) || 0).toFixed(2) + ' extra PAYE for period ' + (config.period || '');
+            } else if (config.type === 'bonus_spread') {
+                msg = '\u2713 Active: Bonus spread R' + (parseFloat(config.monthly_spread_amount) || 0).toFixed(2) + '/month from ' + (config.start_period || '') + ' to ' + (config.end_period || '');
+                if (config.reference) msg += ' (' + config.reference + ')';
+            }
+            disp.textContent = msg;
+            disp.style.display = 'block';
+        }
+
+        function loadVoluntaryTaxConfig() {
+            var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+            if (!raw) {
+                var disp = document.getElementById('volTaxActiveDisplay');
+                if (disp) disp.style.display = 'none';
+                return;
+            }
+            try {
+                var obj = JSON.parse(raw);
+                updateVolTaxActiveDisplay(obj);
+                if (obj.type === 'fixed') {
+                    switchVolTaxTab('fixed');
+                    var fa = document.getElementById('volFixedAmount');
+                    if (fa) fa.value = obj.fixed_amount || '';
+                } else if (obj.type === 'variable') {
+                    switchVolTaxTab('variable');
+                    var vp = document.getElementById('volVariablePeriod');
+                    var va = document.getElementById('volVariableAmount');
+                    if (vp) vp.value = obj.period || '';
+                    if (va) va.value = obj.variable_amount || '';
+                } else if (obj.type === 'bonus_spread') {
+                    switchVolTaxTab('bonus_spread');
+                    var ss = document.getElementById('volSpreadAmount');
+                    var st = document.getElementById('volSpreadStart');
+                    var en = document.getElementById('volSpreadEnd');
+                    var rf = document.getElementById('volSpreadRef');
+                    if (ss) ss.value = obj.monthly_spread_amount || '';
+                    if (st) st.value = obj.start_period || '';
+                    if (en) en.value = obj.end_period || '';
+                    if (rf) rf.value = obj.reference || '';
+                }
+            } catch(e) {}
+        }
+
+        // ============================================================
 
         function downloadPayslipPDF() {
             var data = getPayslipData();

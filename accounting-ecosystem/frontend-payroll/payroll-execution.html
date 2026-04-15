@@ -715,7 +715,17 @@
         document.getElementById('exec-loading').style.display = 'flex';
         document.getElementById('exec-results').style.display = 'none';
 
-        var res = await PayrollAPI.run(periodKey, employeeIds);
+        // Collect voluntary tax configs from localStorage for each selected employee
+        var voluntaryConfigs = {};
+        var ls = window.safeLocalStorage || localStorage;
+        employeeIds.forEach(function(empId) {
+            var raw = ls.getItem('voluntaryTaxConfig_' + state.companyId + '_' + empId);
+            if (raw) {
+                try { voluntaryConfigs[String(empId)] = JSON.parse(raw); } catch(e) {}
+            }
+        });
+
+        var res = await PayrollAPI.run(periodKey, employeeIds, voluntaryConfigs);
 
         btn.disabled = false;
         document.getElementById('exec-loading').style.display = 'none';

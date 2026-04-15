@@ -636,37 +636,30 @@ const PayrollEngine = {
         });
 
         // === VOLUNTARY TAX OVER-DEDUCTION ===
-        // This logic assumes voluntary config is passed in employeeOptions.voluntaryTaxConfig (if present)
+        // Three supported scenarios: fixed, variable (current period only), bonus_spread (period range).
+        // Config passed in employeeOptions.voluntaryTaxConfig.
+        // Only adds to PAYE — never affects UIF or SDL.
         var voluntaryOverDeduction = 0;
         var voluntaryConfig = employeeOptions && employeeOptions.voluntaryTaxConfig;
         if (voluntaryConfig && voluntaryConfig.type) {
             if (voluntaryConfig.type === 'fixed') {
+                // Scenario 1: Fixed monthly extra tax — applies every period
                 voluntaryOverDeduction = parseFloat(voluntaryConfig.fixed_amount) || 0;
-            } else if (voluntaryConfig.type === 'bonus_linked') {
-                // Bonus-linked logic: recalculate monthly adjustment if needed
-                // Inputs: expected_bonus, bonus_month, start_month, salary, current PAYE, period
-                var monthsInTaxYear = 12;
-                var periodParts = (period || '').split('-');
-                var currentMonth = parseInt(periodParts[1], 10) || 1;
-                var startMonth = parseInt(voluntaryConfig.start_month, 10) || currentMonth;
-                var bonusMonth = parseInt(voluntaryConfig.bonus_month, 10) || 8; // Default August
-                var monthsRemaining = monthsInTaxYear - (startMonth - 1);
-                if (currentMonth > bonusMonth) {
-                    // If bonus month has passed, only spread over remaining months
-                    monthsRemaining = monthsInTaxYear - (currentMonth - 1);
+            } else if (voluntaryConfig.type === 'variable') {
+                // Scenario 2: Variable/manual — applies only if config.period matches current period
+                if (voluntaryConfig.period === period) {
+                    voluntaryOverDeduction = parseFloat(voluntaryConfig.variable_amount) || 0;
                 }
-                if (monthsRemaining < 1) monthsRemaining = 1;
-
-                var annualSalary = (payrollData.basic_salary || 0) * monthsInTaxYear;
-                var adjustedAnnualIncome = annualSalary + (parseFloat(voluntaryConfig.expected_bonus) || 0);
-                var annualTax = PayrollEngine.calculateAnnualPAYE(adjustedAnnualIncome, employeeOptions.age, tables);
-                var currentMonthlyPAYE = paye;
-                var taxPaidOrExpected = currentMonthlyPAYE * monthsRemaining;
-                var shortfall = annualTax - taxPaidOrExpected;
-                voluntaryOverDeduction = shortfall / monthsRemaining;
-                if (voluntaryOverDeduction < 0) voluntaryOverDeduction = 0;
+            } else if (voluntaryConfig.type === 'bonus_spread') {
+                // Scenario 3: Bonus spread — applies for a range of periods (start_period to end_period)
+                var spreadStart = voluntaryConfig.start_period || '';
+                var spreadEnd   = voluntaryConfig.end_period   || '';
+                if (spreadStart && spreadEnd && period >= spreadStart && period <= spreadEnd) {
+                    voluntaryOverDeduction = parseFloat(voluntaryConfig.monthly_spread_amount) || 0;
+                }
             }
         }
+        voluntaryOverDeduction = Math.max(0, voluntaryOverDeduction);
         // Add voluntary over-deduction to PAYE only (not to UIF/SDL)
         var payeWithVoluntary = paye + voluntaryOverDeduction;
         var net = gross - payeWithVoluntary - uif - deductions;

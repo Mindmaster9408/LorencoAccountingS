@@ -80,7 +80,7 @@ router.post(
   requirePaytimeModule('payroll'),
   async (req, res) => {
     try {
-      const { period_key, employee_ids, start_date, end_date } = req.body;
+      const { period_key, employee_ids, start_date, end_date, voluntary_configs } = req.body;
 
       // ── Input validation ──────────────────────────────────────────────────
       if (!period_key) {
@@ -185,6 +185,13 @@ router.post(
           const normalizedInputs = await PayrollDataService.fetchCalculationInputs(
             req.companyId, empId, period_key, supabase
           );
+
+          // Inject voluntary tax config if provided in the request payload
+          const volConfig = voluntary_configs && (voluntary_configs[String(empId)] || voluntary_configs[empId]);
+          if (volConfig && volConfig.type) {
+            normalizedInputs.employeeOptions = normalizedInputs.employeeOptions || {};
+            normalizedInputs.employeeOptions.voluntaryTaxConfig = volConfig;
+          }
 
           // Run calculation
           const calcResult = await PayrollCalculationService.calculate(
