@@ -361,35 +361,7 @@
         <!-- ══════════════════════════════════════════════════════════════
              SIDEBAR
         ══════════════════════════════════════════════════════════════ -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-title">Menu</div>
-            </div>
-            <div class="sidebar-section">
-                <div class="sidebar-section-title">Navigation</div>
-                <a href="company-dashboard.html"  class="sidebar-link">📊 Dashboard</a>
-                <a href="employee-management.html" class="sidebar-link">👥 Employees</a>
-                <a href="payruns.html"             class="sidebar-link">💵 Pay Runs</a>
-                <a href="payruns.html"             class="sidebar-link">📄 Payslips</a>
-                <a href="payroll-execution.html"   class="sidebar-link active">⚙️ Execute Payroll</a>
-                <a href="payroll-items.html"       class="sidebar-link">📋 Payroll Items</a>
-                <a href="attendance.html"          class="sidebar-link">⏰ Attendance</a>
-                <a href="reports.html"             class="sidebar-link">📊 Reports</a>
-                <a href="paye-reconciliation.html" class="sidebar-link">🧾 PAYE Reconciliation</a>
-                <a href="net-to-gross.html"        class="sidebar-link">🔁 Net-to-Gross</a>
-                <a href="historical-import.html"   class="sidebar-link">📥 Import</a>
-                <a href="company-details.html"     class="sidebar-link">🏢 Company Details</a>
-            </div>
-            <div class="company-carousel">
-                <div class="carousel-title">Switch Company</div>
-                <div class="carousel-companies" id="companies-carousel"></div>
-            </div>
-            <div class="sidebar-actions">
-                <button class="btn-sidebar" style="background:linear-gradient(135deg,#28a745 0%,#20c997 100%);color:white;" onclick="window.location.href='/dashboard/dashboard.html'">🏠 Return to Ecosystem</button>
-                <button class="btn-sidebar btn-switch" onclick="window.location.href='company-selection.html'">← Return to Dashboard</button>
-                <button class="btn-sidebar btn-logout" onclick="handleLogout()">🚪 Logout</button>
-            </div>
-        </div>
+        <div id="sidebar-container"></div>
 
         <!-- ══════════════════════════════════════════════════════════════
              MAIN CONTENT
@@ -482,8 +454,9 @@
                                 ✓ Finalize Payroll
                             </button>
                         </div>
-                        <div id="finalized-badge" style="display:none;">
+                        <div id="finalized-badge" style="display:none; align-items:center; gap:12px; flex-wrap:wrap;">
                             <span class="finalized-badge">✓ Payroll Finalized</span>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="goToHistory()">📋 View History →</button>
                         </div>
                     </div>
 
@@ -546,6 +519,7 @@
 
     <script src="js/polyfills.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/sidebar.js"></script>
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/payroll-api.js"></script>
@@ -659,6 +633,8 @@
             state.employees = employees || [];
         } catch (err) {
             state.employees = [];
+            list.innerHTML = '<div class="emp-loading" style="color:#dc3545;">⚠️ Could not load employees from server. Check your connection and refresh the page. (' + (err.message || 'Network error') + ')</div>';
+            return;
         }
 
         renderEmployeeList();
@@ -934,7 +910,22 @@
 
     function markAsFinalized() {
         document.getElementById('finalize-section').style.display = 'none';
-        document.getElementById('finalized-badge').style.display  = '';
+        document.getElementById('finalized-badge').style.display  = 'flex';
+    }
+
+    function goToHistory() {
+        // Switch to History tab
+        document.querySelectorAll('.tab-view').forEach(function (el) { el.classList.remove('active'); });
+        document.querySelectorAll('.top-tab').forEach(function (el) { el.classList.remove('active'); });
+        document.getElementById('history-view').classList.add('active');
+        var histTab = document.querySelector('.top-tab[onclick*="history"]');
+        if (histTab) histTab.classList.add('active');
+
+        // Pre-fill period with the just-finalized period and auto-load
+        if (state.periodKey) {
+            document.getElementById('hist-period').value = state.periodKey;
+            loadHistory();
+        }
     }
 
     // ==========================================================================

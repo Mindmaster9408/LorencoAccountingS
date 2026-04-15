@@ -162,37 +162,7 @@
 <div id="mobile-overlay" class="mobile-overlay"></div>
     <div class="wrapper">
         <!-- SIDEBAR -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-title">Menu</div>
-            </div>
-            <div class="sidebar-section">
-                <div class="sidebar-section-title">Navigation</div>
-                <a href="company-dashboard.html" class="sidebar-link">&#x1F4CA; Dashboard</a>
-                <a href="employee-management.html" class="sidebar-link">&#x1F465; Employees</a>
-                <a href="payruns.html" class="sidebar-link">&#x1F4B5; Pay Runs</a>
-                <a href="payruns.html" class="sidebar-link">📄 Payslips</a>
-                <a href="payroll-execution.html" class="sidebar-link">⚙️ Execute Payroll</a>
-                <a href="payroll-items.html" class="sidebar-link">&#x1F4CB; Payroll Items</a>
-                <a href="attendance.html" class="sidebar-link active">&#x23F0; Attendance</a>
-                <a href="reports.html" class="sidebar-link">&#x1F4CA; Reports</a>
-                <a href="paye-reconciliation.html" class="sidebar-link">🧾 PAYE Reconciliation</a>
-                <a href="net-to-gross.html" class="sidebar-link">🔁 Net-to-Gross</a>
-                <a href="historical-import.html" class="sidebar-link">&#x1F4E5; Import</a>
-                <a href="company-details.html" class="sidebar-link">&#x1F3E2; Company Details</a>
-            </div>
-            <div class="company-carousel">
-                <div class="carousel-title">Switch Company</div>
-                <div class="carousel-container">
-                    <div class="carousel-companies" id="companies-carousel"></div>
-                </div>
-            </div>
-            <div class="sidebar-actions">
-                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='/dashboard/dashboard.html'">🏠 Return to Ecosystem</button>
-                <button class="btn-sidebar btn-switch" onclick="goToCompanySelection()">&#x2190; Return to Dashboard</button>
-                <button class="btn-sidebar btn-logout" onclick="handleLogout()">&#x1F6AA; Logout</button>
-            </div>
-        </div>
+        <div id="sidebar-container"></div>
 
         <!-- MAIN CONTENT -->
         <div class="main-content">
@@ -388,6 +358,7 @@
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/sidebar.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="js/attendance.js"></script>
     <script>

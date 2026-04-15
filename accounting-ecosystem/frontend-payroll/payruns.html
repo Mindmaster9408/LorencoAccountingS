@@ -344,37 +344,7 @@
     <div id="mobile-overlay" class="mobile-overlay"></div>
     <div class="wrapper">
         <!-- SIDEBAR -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-title">Menu</div>
-            </div>
-            <div class="sidebar-section">
-                <div class="sidebar-section-title">Navigation</div>
-                <a href="company-dashboard.html" class="sidebar-link">📊 Dashboard</a>
-                <a href="employee-management.html" class="sidebar-link">👥 Employees</a>
-                <a href="payruns.html" class="sidebar-link active">💵 Pay Runs</a>
-                <a href="payruns.html" class="sidebar-link">📄 Payslips</a>
-                <a href="payroll-execution.html" class="sidebar-link">⚙️ Execute Payroll</a>
-                <a href="payroll-items.html" class="sidebar-link">📋 Payroll Items</a>
-                <a href="attendance.html" class="sidebar-link">&#x23F0; Attendance</a>
-                <a href="reports.html" class="sidebar-link">📊 Reports</a>
-                <a href="paye-reconciliation.html" class="sidebar-link">🧾 PAYE Reconciliation</a>
-                <a href="net-to-gross.html" class="sidebar-link">🔁 Net-to-Gross</a>
-                <a href="historical-import.html" class="sidebar-link">📥 Import</a>
-                <a href="company-details.html" class="sidebar-link">🏢 Company Details</a>
-            </div>
-            <div class="company-carousel">
-                <div class="carousel-title">Switch Company</div>
-                <div class="carousel-container">
-                    <div class="carousel-companies" id="companies-carousel"></div>
-                </div>
-            </div>
-            <div class="sidebar-actions">
-                <button class="btn-sidebar" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;" onclick="window.location.href='/dashboard/dashboard.html'">🏠 Return to Ecosystem</button>
-                <button class="btn-sidebar btn-switch" onclick="window.location.href='company-selection.html'">← Return to Dashboard</button>
-                <button class="btn-sidebar btn-logout" onclick="handleLogout()">🚪 Logout</button>
-            </div>
-        </div>
+        <div id="sidebar-container"></div>
 
         <!-- MAIN CONTENT -->
         <div class="main-content">
@@ -406,8 +376,16 @@
 
             <!-- PAYROLL RUNS TAB -->
             <div id="payruns-view" class="tab-view">
+                <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:14px 18px; margin-bottom:16px; display:flex; align-items:flex-start; gap:12px;">
+                    <span style="font-size:1.4rem; flex-shrink:0;">⚠️</span>
+                    <div>
+                        <div style="font-weight:700; color:#856404; font-size:0.95rem; margin-bottom:4px;">This view uses local session data only — not your live backend records.</div>
+                        <div style="font-size:0.85rem; color:#856404;">Pay runs shown here are generated from your browser's local storage and are <strong>not synced to the server</strong>. To run payroll, finalize a period, and view confirmed history, use <strong>Execute Payroll</strong>.</div>
+                        <a href="payroll-execution.html" style="display:inline-block; margin-top:8px; background:#667eea; color:white; padding:6px 14px; border-radius:6px; font-size:0.85rem; font-weight:700; text-decoration:none;">⚙️ Go to Execute Payroll →</a>
+                    </div>
+                </div>
                 <div style="display:flex; justify-content:flex-end; margin-bottom:15px;">
-                    <button class="btn btn-primary" data-permission="CREATE_PAYRUN" onclick="openPayrollUploadModal()" style="background:linear-gradient(135deg, #667eea, #764ba2);">Upload Payroll Data</button>
+                    <button type="button" class="btn btn-primary" data-permission="CREATE_PAYRUN" onclick="openPayrollUploadModal()" style="background:linear-gradient(135deg, #667eea, #764ba2);">Upload Payroll Data</button>
                 </div>
                 <!-- Pending Pay Runs -->
                 <div class="payrun-section">
@@ -646,6 +624,7 @@
     <script src="js/permissions.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/sidebar.js"></script>
     <script src="js/payroll-engine.js"></script>
     <script src="js/sean-helper.js"></script>
     <script>
