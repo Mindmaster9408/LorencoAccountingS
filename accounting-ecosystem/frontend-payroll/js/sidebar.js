@@ -16,8 +16,7 @@
     var SIDEBAR_ITEMS = [
         { label: '📊 Dashboard',           href: 'company-dashboard.html' },
         { label: '👥 Employees',           href: 'employee-management.html' },
-        { label: '💵 Pay Runs',            href: 'payruns.html' },
-        { label: '📄 Payslips',            href: 'payruns.html' },
+        { label: ' Payslips',            href: 'payruns.html' },
         { label: '⚙️ Execute Payroll',     href: 'payroll-execution.html' },
         { label: '📋 Payroll Items',       href: 'payroll-items.html' },
         { label: '⏰ Attendance',           href: 'attendance.html' },
