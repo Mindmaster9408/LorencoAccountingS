@@ -15,27 +15,39 @@
         .wrapper { display: flex; gap: 20px; max-width: 1600px; margin: 0 auto; }
 
         /* SIDEBAR */
-        .sidebar { width: 300px; background: white; border-radius: 15px; padding: 20px; position: sticky; top: 20px; height: fit-content; max-height: calc(100vh - 40px); overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1); flex-shrink: 0; }
-        .sidebar-header { margin-bottom: 20px; }
-        .sidebar-title { font-size: 1.5rem; font-weight: 700; color: #333; }
-        .sidebar-section { margin-bottom: 20px; }
-        .sidebar-section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 10px; }
-        .sidebar-link { display: block; padding: 12px 15px; border-radius: 8px; text-decoration: none; color: #555; font-weight: 500; transition: all 0.3s ease; margin-bottom: 4px; }
-        .sidebar-link:hover { background: #f0f0f0; color: #667eea; }
-        .sidebar-link.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-        .company-carousel { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 10px; }
-        .carousel-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 10px; }
-        .carousel-companies { display: flex; gap: 8px; overflow-x: auto; padding: 5px 0; scrollbar-width: none; }
-        .carousel-companies::-webkit-scrollbar { display: none; }
-        .company-pill { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; white-space: nowrap; border: 2px solid #e0e0e0; background: white; transition: all 0.3s ease; }
-        .company-pill:hover { border-color: #667eea; }
-        .company-pill.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: transparent; }
-        .sidebar-actions { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
-        .btn-sidebar { padding: 10px 15px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.3s ease; }
-        .btn-switch { background: #f0f0f0; color: #555; }
-        .btn-switch:hover { background: #e0e0e0; }
-        .btn-logout { background: #fee; color: #dc3545; }
-        .btn-logout:hover { background: #fdd; }
+        .sidebar {
+            width: 300px; background: white; border-radius: 15px;
+            padding: 25px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            height: fit-content; position: sticky; top: 20px;
+        }
+        .sidebar-header { padding: 0 20px 20px; border-bottom: 2px solid #eee; }
+        .sidebar-title { color: #667eea; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+        .sidebar-section { margin-top: 20px; }
+        .sidebar-section-title {
+            padding: 10px 20px; color: #999; font-size: 0.75rem;
+            font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .sidebar-link {
+            display: block; padding: 12px 20px; color: #666; text-decoration: none;
+            transition: all 0.2s; border-left: 3px solid transparent; font-weight: 500;
+        }
+        .sidebar-link:hover { background: #f8f9fa; color: #667eea; border-left-color: #667eea; }
+        .sidebar-link.active { background: #f0f4ff; color: #667eea; border-left-color: #667eea; font-weight: 600; }
+        .company-carousel { margin-top: 15px; padding: 15px 20px; border-top: 1px solid #eee; border-bottom: 1px solid #eee; }
+        .carousel-title { font-size: 0.85rem; font-weight: 600; color: #999; margin-bottom: 10px; text-transform: uppercase; }
+        .carousel-companies { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+        .carousel-company {
+            background: #f8f9fa; padding: 10px 12px; border-radius: 6px; font-size: 0.85rem;
+            color: #333; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .carousel-company:hover { background: #eee; border-color: #667eea; color: #667eea; }
+        .sidebar-actions { padding: 15px 20px; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .btn-sidebar { padding: 10px 15px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; text-align: center; }
+        .btn-switch { background: #667eea; color: white; }
+        .btn-switch:hover { background: #5568d3; }
+        .btn-logout { background: #eee; color: #333; }
+        .btn-logout:hover { background: #ddd; }
 
         /* MAIN CONTENT */
         .main-content { flex: 1; min-width: 0; }
@@ -160,6 +172,7 @@
                 <a href="employee-management.html" class="sidebar-link">&#x1F465; Employees</a>
                 <a href="payruns.html" class="sidebar-link">&#x1F4B5; Pay Runs</a>
                 <a href="payruns.html" class="sidebar-link">📄 Payslips</a>
+                <a href="payroll-execution.html" class="sidebar-link">⚙️ Execute Payroll</a>
                 <a href="payroll-items.html" class="sidebar-link">&#x1F4CB; Payroll Items</a>
                 <a href="attendance.html" class="sidebar-link active">&#x23F0; Attendance</a>
                 <a href="reports.html" class="sidebar-link">&#x1F4CA; Reports</a>

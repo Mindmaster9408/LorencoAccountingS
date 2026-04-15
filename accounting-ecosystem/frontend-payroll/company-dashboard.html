@@ -334,9 +334,10 @@
             <div class="sidebar-section">
                 <div class="sidebar-section-title">Navigation</div>
                 <a href="company-dashboard.html" class="sidebar-link active" id="sidebar-dashboard">📊 Dashboard</a>
-                <a href="#" class="sidebar-link" id="sidebar-employees" onclick="showEmployeeManagement(); return false;">👥 Employees</a>
+                <a href="employee-management.html" class="sidebar-link" id="sidebar-employees">👥 Employees</a>
                 <a href="payruns.html" class="sidebar-link">💵 Pay Runs</a>
                 <a href="payruns.html" class="sidebar-link">📄 Payslips</a>
+                <a href="payroll-execution.html" class="sidebar-link">⚙️ Execute Payroll</a>
                 <a href="payroll-items.html" class="sidebar-link">📋 Payroll Items</a>
                 <a href="attendance.html" class="sidebar-link">&#x23F0; Attendance</a>
                 <a href="reports.html" class="sidebar-link">📊 Reports</a>
@@ -379,11 +380,17 @@
                 </div>
 
                 <div class="content-grid">
-                    <div class="card" onclick="showEmployeeManagement()" style="cursor: pointer;">
+                    <a href="employee-management.html" class="card" style="cursor: pointer; text-decoration: none; color: inherit;">
                         <div class="card-icon">👥</div>
                         <div class="card-title">Employee Management</div>
                         <div class="card-subtitle" id="employee-count">View & Manage Employees</div>
-                    </div>
+                    </a>
+
+                    <a href="payroll-execution.html" class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <div class="card-icon">⚙️</div>
+                        <div class="card-title">Execute Payroll</div>
+                        <div class="card-subtitle">Run & Finalise Pay Runs</div>
+                    </a>
 
                     <a href="payruns.html" class="card card-secondary">
                         <div class="card-icon">💵</div>
