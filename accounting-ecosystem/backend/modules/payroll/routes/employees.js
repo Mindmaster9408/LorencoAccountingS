@@ -144,6 +144,61 @@ router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeMod
 });
 
 /**
+ * PUT /api/payroll/employees/:id/employment-dates
+ * Update hire_date and/or termination_date.
+ * These dates drive automatic pro-rata proration during payroll runs.
+ */
+router.put('/:id/employment-dates', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+    if (!empId) return res.status(400).json({ error: 'Invalid employee ID' });
+
+    const { hire_date, termination_date } = req.body;
+
+    if (hire_date === undefined && termination_date === undefined) {
+      return res.status(400).json({ error: 'At least one of hire_date or termination_date is required' });
+    }
+
+    // Verify employee belongs to company + visibility check
+    const { data: existing } = await supabase
+      .from('employees')
+      .select('id, classification, hire_date, termination_date')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!existing) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, existing);
+    if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
+
+    const updates = { updated_at: new Date().toISOString() };
+    if (hire_date !== undefined)        updates.hire_date        = hire_date        || null;
+    if (termination_date !== undefined) updates.termination_date = termination_date || null;
+
+    const { data, error } = await supabase
+      .from('employees')
+      .update(updates)
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'UPDATE', 'employee_employment_dates', empId, {
+      module: 'payroll',
+      oldValue: { hire_date: existing.hire_date, termination_date: existing.termination_date },
+      newValue: updates
+    });
+
+    res.json({ employee: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * PUT /api/payroll/employees/:id/bank-details
  * Update bank details
  */

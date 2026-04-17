@@ -193,13 +193,30 @@ router.post(
             normalizedInputs.employeeOptions.voluntaryTaxConfig = volConfig;
           }
 
+          // Auto-detect per-employee proration from employee's own start/termination dates.
+          // An employee hired after period start, or terminated before period end, must be
+          // pro-rated for that period. Caller-explicit (global) dates take precedence.
+          const empStartDate = normalizedInputs.start_date;        // from hire_date
+          const empEndDate   = normalizedInputs.end_date;          // from termination_date
+          const periodStart  = normalizedInputs.period_start_date;
+          const periodEnd    = normalizedInputs.period_end_date;
+
+          const autoNeedsProRata =
+            (empStartDate && periodStart && empStartDate > periodStart) ||
+            (empEndDate   && periodEnd   && empEndDate   < periodEnd);
+
+          // Caller-explicit global dates override auto-detected employee dates
+          const effectiveStartDate = start_date  || (autoNeedsProRata ? empStartDate  : null);
+          const effectiveEndDate   = end_date    || (autoNeedsProRata ? empEndDate    : null);
+          const useProRata         = !!(effectiveStartDate || effectiveEndDate);
+
           // Run calculation
           const calcResult = await PayrollCalculationService.calculate(
             normalizedInputs,
             {
-              startDate:   start_date,
-              endDate:     end_date,
-              useProRata:  !!(start_date || end_date)
+              startDate:   effectiveStartDate,
+              endDate:     effectiveEndDate,
+              useProRata
             }
           );
 
@@ -225,13 +242,14 @@ router.post(
           );
 
           processed.push({
-            employee_id:  empId,
-            snapshot_id:  saved.id,
-            gross:        calcResult.gross,
-            net:          calcResult.net,
-            paye:         calcResult.paye,
-            uif:          calcResult.uif,
-            sdl:          calcResult.sdl
+            employee_id:   empId,
+            snapshot_id:   saved.id,
+            gross:         calcResult.gross,
+            net:           calcResult.net,
+            paye:          calcResult.paye,
+            uif:           calcResult.uif,
+            sdl:           calcResult.sdl,
+            prorataFactor: calcResult.prorataFactor !== undefined ? calcResult.prorataFactor : null
           });
 
         } catch (empErr) {

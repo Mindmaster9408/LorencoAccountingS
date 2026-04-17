@@ -492,6 +492,7 @@
                             <div class="info-item"><div class="info-label">Job Title</div><div class="info-value" id="editJobTitle">-</div></div>
                             <div class="info-item"><div class="info-label">Department</div><div class="info-value" id="editDepartment">-</div></div>
                             <div class="info-item"><div class="info-label">Date Appointed</div><div class="info-value" id="editDateAppointed">-</div></div>
+                            <div class="info-item"><div class="info-label">Termination Date</div><div class="info-value" id="editTerminationDate">-</div></div>
                             <div class="info-item"><div class="info-label">Payment Method</div><div class="info-value" id="editPayMethod">-</div></div>
                             <div class="info-item"><div class="info-label">Medical Aid Members</div><div class="info-value" id="editMedicalMembers">0</div></div>
                             <div class="info-item"><div class="info-label">Tax Directive (%)</div><div class="info-value" id="editTaxDirective">0</div></div>
@@ -914,6 +915,10 @@
                 <div class="form-group"><label>Date Appointed</label><input type="date" id="editDateAppointedInput"></div>
             </div>
             <div class="form-row">
+                <div class="form-group"><label>Termination Date <span style="font-weight:400;color:#888;font-size:0.85em;">(leave empty if still employed)</span></label><input type="date" id="editTerminationDateInput"></div>
+                <div class="form-group"></div>
+            </div>
+            <div class="form-row">
                 <div class="form-group"><label>Payment Method</label><select id="editPayMethodInput"><option value="EFT">EFT</option><option value="Cash">Cash</option><option value="Cheque">Cheque</option></select></div>
                 <div class="form-group"><label>ID Number</label><input type="text" id="editIdNumberInput" maxlength="13"></div>
             </div>
@@ -1165,6 +1170,7 @@
             document.getElementById('editJobTitle').textContent = currentEmployee.job_title || '-';
             document.getElementById('editDepartment').textContent = currentEmployee.department || '-';
             document.getElementById('editDateAppointed').textContent = currentEmployee.date_appointed || '-';
+            document.getElementById('editTerminationDate').textContent = currentEmployee.termination_date || '-';
             document.getElementById('editPayMethod').textContent = currentEmployee.payment_method || 'EFT';
             document.getElementById('editMedicalMembers').textContent = currentEmployee.medical_aid_members || 0;
             document.getElementById('editTaxDirective').textContent = currentEmployee.tax_directive || 0;
@@ -2846,6 +2852,7 @@
             document.getElementById('editDepartmentInput').value = e.department || '';
             document.getElementById('editPositionInput').value = e.position || '';
             document.getElementById('editDateAppointedInput').value = e.date_appointed || '';
+            document.getElementById('editTerminationDateInput').value = e.termination_date || '';
             document.getElementById('editPayMethodInput').value = e.payment_method || 'EFT';
             document.getElementById('editIdNumberInput').value = e.id_number || '';
             document.getElementById('editTaxNumberInput').value = e.tax_number || '';
@@ -2866,6 +2873,7 @@
             currentEmployee.department = document.getElementById('editDepartmentInput').value.trim();
             currentEmployee.position = document.getElementById('editPositionInput').value.trim();
             currentEmployee.date_appointed = document.getElementById('editDateAppointedInput').value;
+            currentEmployee.termination_date = document.getElementById('editTerminationDateInput').value || null;
             currentEmployee.payment_method = document.getElementById('editPayMethodInput').value;
             currentEmployee.id_number = document.getElementById('editIdNumberInput').value.trim();
             var taxNum = document.getElementById('editTaxNumberInput').value.trim();
@@ -2877,6 +2885,19 @@
             currentEmployee.account_holder = document.getElementById('editAccountHolder').value.trim();
             currentEmployee.account_number = document.getElementById('editAccountNumber').value.trim();
             currentEmployee.branch_code = document.getElementById('editBranchCode').value.trim();
+
+            // Persist employment dates to backend (fire-and-forget — localStorage save continues below)
+            var _empIdForDates = _supabaseEmpId || currentEmpId;
+            if (_empIdForDates && /^\d+$/.test(String(_empIdForDates))) {
+                fetch('/api/payroll/employees/' + _empIdForDates + '/employment-dates', {
+                    method: 'PUT',
+                    headers: _authHeaders(),
+                    body: JSON.stringify({
+                        hire_date: currentEmployee.date_appointed || null,
+                        termination_date: currentEmployee.termination_date || null
+                    })
+                }).catch(function(e) { console.warn('[employment-dates] API save failed:', e); });
+            }
 
             const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
             const employees = stored ? JSON.parse(stored) : [];

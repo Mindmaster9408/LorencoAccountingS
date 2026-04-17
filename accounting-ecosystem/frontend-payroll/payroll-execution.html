@@ -875,11 +875,17 @@
 
                 var totalDeductions = (row.paye || 0) + (row.uif || 0) + (row.sdl || 0);
 
+                var prorataBadge = '';
+                if (row.prorataFactor !== undefined && row.prorataFactor !== null && row.prorataFactor < 1) {
+                    var pct = Math.round(row.prorataFactor * 100);
+                    prorataBadge = ' <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#fff3cd;color:#856404;margin-left:6px;">&#9889; Pro-rata (' + pct + '%)</span>';
+                }
+
                 return '<div class="result-card" id="card-' + row.employee_id + '">' +
                     '<div class="result-card-header" onclick="toggleCard(' + row.employee_id + ')">' +
                         '<div>' +
                             '<div class="result-emp-name">' + name + '</div>' +
-                            '<div class="result-emp-meta">Employee' + number + ' · Gross ' + fmt(row.gross) + '</div>' +
+                            '<div class="result-emp-meta">Employee' + number + ' · Gross ' + fmt(row.gross) + prorataBadge + '</div>' +
                         '</div>' +
                         '<div style="display:flex;align-items:center;gap:12px;">' +
                             '<span class="result-net-preview">' + fmt(row.net) + '</span>' +

@@ -40,7 +40,8 @@
       "Bash(backend/node_modules/.bin/jest --no-coverage)",
       "Bash(python -c:*)",
       "Bash(node --version)",
-      "Bash(grep -E \"\\\\.\\(sql|js\\)$\")"
+      "Bash(grep -E \"\\\\.\\(sql|js\\)$\")",
+      "Bash(grep -v \"^[0-9]*:.*\\\\\\\\.sidebar\\\\|^[0-9]*:.*style\\\\|^[0-9]*:.*class\\\\|^[0-9]*:.*//.*CSS\\\\|^[0-9]*:.*color:\\\\|^[0-9]*:.*padding:\\\\|^[0-9]*:.*margin:\\\\|^[0-9]*:.*border\")"
     ]
   }
 }

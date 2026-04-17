@@ -160,14 +160,29 @@ router.post(
       }
 
       // STEP 3: Execute calculation
+      // Auto-detect per-employee proration from employee's own start/termination dates.
+      // Explicit start_date/end_date from the request body take precedence.
+      const empStartDate = normalizedInputs.start_date;
+      const empEndDate   = normalizedInputs.end_date;
+      const periodStart  = normalizedInputs.period_start_date;
+      const periodEnd    = normalizedInputs.period_end_date;
+
+      const autoNeedsProRata =
+        (empStartDate && periodStart && empStartDate > periodStart) ||
+        (empEndDate   && periodEnd   && empEndDate   < periodEnd);
+
+      const effectiveStartDate = start_date  || (autoNeedsProRata ? empStartDate  : null);
+      const effectiveEndDate   = end_date    || (autoNeedsProRata ? empEndDate    : null);
+      const useProRata         = !!(effectiveStartDate || effectiveEndDate);
+
       let calculationResult;
       try {
         calculationResult = await PayrollCalculationService.calculate(
           normalizedInputs,
           {
-            startDate: start_date,
-            endDate: end_date,
-            useProRata: !!(start_date || end_date)
+            startDate:  effectiveStartDate,
+            endDate:    effectiveEndDate,
+            useProRata
           }
         );
       } catch (err) {

@@ -427,7 +427,11 @@ function normalizeCalculationInput(
 
     // === Pro-Rata Support ===
     start_date: employee.start_date || null,
-    end_date: null, // Set by caller if mid-period termination
+    end_date: employee.termination_date || null, // Auto-populated from employee record
+
+    // === Period Boundaries (for auto-proration detection in routes) ===
+    period_start_date: period.start_date || null,
+    period_end_date:   period.end_date   || null,
 
     // === Current Period Items ===
     currentInputs: normalizedPeriodInputs,
