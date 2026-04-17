@@ -276,8 +276,16 @@ class JournalService {
   /**
    * Post a journal (make it permanent in the ledger)
    *
-   * postJournal is a single UPDATE — already atomic by itself.  VAT period
-   * assignment remains fire-and-forget (C4 — separate audit item).
+   * VAT ASSIGNMENT — C4 FIX (2026-04-17):
+   * VAT period is now resolved BEFORE the status update. If VAT resolution
+   * fails for any reason the journal remains draft and the caller receives a
+   * clear error. Once resolution succeeds, status + all VAT fields are written
+   * in a SINGLE UPDATE — one SQL statement, no timing window between posting
+   * and VAT assignment.
+   *
+   * Non-VAT journals (no VAT account lines, or company not VAT registered)
+   * continue to post without any VAT assignment — that is intentional and
+   * correct.
    */
   static async postJournal(journalId, companyId, postedByUserId) {
     // Get journal
@@ -298,120 +306,182 @@ class JournalService {
     const isLocked = await this.isPeriodLocked(companyId, journal.date);
     if (isLocked) throw new Error('Cannot post journal in a locked period');
 
-    // Get journal lines
+    // Fetch lines WITH account detail — used for both balance validation and VAT detection.
+    // Combining into one query avoids a second DB round-trip inside _resolveVatPeriodForPost.
     const { data: lines, error: linesErr } = await supabase
       .from('journal_lines')
-      .select('*')
+      .select('*, accounts!account_id(code, name, reporting_group)')
       .eq('journal_id', journalId)
       .order('line_number');
 
     if (linesErr) throw new Error(linesErr.message);
 
-    // Validate balance
+    // Validate balance (account detail fields are ignored by validateBalance)
     const balanceValidation = this.validateBalance(lines || []);
     if (!balanceValidation.valid) throw new Error(balanceValidation.message);
 
-    // Update journal status (single UPDATE — atomic)
+    // ── VAT period resolution — synchronous, fail-safe ───────────────────────
+    // Runs BEFORE any status change. If this throws, the journal stays draft.
+    // Returns null for non-VAT journals; returns { vatPeriodId, isOutOfPeriod,
+    // originalDate } for VAT-relevant journals.
+    const vatAssignment = await this._resolveVatPeriodForPost(
+      companyId, journal.date, lines || []
+    );
+
+    // ── Single UPDATE: post status + VAT fields in one statement ─────────────
+    // No timing window — VAT assignment cannot be missing from a posted journal.
+    const updatePayload = {
+      status:           'posted',
+      posted_at:        new Date().toISOString(),
+      posted_by_user_id: postedByUserId,
+    };
+
+    if (vatAssignment !== null) {
+      updatePayload.vat_period_id               = vatAssignment.vatPeriodId;
+      updatePayload.is_out_of_period            = vatAssignment.isOutOfPeriod;
+      updatePayload.out_of_period_original_date = vatAssignment.originalDate;
+    }
+
     const { error: updateErr } = await supabase
       .from('journals')
-      .update({
-        status: 'posted',
-        posted_at: new Date().toISOString(),
-        posted_by_user_id: postedByUserId
-      })
+      .update(updatePayload)
       .eq('id', journalId);
 
     if (updateErr) throw new Error(updateErr.message);
 
-    // Assign VAT period asynchronously — non-blocking; failure is logged, not thrown
-    // NOTE: This remains fire-and-forget pending C4 fix. Do not change scope here.
-    this.assignVatPeriod(journalId, companyId, journal.date).catch(err => {
-      console.error(`[JournalService] assignVatPeriod failed for journal ${journalId}:`, err.message);
-    });
-
-    return journal;
+    return { ...journal, ...updatePayload };
   }
 
   /**
-   * Assign the correct VAT period to a newly posted journal.
+   * Resolve the VAT period for a journal that is about to be posted.
    *
-   * Rules:
-   * 1. If the journal has no VAT lines → skip (not VAT-relevant).
-   * 2. Derive the period for the journal's date using company VAT settings.
-   * 3. Find or create the vat_period record for that period.
-   * 4. If the period is LOCKED → this is an out-of-period item:
-   *      - Find the current open period (create if none exists)
-   *      - Assign the journal to the CURRENT period
-   *      - Set is_out_of_period = true, out_of_period_original_date = journal.date
-   *      - Update current period's OOP counters
-   * 5. If the period is open → assign normally, is_out_of_period = false.
+   * Called synchronously inside postJournal BEFORE the status update.
+   * Throws on any failure — the caller must not catch and ignore.
+   *
+   * Returns null  → journal has no VAT lines, or company is not VAT-registered.
+   *                  Posting proceeds without any vat_period_id.
+   * Returns object → { vatPeriodId, isOutOfPeriod, originalDate }
+   *                  These fields are included in the posting UPDATE.
+   *
+   * Out-of-period logic (unchanged from original assignVatPeriod):
+   *   If the derived period is LOCKED, the journal is routed to the current
+   *   open period with is_out_of_period=true and OOP counters incremented.
+   *
+   * @param {string|number} companyId
+   * @param {string}        journalDate   YYYY-MM-DD
+   * @param {Array}         lines         Journal lines WITH accounts join (from postJournal query)
+   * @returns {Promise<null | { vatPeriodId, isOutOfPeriod: boolean, originalDate: string|null }>}
    */
-  static async assignVatPeriod(journalId, companyId, journalDate) {
-    // Fetch journal lines with account detail to detect VAT lines
-    const { data: lines } = await supabase
-      .from('journal_lines')
-      .select('*, accounts!account_id(code, name, reporting_group)')
-      .eq('journal_id', journalId);
-
-    if (!lines || lines.length === 0) return;
-
-    // Flatten for isVatJournal / getVatAmountsFromLines
+  static async _resolveVatPeriodForPost(companyId, journalDate, lines) {
+    // Flatten account join for the utility functions
     const flatLines = lines.map(l => ({
       ...l,
       account_code:            l.accounts?.code,
       account_reporting_group: l.accounts?.reporting_group,
     }));
 
-    if (!isVatJournal(flatLines)) return; // No VAT lines — skip
+    if (!isVatJournal(flatLines)) return null; // No VAT account lines — not VAT-relevant
 
-    // Get company VAT settings
-    const { data: company } = await supabase
+    // Load company VAT settings — error out explicitly rather than defaulting silently
+    const { data: company, error: companyErr } = await supabase
       .from('companies')
       .select('vat_period, vat_cycle_type, is_vat_registered')
       .eq('id', companyId)
       .single();
 
-    if (!company || !company.is_vat_registered) return; // Not VAT registered — skip
+    if (companyErr) {
+      throw new Error(`VAT period assignment failed: could not load company settings (${companyErr.message})`);
+    }
+    if (!company) {
+      throw new Error('VAT period assignment failed: company record not found');
+    }
+    if (!company.is_vat_registered) return null; // Not VAT-registered — skip
 
-    const filingFrequency = company.vat_period   || 'bi-monthly';
+    const filingFrequency = company.vat_period    || 'bi-monthly';
     const vatCycleType    = company.vat_cycle_type || 'even';
 
-    // Derive the period this journal date belongs to
+    // Derive the correct period using the existing pure-function utilities (unchanged)
     const derivedPeriod = derivePeriodForDate(journalDate, filingFrequency, vatCycleType);
 
-    // Find or create the vat_period record
-    let vatPeriod = await this._findOrCreateVatPeriod(companyId, derivedPeriod, filingFrequency, vatCycleType);
+    // Find or create the vat_period row
+    const vatPeriod = await this._findOrCreateVatPeriod(
+      companyId, derivedPeriod, filingFrequency, vatCycleType
+    );
 
-    let targetPeriodId = vatPeriod.id;
-    let isOutOfPeriod  = false;
-    let originalDate   = null;
+    let vatPeriodId  = vatPeriod.id;
+    let isOutOfPeriod = false;
+    let originalDate  = null;
 
     if ((vatPeriod.status || '').toUpperCase() === 'LOCKED') {
-      // Out-of-period: journal belongs to a locked period; bring into current open period
+      // Out-of-period: derived period is locked — route to current open period
       isOutOfPeriod = true;
       originalDate  = journalDate;
 
       const today          = new Date().toISOString().split('T')[0];
       const currentDerived = derivePeriodForDate(today, filingFrequency, vatCycleType);
-      const currentPeriod  = await this._findOrCreateVatPeriod(companyId, currentDerived, filingFrequency, vatCycleType);
-      targetPeriodId = currentPeriod.id;
+      const currentPeriod  = await this._findOrCreateVatPeriod(
+        companyId, currentDerived, filingFrequency, vatCycleType
+      );
+      vatPeriodId = currentPeriod.id;
 
-      // Update OOP counters on the current period
+      // Increment OOP counters on the current (target) period
       const { inputVat, outputVat } = getVatAmountsFromLines(flatLines);
-      await supabase.from('vat_periods').update({
-        out_of_period_count:        (currentPeriod.out_of_period_count  || 0) + 1,
-        out_of_period_total_input:  parseFloat(currentPeriod.out_of_period_total_input  || 0) + inputVat,
-        out_of_period_total_output: parseFloat(currentPeriod.out_of_period_total_output || 0) + outputVat,
-        updated_at: new Date().toISOString(),
-      }).eq('id', targetPeriodId);
+      const { error: oopErr } = await supabase
+        .from('vat_periods')
+        .update({
+          out_of_period_count:        (currentPeriod.out_of_period_count        || 0) + 1,
+          out_of_period_total_input:  parseFloat(currentPeriod.out_of_period_total_input  || 0) + inputVat,
+          out_of_period_total_output: parseFloat(currentPeriod.out_of_period_total_output || 0) + outputVat,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', vatPeriodId);
+
+      if (oopErr) {
+        throw new Error(`VAT period assignment failed: could not update out-of-period counters (${oopErr.message})`);
+      }
     }
 
-    // Write VAT period assignment back to the journal
-    await supabase.from('journals').update({
-      vat_period_id:               targetPeriodId,
-      is_out_of_period:            isOutOfPeriod,
-      out_of_period_original_date: originalDate,
-    }).eq('id', journalId);
+    return { vatPeriodId, isOutOfPeriod, originalDate };
+  }
+
+  /**
+   * Assign the correct VAT period to an already-posted journal.
+   *
+   * NOTE: Under the normal post flow this is no longer called — postJournal
+   * uses _resolveVatPeriodForPost directly so that VAT assignment happens
+   * before the status update.
+   *
+   * This method is retained for manual re-assignment use cases (e.g. fixing
+   * journals that were posted before the C4 fix was deployed, or admin
+   * correction tooling).  Do not call it fire-and-forget.
+   *
+   * Rules: same as _resolveVatPeriodForPost — see that method for details.
+   */
+  static async assignVatPeriod(journalId, companyId, journalDate) {
+    // Fetch lines with account detail (same enriched query as postJournal uses)
+    const { data: lines, error: linesErr } = await supabase
+      .from('journal_lines')
+      .select('*, accounts!account_id(code, name, reporting_group)')
+      .eq('journal_id', journalId);
+
+    if (linesErr) throw new Error(linesErr.message);
+    if (!lines || lines.length === 0) return; // No lines — nothing to assign
+
+    // Delegate to the canonical resolution logic
+    const result = await this._resolveVatPeriodForPost(companyId, journalDate, lines);
+    if (result === null) return; // Not VAT-relevant
+
+    // Write assignment back to the journal
+    const { error: updateErr } = await supabase
+      .from('journals')
+      .update({
+        vat_period_id:               result.vatPeriodId,
+        is_out_of_period:            result.isOutOfPeriod,
+        out_of_period_original_date: result.originalDate,
+      })
+      .eq('id', journalId);
+
+    if (updateErr) throw new Error(updateErr.message);
   }
 
   /** Find an existing vat_period by key; create if missing (status = 'open'). */
