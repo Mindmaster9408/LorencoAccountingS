@@ -230,12 +230,15 @@ async function extractText(buffer, mimeType, options = {}) {
  * @returns {{ tesseract: boolean, pdftoppm: boolean, imageOcr: boolean, pdfOcr: boolean }}
  */
 function isAvailable() {
-  return {
+  const result = {
     tesseract:  HAS_TESSERACT,
     pdftoppm:   HAS_PDFTOPPM,
     imageOcr:   HAS_TESSERACT,
     pdfOcr:     HAS_TESSERACT && HAS_PDFTOPPM,
   };
+  // TEMP DIAGNOSTIC — remove after verification
+  console.log('OCR CHECK RESULT:', { HAS_TESSERACT, result: HAS_TESSERACT });
+  return result;
 }
 
 module.exports = {
