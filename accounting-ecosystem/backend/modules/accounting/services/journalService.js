@@ -517,12 +517,23 @@ class JournalService {
   }
 
   /**
-   * Reverse a posted journal — ATOMIC
+   * Reverse a posted journal — ATOMIC + VAT-SAFE
    *
-   * The three writes (insert reversal header, insert reversal lines, mark
-   * original as reversed) run in a single pg transaction.  A failure at any
-   * point rolls back all three — no orphaned reversal headers, no original
-   * journal incorrectly marked as reversed.
+   * VAT ASSIGNMENT — P3 FIX (2026-04-17):
+   * Reversal journals now receive the same VAT period assignment as normal
+   * posted journals.  VAT resolution runs BEFORE the pg transaction opens.
+   * If VAT resolution fails, no reversal is created — the operation fails
+   * cleanly, the original journal remains posted.
+   *
+   * The atomic pg transaction (C1) is preserved in full:
+   *   • INSERT reversal header  (now includes vat_period_id when VAT-relevant)
+   *   • INSERT reversed lines
+   *   • UPDATE original journal status='reversed'
+   * All three writes commit together or not at all.
+   *
+   * VAT fields are baked into the header INSERT itself — there is no separate
+   * UPDATE step, so the reversal journal cannot be committed without a valid
+   * vat_period_id when one is required.
    */
   static async reverseJournal(originalJournalId, companyId, reversedByUserId, reason) {
     // ── Read + guard (supabase client — outside the transaction) ─────────────
@@ -548,27 +559,47 @@ class JournalService {
     const isLocked = await this.isPeriodLocked(companyId, today);
     if (isLocked) throw new Error('Cannot create reversal journal in a locked period');
 
-    // Get original journal lines (read before transaction)
+    // Get original journal lines WITH account detail — needed for VAT detection.
+    // We fetch with the accounts join here so _resolveVatPeriodForPost can
+    // detect VAT accounts without an additional DB round-trip.
     const { data: originalLines, error: linesErr } = await supabase
       .from('journal_lines')
-      .select('*')
+      .select('*, accounts!account_id(code, name, reporting_group)')
       .eq('journal_id', originalJournalId)
       .order('line_number');
 
     if (linesErr) throw new Error(linesErr.message);
 
+    // ── VAT period resolution — synchronous, fail-safe ───────────────────────
+    // Runs BEFORE the transaction opens. Uses the same canonical helper as
+    // postJournal (Priority 2). The reversal date is today, so we resolve VAT
+    // for today's period — same logic as any other posted journal.
+    //
+    // Original lines are passed for VAT account detection (same accounts as
+    // the reversal; debit/credit direction is irrelevant for period assignment).
+    //
+    // If resolution throws, no transaction is started — original journal stays
+    // posted, no reversal created.
+    const vatAssignment = await this._resolveVatPeriodForPost(
+      companyId, today, originalLines || []
+    );
+
     // ── Atomic write: reversal header + reversal lines + mark original ────────
+    // VAT fields are included directly in the header INSERT — they are part of
+    // the same atomic commit. The reversal journal cannot be posted without
+    // its vat_period_id when VAT assignment is required.
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
 
-      // Insert reversal journal header
+      // Insert reversal journal header — VAT fields baked in
       const reversalResult = await client.query(
         `INSERT INTO journals
            (company_id, date, reference, description, status, source_type,
             created_by_user_id, posted_by_user_id, posted_at,
-            reversal_of_journal_id, metadata)
-         VALUES ($1, $2, $3, $4, 'posted', $5, $6, $6, NOW(), $7, $8)
+            reversal_of_journal_id, metadata,
+            vat_period_id, is_out_of_period, out_of_period_original_date)
+         VALUES ($1, $2, $3, $4, 'posted', $5, $6, $6, NOW(), $7, $8, $9, $10, $11)
          RETURNING *`,
         [
           companyId,
@@ -579,12 +610,14 @@ class JournalService {
           reversedByUserId,
           originalJournalId,
           { reversalReason: reason },
+          vatAssignment?.vatPeriodId              ?? null,
+          vatAssignment?.isOutOfPeriod            ?? false,
+          vatAssignment?.originalDate             ?? null,
         ]
       );
       const reversalJournal = reversalResult.rows[0];
 
       // Insert reversed lines — debit/credit swapped
-      // Build lines array in the shape _insertLinesOnClient expects
       const reversedLines = (originalLines || []).map(l => ({
         accountId:      l.account_id,
         description:    `Reversal: ${l.description || ''}`,
