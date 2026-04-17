@@ -60,14 +60,6 @@ function _checkBin(bin, args) {
   }
 }
 
-// TEMP DIAGNOSTIC — log PATH and binary locations at module load
-console.log('[OCR] module load — PATH:', process.env.PATH || '(not set)');
-for (const [bin, paths] of Object.entries(BIN_PATHS)) {
-  for (const p of paths) {
-    console.log(`[OCR] ${bin} at ${p}:`, fs.existsSync(p) ? 'EXISTS' : 'not found');
-  }
-}
-
 const HAS_TESSERACT = _checkBin('tesseract', ['--version']);
 const HAS_PDFTOPPM  = _checkBin('pdftoppm',  ['-v']);
 
@@ -253,15 +245,12 @@ async function extractText(buffer, mimeType, options = {}) {
  * @returns {{ tesseract: boolean, pdftoppm: boolean, imageOcr: boolean, pdfOcr: boolean }}
  */
 function isAvailable() {
-  const result = {
+  return {
     tesseract:  HAS_TESSERACT,
     pdftoppm:   HAS_PDFTOPPM,
     imageOcr:   HAS_TESSERACT,
     pdfOcr:     HAS_TESSERACT && HAS_PDFTOPPM,
   };
-  // TEMP DIAGNOSTIC — remove after verification
-  console.log('OCR CHECK RESULT:', { HAS_TESSERACT, result: HAS_TESSERACT });
-  return result;
 }
 
 module.exports = {

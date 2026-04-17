@@ -729,9 +729,6 @@ router.post('/import/image',
   imageUpload.single('file'),
   async (req, res) => {
     try {
-      // TEMP DIAGNOSTIC — remove after verification
-      console.log('IMPORT IMAGE HIT');
-
       if (!req.file) {
         return res.status(400).json({ error: 'No image file uploaded' });
       }

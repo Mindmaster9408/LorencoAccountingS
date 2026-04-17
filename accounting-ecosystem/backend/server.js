@@ -136,27 +136,13 @@ if (process.env.NODE_ENV !== 'test') {
 app.get('/api/health', async (req, res) => {
   const dbOk = await checkConnection();
   const enabledModules = getEnabledModules();
-  // TEMP DIAGNOSTIC — include OCR runtime capability + binary existence in health response
-  let ocrCaps = null;
-  try {
-    const OcrService = require('./sean/ocr-service');
-    ocrCaps = OcrService.isAvailable();
-  } catch (_) { ocrCaps = { error: 'ocr-service not loaded' }; }
-  const _fs = require('fs');
-  const ocrDiag = {
-    tesseractBin:  _fs.existsSync('/usr/bin/tesseract'),
-    pdftoppmBin:   _fs.existsSync('/usr/bin/pdftoppm'),
-    nodePath:      process.env.PATH || '(not set)',
-  };
   res.status(dbOk ? 200 : 503).json({
     status: dbOk ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     version: BUILD_VERSION,
     database: dbOk ? 'connected' : 'disconnected',
     modules: enabledModules.map(m => m.key),
-    uptime: Math.floor(process.uptime()),
-    ocr: ocrCaps,
-    ocrDiag
+    uptime: Math.floor(process.uptime())
   });
 });
 

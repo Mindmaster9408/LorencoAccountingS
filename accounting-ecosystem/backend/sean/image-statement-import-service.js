@@ -127,8 +127,6 @@ class ImageStatementImportService {
 
     // ─── STEP A: Check OCR availability ─────────────────────────────────────
     const ocrCaps = OcrService.isAvailable();
-    // TEMP DIAGNOSTIC — remove after verification
-    console.log('OCR CAPS:', ocrCaps);
     if (!ocrCaps.imageOcr) {
       return this._error(
         'Image OCR is not available on this server. ' +
