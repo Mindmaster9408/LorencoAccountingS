@@ -749,13 +749,15 @@
             document.getElementById('switch-modal').style.display = 'none';
         }
 
-        function updateEmployeeCount() {
-            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
-            let count = 0;
-            if (stored) {
-                try { count = JSON.parse(stored).length; } catch (e) {}
+        async function updateEmployeeCount() {
+            try {
+                const emps = await DataAccess.getEmployees(currentCompanyId);
+                const count = emps.length;
+                document.getElementById('employee-count').textContent = `${count} employee${count !== 1 ? 's' : ''}`;
+            } catch (e) {
+                // Fallback: show dashes rather than stale localStorage count
+                document.getElementById('employee-count').textContent = 'View & Manage Employees';
             }
-            document.getElementById('employee-count').textContent = `${count} employee${count !== 1 ? 's' : ''}`;
         }
 
         // ========== EMPLOYEE MANAGEMENT FUNCTIONS ==========
