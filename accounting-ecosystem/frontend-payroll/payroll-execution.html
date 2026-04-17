@@ -556,7 +556,7 @@
 
         var company = AUTH.getCompanyById(state.companyId);
         document.getElementById('company-name-badge').textContent =
-            company ? (company.name || company.company_name || 'Unknown Company') : 'Unknown Company';
+            company ? (company.name || company.company_name || '') : '';
 
         // Default period inputs to current month
         var now = new Date();

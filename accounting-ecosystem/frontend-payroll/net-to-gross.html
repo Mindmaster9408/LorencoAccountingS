@@ -353,7 +353,7 @@
             currentCompanyId = session.company_id;
             var company = AUTH.getCompanyById(currentCompanyId);
             document.getElementById('company-name-badge').textContent =
-                company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown';
+                company ? (company.name || company.company_name || company.trading_name || '') : '';
             loadCompaniesCarousel();
 
             // Pre-fill current period

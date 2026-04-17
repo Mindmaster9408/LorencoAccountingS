@@ -471,7 +471,7 @@
             var session = AUTH.getSession();
             currentCompanyId = session.company_id;
             var company = AUTH.getCompanyById(currentCompanyId);
-            document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown Company';
+            document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || '') : '';
             loadCompaniesCarousel();
             await loadEmployees();       // backend-authoritative — same source as Employee Management
             populateManualEntryControls();

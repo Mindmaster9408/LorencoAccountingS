@@ -45,6 +45,9 @@ body {
 .sidebar-title {
     color: var(--accent-light) !important;
 }
+.sidebar-company-name {
+    color: var(--accent-light) !important;
+}
 .current-company {
     background: var(--accent-subtle) !important;
     color: var(--text) !important;
@@ -546,6 +549,31 @@ a:hover {
 /* User info labels */
 .user-info strong {
     color: var(--text) !important;
+}
+
+/* ── Execute Payroll — Employee Select List ──────────────────────────────────── */
+.emp-select-list {
+    border-color: var(--border-strong) !important;
+    background: var(--surface) !important;
+}
+.emp-select-item {
+    border-bottom-color: var(--border) !important;
+    color: var(--text) !important;
+}
+.emp-select-item:hover {
+    background: var(--surface-hover) !important;
+}
+.emp-select-item.selected {
+    background: var(--accent-subtle) !important;
+}
+.emp-select-name {
+    color: var(--text) !important;
+}
+.emp-select-meta {
+    color: var(--text-secondary) !important;
+}
+.emp-select-toolbar span {
+    color: var(--text-muted) !important;
 }
 
 /* ── Payroll Items — category sections, item cards ──────────────────────────── */

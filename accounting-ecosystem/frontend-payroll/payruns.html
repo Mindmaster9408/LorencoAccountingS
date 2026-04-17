@@ -641,7 +641,7 @@
             const session = AUTH.getSession();
             currentCompanyId = session.company_id;
             const company = AUTH.getCompanyById(currentCompanyId);
-            document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || 'Unnamed') : 'Unknown Company';
+            document.getElementById('company-name-badge').textContent = company ? (company.name || company.company_name || company.trading_name || '') : '';
 
             // PT-05: Sean tab only visible when this company has Sean activated
             var modules = session.modules_enabled || (company && company.modules_enabled) || [];
