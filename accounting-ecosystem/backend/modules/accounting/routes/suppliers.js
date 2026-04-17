@@ -529,9 +529,13 @@ router.put('/invoices/:id', async (req, res) => {
   if (!lines || !lines.length) return res.status(400).json({ error: 'At least one line item is required' });
 
   try {
+    // FIX (P4): select includes journal_id and current accounting amounts so that:
+    //   (a) the VAT lock guard below actually fires (previously journal_id was not
+    //       selected so existing.journal_id was always undefined → guard never ran)
+    //   (b) we can detect accounting-impacting changes and trigger GL correction
     const { data: existing, error: chkErr } = await supabase
       .from('supplier_invoices')
-      .select('id, status, supplier_id')
+      .select('id, status, supplier_id, journal_id, invoice_date, subtotal_ex_vat, vat_amount, total_inc_vat')
       .eq('id', invoiceId)
       .eq('company_id', companyId)
       .maybeSingle();
@@ -539,7 +543,7 @@ router.put('/invoices/:id', async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Invoice not found' });
     if (existing.status === 'paid') return res.status(400).json({ error: 'Cannot edit a paid invoice' });
 
-    // VAT period lock guard: block edits if invoice GL journal is in a locked VAT period
+    // VAT period lock guard (now works correctly — journal_id is selected above)
     if (existing.journal_id) {
       const vatLock = await JournalService.isVatPeriodLocked(existing.journal_id);
       if (vatLock.locked) {
@@ -549,6 +553,7 @@ router.put('/invoices/:id', async (req, res) => {
       }
     }
 
+    // Calculate new totals from submitted lines (unchanged logic)
     const processedLines = lines.map((l, i) => {
       const { subtotalExVat, vatAmount, totalIncVat } = calcLineVAT(
         l.quantity, l.unitPrice, l.vatRate != null ? l.vatRate : 15, vatInclusive === true
@@ -566,7 +571,7 @@ router.put('/invoices/:id', async (req, res) => {
       };
     });
 
-    const totals = processedLines.reduce(
+    const newTotals = processedLines.reduce(
       (acc, l) => ({
         subtotalExVat: acc.subtotalExVat + l.lineSubtotalExVat,
         vatAmount:     acc.vatAmount     + l.vatAmount,
@@ -575,6 +580,160 @@ router.put('/invoices/:id', async (req, res) => {
       { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 }
     );
 
+    // ── Detect accounting-impacting changes ───────────────────────────────────
+    // Compares header totals, invoice date, and expense account IDs.
+    // Any change here means the original posted journal no longer matches the
+    // invoice — GL correction (reverse + replace) is required.
+    const amountsChanged = (
+      Math.abs(parseFloat(existing.subtotal_ex_vat || 0) - newTotals.subtotalExVat) > 0.005 ||
+      Math.abs(parseFloat(existing.vat_amount      || 0) - newTotals.vatAmount)      > 0.005 ||
+      Math.abs(parseFloat(existing.total_inc_vat   || 0) - newTotals.totalIncVat)    > 0.005
+    );
+    const dateChanged = existing.invoice_date !== invoiceDate;
+
+    // Fetch existing line accounts to detect expense account reassignment
+    const { data: existingLineRows } = await supabase
+      .from('supplier_invoice_lines')
+      .select('account_id')
+      .eq('invoice_id', invoiceId)
+      .order('sort_order');
+    const existingAcctIds = (existingLineRows || []).map(l => String(l.account_id || '')).sort().join(',');
+    const newAcctIds      = processedLines.map(l => String(l.accountId || '')).sort().join(',');
+    const accountsChanged = existingAcctIds !== newAcctIds;
+
+    // GL correction is needed when the invoice has an original journal AND
+    // at least one accounting-impacting field has changed.
+    const needsGlCorrection = !!(existing.journal_id && (amountsChanged || dateChanged || accountsChanged));
+
+    const userId = req.user && req.user.userId ? req.user.userId : null;
+
+    // ── GL Correction (reverse original + post replacement) ───────────────────
+    // Runs BEFORE the invoice row update so that if GL correction fails, the
+    // invoice record is left unchanged (safe failure mode).
+    //
+    // Sequence:
+    //   1. Create and post replacement journal   ← if this fails, abort cleanly
+    //   2. Reverse the original journal          ← if this fails, undo step 1 and abort
+    //   3. Update invoice row with new journal_id
+    //   4. Replace invoice lines
+    //
+    // If no GL correction is needed (no accounting change, or no journal linked),
+    // steps 1–2 are skipped and only the invoice record / lines are updated.
+    let newJournalId = existing.journal_id; // default: keep existing link unchanged
+
+    if (needsGlCorrection) {
+      // Load supplier name for journal description
+      const { data: supRow } = await supabase
+        .from('suppliers')
+        .select('name')
+        .eq('id', existing.supplier_id)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      const supplierName = supRow?.name || 'Supplier';
+
+      // AP account is mandatory for GL correction
+      const apAccount = await findAccountByCode(companyId, '2000');
+      if (!apAccount) {
+        return res.status(400).json({
+          error: 'GL correction cannot proceed: Accounts Payable account (code 2000) was not found in this company\'s chart of accounts. Please create the AP account before editing this invoice.',
+        });
+      }
+
+      // Build new GL lines from edited invoice data
+      const newGlLines = [];
+      for (const l of processedLines) {
+        if (l.accountId && l.lineSubtotalExVat > 0) {
+          newGlLines.push({
+            accountId:   l.accountId,
+            debit:       l.lineSubtotalExVat,
+            credit:      0,
+            description: l.description || 'Supplier Invoice line',
+          });
+        }
+      }
+      if (newTotals.vatAmount > 0) {
+        const vatInputAccount = await findAccountByCode(companyId, '1400');
+        if (vatInputAccount) {
+          newGlLines.push({
+            accountId:   vatInputAccount.id,
+            debit:       newTotals.vatAmount,
+            credit:      0,
+            description: 'VAT Input (Claimable)',
+          });
+        }
+      }
+      newGlLines.push({
+        accountId:   apAccount.id,
+        debit:       0,
+        credit:      newTotals.totalIncVat,
+        description: `Supplier: ${supplierName}`,
+      });
+
+      if (!newGlLines.some(l => l.debit > 0)) {
+        return res.status(400).json({
+          error: 'GL correction aborted: no debit lines could be built from the edited invoice. Ensure expense accounts are assigned to all line items.',
+        });
+      }
+
+      // ── Step 1: Create and post replacement journal ───────────────────────
+      let replacementJournalId;
+      try {
+        const replacementDraft = await JournalService.createDraftJournal({
+          companyId,
+          date:            invoiceDate,
+          reference:       invoiceNumber || null,
+          description:     `AP Invoice (Corrected): ${supplierName}${invoiceNumber ? ' ' + invoiceNumber : ''}`,
+          sourceType:      'supplier_invoice',
+          createdByUserId: userId,
+          lines:           newGlLines,
+          metadata:        { correctedInvoiceId: invoiceId, replacesJournalId: existing.journal_id },
+        });
+        await JournalService.postJournal(replacementDraft.id, companyId, userId);
+        replacementJournalId = replacementDraft.id;
+      } catch (replErr) {
+        // Replacement failed before any reversal — invoice unchanged, fully safe
+        throw new Error(`GL correction failed — replacement journal could not be created or posted: ${replErr.message}. Invoice has not been changed.`);
+      }
+
+      // ── Step 2: Reverse the original journal ─────────────────────────────
+      try {
+        await JournalService.reverseJournal(
+          existing.journal_id,
+          companyId,
+          userId,
+          `Invoice #${invoiceId} edited — original posting voided; replaced by journal ${replacementJournalId}`
+        );
+      } catch (revErr) {
+        // Reversal failed after replacement was posted — attempt to undo the
+        // replacement by reversing it so we return to a clean slate.
+        console.error(`[Suppliers] P4: original journal ${existing.journal_id} reversal failed for invoice ${invoiceId} after replacement ${replacementJournalId} was posted. Attempting cleanup reversal...`);
+        try {
+          await JournalService.reverseJournal(
+            replacementJournalId,
+            companyId,
+            userId,
+            `Cleanup: reversal of failed GL correction for invoice ${invoiceId}`
+          );
+          // Cleanup succeeded — return error, invoice unchanged
+          throw new Error(`GL correction failed — original journal reversal failed and has been rolled back: ${revErr.message}. Invoice has not been changed.`);
+        } catch (cleanupErr) {
+          if (cleanupErr.message.startsWith('GL correction failed')) throw cleanupErr;
+          // Cleanup also failed — this is a critical inconsistent state
+          console.error(`[Suppliers] CRITICAL: GL cleanup failed for invoice ${invoiceId}. Replacement journal ${replacementJournalId} is posted AND original journal ${existing.journal_id} is NOT reversed. Manual correction required.`, cleanupErr.message);
+          throw new Error(
+            `GL correction entered inconsistent state for invoice ${invoiceId}. ` +
+            `Replacement journal ${replacementJournalId} was posted but original journal ${existing.journal_id} could not be reversed. ` +
+            `Manual correction is required — contact your accountant.`
+          );
+        }
+      }
+
+      newJournalId = replacementJournalId;
+    }
+
+    // ── Update invoice record ─────────────────────────────────────────────────
+    // Runs after GL correction completes (or after confirming no GL change needed).
+    // Includes journal_id update so invoice always points to the active journal.
     const { error: updErr } = await supabase
       .from('supplier_invoices')
       .update({
@@ -584,18 +743,19 @@ router.put('/invoices/:id', async (req, res) => {
         invoice_date:    invoiceDate,
         due_date:        dueDate || null,
         vat_inclusive:   vatInclusive === true,
-        subtotal_ex_vat: totals.subtotalExVat,
-        vat_amount:      totals.vatAmount,
-        total_inc_vat:   totals.totalIncVat,
+        subtotal_ex_vat: newTotals.subtotalExVat,
+        vat_amount:      newTotals.vatAmount,
+        total_inc_vat:   newTotals.totalIncVat,
         notes:           notes || null,
         status:          status || existing.status,
+        journal_id:      newJournalId,
         updated_at:      new Date().toISOString(),
       })
       .eq('id', invoiceId)
       .eq('company_id', companyId);
     if (updErr) throw new Error(updErr.message);
 
-    // Replace lines: delete old, insert new
+    // Replace invoice lines
     const { error: delErr } = await supabase
       .from('supplier_invoice_lines')
       .delete()
@@ -638,7 +798,10 @@ router.put('/invoices/:id', async (req, res) => {
       return { ...lineRest, account_code: acct?.code || null, account_name: acct?.name || null };
     });
 
-    res.json({ invoice: { ...invRest, supplier_name: sup?.name || null, lines: flatLines } });
+    res.json({
+      invoice:        { ...invRest, supplier_name: sup?.name || null, lines: flatLines },
+      journalCorrected: needsGlCorrection, // true when a GL reversal + replacement was performed
+    });
   } catch (err) {
     console.error('PUT /suppliers/invoices/:id error:', err);
     res.status(500).json({ error: err.message });
