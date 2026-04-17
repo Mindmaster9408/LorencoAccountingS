@@ -314,6 +314,46 @@ router.post('/:id/historical', requirePermission('PAYROLL.CREATE'), async (req, 
 });
 
 /**
+ * DELETE /api/payroll/employees/:id
+ * Deactivate (soft-delete) an employee. Sets is_active = false.
+ * Payroll history is preserved.
+ */
+router.delete('/:id', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+    if (!empId) return res.status(400).json({ error: 'Invalid employee ID' });
+
+    // Ensure employee belongs to this company before deactivating
+    const { data: existing, error: fetchErr } = await supabase
+      .from('employees')
+      .select('id, first_name, last_name, employee_number')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (fetchErr || !existing) return res.status(404).json({ error: 'Employee not found' });
+
+    const { error } = await supabase
+      .from('employees')
+      .update({ is_active: false })
+      .eq('id', empId)
+      .eq('company_id', req.companyId);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'DELETE', 'employee', empId, {
+      action: 'deactivated',
+      employee_number: existing.employee_number,
+      name: (existing.first_name || '') + ' ' + (existing.last_name || '')
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * DELETE /api/payroll/employees/:id/historical?period=YYYY-MM
  */
 router.delete('/:id/historical', requirePermission('PAYROLL.CREATE'), async (req, res) => {
