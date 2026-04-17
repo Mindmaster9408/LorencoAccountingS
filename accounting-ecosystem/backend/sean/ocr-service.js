@@ -35,13 +35,36 @@ const execFileAsync = promisify(execFile);
 
 // ── Capability detection (runs once at module load) ─────────────────────────
 
+// Known absolute paths for each binary on Alpine/Debian/RHEL images
+const BIN_PATHS = {
+  tesseract: ['/usr/bin/tesseract', '/usr/local/bin/tesseract'],
+  pdftoppm:  ['/usr/bin/pdftoppm',  '/usr/local/bin/pdftoppm'],
+};
+
 function _checkBin(bin, args) {
+  // Try via PATH first (standard case)
   try { execFileSync(bin, args, { stdio: 'pipe', timeout: 3000 }); return true; }
   catch (e) {
-    // ENOENT  → binary not installed at all → false
-    // Any other error (e.g. non-zero exit) → binary exists but returned non-zero
-    // tesseract --version exits with code 1 on many Alpine builds even when fully functional
-    return e.code !== 'ENOENT';
+    if (e.code !== 'ENOENT') {
+      // Binary found via PATH but returned non-zero — still functional
+      return true;
+    }
+    // ENOENT from PATH — try known absolute paths as fallback
+    // (guards against stripped PATH in some container runtimes)
+    for (const absPath of (BIN_PATHS[bin] || [])) {
+      if (!fs.existsSync(absPath)) continue;
+      try { execFileSync(absPath, args, { stdio: 'pipe', timeout: 3000 }); return true; }
+      catch (e2) { if (e2.code !== 'ENOENT') return true; }
+    }
+    return false;
+  }
+}
+
+// TEMP DIAGNOSTIC — log PATH and binary locations at module load
+console.log('[OCR] module load — PATH:', process.env.PATH || '(not set)');
+for (const [bin, paths] of Object.entries(BIN_PATHS)) {
+  for (const p of paths) {
+    console.log(`[OCR] ${bin} at ${p}:`, fs.existsSync(p) ? 'EXISTS' : 'not found');
   }
 }
 
