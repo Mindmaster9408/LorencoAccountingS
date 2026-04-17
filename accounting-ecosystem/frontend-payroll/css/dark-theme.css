@@ -219,6 +219,7 @@ input[type="password"],
 input[type="number"],
 input[type="email"],
 input[type="date"],
+input[type="month"],
 input[type="time"],
 input[type="search"],
 input[type="tel"],
@@ -1406,6 +1407,63 @@ button[style*="background: #999"] {
 .frequency-badge {
     color: var(--accent-light) !important;
     background: var(--accent-subtle) !important;
+}
+
+/* ── Employee Detail — Add Regular / Add Once-Off Input modals ─────────────── */
+/* Item list containers — explicit override to prevent white bleed-through */
+#regularItemsList,
+#currentItemsList {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+/* Item rows — text always visible, border muted */
+#regularItemsList .payroll-list-row,
+#currentItemsList .payroll-list-row {
+    color: var(--text) !important;
+    border-bottom-color: var(--border) !important;
+}
+/* Amount pane — Regular (#f0f4ff covered by [style*=]) — add text colours */
+#regularAmountPane > div > span,
+#regularAmountPane label,
+#regularAmountPane > div > div > span,
+#regularAmountLabel {
+    color: var(--text-secondary) !important;
+}
+/* Amount pane — Once-Off: #f0fff4 NOT covered by existing attribute rules */
+#currentAmountPane {
+    background: rgba(16,185,129,0.08) !important;
+    border-color: var(--accent) !important;
+    color: var(--text) !important;
+}
+#currentAmountPane > div > span,
+#currentAmountPane label,
+#currentAmountPane > div > div > span {
+    color: var(--text-secondary) !important;
+}
+
+/* ── Employee Detail — Voluntary Tax panels ────────────────────────────────── */
+/* Panels are shown via JS style.display; ensure light grey bg is overridden   */
+#volTaxPanelFixed,
+#volTaxPanelVariable,
+#volTaxPanelSpread {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+#volTaxPanelFixed label,
+#volTaxPanelVariable label,
+#volTaxPanelSpread label,
+#volTaxPanelFixed span,
+#volTaxPanelVariable span,
+#volTaxPanelSpread span {
+    color: var(--text-secondary) !important;
+}
+/* Variable note inside regular amount pane */
+#regularVariableNote {
+    background: rgba(245,158,11,0.12) !important;
+    border-color: rgba(245,158,11,0.3) !important;
+    color: #fbbf24 !important;
 }
 
 /* Card headings with purple border-bottom */

@@ -31,9 +31,19 @@ CREATE INDEX IF NOT EXISTS idx_employee_work_schedule_emp
 -- RLS: service role bypasses; authenticated users scoped to their company via backend
 ALTER TABLE employee_work_schedule ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "service_role_all_employee_work_schedule"
-  ON employee_work_schedule
-  FOR ALL
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'employee_work_schedule'
+      AND policyname = 'service_role_all_employee_work_schedule'
+  ) THEN
+    CREATE POLICY "service_role_all_employee_work_schedule"
+      ON employee_work_schedule
+      FOR ALL
+      TO service_role
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END;
+$$;
