@@ -607,19 +607,27 @@ router.get('/:id/work-schedule', requirePermission('PAYROLL.VIEW'), requirePayti
     if (!visible) return res.status(403).json({ error: 'Access denied' });
 
     // maybeSingle() — employee may not have a work schedule row yet; returns null without error
-    const { data, error: wsErr } = await supabase
-      .from('employee_work_schedule')
-      .select('*')
-      .eq('employee_id', empId)
-      .eq('company_id', req.companyId)
-      .maybeSingle();
+    let wsData = null;
+    try {
+      const { data, error: wsErr } = await supabase
+        .from('employee_work_schedule')
+        .select('*')
+        .eq('employee_id', empId)
+        .eq('company_id', req.companyId)
+        .maybeSingle();
 
-    if (wsErr) {
-      console.error('[work-schedule GET] employee_work_schedule query error:', wsErr);
+      if (wsErr) {
+        console.error('[work-schedule GET] employee_work_schedule query error:', wsErr);
+      } else {
+        wsData = data;
+      }
+    } catch (wsEx) {
+      // Table may not exist yet — return defaults gracefully
+      console.error('[work-schedule GET] employee_work_schedule table error:', wsEx.message);
     }
 
     res.json({
-      work_schedule: data || {
+      work_schedule: wsData || {
         is_hourly_paid:     false,
         hours_per_day:      8.0,
         schedule_type:      'fixed',
