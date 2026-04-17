@@ -1,80 +1,106 @@
-// Client-side BASIS assessment for standalone client portal
+// client-assessment.js — Phase 2A
+// Public-link BASIS assessment for standalone client portal.
+//
+// Flow:
+//   1. Extract ?token=... from URL
+//   2. GET /api/basis/public/:token   — validate token, pre-fill name
+//   3. Client fills in info + answers
+//   4. PUT /api/basis/public/:token   — submit answers + computed results
+//
+// No localStorage used. All state server-backed.
+
 import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
+import { API_BASE_URL } from './api.js';
 
 const $ = (selector) => document.querySelector(selector);
 
-let tokenData = null;
-let clientData = null;
-let basisAnswers = {};
+// Module-level state
+let submissionId   = null;      // id returned by publicGet
+let preferredLang  = 'en';      // from token response
+let clientData     = null;      // filled in by start-assessment-btn
+let basisAnswers   = {};        // flat format: { BALANS_1: 7, AKSIE_3: 4, ... }
 
-// Get token from URL
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function getTokenFromURL() {
     const params = new URLSearchParams(window.location.search);
-    return params.get('token');
+    return params.get('token') || '';
 }
 
-// Validate token
-function validateToken() {
+// Minimal public fetch — no auth header, no login redirect on 401.
+async function publicFetch(endpoint, options = {}) {
+    const config = {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...options.headers }
+    };
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    const data     = await response.json();
+
+    if (!response.ok) {
+        const err    = new Error(data.error || `Request failed (${response.status})`);
+        err.status   = response.status;
+        throw err;
+    }
+
+    return data;
+}
+
+// ─── Error / success display ──────────────────────────────────────────────────
+
+function showError(message) {
+    const errorSection = $('#error-section');
+    if (errorSection) {
+        const p = errorSection.querySelector('.error-message p');
+        if (p && message) p.textContent = message;
+        errorSection.style.display = 'block';
+    }
+    const clientInfo = $('#client-info-section');
+    if (clientInfo) clientInfo.style.display = 'none';
+}
+
+// ─── Token validation ─────────────────────────────────────────────────────────
+
+async function validateToken() {
     const token = getTokenFromURL();
     if (!token) {
-        showError();
+        showError('No assessment token found. Please use the link provided by your coach.');
         return false;
     }
 
-    // Get tokens from localStorage
-    const tokens = JSON.parse(localStorage.getItem('assessment_tokens') || '{}');
-    tokenData = tokens[token];
+    try {
+        const data = await publicFetch(`/basis/public/${encodeURIComponent(token)}`);
 
-    if (!tokenData) {
-        showError();
+        submissionId  = data.id;
+        preferredLang = data.preferredLang || 'en';
+
+        // Pre-fill name field if available
+        if (data.respondentName) {
+            const parts     = data.respondentName.split(' ');
+            const firstEl   = $('#client-firstname');
+            const surnameEl = $('#client-surname');
+            if (firstEl   && parts.length > 0) firstEl.value   = parts[0];
+            if (surnameEl && parts.length > 1) surnameEl.value = parts.slice(1).join(' ');
+        }
+
+        return true;
+    } catch (err) {
+        if (err.status === 410) {
+            showError('This assessment has already been completed.');
+        } else if (err.status === 404) {
+            showError('Assessment link not found or expired. Please contact your coach.');
+        } else {
+            showError('Unable to load assessment. Please try again or contact your coach.');
+        }
         return false;
     }
+}
 
-    if (tokenData.completed) {
-        showError('This assessment has already been completed.');
-        return false;
-    }
 
     return true;
 }
 
-function showError(message = null) {
-    $('#error-section').style.display = 'block';
-    $('#client-info-section').style.display = 'none';
-
-    if (message) {
-        $('#error-section .error-message p').textContent = message;
-    }
-}
-
-// Start assessment button
-if ($('#start-assessment-btn')) $('#start-assessment-btn').addEventListener('click', () => {
-    const firstName = $('#client-firstname').value.trim();
-    const surname = $('#client-surname').value.trim();
-    const email = $('#client-email').value.trim();
-    const phone = $('#client-phone').value.trim();
-    const language = $('#client-language').value;
-
-    if (!firstName || !surname) {
-        alert('Please enter your first name and surname.');
-        return;
-    }
-
-    clientData = {
-        firstName,
-        surname,
-        name: `${firstName} ${surname}`,
-        email,
-        phone,
-        preferred_lang: language
-    };
-
-    // Hide info form, show assessment
-    $('#client-info-section').style.display = 'none';
-    $('#assessment-section').style.display = 'block';
-
-    renderAssessment();
-});
+// ─── Questionnaire render ─────────────────────────────────────────────────────
 
 function renderAssessment() {
     const container = $('#basis-assessment-container');
@@ -86,7 +112,7 @@ function renderAssessment() {
                 <h2>BASIS Assessment</h2>
                 <p class="basis-instructions">
                     Answer each question on a scale of 1 to 10:<br>
-                    <strong>1</strong> = Not true of me at all | <strong>10</strong> = Completely true of me
+                    <strong>1</strong> = Not true of me at all &nbsp;|&nbsp; <strong>10</strong> = Completely true of me
                 </p>
                 <div class="basis-progress">
                     <div class="progress-bar">
@@ -111,162 +137,165 @@ function renderAssessment() {
 
 function renderAllSections() {
     return Object.keys(SECTION_LABELS).map(sectionKey => {
-        const sectionQuestions = BASIS_QUESTIONS[sectionKey];
+        const questions = BASIS_QUESTIONS[sectionKey];
         return `
             <div class="basis-section">
                 <h3 class="section-title">${SECTION_LABELS[sectionKey]}</h3>
                 <div class="section-questions">
-                    ${sectionQuestions.map((q, idx) => renderQuestion(sectionKey, idx, q)).join('')}
+                    ${questions.map((q, idx) => renderQuestion(sectionKey, idx, q)).join('')}
                 </div>
             </div>
         `;
     }).join('');
 }
 
-function renderQuestion(section, index, question) {
-    const globalIndex = getGlobalQuestionIndex(section, index);
-    const isReverse = question.reverse ? ' <span class="reverse-tag">REVERSE</span>' : '';
+function getGlobalQuestionIndex(sectionKey, localIndex) {
+    const sections   = Object.keys(SECTION_LABELS);
+    const sectionIdx = sections.indexOf(sectionKey);
+    let global = 0;
+    for (let i = 0; i < sectionIdx; i++) {
+        global += BASIS_QUESTIONS[sections[i]].length;
+    }
+    return global + localIndex;
+}
+
+function renderQuestion(sectionKey, localIndex, question) {
+    const globalIndex = getGlobalQuestionIndex(sectionKey, localIndex);
+    // Store answers using question.id (1-based) so they match getBASISResults expectations
+    const questionId  = `${sectionKey}_${question.id}`;
 
     return `
         <div class="basis-question">
             <div class="question-header">
                 <span class="question-number">${globalIndex + 1}.</span>
-                <span class="question-text">${question.text}${isReverse}</span>
+                <span class="question-text">${question.text}</span>
             </div>
             <div class="question-scale">
                 ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => `
-                    <button class="scale-btn" data-section="${section}" data-index="${index}" data-value="${val}">${val}</button>
+                    <button class="scale-btn"
+                            data-question-id="${questionId}"
+                            data-value="${val}">${val}</button>
                 `).join('')}
             </div>
         </div>
     `;
 }
 
-function getGlobalQuestionIndex(section, localIndex) {
-    const sections = Object.keys(SECTION_LABELS);
-    const sectionIndex = sections.indexOf(section);
-    let globalIndex = 0;
-
-    for (let i = 0; i < sectionIndex; i++) {
-        globalIndex += BASIS_QUESTIONS[sections[i]].length;
-    }
-
-    return globalIndex + localIndex;
-}
+// ─── Event listeners ──────────────────────────────────────────────────────────
 
 function attachEventListeners() {
-    // Scale button clicks
     document.querySelectorAll('.scale-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const section = btn.dataset.section;
-            const index = parseInt(btn.dataset.index);
-            const value = parseInt(btn.dataset.value);
+            const questionId = btn.dataset.questionId;
+            const value      = parseInt(btn.dataset.value, 10);
 
-            // Store answer
-            if (!basisAnswers[section]) basisAnswers[section] = {};
-            basisAnswers[section][index] = value;
+            // Store in flat format: { BALANS_1: 7 }
+            basisAnswers[questionId] = value;
 
-            // Update button states
-            const sectionButtons = document.querySelectorAll(
-                `.scale-btn[data-section="${section}"][data-index="${index}"]`
-            );
-            sectionButtons.forEach(b => b.classList.remove('selected'));
+            // Update selected state for this question
+            document.querySelectorAll(`.scale-btn[data-question-id="${questionId}"]`)
+                    .forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
 
             updateProgress();
         });
     });
 
-    // Submit button
-    if ($('#submit-basis')) $('#submit-basis').addEventListener('click', submitAssessment);
+    const submitBtn = $('#submit-basis');
+    if (submitBtn) submitBtn.addEventListener('click', submitAssessment);
 }
 
 function updateProgress() {
     const totalQuestions = Object.values(BASIS_QUESTIONS).reduce((sum, arr) => sum + arr.length, 0);
-    const answeredCount = Object.values(basisAnswers).reduce((sum, section) =>
-        sum + Object.keys(section).length, 0
-    );
-
-    const percentage = Math.round((answeredCount / totalQuestions) * 100);
+    const answeredCount  = Object.keys(basisAnswers).length;
+    const percentage     = Math.round((answeredCount / totalQuestions) * 100);
 
     const fillEl = $('#basis-progress-fill');
     const textEl = $('#basis-progress-text');
-
-    if (fillEl) fillEl.style.width = percentage + '%';
+    if (fillEl) fillEl.style.width = `${percentage}%`;
     if (textEl) textEl.textContent = `${answeredCount} / ${totalQuestions} questions answered`;
 }
 
-function submitAssessment() {
-    // Check if all questions answered
+// ─── Submission ───────────────────────────────────────────────────────────────
+
+async function submitAssessment() {
     const totalQuestions = Object.values(BASIS_QUESTIONS).reduce((sum, arr) => sum + arr.length, 0);
-    const answeredCount = Object.values(basisAnswers).reduce((sum, section) =>
-        sum + Object.keys(section).length, 0
-    );
+    const answeredCount  = Object.keys(basisAnswers).length;
 
     if (answeredCount < totalQuestions) {
         alert(`Please answer all questions. You have answered ${answeredCount} out of ${totalQuestions}.`);
         return;
     }
 
-    // Calculate results
-    const results = getBASISResults(basisAnswers);
+    // Compute results using the scoring engine (flat format required)
+    const basisResults = getBASISResults(basisAnswers);
 
-    // Get the current user's store key (admin user)
-    const currentUser = localStorage.getItem('current_user');
-    if (!currentUser) {
-        alert('Error: Could not find coach account. Please contact your coach.');
-        return;
+    try {
+        const token = getTokenFromURL();
+
+        await publicFetch(`/basis/public/${encodeURIComponent(token)}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                respondentName:  clientData ? clientData.name          : undefined,
+                respondentEmail: clientData ? clientData.email         : undefined,
+                respondentPhone: clientData ? clientData.phone         : undefined,
+                preferredLang:   clientData ? clientData.preferred_lang : preferredLang,
+                basisAnswers,
+                basisResults
+            })
+        });
+
+        const assessmentSection = $('#assessment-section');
+        const successSection    = $('#success-section');
+        if (assessmentSection) assessmentSection.style.display = 'none';
+        if (successSection)    successSection.style.display    = 'block';
+
+    } catch (err) {
+        if (err.status === 410) {
+            alert('This assessment has already been submitted. Please contact your coach if you need to re-do it.');
+        } else {
+            alert('Failed to submit. Please check your connection and try again.');
+            console.error('Submission error:', err);
+        }
     }
-
-    // Load coach's store
-    const storeKey = `coaching_store_${currentUser}`;
-    const store = JSON.parse(localStorage.getItem(storeKey) || '{"clients":[]}');
-
-    // Find the client by ID from token
-    const client = store.clients.find(c => c.id === tokenData.clientId);
-    if (!client) {
-        alert('Error: Could not find your client record. Please contact your coach.');
-        return;
-    }
-
-    // Update client with assessment data and client info
-    client.firstName = clientData.firstName;
-    client.surname = clientData.surname;
-    client.name = clientData.name;
-    if (clientData.email) client.email = clientData.email;
-    if (clientData.phone) client.phone = clientData.phone;
-    client.preferred_lang = clientData.preferred_lang;
-    client.basisAnswers = basisAnswers;
-    client.basisResults = results;
-    client.last_session = new Date().toISOString().split('T')[0];
-
-    // Save updated store
-    localStorage.setItem(storeKey, JSON.stringify(store));
-
-    // Mark token as completed
-    const token = getTokenFromURL();
-    const tokens = JSON.parse(localStorage.getItem('assessment_tokens') || '{}');
-    tokens[token].completed = true;
-    tokens[token].completedAt = new Date().toISOString();
-    localStorage.setItem('assessment_tokens', JSON.stringify(tokens));
-
-    // Show success message
-    $('#assessment-section').style.display = 'none';
-    $('#success-section').style.display = 'block';
 }
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
-    if (!validateToken()) {
-        return;
-    }
+// ─── Initialise ───────────────────────────────────────────────────────────────
 
-    // Pre-fill name if available
-    if (tokenData.clientName) {
-        const parts = tokenData.clientName.split(' ');
-        if (parts.length >= 2) {
-            $('#client-firstname').value = parts[0];
-            $('#client-surname').value = parts.slice(1).join(' ');
-        }
+document.addEventListener('DOMContentLoaded', async () => {
+    const valid = await validateToken();
+    if (!valid) return;
+
+    const startBtn = $('#start-assessment-btn');
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            const firstName = ($('#client-firstname').value || '').trim();
+            const surname   = ($('#client-surname').value   || '').trim();
+            const email     = ($('#client-email').value     || '').trim();
+            const phone     = ($('#client-phone').value     || '').trim();
+            const langEl    = $('#client-language');
+            const language  = langEl ? langEl.value : 'en';
+
+            if (!firstName || !surname) {
+                alert('Please enter your first name and surname.');
+                return;
+            }
+
+            clientData = {
+                firstName,
+                surname,
+                name:           `${firstName} ${surname}`,
+                email:          email || null,
+                phone:          phone || null,
+                preferred_lang: language || 'en'
+            };
+
+            const clientInfoSection = $('#client-info-section');
+            const assessmentSection = $('#assessment-section');
+            if (clientInfoSection) clientInfoSection.style.display = 'none';
+            if (assessmentSection) assessmentSection.style.display  = 'block';
+
+            renderAssessment();
+        });
     }
 });

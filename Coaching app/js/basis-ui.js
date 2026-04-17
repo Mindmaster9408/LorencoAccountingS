@@ -2,6 +2,7 @@
 import { $, escapeHtml } from './config.js';
 import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
 import { saveClient } from './storage.js';
+import { api } from './api.js';
 
 export function renderBASISAssessment(client, containerId = 'basis-assessment-container') {
     const container = document.getElementById(containerId);
@@ -68,8 +69,8 @@ function renderBASISOptions(client, container) {
         renderBASISQuestionnaire(client, container);
     });
 
-    if ($('#generate-link')) $('#generate-link').addEventListener('click', () => {
-        generateAssessmentLink(client);
+    if ($('#generate-link')) $('#generate-link').addEventListener('click', async () => {
+        await generateAssessmentLink(client);
     });
 
     if ($('#copy-link')) $('#copy-link').addEventListener('click', () => {
@@ -85,28 +86,45 @@ function renderBASISOptions(client, container) {
     });
 }
 
-function generateAssessmentLink(client) {
-    // Generate a unique token for this assessment
-    const token = btoa(`${client.id}_${Date.now()}`).replace(/=/g, '');
-    const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
-    const assessmentUrl = `${baseUrl}client-assessment.html?token=${token}`;
+async function generateAssessmentLink(client) {
+    const generateBtn = $('#generate-link');
+    if (generateBtn) {
+        generateBtn.textContent  = 'Generating…';
+        generateBtn.disabled     = true;
+    }
 
-    // Store the token mapping
-    const tokens = JSON.parse(localStorage.getItem('assessment_tokens') || '{}');
-    tokens[token] = {
-        clientId: client.id,
-        clientName: client.name,
-        createdAt: new Date().toISOString(),
-        completed: false
-    };
-    localStorage.setItem('assessment_tokens', JSON.stringify(tokens));
+    try {
+        // Create a public_link submission on the server — linked to this client
+        const submission = await api.basis.create({
+            respondentName:  client.name,
+            respondentEmail: client.email  || null,
+            respondentPhone: client.phone  || null,
+            preferredLang:   client.preferred_lang || 'en',
+            mode:            'public_link',
+            linkedClientId:  client.id || null
+        });
 
-    // Show the link
-    const linkSection = $('#assessment-link-section');
-    const linkInput = $('#assessment-link-input');
-    if (linkSection && linkInput) {
-        linkInput.value = assessmentUrl;
-        linkSection.style.display = 'block';
+        // Issue a server-side token (replaces localStorage token approach)
+        const { token } = await api.basis.generateLink(submission.id);
+
+        // Build the assessment URL
+        const baseUrl       = window.location.origin + window.location.pathname.replace('index.html', '');
+        const assessmentUrl = `${baseUrl}client-assessment.html?token=${token}`;
+
+        const linkSection = $('#assessment-link-section');
+        const linkInput   = $('#assessment-link-input');
+        if (linkSection && linkInput) {
+            linkInput.value        = assessmentUrl;
+            linkSection.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('Failed to generate assessment link:', err);
+        alert('Failed to generate assessment link. Please try again.');
+    } finally {
+        if (generateBtn) {
+            generateBtn.textContent = 'Generate Link';
+            generateBtn.disabled    = false;
+        }
     }
 }
 

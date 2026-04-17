@@ -2,6 +2,7 @@
 
 import { generateBASISReport } from './basis-report-generator.js';
 import { $ } from './config.js';
+import { api } from './api.js';
 
 export function renderBASISReportViewer(client, containerId = 'basis-report-viewer') {
     const container = document.getElementById(containerId);
@@ -316,4 +317,171 @@ function getReportCSS() {
             }
         }
     `;
+}
+
+// ─── Phase 2A: Submission-based report viewer ────────────────────────────────
+//
+// renderBASISSubmissionReport(submission, containerId)
+//   Shows the report preview for a basis_submissions row.
+//   The submission object must have: basis_results, respondent_name.
+//
+// renderBASISReportEditorPanel(submissionId, reportEditable, containerId)
+//   Shows the coach-editable sections panel with save button.
+//   reportEditable is the current report_editable JSONB from the submission.
+
+/**
+ * Render report preview from a basis_submissions row.
+ * Builds a client-like object from submission data so generateBASISReport works unchanged.
+ */
+export function renderBASISSubmissionReport(submission, containerId = 'basis-report-viewer') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!submission || !submission.basis_results) {
+        container.innerHTML = `
+            <div class="report-error">
+                <h3>No Assessment Results</h3>
+                <p>This submission has not been completed yet.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const { basisOrder, sectionScores } = submission.basis_results;
+    const code = basisOrder.join('-');
+
+    // Build a client-like object for generateBASISReport
+    const clientObj = {
+        name:         submission.respondent_name || 'Client',
+        basisResults: submission.basis_results
+    };
+
+    container.innerHTML = `
+        <div class="basis-report-viewer">
+            <div class="report-header">
+                <h2>BASIS Report — ${clientObj.name}</h2>
+                <div class="report-code">
+                    <span class="code-label">BASIS Code:</span>
+                    <span class="code-value">${code}</span>
+                </div>
+            </div>
+
+            <div class="report-actions">
+                <button id="preview-report-btn" class="btn-primary">📄 Preview Report</button>
+                <button id="download-html-btn" class="btn-secondary">📋 Download HTML</button>
+            </div>
+
+            <div id="report-preview" class="report-preview" style="display: none;">
+                <div class="preview-controls">
+                    <button id="close-preview-btn" class="btn-secondary">Close Preview</button>
+                    <select id="language-select" class="language-selector">
+                        <option value="en">English</option>
+                        <option value="af">Afrikaans</option>
+                    </select>
+                </div>
+                <div id="report-content" class="report-content"></div>
+            </div>
+        </div>
+    `;
+
+    // Reuse existing listeners with the composed client object
+    attachReportListeners(clientObj);
+}
+
+/**
+ * Render the coach-editable sections panel for a basis_submissions row.
+ *
+ * Editable fields:
+ *   coachNotes      — Personal notes / observations about the client
+ *   productsPage    — Custom products & services copy for this client
+ *   invitationText  — Personalised invitation / call to action
+ *   quotationText   — Quote or pricing section override
+ *
+ * Changes are persisted via PUT /api/basis/:id/report-editable.
+ * The panel does NOT regenerate the system report — only the coach sections are updated.
+ */
+export function renderBASISReportEditorPanel(submissionId, reportEditable = {}, containerId = 'basis-report-editor') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const e = (val) => (val || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    container.innerHTML = `
+        <div class="report-editor-panel">
+            <div class="editor-header">
+                <h3>Coach-Editable Report Sections</h3>
+                <p style="color:#64748b;font-size:14px;margin-top:6px;">
+                    These sections are merged into the report when it is downloaded or previewed.
+                    They do not overwrite the system-generated analysis.
+                </p>
+            </div>
+
+            <div class="editor-fields">
+                <div class="editor-field">
+                    <label for="edit-coachNotes">Coach Notes</label>
+                    <p class="field-hint">Personal observations, session notes, coaching focus areas.</p>
+                    <textarea id="edit-coachNotes" rows="5" class="editor-textarea"
+                              placeholder="Your private notes about this client…">${e(reportEditable.coachNotes)}</textarea>
+                </div>
+
+                <div class="editor-field">
+                    <label for="edit-invitationText">Invitation / Call to Action</label>
+                    <p class="field-hint">Personalised invite to take the next coaching step.</p>
+                    <textarea id="edit-invitationText" rows="4" class="editor-textarea"
+                              placeholder="Dear [Name], based on your BASIS profile…">${e(reportEditable.invitationText)}</textarea>
+                </div>
+
+                <div class="editor-field">
+                    <label for="edit-productsPage">Products &amp; Services</label>
+                    <p class="field-hint">Custom products or services copy tailored to this client.</p>
+                    <textarea id="edit-productsPage" rows="5" class="editor-textarea"
+                              placeholder="Recommended packages for your profile…">${e(reportEditable.productsPage)}</textarea>
+                </div>
+
+                <div class="editor-field">
+                    <label for="edit-quotationText">Quotation / Pricing</label>
+                    <p class="field-hint">Rate card or quoted investment for this client.</p>
+                    <textarea id="edit-quotationText" rows="4" class="editor-textarea"
+                              placeholder="Your investment for the programme…">${e(reportEditable.quotationText)}</textarea>
+                </div>
+            </div>
+
+            <div class="editor-actions">
+                <button id="save-report-editable" class="btn-primary">💾 Save Coach Sections</button>
+                <span id="editor-save-status" style="margin-left:16px;font-size:13px;color:#64748b;"></span>
+            </div>
+        </div>
+    `;
+
+    const saveBtn    = container.querySelector('#save-report-editable');
+    const statusSpan = container.querySelector('#editor-save-status');
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled     = true;
+            saveBtn.textContent  = 'Saving…';
+            statusSpan.textContent = '';
+
+            const reportEditable = {
+                coachNotes:      (container.querySelector('#edit-coachNotes')?.value     || '').trim(),
+                invitationText:  (container.querySelector('#edit-invitationText')?.value || '').trim(),
+                productsPage:    (container.querySelector('#edit-productsPage')?.value   || '').trim(),
+                quotationText:   (container.querySelector('#edit-quotationText')?.value  || '').trim()
+            };
+
+            try {
+                await api.basis.updateReportEditable(submissionId, reportEditable);
+                statusSpan.textContent = '✓ Saved';
+                statusSpan.style.color = '#16a34a';
+            } catch (err) {
+                console.error('Failed to save editable sections:', err);
+                statusSpan.textContent = '✗ Save failed — please try again';
+                statusSpan.style.color = '#dc2626';
+            } finally {
+                saveBtn.disabled    = false;
+                saveBtn.textContent = '💾 Save Coach Sections';
+                setTimeout(() => { statusSpan.textContent = ''; }, 4000);
+            }
+        });
+    }
 }

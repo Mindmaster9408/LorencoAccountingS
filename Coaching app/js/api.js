@@ -84,6 +84,35 @@ export async function logout() {
     }
 }
 
+// Make a public (unauthenticated) API request.
+// Unlike apiRequest, a 401 response does NOT redirect to login —
+// it simply throws an error. Used by the client-facing assessment page.
+export async function publicApiRequest(endpoint, options = {}) {
+    const config = {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+        }
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+        const data = await response.json();
+
+        if (!response.ok) {
+            const err = new Error(data.error || `Request failed with status ${response.status}`);
+            err.status = response.status;
+            throw err;
+        }
+
+        return data;
+    } catch (error) {
+        console.error('Public API request error:', error);
+        throw error;
+    }
+}
+
 // API helper methods
 export const api = {
     // Auth
@@ -155,5 +184,43 @@ export const api = {
             body: JSON.stringify({ isActive })
         }),
 
-    getStats: () => apiRequest('/admin/stats')
+    getStats: () => apiRequest('/admin/stats'),
+
+    // BASIS submissions (authenticated — coach/admin)
+    basis: {
+        create: (data) =>
+            apiRequest('/basis', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            }),
+
+        list: () => apiRequest('/basis'),
+
+        get: (id) => apiRequest(`/basis/${id}`),
+
+        update: (id, data) =>
+            apiRequest(`/basis/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            }),
+
+        updateReportEditable: (id, reportEditable) =>
+            apiRequest(`/basis/${id}/report-editable`, {
+                method: 'PUT',
+                body: JSON.stringify({ reportEditable })
+            }),
+
+        generateLink: (id) =>
+            apiRequest(`/basis/${id}/generate-link`, { method: 'POST' }),
+
+        // Public routes — no auth, uses publicApiRequest
+        publicGet: (token) =>
+            publicApiRequest(`/basis/public/${token}`),
+
+        publicSubmit: (token, data) =>
+            publicApiRequest(`/basis/public/${token}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            })
+    }
 };
