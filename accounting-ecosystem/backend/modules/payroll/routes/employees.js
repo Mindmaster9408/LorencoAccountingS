@@ -551,24 +551,32 @@ router.get('/:id/work-schedule', requirePermission('PAYROLL.VIEW'), requirePayti
   try {
     const empId = parseInt(req.params.id);
 
-    const { data: emp } = await supabase
+    const { data: emp, error: empErr } = await supabase
       .from('employees')
       .select('id, classification')
       .eq('id', empId)
       .eq('company_id', req.companyId)
       .single();
 
+    if (empErr && empErr.code !== 'PGRST116') {
+      console.error('[work-schedule GET] employees query error:', empErr);
+    }
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
 
     const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
     if (!visible) return res.status(403).json({ error: 'Access denied' });
 
-    const { data } = await supabase
+    // maybeSingle() — employee may not have a work schedule row yet; returns null without error
+    const { data, error: wsErr } = await supabase
       .from('employee_work_schedule')
       .select('*')
       .eq('employee_id', empId)
       .eq('company_id', req.companyId)
-      .single();
+      .maybeSingle();
+
+    if (wsErr) {
+      console.error('[work-schedule GET] employee_work_schedule query error:', wsErr);
+    }
 
     res.json({
       work_schedule: data || {
@@ -580,7 +588,8 @@ router.get('/:id/work-schedule', requirePermission('PAYROLL.VIEW'), requirePayti
       }
     });
   } catch (err) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('[work-schedule GET] unhandled exception:', err);
+    res.status(500).json({ error: 'Server error', detail: err.message });
   }
 });
 
@@ -631,7 +640,8 @@ router.put('/:id/work-schedule', requirePermission('PAYROLL.CREATE'), requirePay
 
     res.json({ success: true, full_days_per_week: fdpw });
   } catch (err) {
-    res.status(500).json({ error: 'Server error' });
+    console.error('[work-schedule PUT] unhandled exception:', err);
+    res.status(500).json({ error: 'Server error', detail: err.message });
   }
 });
 
