@@ -1111,10 +1111,19 @@ window.sendAIMessageMLNP = async function() {
         timestamp: new Date().toISOString()
     });
 
-    // Re-render chat
+    // Re-render chat (inline — renderAIChat targets #ai-chat, MLNP uses #mlnp-ai-chat)
     const chatContainer = $('#mlnp-ai-chat');
     if (chatContainer) {
-        chatContainer.innerHTML = renderAIChat(mlnpAIBranch.aiCoachNotes);
+        chatContainer.innerHTML = mlnpAIBranch.aiCoachNotes.map(msg => `
+            <div class="ai-message ${msg.role}">
+                <div class="message-avatar">${msg.role === 'user' ? '👤' : '🤖'}</div>
+                <div class="message-content">
+                    <div class="message-text">${escapeHtml(msg.content)}</div>
+                    <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+            </div>
+        `).join('');
+        chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
     // Clear input and save
