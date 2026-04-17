@@ -690,66 +690,71 @@
 </head>
 <body>
 
+    <!-- Notification banners -->
+    <div id="errorBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#ea4335;color:white;padding:12px 24px;font-size:14px;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,0.2);"></div>
+    <div id="successBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#34a853;color:white;padding:12px 24px;font-size:14px;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,0.2);"></div>
+
+    <!-- Hidden state field -->
+    <input type="hidden" id="_bookOpening" value="0">
+
     <div class="container">
         <div class="page-header">
             <h1>Bank Reconciliation</h1>
-            <p>Reconcile your bank statement with your accounting records</p>
+            <p>Match your bank statement transactions against your General Ledger records</p>
         </div>
-        
+
         <div class="recon-header">
             <div class="recon-account">
                 <div class="account-info">
-                    <h2>Business Current Account</h2>
-                    <div class="account-number">Account: ****1234 - FNB Business Cheque</div>
+                    <h2 id="accountName">Select a bank account</h2>
+                    <div class="account-number" id="accountNumber"></div>
                 </div>
-                <select class="account-selector" onchange="switchAccount(this)">
-                    <option value="1" selected>Business Current Account</option>
-                    <option value="2">Business Savings Account</option>
-                    <option value="3">Petty Cash</option>
-                    <option value="4">Credit Card - FNB</option>
+                <select class="account-selector" id="accountSelect" onchange="onAccountChange(this.value)">
+                    <option value="">— Loading accounts… —</option>
                 </select>
             </div>
-            
+
             <div class="recon-details">
                 <div class="detail-box">
                     <div class="detail-label">Statement Date</div>
                     <div class="detail-value">
-                        <input type="date" id="statementDate" value="2026-01-15" onchange="updateReconciliation()">
+                        <input type="date" id="statementDate">
                     </div>
                 </div>
                 <div class="detail-box">
-                    <div class="detail-label">Opening Balance</div>
-                    <div class="detail-value" id="openingBalance">R 28,650.50</div>
+                    <div class="detail-label">Book Opening Balance</div>
+                    <div class="detail-value" id="openingBalance">—</div>
                 </div>
                 <div class="detail-box">
-                    <div class="detail-label">Statement Balance</div>
+                    <div class="detail-label">Statement Closing Balance</div>
                     <div class="detail-value">
-                        <input type="text" id="statementBalance" value="R 50,580.50" onchange="updateReconciliation()" onfocus="this.select()">
+                        <input type="text" id="statementBalance" placeholder="0.00" oninput="updateStatementBalance()" onfocus="this.select()">
                     </div>
                 </div>
                 <div class="detail-box highlight">
                     <div class="detail-label">Cleared Balance</div>
-                    <div class="detail-value" id="clearedBalance">R 28,650.50</div>
+                    <div class="detail-value" id="clearedBalance">—</div>
                 </div>
             </div>
         </div>
-        
+
         <div class="recon-content">
             <div class="transactions-section">
                 <div class="section-header">
-                    <h3>Transactions to Reconcile</h3>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn-secondary" onclick="selectAll()">Select All</button>
-                        <button class="btn-secondary" onclick="clearAll()">Clear All</button>
+                    <h3>Allocated Transactions</h3>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span id="loadingIndicator" style="display:none;font-size:13px;color:#5f6368;">Loading…</span>
+                        <button class="btn-secondary" onclick="selectAll()" style="padding:8px 14px;border:1px solid #e8eaed;background:white;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;">Select All</button>
+                        <button class="btn-secondary" onclick="clearAll()" style="padding:8px 14px;border:1px solid #e8eaed;background:white;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;">Clear All</button>
                     </div>
                 </div>
-                
+
                 <div class="filter-row">
                     <button class="filter-btn active" onclick="filterTransactions('all', this)">All</button>
-                    <button class="filter-btn" onclick="filterTransactions('unreconciled', this)">Unreconciled Only</button>
-                    <button class="filter-btn" onclick="filterTransactions('reconciled', this)">Reconciled</button>
+                    <button class="filter-btn" onclick="filterTransactions('matched', this)">Pending Reconciliation</button>
+                    <button class="filter-btn" onclick="filterTransactions('reconciled', this)">Already Reconciled</button>
                 </div>
-                
+
                 <table class="transactions-table">
                     <thead>
                         <tr>
@@ -763,219 +768,400 @@
                         </tr>
                     </thead>
                     <tbody id="transactionsBody">
-                        <!-- Populated by JavaScript -->
+                        <tr><td colspan="7" style="text-align:center;padding:32px;color:#9aa0a6;">Select a bank account to load transactions</td></tr>
                     </tbody>
                 </table>
             </div>
-            
+
             <div class="summary-panel">
                 <h3>Reconciliation Summary</h3>
-                
+
                 <div class="summary-row">
                     <span class="summary-label">Statement Balance</span>
-                    <span class="summary-value" id="summaryStatement">R 50,580.50</span>
+                    <span class="summary-value" id="summaryStatement">—</span>
                 </div>
-                
+
                 <div class="summary-row">
                     <span class="summary-label">Cleared Balance</span>
-                    <span class="summary-value" id="summaryCleared">R 28,650.50</span>
+                    <span class="summary-value" id="summaryCleared">—</span>
                 </div>
-                
+
                 <div class="summary-row">
-                    <span class="summary-label">Uncleared Items</span>
-                    <span class="summary-value" id="unclearedCount">8 items</span>
+                    <span class="summary-label">Pending Items</span>
+                    <span class="summary-value" id="unclearedCount">—</span>
                 </div>
-                
+
+                <div class="summary-row">
+                    <span class="summary-label">Selected for Reconciliation</span>
+                    <span class="summary-value" id="checkedCount">0 items</span>
+                </div>
+
                 <div class="summary-row">
                     <span class="summary-label">Difference</span>
-                    <span class="summary-value negative" id="summaryDifference">R 21,930.00</span>
+                    <span class="summary-value negative" id="summaryDifference">—</span>
                 </div>
-                
+
                 <div class="difference-box" id="differenceBox">
-                    <div class="difference-label">Out of Balance</div>
-                    <div class="difference-amount" id="differenceAmount">R 21,930.00</div>
+                    <div class="difference-label">Enter statement balance</div>
+                    <div class="difference-amount" id="differenceAmount">—</div>
                 </div>
-                
+
                 <div class="action-buttons">
                     <button class="btn btn-primary" id="finishBtn" onclick="finishReconciliation()" disabled>Finish Reconciliation</button>
-                    <button class="btn btn-secondary" onclick="saveProgress()">Save Progress</button>
-                    <button class="btn btn-secondary" onclick="cancelReconciliation()">Cancel</button>
+                    <button class="btn btn-secondary" onclick="cancelReconciliation()">Back to Bank</button>
                 </div>
-                
+
                 <div class="info-message">
-                    <strong>💡 Tip:</strong> Check each transaction that appears on your bank statement. The difference should be R 0.00 before finishing.
+                    <strong>How to reconcile:</strong> Tick each transaction that appears on your bank statement. Enter the statement closing balance above. The difference must reach R 0.00 before you can finish.
                 </div>
             </div>
         </div>
     </div>
-    
-    <script>
-        // Demo transactions data
-        let transactions = [
-            { id: 1, date: '2026-01-14', description: 'Client Payment - ABC Corp', reference: 'PYMT123456', moneyIn: 15500.00, moneyOut: 0, reconciled: false },
-            { id: 2, date: '2026-01-13', description: 'Office Supplies - XYZ Ltd', reference: 'INV-789', moneyIn: 0, moneyOut: 4350.00, reconciled: false },
-            { id: 3, date: '2026-01-12', description: 'Salary Payment - John Doe', reference: 'SAL-001-2026', moneyIn: 0, moneyOut: 18500.00, reconciled: false },
-            { id: 4, date: '2026-01-11', description: 'Service Fee - Monthly', reference: 'FEE-JAN', moneyIn: 0, moneyOut: 250.00, reconciled: false },
-            { id: 5, date: '2026-01-10', description: 'Utility Bill - Electricity', reference: 'DD456789', moneyIn: 0, moneyOut: 3250.00, reconciled: false },
-            { id: 6, date: '2026-01-09', description: 'Customer Receipt - DEF Inc', reference: 'RCT-445', moneyIn: 8750.00, moneyOut: 0, reconciled: false },
-            { id: 7, date: '2026-01-08', description: 'Rent Payment', reference: 'RENT-JAN26', moneyIn: 0, moneyOut: 12000.00, reconciled: false },
-            { id: 8, date: '2026-01-07', description: 'Sales - Cash', reference: 'CASH-007', moneyIn: 6280.00, moneyOut: 0, reconciled: false },
-        ];
-        
-        let currentFilter = 'all';
-        const openingBalance = 28650.50;
-        let statementBalance = 50580.50;
-        
-        let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
 
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
+    <script>
+        // ── Auth ──────────────────────────────────────────────────────────────────
+        let token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/'; }
+
+        function getAuthHeaders() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
         }
-        // User info display handled by navigation.js
-        
+
+        // ── State ─────────────────────────────────────────────────────────────────
+        let bankAccounts    = [];
+        let currentAccount  = null;   // full bank account object
+        let transactions    = [];     // all loaded transactions (matched + reconciled)
+        let currentFilter   = 'all';
+        let statementBalance = 0;
+        let checkedIds      = new Set(); // IDs of matched transactions checked for reconciliation
+
+        // ── API helpers ───────────────────────────────────────────────────────────
+        async function apiGet(path) {
+            const res = await fetch('/api/accounting' + path, { headers: getAuthHeaders() });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `HTTP ${res.status}`);
+            }
+            return res.json();
+        }
+
+        async function apiPost(path, body) {
+            const res = await fetch('/api/accounting' + path, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) {
+                const b = await res.json().catch(() => ({}));
+                throw new Error(b.error || `HTTP ${res.status}`);
+            }
+            return res.json();
+        }
+
+        // ── UI helpers ────────────────────────────────────────────────────────────
+        function showError(msg) {
+            const el = document.getElementById('errorBanner');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 8000);
+        }
+
+        function showSuccess(msg) {
+            const el = document.getElementById('successBanner');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+
+        function showLoading(visible) {
+            document.getElementById('loadingIndicator').style.display = visible ? 'inline' : 'none';
+        }
+
+        function fmtCcy(amount) {
+            return 'R ' + Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // ── Load accounts on page load ────────────────────────────────────────────
+        async function loadAccounts() {
+            try {
+                const data = await apiGet('/bank/accounts');
+                bankAccounts = data.bankAccounts || [];
+                const sel = document.getElementById('accountSelect');
+                sel.innerHTML = '<option value="">— Select account —</option>';
+                bankAccounts.forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = a.name + (a.bank_name ? ' (' + a.bank_name + ')' : '');
+                    sel.appendChild(opt);
+                });
+                if (bankAccounts.length === 1) {
+                    sel.value = bankAccounts[0].id;
+                    await onAccountChange(bankAccounts[0].id);
+                }
+            } catch (e) {
+                showError('Failed to load bank accounts: ' + e.message);
+            }
+        }
+
+        // ── Account change ────────────────────────────────────────────────────────
+        async function onAccountChange(accountId) {
+            if (!accountId) {
+                currentAccount = null;
+                document.getElementById('accountName').textContent = 'Select a bank account';
+                document.getElementById('accountNumber').textContent = '';
+                transactions = [];
+                checkedIds.clear();
+                renderTransactions();
+                return;
+            }
+            currentAccount = bankAccounts.find(a => a.id === accountId) || null;
+            if (currentAccount) {
+                document.getElementById('accountName').textContent = currentAccount.name;
+                document.getElementById('accountNumber').textContent =
+                    (currentAccount.account_number_masked ? 'Account: ' + currentAccount.account_number_masked + ' — ' : '') +
+                    (currentAccount.bank_name || '');
+            }
+            checkedIds.clear();
+            await loadTransactions();
+        }
+
+        // ── Load transactions for current account ─────────────────────────────────
+        async function loadTransactions() {
+            if (!currentAccount) return;
+            try {
+                showLoading(true);
+
+                // Fetch matched (pending reconciliation) and reconciled (already done) in parallel
+                const [matchedData, reconciledData] = await Promise.all([
+                    apiGet('/bank/transactions?bankAccountId=' + currentAccount.id + '&status=matched&limit=1000'),
+                    apiGet('/bank/transactions?bankAccountId=' + currentAccount.id + '&status=reconciled&limit=1000')
+                ]);
+
+                const matched    = (matchedData.transactions    || []).map(t => ({ ...t, _txnStatus: 'matched' }));
+                const reconciled = (reconciledData.transactions || []).map(t => ({ ...t, _txnStatus: 'reconciled' }));
+
+                // Merge and sort by date asc, then id asc
+                transactions = [...matched, ...reconciled].sort((a, b) => {
+                    const d = (a.date || '').localeCompare(b.date || '');
+                    return d !== 0 ? d : String(a.id).localeCompare(String(b.id));
+                });
+
+                // Book opening balance = account opening_balance + sum of ALL reconciled transactions
+                const openingBal     = parseFloat(currentAccount.opening_balance || 0);
+                const reconciledSum  = reconciled.reduce((s, t) => s + parseFloat(t.amount || 0), 0);
+                const bookOpening    = openingBal + reconciledSum;
+
+                document.getElementById('_bookOpening').value = bookOpening;
+                document.getElementById('openingBalance').textContent = fmtCcy(bookOpening);
+
+                renderTransactions();
+            } catch (e) {
+                showError('Failed to load transactions: ' + e.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // ── Render transactions table ─────────────────────────────────────────────
         function renderTransactions() {
             const tbody = document.getElementById('transactionsBody');
-            let transactionsToShow = transactions;
-            
-            // Apply filter
-            if (currentFilter === 'unreconciled') {
-                transactionsToShow = transactions.filter(t => !t.reconciled);
-            } else if (currentFilter === 'reconciled') {
-                transactionsToShow = transactions.filter(t => t.reconciled);
-            }
-            
+            let toShow = transactions;
+
+            if (currentFilter === 'matched')    toShow = transactions.filter(t => t._txnStatus === 'matched');
+            else if (currentFilter === 'reconciled') toShow = transactions.filter(t => t._txnStatus === 'reconciled');
+
             tbody.innerHTML = '';
-            
-            transactionsToShow.forEach(txn => {
-                const row = document.createElement('tr');
-                row.className = txn.reconciled ? 'reconciled' : '';
-                
-                const moneyIn = txn.moneyIn > 0 ? `R ${txn.moneyIn.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-';
-                const moneyOut = txn.moneyOut > 0 ? `R ${txn.moneyOut.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-';
-                
-                const status = txn.reconciled 
+
+            if (toShow.length === 0) {
+                const emptyMsg = currentFilter === 'matched'
+                    ? 'No transactions pending reconciliation for this account'
+                    : currentFilter === 'reconciled'
+                        ? 'No reconciled transactions found'
+                        : currentAccount
+                            ? 'No allocated transactions found. Import and allocate transactions from the Bank page first.'
+                            : 'Select a bank account to load transactions';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9aa0a6;">' + escHtml(emptyMsg) + '</td></tr>';
+                updateSummary();
+                return;
+            }
+
+            toShow.forEach(txn => {
+                const isReconciled = txn._txnStatus === 'reconciled';
+                const isChecked    = checkedIds.has(txn.id);
+                const amount       = parseFloat(txn.amount || 0);
+                const moneyIn      = amount > 0 ? fmtCcy(amount)              : '—';
+                const moneyOut     = amount < 0 ? fmtCcy(Math.abs(amount))    : '—';
+
+                const statusBadge = isReconciled
                     ? '<span class="status-badge status-reconciled">Reconciled</span>'
-                    : '<span class="status-badge status-unreconciled">Unreconciled</span>';
-                
-                row.innerHTML = `
-                    <td><input type="checkbox" class="checkbox" ${txn.reconciled ? 'checked' : ''} onchange="toggleReconcile(${txn.id}, this.checked)"></td>
-                    <td>${txn.date}</td>
-                    <td>${txn.description}</td>
-                    <td>${txn.reference}</td>
-                    <td style="text-align: right;" class="${txn.moneyIn > 0 ? 'amount-in' : ''}">${moneyIn}</td>
-                    <td style="text-align: right;" class="${txn.moneyOut > 0 ? 'amount-out' : ''}">${moneyOut}</td>
-                    <td>${status}</td>
-                `;
-                
+                    : '<span class="status-badge status-unreconciled">Pending</span>';
+
+                const row = document.createElement('tr');
+                if (isReconciled) row.classList.add('reconciled');
+
+                row.innerHTML =
+                    '<td><input type="checkbox" class="checkbox"' +
+                    (isChecked    ? ' checked'                               : '') +
+                    (isReconciled ? ' disabled title="Already reconciled"'   : '') +
+                    ' onchange="toggleCheck(\'' + txn.id + '\', this.checked)"></td>' +
+                    '<td>' + escHtml(txn.date || '') + '</td>' +
+                    '<td>' + escHtml(txn.description || '') + '</td>' +
+                    '<td>' + escHtml(txn.reference || '—') + '</td>' +
+                    '<td style="text-align:right" class="' + (amount > 0 ? 'amount-in' : '') + '">' + moneyIn  + '</td>' +
+                    '<td style="text-align:right" class="' + (amount < 0 ? 'amount-out' : '') + '">' + moneyOut + '</td>' +
+                    '<td>' + statusBadge + '</td>';
+
                 tbody.appendChild(row);
             });
-            
+
             updateSummary();
         }
-        
-        function toggleReconcile(id, checked) {
+
+        // ── Toggle a transaction checkbox ─────────────────────────────────────────
+        function toggleCheck(id, checked) {
+            // Only matched transactions can be selected
             const txn = transactions.find(t => t.id === id);
-            if (txn) {
-                txn.reconciled = checked;
-                renderTransactions();
-            }
+            if (!txn || txn._txnStatus !== 'matched') return;
+            if (checked) checkedIds.add(id);
+            else         checkedIds.delete(id);
+            updateSummary();
         }
-        
+
+        // ── Recompute and update summary panel ────────────────────────────────────
         function updateSummary() {
-            let clearedBalance = openingBalance;
-            let reconciledCount = 0;
-            
-            transactions.forEach(txn => {
-                if (txn.reconciled) {
-                    clearedBalance += txn.moneyIn - txn.moneyOut;
-                    reconciledCount++;
+            const bookOpening = parseFloat(document.getElementById('_bookOpening').value || 0);
+
+            // Cleared balance = book opening + sum of checked matched transactions
+            let clearedSum = 0;
+            transactions.forEach(t => {
+                if (checkedIds.has(t.id) && t._txnStatus === 'matched') {
+                    clearedSum += parseFloat(t.amount || 0);
                 }
             });
-            
-            const unreconciledCount = transactions.length - reconciledCount;
-            const difference = statementBalance - clearedBalance;
-            
-            // Update display
-            document.getElementById('clearedBalance').textContent = 'R ' + clearedBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            document.getElementById('summaryCleared').textContent = 'R ' + clearedBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            document.getElementById('unclearedCount').textContent = unreconciledCount + ' items';
-            
-            const diffText = 'R ' + Math.abs(difference).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const clearedBalance = bookOpening + clearedSum;
+
+            const pendingCount  = transactions.filter(t => t._txnStatus === 'matched').length;
+            const checkedCount  = [...checkedIds].filter(id => {
+                const t = transactions.find(x => x.id === id);
+                return t && t._txnStatus === 'matched';
+            }).length;
+
+            document.getElementById('clearedBalance').textContent  = fmtCcy(clearedBalance);
+            document.getElementById('summaryStatement').textContent = fmtCcy(statementBalance);
+            document.getElementById('summaryCleared').textContent   = fmtCcy(clearedBalance);
+            document.getElementById('unclearedCount').textContent   = pendingCount + ' item' + (pendingCount !== 1 ? 's' : '');
+            document.getElementById('checkedCount').textContent     = checkedCount + ' item' + (checkedCount !== 1 ? 's' : '');
+
+            const difference  = statementBalance - clearedBalance;
+            const isBalanced  = Math.abs(difference) < 0.005;
+            const diffText    = fmtCcy(difference);
+
             document.getElementById('summaryDifference').textContent = diffText;
-            document.getElementById('differenceAmount').textContent = diffText;
-            
+            document.getElementById('differenceAmount').textContent  = diffText;
+
             const summaryDiff = document.getElementById('summaryDifference');
-            const diffBox = document.getElementById('differenceBox');
-            const diffLabel = diffBox.querySelector('.difference-label');
-            const finishBtn = document.getElementById('finishBtn');
-            
-            if (Math.abs(difference) < 0.01) {
+            const diffBox     = document.getElementById('differenceBox');
+            const diffLabel   = diffBox.querySelector('.difference-label');
+            const finishBtn   = document.getElementById('finishBtn');
+
+            if (statementBalance === 0 && checkedCount === 0) {
+                summaryDiff.className = 'summary-value';
+                diffBox.className     = 'difference-box';
+                diffLabel.textContent = 'Enter statement balance';
+                finishBtn.disabled    = true;
+            } else if (isBalanced && checkedCount > 0) {
                 summaryDiff.className = 'summary-value zero';
-                diffBox.className = 'difference-box balanced';
+                diffBox.className     = 'difference-box balanced';
                 diffLabel.textContent = '✓ Balanced';
-                finishBtn.disabled = false;
+                finishBtn.disabled    = false;
             } else {
                 summaryDiff.className = 'summary-value negative';
-                diffBox.className = 'difference-box';
+                diffBox.className     = 'difference-box';
                 diffLabel.textContent = 'Out of Balance';
-                finishBtn.disabled = true;
+                finishBtn.disabled    = true;
             }
         }
-        
-        function updateReconciliation() {
-            const balanceInput = document.getElementById('statementBalance').value;
-            const balanceMatch = balanceInput.match(/[\d,]+\.?\d*/);
-            if (balanceMatch) {
-                statementBalance = parseFloat(balanceMatch[0].replace(/,/g, ''));
-                document.getElementById('summaryStatement').textContent = 'R ' + statementBalance.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                updateSummary();
-            }
+
+        // ── Statement balance input ───────────────────────────────────────────────
+        function updateStatementBalance() {
+            const raw   = document.getElementById('statementBalance').value.replace(/[^0-9.,-]/g, '');
+            const clean = raw.replace(/,/g, '');
+            statementBalance = parseFloat(clean) || 0;
+            updateSummary();
         }
-        
+
+        // ── Select / clear all matched ────────────────────────────────────────────
         function selectAll() {
-            transactions.forEach(t => t.reconciled = true);
+            transactions.filter(t => t._txnStatus === 'matched').forEach(t => checkedIds.add(t.id));
             renderTransactions();
         }
-        
+
         function clearAll() {
-            transactions.forEach(t => t.reconciled = false);
+            checkedIds.clear();
             renderTransactions();
         }
-        
+
+        // ── Filter buttons ────────────────────────────────────────────────────────
         function filterTransactions(filter, btn) {
             currentFilter = filter;
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             renderTransactions();
         }
-        
-        function switchAccount(select) {
-            alert('Switching to: ' + select.options[select.selectedIndex].text);
-        }
-        
-        function finishReconciliation() {
-            const reconciledCount = transactions.filter(t => t.reconciled).length;
-            if (confirm(`Complete this reconciliation?\n\n${reconciledCount} transactions will be marked as reconciled.\n\nThis action cannot be undone.`)) {
-                alert('✓ Reconciliation completed successfully!\n\nAll selected transactions have been marked as reconciled.');
-                // In real app, would save to backend
+
+        // ── Finish reconciliation — calls backend ─────────────────────────────────
+        async function finishReconciliation() {
+            // Collect only matched IDs that are checked
+            const toReconcile = [...checkedIds].filter(id => {
+                const t = transactions.find(x => x.id === id);
+                return t && t._txnStatus === 'matched';
+            });
+
+            if (toReconcile.length === 0) {
+                showError('No transactions selected. Tick transactions from your bank statement first.');
+                return;
+            }
+
+            const ok = confirm(
+                'Mark ' + toReconcile.length + ' transaction(s) as reconciled?\n\n' +
+                'Each transaction can be individually unreconciled later from the Bank page if needed.'
+            );
+            if (!ok) return;
+
+            const btn = document.getElementById('finishBtn');
+            btn.disabled    = true;
+            btn.textContent = 'Reconciling…';
+
+            try {
+                await apiPost('/bank/reconcile', { transactionIds: toReconcile });
+
+                checkedIds.clear();
+                statementBalance = 0;
+                document.getElementById('statementBalance').value = '';
+
+                showSuccess('✓ ' + toReconcile.length + ' transaction(s) reconciled successfully.');
+                await loadTransactions(); // reload to reflect new statuses
+
+            } catch (e) {
+                showError('Reconciliation failed: ' + e.message);
+                btn.disabled    = false;
+                btn.textContent = 'Finish Reconciliation';
             }
         }
-        
-        function saveProgress() {
-            const reconciledCount = transactions.filter(t => t.reconciled).length;
-            alert(`Progress saved!\n\n${reconciledCount} transactions marked as reconciled.`);
-        }
-        
+
+        // ── Cancel / back ─────────────────────────────────────────────────────────
         function cancelReconciliation() {
-            if (confirm('Cancel this reconciliation?\n\nAny unsaved changes will be lost.')) {
-                window.location.href = 'bank.html';
-            }
+            window.location.href = 'bank.html';
         }
-        
-        // Initialize
-        renderTransactions();
+
+        // ── Initialise ────────────────────────────────────────────────────────────
+        // Set statement date to today as a sensible default
+        document.getElementById('statementDate').value = new Date().toISOString().slice(0, 10);
+        loadAccounts();
     </script>
 </body>
 </html>
