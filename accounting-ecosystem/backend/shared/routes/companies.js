@@ -257,7 +257,7 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
       'address_street', 'address_suburb', 'address_city', 'address_province', 'address_postal_code',
       'bank_name', 'bank_account_holder', 'bank_account_number', 'bank_branch_code', 'bank_account_type',
       'pay_frequencies', 'pay_day', 'normal_work_hours',
-      'logo_url', 'payslip_display_name', 'payslip_address_line1',
+      'logo_url', 'logo_data', 'payslip_display_name', 'payslip_address_line1',
       'registration_date', 'directors',
       'modules_enabled', 'is_active'
     ];

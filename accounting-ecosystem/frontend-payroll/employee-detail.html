@@ -294,6 +294,20 @@
 
         <!-- ==================== PAYROLL TAB ==================== -->
         <div id="payroll-tab" class="tab-content active">
+
+            <!-- Pay Schedule Assignment -->
+            <div class="card" style="margin-bottom:16px; padding:14px 18px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-weight:600; color:#555; font-size:0.9em;">Pay Schedule:</span>
+                        <select id="emp-pay-schedule-select" style="padding:6px 10px; border:2px solid #ddd; border-radius:6px; font-size:0.9em; min-width:200px;" onchange="onPayScheduleSelectChange()">
+                            <option value="">— Loading... —</option>
+                        </select>
+                        <span id="emp-pay-schedule-changed-dot" style="display:none; width:8px; height:8px; background:#f0a500; border-radius:50%;"></span>
+                    </div>
+                    <button id="emp-pay-schedule-save-btn" class="btn btn-primary btn-sm" style="display:none;" onclick="saveEmployeePaySchedule()">Save Schedule</button>
+                </div>
+            </div>
             <div class="card">
                 <h3 style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <span style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -1021,6 +1035,7 @@
                 loadPayrollData();
                 loadLeaveData();
                 loadNotes();
+                loadEmpPaySchedules(); // populate pay schedule dropdown
             }, 50);
         });
 
@@ -3038,6 +3053,82 @@
 
             closeAddCompanyModal();
             location.reload();
+        }
+
+        // ========== PAY SCHEDULE ASSIGNMENT ==========
+        var _empPaySchedules = [];         // company's schedules (populated on load)
+        var _originalPayScheduleId = null; // value when page loaded (to detect changes)
+
+        async function loadEmpPaySchedules() {
+            var sel = document.getElementById('emp-pay-schedule-select');
+            if (!sel) return;
+            try {
+                var token = safeLocalStorage.getItem('token');
+                var res = await fetch('/api/payroll/pay-schedules', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) { sel.innerHTML = '<option value="">Could not load schedules</option>'; return; }
+                var data = await res.json();
+                _empPaySchedules = data.schedules || [];
+
+                sel.innerHTML = '<option value="">— No schedule assigned —</option>';
+                _empPaySchedules.forEach(function(s) {
+                    var opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.schedule_name;
+                    sel.appendChild(opt);
+                });
+
+                // Set current value from the employee record
+                var currentSched = currentEmployee ? currentEmployee.pay_schedule_id : null;
+                _originalPayScheduleId = currentSched ? String(currentSched) : '';
+                sel.value = _originalPayScheduleId;
+            } catch(e) {
+                var sel2 = document.getElementById('emp-pay-schedule-select');
+                if (sel2) sel2.innerHTML = '<option value="">Could not load schedules</option>';
+            }
+        }
+
+        function onPayScheduleSelectChange() {
+            var sel = document.getElementById('emp-pay-schedule-select');
+            var saveBtn = document.getElementById('emp-pay-schedule-save-btn');
+            var dot = document.getElementById('emp-pay-schedule-changed-dot');
+            var changed = sel.value !== _originalPayScheduleId;
+            if (saveBtn) saveBtn.style.display = changed ? '' : 'none';
+            if (dot) dot.style.display = changed ? '' : 'none';
+        }
+
+        async function saveEmployeePaySchedule() {
+            var sel = document.getElementById('emp-pay-schedule-select');
+            var saveBtn = document.getElementById('emp-pay-schedule-save-btn');
+            var empId = _supabaseEmpId || currentEmpId;
+            if (!empId || !/^\d+$/.test(String(empId))) {
+                alert('Cannot save — employee ID is not yet resolved. Please wait a moment and try again.');
+                return;
+            }
+            var newScheduleId = sel.value ? parseInt(sel.value) : null;
+
+            saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+            try {
+                var token = safeLocalStorage.getItem('token');
+                var res = await fetch('/api/payroll/employees/' + empId + '/pay-schedule', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ pay_schedule_id: newScheduleId })
+                });
+                var data = await res.json();
+                if (!res.ok) { alert(data.error || 'Failed to save pay schedule.'); return; }
+
+                _originalPayScheduleId = sel.value;
+                // Update in-memory employee record so UI stays consistent
+                if (currentEmployee) currentEmployee.pay_schedule_id = newScheduleId;
+                document.getElementById('emp-pay-schedule-save-btn').style.display = 'none';
+                document.getElementById('emp-pay-schedule-changed-dot').style.display = 'none';
+            } catch(e) {
+                alert('Network error saving pay schedule.');
+            } finally {
+                saveBtn.disabled = false; saveBtn.textContent = 'Save Schedule';
+            }
         }
     </script>
     <script src="js/narrative-generator.js"></script>

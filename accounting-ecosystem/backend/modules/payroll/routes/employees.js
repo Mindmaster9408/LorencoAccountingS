@@ -825,4 +825,81 @@ router.put('/:id/eti', requirePermission('PAYROLL.CREATE'), requirePaytimeModule
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PAY SCHEDULE ASSIGNMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * PATCH /api/payroll/employees/:id/pay-schedule
+ * Assign or change the pay schedule for a single employee.
+ *
+ * Body: { pay_schedule_id: <integer | null> }
+ *   - Pass null to remove assignment (employee will not appear on any filtered schedule)
+ *   - Schedule must belong to the same company (multi-tenant safe)
+ *
+ * Permission: PAYROLL.APPROVE  — changing schedule grouping is a payroll admin action
+ */
+router.patch('/:id/pay-schedule', requirePermission('PAYROLL.APPROVE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+    if (isNaN(empId)) return res.status(400).json({ error: 'Invalid employee ID' });
+
+    const { pay_schedule_id } = req.body;
+
+    // Allow null (removes assignment) but reject anything else that is not an integer
+    if (pay_schedule_id !== null && pay_schedule_id !== undefined) {
+      const sid = parseInt(pay_schedule_id, 10);
+      if (isNaN(sid)) return res.status(400).json({ error: 'pay_schedule_id must be an integer or null' });
+
+      // Multi-tenant safety: verify schedule belongs to this company
+      const { data: schedule, error: schedErr } = await supabase
+        .from('company_pay_schedules')
+        .select('id, schedule_name')
+        .eq('id', sid)
+        .eq('company_id', req.companyId)
+        .eq('is_active', true)
+        .single();
+
+      if (schedErr || !schedule) {
+        return res.status(404).json({ error: 'Pay schedule not found for this company' });
+      }
+    }
+
+    // Verify employee belongs to this company
+    const { data: emp, error: empErr } = await supabase
+      .from('employees')
+      .select('id, classification, pay_schedule_id')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (empErr || !emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
+    if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
+
+    const newScheduleId = pay_schedule_id === null ? null : parseInt(pay_schedule_id, 10);
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('employees')
+      .update({ pay_schedule_id: newScheduleId, updated_at: new Date().toISOString() })
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .select('id, pay_schedule_id')
+      .single();
+
+    if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+    await auditFromReq(req, 'UPDATE', 'employee_pay_schedule', empId, {
+      module: 'payroll',
+      oldValue: { pay_schedule_id: emp.pay_schedule_id },
+      newValue: { pay_schedule_id: newScheduleId }
+    });
+
+    res.json({ success: true, employee: updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

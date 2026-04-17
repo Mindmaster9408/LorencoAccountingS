@@ -25,16 +25,17 @@
  */
 
 const express = require('express');
-const employeesRoutes = require('./routes/employees');
-const periodsRoutes = require('./routes/periods');
+const employeesRoutes    = require('./routes/employees');
+const periodsRoutes      = require('./routes/periods');
 const transactionsRoutes = require('./routes/transactions');
-const itemsRoutes = require('./routes/items');
-const attendanceRoutes = require('./routes/attendance');
-const kvRoutes = require('./routes/kv');
-const reconRoutes = require('./routes/recon');
-const unlockRoutes = require('./routes/unlock');
-const calculateRoutes = require('./routes/calculate'); // NEW — Workstream 2 Step 6
-const payrunsRoutes   = require('./routes/payruns');   // NEW — Workstream 2 Step 7
+const itemsRoutes        = require('./routes/items');
+const attendanceRoutes   = require('./routes/attendance');
+const kvRoutes           = require('./routes/kv');
+const reconRoutes        = require('./routes/recon');
+const unlockRoutes       = require('./routes/unlock');
+const calculateRoutes    = require('./routes/calculate');    // NEW — Workstream 2 Step 6
+const payrunsRoutes      = require('./routes/payruns');      // NEW — Workstream 2 Step 7
+const paySchedulesRoutes = require('./routes/pay-schedules'); // NEW — multi-schedule support
 
 const router = express.Router();
 
@@ -55,6 +56,9 @@ router.use('/kv', kvRoutes);
 router.use('/recon', reconRoutes);
 // Server-side payslip unlock — replaces client-controlled KV delete pattern
 router.use('/unlock', unlockRoutes);
+
+// Pay schedule definitions (per company groupings for pay run filtering)
+router.use('/pay-schedules', paySchedulesRoutes);
 
 // Health check for Payroll module
 router.get('/status', (req, res) => {

@@ -119,7 +119,9 @@ var DataAccess = (function() {
         getCompanyDetails: async function(companyId) {
             try {
                 const result = await GET('/companies/' + companyId);
-                return result.company || result.data || result;
+                const company = result.company || result.data || result;
+                cacheSet('company_' + companyId, company);
+                return company;
             } catch(e) {
                 return cacheGet('company_' + companyId) || {};
             }
@@ -128,6 +130,7 @@ var DataAccess = (function() {
         saveCompanyDetails: async function(companyId, details) {
             try {
                 await PUT('/companies/' + companyId, details);
+                cacheSet('company_' + companyId, details);
             } catch(e) {
                 console.error('Failed to save company details:', e.message);
             }

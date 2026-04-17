@@ -180,6 +180,20 @@
                 </div>
             </div>
 
+            <!-- Pay Schedules -->
+            <div class="card" style="margin-top: 20px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                    <h3 style="margin:0;">Pay Schedules</h3>
+                    <button class="btn btn-primary btn-sm" data-permission="EDIT_COMPANY" onclick="openAddScheduleModal()">+ Add Schedule</button>
+                </div>
+                <p style="color:#666; font-size:0.9em; margin-bottom:16px;">
+                    Pay schedules define when groups of employees are paid. Employees are assigned to a schedule and pay runs can be filtered by schedule.
+                </p>
+                <div id="pay-schedules-list" style="min-height:48px;">
+                    <p style="color:#999; font-style:italic;">Loading...</p>
+                </div>
+            </div>
+
             <!-- Branding & Export Settings -->
             <div class="card" style="margin-top: 20px;">
                 <h3>Branding & Export Settings</h3>
@@ -402,6 +416,7 @@
             currentCompanyId = session.company_id;
             loadCompaniesCarousel();
             loadCompanyDetails();
+            loadPaySchedules();
         });
 
         // ========== SIDEBAR ==========
@@ -454,75 +469,69 @@
         function getStorageKey() { return 'company_details_' + currentCompanyId; }
 
         async function loadCompanyDetails() {
-            // 1. Fetch basic company info from backend API (authoritative source)
-            let apiCompany = {};
+            // Single authoritative source: DataAccess calls GET /api/companies/:id
+            // which returns the full DB row (DB column names).
+            let raw = {};
             try {
-                const token = safeLocalStorage.getItem('token');
-                const res = await fetch('/api/companies/' + currentCompanyId, {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    apiCompany = data.company || {};
-                }
+                raw = await DataAccess.getCompanyDetails(currentCompanyId);
             } catch(e) { console.warn('Could not load company from API:', e); }
 
-            // 2. Merge with extended payroll details stored in cloud (DataAccess/Supabase)
-            const extra = DataAccess.getCompanyDetails(currentCompanyId);
-
-            // Parse address from API if it's a JSON object
-            const apiAddr = (typeof apiCompany.address === 'object' && apiCompany.address) ? apiCompany.address : {};
-
+            // Map DB column names → in-memory companyData field names
             companyData = {
-                name: extra.name || apiCompany.company_name || '',
-                trading_name: extra.trading_name || apiCompany.trading_name || '',
-                reg_number: extra.reg_number || apiCompany.registration_number || '',
-                nature: extra.nature || '',
-                year_end: extra.year_end || '',
-                paye_ref: extra.paye_ref || '',
-                uif_ref: extra.uif_ref || '',
-                sdl_ref: extra.sdl_ref || '',
-                coid_ref: extra.coid_ref || '',
-                tax_number: extra.tax_number || apiCompany.vat_number || '',
-                email: extra.email || apiCompany.contact_email || '',
-                phone: extra.phone || apiCompany.contact_phone || '',
-                website: extra.website || '',
-                contact_person: extra.contact_person || '',
-                street: extra.street || apiAddr.street || '',
-                suburb: extra.suburb || apiAddr.suburb || '',
-                city: extra.city || apiAddr.city || '',
-                province: extra.province || apiAddr.province || '',
-                postal_code: extra.postal_code || apiAddr.postal_code || '',
-                bank_name: extra.bank_name || '',
-                bank_holder: extra.bank_holder || '',
-                bank_account: extra.bank_account || '',
-                bank_branch: extra.bank_branch || '',
-                bank_type: extra.bank_type || '',
-                pay_frequencies: extra.pay_frequencies || [],
-                pay_day: extra.pay_day || '',
-                work_hours: extra.work_hours || '',
-                created_date: apiCompany.created_at ? formatDate(parseStandardDate(apiCompany.created_at), 'ZA') : '',
-                // Branding & Export
-                company_name: extra.company_name || extra.name || apiCompany.company_name || '',
-                address_line1: extra.address_line1 || '',
-                logo_data: extra.logo_data || '',
-                // Sage
-                sage_salaries_account: extra.sage_salaries_account || '',
-                sage_paye_account: extra.sage_paye_account || '',
-                sage_uif_account: extra.sage_uif_account || '',
-                sage_uif_expense_account: extra.sage_uif_expense_account || '',
-                sage_sdl_account: extra.sage_sdl_account || '',
-                sage_sdl_expense_account: extra.sage_sdl_expense_account || '',
-                sage_bank_account: extra.sage_bank_account || '',
-                // Xero
-                xero_wages_account: extra.xero_wages_account || '',
-                xero_paye_account: extra.xero_paye_account || '',
-                xero_uif_account: extra.xero_uif_account || '',
-                xero_uif_expense_account: extra.xero_uif_expense_account || '',
-                xero_bank_account: extra.xero_bank_account || '',
+                // General
+                name:           raw.company_name || '',
+                trading_name:   raw.trading_name || '',
+                reg_number:     raw.registration_number || '',
+                nature:         raw.nature_of_business || '',
+                year_end:       raw.financial_year_end || '',
+                // Tax & Statutory
+                paye_ref:       raw.paye_reference_number || '',
+                uif_ref:        raw.uif_reference_number || '',
+                sdl_ref:        raw.sdl_reference_number || '',
+                coid_ref:       raw.coid_reference_number || '',
+                tax_number:     raw.income_tax_number || '',
+                // Contact
+                email:          raw.contact_email || '',
+                phone:          raw.contact_phone || '',
+                website:        raw.website || '',
+                contact_person: raw.contact_person || '',
+                // Address
+                street:         raw.address_street || '',
+                suburb:         raw.address_suburb || '',
+                city:           raw.address_city || '',
+                province:       raw.address_province || '',
+                postal_code:    raw.address_postal_code || '',
                 // Banking
-                absa_user_code: extra.absa_user_code || '',
-                fnb_originator_code: extra.fnb_originator_code || ''
+                bank_name:      raw.bank_name || '',
+                bank_holder:    raw.bank_account_holder || '',
+                bank_account:   raw.bank_account_number || '',
+                bank_branch:    raw.bank_branch_code || '',
+                bank_type:      raw.bank_account_type || '',
+                // Payroll
+                pay_frequencies: raw.pay_frequencies || [],
+                pay_day:         raw.pay_day || '',
+                work_hours:      raw.normal_work_hours || '',
+                created_date:    raw.created_at ? formatDate(parseStandardDate(raw.created_at), 'ZA') : '',
+                // Branding & Export
+                company_name:   raw.payslip_display_name || raw.company_name || '',
+                address_line1:  raw.payslip_address_line1 || '',
+                logo_data:      raw.logo_data || '',
+                // Accounting export (stored in DB if columns exist, else blank)
+                sage_salaries_account:    raw.sage_salaries_account || '',
+                sage_paye_account:        raw.sage_paye_account || '',
+                sage_uif_account:         raw.sage_uif_account || '',
+                sage_uif_expense_account: raw.sage_uif_expense_account || '',
+                sage_sdl_account:         raw.sage_sdl_account || '',
+                sage_sdl_expense_account: raw.sage_sdl_expense_account || '',
+                sage_bank_account:        raw.sage_bank_account || '',
+                xero_wages_account:       raw.xero_wages_account || '',
+                xero_paye_account:        raw.xero_paye_account || '',
+                xero_uif_account:         raw.xero_uif_account || '',
+                xero_uif_expense_account: raw.xero_uif_expense_account || '',
+                xero_bank_account:        raw.xero_bank_account || '',
+                // Banking export
+                absa_user_code:      raw.absa_user_code || '',
+                fnb_originator_code: raw.fnb_originator_code || ''
             };
 
             renderDetails();
@@ -698,36 +707,65 @@
             companyData.absa_user_code = document.getElementById('f-absa-code').value.trim();
             companyData.fnb_originator_code = document.getElementById('f-fnb-code').value.trim();
 
-            // Save extended details to cloud (DataAccess/Supabase)
-            DataAccess.saveCompanyDetails(currentCompanyId, companyData);
+            // Save to backend — map frontend companyData field names → DB column names
+            // so that all fields actually persist through the PUT /api/companies/:id backend.
+            const dbPayload = {
+                // General
+                company_name:        companyData.name,
+                trading_name:        companyData.trading_name,
+                registration_number: companyData.reg_number,
+                nature_of_business:  companyData.nature,
+                financial_year_end:  companyData.year_end,
+                // Tax & Statutory
+                paye_reference_number: companyData.paye_ref,
+                uif_reference_number:  companyData.uif_ref,
+                sdl_reference_number:  companyData.sdl_ref,
+                coid_reference_number: companyData.coid_ref,
+                income_tax_number:     companyData.tax_number,
+                // Contact
+                contact_email:  companyData.email,
+                contact_phone:  companyData.phone,
+                website:        companyData.website,
+                contact_person: companyData.contact_person,
+                // Address
+                address_street:      companyData.street,
+                address_suburb:      companyData.suburb,
+                address_city:        companyData.city,
+                address_province:    companyData.province,
+                address_postal_code: companyData.postal_code,
+                // Banking
+                bank_name:            companyData.bank_name,
+                bank_account_holder:  companyData.bank_holder,
+                bank_account_number:  companyData.bank_account,
+                bank_branch_code:     companyData.bank_branch,
+                bank_account_type:    companyData.bank_type,
+                // Payroll
+                pay_frequencies: companyData.pay_frequencies,
+                pay_day:         companyData.pay_day,
+                normal_work_hours: companyData.work_hours,
+                // Branding & Export
+                payslip_display_name:   companyData.company_name,
+                payslip_address_line1:  companyData.address_line1,
+                logo_data:              companyData.logo_data,
+                // Accounting export
+                sage_salaries_account:    companyData.sage_salaries_account,
+                sage_paye_account:        companyData.sage_paye_account,
+                sage_uif_account:         companyData.sage_uif_account,
+                sage_uif_expense_account: companyData.sage_uif_expense_account,
+                sage_sdl_account:         companyData.sage_sdl_account,
+                sage_sdl_expense_account: companyData.sage_sdl_expense_account,
+                sage_bank_account:        companyData.sage_bank_account,
+                xero_wages_account:       companyData.xero_wages_account,
+                xero_paye_account:        companyData.xero_paye_account,
+                xero_uif_account:         companyData.xero_uif_account,
+                xero_uif_expense_account: companyData.xero_uif_expense_account,
+                xero_bank_account:        companyData.xero_bank_account,
+                // Banking export
+                absa_user_code:      companyData.absa_user_code,
+                fnb_originator_code: companyData.fnb_originator_code
+            };
+            DataAccess.saveCompanyDetails(currentCompanyId, dbPayload);
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Updated company details for ' + (companyData.name || 'Unknown'));
-
-            // Sync core fields to the backend (non-blocking)
-            (function() {
-                var token = safeLocalStorage.getItem('token');
-                if (!token || !currentCompanyId) return;
-                fetch('/api/companies/' + currentCompanyId, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                    body: JSON.stringify({
-                        company_name:        companyData.name,
-                        trading_name:        companyData.trading_name,
-                        registration_number: companyData.reg_number,
-                        vat_number:          companyData.tax_number,
-                        contact_email:       companyData.email,
-                        contact_phone:       companyData.phone,
-                        address: {
-                            street:      companyData.street,
-                            suburb:      companyData.suburb,
-                            city:        companyData.city,
-                            province:    companyData.province,
-                            postal_code: companyData.postal_code
-                        }
-                    })
-                }).catch(function(e) {
-                    console.warn('[CompanyDetails] API sync failed (data saved to localStorage):', e.message);
-                });
-            })();
 
             // Update company name in available companies cache
             try {
@@ -823,7 +861,223 @@
             closeAddCompanyModal();
             location.reload();
         }
+
+        // ========== PAY SCHEDULES ==========
+        var paySchedules = [];
+
+        async function loadPaySchedules() {
+            var listEl = document.getElementById('pay-schedules-list');
+            if (!listEl) return;
+            try {
+                var token = safeLocalStorage.getItem('token');
+                var res = await fetch('/api/payroll/pay-schedules', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) {
+                    listEl.innerHTML = '<p style="color:#c33; font-style:italic;">Could not load pay schedules.</p>';
+                    return;
+                }
+                var data = await res.json();
+                paySchedules = data.schedules || [];
+                renderPaySchedules();
+            } catch(e) {
+                if (listEl) listEl.innerHTML = '<p style="color:#c33; font-style:italic;">Could not load pay schedules.</p>';
+            }
+        }
+
+        function renderPaySchedules() {
+            var listEl = document.getElementById('pay-schedules-list');
+            if (!listEl) return;
+            if (paySchedules.length === 0) {
+                listEl.innerHTML = '<p style="color:#999; font-style:italic;">No pay schedules configured. Add a schedule to enable pay run filtering.</p>';
+                return;
+            }
+            var freqLabels = { monthly: 'Monthly', weekly: 'Weekly', bi_weekly: 'Bi-weekly' };
+            var html = '<table style="width:100%; border-collapse:collapse; font-size:0.9em;">' +
+                '<thead><tr style="border-bottom:2px solid #eee;">' +
+                '<th style="text-align:left; padding:8px 10px; color:#555;">Schedule Name</th>' +
+                '<th style="text-align:left; padding:8px 10px; color:#555;">Frequency</th>' +
+                '<th style="text-align:left; padding:8px 10px; color:#555;">Pay Day</th>' +
+                '<th style="text-align:right; padding:8px 10px; color:#555;">Employees</th>' +
+                '<th style="text-align:right; padding:8px 10px; color:#555;" data-permission="EDIT_COMPANY"></th>' +
+                '</tr></thead><tbody>';
+            paySchedules.forEach(function(s) {
+                var freqLabel = freqLabels[s.frequency_type] || s.frequency_type;
+                var dayLabel = '';
+                if (s.frequency_type === 'monthly') {
+                    dayLabel = s.is_last_day_of_month ? 'Last day of month' : ('Day ' + (s.monthly_day || '?'));
+                } else if (s.frequency_type === 'weekly' || s.frequency_type === 'bi_weekly') {
+                    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                    dayLabel = s.weekly_day != null ? days[s.weekly_day] : '—';
+                }
+                html += '<tr style="border-bottom:1px solid #f0f0f0;">' +
+                    '<td style="padding:10px;">' + escapeHtml(s.schedule_name) + '</td>' +
+                    '<td style="padding:10px; color:#666;">' + freqLabel + '</td>' +
+                    '<td style="padding:10px; color:#666;">' + dayLabel + '</td>' +
+                    '<td style="padding:10px; text-align:right; color:#666;">' + (s.employee_count || 0) + '</td>' +
+                    '<td style="padding:10px; text-align:right;">' +
+                        '<button class="btn btn-sm" data-permission="EDIT_COMPANY" style="background:#eee; color:#333; margin-right:6px;" onclick="openEditScheduleModal(' + s.id + ')">Edit</button>' +
+                        '<button class="btn btn-sm btn-danger" data-permission="EDIT_COMPANY" onclick="deleteSchedule(' + s.id + ',' + (s.employee_count||0) + ')">Remove</button>' +
+                    '</td></tr>';
+            });
+            html += '</tbody></table>';
+            listEl.innerHTML = html;
+            Permissions.enforceUI();
+        }
+
+        function escapeHtml(str) {
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(str || ''));
+            return div.innerHTML;
+        }
+
+        function openAddScheduleModal() {
+            document.getElementById('schedModal-title').textContent = 'Add Pay Schedule';
+            document.getElementById('sched-id').value = '';
+            document.getElementById('sched-name').value = '';
+            document.getElementById('sched-freq').value = 'monthly';
+            toggleSchedDayFields('monthly');
+            document.getElementById('sched-monthly-day').value = '25';
+            document.getElementById('sched-last-day').checked = false;
+            document.getElementById('sched-weekly-day').value = '5';
+            document.getElementById('schedModal').style.display = 'flex';
+        }
+
+        function openEditScheduleModal(id) {
+            var s = paySchedules.find(function(x) { return x.id === id; });
+            if (!s) return;
+            document.getElementById('schedModal-title').textContent = 'Edit Pay Schedule';
+            document.getElementById('sched-id').value = s.id;
+            document.getElementById('sched-name').value = s.schedule_name || '';
+            document.getElementById('sched-freq').value = s.frequency_type || 'monthly';
+            toggleSchedDayFields(s.frequency_type);
+            document.getElementById('sched-monthly-day').value = s.monthly_day || 25;
+            document.getElementById('sched-last-day').checked = !!s.is_last_day_of_month;
+            document.getElementById('sched-weekly-day').value = s.weekly_day != null ? s.weekly_day : 5;
+            document.getElementById('schedModal').style.display = 'flex';
+        }
+
+        function closeScheduleModal() {
+            document.getElementById('schedModal').style.display = 'none';
+        }
+
+        function toggleSchedDayFields(freq) {
+            var monthlyRow = document.getElementById('sched-row-monthly');
+            var weeklyRow  = document.getElementById('sched-row-weekly');
+            if (freq === 'monthly') {
+                monthlyRow.style.display = '';
+                weeklyRow.style.display  = 'none';
+            } else {
+                monthlyRow.style.display = 'none';
+                weeklyRow.style.display  = '';
+            }
+        }
+
+        async function saveSchedule() {
+            var id   = document.getElementById('sched-id').value;
+            var name = document.getElementById('sched-name').value.trim();
+            var freq = document.getElementById('sched-freq').value;
+            if (!name) { alert('Please enter a schedule name.'); return; }
+
+            var payload = { schedule_name: name, frequency_type: freq };
+            if (freq === 'monthly') {
+                payload.is_last_day_of_month = document.getElementById('sched-last-day').checked;
+                payload.monthly_day = parseInt(document.getElementById('sched-monthly-day').value) || 25;
+            } else {
+                payload.weekly_day = parseInt(document.getElementById('sched-weekly-day').value);
+            }
+
+            var saveBtn = document.getElementById('sched-save-btn');
+            saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+
+            try {
+                var token = safeLocalStorage.getItem('token');
+                var method = id ? 'PUT' : 'POST';
+                var url = '/api/payroll/pay-schedules' + (id ? '/' + id : '');
+                var res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify(payload)
+                });
+                var data = await res.json();
+                if (!res.ok) { alert(data.error || 'Failed to save schedule.'); return; }
+                closeScheduleModal();
+                await loadPaySchedules();
+            } catch(e) {
+                alert('Network error saving schedule.');
+            } finally {
+                saveBtn.disabled = false; saveBtn.textContent = 'Save';
+            }
+        }
+
+        async function deleteSchedule(id, employeeCount) {
+            var msg = 'Remove this pay schedule?';
+            if (employeeCount > 0) {
+                msg = 'This schedule has ' + employeeCount + ' employee(s) assigned.\nThey will remain in the system but won\'t belong to any schedule.\n\nProceed?';
+            }
+            if (!confirm(msg)) return;
+            try {
+                var token = safeLocalStorage.getItem('token');
+                var res = await fetch('/api/payroll/pay-schedules/' + id, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) { var d = await res.json(); alert(d.error || 'Failed to remove schedule.'); return; }
+                await loadPaySchedules();
+            } catch(e) {
+                alert('Network error removing schedule.');
+            }
+        }
     </script>
+
+    <!-- Add / Edit Pay Schedule Modal -->
+    <div id="schedModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:15px; padding:30px; max-width:460px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 id="schedModal-title" style="color:#667eea; margin:0;">Add Pay Schedule</h2>
+                <span style="font-size:1.5rem; cursor:pointer; color:#999;" onclick="closeScheduleModal()">&times;</span>
+            </div>
+            <input type="hidden" id="sched-id">
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-weight:600; color:#333; margin-bottom:5px;">Schedule Name *</label>
+                <input type="text" id="sched-name" placeholder="e.g. Monthly Staff, Weekly Wages" style="width:100%; padding:12px; border:2px solid #eee; border-radius:8px; font-size:1rem; box-sizing:border-box;">
+            </div>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-weight:600; color:#333; margin-bottom:5px;">Pay Frequency *</label>
+                <select id="sched-freq" onchange="toggleSchedDayFields(this.value)" style="width:100%; padding:12px; border:2px solid #eee; border-radius:8px; font-size:1rem;">
+                    <option value="monthly">Monthly</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="bi_weekly">Bi-weekly (every 2 weeks)</option>
+                </select>
+            </div>
+            <div id="sched-row-monthly">
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-weight:600; color:#333; margin-bottom:5px;">Pay Day of Month</label>
+                    <input type="number" id="sched-monthly-day" min="1" max="31" value="25" style="width:120px; padding:10px; border:2px solid #eee; border-radius:8px; font-size:1rem;">
+                    <span style="margin-left:12px; color:#666; font-size:0.9em;">or</span>
+                    <label style="margin-left:12px; font-size:0.9em; color:#333;">
+                        <input type="checkbox" id="sched-last-day" style="margin-right:4px;">Last day of month
+                    </label>
+                </div>
+            </div>
+            <div id="sched-row-weekly" style="display:none; margin-bottom:15px;">
+                <label style="display:block; font-weight:600; color:#333; margin-bottom:5px;">Pay Day of Week</label>
+                <select id="sched-weekly-day" style="width:100%; padding:12px; border:2px solid #eee; border-radius:8px; font-size:1rem;">
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5" selected>Friday</option>
+                    <option value="6">Saturday</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="closeScheduleModal()" style="flex:1; padding:12px; background:#999; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Cancel</button>
+                <button id="sched-save-btn" onclick="saveSchedule()" style="flex:1; padding:12px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Save</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Add Company Modal -->
     <div id="addCompanyModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">

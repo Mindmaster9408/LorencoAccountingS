@@ -395,9 +395,22 @@
 
                     <hr class="section-divider">
 
+                    <div class="setup-section-title" style="margin-bottom:8px;">1b. Filter by Pay Schedule <span style="font-weight:400; font-size:0.8em; color:#888;">(optional)</span></div>
+                    <div class="form-group" style="margin-bottom:4px;">
+                        <select id="exec-schedule-filter" onchange="onExecScheduleFilterChange()" style="width:100%; padding:8px 10px; border:2px solid #ddd; border-radius:6px; font-size:0.9em;">
+                            <option value="">Show all employees</option>
+                        </select>
+                    </div>
+                    <div id="exec-schedule-filter-hint" style="font-size:0.8em; color:#888; margin-bottom:8px; display:none;">
+                        Showing employees assigned to the selected schedule.
+                    </div>
+
+                    <hr class="section-divider">
+
                     <div class="setup-section-title">2. Select Employees</div>
                     <div class="emp-select-toolbar">
                         <button class="btn btn-outline btn-sm" onclick="selectAllEmployees()">Select All</button>
+                        <button class="btn btn-outline btn-sm" id="exec-select-schedule-btn" style="display:none;" onclick="selectScheduleEmployees()">Select Schedule</button>
                         <button class="btn btn-outline btn-sm" onclick="clearAllEmployees()">Clear</button>
                         <span id="selected-count">0 selected</span>
                     </div>
@@ -566,6 +579,7 @@
 
         loadCompaniesCarousel();
         loadEmployees();
+        loadExecPaySchedules(); // populate schedule filter dropdown
         Permissions.enforceUI();
     });
 
@@ -640,6 +654,55 @@
         renderEmployeeList();
     }
 
+    // ==========================================================================
+    // PAY SCHEDULE FILTER
+    // ==========================================================================
+    async function loadExecPaySchedules() {
+        var sel = document.getElementById('exec-schedule-filter');
+        if (!sel) return;
+        try {
+            var token = safeLocalStorage.getItem('token');
+            var res = await fetch('/api/payroll/pay-schedules', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (!res.ok) return;
+            var data = await res.json();
+            var schedules = data.schedules || [];
+            schedules.forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.schedule_name + ' (' + (s.employee_count || 0) + ' employees)';
+                sel.appendChild(opt);
+            });
+        } catch(e) { /* non-critical — filter just won't work */ }
+    }
+
+    function onExecScheduleFilterChange() {
+        var val = document.getElementById('exec-schedule-filter').value;
+        var hint = document.getElementById('exec-schedule-filter-hint');
+        var schedBtn = document.getElementById('exec-select-schedule-btn');
+        if (hint) hint.style.display = val ? '' : 'none';
+        if (schedBtn) schedBtn.style.display = val ? '' : 'none';
+        renderEmployeeList();
+    }
+
+    function getExecScheduleFilter() {
+        var sel = document.getElementById('exec-schedule-filter');
+        return sel ? (sel.value ? parseInt(sel.value, 10) : null) : null;
+    }
+
+    // Select only employees assigned to the currently-filtered schedule
+    function selectScheduleEmployees() {
+        var schedId = getExecScheduleFilter();
+        if (!schedId) return;
+        state.employees.forEach(function(emp) {
+            if (emp.pay_schedule_id && parseInt(emp.pay_schedule_id, 10) === schedId) {
+                state.selectedIds.add(parseInt(emp.id, 10));
+            }
+        });
+        renderEmployeeList();
+    }
+
     function renderEmployeeList() {
         var list = document.getElementById('emp-select-list');
 
@@ -648,7 +711,19 @@
             return;
         }
 
-        list.innerHTML = state.employees.map(function (emp) {
+        // Apply schedule filter (client-side — filter only affects what is displayed)
+        var schedFilter = getExecScheduleFilter();
+        var visible = schedFilter
+            ? state.employees.filter(function(e) { return e.pay_schedule_id && parseInt(e.pay_schedule_id, 10) === schedFilter; })
+            : state.employees;
+
+        if (visible.length === 0) {
+            list.innerHTML = '<div class="emp-loading" style="color:#888;">No employees assigned to this schedule yet.</div>';
+            updateSelectedCount();
+            return;
+        }
+
+        list.innerHTML = visible.map(function (emp) {
             var id       = parseInt(emp.id, 10);
             var name     = (emp.first_name || '') + ' ' + (emp.last_name || '');
             var number   = emp.employee_number ? '#' + emp.employee_number : '';
