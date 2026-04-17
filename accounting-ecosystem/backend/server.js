@@ -136,13 +136,20 @@ if (process.env.NODE_ENV !== 'test') {
 app.get('/api/health', async (req, res) => {
   const dbOk = await checkConnection();
   const enabledModules = getEnabledModules();
+  // TEMP DIAGNOSTIC — include OCR runtime capability in health response
+  let ocrCaps = null;
+  try {
+    const OcrService = require('./sean/ocr-service');
+    ocrCaps = OcrService.isAvailable();
+  } catch (_) { ocrCaps = { error: 'ocr-service not loaded' }; }
   res.status(dbOk ? 200 : 503).json({
     status: dbOk ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     version: BUILD_VERSION,
     database: dbOk ? 'connected' : 'disconnected',
     modules: enabledModules.map(m => m.key),
-    uptime: Math.floor(process.uptime())
+    uptime: Math.floor(process.uptime()),
+    ocr: ocrCaps
   });
 });
 
