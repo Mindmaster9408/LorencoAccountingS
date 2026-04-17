@@ -70,13 +70,13 @@ if (isModuleEnabled('sean'))       interCompanyRoutes = require('./inter-company
 if (isModuleEnabled('inventory'))  inventoryRoutes = require('./modules/inventory');
 if (isModuleEnabled('practice'))   practiceRoutes = require('./modules/practice');
 
-// Coaching module — always loaded if COACHING_DATABASE_URL is set
-if (process.env.COACHING_DATABASE_URL || process.env.DATABASE_URL) {
-  try {
-    coachingRoutes = require('./modules/coaching');
-  } catch (err) {
-    console.warn('  ⚠️  Coaching module failed to load:', err.message);
-  }
+// Coaching module — always load routes (routing is separate from DB connection).
+// DB connection is lazy: coaching module only connects to Postgres when first route is called.
+// Requires COACHING_DATABASE_URL (direct Supabase Postgres URL) to be set for DB operations.
+try {
+  coachingRoutes = require('./modules/coaching');
+} catch (err) {
+  console.warn('  ⚠️  Coaching module failed to load:', err.message);
 }
 
 // ─── Express App ─────────────────────────────────────────────────────────────
@@ -337,9 +337,9 @@ if (interCompanyRoutes) {
 
 if (coachingRoutes) {
   app.use('/api/coaching', coachingRoutes);
-  console.log('  ✅ Coaching module — ACTIVE');
+  console.log('  ✅ Coaching module — ACTIVE (set COACHING_DATABASE_URL for DB operations)');
 } else {
-  console.log('  ⬜ Coaching module — disabled (set COACHING_DATABASE_URL to enable)');
+  console.log('  ⚠️  Coaching module — failed to load (check server startup logs)');
 }
 
 if (inventoryRoutes) {

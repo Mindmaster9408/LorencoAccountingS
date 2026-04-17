@@ -3,11 +3,16 @@ import { JOURNEY_STEPS } from './config.js';
 import { api } from './api.js';
 
 export async function readStore() {
-    const data = await api.getClients('all');
-    return {
-        clients: data.clients || [],
-        training: { uploads: [], prompts: [] }
-    };
+    try {
+        const data = await api.getClients('all');
+        return {
+            clients: data.clients || [],
+            training: { uploads: [], prompts: [] }
+        };
+    } catch (error) {
+        console.error('[Coaching] readStore failed:', error.message);
+        return { clients: [], training: { uploads: [], prompts: [] } };
+    }
 }
 
 export async function saveClient(client) {
