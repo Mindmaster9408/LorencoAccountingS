@@ -578,8 +578,53 @@ const PayrollEngine = {
 
         if (taxableGross < 0) taxableGross = 0;
 
-        // Total gross includes both taxable and non-taxable
+        // Total gross includes both taxable and non-taxable.
+        // Captured BEFORE pre-tax deductions are applied so that UIF/SDL
+        // remain based on actual earnings, not the reduced taxable income.
         var gross = taxableGross + nonTaxableIncome;
+
+        // === DEDUCTION TAX TREATMENT (SARS COMPLIANCE — migration 018) ===
+        // Split deductions into two categories BEFORE PAYE is calculated:
+        //
+        //   pre_tax  — qualifying deductions (pension fund, RA, etc.) that
+        //              reduce taxable income before PAYE per SARS rules.
+        //              These ALSO reduce net pay (they come off the employee's remuneration).
+        //
+        //   net_only — all other deductions (medical aid employee portion, garnishee, etc.)
+        //              that reduce net pay only; PAYE base is unchanged.
+        //
+        // Backward compatibility: items with no tax_treatment field default to 'net_only'.
+        var preTaxDeductions = 0;
+        var netOnlyDeductions = 0;
+        (payrollData.regular_inputs || []).forEach(function(ri) {
+            if (ri.type === 'deduction') {
+                var amt = parseFloat(ri.amount) || 0;
+                if (ri.tax_treatment === 'pre_tax') {
+                    preTaxDeductions += amt;
+                } else {
+                    netOnlyDeductions += amt;
+                }
+            }
+        });
+        (currentInputs || []).forEach(function(ci) {
+            if (ci.type === 'deduction') {
+                var amt = parseFloat(ci.amount) || 0;
+                if (ci.tax_treatment === 'pre_tax') {
+                    preTaxDeductions += amt;
+                } else {
+                    netOnlyDeductions += amt;
+                }
+            }
+        });
+
+        // Apply pre-tax deductions to reduce taxableGross before PAYE.
+        // Never below zero — a pre-tax deduction cannot create a negative tax base.
+        taxableGross = Math.max(taxableGross - preTaxDeductions, 0);
+
+        // Total deductions = pre-tax + net-only (BOTH reduce net pay).
+        // The existing 'deductions' output field is preserved unchanged for
+        // backward compatibility — it continues to represent all employee deductions.
+        var deductions = preTaxDeductions + netOnlyDeductions;
 
         var opts = employeeOptions || {};
         var paye;
@@ -596,17 +641,9 @@ const PayrollEngine = {
         } else {
             paye = PayrollEngine.calculateMonthlyPAYE(taxableGross, opts, tables);
         }
+        // UIF and SDL are calculated from gross (full earnings) — not the reduced taxable income.
         var uif = PayrollEngine.calculateUIF(gross, tables);
         var sdl = PayrollEngine.calculateSDL(gross, tables);
-
-        // Other deductions (deduction-type regular_inputs and current inputs)
-        var deductions = 0;
-        (payrollData.regular_inputs || []).forEach(function(ri) {
-            if (ri.type === 'deduction') deductions += parseFloat(ri.amount) || 0;
-        });
-        (currentInputs || []).forEach(function(ci) {
-            if (ci.type === 'deduction') deductions += parseFloat(ci.amount) || 0;
-        });
 
         // === VOLUNTARY TAX OVER-DEDUCTION ===
         // Three supported scenarios: fixed, variable (current period only), bonus_spread (period range).
@@ -652,7 +689,11 @@ const PayrollEngine = {
             medicalCredit: opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers) : 0,
             // Itemised components for payslip display — both are independent; neither offsets the other
             overtimeAmount: PayrollEngine.r2(overtimeAmount),
-            shortTimeAmount: PayrollEngine.r2(shortTimeAmount)
+            shortTimeAmount: PayrollEngine.r2(shortTimeAmount),
+            // === ADDITIVE FIELDS (migration 018 — pre-tax deduction transparency) ===
+            // New fields appended after all 13 locked fields. Backward-compatible.
+            preTaxDeductions: PayrollEngine.r2(preTaxDeductions),
+            netOnlyDeductions: PayrollEngine.r2(netOnlyDeductions)
         };
     },
 

@@ -140,7 +140,11 @@ var PayrollItemsHelper = {
             type: this.mapItemTypeToInputType(item.item_type),
             description: overrides.description || item.item_name,
             amount: overrides.amount !== undefined ? overrides.amount : (item.default_amount || 0),
-            category: item.category
+            category: item.category,
+            // Pass tax_treatment through to the engine so pre-tax deductions reduce
+            // taxableGross before PAYE. Defaults to 'net_only' for non-deduction items
+            // and for any legacy item saved before migration 018.
+            tax_treatment: item.item_type === 'deduction' ? (item.tax_treatment || 'net_only') : 'net_only'
         };
     },
 

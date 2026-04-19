@@ -283,7 +283,7 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
     .from('employee_payroll_items')
     .select(
       `id, payroll_item_id, amount, percentage, item_type,
-       payroll_items(code, name, item_category, is_taxable)`
+       payroll_items(code, name, item_category, is_taxable, tax_treatment)`
     )
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
@@ -313,7 +313,7 @@ async function fetchPeriodInputs(
     .from('payroll_period_inputs')
     .select(
       `id, description, amount, item_type,
-       payroll_items(code, item_category)`
+       payroll_items(code, item_category, tax_treatment)`
     )
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
@@ -388,14 +388,19 @@ function normalizeCalculationInput(
     amount: item.amount || 0,
     percentage: item.percentage || 0,
     type: item.item_type || 'allowance',
-    is_taxable: item.payroll_items?.is_taxable !== false
+    is_taxable: item.payroll_items?.is_taxable !== false,
+    // tax_treatment: controls whether a deduction reduces taxableGross (pre-PAYE) or net only.
+    // Defaults to 'net_only' for backward compatibility with items that predate migration 018.
+    tax_treatment: item.payroll_items?.tax_treatment || 'net_only'
   }));
 
   // Normalize period inputs (one-off items)
   const normalizedPeriodInputs = periodInputs.currentInputs.map(item => ({
     description: item.payroll_items?.code || item.description || 'Unknown',
     amount: item.amount || 0,
-    type: item.item_type || 'input'
+    type: item.item_type || 'input',
+    // Inherit tax_treatment from the linked payroll item master; default net_only.
+    tax_treatment: item.payroll_items?.tax_treatment || 'net_only'
   }));
 
   // Combine recurring + period inputs

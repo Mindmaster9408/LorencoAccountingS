@@ -64,7 +64,7 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
  */
 router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
-    const { code, name, item_type, is_taxable, is_recurring, default_amount, description, irp5_code, category } = req.body;
+    const { code, name, item_type, is_taxable, is_recurring, default_amount, description, irp5_code, category, tax_treatment } = req.body;
 
     if (!code || !name || !item_type) {
       return res.status(400).json({ error: 'code, name, and item_type are required' });
@@ -73,6 +73,12 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
     // Validate IRP5 code format if supplied
     if (irp5_code && !/^\d{4,6}$/.test(String(irp5_code).trim())) {
       return res.status(400).json({ error: `Invalid IRP5 code format: "${irp5_code}". Expected 4–6 digit SARS code.` });
+    }
+
+    // Validate tax_treatment — only meaningful for deductions, must be a known value
+    const allowedTaxTreatments = ['net_only', 'pre_tax'];
+    if (tax_treatment !== undefined && !allowedTaxTreatments.includes(tax_treatment)) {
+      return res.status(400).json({ error: `Invalid tax_treatment: "${tax_treatment}". Must be net_only or pre_tax.` });
     }
 
     const insertPayload = {
@@ -84,7 +90,9 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       is_recurring:   is_recurring || false,
       default_amount: default_amount || 0,
       description,
-      is_active:      true
+      is_active:      true,
+      // tax_treatment: only store for deductions; default net_only for all others
+      tax_treatment:  (item_type === 'deduction' && tax_treatment) ? tax_treatment : 'net_only'
     };
 
     if (irp5_code) {
@@ -130,6 +138,15 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+
+    // Handle tax_treatment separately — validate value and only allow known values
+    if (req.body.tax_treatment !== undefined) {
+      const allowedTaxTreatments = ['net_only', 'pre_tax'];
+      if (!allowedTaxTreatments.includes(req.body.tax_treatment)) {
+        return res.status(400).json({ error: `Invalid tax_treatment: "${req.body.tax_treatment}". Must be net_only or pre_tax.` });
+      }
+      updates.tax_treatment = req.body.tax_treatment;
     }
 
     // Handle irp5_code change separately — needs IRP5 code validation + Sean event

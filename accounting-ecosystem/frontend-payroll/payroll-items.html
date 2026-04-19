@@ -742,6 +742,16 @@
                         </div>
                     </div>
 
+                    <!-- Tax Treatment — only shown for deduction items -->
+                    <div id="taxTreatmentGroup" class="form-group" style="display:none;">
+                        <label>Tax Treatment <span style="color:#dc3545;">*</span></label>
+                        <select id="taxTreatment">
+                            <option value="net_only">Normal Deduction — reduces net pay only</option>
+                            <option value="pre_tax">Pre-Tax Deduction — reduces taxable income &amp; net pay (SARS qualifying)</option>
+                        </select>
+                        <small style="color:#666;">Pre-tax deductions (pension fund, RA, etc.) reduce PAYE taxable income per SARS rules. Use &ldquo;Normal Deduction&rdquo; for medical aid employee portion, garnishees, and similar.</small>
+                    </div>
+
                     <!-- Monthly Behaviour -->
                     <div class="monthly-behaviour-group">
                         <label class="main-label">Monthly Behaviour *</label>
@@ -1129,6 +1139,9 @@
             const categoryBadge = getCategoryBadge(item.category);
             const taxBadge = item.is_taxable ? '<span class="badge badge-taxable">Taxable</span>' : '<span class="badge badge-non-taxable">Non-Tax</span>';
             const uifBadge = item.affects_uif ? '<span class="badge badge-uif">UIF</span>' : '<span class="badge badge-no-uif">No UIF</span>';
+            const preTaxBadge = (item.item_type === 'deduction' && item.tax_treatment === 'pre_tax')
+                ? '<span class="badge" style="background:#6f42c1;color:#fff;" title="Pre-tax: reduces taxable income before PAYE (SARS qualifying)">PRE-TAX</span>'
+                : '';
             const irp5Badge = item.irp5_code ? `<div class="irp5-code">IRP5: ${item.irp5_code}</div>` : '';
 
             return `
@@ -1151,7 +1164,7 @@
                         </div>
                         <div class="item-detail">
                             <div class="item-detail-label">Tax & UIF</div>
-                            <div class="item-detail-value">${taxBadge} ${uifBadge}</div>
+                            <div class="item-detail-value">${taxBadge} ${uifBadge} ${preTaxBadge}</div>
                         </div>
                         <div class="item-detail">
                             <div class="item-detail-label">Monthly</div>
@@ -1209,8 +1222,10 @@
             document.getElementById('itemType').value = type;
             document.getElementById('itemName').value = name;
             document.getElementById('itemCode').value = name.replace(/[^A-Z0-9]/gi, '_').toUpperCase().substring(0, 12);
+            document.getElementById('taxTreatment').value = 'net_only';
             document.getElementById('modalError').style.display = 'none';
             selectBehaviour('fixed');
+            updateTaxTreatmentVisibility(type);
             document.getElementById('itemModal').classList.add('show');
         }
 
@@ -1219,8 +1234,10 @@
             document.getElementById('itemForm').reset();
             document.getElementById('itemId').value = '';
             document.getElementById('itemType').value = type;
+            document.getElementById('taxTreatment').value = 'net_only';
             document.getElementById('modalError').style.display = 'none';
             selectBehaviour('fixed');
+            updateTaxTreatmentVisibility(type);
             document.getElementById('itemModal').classList.add('show');
         }
 
@@ -1243,8 +1260,10 @@
             document.getElementById('defaultAmount').value = item.default_amount || '';
             document.getElementById('isTaxable').value = item.is_taxable ? '1' : '0';
             document.getElementById('affectsUif').value = item.affects_uif ? '1' : '0';
+            document.getElementById('taxTreatment').value = item.tax_treatment || 'net_only';
             document.getElementById('modalError').style.display = 'none';
             selectBehaviour(item.is_variable ? 'variable' : 'fixed');
+            updateTaxTreatmentVisibility(item.item_type);
 
             document.getElementById('itemModal').classList.add('show');
         }
@@ -1266,6 +1285,11 @@
                 radioFixed.checked  = true;
                 info.style.display = 'none';
             }
+        }
+
+        function updateTaxTreatmentVisibility(type) {
+            const group = document.getElementById('taxTreatmentGroup');
+            if (group) group.style.display = (type === 'deduction') ? 'block' : 'none';
         }
 
         function saveItem(event) {
@@ -1291,7 +1315,10 @@
                 default_amount: parseFloat(document.getElementById('defaultAmount').value) || 0,
                 is_taxable: parseInt(document.getElementById('isTaxable').value) === 1,
                 affects_uif: parseInt(document.getElementById('affectsUif').value) === 1,
-                is_variable: document.getElementById('behaviourVariable').checked
+                is_variable: document.getElementById('behaviourVariable').checked,
+                tax_treatment: document.getElementById('itemType').value === 'deduction'
+                    ? (document.getElementById('taxTreatment').value || 'net_only')
+                    : 'net_only'
             };
 
             // IRP5 code is required
