@@ -315,17 +315,17 @@
         .badge-no-uif { background: #e0e0e0; color: #666; }
         .badge-fixed { background: #667eea; color: white; }
         .badge-variable { background: #fd7e14; color: white; }
-        .badge-variable-info { background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 12px 16px; margin-top: 14px; font-size: 13px; color: #856404; display: none; }
+        .badge-variable-info { background: var(--surface, #fff3cd); border: 1px solid #ffc107; border-radius: 10px; padding: 12px 16px; margin-top: 14px; font-size: 13px; color: var(--text-secondary, #856404); display: none; }
         .monthly-behaviour-group { margin-top: 18px; }
-        .monthly-behaviour-group label.main-label { font-weight: 600; color: #555; font-size: 14px; display: block; margin-bottom: 8px; }
+        .monthly-behaviour-group label.main-label { font-weight: 600; color: var(--text, #555); font-size: 14px; display: block; margin-bottom: 8px; }
         .behaviour-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .behaviour-option { border: 2px solid #e0e0e0; border-radius: 8px; padding: 12px 14px; cursor: pointer; transition: all 0.2s; }
-        .behaviour-option:hover { border-color: #667eea; background: #f8f9fa; }
+        .behaviour-option { border: 2px solid var(--border, #e0e0e0); border-radius: 8px; padding: 12px 14px; cursor: pointer; transition: all 0.2s; }
+        .behaviour-option:hover { border-color: #667eea; background: var(--surface-hover, #f8f9fa); color: var(--text, #333); }
         .behaviour-option input[type=radio] { display: none; }
-        .behaviour-option.selected { border-color: #667eea; background: #f0f4ff; }
-        .behaviour-option.selected-variable { border-color: #fd7e14; background: #fff8f3; }
-        .behaviour-option-title { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
-        .behaviour-option-desc { font-size: 12px; color: #888; line-height: 1.4; }
+        .behaviour-option.selected { border-color: #667eea; background: var(--accent-subtle, #f0f4ff); color: var(--text, #333); }
+        .behaviour-option.selected-variable { border-color: #fd7e14; background: var(--surface, #fff8f3); color: var(--text, #333); }
+        .behaviour-option-title { font-weight: 700; font-size: 13px; margin-bottom: 3px; color: var(--text, #333); }
+        .behaviour-option-desc { font-size: 12px; color: var(--text-secondary, #888); line-height: 1.4; }
         .badge-percentage { background: #fd7e14; color: white; }
         .badge-balance { background: #20c997; color: white; }
         .badge-hours { background: #6610f2; color: white; }
