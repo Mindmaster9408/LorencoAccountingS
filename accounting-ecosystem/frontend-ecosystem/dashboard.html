@@ -1398,6 +1398,37 @@
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
+    <!-- ═══════ RESET PASSWORD MODAL ═══════ -->
+    <div class="modal-overlay" id="resetPasswordModal">
+        <div class="modal" style="max-width:420px;">
+            <div class="modal-header">
+                <h2>🔑 Reset Password</h2>
+                <button class="modal-close" onclick="closeResetPasswordModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-muted); margin-bottom:16px; font-size:0.88rem;">
+                    Set a new password for <strong id="resetPasswordUserName"></strong>
+                </p>
+                <div class="form-row full">
+                    <div class="form-field">
+                        <label>New Password *</label>
+                        <input type="password" id="rpNewPassword" placeholder="Min. 8 characters" autocomplete="new-password">
+                    </div>
+                </div>
+                <div class="form-row full">
+                    <div class="form-field">
+                        <label>Confirm New Password *</label>
+                        <input type="password" id="rpConfirmPassword" placeholder="Repeat new password" autocomplete="new-password">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-form cancel" onclick="closeResetPasswordModal()">Cancel</button>
+                    <button type="button" class="btn-form save" id="rpSaveBtn" onclick="saveResetPassword()">Reset Password</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Launch overlay -->
     <div class="launch-overlay" id="launchOverlay">
         <div class="launch-spinner"></div>
@@ -4056,6 +4087,7 @@
                                     <td>
                                         <div class="user-actions">
                                             <button class="btn-user-action" onclick="openEditUserModal(${u.id})">Edit</button>
+                                            <button class="btn-user-action" onclick="openResetPasswordModal(${u.id}, '${escHtml(u.full_name).replace(/'/g, "\\'")}')">🔑 Reset PW</button>
                                             <button class="btn-user-action danger" onclick="removeUser(${u.id}, '${escHtml(u.full_name).replace(/'/g, "\\'")}')">Remove</button>
                                         </div>
                                     </td>
@@ -4243,6 +4275,66 @@
         function closeEditUserModal() {
             document.getElementById('editUserModal').classList.remove('show');
             editingUserId = null;
+        }
+
+        // ─── Reset Password ───────────────────────────────────────────────────
+        let resetPasswordUserId = null;
+
+        function openResetPasswordModal(userId, userName) {
+            resetPasswordUserId = userId;
+            document.getElementById('resetPasswordUserName').textContent = userName;
+            document.getElementById('rpNewPassword').value = '';
+            document.getElementById('rpConfirmPassword').value = '';
+            document.getElementById('rpSaveBtn').disabled = false;
+            document.getElementById('rpSaveBtn').textContent = 'Reset Password';
+            document.getElementById('resetPasswordModal').classList.add('show');
+            document.getElementById('rpNewPassword').focus();
+        }
+
+        function closeResetPasswordModal() {
+            document.getElementById('resetPasswordModal').classList.remove('show');
+            resetPasswordUserId = null;
+        }
+
+        async function saveResetPassword() {
+            if (!resetPasswordUserId) return;
+            const newPw = document.getElementById('rpNewPassword').value;
+            const confirmPw = document.getElementById('rpConfirmPassword').value;
+
+            if (!newPw || newPw.length < 8) {
+                showToast('❌ Password must be at least 8 characters.', true);
+                return;
+            }
+            if (newPw !== confirmPw) {
+                showToast('❌ Passwords do not match.', true);
+                return;
+            }
+
+            const btn = document.getElementById('rpSaveBtn');
+            btn.disabled = true;
+            btn.textContent = 'Resetting...';
+
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/users/${resetPasswordUserId}/password`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                        'X-Company-Id': selectedCompany?.id
+                    },
+                    body: JSON.stringify({ new_password: newPw })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+
+                closeResetPasswordModal();
+                showToast(`✅ Password reset successfully for ${document.getElementById('resetPasswordUserName')?.textContent || 'user'}.`);
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+                btn.disabled = false;
+                btn.textContent = 'Reset Password';
+            }
         }
 
         async function saveEditUser() {

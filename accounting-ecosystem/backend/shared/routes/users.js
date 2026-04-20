@@ -427,18 +427,34 @@ router.put('/:id/password', async (req, res) => {
   try {
     const userId = req.params.id;
     const { current_password, new_password } = req.body;
+    const isSelf = req.user.userId === parseInt(userId);
+    const isManager = ['super_admin', 'business_owner'].includes(req.user.role);
 
     // Only self or management can change passwords
-    if (req.user.userId !== parseInt(userId) && !['super_admin', 'business_owner'].includes(req.user.role)) {
+    if (!isSelf && !isManager) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    if (!new_password || new_password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    // Business owners can only reset passwords for users in their own company
+    if (!isSelf && req.user.role === 'business_owner') {
+      const { data: access } = await supabase
+        .from('user_company_access')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('company_id', req.companyId)
+        .eq('is_active', true)
+        .limit(1);
+      if (!access || access.length === 0) {
+        return res.status(403).json({ error: 'You can only reset passwords for users in your company' });
+      }
+    }
+
+    if (!new_password || new_password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
 
     // If changing own password, verify current password
-    if (req.user.userId === parseInt(userId)) {
+    if (isSelf) {
       const { data: user } = await supabase
         .from('users')
         .select('password_hash')
