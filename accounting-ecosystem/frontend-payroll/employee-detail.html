@@ -2491,9 +2491,11 @@
             );
 
             // Build itemized allowances list
+            var _basicSalForPct = payrollData.basic_salary || 0;
             var allowances = [];
             (payrollData.regular_inputs || []).forEach(function(ri) {
-                if (ri.type !== 'deduction') allowances.push({ description: ri.description || ri.type, amount: ri.amount });
+                var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
+                if (ri.type !== 'deduction') allowances.push({ description: ri.description || ri.type, amount: amount });
             });
             currentInputs.forEach(function(ci) {
                 if (ci.type !== 'deduction') allowances.push({ description: ci.description || ci.type, amount: ci.amount });
@@ -2502,7 +2504,8 @@
             // Build itemized deductions list
             var deductionsList = [];
             (payrollData.regular_inputs || []).forEach(function(ri) {
-                if (ri.type === 'deduction') deductionsList.push({ description: ri.description || 'Deduction', amount: ri.amount });
+                var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
+                if (ri.type === 'deduction') deductionsList.push({ description: ri.description || 'Deduction', amount: amount });
             });
             currentInputs.forEach(function(ci) {
                 if (ci.type === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
