@@ -923,7 +923,8 @@
                 <div class="form-group"><label>ID Number</label><input type="text" id="editIdNumberInput" maxlength="13"></div>
             </div>
             <div class="form-row">
-                <div class="form-group"><label class="required">Tax Number</label><input type="text" id="editTaxNumberInput" maxlength="10" required placeholder="e.g. 1234567890"></div>
+                <!-- RE-ACTIVATE: change label back to class="required" and restore required attribute on input -->
+                <div class="form-group"><label>Tax Number</label><input type="text" id="editTaxNumberInput" maxlength="10" data-tax-required-inactive="true" placeholder="e.g. 1234567890"></div>
             </div>
             <div class="form-row">
                 <div class="form-group"><label>Medical Aid Members</label><input type="number" id="editMedicalMembersInput" min="0" max="20" step="1" placeholder="0 = none"></div>
@@ -2877,7 +2878,8 @@
             currentEmployee.payment_method = document.getElementById('editPayMethodInput').value;
             currentEmployee.id_number = document.getElementById('editIdNumberInput').value.trim();
             var taxNum = document.getElementById('editTaxNumberInput').value.trim();
-            if (!taxNum) { alert('Tax Number is required for all employees.'); return; }
+            // TAX NUMBER REQUIRED — DEACTIVATED FOR TESTING (2026-04-20) — RE-ACTIVATE: uncomment the line below
+            // if (!taxNum) { alert('Tax Number is required for all employees.'); return; }
             currentEmployee.tax_number = taxNum;
             currentEmployee.medical_aid_members = parseInt(document.getElementById('editMedicalMembersInput').value) || 0;
             currentEmployee.tax_directive = parseFloat(document.getElementById('editTaxDirectiveInput').value) || 0;

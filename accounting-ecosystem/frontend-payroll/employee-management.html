@@ -554,8 +554,9 @@
                         <input type="text" id="id_number" maxlength="13">
                     </div>
                     <div class="form-group">
-                        <label class="required">Tax Number</label>
-                        <input type="text" id="tax_number" placeholder="e.g. 1234567890" maxlength="10" required>
+                        <!-- RE-ACTIVATE: change label back to class="required" and restore required attribute on input -->
+                        <label>Tax Number</label>
+                        <input type="text" id="tax_number" placeholder="e.g. 1234567890" maxlength="10" data-tax-required-inactive="true">
                     </div>
                     <div class="form-group">
                         <label>UIF Number</label>
@@ -885,6 +886,8 @@
                 submitBtn.textContent = 'Save Employee';
                 return;
             }
+            /* TAX NUMBER REQUIRED — DEACTIVATED FOR TESTING (2026-04-20)
+             * RE-ACTIVATE: uncomment this block when testing is complete
             if (!taxNumber) {
                 errorDiv.textContent = 'Tax number is required for PAYE compliance.';
                 errorDiv.style.display = 'block';
@@ -892,6 +895,7 @@
                 submitBtn.textContent = 'Save Employee';
                 return;
             }
+            */
 
             var payload = {
                 first_name:      firstName,
