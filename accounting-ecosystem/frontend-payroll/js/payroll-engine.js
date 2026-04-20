@@ -528,8 +528,16 @@ const PayrollEngine = {
         var taxableGross = payrollData.basic_salary || 0;
         var nonTaxableIncome = 0;
 
+        // Resolve percentage-based items to their rand amount before any loop
+        var resolvedRegularInputs = (payrollData.regular_inputs || []).map(function(ri) {
+            if (ri.is_percentage && ri.percentage_value) {
+                return Object.assign({}, ri, { amount: PayrollEngine.r2((ri.percentage_value / 100) * (payrollData.basic_salary || 0)) });
+            }
+            return ri;
+        });
+
         // Regular allowances (non-deduction regular_inputs add to gross)
-        (payrollData.regular_inputs || []).forEach(function(ri) {
+        resolvedRegularInputs.forEach(function(ri) {
             if (ri.type !== 'deduction') {
                 var amt = parseFloat(ri.amount) || 0;
                 if (ri.is_taxable === false) {
@@ -596,7 +604,7 @@ const PayrollEngine = {
         // Backward compatibility: items with no tax_treatment field default to 'net_only'.
         var preTaxDeductions = 0;
         var netOnlyDeductions = 0;
-        (payrollData.regular_inputs || []).forEach(function(ri) {
+        resolvedRegularInputs.forEach(function(ri) {
             if (ri.type === 'deduction') {
                 var amt = parseFloat(ri.amount) || 0;
                 if (ri.tax_treatment === 'pre_tax') {
