@@ -791,6 +791,20 @@
         </div>
     </div>
 
+    <!-- Edit Variable Item Amount -->
+    <div id="editVariableModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="editVariableTitle">Edit Amount</h3><button class="btn btn-danger btn-sm" onclick="closeModal('editVariableModal')">Close</button></div>
+            <input type="hidden" id="editVariableId">
+            <div class="form-group">
+                <label id="editVariableLabel">Amount for this pay run</label>
+                <input type="number" id="editVariableValue" step="0.01" min="0" placeholder="0.00" style="font-size:1.1rem; padding:12px;">
+            </div>
+            <p style="font-size:12px; color:#888; margin-bottom:15px;">🔄 Variable item — enter the amount for this pay run. Can be R 0 if not applicable this month.</p>
+            <button class="btn btn-success" style="width:100%; padding:13px; font-size:1rem;" onclick="saveVariableAmount()">✓ Save Amount</button>
+        </div>
+    </div>
+
     <!-- Add Regular Input -->
     <div id="addRegularModal" class="modal">
         <div class="modal-content" style="max-width:500px;">
@@ -1905,9 +1919,10 @@
                 const color = ri.type === 'deduction' ? '#dc3545' : '#28a745';
                 const prefix = ri.type === 'deduction' ? '- ' : '+ ';
                 if (ri.is_variable) {
-                    return '<div class="salary-item editable"><span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span> <span style="font-size:10px; color:#f0a500;" title="Variable — edit each pay run">🔄</span></span>'
+                    return '<div class="salary-item editable" onclick="editVariableAmount(\'' + ri.id + '\')" title="Click to edit this month\'s amount">'
+                        + '<span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span> <span style="font-size:10px; color:#f0a500;" title="Variable — click to edit">🔄</span></span>'
                         + '<span style="display:flex; align-items:center; gap:5px;">'
-                        + '<input type="number" step="0.01" min="0" value="' + (ri.amount || 0) + '" style="width:85px; padding:4px 6px; border:1px solid #667eea; border-radius:4px; font-size:0.88rem; text-align:right;" onchange="updateVariableAmount(\'' + ri.id + '\', this.value)" onclick="event.stopPropagation()" title="Enter this month\'s amount">'
+                        + '<span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ri.amount) + '</span>'
                         + '<button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button>'
                         + '</span></div>';
                 }
@@ -1975,6 +1990,32 @@
             payrollData.basic_salary = parseFloat(document.getElementById('editBasicValue').value) || 0;
             savePayrollData(); renderPayroll(); closeModal('editBasicModal');
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + payrollData.basic_salary.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+        }
+
+        function editVariableAmount(id) {
+            if (isPayrunLockedForPeriod()) {
+                alert('This period is locked by a finalized pay run. Use Request Unlock to make changes.');
+                return;
+            }
+            var ri = payrollData.regular_inputs.find(function(r) { return r.id === id; });
+            if (!ri) return;
+            document.getElementById('editVariableId').value = id;
+            document.getElementById('editVariableTitle').textContent = ri.description;
+            document.getElementById('editVariableLabel').textContent = 'Amount this pay run (' + ri.type + ')';
+            document.getElementById('editVariableValue').value = ri.amount || '';
+            document.getElementById('editVariableModal').classList.add('show');
+            setTimeout(function() {
+                var inp = document.getElementById('editVariableValue');
+                inp.focus(); inp.select();
+            }, 100);
+        }
+        function saveVariableAmount() {
+            var id = document.getElementById('editVariableId').value;
+            var ri = payrollData.regular_inputs.find(function(r) { return r.id === id; });
+            if (!ri) return;
+            ri.amount = parseFloat(document.getElementById('editVariableValue').value) || 0;
+            savePayrollData(); renderPayroll(); closeModal('editVariableModal');
+            AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated variable item "' + ri.description + '" to R' + ri.amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
 
         // ========== PREDEFINED PAYROLL ITEMS ==========
