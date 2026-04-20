@@ -1305,7 +1305,8 @@
             var saveBtn = document.getElementById('qaEmpSaveBtn');
 
             if (!first || !last) { errEl.textContent = 'First name and last name are required.'; return; }
-            if (!taxNum) { errEl.textContent = 'Tax number is required for PAYE compliance.'; return; }
+            // TAX NUMBER REQUIRED — DEACTIVATED FOR TESTING (2026-04-20) — RE-ACTIVATE: uncomment below
+            // if (!taxNum) { errEl.textContent = 'Tax number is required for PAYE compliance.'; return; }
 
             // Auto-generate employee number if blank
             if (!empNo) empNo = 'IMP-' + Date.now().toString().slice(-6);

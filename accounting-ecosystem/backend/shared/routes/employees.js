@@ -92,9 +92,10 @@ router.post('/', requirePermission('EMPLOYEES.CREATE'), async (req, res) => {
     if (!first_name || !last_name) {
       return res.status(400).json({ error: 'first_name and last_name are required' });
     }
-    if (!tax_number) {
-      return res.status(400).json({ error: 'tax_number is required — all employees must have a SARS tax reference number for PAYE compliance' });
-    }
+    // TAX NUMBER REQUIRED — DEACTIVATED FOR TESTING (2026-04-20) — RE-ACTIVATE: uncomment the block below
+    // if (!tax_number) {
+    //   return res.status(400).json({ error: 'tax_number is required — all employees must have a SARS tax reference number for PAYE compliance' });
+    // }
 
     const { data, error } = await supabase
       .from('employees')
