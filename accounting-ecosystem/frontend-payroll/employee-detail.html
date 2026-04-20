@@ -811,9 +811,9 @@
             <div class="modal-header"><h3>📅 Add Regular Input</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addRegularModal')">✕ Close</button></div>
             <p style="font-size:0.82rem; color:#888; margin:0 0 10px;">Appears <strong>every month</strong> for this employee. Select from the list or enter a custom item.</p>
             <div id="regularItemsList" style="max-height:260px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:8px; margin-bottom:12px;"></div>
-            <div id="regularAmountPane" style="display:none; background:#f0f4ff; border:2px solid #667eea; border-radius:8px; padding:14px; margin-bottom:10px;">
+            <div id="regularAmountPane" style="display:none; background:var(--surface, #f0f4ff); border:2px solid #667eea; border-radius:8px; padding:14px; margin-bottom:10px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <span id="regularPaneName" style="font-weight:700; font-size:0.95rem; color:#333;"></span>
+                    <span id="regularPaneName" style="font-weight:700; font-size:0.95rem; color:var(--text, #333);"></span>
                     <span id="regularPaneBadge" style="font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700;"></span>
                 </div>
                 <div id="regularCustomRow" style="display:none; margin-bottom:10px;">
@@ -829,10 +829,11 @@
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span id="regularAmountLabel" style="font-weight:600; font-size:0.9rem; white-space:nowrap; color:#555;">R per month:</span>
+                    <span id="regularAmountLabel" style="font-weight:600; font-size:0.9rem; white-space:nowrap; color:var(--text-secondary,#555);">R per month:</span>
                     <input type="number" id="regularInputAmount" step="0.01" min="0" placeholder="0.00" style="flex:1; padding:10px; border:2px solid #667eea; border-radius:6px; font-size:1.1rem; text-align:right; box-sizing:border-box;">
                 </div>
-                <div id="regularVariableNote" style="display:none; margin-top:8px; padding:7px 10px; background:#fff8e1; border:1px solid #f0a500; border-radius:6px; font-size:11px; color:#856404;">
+                <div id="regularPercentageNote" style="display:none; padding:10px 12px; background:var(--accent-subtle,#e8f8f2); border:1px solid #10b981; border-radius:6px; font-size:13px; color:var(--text,#155724); margin-top:8px;"></div>
+                <div id="regularVariableNote" style="display:none; margin-top:8px; padding:7px 10px; background:var(--surface,#fff8e1); border:1px solid #f0a500; border-radius:6px; font-size:11px; color:var(--text-secondary,#856404);"><!-- -->
                     🔄 <strong>Variable item</strong> — enter a default/suggestion amount (can be R 0). The amount is editable directly on the employee profile each pay run.
                 </div>
             </div>
@@ -1027,6 +1028,8 @@
         let payrollData = { basic_salary: 0, regular_inputs: [] };
         let _empList = []; // backend-authoritative employee list for this company
         var _currentItemIsVariable = false;
+        var _currentItemIsPercentage = false;
+        var _currentItemPercentageValue = 0;
         let currentPeriod = '';
 
         // ========== INIT ==========
@@ -1918,6 +1921,15 @@
                     riList.innerHTML = payrollData.regular_inputs.map(ri => {
                 const color = ri.type === 'deduction' ? '#dc3545' : '#28a745';
                 const prefix = ri.type === 'deduction' ? '- ' : '+ ';
+                if (ri.is_percentage) {
+                    var pctAmt = PayrollEngine ? PayrollEngine.r2((ri.percentage_value / 100) * (payrollData.basic_salary || 0)) : 0;
+                    return '<div class="salary-item">'
+                        + '<span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span> <span style="font-size:10px; color:#10b981;" title="' + ri.percentage_value + '% of basic salary — auto-calculated">📐 ' + ri.percentage_value + '%</span></span>'
+                        + '<span style="display:flex; align-items:center; gap:5px;">'
+                        + '<span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(pctAmt) + '</span>'
+                        + '<button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button>'
+                        + '</span></div>';
+                }
                 if (ri.is_variable) {
                     return '<div class="salary-item editable" onclick="editVariableAmount(\'' + ri.id + '\')" title="Click to edit this month\'s amount">'
                         + '<span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span> <span style="font-size:10px; color:#f0a500;" title="Variable — click to edit">🔄</span></span>'
@@ -2099,8 +2111,8 @@
                     lastCat = item.category;
                 }
                 var col = item.type === 'deduction' ? '#dc3545' : '#28a745';
-                html += '<div class="payroll-list-row" onclick="' + selectFn + '(this,\'' + item.type + '\',\'' + item.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="padding:9px 14px; border-bottom:1px solid ' + itemBorder + '; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background=\'' + hoverBg + '\'" onmouseout="if(!this.classList.contains(\'selected-row\'))this.style.background=\'\'">'
-                    + '<span style="font-size:0.88rem; color:var(--text, #333);">' + item.name + '</span>'
+                html += '<div class="payroll-list-row" data-is-pct="' + (item.is_percentage ? '1' : '0') + '" data-pct-val="' + (item.percentage_value || 0) + '" onclick="' + selectFn + '(this,\'' + item.type + '\',\'' + item.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="padding:9px 14px; border-bottom:1px solid ' + itemBorder + '; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background=\'' + hoverBg + '\'" onmouseout="if(!this.classList.contains(\'selected-row\'))this.style.background=\'\'">'
+                    + '<span style="font-size:0.88rem; color:var(--text, #333);">' + item.name + (item.is_percentage ? ' <span style="font-size:10px; color:#f0a500;">(' + item.percentage_value + '%)</span>' : '') + '</span>'
                     + '<span style="font-size:10px; padding:2px 8px; border-radius:10px; background:' + col + '22; color:' + col + '; font-weight:700; white-space:nowrap; margin-left:8px;">' + item.type + '</span>'
                     + '</div>';
             });
@@ -2111,6 +2123,8 @@
         // ========== REGULAR INPUTS ==========
         function openAddRegularInput() {
             _currentItemIsVariable = false;
+            _currentItemIsPercentage = false;
+            _currentItemPercentageValue = 0;
             var listEl = document.getElementById('regularItemsList');
             var hidden = getHiddenPayrollItems();
             var alreadyAdded = (payrollData.regular_inputs || []).map(function(r) { return r.description; });
@@ -2119,7 +2133,10 @@
                     var freq = ci.frequency || 'both';
                     return (freq === 'regular' || freq === 'both') && !hidden.includes(ci.item_name) && !alreadyAdded.includes(ci.item_name);
                 })
-                .map(function(ci) { return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name }; });
+                .map(function(ci) {
+                    var isPct = ci.category === 'percentage';
+                    return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name, is_percentage: isPct, percentage_value: isPct ? (ci.default_amount || 0) : 0 };
+                });
             var standardItems = REGULAR_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
             var visible = companyItems.concat(standardItems);
             buildItemList(listEl, visible, 'selectRegularItem', 'selectRegularCustom');
@@ -2130,8 +2147,7 @@
             document.getElementById('addRegularModal').classList.add('show');
         }
         function selectRegularItem(el, type, name) {
-            var isDark = document.body.classList.contains('dark-mode');
-            var selBg = isDark ? 'rgba(16,185,129,0.15)' : '#e8edff';
+            var selBg = 'var(--accent-subtle, #e8edff)';
             document.querySelectorAll('#regularItemsList .payroll-list-row').forEach(function(r) { r.classList.remove('selected-row'); r.style.background = ''; r.style.fontWeight = ''; });
             el.classList.add('selected-row'); el.style.background = selBg; el.style.fontWeight = '600';
             document.getElementById('regularInputDesc').value = name;
@@ -2141,23 +2157,38 @@
             document.getElementById('regularPaneBadge').textContent = type;
             document.getElementById('regularPaneBadge').style.cssText = 'font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; background:' + col + '22; color:' + col + ';';
             document.getElementById('regularCustomRow').style.display = 'none';
+
+            // Detect percentage items (from data attribute set by buildItemList)
+            _currentItemIsPercentage = el.dataset.isPct === '1';
+            _currentItemPercentageValue = parseFloat(el.dataset.pctVal) || 0;
+
             // Check if this item is marked variable in payroll items config
             var customItems = getCustomPayrollItems();
             var configItem = customItems.find(function(ci) { return ci.item_name === name; });
-            _currentItemIsVariable = configItem ? !!configItem.is_variable : false;
+            _currentItemIsVariable = _currentItemIsPercentage ? false : (configItem ? !!configItem.is_variable : false);
+
             var noteEl = document.getElementById('regularVariableNote');
             var labelEl = document.getElementById('regularAmountLabel');
-            if (_currentItemIsVariable) {
-                noteEl.style.display = 'block';
-                if (labelEl) labelEl.textContent = 'Default amount (suggestion, can be R 0):';
-            } else {
+            var amtInput = document.getElementById('regularInputAmount');
+            var pctNoteEl = document.getElementById('regularPercentageNote');
+
+            if (_currentItemIsPercentage) {
+                // Hide amount input, show percentage note
+                if (amtInput) amtInput.style.display = 'none';
+                if (labelEl) labelEl.style.display = 'none';
+                if (pctNoteEl) { pctNoteEl.style.display = 'block'; pctNoteEl.textContent = '📐 Auto-calculated: ' + _currentItemPercentageValue + '% of basic salary each pay run.'; }
                 noteEl.style.display = 'none';
-                if (labelEl) labelEl.textContent = 'R per month:';
+            } else {
+                if (amtInput) amtInput.style.display = '';
+                if (labelEl) { labelEl.style.display = ''; labelEl.textContent = _currentItemIsVariable ? 'Default amount (suggestion, can be R 0):' : 'R per month:'; }
+                if (pctNoteEl) pctNoteEl.style.display = 'none';
+                noteEl.style.display = _currentItemIsVariable ? 'block' : 'none';
+                setTimeout(function() { document.getElementById('regularInputAmount').focus(); }, 50);
             }
+
             document.getElementById('regularAmountPane').style.display = '';
             document.getElementById('regularSaveBtn').style.display = '';
             document.getElementById('regularSaveBtn').textContent = '\u2713 Add "' + name + '" to Monthly Payslip';
-            setTimeout(function() { document.getElementById('regularInputAmount').focus(); }, 50);
         }
         function selectRegularCustom() {
             _currentItemIsVariable = false;
@@ -2180,17 +2211,20 @@
             var type = document.getElementById('regularInputType').value;
             var amount = parseFloat(document.getElementById('regularInputAmount').value) || 0;
             if (!desc) { alert('Please select an item or enter a description'); return; }
-            if (!_currentItemIsVariable && amount <= 0) { alert('Please enter a valid amount greater than R 0'); return; }
+            if (!_currentItemIsVariable && !_currentItemIsPercentage && amount <= 0) { alert('Please enter a valid amount greater than R 0'); return; }
             var input = {
                 id: 'ri-' + Math.random().toString(36).substr(2, 9),
                 type: type,
                 description: desc,
-                amount: amount,
-                is_variable: _currentItemIsVariable
+                amount: _currentItemIsPercentage ? 0 : amount,
+                is_variable: _currentItemIsVariable,
+                is_percentage: _currentItemIsPercentage,
+                percentage_value: _currentItemIsPercentage ? _currentItemPercentageValue : 0
             };
             payrollData.regular_inputs.push(input);
             savePayrollData(); renderPayroll(); closeModal('addRegularModal');
-            AuditTrail.logCreate(currentCompanyId, 'regular_input', 'Added regular input "' + desc + '" (' + type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+            var logAmt = _currentItemIsPercentage ? (_currentItemPercentageValue + '% of basic salary') : ('R' + amount.toFixed(2));
+            AuditTrail.logCreate(currentCompanyId, 'regular_input', 'Added regular input "' + desc + '" (' + type + ') ' + logAmt + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
         function deleteRegularInput(id) {
             if (!confirm('Delete this regular input?')) return;
