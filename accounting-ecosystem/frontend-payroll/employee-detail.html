@@ -1227,10 +1227,10 @@
                 var opt = document.createElement('option');
                 opt.value = emp.id;
                 opt.textContent = (emp.first_name || '') + ' ' + (emp.last_name || '') + (emp.employee_number ? ' (' + emp.employee_number + ')' : '');
-                if (emp.id === currentEmpId) opt.selected = true;
+                if (String(emp.id) === String(currentEmpId)) opt.selected = true;
                 select.appendChild(opt);
             });
-            var idx = employees.findIndex(function(e) { return e.id === currentEmpId; });
+            var idx = employees.findIndex(function(e) { return String(e.id) === String(currentEmpId); });
             document.getElementById('empNavCounter').textContent = (idx + 1) + ' of ' + employees.length;
         }
 
@@ -1242,7 +1242,7 @@
         function navigateEmployee(direction) {
             var employees = getEmployeesSorted();
             if (employees.length === 0) return;
-            var idx = employees.findIndex(function(e) { return e.id === currentEmpId; });
+            var idx = employees.findIndex(function(e) { return String(e.id) === String(currentEmpId); });
             if (direction === 'prev') {
                 idx = idx <= 0 ? employees.length - 1 : idx - 1;
             } else {
