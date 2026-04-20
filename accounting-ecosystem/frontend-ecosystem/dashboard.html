@@ -1771,6 +1771,12 @@
         let isSuperAdmin = false;
         let enabledModules = [];
 
+        // ── In-memory cache — avoids redundant API round-trips within a session ──
+        // Cleared automatically when the user mutates data or switches company.
+        let _clientsCache = null; // { data: Client[], ts: number }
+        let _usersCache   = null; // { data: User[],   ts: number }
+        const _CACHE_TTL  = 30000; // 30 seconds
+
         // ── Init ──
         async function init() {
             const token = localStorage.getItem('eco_token');
@@ -1806,18 +1812,18 @@
                 return;
             }
 
-            // Fetch module status
-            try {
-                const modRes = await fetch(`${API_BASE}/api/modules`);
-                const modData = await modRes.json();
-                enabledModules = modData.enabled || [];
-            } catch (e) {
-                enabledModules = ['pos', 'payroll', 'accounting', 'sean'];
-            }
-
-            // Render UI
+            // Render user immediately (synchronous, no API deps)
             renderUser();
-            await renderCompanies();
+
+            // Fetch module status + company list in parallel — eliminates one full RTT
+            const [_modResult] = await Promise.all([
+                fetch(`${API_BASE}/api/modules`)
+                    .then(r => r.json())
+                    .catch(() => ({ enabled: ['pos', 'payroll', 'accounting', 'sean'] })),
+                renderCompanies()
+            ]);
+            enabledModules = (_modResult && _modResult.enabled) || ['pos', 'payroll', 'accounting', 'sean'];
+
             renderApps();
             renderStats();
 
@@ -1855,6 +1861,9 @@
             if (isSuperAdmin || (selectedCompany && ['business_owner', 'super_admin'].includes(selectedCompany.role))) {
                 document.getElementById('userMgmtSection').classList.remove('hidden');
             }
+
+            // Pre-fetch clients in background so first panel open is instant
+            loadClients().catch(() => {});
         }
 
         // ── Render User ──
@@ -2000,6 +2009,9 @@
 
         function selectCompany(idx) {
             selectedCompany = companies[idx];
+            // Company changed — cached data is stale for this new context
+            _clientsCache = null;
+            _usersCache   = null;
             document.getElementById('statRole').textContent = (selectedCompany.role || 'user').replace('_', ' ');
             renderApps();
 
@@ -2653,6 +2665,7 @@
                 }
 
                 // Refresh clients if panel is open
+                _clientsCache = null; // new client added — bust cache
                 if (document.getElementById('clientsPanel').classList.contains('show')) {
                     await loadClients();
                 }
@@ -2678,6 +2691,12 @@
         }
 
         async function loadClients() {
+            const now = Date.now();
+            if (_clientsCache && (now - _clientsCache.ts) < _CACHE_TTL) {
+                allClients = _clientsCache.data;
+                renderClients();
+                return;
+            }
             const token = localStorage.getItem('eco_token');
             try {
                 const companyFilter = selectedCompany && selectedCompany.id ? `?company_id=${selectedCompany.id}` : '';
@@ -2687,6 +2706,7 @@
                 if (!res.ok) throw new Error('Failed to load clients');
                 const data = await res.json();
                 allClients = data.clients || [];
+                _clientsCache = { data: allClients, ts: now };
                 renderClients();
             } catch (err) {
                 document.getElementById('clientsGrid').innerHTML =
@@ -2864,6 +2884,7 @@
                 if (removed.length) msg += ` — removed: ${removed.map(a => APP_LABELS[a]).join(', ')}`;
 
                 showToast(msg);
+                _clientsCache = null; // client apps changed — bust cache
                 await loadClients();
             } catch (err) {
                 showToast('❌ ' + err.message, true);
@@ -3690,14 +3711,26 @@
         // ── Load practice users ──
         async function loadPracticeUsers() {
             const container = document.getElementById('practiceUsersList');
-            container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">Loading users...</div>';
-            const token = localStorage.getItem('eco_token');
-            try {
-                const res = await fetch(`${API_BASE}/api/users`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) throw new Error('Failed to load users');
-                const { users } = await res.json();
+            const now = Date.now();
+            let users;
+            if (_usersCache && (now - _usersCache.ts) < _CACHE_TTL) {
+                users = _usersCache.data;
+            } else {
+                container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">Loading users...</div>';
+                const token = localStorage.getItem('eco_token');
+                try {
+                    const res = await fetch(`${API_BASE}/api/users`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) throw new Error('Failed to load users');
+                    const data = await res.json();
+                    users = data.users || [];
+                    _usersCache = { data: users, ts: now };
+                } catch (err) {
+                    container.innerHTML = `<div style="color:#fca5a5;font-size:0.85rem;">${err.message}</div>`;
+                    return;
+                }
+            }
 
                 if (!users || users.length === 0) {
                     container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No users found for this practice.</div>';
@@ -3758,9 +3791,6 @@
                         </div>`;
                     }).join('')}
                 `;
-            } catch (err) {
-                container.innerHTML = `<div style="color:#fca5a5;font-size:0.85rem;">${err.message}</div>`;
-            }
         }
 
         // ── Modal Shared Constants (Extract duplicate styles) ──
@@ -3850,6 +3880,7 @@
                     : apps.join(', ');
                 showToast(`${name} can now access: ${msg}`);
                 document.getElementById('appAccessModal').remove();
+                _usersCache = null; // app access changed
                 await loadPracticeUsers();
                 // Refresh matrix data if matrix tab is active
                 if (currentMatrixTab && matrixUsers.length > 0) {
@@ -3952,6 +3983,7 @@
                     : `${clients.length} client${clients.length !== 1 ? 's' : ''}`;
                 showToast(`${name} can now access: ${msg}`);
                 document.getElementById('clientAccessModal').remove();
+                _usersCache = null; // client access changed
                 await loadPracticeUsers();
                 // Refresh matrix data if matrix tab is active
                 if (currentMatrixTab && matrixUsers.length > 0) {
@@ -3995,6 +4027,7 @@
                 showToast(`${fullName} added to practice${appMsg}`);
                 document.getElementById('addUserForm').reset();
                 document.querySelectorAll('#auApps .app-check').forEach(el => el.classList.remove('checked'));
+                _usersCache = null; // new user added
                 await loadPracticeUsers();
             } catch (err) {
                 showToast(err.message, true);
@@ -4033,6 +4066,12 @@
             if (!selectedCompany) return;
             const token = localStorage.getItem('eco_token');
             const container = document.getElementById('usersTableContainer');
+            const now = Date.now();
+            if (_usersCache && (now - _usersCache.ts) < _CACHE_TTL) {
+                allUsers = _usersCache.data;
+                renderUsers();
+                return;
+            }
             container.innerHTML = '<p style="color:var(--text-muted); padding:12px 0;">Loading...</p>';
 
             try {
@@ -4045,6 +4084,7 @@
                 if (!res.ok) throw new Error('Failed to load users');
                 const data = await res.json();
                 allUsers = data.users || [];
+                _usersCache = { data: allUsers, ts: now };
                 renderUsers();
             } catch (err) {
                 container.innerHTML = `<div class="clients-empty"><div class="icon">⚠️</div><p>${err.message}</p></div>`;
@@ -4155,6 +4195,7 @@
                 showToast(`${payload.full_name} added to ${selectedCompany.trading_name || selectedCompany.company_name}!`);
 
                 if (document.getElementById('usersPanel').classList.contains('show')) {
+                    _usersCache = null; // new user added
                     await loadUsers();
                 }
             } catch (err) {
@@ -4178,6 +4219,7 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to remove user');
                 showToast(`${name} removed from practice`);
+                _usersCache = null; // user removed
                 await loadPracticeUsers();
             } catch (err) {
                 showToast(err.message, true);
@@ -4242,6 +4284,7 @@
 
                 showToast(`${name}'s role updated to ${selectedRole.value.replace(/_/g, ' ')}`);
                 document.getElementById('roleAccessModal').remove();
+                _usersCache = null; // role changed
                 await loadPracticeUsers();
                 // Refresh matrix data if matrix tab is active
                 if (currentMatrixTab && matrixUsers.length > 0) {
@@ -4364,6 +4407,7 @@
 
                 closeEditUserModal();
                 showToast('User access updated!');
+                _usersCache = null; // user role/apps changed
                 await loadUsers();
             } catch (err) {
                 showToast('❌ ' + err.message, true);
@@ -4420,6 +4464,7 @@
                     throw new Error(d.error || 'Failed to remove user');
                 }
                 showToast(`${userName} removed from ${compName}.`);
+                _usersCache = null; // user removed from company
                 await loadUsers();
             } catch (err) {
                 showToast('❌ ' + err.message, true);

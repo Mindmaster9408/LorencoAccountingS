@@ -268,7 +268,31 @@ router.get('/', async (req, res) => {
       q = q.eq('client_type', client_type);
     }
 
-    const { data: ownedClients, error } = await q;
+    // ── Parallel phase: run owned-clients query, firm-access lookup,
+    //    and per-user access filter all at the same time ─────────────────────
+    const isNonAdminWithCompany = !req.user.isSuperAdmin && req.user.userId && effectiveCompanyId && !company_id;
+
+    const firmAccessPromise = (!req.user.isSuperAdmin && req.companyId && !company_id)
+      ? supabase
+          .from('eco_client_firm_access')
+          .select('eco_client_id')
+          .eq('firm_company_id', req.companyId)
+          .eq('is_active', true)
+      : Promise.resolve({ data: null });
+
+    const userClientAccessPromise = isNonAdminWithCompany
+      ? supabase
+          .from('user_client_access')
+          .select('eco_client_id')
+          .eq('user_id', req.user.userId)
+          .eq('company_id', effectiveCompanyId)
+      : Promise.resolve({ data: null });
+
+    const [
+      { data: ownedClients, error },
+      { data: firmAccessData },
+      { data: userClientRows }
+    ] = await Promise.all([q, firmAccessPromise, userClientAccessPromise]);
 
     if (error) {
       console.error('eco-clients list error:', error.message);
@@ -280,53 +304,36 @@ router.get('/', async (req, res) => {
     // ── 2. Fetch shared clients (via eco_client_firm_access) ───────────────────
     // Only for non-super-admin users who have a company context.
     // Super admins already see everything via the owned-clients query.
-    if (!req.user.isSuperAdmin && req.companyId && !company_id) {
-      const { data: sharedAccess } = await supabase
-        .from('eco_client_firm_access')
-        .select('eco_client_id')
-        .eq('firm_company_id', req.companyId)
-        .eq('is_active', true);
+    if (firmAccessData && firmAccessData.length > 0) {
+      const ownedIds = new Set(results.map(c => c.id));
+      const newIds = firmAccessData
+        .map(a => a.eco_client_id)
+        .filter(id => !ownedIds.has(id));
 
-      if (sharedAccess && sharedAccess.length > 0) {
-        const ownedIds = new Set(results.map(c => c.id));
-        const newIds = sharedAccess
-          .map(a => a.eco_client_id)
-          .filter(id => !ownedIds.has(id));
+      if (newIds.length > 0) {
+        let sharedQ = supabase
+          .from('eco_clients')
+          .select('*')
+          .in('id', newIds)
+          .neq('company_id', effectiveCompanyId)  // defensive: never include own-firm clients via shared path
+          .order('name');
 
-        if (newIds.length > 0) {
-          let sharedQ = supabase
-            .from('eco_clients')
-            .select('*')
-            .in('id', newIds)
-            .neq('company_id', effectiveCompanyId)  // defensive: never include own-firm clients via shared path
-            .order('name');
+        if (!showAll) sharedQ = sharedQ.eq('is_active', true);
 
-          if (!showAll) sharedQ = sharedQ.eq('is_active', true);
-
-          const { data: sharedClients } = await sharedQ;
-          if (sharedClients) {
-            // Mark shared clients so the UI can badge them differently
-            results = [...results, ...sharedClients.map(c => ({ ...c, shared_access: true }))];
-          }
+        const { data: sharedClients } = await sharedQ;
+        if (sharedClients) {
+          // Mark shared clients so the UI can badge them differently
+          results = [...results, ...sharedClients.map(c => ({ ...c, shared_access: true }))];
         }
       }
     }
 
-    // ── 3. Per-user client access filter ─────────────────────────────────────
+    // ── 3. Per-user client access filter (data already fetched in parallel) ──
     // If the user has ANY rows in user_client_access for (user_id, company_id),
     // filter to only those clients.  Zero rows = unrestricted (backward-compat).
-    // Super admins and explicit company_id query params bypass this filter.
-    if (!req.user.isSuperAdmin && req.user.userId && effectiveCompanyId && !company_id) {
-      const { data: userClientRows } = await supabase
-        .from('user_client_access')
-        .select('eco_client_id')
-        .eq('user_id', req.user.userId)
-        .eq('company_id', effectiveCompanyId);
-
-      if (userClientRows && userClientRows.length > 0) {
-        const allowedIds = new Set(userClientRows.map(r => r.eco_client_id));
-        results = results.filter(c => allowedIds.has(c.id));
-      }
+    if (userClientRows && userClientRows.length > 0) {
+      const allowedIds = new Set(userClientRows.map(r => r.eco_client_id));
+      results = results.filter(c => allowedIds.has(c.id));
       // Zero rows: no restriction, all clients remain visible
     }
 

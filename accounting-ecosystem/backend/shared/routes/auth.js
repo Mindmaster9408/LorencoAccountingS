@@ -736,18 +736,27 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: `Invalid targetApp. Must be one of: ${validApps.join(', ')}` });
     }
 
-    // Get user from DB
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', req.user.userId)
-      .single();
+    // Run user fetch and company access check in parallel (both need only req.user.userId)
+    const resolvedCompanyId0 = companyId ? parseInt(companyId) : null;
+    const [
+      { data: user, error: userError },
+      { data: directAccess }
+    ] = await Promise.all([
+      supabase.from('users').select('*').eq('id', req.user.userId).single(),
+      (resolvedCompanyId0 && req.user.role !== 'super_admin')
+        ? supabase.from('user_company_access').select('role, apps_access')
+            .eq('user_id', req.user.userId)
+            .eq('company_id', resolvedCompanyId0)
+            .eq('is_active', true)
+            .maybeSingle()
+        : Promise.resolve({ data: null })
+    ]);
 
     if (userError || !user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    let resolvedCompanyId = companyId ? parseInt(companyId) : null;
+    let resolvedCompanyId = resolvedCompanyId0;
     let role = req.user.role || 'admin';
 
     if (user.is_super_admin) {
@@ -760,13 +769,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
         if (firstCo && firstCo.length > 0) resolvedCompanyId = firstCo[0].id;
       }
     } else if (resolvedCompanyId) {
-      const { data: access } = await supabase
-        .from('user_company_access')
-        .select('role, apps_access')
-        .eq('user_id', user.id)
-        .eq('company_id', resolvedCompanyId)
-        .eq('is_active', true)
-        .maybeSingle();
+      const access = directAccess; // already fetched in parallel above
 
       if (!access) {
         // No direct company membership — check if the target company is a client company
