@@ -414,6 +414,12 @@
                         <button class="btn btn-outline btn-sm" onclick="clearAllEmployees()">Clear</button>
                         <span id="selected-count">0 selected</span>
                     </div>
+                    <div style="margin-bottom:8px;">
+                        <input type="text" id="emp-search-filter"
+                               placeholder="Filter by surname or employee code…"
+                               oninput="renderEmployeeList()"
+                               style="width:100%; padding:8px 10px; border:2px solid #ddd; border-radius:6px; font-size:0.9em; box-sizing:border-box;">
+                    </div>
                     <div class="emp-select-list" id="emp-select-list">
                         <div class="emp-loading">Loading employees…</div>
                     </div>
@@ -717,8 +723,21 @@
             ? state.employees.filter(function(e) { return e.pay_schedule_id && parseInt(e.pay_schedule_id, 10) === schedFilter; })
             : state.employees;
 
+        // Apply surname / employee-code text filter
+        var searchEl = document.getElementById('emp-search-filter');
+        var searchVal = searchEl ? searchEl.value.toLowerCase().trim() : '';
+        if (searchVal) {
+            visible = visible.filter(function(e) {
+                var surname = (e.last_name || '').toLowerCase();
+                var code    = (e.employee_number || '').toLowerCase();
+                return surname.includes(searchVal) || code.includes(searchVal);
+            });
+        }
+
         if (visible.length === 0) {
-            list.innerHTML = '<div class="emp-loading" style="color:#888;">No employees assigned to this schedule yet.</div>';
+            list.innerHTML = searchVal
+                ? '<div class="emp-loading" style="color:#888;">No employees match your filter.</div>'
+                : '<div class="emp-loading" style="color:#888;">No employees assigned to this schedule yet.</div>';
             updateSelectedCount();
             return;
         }
