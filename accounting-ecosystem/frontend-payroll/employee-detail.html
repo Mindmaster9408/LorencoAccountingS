@@ -2042,15 +2042,14 @@
         }
 
         function buildItemList(containerEl, items, selectFn, customFn) {
-            var isDark = document.body.classList.contains('dark-mode');
-            var catBg = isDark ? 'rgba(255,255,255,0.06)' : '#f8f9fa';
-            var catColor = isDark ? 'rgba(255,255,255,0.5)' : '#aaa';
-            var catBorder = isDark ? 'rgba(255,255,255,0.08)' : '#eee';
-            var hoverBg = isDark ? 'rgba(255,255,255,0.10)' : '#f0f4ff';
-            var itemBorder = isDark ? 'rgba(255,255,255,0.08)' : '#f5f5f5';
-            var customHoverBg = isDark ? 'rgba(255,255,255,0.06)' : '#fff8e1';
-            var customColor = isDark ? '#a5b4fc' : '#667eea';
-            var customBorderTop = isDark ? 'rgba(255,255,255,0.12)' : '#e0e0e0';
+            var catBg = 'var(--surface, #f8f9fa)';
+            var catColor = 'var(--text-muted, #888)';
+            var catBorder = 'var(--border, #eee)';
+            var hoverBg = 'var(--surface-hover, #f0f4ff)';
+            var itemBorder = 'var(--border, #f5f5f5)';
+            var customHoverBg = 'var(--surface, #fff8e1)';
+            var customColor = 'var(--accent-light, #667eea)';
+            var customBorderTop = 'var(--border-strong, #e0e0e0)';
             var html = '';
             var lastCat = '';
             items.forEach(function(item) {
@@ -2060,7 +2059,7 @@
                 }
                 var col = item.type === 'deduction' ? '#dc3545' : '#28a745';
                 html += '<div class="payroll-list-row" onclick="' + selectFn + '(this,\'' + item.type + '\',\'' + item.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="padding:9px 14px; border-bottom:1px solid ' + itemBorder + '; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background=\'' + hoverBg + '\'" onmouseout="if(!this.classList.contains(\'selected-row\'))this.style.background=\'\'">'
-                    + '<span style="font-size:0.88rem; color:' + (isDark ? '#e2e8f0' : '#222') + ';">' + item.name + '</span>'
+                    + '<span style="font-size:0.88rem; color:var(--text, #333);">' + item.name + '</span>'
                     + '<span style="font-size:10px; padding:2px 8px; border-radius:10px; background:' + col + '22; color:' + col + '; font-weight:700; white-space:nowrap; margin-left:8px;">' + item.type + '</span>'
                     + '</div>';
             });
