@@ -2060,7 +2060,7 @@
                 }
                 var col = item.type === 'deduction' ? '#dc3545' : '#28a745';
                 html += '<div class="payroll-list-row" onclick="' + selectFn + '(this,\'' + item.type + '\',\'' + item.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="padding:9px 14px; border-bottom:1px solid ' + itemBorder + '; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background=\'' + hoverBg + '\'" onmouseout="if(!this.classList.contains(\'selected-row\'))this.style.background=\'\'">'
-                    + '<span style="font-size:0.88rem;">' + item.name + '</span>'
+                    + '<span style="font-size:0.88rem; color:' + (isDark ? '#e2e8f0' : '#222') + ';">' + item.name + '</span>'
                     + '<span style="font-size:10px; padding:2px 8px; border-radius:10px; background:' + col + '22; color:' + col + '; font-weight:700; white-space:nowrap; margin-left:8px;">' + item.type + '</span>'
                     + '</div>';
             });
@@ -2073,7 +2073,12 @@
             _currentItemIsVariable = false;
             var listEl = document.getElementById('regularItemsList');
             var hidden = getHiddenPayrollItems();
-            var visible = REGULAR_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
+            var alreadyAdded = (payrollData.regular_inputs || []).map(function(r) { return r.description; });
+            var companyItems = getCustomPayrollItems()
+                .filter(function(ci) { return !hidden.includes(ci.item_name) && !alreadyAdded.includes(ci.item_name); })
+                .map(function(ci) { return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name }; });
+            var standardItems = REGULAR_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
+            var visible = companyItems.concat(standardItems);
             buildItemList(listEl, visible, 'selectRegularItem', 'selectRegularCustom');
             document.getElementById('regularAmountPane').style.display = 'none';
             document.getElementById('regularSaveBtn').style.display = 'none';
@@ -2162,7 +2167,11 @@
         function openAddCurrentInput() {
             var listEl = document.getElementById('currentItemsList');
             var hidden = getHiddenPayrollItems();
-            var visible = ONCE_OFF_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
+            var companyItems = getCustomPayrollItems()
+                .filter(function(ci) { return !hidden.includes(ci.item_name); })
+                .map(function(ci) { return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name }; });
+            var standardItems = ONCE_OFF_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
+            var visible = companyItems.concat(standardItems);
             buildItemList(listEl, visible, 'selectCurrentItem', 'selectCurrentCustom');
             document.getElementById('currentAmountPane').style.display = 'none';
             document.getElementById('currentSaveBtn').style.display = 'none';
