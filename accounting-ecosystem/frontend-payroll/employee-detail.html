@@ -2074,7 +2074,10 @@
             var hidden = getHiddenPayrollItems();
             var alreadyAdded = (payrollData.regular_inputs || []).map(function(r) { return r.description; });
             var companyItems = getCustomPayrollItems()
-                .filter(function(ci) { return !hidden.includes(ci.item_name) && !alreadyAdded.includes(ci.item_name); })
+                .filter(function(ci) {
+                    var freq = ci.frequency || 'both';
+                    return (freq === 'regular' || freq === 'both') && !hidden.includes(ci.item_name) && !alreadyAdded.includes(ci.item_name);
+                })
                 .map(function(ci) { return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name }; });
             var standardItems = REGULAR_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
             var visible = companyItems.concat(standardItems);
@@ -2167,7 +2170,10 @@
             var listEl = document.getElementById('currentItemsList');
             var hidden = getHiddenPayrollItems();
             var companyItems = getCustomPayrollItems()
-                .filter(function(ci) { return !hidden.includes(ci.item_name); })
+                .filter(function(ci) {
+                    var freq = ci.frequency || 'both';
+                    return (freq === 'once_off' || freq === 'both') && !hidden.includes(ci.item_name);
+                })
                 .map(function(ci) { return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name }; });
             var standardItems = ONCE_OFF_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
             var visible = companyItems.concat(standardItems);

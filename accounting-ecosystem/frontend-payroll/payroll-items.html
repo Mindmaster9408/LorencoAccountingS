@@ -752,6 +752,17 @@
                         <small style="color:#666;">Pre-tax deductions (pension fund, RA, etc.) reduce PAYE taxable income per SARS rules. Use &ldquo;Normal Deduction&rdquo; for medical aid employee portion, garnishees, and similar.</small>
                     </div>
 
+                    <!-- Pay Run Frequency -->
+                    <div class="form-group" style="margin-bottom:20px;">
+                        <label>Show this item in *</label>
+                        <select id="itemFrequency" required style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-size:0.95rem;">
+                            <option value="regular">Regular Inputs (Monthly) — appears every month</option>
+                            <option value="once_off">Once-Off Inputs — one-time per pay run</option>
+                            <option value="both">Both — available in regular and once-off</option>
+                        </select>
+                        <small style="color:#666;">Controls which "Add" list this item appears in on the employee payslip screen.</small>
+                    </div>
+
                     <!-- Monthly Behaviour -->
                     <div class="monthly-behaviour-group">
                         <label class="main-label">Monthly Behaviour *</label>
@@ -1261,6 +1272,7 @@
             document.getElementById('isTaxable').value = item.is_taxable ? '1' : '0';
             document.getElementById('affectsUif').value = item.affects_uif ? '1' : '0';
             document.getElementById('taxTreatment').value = item.tax_treatment || 'net_only';
+            document.getElementById('itemFrequency').value = item.frequency || 'regular';
             document.getElementById('modalError').style.display = 'none';
             selectBehaviour(item.is_variable ? 'variable' : 'fixed');
             updateTaxTreatmentVisibility(item.item_type);
@@ -1316,6 +1328,7 @@
                 is_taxable: parseInt(document.getElementById('isTaxable').value) === 1,
                 affects_uif: parseInt(document.getElementById('affectsUif').value) === 1,
                 is_variable: document.getElementById('behaviourVariable').checked,
+                frequency: document.getElementById('itemFrequency').value || 'regular',
                 tax_treatment: document.getElementById('itemType').value === 'deduction'
                     ? (document.getElementById('taxTreatment').value || 'net_only')
                     : 'net_only'
