@@ -888,7 +888,7 @@
     <div id="addOvertimeModal" class="modal">
         <div class="modal-content">
             <div class="modal-header"><h3>Add Overtime</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addOvertimeModal')">Close</button></div>
-            <div class="form-group"><label>Date</label><input type="date" id="overtimeDate"></div>
+            <div class="form-group"><label>Date <span style="font-size:11px;color:#999;">(optional)</span></label><input type="date" id="overtimeDate"></div>
             <div class="form-group"><label>Hours</label><input type="number" id="overtimeHours" step="0.5" min="0"></div>
             <div class="form-group"><label>Rate Multiplier</label><select id="overtimeRate"><option value="1.5">1.5x (Time and a half)</option><option value="2.0">2.0x (Double time)</option><option value="2.5">2.5x</option><option value="3.0">3.0x (Triple time)</option></select></div>
             <div class="form-group"><label>Description</label><input type="text" id="overtimeDesc"></div>
@@ -900,7 +900,7 @@
     <div id="addShortTimeModal" class="modal">
         <div class="modal-content">
             <div class="modal-header"><h3>Add Short Time</h3><button class="btn btn-danger btn-sm" onclick="closeModal('addShortTimeModal')">Close</button></div>
-            <div class="form-group"><label>Date</label><input type="date" id="shortTimeDate"></div>
+            <div class="form-group"><label>Date <span style="font-size:11px;color:#999;">(optional)</span></label><input type="date" id="shortTimeDate"></div>
             <div class="form-group"><label>Hours Missed</label><input type="number" id="shortTimeHours" step="0.5" min="0"></div>
             <div class="form-group"><label>Reason</label><input type="text" id="shortTimeReason"></div>
             <button class="btn btn-success" style="width:100%;" onclick="saveShortTime()">Save</button>
@@ -2395,9 +2395,9 @@
             if (!_requireNotLocked()) return;
             const date = document.getElementById('overtimeDate').value;
             const hours = parseFloat(document.getElementById('overtimeHours').value);
-            if (!date || !hours) { alert('Please fill in date and hours'); return; }
+            if (!hours) { alert('Please enter hours'); return; }
             const items = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
-            items.push({ id: 'ot-' + Math.random().toString(36).substr(2, 9), date: date, hours: hours, rate_multiplier: parseFloat(document.getElementById('overtimeRate').value), description: document.getElementById('overtimeDesc').value.trim() });
+            items.push({ id: 'ot-' + Math.random().toString(36).substr(2, 9), date: date || '', hours: hours, rate_multiplier: parseFloat(document.getElementById('overtimeRate').value), description: document.getElementById('overtimeDesc').value.trim() });
             safeLocalStorage.setItem(getOvertimeKey(), JSON.stringify(items)); renderPayroll(); closeModal('addOvertimeModal');
         }
         function deleteOvertime(id) { if (!_requireNotLocked()) return; if (!confirm('Delete?')) return; const items = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').filter(i => i.id !== id); safeLocalStorage.setItem(getOvertimeKey(), JSON.stringify(items)); renderPayroll(); }
@@ -2408,9 +2408,9 @@
             if (!_requireNotLocked()) return;
             const date = document.getElementById('shortTimeDate').value;
             const hours = parseFloat(document.getElementById('shortTimeHours').value);
-            if (!date || !hours) { alert('Please fill in date and hours'); return; }
+            if (!hours) { alert('Please enter hours missed'); return; }
             const items = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
-            items.push({ id: 'st-' + Math.random().toString(36).substr(2, 9), date: date, hours_missed: hours, reason: document.getElementById('shortTimeReason').value.trim() });
+            items.push({ id: 'st-' + Math.random().toString(36).substr(2, 9), date: date || '', hours_missed: hours, reason: document.getElementById('shortTimeReason').value.trim() });
             safeLocalStorage.setItem(getShortTimeKey(), JSON.stringify(items)); renderPayroll(); closeModal('addShortTimeModal');
         }
         function deleteShortTime(id) { if (!_requireNotLocked()) return; if (!confirm('Delete?')) return; const items = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]').filter(i => i.id !== id); safeLocalStorage.setItem(getShortTimeKey(), JSON.stringify(items)); renderPayroll(); }
