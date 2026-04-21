@@ -370,7 +370,7 @@
                         <div style="font-size:0.82rem; opacity:0.9; margin-top:2px;">Add salary, allowances, deductions &amp; once-off items — then calculate and finalise the payslip.</div>
                     </div>
                 </div>
-                <input type="text" class="search-bar" placeholder="Search employees by name, number, or department..." oninput="filterEmployees(this.value)">
+                <input type="text" class="search-bar" placeholder="Search by name, surname, employee code or ID number..." oninput="filterEmployees(this.value)">
                 <div class="employee-grid" id="employee-grid"></div>
             </div>
 
@@ -853,7 +853,9 @@
             const q = query.toLowerCase();
             const filtered = employees.filter(e =>
                 (e.first_name + ' ' + e.last_name).toLowerCase().includes(q) ||
+                (e.last_name || '').toLowerCase().includes(q) ||
                 (e.employee_number || '').toLowerCase().includes(q) ||
+                (e.id_number || '').toLowerCase().includes(q) ||
                 (e.department || '').toLowerCase().includes(q)
             );
             displayEmployees(filtered);

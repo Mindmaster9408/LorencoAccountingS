@@ -274,13 +274,22 @@
         </div>
 
         <!-- EMPLOYEE QUICK NAV -->
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; background: white; padding: 12px 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
-            <button class="btn btn-sm btn-secondary" onclick="navigateEmployee('prev')" id="empPrevBtn" title="Previous Employee" style="padding: 6px 10px; font-size: 16px; line-height: 1;">&#9664;</button>
-            <select id="empQuickNav" onchange="navigateToEmployee(this.value)" style="flex: 1; padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">
-                <option value="">Loading employees...</option>
-            </select>
-            <button class="btn btn-sm btn-secondary" onclick="navigateEmployee('next')" id="empNextBtn" title="Next Employee" style="padding: 6px 10px; font-size: 16px; line-height: 1;">&#9654;</button>
-            <span id="empNavCounter" style="font-size: 12px; color: #999; white-space: nowrap; min-width: 50px; text-align: center;"></span>
+        <div style="background: white; padding: 12px 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); margin-bottom: 15px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+                <span style="font-size:0.75rem; color:#888; white-space:nowrap;">Sort:</span>
+                <button type="button" id="empSortSurname" onclick="setEmpNavSort('surname')" style="padding:3px 10px; font-size:12px; border:1px solid #667eea; border-radius:12px; background:#667eea; color:white; cursor:pointer; font-weight:600;">Surname</button>
+                <button type="button" id="empSortFirstname" onclick="setEmpNavSort('firstname')" style="padding:3px 10px; font-size:12px; border:1px solid #e0e0e0; border-radius:12px; background:white; color:#555; cursor:pointer;">Name</button>
+                <button type="button" id="empSortCode" onclick="setEmpNavSort('code')" style="padding:3px 10px; font-size:12px; border:1px solid #e0e0e0; border-radius:12px; background:white; color:#555; cursor:pointer;">Code</button>
+                <input type="text" id="empNavSearch" placeholder="Search employee..." oninput="loadEmployeeNav()" style="flex:1; min-width:120px; padding:4px 10px; border:1px solid #e0e0e0; border-radius:12px; font-size:13px; outline:none;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn btn-sm btn-secondary" onclick="navigateEmployee('prev')" id="empPrevBtn" title="Previous Employee" style="padding: 6px 10px; font-size: 16px; line-height: 1;">&#9664;</button>
+                <select id="empQuickNav" onchange="navigateToEmployee(this.value)" style="flex: 1; padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">
+                    <option value="">Loading employees...</option>
+                </select>
+                <button class="btn btn-sm btn-secondary" onclick="navigateEmployee('next')" id="empNextBtn" title="Next Employee" style="padding: 6px 10px; font-size: 16px; line-height: 1;">&#9654;</button>
+                <span id="empNavCounter" style="font-size: 12px; color: #999; white-space: nowrap; min-width: 50px; text-align: center;"></span>
+            </div>
         </div>
 
         <!-- TABS -->
@@ -1208,30 +1217,68 @@
         }
 
         // ========== EMPLOYEE QUICK NAV ==========
-        function getEmployeesSorted() {
-            // Use the backend-fetched list populated by loadEmployee().
-            var employees = _empList.slice();
-            employees.sort(function(a, b) {
-                var nameA = ((a.first_name || '') + ' ' + (a.last_name || '')).toLowerCase();
-                var nameB = ((b.first_name || '') + ' ' + (b.last_name || '')).toLowerCase();
-                return nameA.localeCompare(nameB);
+        var empNavSort = 'surname'; // default sort: surname
+
+        function setEmpNavSort(mode) {
+            empNavSort = mode;
+            var btns = { surname: 'empSortSurname', firstname: 'empSortFirstname', code: 'empSortCode' };
+            Object.keys(btns).forEach(function(k) {
+                var btn = document.getElementById(btns[k]);
+                if (!btn) return;
+                if (k === mode) {
+                    btn.style.background = '#667eea'; btn.style.color = 'white';
+                    btn.style.borderColor = '#667eea'; btn.style.fontWeight = '600';
+                } else {
+                    btn.style.background = 'white'; btn.style.color = '#555';
+                    btn.style.borderColor = '#e0e0e0'; btn.style.fontWeight = 'normal';
+                }
             });
-            return employees;
+            loadEmployeeNav();
+        }
+
+        function getEmployeesSorted() {
+            var list = _empList.slice();
+            list.sort(function(a, b) {
+                if (empNavSort === 'firstname') {
+                    return (a.first_name || '').localeCompare(b.first_name || '');
+                }
+                if (empNavSort === 'code') {
+                    return (a.employee_number || '').localeCompare(b.employee_number || '');
+                }
+                // default: surname
+                var surnameA = (a.last_name || '').toLowerCase();
+                var surnameB = (b.last_name || '').toLowerCase();
+                return surnameA.localeCompare(surnameB);
+            });
+            return list;
         }
 
         function loadEmployeeNav() {
-            var employees = getEmployeesSorted();
+            var allSorted = getEmployeesSorted();
+            var searchInput = document.getElementById('empNavSearch');
+            var q = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            var filtered = q ? allSorted.filter(function(e) {
+                return ((e.first_name || '') + ' ' + (e.last_name || '')).toLowerCase().includes(q) ||
+                       (e.last_name || '').toLowerCase().includes(q) ||
+                       (e.employee_number || '').toLowerCase().includes(q) ||
+                       (e.id_number || '').toLowerCase().includes(q);
+            }) : allSorted;
+
             var select = document.getElementById('empQuickNav');
             select.innerHTML = '';
-            employees.forEach(function(emp) {
+            filtered.forEach(function(emp) {
                 var opt = document.createElement('option');
                 opt.value = emp.id;
-                opt.textContent = (emp.first_name || '') + ' ' + (emp.last_name || '') + (emp.employee_number ? ' (' + emp.employee_number + ')' : '');
+                opt.textContent = (emp.last_name || '') + ', ' + (emp.first_name || '') +
+                    (emp.employee_number ? ' (' + emp.employee_number + ')' : '');
                 if (String(emp.id) === String(currentEmpId)) opt.selected = true;
                 select.appendChild(opt);
             });
-            var idx = employees.findIndex(function(e) { return String(e.id) === String(currentEmpId); });
-            document.getElementById('empNavCounter').textContent = (idx + 1) + ' of ' + employees.length;
+
+            // Counter uses full sorted list position
+            var idxFull = allSorted.findIndex(function(e) { return String(e.id) === String(currentEmpId); });
+            document.getElementById('empNavCounter').textContent =
+                (idxFull >= 0 ? (idxFull + 1) : '?') + ' of ' + allSorted.length;
         }
 
         function navigateToEmployee(empId) {
