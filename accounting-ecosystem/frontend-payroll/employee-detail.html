@@ -1218,10 +1218,9 @@
         }
 
         // ========== EMPLOYEE QUICK NAV ==========
-        var empNavSort = 'surname'; // default sort: surname
+        var empNavSort = sessionStorage.getItem('empNavSort') || 'surname';
 
-        function setEmpNavSort(mode) {
-            empNavSort = mode;
+        function _applyEmpNavSortButtons(mode) {
             var btns = { surname: 'empSortSurname', firstname: 'empSortFirstname', code: 'empSortCode' };
             Object.keys(btns).forEach(function(k) {
                 var btn = document.getElementById(btns[k]);
@@ -1234,6 +1233,12 @@
                     btn.style.borderColor = '#e0e0e0'; btn.style.fontWeight = 'normal';
                 }
             });
+        }
+
+        function setEmpNavSort(mode) {
+            empNavSort = mode;
+            sessionStorage.setItem('empNavSort', mode);
+            _applyEmpNavSortButtons(mode);
             loadEmployeeNav();
         }
 
@@ -1255,6 +1260,7 @@
         }
 
         function loadEmployeeNav() {
+            _applyEmpNavSortButtons(empNavSort);
             var allSorted = getEmployeesSorted();
             var searchInput = document.getElementById('empNavSearch');
             var q = searchInput ? searchInput.value.trim().toLowerCase() : '';
