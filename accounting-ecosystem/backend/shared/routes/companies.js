@@ -253,6 +253,7 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
     const allowed = [
       'company_name', 'trading_name', 'registration_number', 'nature_of_business', 'financial_year_end',
       'paye_reference_number', 'uif_reference_number', 'sdl_reference_number', 'coid_reference_number', 'income_tax_number',
+      'sdl_registered', 'uif_registered',
       'contact_email', 'contact_phone', 'website', 'contact_person',
       'address_street', 'address_suburb', 'address_city', 'address_province', 'address_postal_code',
       'bank_name', 'bank_account_holder', 'bank_account_number', 'bank_branch_code', 'bank_account_type',

@@ -1040,6 +1040,9 @@
         var _currentItemIsPercentage = false;
         var _currentItemPercentageValue = 0;
         let currentPeriod = '';
+        // Company-level SDL/UIF registration flags — populated on first calculatePayslip call.
+        // Defaults to true (both levies apply) for backward compatibility.
+        var _companyRegistrationFlags = { sdl_registered: true, uif_registered: true };
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
@@ -2498,6 +2501,16 @@
                     employeeOptions.taxDirective = parseFloat(currentEmployee.tax_directive) || 0;
                 }
             }
+            // Fetch company SDL/UIF registration flags (uses DataAccess in-memory cache after first call).
+            try {
+                var _co = await DataAccess.getCompanyDetails(currentCompanyId);
+                _companyRegistrationFlags = {
+                    sdl_registered: _co.sdl_registered !== false,
+                    uif_registered: _co.uif_registered !== false
+                };
+            } catch(e) { /* use existing defaults */ }
+            employeeOptions.sdl_registered = _companyRegistrationFlags.sdl_registered;
+            employeeOptions.uif_registered = _companyRegistrationFlags.uif_registered;
 
             var _calcPayrollData = Object.assign({}, payrollData, {
                 workSchedule: _workingDaysData,
@@ -2597,6 +2610,9 @@
                    if (volTaxConfig) {
                        try { employeeOptions.voluntaryTaxConfig = JSON.parse(volTaxConfig); } catch(e) {}
                    }
+                // Inject company SDL/UIF registration flags (populated by calculatePayslip; defaults to true).
+                employeeOptions.sdl_registered = _companyRegistrationFlags.sdl_registered;
+                employeeOptions.uif_registered = _companyRegistrationFlags.uif_registered;
             }
 
             var _calcPayrollData = Object.assign({}, payrollData, {
@@ -2825,38 +2841,81 @@
             }
         }
 
+        // Returns the multi-config object (keyed by type) from localStorage.
+        // Handles legacy single-object format transparently.
+        function loadAllVoluntaryTaxConfigs() {
+            var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+            if (!raw) return {};
+            try {
+                var parsed = JSON.parse(raw);
+                // Legacy: single object with a .type property — convert to keyed format
+                if (parsed && parsed.type) {
+                    var upgraded = {};
+                    upgraded[parsed.type] = parsed;
+                    return upgraded;
+                }
+                // New: object keyed by type
+                return parsed || {};
+            } catch(e) { return {}; }
+        }
+
         function saveVoluntaryTaxConfig() {
-            var config = null;
-            var savedMsgId = 'volTaxSavedMsg';
+            var allConfigs = loadAllVoluntaryTaxConfigs();
+            var savedMsgId = null;
             var fixedPanel   = document.getElementById('volTaxPanelFixed');
             var varPanel     = document.getElementById('volTaxPanelVariable');
             var spreadPanel  = document.getElementById('volTaxPanelSpread');
             if (fixedPanel && fixedPanel.style.display !== 'none') {
                 var amt = parseFloat(document.getElementById('volFixedAmount').value) || 0;
-                config = { type: 'fixed', fixed_amount: amt };
+                allConfigs['fixed'] = { type: 'fixed', fixed_amount: amt };
                 savedMsgId = 'volTaxSavedMsg';
             } else if (varPanel && varPanel.style.display !== 'none') {
                 var varAmt    = parseFloat(document.getElementById('volVariableAmount').value) || 0;
                 var varPeriod = document.getElementById('volVariablePeriod').value;
-                config = { type: 'variable', variable_amount: varAmt, period: varPeriod };
+                allConfigs['variable'] = { type: 'variable', variable_amount: varAmt, period: varPeriod };
                 savedMsgId = 'volTaxSavedMsgVar';
             } else if (spreadPanel && spreadPanel.style.display !== 'none') {
                 var sAmt   = parseFloat(document.getElementById('volSpreadAmount').value) || 0;
                 var sStart = document.getElementById('volSpreadStart').value;
                 var sEnd   = document.getElementById('volSpreadEnd').value;
                 var sRef   = document.getElementById('volSpreadRef').value;
-                config = { type: 'bonus_spread', monthly_spread_amount: sAmt, start_period: sStart, end_period: sEnd, reference: sRef };
+                allConfigs['bonus_spread'] = { type: 'bonus_spread', monthly_spread_amount: sAmt, start_period: sStart, end_period: sEnd, reference: sRef };
                 savedMsgId = 'volTaxSavedMsgSpread';
             }
-            if (!config) return;
-            safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(config));
-            updateVolTaxActiveDisplay(config);
+            if (!savedMsgId) return;
+            safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(allConfigs));
+            updateVolTaxActiveDisplay(allConfigs);
             var msg = document.getElementById(savedMsgId);
             if (msg) { msg.style.display = 'inline'; setTimeout(function(){ msg.style.display = 'none'; }, 1500); }
         }
 
         function clearVoluntaryTaxConfig() {
-            safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+            // Clear only the currently visible tab type; if no tab is open, clear all
+            var allConfigs = loadAllVoluntaryTaxConfigs();
+            var clearedType = null;
+            var fixedPanel   = document.getElementById('volTaxPanelFixed');
+            var varPanel     = document.getElementById('volTaxPanelVariable');
+            var spreadPanel  = document.getElementById('volTaxPanelSpread');
+            if (fixedPanel && fixedPanel.style.display !== 'none') {
+                clearedType = 'fixed';
+            } else if (varPanel && varPanel.style.display !== 'none') {
+                clearedType = 'variable';
+            } else if (spreadPanel && spreadPanel.style.display !== 'none') {
+                clearedType = 'bonus_spread';
+            }
+            if (clearedType) {
+                delete allConfigs[clearedType];
+                if (Object.keys(allConfigs).length > 0) {
+                    safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(allConfigs));
+                } else {
+                    safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+                }
+            } else {
+                // No tab open — clear all
+                safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+                allConfigs = {};
+            }
+            // Close all panels and reset tab highlights
             ['Fixed','Variable','Spread'].forEach(function(t) {
                 var el = document.getElementById('volTaxPanel' + t);
                 if (el) el.style.display = 'none';
@@ -2865,59 +2924,67 @@
                 var el = document.getElementById(id);
                 if (el) { el.style.background = ''; el.style.color = ''; }
             });
-            var disp = document.getElementById('volTaxActiveDisplay');
-            if (disp) disp.style.display = 'none';
+            updateVolTaxActiveDisplay(allConfigs);
         }
 
-        function updateVolTaxActiveDisplay(config) {
+        function updateVolTaxActiveDisplay(allConfigs) {
             var disp = document.getElementById('volTaxActiveDisplay');
             if (!disp) return;
-            if (!config || !config.type) { disp.style.display = 'none'; return; }
-            var msg = '';
-            if (config.type === 'fixed') {
-                msg = '\u2713 Active: Fixed R' + (parseFloat(config.fixed_amount) || 0).toFixed(2) + ' extra PAYE per month';
-            } else if (config.type === 'variable') {
-                msg = '\u2713 Active: Variable R' + (parseFloat(config.variable_amount) || 0).toFixed(2) + ' extra PAYE for period ' + (config.period || '');
-            } else if (config.type === 'bonus_spread') {
-                msg = '\u2713 Active: Bonus spread R' + (parseFloat(config.monthly_spread_amount) || 0).toFixed(2) + '/month from ' + (config.start_period || '') + ' to ' + (config.end_period || '');
-                if (config.reference) msg += ' (' + config.reference + ')';
+            // allConfigs may be a legacy single object {type:...} OR new keyed object
+            var configs = allConfigs;
+            if (allConfigs && allConfigs.type) {
+                // Legacy single object — wrap it
+                var tmp = {};
+                tmp[allConfigs.type] = allConfigs;
+                configs = tmp;
             }
-            disp.textContent = msg;
-            disp.style.display = 'block';
+            var lines = [];
+            if (configs && configs['fixed']) {
+                var c = configs['fixed'];
+                lines.push('\u2713 Fixed: R' + (parseFloat(c.fixed_amount) || 0).toFixed(2) + ' extra PAYE per month');
+            }
+            if (configs && configs['variable']) {
+                var c = configs['variable'];
+                lines.push('\u2713 Variable: R' + (parseFloat(c.variable_amount) || 0).toFixed(2) + ' extra PAYE for period ' + (c.period || ''));
+            }
+            if (configs && configs['bonus_spread']) {
+                var c = configs['bonus_spread'];
+                var spreadLine = '\u2713 Bonus spread: R' + (parseFloat(c.monthly_spread_amount) || 0).toFixed(2) + '/month from ' + (c.start_period || '') + ' to ' + (c.end_period || '');
+                if (c.reference) spreadLine += ' (' + c.reference + ')';
+                lines.push(spreadLine);
+            }
+            if (lines.length === 0) {
+                disp.style.display = 'none';
+            } else {
+                disp.innerHTML = lines.join('<br>');
+                disp.style.display = 'block';
+            }
         }
 
         function loadVoluntaryTaxConfig() {
-            var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-            if (!raw) {
-                var disp = document.getElementById('volTaxActiveDisplay');
-                if (disp) disp.style.display = 'none';
-                return;
+            var allConfigs = loadAllVoluntaryTaxConfigs();
+            // Populate each panel with its saved values
+            if (allConfigs['fixed']) {
+                var fa = document.getElementById('volFixedAmount');
+                if (fa) fa.value = allConfigs['fixed'].fixed_amount || '';
             }
-            try {
-                var obj = JSON.parse(raw);
-                updateVolTaxActiveDisplay(obj);
-                if (obj.type === 'fixed') {
-                    switchVolTaxTab('fixed');
-                    var fa = document.getElementById('volFixedAmount');
-                    if (fa) fa.value = obj.fixed_amount || '';
-                } else if (obj.type === 'variable') {
-                    switchVolTaxTab('variable');
-                    var vp = document.getElementById('volVariablePeriod');
-                    var va = document.getElementById('volVariableAmount');
-                    if (vp) vp.value = obj.period || '';
-                    if (va) va.value = obj.variable_amount || '';
-                } else if (obj.type === 'bonus_spread') {
-                    switchVolTaxTab('bonus_spread');
-                    var ss = document.getElementById('volSpreadAmount');
-                    var st = document.getElementById('volSpreadStart');
-                    var en = document.getElementById('volSpreadEnd');
-                    var rf = document.getElementById('volSpreadRef');
-                    if (ss) ss.value = obj.monthly_spread_amount || '';
-                    if (st) st.value = obj.start_period || '';
-                    if (en) en.value = obj.end_period || '';
-                    if (rf) rf.value = obj.reference || '';
-                }
-            } catch(e) {}
+            if (allConfigs['variable']) {
+                var vp = document.getElementById('volVariablePeriod');
+                var va = document.getElementById('volVariableAmount');
+                if (vp) vp.value = allConfigs['variable'].period || '';
+                if (va) va.value = allConfigs['variable'].variable_amount || '';
+            }
+            if (allConfigs['bonus_spread']) {
+                var ss = document.getElementById('volSpreadAmount');
+                var st = document.getElementById('volSpreadStart');
+                var en = document.getElementById('volSpreadEnd');
+                var rf = document.getElementById('volSpreadRef');
+                if (ss) ss.value = allConfigs['bonus_spread'].monthly_spread_amount || '';
+                if (st) st.value = allConfigs['bonus_spread'].start_period || '';
+                if (en) en.value = allConfigs['bonus_spread'].end_period || '';
+                if (rf) rf.value = allConfigs['bonus_spread'].reference || '';
+            }
+            updateVolTaxActiveDisplay(allConfigs);
         }
 
         // ============================================================

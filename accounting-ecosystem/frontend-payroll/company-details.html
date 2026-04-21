@@ -143,6 +143,8 @@
                     <div class="detail-item"><div class="detail-label">SDL Reference Number</div><div class="detail-value" id="d-sdl-ref">-</div></div>
                     <div class="detail-item"><div class="detail-label">COID Reference Number</div><div class="detail-value" id="d-coid-ref">-</div></div>
                     <div class="detail-item"><div class="detail-label">Income Tax Number</div><div class="detail-value" id="d-tax-number">-</div></div>
+                    <div class="detail-item"><div class="detail-label">Registered for SDL?</div><div class="detail-value" id="d-sdl-registered">-</div></div>
+                    <div class="detail-item"><div class="detail-label">Registered for UIF?</div><div class="detail-value" id="d-uif-registered">-</div></div>
                 </div>
 
                 <div class="detail-section">
@@ -279,6 +281,20 @@
                     <div class="form-group"><label>SDL Reference Number</label><input type="text" id="f-sdl-ref" placeholder="e.g. L123456789"></div>
                     <div class="form-group"><label>COID Reference Number</label><input type="text" id="f-coid-ref" placeholder="Compensation Fund ref"></div>
                     <div class="form-group"><label>Income Tax Number</label><input type="text" id="f-tax-number" placeholder="e.g. 9123456789"></div>
+                    <div class="form-group">
+                        <label>Registered for SDL?</label>
+                        <select id="f-sdl-registered">
+                            <option value="true">Yes – SDL applies (1% of gross)</option>
+                            <option value="false">No – SDL exempt (SDL = 0)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Registered for UIF?</label>
+                        <select id="f-uif-registered">
+                            <option value="true">Yes – UIF applies (1% of gross)</option>
+                            <option value="false">No – UIF exempt (UIF = 0)</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="form-section-title">Contact Details</div>
@@ -490,6 +506,8 @@
                 sdl_ref:        raw.sdl_reference_number || '',
                 coid_ref:       raw.coid_reference_number || '',
                 tax_number:     raw.income_tax_number || '',
+                sdl_registered: raw.sdl_registered !== false, // default true (registered)
+                uif_registered: raw.uif_registered !== false, // default true (registered)
                 // Contact
                 email:          raw.contact_email || '',
                 phone:          raw.contact_phone || '',
@@ -552,6 +570,8 @@
                 ['d-sdl-ref', companyData.sdl_ref],
                 ['d-coid-ref', companyData.coid_ref],
                 ['d-tax-number', companyData.tax_number],
+                ['d-sdl-registered', companyData.sdl_registered ? 'Yes – SDL applies' : 'No – SDL exempt'],
+                ['d-uif-registered', companyData.uif_registered ? 'Yes – UIF applies' : 'No – UIF exempt'],
                 ['d-email', companyData.email],
                 ['d-phone', companyData.phone],
                 ['d-website', companyData.website],
@@ -619,6 +639,8 @@
             document.getElementById('f-sdl-ref').value = companyData.sdl_ref || '';
             document.getElementById('f-coid-ref').value = companyData.coid_ref || '';
             document.getElementById('f-tax-number').value = companyData.tax_number || '';
+            document.getElementById('f-sdl-registered').value = companyData.sdl_registered ? 'true' : 'false';
+            document.getElementById('f-uif-registered').value = companyData.uif_registered ? 'true' : 'false';
             document.getElementById('f-email').value = companyData.email || '';
             document.getElementById('f-phone').value = companyData.phone || '';
             document.getElementById('f-website').value = companyData.website || '';
@@ -676,6 +698,8 @@
             companyData.sdl_ref = document.getElementById('f-sdl-ref').value.trim();
             companyData.coid_ref = document.getElementById('f-coid-ref').value.trim();
             companyData.tax_number = document.getElementById('f-tax-number').value.trim();
+            companyData.sdl_registered = document.getElementById('f-sdl-registered').value !== 'false';
+            companyData.uif_registered = document.getElementById('f-uif-registered').value !== 'false';
             companyData.email = document.getElementById('f-email').value.trim();
             companyData.phone = document.getElementById('f-phone').value.trim();
             companyData.website = document.getElementById('f-website').value.trim();
@@ -722,6 +746,8 @@
                 sdl_reference_number:  companyData.sdl_ref,
                 coid_reference_number: companyData.coid_ref,
                 income_tax_number:     companyData.tax_number,
+                sdl_registered:        companyData.sdl_registered,
+                uif_registered:        companyData.uif_registered,
                 // Contact
                 contact_email:  companyData.email,
                 contact_phone:  companyData.phone,

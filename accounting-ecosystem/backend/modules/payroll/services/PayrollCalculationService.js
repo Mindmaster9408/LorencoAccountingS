@@ -109,7 +109,12 @@ async function calculate(normalizedInputs, options = {}) {
       schemaVersion: PayrollEngine.SCHEMA_VERSION,
       calculationMethod: useProRata ? 'prorata' : 'standard',
       startDate: options.startDate || normalizedInputs.start_date || null,
-      endDate: options.endDate || normalizedInputs.end_date || null
+      endDate: options.endDate || normalizedInputs.end_date || null,
+      // Resolved SA tax year for this period — stored in snapshot for audit trail.
+      // Derived from period_key by the engine's getTaxYearForPeriod().
+      resolvedTaxYear: normalizedInputs.period
+        ? PayrollEngine.getTaxYearForPeriod(normalizedInputs.period)
+        : PayrollEngine.TAX_YEAR
     };
 
     return result;

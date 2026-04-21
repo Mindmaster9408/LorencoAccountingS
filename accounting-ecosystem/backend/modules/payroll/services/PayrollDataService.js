@@ -63,6 +63,13 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     supabase
   );
 
+  // Step 4b: Fetch company SDL/UIF registration flags from companies table.
+  // These control whether SDL/UIF are calculated (true = calculate, false = 0).
+  const companyRegistrationFlags = await fetchCompanyRegistrationFlags(
+    companyId,
+    supabase
+  );
+
   // Step 5: Fetch recurring payroll items for this employee
   const recurringItems = await fetchRecurringPayrollItems(
     companyId,
@@ -85,7 +92,8 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     companySettings,
     recurringItems,
     periodInputs,
-    period
+    period,
+    companyRegistrationFlags
   );
 
   return normalizedInput;
@@ -98,8 +106,8 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
 async function fetchPeriod(companyId, periodKey, supabase) {
   // NOTE: tax_year is NOT selected here — it does not exist in the base payroll_periods
   // schema. The column is added by payroll-schema.js migration; until that migration
-  // runs against Supabase, selecting it causes a 400 error. It is also not used
-  // downstream (normalizeCalculationInput only uses period.start_date).
+  // runs against Supabase, selecting it causes a 400 error. Tax year is resolved
+  // dynamically from period_key by the engine via getTaxYearForPeriod().
   const { data, error } = await supabase
     .from('payroll_periods')
     .select('id, start_date, end_date, period_key')
@@ -273,6 +281,30 @@ function getDefaultPayrollSettings() {
 }
 
 /**
+ * Fetch company SDL/UIF registration flags from the companies table.
+ * Returns { sdl_registered: bool, uif_registered: bool }.
+ * Defaults to true (registered) if column is null or company not found —
+ * ensuring backward compatibility with companies created before migration 018.
+ */
+async function fetchCompanyRegistrationFlags(companyId, supabase) {
+  const { data, error } = await supabase
+    .from('companies')
+    .select('sdl_registered, uif_registered')
+    .eq('id', companyId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[PayrollDataService] fetchCompanyRegistrationFlags: error fetching flags, defaulting to registered.', error.code);
+    return { sdl_registered: true, uif_registered: true };
+  }
+
+  return {
+    sdl_registered: data?.sdl_registered !== false, // null or true → true; only explicit false = false
+    uif_registered: data?.uif_registered !== false
+  };
+}
+
+/**
  * Fetch recurring payroll items assigned to employee.
  * E.g., commission, allowances, deductions, etc.
  */
@@ -378,7 +410,8 @@ function normalizeCalculationInput(
   companySettings,
   recurringItems,
   periodInputs,
-  period
+  period,
+  companyRegistrationFlags
 ) {
   const age = employee.age || calculateAge(employee.dob);
 
@@ -449,11 +482,21 @@ function normalizeCalculationInput(
       age: age,
       medicalMembers: parseInt(employee.medical_aid_members) || 0,
       taxDirective: employee.tax_directive ? parseFloat(employee.tax_directive) : null,
-      rebateCode: employee.tax_rebate_code || 'R'
+      rebateCode: employee.tax_rebate_code || 'R',
+      // Company-level SDL/UIF registration flags (from migration 018).
+      // false = company is exempt → engine returns 0 for that levy.
+      // Defaults to true for backward compatibility if flags not yet in DB.
+      sdl_registered: companyRegistrationFlags ? companyRegistrationFlags.sdl_registered !== false : true,
+      uif_registered: companyRegistrationFlags ? companyRegistrationFlags.uif_registered !== false : true
     },
 
     // === Period Context ===
-    period: formatPeriodKey(period.start_date), // YYYY-MM format
+    // Use period.period_key directly — it is already YYYY-MM and was query-verified.
+    // Do NOT re-derive from period.start_date via new Date(): ISO date-only strings are
+    // parsed as UTC midnight, and getMonth() returns the prior month on servers running
+    // UTC-negative timezones, causing March to resolve as February and selecting the
+    // wrong SA tax year tables for the first month of the new tax year.
+    period: period.period_key,
 
     // === YTD Data (if using SARS method) ===
     ytdData: null // Set by caller if needed for YTD tax calc
@@ -488,13 +531,15 @@ function calculateAge(dob) {
 
 /**
  * Format period start_date to YYYY-MM format.
+ * Parses YYYY-MM directly from the string to avoid timezone offset issues:
+ * new Date('2026-03-01') is UTC midnight and getMonth() returns the prior
+ * month on servers with a negative UTC offset (e.g. UTC-1 → Feb 28 23:00).
+ * This function is a fallback only — callers should prefer period.period_key.
  */
 function formatPeriodKey(startDate) {
   if (!startDate) return null;
-  const date = new Date(startDate);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
+  const match = String(startDate).match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : null;
 }
 
 module.exports = {
@@ -503,6 +548,7 @@ module.exports = {
   fetchEmployee,
   fetchWorkSchedule,
   fetchCompanyPayrollSettings,
+  fetchCompanyRegistrationFlags,
   fetchRecurringPayrollItems,
   fetchPeriodInputs
 };

@@ -655,28 +655,51 @@ const PayrollEngine = {
         // UIF and SDL are calculated from gross (full earnings) — not the reduced taxable income.
         var uif = PayrollEngine.calculateUIF(gross, tables);
         var sdl = PayrollEngine.calculateSDL(gross, tables);
+        // Respect company-level SDL/UIF registration flags.
+        // employeeOptions.uif_registered === false  →  company not registered for UIF  →  0
+        // employeeOptions.sdl_registered === false  →  company not registered for SDL  →  0
+        // undefined / true (default) → levy calculated normally (backward compatible).
+        if (employeeOptions && employeeOptions.uif_registered === false) { uif = 0; }
+        if (employeeOptions && employeeOptions.sdl_registered === false) { sdl = 0; }
 
         // === VOLUNTARY TAX OVER-DEDUCTION ===
         // Three supported scenarios: fixed, variable (current period only), bonus_spread (period range).
         // Config passed in employeeOptions.voluntaryTaxConfig.
+        // Supports single config object (legacy) OR multi-config object keyed by type (new format).
+        // Multiple types can be active simultaneously — amounts are summed.
         // Only adds to PAYE — never affects UIF or SDL.
         var voluntaryOverDeduction = 0;
-        var voluntaryConfig = employeeOptions && employeeOptions.voluntaryTaxConfig;
-        if (voluntaryConfig && voluntaryConfig.type) {
-            if (voluntaryConfig.type === 'fixed') {
-                // Scenario 1: Fixed monthly extra tax — applies every period
-                voluntaryOverDeduction = parseFloat(voluntaryConfig.fixed_amount) || 0;
-            } else if (voluntaryConfig.type === 'variable') {
-                // Scenario 2: Variable/manual — applies only if config.period matches current period
-                if (voluntaryConfig.period === period) {
-                    voluntaryOverDeduction = parseFloat(voluntaryConfig.variable_amount) || 0;
-                }
-            } else if (voluntaryConfig.type === 'bonus_spread') {
-                // Scenario 3: Bonus spread — applies for a range of periods (start_period to end_period)
-                var spreadStart = voluntaryConfig.start_period || '';
-                var spreadEnd   = voluntaryConfig.end_period   || '';
-                if (spreadStart && spreadEnd && period >= spreadStart && period <= spreadEnd) {
-                    voluntaryOverDeduction = parseFloat(voluntaryConfig.monthly_spread_amount) || 0;
+        var voluntaryConfigData = employeeOptions && employeeOptions.voluntaryTaxConfig;
+        if (voluntaryConfigData) {
+            // Normalise to an array of config entries
+            var _volConfigs;
+            if (Array.isArray(voluntaryConfigData)) {
+                _volConfigs = voluntaryConfigData;
+            } else if (voluntaryConfigData.type) {
+                // Legacy: single config object with a .type property
+                _volConfigs = [voluntaryConfigData];
+            } else {
+                // New multi-config: plain object keyed by type e.g. { fixed: {...}, bonus_spread: {...} }
+                _volConfigs = Object.values(voluntaryConfigData);
+            }
+            for (var _vi = 0; _vi < _volConfigs.length; _vi++) {
+                var voluntaryConfig = _volConfigs[_vi];
+                if (!voluntaryConfig || !voluntaryConfig.type) continue;
+                if (voluntaryConfig.type === 'fixed') {
+                    // Scenario 1: Fixed monthly extra tax — applies every period
+                    voluntaryOverDeduction += parseFloat(voluntaryConfig.fixed_amount) || 0;
+                } else if (voluntaryConfig.type === 'variable') {
+                    // Scenario 2: Variable/manual — applies only if config.period matches current period
+                    if (voluntaryConfig.period === period) {
+                        voluntaryOverDeduction += parseFloat(voluntaryConfig.variable_amount) || 0;
+                    }
+                } else if (voluntaryConfig.type === 'bonus_spread') {
+                    // Scenario 3: Bonus spread — applies for a range of periods (start_period to end_period)
+                    var spreadStart = voluntaryConfig.start_period || '';
+                    var spreadEnd   = voluntaryConfig.end_period   || '';
+                    if (spreadStart && spreadEnd && period >= spreadStart && period <= spreadEnd) {
+                        voluntaryOverDeduction += parseFloat(voluntaryConfig.monthly_spread_amount) || 0;
+                    }
                 }
             }
         }
@@ -697,7 +720,7 @@ const PayrollEngine = {
             deductions: PayrollEngine.r2(deductions),
             net: PayrollEngine.r2(net),
             negativeNetPay: negativeNetPay,
-            medicalCredit: opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers) : 0,
+            medicalCredit: opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0,
             overtimeAmount: PayrollEngine.r2(overtimeAmount),
             shortTimeAmount: PayrollEngine.r2(shortTimeAmount),
             preTaxDeductions: PayrollEngine.r2(preTaxDeductions),
@@ -768,6 +791,11 @@ const PayrollEngine = {
             if (emp.tax_directive) {
                 employeeOptions.taxDirective = parseFloat(emp.tax_directive) || 0;
             }
+        }
+        // Load voluntary tax config (multi-config keyed-by-type format or legacy single-object)
+        var _volRaw = safeLocalStorage.getItem('voluntaryTaxConfig_' + companyId + '_' + empId);
+        if (_volRaw) {
+            try { employeeOptions.voluntaryTaxConfig = JSON.parse(_volRaw); } catch(e) {}
         }
 
         var currentInputs = useDA
