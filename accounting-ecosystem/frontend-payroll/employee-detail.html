@@ -1788,13 +1788,20 @@
                 '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>' +
                 '</div>';
 
-            if (lockedRun && psStatus.status === 'finalized') {
-                // Pay run exists AND payslip finalized = fully locked
-                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>' + viewBtns;
+            // Backend-snapshot-locked periods require manager auth (same as pay-run-locked).
+            // psStatus.source === 'backend_snapshot' is set by _syncSnapshotFromBackend()
+            // when a locked record exists in the payroll_snapshots DB table.
+            var isBackendLocked = psStatus.source === 'backend_snapshot';
+            if ((lockedRun || isBackendLocked) && psStatus.status === 'finalized') {
+                // Pay run locked OR backend snapshot locked = manager auth required
+                var lockMsg = lockedRun
+                    ? '🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.'
+                    : '🔒 Locked — This payslip was finalized via a batch payrun. Manager authorization required to make changes.';
+                statusBar.innerHTML = '<div class="payslip-status-bar locked">' + lockMsg + '</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
                 content.classList.add('locked-overlay');
             } else if (psStatus.status === 'finalized') {
-                // Finalized but no pay run yet = can unfinalize freely
+                // Finalized by user directly (no batch payrun) = can unfinalize freely
                 statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + formatDate(parseStandardDate(psStatus.finalized_date), 'ZA') + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
                 content.classList.add('locked-overlay');
@@ -1840,6 +1847,13 @@
 
         function unfinalizePayslip() {
             if (!Permissions.require('UNFINALIZE_PAYSLIP')) return;
+            // Backend-locked payslips (finalized via batch payrun) require manager auth.
+            // Free unfinalize is only allowed for payslips finalized directly in this view.
+            var ps = getPayslipStatus();
+            if (ps && ps.source === 'backend_snapshot') {
+                requestManagerAuth();
+                return;
+            }
             if (!confirm('Unfinalize this payslip? It will be editable again.')) return;
             safeLocalStorage.removeItem(getPayslipStatusKey());
             // Remove the frozen snapshot so values recalculate live
@@ -1892,6 +1906,11 @@
                 // Success — server has removed the finalization state
                 const authorizedByName = (unlockData.unlockedBy && unlockData.unlockedBy.authorizedByName) || email;
                 closeModal('managerAuthModal');
+                // Reload the KV cache from server so deleted finalization keys are cleared
+                // from _cache (server deleted them; without reload, stale keys remain in memory).
+                if (typeof safeLocalStorage.reload === 'function') {
+                    await safeLocalStorage.reload();
+                }
                 loadPayrollData();   // reload so payroll inputs are live again
                 updatePayslipUI();
                 if (typeof showSaveToast === 'function') {
@@ -1934,6 +1953,10 @@
                 
                 renderPayroll();
                 updatePayslipUI();
+                // Async: check backend for a locked snapshot. If found, populates the KV
+                // cache and calls updatePayslipUI() again with the correct locked state.
+                // Fire-and-forget — UI shows draft until sync completes (< 1s in practice).
+                _syncSnapshotFromBackend();
             } catch(e) {
                 console.error('Error loading payroll data:', e);
                 setTimeout(function() {
@@ -2450,6 +2473,96 @@
 
         // ========== TOGGLE ==========
         function toggleAdditionalHours() { document.getElementById('additionalHoursSection').style.display = document.getElementById('showAdditionalHours').checked ? 'block' : 'none'; }
+
+        // ========== BACKEND SNAPSHOT SYNC ==========
+        /**
+         * Check if a locked payroll snapshot exists in the backend DB for the current
+         * employee + period. If found, populate the emp_historical_ and emp_payslip_status_
+         * KV keys so that calculatePayslip() / getPayslipData() / updatePayslipUI() all
+         * treat this period as locked WITHOUT needing to recalculate live data.
+         *
+         * Called from:
+         *   - loadPayrollData() — fire-and-forget on period change (updates UI lock state)
+         *   - calculatePayslip() — awaited before fallback to live calc (safety net)
+         *
+         * Idempotent: returns early if emp_historical_ KV key already exists.
+         * After server-side unlock (unlock.js sets is_locked=false), this function
+         * finds is_locked:false and does NOT re-populate — unlock stays effective.
+         */
+        async function _syncSnapshotFromBackend() {
+            if (!currentCompanyId || !currentEmpId || !currentPeriod) return;
+            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+            // Don't overwrite locally-finalized data — local KV takes precedence
+            if (safeLocalStorage.getItem(histKey)) return;
+
+            try {
+                var token = safeLocalStorage.getItem('token');
+                if (!token) return;
+                var resp = await fetch(
+                    window.location.origin + '/api/payroll/calculate/history/' + currentEmpId + '/' + currentPeriod,
+                    { headers: { 'Authorization': 'Bearer ' + token } }
+                );
+                // 404 = no snapshot yet (draft period) — normal, not an error
+                if (!resp.ok) return;
+                var data = await resp.json();
+                // Only act on locked (finalized) snapshots
+                if (!data.success || !data.snapshot || !data.snapshot.is_locked) return;
+
+                // Map calculation_output to emp_historical_ KV format
+                var co = data.snapshot.calculation_output || {};
+                var totalDeductions = typeof co.deductions === 'number'
+                    ? co.deductions
+                    : (Array.isArray(co.deductionsList)
+                        ? co.deductionsList.reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0)
+                        : 0);
+
+                var frozenData = {
+                    // basic_salary from calculation_input (exposed by formatForResponse)
+                    basic_salary:           data.snapshot.basic_salary || 0,
+                    gross:                  co.gross               || 0,
+                    taxableGross:           co.taxableGross        || co.gross || 0,
+                    periodicTaxableGross:   co.periodicTaxableGross  || 0,
+                    onceOffTaxableGross:    co.onceOffTaxableGross   || 0,
+                    paye:                   co.paye                || 0,
+                    uif:                    co.uif                 || 0,
+                    sdl:                    co.sdl                 || 0,
+                    deductions:             [{ description: 'Total Deductions', amount: totalDeductions }],
+                    net:                    co.net                 || 0,
+                    // Marker: distinguishes backend-batch-locked from frontend-finalized.
+                    // updatePayslipUI() uses this to show "Request Unlock" (not free Unfinalize).
+                    source:                 'backend_snapshot',
+                    finalized_date:         data.snapshot.finalized_at  || new Date().toISOString(),
+                    finalized_by:           data.snapshot.finalized_by  ? String(data.snapshot.finalized_by) : 'System',
+                    overtimeAmount:         co.overtimeAmount      || 0,
+                    shortTimeAmount:        co.shortTimeAmount     || 0,
+                    medicalCredit:          co.medicalCredit       || 0,
+                    allowances:             co.allowances          || [],
+                    deductionsList:         co.deductionsList      || []
+                };
+
+                safeLocalStorage.setItem(histKey, JSON.stringify(frozenData));
+
+                // Set payslip status key so updatePayslipUI() shows backend-locked state.
+                // Only write if not already set (don't overwrite a local finalize status).
+                var statusKey = getPayslipStatusKey();
+                if (!safeLocalStorage.getItem(statusKey)) {
+                    safeLocalStorage.setItem(statusKey, JSON.stringify({
+                        status:         'finalized',
+                        source:         'backend_snapshot',
+                        finalized_date: frozenData.finalized_date,
+                        finalized_by:   frozenData.finalized_by
+                    }));
+                }
+
+                // Update UI now that frozen keys are populated
+                updatePayslipUI();
+                renderPayroll();
+
+            } catch(e) {
+                // Non-fatal — log but don't block any user action
+                console.warn('[Payslip] Backend snapshot sync failed (non-fatal):', e.message);
+            }
+        }
         function toggleSection(el) { if (event.target.tagName === 'BUTTON') return; el.classList.toggle('expanded'); }
 
         // ========== CALCULATE PAYSLIP ==========
@@ -2457,6 +2570,15 @@
             // If this period is finalized, use the frozen snapshot instead of recalculating
             var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
             var frozen = safeLocalStorage.getItem(histKey);
+
+            // Safety net: if local KV cache is empty, check if the backend has a locked
+            // snapshot (e.g. batch payrun finalized without this browser being open).
+            // _syncSnapshotFromBackend() is idempotent — safe to call every time.
+            if (!frozen) {
+                await _syncSnapshotFromBackend();
+                frozen = safeLocalStorage.getItem(histKey);
+            }
+
             if (frozen) {
                 try {
                     var snap = JSON.parse(frozen);

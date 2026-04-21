@@ -169,6 +169,8 @@
                         <select id="f-role" required>
                             <option value="">Select a role</option>
                             <option value="business_owner">Business Owner</option>
+                            <option value="practice_manager">Practice Manager</option>
+                            <option value="administrator">Administrator</option>
                             <option value="manager">Manager</option>
                             <option value="admin">Admin</option>
                             <option value="accountant">Accountant</option>
@@ -242,7 +244,7 @@
         let currentCompanyId = null;
         let currentSession = null;
         let companyUsers = [];
-        const ALLOWED_ROLES = ['super_admin', 'admin', 'manager', 'business_owner'];
+        const ALLOWED_ROLES = ['super_admin', 'admin', 'manager', 'business_owner', 'practice_manager', 'administrator'];
 
         function _authHeader() {
             const tok = safeLocalStorage.getItem('token') || safeLocalStorage.getItem('eco_token') || '';
@@ -338,7 +340,8 @@
 
         function formatRole(role) {
             const labels = {
-                'business_owner': 'Business Owner', 'manager': 'Manager', 'admin': 'Admin',
+                'business_owner': 'Business Owner', 'practice_manager': 'Practice Manager',
+                'administrator': 'Administrator', 'manager': 'Manager', 'admin': 'Admin',
                 'accountant': 'Accountant', 'super_admin': 'Super Admin',
                 'payroll_admin': 'Payroll Admin', 'leave_admin': 'Leave Admin'
             };
@@ -376,7 +379,7 @@
             document.getElementById('passwordHint').textContent = 'Leave blank to keep current password';
             document.getElementById('userModal').classList.add('show');
 
-            const paytimeRoles = ['payroll_admin', 'leave_admin', 'business_owner', 'accountant'];
+            const paytimeRoles = ['payroll_admin', 'leave_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'];
             const paytimeSection = document.getElementById('paytimeAccessSection');
             if (paytimeRoles.includes(user.role)) {
                 paytimeSection.style.display = '';

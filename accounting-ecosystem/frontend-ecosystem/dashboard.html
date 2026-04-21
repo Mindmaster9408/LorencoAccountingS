@@ -1295,6 +1295,8 @@
                                 <option value="store_manager">Store Manager</option>
                                 <option value="accountant">Accountant</option>
                                 <option value="business_owner">Business Owner</option>
+                                <option value="practice_manager">Practice Manager</option>
+                                <option value="administrator">Administrator</option>
                             </select>
                         </div>
                     </div>
@@ -1356,6 +1358,8 @@
                             <option value="store_manager">Store Manager</option>
                             <option value="accountant">Accountant</option>
                             <option value="business_owner">Business Owner</option>
+                            <option value="practice_manager">Practice Manager</option>
+                            <option value="administrator">Administrator</option>
                         </select>
                     </div>
                 </div>
@@ -1572,6 +1576,8 @@
                                     <label>Role *</label>
                                     <select id="auRole" required>
                                         <option value="business_owner">Business Owner</option>
+                                        <option value="practice_manager">Practice Manager</option>
+                                        <option value="administrator">Administrator</option>
                                         <option value="accountant">Accountant</option>
                                         <option value="store_manager">Store Manager</option>
                                         <option value="payroll_admin">Payroll Admin</option>
@@ -1845,7 +1851,7 @@
                 }
             } else {
                 // Practice management view — show client management for roles with capability
-                const CLIENT_MGMT_ROLES = ['business_owner', 'super_admin', 'store_manager', 'accountant'];
+                const CLIENT_MGMT_ROLES = ['business_owner', 'practice_manager', 'administrator', 'super_admin', 'store_manager', 'accountant'];
                 if (isSuperAdmin || (selectedCompany && CLIENT_MGMT_ROLES.includes(selectedCompany.role))) {
                     document.getElementById('clientManagementSection').classList.remove('hidden');
                 }
@@ -1858,7 +1864,7 @@
             }
 
             // Show user management section for super admins & business owners
-            if (isSuperAdmin || (selectedCompany && ['business_owner', 'super_admin'].includes(selectedCompany.role))) {
+            if (isSuperAdmin || (selectedCompany && ['business_owner', 'practice_manager', 'administrator', 'super_admin'].includes(selectedCompany.role))) {
                 document.getElementById('userMgmtSection').classList.remove('hidden');
             }
 
@@ -2017,7 +2023,7 @@
 
             // Show/hide user management section based on role in this company
             const umSection = document.getElementById('userMgmtSection');
-            if (isSuperAdmin || ['business_owner', 'super_admin'].includes(selectedCompany.role)) {
+            if (isSuperAdmin || ['business_owner', 'practice_manager', 'administrator', 'super_admin'].includes(selectedCompany.role)) {
                 umSection.classList.remove('hidden');
             } else {
                 umSection.classList.add('hidden');
@@ -3201,7 +3207,7 @@
 
             if (tab === 'users') {
                 // Only business owners and super admins can add/manage users
-                const canManageUsers = isSuperAdmin || (selectedCompany && selectedCompany.role === 'business_owner');
+                const canManageUsers = isSuperAdmin || (selectedCompany && ['business_owner', 'practice_manager', 'administrator'].includes(selectedCompany.role));
                 const addSection = document.getElementById('addUserSection');
                 if (addSection) addSection.style.display = canManageUsers ? '' : 'none';
                 loadPracticeUsers();
@@ -3265,7 +3271,8 @@
         }
 
         const ROLE_COLORS = {
-            super_admin: '#fca5a5', business_owner: '#a78bfa', accountant: '#60a5fa',
+            super_admin: '#fca5a5', business_owner: '#a78bfa', practice_manager: '#a78bfa',
+            administrator: '#a78bfa', accountant: '#60a5fa',
             store_manager: '#34d399', payroll_admin: '#6ee7b7', assistant_manager: '#fbbf24',
             cashier: '#94a3b8', trainee: '#64748b'
         };
@@ -3779,7 +3786,7 @@
                                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;">${appChips}</div>
                                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">${clientChips}</div>
                             </div>
-                            ${!isSelf && (isSuperAdmin || ((selectedCompany && selectedCompany.role) === 'business_owner')) ? `
+                            ${!isSelf && (isSuperAdmin || (selectedCompany && ['business_owner', 'practice_manager', 'administrator'].includes(selectedCompany.role))) ? `
                             <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;">
                                 <button type="button" onclick="changeUserRole(${u.id}, '${escHtml(u.full_name || u.username)}', '${u.role}')" style="padding:5px 10px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.25);color:#a5b4fc;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Role</button>
                                 <button type="button" onclick="changeUserApps(${u.id}, '${escHtml(u.full_name || u.username)}', ${JSON.stringify(u.apps || [])})" style="padding:5px 10px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);color:#6ee7b7;border-radius:8px;cursor:pointer;font-size:0.75rem;font-weight:600;white-space:nowrap;">Apps</button>
@@ -3804,6 +3811,8 @@
         // ── Role Definitions (Move to module level to avoid repeated allocation) ──
         const ROLE_DEFINITIONS = [
             { key: 'business_owner', name: 'Business Owner', desc: 'Full control over practice and all clients' },
+            { key: 'practice_manager', name: 'Practice Manager', desc: 'Full control — equivalent to Business Owner in accounting practice context' },
+            { key: 'administrator', name: 'Administrator', desc: 'Full control — equivalent to Business Owner for general administration' },
             { key: 'accountant', name: 'Accountant', desc: 'Manage assigned clients and their financial data' },
             { key: 'store_manager', name: 'Store Manager', desc: 'Manage store operations and staff' },
             { key: 'payroll_admin', name: 'Payroll Administrator', desc: 'Process payrolls and manage employee records' },
@@ -4046,6 +4055,8 @@
         const ROLE_LABELS = {
             'super_admin': 'Super Admin',
             'business_owner': 'Owner',
+            'practice_manager': 'Practice Manager',
+            'administrator': 'Administrator',
             'accountant': 'Accountant',
             'store_manager': 'Store Manager',
             'cashier': 'Cashier',

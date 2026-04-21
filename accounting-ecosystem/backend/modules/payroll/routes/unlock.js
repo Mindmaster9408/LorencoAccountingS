@@ -30,7 +30,7 @@ const router = express.Router();
 const KV_TABLE = 'payroll_kv_store_eco';
 
 // Roles that may authorize an unlock (manager-level and above)
-const UNLOCK_AUTHORIZER_ROLES = ['super_admin', 'business_owner', 'accountant', 'manager', 'admin'];
+const UNLOCK_AUTHORIZER_ROLES = ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'manager', 'admin'];
 
 // ── POST /api/payroll/unlock ──────────────────────────────────────────────────
 //
@@ -98,6 +98,29 @@ router.post('/', requirePermission('PAYSLIPS.UNLOCK'), async (req, res) => {
     } catch (e) {
         console.error('Unlock: manager credential verification failed:', e.message);
         return res.status(500).json({ error: 'Credential verification failed — server error' });
+    }
+
+    // ── Reset backend payroll snapshot lock ──────────────────────────────────
+    // CRITICAL: Must reset is_locked in payroll_snapshots BEFORE deleting KV keys.
+    // If skipped, the frontend _syncSnapshotFromBackend() would immediately re-lock
+    // the payslip on next page load by reading the still-locked DB record.
+    // We reset to draft so the payrun endpoint can accept a corrective re-run.
+    try {
+        const { error: snapErr } = await supabase
+            .from('payroll_snapshots')
+            .update({ is_locked: false, status: 'draft' })
+            .eq('company_id', companyId)
+            .eq('employee_id', parseInt(empId))
+            .eq('period_key', String(period))
+            .eq('is_locked', true); // Only update if currently locked (idempotent safe)
+
+        if (snapErr) {
+            console.error('Unlock: failed to reset snapshot lock:', snapErr.message);
+            return res.status(500).json({ error: 'Unlock failed — could not reset payroll snapshot state' });
+        }
+    } catch (e) {
+        console.error('Unlock: snapshot reset error:', e.message);
+        return res.status(500).json({ error: 'Unlock failed — snapshot database error' });
     }
 
     // ── Remove payslip finalization state keys ───────────────────────────────

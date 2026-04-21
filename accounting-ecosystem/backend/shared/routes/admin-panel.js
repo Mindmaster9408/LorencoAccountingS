@@ -98,7 +98,7 @@ router.put('/companies/:companyId/users/:userId/role', async (req, res) => {
       return res.status(400).json({ error: 'companyId and userId are required' });
     }
 
-    const VALID_ROLES = ['super_admin', 'business_owner', 'accountant', 'manager', 'cashier', 'employee', 'viewer'];
+    const VALID_ROLES = ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'manager', 'cashier', 'employee', 'viewer'];
     if (!role || !VALID_ROLES.includes(role)) {
       return res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
     }
@@ -143,12 +143,12 @@ router.put('/companies/:companyId/users/:userId/role', async (req, res) => {
 
     if (updateErr) return res.status(500).json({ error: updateErr.message });
 
-    // If the new role is business_owner, also update the users.role column
+    // If the new role is an owner-equivalent, also update the users.role column
     // so that the user's default role is reflected across the platform.
-    if (role === 'business_owner') {
+    if (['business_owner', 'practice_manager', 'administrator'].includes(role)) {
       await supabase
         .from('users')
-        .update({ role: 'business_owner', updated_at: new Date().toISOString() })
+        .update({ role, updated_at: new Date().toISOString() })
         .eq('id', userId);
     }
 

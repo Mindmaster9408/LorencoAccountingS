@@ -428,15 +428,15 @@ router.put('/:id/password', async (req, res) => {
     const userId = req.params.id;
     const { current_password, new_password } = req.body;
     const isSelf = req.user.userId === parseInt(userId);
-    const isManager = ['super_admin', 'business_owner'].includes(req.user.role);
+    const isManager = ['super_admin', 'business_owner', 'practice_manager', 'administrator'].includes(req.user.role);
 
     // Only self or management can change passwords
     if (!isSelf && !isManager) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Business owners can only reset passwords for users in their own company
-    if (!isSelf && req.user.role === 'business_owner') {
+    // Owner-equivalent roles can only reset passwords for users in their own company
+    if (!isSelf && ['business_owner', 'practice_manager', 'administrator'].includes(req.user.role)) {
       const { data: access } = await supabase
         .from('user_company_access')
         .select('id')

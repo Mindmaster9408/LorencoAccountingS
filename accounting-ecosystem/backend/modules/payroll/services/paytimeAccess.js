@@ -21,7 +21,7 @@
 
 const { supabase } = require('../../../config/database');
 
-const UNRESTRICTED_ROLES = ['super_admin', 'business_owner', 'accountant'];
+const UNRESTRICTED_ROLES = ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'];
 
 /**
  * Load the paytime_user_config for a user+company pair.

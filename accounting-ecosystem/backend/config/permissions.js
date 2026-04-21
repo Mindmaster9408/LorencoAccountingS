@@ -5,20 +5,24 @@
  * Merged permissions from POS and Payroll systems.
  *
  * Role Hierarchy:
- *   super_admin (100)  — Platform-wide access
- *   business_owner (95) — Full company access
- *   accountant (90)     — Finance + payroll access
- *   store_manager (70)  — Store-level POS management
- *   payroll_admin (70)  — Payroll management
+ *   super_admin (100)      — Platform-wide access
+ *   business_owner (95)    — Full company access
+ *   practice_manager (95)  — Business Owner equivalent (accounting practice context)
+ *   administrator (95)     — Business Owner equivalent (general admin context)
+ *   accountant (90)        — Finance + payroll access
+ *   store_manager (70)     — Store-level POS management
+ *   payroll_admin (70)     — Payroll management
  *   assistant_manager (50) — Limited management
- *   cashier (20)        — POS terminal only
- *   trainee (5)         — Supervised access
+ *   cashier (20)           — POS terminal only
+ *   trainee (5)            — Supervised access
  * ============================================================================
  */
 
 const ROLE_LEVELS = {
   super_admin: 100,
   business_owner: 95,
+  practice_manager: 95,
+  administrator: 95,
   accountant: 90,
   corporate_admin: 90,
   store_manager: 70,
@@ -33,7 +37,7 @@ const ROLE_LEVELS = {
   admin: 70,
 };
 
-const MANAGEMENT_ROLES = ['super_admin', 'business_owner', 'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin'];
+const MANAGEMENT_ROLES = ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin'];
 const SUPERVISOR_ROLES = [...MANAGEMENT_ROLES, 'leave_admin', 'assistant_manager', 'shift_supervisor'];
 const ALL_ROLES = [...SUPERVISOR_ROLES, 'senior_cashier', 'cashier', 'trainee'];
 
@@ -41,25 +45,25 @@ const PERMISSIONS = {
   // ===== SHARED =====
   COMPANIES: {
     VIEW: MANAGEMENT_ROLES,
-    CREATE: ['super_admin', 'business_owner'],
-    EDIT: ['super_admin', 'business_owner'],
+    CREATE: ['super_admin', 'business_owner', 'practice_manager', 'administrator'],
+    EDIT: ['super_admin', 'business_owner', 'practice_manager', 'administrator'],
     DELETE: ['super_admin'],
   },
   USERS: {
     VIEW: MANAGEMENT_ROLES,
     CREATE: MANAGEMENT_ROLES,
     EDIT: MANAGEMENT_ROLES,
-    DELETE: ['super_admin', 'business_owner'],
+    DELETE: ['super_admin', 'business_owner', 'practice_manager', 'administrator'],
   },
   EMPLOYEES: {
     VIEW: MANAGEMENT_ROLES,
     CREATE: MANAGEMENT_ROLES,
     EDIT: MANAGEMENT_ROLES,
-    DELETE: ['super_admin', 'business_owner'],
+    DELETE: ['super_admin', 'business_owner', 'practice_manager', 'administrator'],
   },
   AUDIT: {
-    VIEW: ['super_admin', 'business_owner', 'accountant'],
-    EXPORT: ['super_admin', 'business_owner'],
+    VIEW: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
+    EXPORT: ['super_admin', 'business_owner', 'practice_manager', 'administrator'],
   },
 
   // ===== POS MODULE =====
@@ -67,7 +71,7 @@ const PERMISSIONS = {
     VIEW: ALL_ROLES,
     CREATE: MANAGEMENT_ROLES,
     EDIT: MANAGEMENT_ROLES,
-    DELETE: ['super_admin', 'business_owner', 'store_manager'],
+    DELETE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'store_manager'],
     PRICE_CHANGE: MANAGEMENT_ROLES,
   },
   SALES: {
@@ -101,42 +105,42 @@ const PERMISSIONS = {
 
   // ===== ACCOUNTING MODULE =====
   ACCOUNTS: {
-    VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
-    CREATE: ['super_admin', 'business_owner', 'accountant'],
-    EDIT: ['super_admin', 'business_owner', 'accountant'],
-    DELETE: ['super_admin', 'business_owner'],
+    VIEW: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin'],
+    CREATE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
+    EDIT: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
+    DELETE: ['super_admin', 'business_owner', 'practice_manager', 'administrator'],
   },
   JOURNALS: {
-    VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
-    CREATE: ['super_admin', 'business_owner', 'accountant'],
-    POST: ['super_admin', 'business_owner', 'accountant'],
-    REVERSE: ['super_admin', 'business_owner', 'accountant'],
+    VIEW: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin'],
+    CREATE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
+    POST: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
+    REVERSE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
   },
   BANK: {
-    VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
-    CREATE: ['super_admin', 'business_owner', 'accountant'],
-    ALLOCATE: ['super_admin', 'business_owner', 'accountant'],
-    RECONCILE: ['super_admin', 'business_owner', 'accountant'],
+    VIEW: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin'],
+    CREATE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
+    ALLOCATE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
+    RECONCILE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
   },
   GL_REPORTS: {
-    VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
-    EXPORT: ['super_admin', 'business_owner', 'accountant'],
-    CLOSE_PERIOD: ['super_admin', 'business_owner', 'accountant'],
+    VIEW: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin'],
+    EXPORT: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
+    CLOSE_PERIOD: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
   },
 
   // ===== PAYROLL MODULE =====
   PAYROLL: {
-    VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
-    CREATE: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
-    APPROVE: ['super_admin', 'business_owner'],
-    PROCESS: ['super_admin', 'business_owner', 'accountant'],
+    VIEW: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin'],
+    CREATE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin'],
+    APPROVE: ['super_admin', 'business_owner', 'practice_manager', 'administrator'],
+    PROCESS: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
   },
   PAYSLIPS: {
-    VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
-    GENERATE: ['super_admin', 'business_owner', 'accountant', 'payroll_admin'],
+    VIEW: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin'],
+    GENERATE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin'],
     // UNLOCK: who may authorize manager-unlock of a finalized payslip.
     // Accountants included because they routinely perform corrections under business owner delegation.
-    UNLOCK: ['super_admin', 'business_owner', 'accountant'],
+    UNLOCK: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant'],
   },
   ATTENDANCE: {
     VIEW: SUPERVISOR_ROLES,
@@ -145,9 +149,9 @@ const PERMISSIONS = {
   },
   // Leave management — accessible to leave_admin (cannot access PAYROLL.VIEW)
   LEAVE: {
-    VIEW: ['super_admin', 'business_owner', 'accountant', 'payroll_admin', 'leave_admin'],
-    CREATE: ['super_admin', 'business_owner', 'accountant', 'payroll_admin', 'leave_admin'],
-    APPROVE: ['super_admin', 'business_owner', 'accountant', 'payroll_admin', 'leave_admin'],
+    VIEW: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin', 'leave_admin'],
+    CREATE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin', 'leave_admin'],
+    APPROVE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'payroll_admin', 'leave_admin'],
   },
 };
 
@@ -183,6 +187,14 @@ function getAllRoles() {
 }
 
 /**
+ * Check if a role is Business Owner equivalent (level 95).
+ * Prefer this over scattered role-string comparisons.
+ */
+function isOwnerEquivalent(role) {
+  return ['business_owner', 'practice_manager', 'administrator'].includes(role);
+}
+
+/**
  * Get permissions summary for a role
  */
 function getRolePermissions(role) {
@@ -204,6 +216,7 @@ module.exports = {
   ALL_ROLES,
   hasPermission,
   canManageRole,
+  isOwnerEquivalent,
   getAllRoles,
   getRolePermissions,
 };

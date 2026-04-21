@@ -26,6 +26,8 @@ function mapRole(ecoRole) {
     'super_admin': 'admin',
     'admin': 'admin',
     'business_owner': 'admin',
+    'practice_manager': 'admin',
+    'administrator': 'admin',
     'partner': 'admin',
     'accountant': 'accountant',
     'manager': 'accountant',

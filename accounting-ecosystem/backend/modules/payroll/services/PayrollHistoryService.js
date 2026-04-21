@@ -335,6 +335,10 @@ function formatForResponse(snapshot) {
     pro_rata_end_date:     meta.endDate            || null
   };
 
+  // Expose basic_salary from calculation_input so the frontend snapshot display
+  // can show the correct frozen salary without needing full input access.
+  const input = snapshot.calculation_input || {};
+
   return {
     id:             snapshot.id,
     company_id:     snapshot.company_id,
@@ -349,6 +353,8 @@ function formatForResponse(snapshot) {
     finalized_at:   snapshot.finalized_at,
     finalized_by:   snapshot.finalized_by,
     metadata:       reconstructedMetadata,
+    // basic_salary from input — needed by frontend emp_historical_ display format
+    basic_salary:   input.basic_salary != null ? input.basic_salary : null,
     // Full calculation output for payslip rendering (all 16 fields)
     calculation_output: snapshot.calculation_output,
     // calculation_input is internal — not exposed to frontend by default

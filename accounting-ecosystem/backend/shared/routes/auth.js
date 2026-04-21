@@ -457,7 +457,7 @@ router.post('/select-company', authenticateToken, async (req, res) => {
           .eq('is_active', true)
           .maybeSingle();
 
-        const ALLOWED_CROSS_ROLES = ['business_owner', 'accountant', 'super_admin', 'store_manager'];
+        const ALLOWED_CROSS_ROLES = ['business_owner', 'practice_manager', 'administrator', 'accountant', 'super_admin', 'store_manager'];
         if (!practiceAccess || !ALLOWED_CROSS_ROLES.includes(practiceAccess.role)) {
           // Delegated access path: user has a restricted role at the practice but may have
           // explicit client visibility grant from the admin.
@@ -806,7 +806,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
             .eq('is_active', true)
             .maybeSingle();
 
-          const ALLOWED_CROSS_ROLES = ['business_owner', 'accountant', 'super_admin', 'store_manager'];
+          const ALLOWED_CROSS_ROLES = ['business_owner', 'practice_manager', 'administrator', 'accountant', 'super_admin', 'store_manager'];
           if (!practiceAccess || !ALLOWED_CROSS_ROLES.includes(practiceAccess.role)) {
             // Delegated access path: user has a restricted role (e.g. employee) at the practice
             // but may have been explicitly granted app + client access by the admin.
