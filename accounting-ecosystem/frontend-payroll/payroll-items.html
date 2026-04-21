@@ -215,6 +215,15 @@
             margin-bottom: 25px;
             border: 1px solid #eee;
         }
+        .category-section.collapsed .section-body { display: none; }
+        .category-section.collapsed .category-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+        .section-toggle {
+            background: none; border: none; cursor: pointer; font-size: 18px;
+            color: var(--text-muted, #888); padding: 4px 8px; border-radius: 6px;
+            transition: transform 0.2s, background 0.15s; line-height: 1;
+        }
+        .section-toggle:hover { background: var(--surface-hover, #f0f4ff); }
+        .category-section.collapsed .section-toggle { transform: rotate(-90deg); }
         .category-header {
             display: flex;
             justify-content: space-between;
@@ -504,8 +513,8 @@
             <div id="modalSuccess" class="success-msg"></div>
 
             <!-- STANDARD ITEMS SECTION -->
-            <div class="category-section">
-                <div class="category-header">
+            <div class="category-section" id="section-standard">
+                <div class="category-header" onclick="toggleSection('standard')" style="cursor:pointer;">
                     <div class="category-title">
                         <div class="category-icon">⭐</div>
                         <div>
@@ -513,14 +522,19 @@
                             <p>Pre-built SA payroll items. Click Remove to hide from Add menus. Restore to bring back.</p>
                         </div>
                     </div>
-                    <button id="toggleHiddenBtn" class="btn" style="background:#6c757d; color:white; white-space:nowrap;" onclick="toggleHiddenStandardItems()">Show Removed</button>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button id="toggleHiddenBtn" class="btn" style="background:#6c757d; color:white; white-space:nowrap;" onclick="event.stopPropagation(); toggleHiddenStandardItems()">Show Removed</button>
+                        <button class="section-toggle">▼</button>
+                    </div>
                 </div>
-                <div id="standardItemsList" style="padding:10px 0;"></div>
+                <div class="section-body">
+                    <div id="standardItemsList" style="padding:10px 0;"></div>
+                </div>
             </div>
 
             <!-- INCOME SECTION -->
-            <div class="category-section">
-                <div class="category-header">
+            <div class="category-section" id="section-income">
+                <div class="category-header" onclick="toggleSection('income')" style="cursor:pointer;">
                     <div class="category-title">
                         <div class="category-icon">💵</div>
                         <div>
@@ -528,14 +542,19 @@
                             <p>IRP5 Codes 3801-3810 | Basic Salary, Bonuses, Commission, etc.</p>
                         </div>
                     </div>
-                    <button class="btn btn-success" data-permission="MANAGE_PAYROLL_ITEMS" onclick="openAddItemModal('income')">+ Add Income</button>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button class="btn btn-success" data-permission="MANAGE_PAYROLL_ITEMS" onclick="event.stopPropagation(); openAddItemModal('income')">+ Add Income</button>
+                        <button class="section-toggle">▼</button>
+                    </div>
                 </div>
-                <div id="incomeItems" class="items-grid"></div>
+                <div class="section-body">
+                    <div id="incomeItems" class="items-grid"></div>
+                </div>
             </div>
 
             <!-- ALLOWANCES SECTION -->
-            <div class="category-section">
-                <div class="category-header">
+            <div class="category-section" id="section-allowance">
+                <div class="category-header" onclick="toggleSection('allowance')" style="cursor:pointer;">
                     <div class="category-title">
                         <div class="category-icon">🚗</div>
                         <div>
@@ -543,14 +562,19 @@
                             <p>IRP5 Codes 3701-3715 | Travel, Housing, Subsistence, etc.</p>
                         </div>
                     </div>
-                    <button class="btn btn-success" data-permission="MANAGE_PAYROLL_ITEMS" onclick="openAddItemModal('allowance')">+ Add Allowance</button>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button class="btn btn-success" data-permission="MANAGE_PAYROLL_ITEMS" onclick="event.stopPropagation(); openAddItemModal('allowance')">+ Add Allowance</button>
+                        <button class="section-toggle">▼</button>
+                    </div>
                 </div>
-                <div id="allowanceItems" class="items-grid"></div>
+                <div class="section-body">
+                    <div id="allowanceItems" class="items-grid"></div>
+                </div>
             </div>
 
             <!-- DEDUCTIONS SECTION -->
-            <div class="category-section">
-                <div class="category-header">
+            <div class="category-section" id="section-deduction">
+                <div class="category-header" onclick="toggleSection('deduction')" style="cursor:pointer;">
                     <div class="category-title">
                         <div class="category-icon">➖</div>
                         <div>
@@ -558,14 +582,19 @@
                             <p>IRP5 Codes 4001-4024 | Medical Aid, Pension, Loans, etc.</p>
                         </div>
                     </div>
-                    <button class="btn btn-success" data-permission="MANAGE_PAYROLL_ITEMS" onclick="openAddItemModal('deduction')">+ Add Deduction</button>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button class="btn btn-success" data-permission="MANAGE_PAYROLL_ITEMS" onclick="event.stopPropagation(); openAddItemModal('deduction')">+ Add Deduction</button>
+                        <button class="section-toggle">▼</button>
+                    </div>
                 </div>
-                <div id="deductionItems" class="items-grid"></div>
+                <div class="section-body">
+                    <div id="deductionItems" class="items-grid"></div>
+                </div>
             </div>
 
             <!-- EMPLOYER CONTRIBUTIONS SECTION -->
-            <div class="category-section">
-                <div class="category-header">
+            <div class="category-section" id="section-employer_contribution">
+                <div class="category-header" onclick="toggleSection('employer_contribution')" style="cursor:pointer;">
                     <div class="category-title">
                         <div class="category-icon">🏢</div>
                         <div>
@@ -573,9 +602,14 @@
                             <p>IRP5 Codes 4474-4493 | Pension (Employer), UIF (Employer), etc.</p>
                         </div>
                     </div>
-                    <button class="btn btn-success" data-permission="MANAGE_PAYROLL_ITEMS" onclick="openAddItemModal('employer_contribution')">+ Add Contribution</button>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button class="btn btn-success" data-permission="MANAGE_PAYROLL_ITEMS" onclick="event.stopPropagation(); openAddItemModal('employer_contribution')">+ Add Contribution</button>
+                        <button class="section-toggle">▼</button>
+                    </div>
                 </div>
-                <div id="employerContributionItems" class="items-grid"></div>
+                <div class="section-body">
+                    <div id="employerContributionItems" class="items-grid"></div>
+                </div>
             </div>
 
             <!-- TAX CONFIGURATION SECTION (super-admin only) -->
@@ -947,6 +981,27 @@
         }
         function saveHiddenItems(list) { safeLocalStorage.setItem(getHiddenItemsKey(), JSON.stringify(list)); }
 
+        var _sectionCollapseKey = 'payroll_items_sections_' + (AUTH && AUTH.getSession ? (AUTH.getSession().companyId || '') : '');
+        function toggleSection(id) {
+            var el = document.getElementById('section-' + id);
+            if (!el) return;
+            el.classList.toggle('collapsed');
+            var collapsed = JSON.parse(localStorage.getItem(_sectionCollapseKey) || '{}');
+            collapsed[id] = el.classList.contains('collapsed');
+            localStorage.setItem(_sectionCollapseKey, JSON.stringify(collapsed));
+        }
+        function restoreSectionStates() {
+            try {
+                var collapsed = JSON.parse(localStorage.getItem(_sectionCollapseKey) || '{}');
+                Object.keys(collapsed).forEach(function(id) {
+                    if (collapsed[id]) {
+                        var el = document.getElementById('section-' + id);
+                        if (el) el.classList.add('collapsed');
+                    }
+                });
+            } catch(e) {}
+        }
+
         var showingHidden = false;
         function toggleHiddenStandardItems() {
             showingHidden = !showingHidden;
@@ -1022,6 +1077,7 @@
             }
             displayItemsByCategory();
             renderStandardItems();
+            restoreSectionStates();
             // Pull global library standards from SEAN (fills only blank/null fields — never overwrites)
             seanSyncBackFromLibrary();
         }
