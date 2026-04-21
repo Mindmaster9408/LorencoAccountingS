@@ -1065,6 +1065,7 @@
                 }
                 initPeriodSelect();
                 loadPayrollData();
+                loadWorkSchedule();
                 loadLeaveData();
                 loadNotes();
                 loadEmpPaySchedules(); // populate pay schedule dropdown
@@ -1426,6 +1427,7 @@
 
         function renderWorkingDaysTable() {
             var tbody = document.getElementById('workingDaysTable');
+            if (!tbody) return;
             tbody.innerHTML = '';
             _workingDaysData.forEach(function(d, i) {
                 var row = document.createElement('tr');
