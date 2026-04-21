@@ -1818,6 +1818,8 @@
             safeLocalStorage.setItem(histKey, JSON.stringify({
                 basic_salary: payrollData.basic_salary || 0,
                 gross: calc.gross, taxableGross: calc.taxableGross || calc.gross,
+                periodicTaxableGross: calc.periodicTaxableGross || 0,
+                onceOffTaxableGross:  calc.onceOffTaxableGross  || 0,
                 paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
                 deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
                 net: calc.net, source: 'finalized',

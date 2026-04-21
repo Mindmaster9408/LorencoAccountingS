@@ -353,26 +353,40 @@ const PayrollEngine = {
 
     /**
      * Calculate monthly PAYE from monthly gross.
-     * Annualizes, calculates annual tax, divides by 12.
-     * @param {number} monthlyGross
+     * Supports two call patterns:
+     *   New: (periodicMonthlyGross, onceOffGross, options, tables)
+     *   Legacy: (monthlyGross, options, tables)
+     * Annual income = periodicMonthlyGross × 12 + onceOffGross.
+     * @param {number} monthlyGross - Recurring monthly taxable income
+     * @param {number|Object} onceOffGrossOrOptions - Once-off taxable income (new) OR options object (legacy)
      * @param {Object} [options] - { age, medicalMembers, taxDirective }
      * @param {Object} [tables] - Optional period-specific tax tables (from getTablesForPeriod)
      */
-    calculateMonthlyPAYE: function(monthlyGross, options, tables) {
-        options = options || {};
-        tables = tables || this;
-
-        // Tax directive override: flat rate
-        if (options.taxDirective && options.taxDirective > 0) {
-            return this.r2(monthlyGross * (options.taxDirective / 100));
+    calculateMonthlyPAYE: function(monthlyGross, onceOffGrossOrOptions, options, tables) {
+        var onceOffGross, opts, tbls;
+        if (typeof onceOffGrossOrOptions === 'number') {
+            // New call pattern: (periodicMonthlyGross, onceOffGross, options, tables)
+            onceOffGross = onceOffGrossOrOptions || 0;
+            opts  = options || {};
+            tbls  = tables  || this;
+        } else {
+            // Legacy call pattern: (monthlyGross, options, tables)
+            onceOffGross = 0;
+            opts  = onceOffGrossOrOptions || {};
+            tbls  = options || this;
         }
 
-        var annualTax = this.calculateAnnualPAYE(monthlyGross * 12, options.age, tables);
+        // Tax directive override: flat rate on total income
+        if (opts.taxDirective && opts.taxDirective > 0) {
+            return this.r2((monthlyGross + onceOffGross) * (opts.taxDirective / 100));
+        }
+
+        var annualTax = this.calculateAnnualPAYE(monthlyGross * 12 + onceOffGross, opts.age, tbls);
         var monthlyTax = annualTax / 12;
 
         // Subtract medical tax credits
-        if (options.medicalMembers && options.medicalMembers > 0) {
-            monthlyTax -= this.calculateMedicalCredit(options.medicalMembers, tables);
+        if (opts.medicalMembers && opts.medicalMembers > 0) {
+            monthlyTax -= this.calculateMedicalCredit(opts.medicalMembers, tbls);
         }
 
         return this.r2(Math.max(monthlyTax, 0));
@@ -415,33 +429,36 @@ const PayrollEngine = {
 
     /**
      * SARS run-to-date PAYE method (Section 7 of the PAYE Guide).
-     * Accumulates taxable income for elapsed months, projects to annual,
-     * determines the YTD tax liability, then subtracts PAYE already withheld.
-     * This corrects over/under-withheld PAYE caused by variable income so that
-     * by February the total PAYE withheld exactly equals the annual liability.
+     * Accumulates periodic taxable income (annualised × 12/month) and adds
+     * once-off income once (never annualised) — so bonuses are not projected × 12.
      *
-     * @param {number} currentTaxableGross  - Taxable gross for the current month
-     * @param {number} ytdTaxableGross      - Sum of taxable gross for all prior months in the tax year
+     * @param {number} currentPeriodicGross  - Recurring taxable gross for current month (basic + regular inputs)
+     * @param {number} currentOnceOffGross   - Once-off taxable gross for current month (current inputs, overtime)
+     * @param {number} ytdPeriodicGross      - Sum of periodic taxable gross for all prior months
+     * @param {number} ytdOnceOffGross       - Sum of once-off taxable gross for all prior months
      * @param {number} ytdPAYE              - Sum of PAYE withheld in all prior months
      * @param {number} monthInTaxYear       - Current month number (March=1 … February=12)
      * @param {Object} [options]            - { age, medicalMembers, taxDirective }
      * @param {Object} [tables]             - Period-specific tax tables
      * @returns {number} PAYE for the current month
      */
-    calculateMonthlyPAYE_YTD: function(currentTaxableGross, ytdTaxableGross, ytdPAYE, monthInTaxYear, options, tables) {
+    calculateMonthlyPAYE_YTD: function(currentPeriodicGross, currentOnceOffGross, ytdPeriodicGross, ytdOnceOffGross, ytdPAYE, monthInTaxYear, options, tables) {
         options = options || {};
         tables  = tables  || this;
 
         // Tax directive: apply flat rate, no YTD step-up/down
         if (options.taxDirective && options.taxDirective > 0) {
-            return this.r2(currentTaxableGross * (options.taxDirective / 100));
+            return this.r2((currentPeriodicGross + currentOnceOffGross) * (options.taxDirective / 100));
         }
 
-        var accumulatedTaxable = ytdTaxableGross + currentTaxableGross;
-        // Project to annual income based on elapsed months
+        var accumulatedPeriodic = ytdPeriodicGross + currentPeriodicGross;
+        var totalOnceOff        = ytdOnceOffGross  + currentOnceOffGross;
+
+        // Periodic income is projected to annual based on elapsed months.
+        // Once-off income is added directly — never annualised.
         var annualEquivalent = monthInTaxYear > 0
-            ? accumulatedTaxable * (12 / monthInTaxYear)
-            : accumulatedTaxable * 12;
+            ? accumulatedPeriodic * (12 / monthInTaxYear) + totalOnceOff
+            : accumulatedPeriodic * 12 + totalOnceOff;
 
         var annualPAYE   = this.calculateAnnualPAYE(annualEquivalent, options.age, tables);
         var monthlyMed   = options.medicalMembers ? this.calculateMedicalCredit(options.medicalMembers, tables) : 0;
@@ -552,7 +569,11 @@ const PayrollEngine = {
     calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData) {
         // Select the correct tax tables for the period (auto-applies historical brackets)
         var tables = period ? this.getTablesForPeriod(period) : this;
-        var taxableGross = payrollData.basic_salary || 0;
+
+        // Split taxable income into periodic (annualised × 12) and once-off (added once).
+        // This ensures bonuses/overtime are not incorrectly projected × 12 in annual PAYE.
+        var periodicTaxable = payrollData.basic_salary || 0;
+        var onceOffTaxable  = 0;
         var nonTaxableIncome = 0;
 
         // Resolve percentage-based regular inputs against the current basic_salary.
@@ -565,55 +586,56 @@ const PayrollEngine = {
             return ri;
         });
 
-        // Regular allowances (non-deduction regular_inputs add to gross)
+        // Regular inputs → periodic (recurring each month)
         resolvedRegularInputs.forEach(function(ri) {
             if (ri.type !== 'deduction') {
                 var amt = parseFloat(ri.amount) || 0;
                 if (ri.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
-                    taxableGross += amt;
+                    periodicTaxable += amt;
                 }
             }
         });
 
-        // Current period inputs (non-deduction add to gross)
+        // Current period inputs → once-off (this month only, never annualised)
         (currentInputs || []).forEach(function(ci) {
             if (ci.type !== 'deduction') {
                 var amt = parseFloat(ci.amount) || 0;
                 if (ci.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
-                    taxableGross += amt;
+                    onceOffTaxable += amt;
                 }
             }
         });
 
-        // Overtime (always taxable — calculated independently, never offset against short time)
+        // Overtime → once-off (always taxable, calculated independently)
         // Use schedule-based hourly rate when workSchedule is provided; fall back to HOURLY_DIVISOR (173.33)
         var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, payrollData.workSchedule, payrollData.hours_per_day);
         var overtimeAmount = 0;
         (overtime || []).forEach(function(ot) {
             var otAmt = (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
-            taxableGross += otAmt;
+            onceOffTaxable += otAmt;
             overtimeAmount += otAmt;
         });
 
-        // Multi-rate hours (always taxable)
+        // Multi-rate hours → once-off (always taxable)
         (multiRate || []).forEach(function(mr) {
-            taxableGross += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
+            onceOffTaxable += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
         });
 
-        // Short time (earnings reduction — calculated independently, never offset against overtime)
-        // hours_missed × hourly_rate at 1.0x (straight deduction — no multiplier penalty)
+        // Short time → reduces periodic income (salary reduction, not a once-off)
         var shortTimeAmount = 0;
         (shortTime || []).forEach(function(st) {
             var stAmt = (parseFloat(st.hours_missed) || 0) * hourlyRate;
-            taxableGross -= stAmt;
+            periodicTaxable -= stAmt;
             shortTimeAmount += stAmt;
         });
 
-        if (taxableGross < 0) taxableGross = 0;
+        if (periodicTaxable < 0) periodicTaxable = 0;
+
+        var taxableGross = periodicTaxable + onceOffTaxable;
 
         // Total gross includes both taxable and non-taxable.
         // Captured BEFORE pre-tax deductions are applied so that UIF/SDL
@@ -654,9 +676,10 @@ const PayrollEngine = {
             }
         });
 
-        // Apply pre-tax deductions to reduce taxableGross before PAYE.
+        // Pre-tax deductions reduce periodic taxable income (pension deducted from salary, not bonus).
         // Never below zero — a pre-tax deduction cannot create a negative tax base.
-        taxableGross = Math.max(taxableGross - preTaxDeductions, 0);
+        periodicTaxable = Math.max(periodicTaxable - preTaxDeductions, 0);
+        taxableGross    = periodicTaxable + onceOffTaxable;
 
         // Total deductions = pre-tax + net-only (BOTH reduce net pay).
         // The existing 'deductions' output field is preserved unchanged for
@@ -668,15 +691,17 @@ const PayrollEngine = {
         if (ytdData && period) {
             var monthInTaxYear = PayrollEngine.getMonthInTaxYear(period);
             paye = PayrollEngine.calculateMonthlyPAYE_YTD(
-                taxableGross,
-                ytdData.ytdTaxableGross || 0,
+                periodicTaxable,
+                onceOffTaxable,
+                ytdData.ytdPeriodicTaxableGross || ytdData.ytdTaxableGross || 0,
+                ytdData.ytdOnceOffTaxableGross  || 0,
                 ytdData.ytdPAYE        || 0,
                 monthInTaxYear,
                 opts,
                 tables
             );
         } else {
-            paye = PayrollEngine.calculateMonthlyPAYE(taxableGross, opts, tables);
+            paye = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, onceOffTaxable, opts, tables);
         }
         // UIF and SDL are calculated from gross (full earnings) — not the reduced taxable income.
         var uif = PayrollEngine.calculateUIF(gross, tables);
@@ -730,7 +755,10 @@ const PayrollEngine = {
             // === ADDITIVE FIELDS (migration 018 — pre-tax deduction transparency) ===
             // New fields appended after all 13 locked fields. Backward-compatible.
             preTaxDeductions: PayrollEngine.r2(preTaxDeductions),
-            netOnlyDeductions: PayrollEngine.r2(netOnlyDeductions)
+            netOnlyDeductions: PayrollEngine.r2(netOnlyDeductions),
+            // Split gross for YTD snapshot storage — enables correct once-off tax treatment
+            periodicTaxableGross: PayrollEngine.r2(periodicTaxable),
+            onceOffTaxableGross:  PayrollEngine.r2(onceOffTaxable)
         };
     },
 

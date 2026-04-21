@@ -303,21 +303,32 @@ const PayrollEngine = {
      * @param {Object} [options] - { age, medicalMembers, taxDirective }
      * @param {Object} [tables] - Optional period-specific tax tables (from getTablesForPeriod)
      */
-    calculateMonthlyPAYE: function(monthlyGross, options, tables) {
-        options = options || {};
-        tables = tables || this;
-
-        // Tax directive override: flat rate
-        if (options.taxDirective && options.taxDirective > 0) {
-            return this.r2(monthlyGross * (options.taxDirective / 100));
+    calculateMonthlyPAYE: function(monthlyGross, onceOffGrossOrOptions, options, tables) {
+        // Supports two call patterns:
+        //   New: (periodicMonthlyGross, onceOffGross, options, tables)
+        //   Legacy: (monthlyGross, options, tables)
+        var onceOffGross, opts, tbls;
+        if (typeof onceOffGrossOrOptions === 'number') {
+            onceOffGross = onceOffGrossOrOptions || 0;
+            opts  = options || {};
+            tbls  = tables  || this;
+        } else {
+            onceOffGross = 0;
+            opts  = onceOffGrossOrOptions || {};
+            tbls  = options || this;
         }
 
-        var annualTax = this.calculateAnnualPAYE(monthlyGross * 12, options.age, tables);
+        // Tax directive override: flat rate on combined gross
+        if (opts.taxDirective && opts.taxDirective > 0) {
+            return this.r2((monthlyGross + onceOffGross) * (opts.taxDirective / 100));
+        }
+
+        // Annualize periodic; once-off added once to annual total
+        var annualTax = this.calculateAnnualPAYE(monthlyGross * 12 + onceOffGross, opts.age, tbls);
         var monthlyTax = annualTax / 12;
 
-        // Subtract medical tax credits
-        if (options.medicalMembers && options.medicalMembers > 0) {
-            monthlyTax -= this.calculateMedicalCredit(options.medicalMembers, tables);
+        if (opts.medicalMembers && opts.medicalMembers > 0) {
+            monthlyTax -= this.calculateMedicalCredit(opts.medicalMembers, tbls);
         }
 
         return this.r2(Math.max(monthlyTax, 0));
@@ -368,22 +379,27 @@ const PayrollEngine = {
      */
     getYTDData: function(companyId, empId, period) {
         var priorPeriods = this.getTaxYearPriorPeriods(period);
-        var ytdTaxableGross = 0;
+        var ytdPeriodicTaxableGross = 0;
+        var ytdOnceOffTaxableGross  = 0;
         var ytdPAYE = 0;
         priorPeriods.forEach(function(p) {
             var stored = safeLocalStorage.getItem('emp_historical_' + companyId + '_' + empId + '_' + p);
             if (stored) {
                 try {
                     var rec = JSON.parse(stored);
-                    // Use taxableGross if present (finalized records after this fix);
-                    // fall back to gross for pre-fix records (conservative – slightly
-                    // over-estimates, but self-corrects at year end via run-to-date method)
-                    ytdTaxableGross += typeof rec.taxableGross === 'number' ? rec.taxableGross : (rec.gross || 0);
+                    if (typeof rec.periodicTaxableGross === 'number') {
+                        // New-format snapshot: has split figures
+                        ytdPeriodicTaxableGross += rec.periodicTaxableGross;
+                        ytdOnceOffTaxableGross  += rec.onceOffTaxableGross || 0;
+                    } else {
+                        // Legacy snapshot: treat full taxableGross as periodic (conservative fallback)
+                        ytdPeriodicTaxableGross += typeof rec.taxableGross === 'number' ? rec.taxableGross : (rec.gross || 0);
+                    }
                     ytdPAYE += rec.paye || 0;
                 } catch(e) { /* ignore corrupt records */ }
             }
         });
-        return { ytdTaxableGross: ytdTaxableGross, ytdPAYE: ytdPAYE };
+        return { ytdPeriodicTaxableGross: ytdPeriodicTaxableGross, ytdOnceOffTaxableGross: ytdOnceOffTaxableGross, ytdPAYE: ytdPAYE };
     },
 
     /**
@@ -401,28 +417,31 @@ const PayrollEngine = {
      * @param {Object} [tables]             - Period-specific tax tables
      * @returns {number} PAYE for the current month
      */
-    calculateMonthlyPAYE_YTD: function(currentTaxableGross, ytdTaxableGross, ytdPAYE, monthInTaxYear, options, tables) {
+    calculateMonthlyPAYE_YTD: function(currentPeriodicGross, currentOnceOffGross, ytdPeriodicGross, ytdOnceOffGross, ytdPAYE, monthInTaxYear, options, tables) {
         options = options || {};
         tables  = tables  || this;
 
+        var combinedCurrentGross = currentPeriodicGross + currentOnceOffGross;
+
         // Tax directive: apply flat rate, no YTD step-up/down
         if (options.taxDirective && options.taxDirective > 0) {
-            return this.r2(currentTaxableGross * (options.taxDirective / 100));
+            return this.r2(combinedCurrentGross * (options.taxDirective / 100));
         }
 
-        var accumulatedTaxable = ytdTaxableGross + currentTaxableGross;
-        // Project to annual income based on elapsed months
+        // Periodic income is annualized (it recurs every month).
+        // Once-off income (bonuses, current inputs, overtime) is added once — never projected forward.
+        var accumulatedPeriodic = ytdPeriodicGross + currentPeriodicGross;
+        var totalOnceOff        = ytdOnceOffGross  + currentOnceOffGross;
         var annualEquivalent = monthInTaxYear > 0
-            ? accumulatedTaxable * (12 / monthInTaxYear)
-            : accumulatedTaxable * 12;
+            ? accumulatedPeriodic * (12 / monthInTaxYear) + totalOnceOff
+            : accumulatedPeriodic * 12 + totalOnceOff;
 
-        var annualPAYE   = this.calculateAnnualPAYE(annualEquivalent, options.age, tables);
-        var monthlyMed   = options.medicalMembers ? this.calculateMedicalCredit(options.medicalMembers, tables) : 0;
+        var annualPAYE = this.calculateAnnualPAYE(annualEquivalent, options.age, tables);
+        var monthlyMed = options.medicalMembers ? this.calculateMedicalCredit(options.medicalMembers, tables) : 0;
 
         // Total YTD liability = annualPAYE × elapsed/12, minus all monthly medical credits
         var ytdLiability = (annualPAYE * monthInTaxYear / 12) - (monthlyMed * monthInTaxYear);
 
-        // Current month PAYE = what still needs to be withheld (never negative)
         return this.r2(Math.max(ytdLiability - ytdPAYE, 0));
     },
 
@@ -525,7 +544,6 @@ const PayrollEngine = {
     calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData) {
         // Select the correct tax tables for the period (auto-applies historical brackets)
         var tables = period ? this.getTablesForPeriod(period) : this;
-        var taxableGross = payrollData.basic_salary || 0;
         var nonTaxableIncome = 0;
 
         // Resolve percentage-based items to their rand amount before any loop
@@ -536,102 +554,85 @@ const PayrollEngine = {
             return ri;
         });
 
-        // Regular allowances (non-deduction regular_inputs add to gross)
+        // ── SPLIT: periodic (annualised) vs once-off (added once to annual income) ──
+        // Periodic  = basic salary + regular monthly inputs + short-time reduction
+        // Once-off  = current period inputs + overtime + multi-rate hours
+        // This ensures a bonus does not inflate the projected annual tax base.
+
+        var periodicTaxable = payrollData.basic_salary || 0;
+        var onceOffTaxable  = 0;
+
+        // Regular inputs → periodic
         resolvedRegularInputs.forEach(function(ri) {
             if (ri.type !== 'deduction') {
                 var amt = parseFloat(ri.amount) || 0;
-                if (ri.is_taxable === false) {
-                    nonTaxableIncome += amt;
-                } else {
-                    taxableGross += amt;
-                }
+                if (ri.is_taxable === false) nonTaxableIncome += amt;
+                else periodicTaxable += amt;
             }
         });
 
-        // Current period inputs (non-deduction add to gross)
+        // Current period inputs → once-off
         (currentInputs || []).forEach(function(ci) {
             if (ci.type !== 'deduction') {
                 var amt = parseFloat(ci.amount) || 0;
-                if (ci.is_taxable === false) {
-                    nonTaxableIncome += amt;
-                } else {
-                    taxableGross += amt;
-                }
+                if (ci.is_taxable === false) nonTaxableIncome += amt;
+                else onceOffTaxable += amt;
             }
         });
 
-        // Overtime (always taxable — calculated independently, never offset against short time)
-        // Use schedule-based hourly rate when workSchedule is provided; fall back to HOURLY_DIVISOR (173.33)
+        // Overtime → once-off (variable, non-recurring)
         var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, payrollData.workSchedule, payrollData.hours_per_day);
         var overtimeAmount = 0;
         (overtime || []).forEach(function(ot) {
             var otAmt = (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
-            taxableGross += otAmt;
+            onceOffTaxable += otAmt;
             overtimeAmount += otAmt;
         });
 
-        // Multi-rate hours (always taxable)
+        // Multi-rate → once-off
         (multiRate || []).forEach(function(mr) {
-            taxableGross += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
+            onceOffTaxable += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
         });
 
-        // Short time (earnings reduction — calculated independently, never offset against overtime)
-        // hours_missed × hourly_rate at 1.0x (straight deduction — no multiplier penalty)
+        // Short-time → reduces periodic (it is a reduction of regular earnings)
         var shortTimeAmount = 0;
         (shortTime || []).forEach(function(st) {
             var stAmt = (parseFloat(st.hours_missed) || 0) * hourlyRate;
-            taxableGross -= stAmt;
+            periodicTaxable -= stAmt;
             shortTimeAmount += stAmt;
         });
 
-        if (taxableGross < 0) taxableGross = 0;
+        if (periodicTaxable < 0) periodicTaxable = 0;
 
-        // Total gross includes both taxable and non-taxable.
-        // Captured BEFORE pre-tax deductions are applied so that UIF/SDL
-        // remain based on actual earnings, not the reduced taxable income.
+        var taxableGross = periodicTaxable + onceOffTaxable;
+
+        // Total gross captured BEFORE pre-tax deductions so UIF/SDL use actual earnings
         var gross = taxableGross + nonTaxableIncome;
 
-        // === DEDUCTION TAX TREATMENT (SARS COMPLIANCE — migration 018) ===
-        // Split deductions into two categories BEFORE PAYE is calculated:
-        //
-        //   pre_tax  — qualifying deductions (pension fund, RA, etc.) that
-        //              reduce taxable income before PAYE per SARS rules.
-        //              These ALSO reduce net pay (they come off the employee's remuneration).
-        //
-        //   net_only — all other deductions (medical aid employee portion, garnishee, etc.)
-        //              that reduce net pay only; PAYE base is unchanged.
-        //
-        // Backward compatibility: items with no tax_treatment field default to 'net_only'.
+        // === DEDUCTION TAX TREATMENT (SARS COMPLIANCE) ===
+        // pre_tax  — pension, RA etc. — reduce periodic taxable income before PAYE
+        // net_only — medical aid, garnishee etc. — reduce net pay only
         var preTaxDeductions = 0;
         var netOnlyDeductions = 0;
         resolvedRegularInputs.forEach(function(ri) {
             if (ri.type === 'deduction') {
                 var amt = parseFloat(ri.amount) || 0;
-                if (ri.tax_treatment === 'pre_tax') {
-                    preTaxDeductions += amt;
-                } else {
-                    netOnlyDeductions += amt;
-                }
+                if (ri.tax_treatment === 'pre_tax') preTaxDeductions += amt;
+                else netOnlyDeductions += amt;
             }
         });
         (currentInputs || []).forEach(function(ci) {
             if (ci.type === 'deduction') {
                 var amt = parseFloat(ci.amount) || 0;
-                if (ci.tax_treatment === 'pre_tax') {
-                    preTaxDeductions += amt;
-                } else {
-                    netOnlyDeductions += amt;
-                }
+                if (ci.tax_treatment === 'pre_tax') preTaxDeductions += amt;
+                else netOnlyDeductions += amt;
             }
         });
 
-        // Apply pre-tax deductions to reduce taxableGross before PAYE.
-        // Never below zero — a pre-tax deduction cannot create a negative tax base.
-        taxableGross = Math.max(taxableGross - preTaxDeductions, 0);
+        // Pre-tax deductions reduce periodic taxable income (pension deducted from salary, not bonus)
+        periodicTaxable = Math.max(periodicTaxable - preTaxDeductions, 0);
+        taxableGross    = periodicTaxable + onceOffTaxable;
 
-        // Total deductions = pre-tax + net-only (BOTH reduce net pay).
-        // The existing 'deductions' output field is preserved unchanged for
-        // backward compatibility — it continues to represent all employee deductions.
         var deductions = preTaxDeductions + netOnlyDeductions;
 
         var opts = employeeOptions || {};
@@ -639,15 +640,17 @@ const PayrollEngine = {
         if (ytdData && period) {
             var monthInTaxYear = PayrollEngine.getMonthInTaxYear(period);
             paye = PayrollEngine.calculateMonthlyPAYE_YTD(
-                taxableGross,
-                ytdData.ytdTaxableGross || 0,
-                ytdData.ytdPAYE        || 0,
+                periodicTaxable,
+                onceOffTaxable,
+                ytdData.ytdPeriodicTaxableGross || ytdData.ytdTaxableGross || 0,
+                ytdData.ytdOnceOffTaxableGross  || 0,
+                ytdData.ytdPAYE || 0,
                 monthInTaxYear,
                 opts,
                 tables
             );
         } else {
-            paye = PayrollEngine.calculateMonthlyPAYE(taxableGross, opts, tables);
+            paye = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, onceOffTaxable, opts, tables);
         }
         // UIF and SDL are calculated from gross (full earnings) — not the reduced taxable income.
         var uif = PayrollEngine.calculateUIF(gross, tables);
@@ -687,7 +690,7 @@ const PayrollEngine = {
             gross: PayrollEngine.r2(gross),
             taxableGross: PayrollEngine.r2(taxableGross),
             paye: PayrollEngine.r2(payeWithVoluntary),
-            paye_base: PayrollEngine.r2(paye), // for breakdown
+            paye_base: PayrollEngine.r2(paye),
             voluntary_overdeduction: PayrollEngine.r2(voluntaryOverDeduction),
             uif: uif,
             sdl: sdl,
@@ -695,13 +698,13 @@ const PayrollEngine = {
             net: PayrollEngine.r2(net),
             negativeNetPay: negativeNetPay,
             medicalCredit: opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers) : 0,
-            // Itemised components for payslip display — both are independent; neither offsets the other
             overtimeAmount: PayrollEngine.r2(overtimeAmount),
             shortTimeAmount: PayrollEngine.r2(shortTimeAmount),
-            // === ADDITIVE FIELDS (migration 018 — pre-tax deduction transparency) ===
-            // New fields appended after all 13 locked fields. Backward-compatible.
             preTaxDeductions: PayrollEngine.r2(preTaxDeductions),
-            netOnlyDeductions: PayrollEngine.r2(netOnlyDeductions)
+            netOnlyDeductions: PayrollEngine.r2(netOnlyDeductions),
+            // Split gross for YTD snapshot storage — enables correct once-off tax treatment
+            periodicTaxableGross: PayrollEngine.r2(periodicTaxable),
+            onceOffTaxableGross:  PayrollEngine.r2(onceOffTaxable)
         };
     },
 
