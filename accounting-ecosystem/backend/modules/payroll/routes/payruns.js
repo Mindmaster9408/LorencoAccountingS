@@ -158,6 +158,23 @@ router.post(
         supabase, req.companyId, period_key, visibleIds.length, req.user.userId
       );
 
+      // ── Load admin-configured tax tables from KV (once, shared across all employees) ──
+      // Backend engine cannot use localStorage — load tax_config from Supabase KV.
+      let batchTaxConfig = null;
+      try {
+        const { data: kvRow } = await supabase
+          .from('payroll_kv_store_eco')
+          .select('value')
+          .eq('company_id', req.companyId)
+          .eq('key', 'tax_config')
+          .maybeSingle();
+        if (kvRow && kvRow.value) {
+          batchTaxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+        }
+      } catch (kvErr) {
+        console.warn('[payruns] Could not load tax_config from KV:', kvErr.message);
+      }
+
       // ── Process each employee ─────────────────────────────────────────────
       const processed = [];
       const errors    = [];
@@ -216,7 +233,8 @@ router.post(
             {
               startDate:   effectiveStartDate,
               endDate:     effectiveEndDate,
-              useProRata
+              useProRata,
+              taxConfig:   batchTaxConfig
             }
           );
 

@@ -159,7 +159,26 @@ router.post(
         throw err;
       }
 
-      // STEP 3: Execute calculation
+      // STEP 3: Fetch admin-configured tax tables from Supabase KV.
+      // The backend engine cannot use localStorage, so we load the tax_config
+      // stored by the Tax Configuration UI and pass it directly to the engine.
+      let taxConfig = null;
+      try {
+        const { data: kvRow } = await supabase
+          .from('payroll_kv_store_eco')
+          .select('value')
+          .eq('company_id', req.companyId)
+          .eq('key', 'tax_config')
+          .maybeSingle();
+        if (kvRow && kvRow.value) {
+          taxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+        }
+      } catch (kvErr) {
+        console.warn('[payroll/calculate] Could not load tax_config from KV:', kvErr.message);
+        // Non-fatal — engine falls back to hardcoded defaults
+      }
+
+      // STEP 4: Execute calculation
       // Auto-detect per-employee proration from employee's own start/termination dates.
       // Explicit start_date/end_date from the request body take precedence.
       const empStartDate = normalizedInputs.start_date;
@@ -182,7 +201,8 @@ router.post(
           {
             startDate:  effectiveStartDate,
             endDate:    effectiveEndDate,
-            useProRata
+            useProRata,
+            taxConfig
           }
         );
       } catch (err) {
@@ -191,7 +211,7 @@ router.post(
         );
       }
 
-      // STEP 4: Validate output
+      // STEP 5: Validate output
       try {
         PayrollCalculationService.validateOutput(calculationResult);
       } catch (err) {
@@ -202,7 +222,7 @@ router.post(
         });
       }
 
-      // STEP 5: Prepare snapshot if requested
+      // STEP 6: Prepare snapshot if requested
       let snapshot = null;
       if (include_snapshot !== false) {
         try {
@@ -231,7 +251,7 @@ router.post(
         }
       }
 
-      // STEP 6: Format and return response
+      // STEP 7: Format and return response
       const response = {
         success: true,
         data: PayrollCalculationService.formatForResponse(calculationResult).data,
@@ -239,7 +259,7 @@ router.post(
         timestamp: new Date().toISOString()
       };
 
-      // STEP 7: Audit log (if auditing is configured)
+      // STEP 8: Audit log (if auditing is configured)
       try {
         await auditFromReq(req, 'CALCULATE', 'payroll_calculation', empId, {
           module: 'payroll',

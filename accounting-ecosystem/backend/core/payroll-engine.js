@@ -522,16 +522,16 @@ const PayrollEngine = {
      * @param {string} periodStr - 'YYYY-MM'
      * @returns {Object} Tables object with BRACKETS, PRIMARY_REBATE, etc.
      */
-    getTablesForPeriod: function(periodStr) {
-        if (!periodStr) return this;
+    getTablesForPeriod: function(periodStr, taxOverride) {
+        if (!periodStr) return taxOverride || this;
         var taxYear = this.getTaxYearForPeriod(periodStr);
-        // Current year → use `this` (may be overridden by loadTaxConfig KV data)
-        if (taxYear === this.TAX_YEAR) return this;
-        // Historical year → use hardcoded verified tables
+        // Current year → use taxOverride if provided (backend KV config), else `this`
+        if (taxYear === this.TAX_YEAR) return taxOverride || this;
+        // Historical year → use hardcoded verified tables (override not applied to historical)
         if (this.HISTORICAL_TABLES[taxYear]) return this.HISTORICAL_TABLES[taxYear];
         // Future or unknown year → use latest known tables as best estimate
         var keys = Object.keys(this.HISTORICAL_TABLES).sort();
-        return this.HISTORICAL_TABLES[keys[keys.length - 1]] || this;
+        return this.HISTORICAL_TABLES[keys[keys.length - 1]] || taxOverride || this;
     },
 
     /**
@@ -566,9 +566,10 @@ const PayrollEngine = {
      *                             SARS run-to-date method is used for more accurate PAYE.
      * @returns {Object} { gross, taxableGross, paye, paye_base, voluntary_overdeduction, uif, sdl, deductions, net, negativeNetPay, medicalCredit, overtimeAmount, shortTimeAmount }
      */
-    calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData) {
-        // Select the correct tax tables for the period (auto-applies historical brackets)
-        var tables = period ? this.getTablesForPeriod(period) : this;
+    calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData, taxOverride) {
+        // Select the correct tax tables for the period (auto-applies historical brackets).
+        // taxOverride: pre-built tables from backend KV config (Node.js cannot use localStorage).
+        var tables = period ? this.getTablesForPeriod(period, taxOverride) : (taxOverride || this);
 
         // Split taxable income into periodic (annualised × 12) and once-off (added once).
         // This ensures bonuses/overtime are not incorrectly projected × 12 in annual PAYE.
@@ -1058,7 +1059,7 @@ const PayrollEngine = {
      * @param {Object} ytdData               - YTD data (if using SARS method)
      * @returns {Object} Payroll output with prorataFactor, expectedHoursInPeriod, workedHoursInPeriod fields added
      */
-    calculateWithProRata: function(payrollData, startDate, endDate, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData) {
+    calculateWithProRata: function(payrollData, startDate, endDate, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData, taxOverride) {
         // Calculate pro-rata factor (HOURS-BASED)
         var defaultHrs = payrollData.hours_per_day || 8;
         var prorataInfo = this.calculateProRataFactor(startDate, endDate, period, payrollData.workSchedule, defaultHrs);
@@ -1077,7 +1078,8 @@ const PayrollEngine = {
             shortTime,
             employeeOptions,
             period,
-            ytdData
+            ytdData,
+            taxOverride
         );
 
         // Add pro-rata fields (ADDITIVE — no removal of existing 13 fields)

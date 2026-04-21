@@ -29,6 +29,30 @@
 
 const PayrollEngine = require('../../../core/payroll-engine');
 
+/**
+ * Build an effective tax tables object from an admin-configured KV override.
+ * Falls back to engine defaults for any field not set in the config.
+ * Returns null if cfg is falsy — callers treat null as "use engine defaults".
+ *
+ * @param {object|null} cfg - Tax config from payroll_kv_store_eco (key: tax_config)
+ * @returns {object|null}
+ */
+function buildEffectiveTables(cfg) {
+    if (!cfg) return null;
+    return {
+        BRACKETS:                  Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length ? cfg.BRACKETS : PayrollEngine.BRACKETS,
+        PRIMARY_REBATE:            typeof cfg.PRIMARY_REBATE            === 'number' ? cfg.PRIMARY_REBATE            : PayrollEngine.PRIMARY_REBATE,
+        SECONDARY_REBATE:          typeof cfg.SECONDARY_REBATE          === 'number' ? cfg.SECONDARY_REBATE          : PayrollEngine.SECONDARY_REBATE,
+        TERTIARY_REBATE:           typeof cfg.TERTIARY_REBATE           === 'number' ? cfg.TERTIARY_REBATE           : PayrollEngine.TERTIARY_REBATE,
+        UIF_RATE:                  typeof cfg.UIF_RATE                  === 'number' ? cfg.UIF_RATE                  : PayrollEngine.UIF_RATE,
+        UIF_MONTHLY_CAP:           typeof cfg.UIF_MONTHLY_CAP           === 'number' ? cfg.UIF_MONTHLY_CAP           : PayrollEngine.UIF_MONTHLY_CAP,
+        SDL_RATE:                  typeof cfg.SDL_RATE                  === 'number' ? cfg.SDL_RATE                  : PayrollEngine.SDL_RATE,
+        MEDICAL_CREDIT_MAIN:       typeof cfg.MEDICAL_CREDIT_MAIN       === 'number' ? cfg.MEDICAL_CREDIT_MAIN       : PayrollEngine.MEDICAL_CREDIT_MAIN,
+        MEDICAL_CREDIT_FIRST_DEP:  typeof cfg.MEDICAL_CREDIT_FIRST_DEP  === 'number' ? cfg.MEDICAL_CREDIT_FIRST_DEP  : PayrollEngine.MEDICAL_CREDIT_FIRST_DEP,
+        MEDICAL_CREDIT_ADDITIONAL: typeof cfg.MEDICAL_CREDIT_ADDITIONAL === 'number' ? cfg.MEDICAL_CREDIT_ADDITIONAL : PayrollEngine.MEDICAL_CREDIT_ADDITIONAL
+    };
+}
+
 /*
  * Calculate payroll for a normalized input set.
  * Thin wrapper around PayrollEngine that adds metadata and error handling.
@@ -38,6 +62,7 @@ const PayrollEngine = require('../../../core/payroll-engine');
  * @param {string} [options.startDate] - Override pro-rata start date (YYYY-MM-DD)
  * @param {string} [options.endDate] - Override pro-rata end date (YYYY-MM-DD)
  * @param {boolean} [options.useProRata] - Enable pro-rata calculation (default: true if dates provided)
+ * @param {object} [options.taxConfig] - Admin-configured tax tables from Supabase KV (backend use only)
  * @returns {Promise<object>} Engine output + service metadata
  */
 async function calculate(normalizedInputs, options = {}) {
@@ -58,6 +83,10 @@ async function calculate(normalizedInputs, options = {}) {
     const useProRata =
       options.useProRata !== false &&
       (options.startDate || options.endDate || normalizedInputs.start_date);
+
+    // Build period-aware tax tables from admin KV config (Node.js backend cannot use localStorage).
+    // Null means "use engine defaults" — backward compatible with all existing callers.
+    const taxOverride = buildEffectiveTables(options.taxConfig || null);
 
     let result;
 
@@ -81,7 +110,8 @@ async function calculate(normalizedInputs, options = {}) {
         normalizedInputs.shortTime || [],
         normalizedInputs.employeeOptions,
         normalizedInputs.period,
-        normalizedInputs.ytdData || null
+        normalizedInputs.ytdData || null,
+        taxOverride
       );
     } else {
       // Standard full-month calculation
@@ -98,7 +128,8 @@ async function calculate(normalizedInputs, options = {}) {
         normalizedInputs.shortTime || [],
         normalizedInputs.employeeOptions,
         normalizedInputs.period,
-        normalizedInputs.ytdData || null
+        normalizedInputs.ytdData || null,
+        taxOverride
       );
     }
 
