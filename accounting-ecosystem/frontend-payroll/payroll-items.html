@@ -744,7 +744,7 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label>Category *</label>
-                            <select id="itemCategory" required>
+                            <select id="itemCategory" required onchange="updateDefaultAmountLabel()">
                                 <option value="">Select...</option>
                                 <option value="fixed">Fixed Amount</option>
                                 <option value="percentage">Percentage (%)</option>
@@ -754,8 +754,9 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Default Amount/Percentage</label>
+                            <label id="defaultAmountLabel">Default Amount</label>
                             <input type="number" id="defaultAmount" step="0.01" placeholder="0.00">
+                            <small id="defaultAmountHint" style="color:#888; display:none;"></small>
                         </div>
                     </div>
 
@@ -1305,6 +1306,7 @@
             document.getElementById('modalError').style.display = 'none';
             selectBehaviour('fixed');
             updateTaxTreatmentVisibility(type);
+            updateDefaultAmountLabel();
             document.getElementById('itemModal').classList.add('show');
         }
 
@@ -1325,6 +1327,7 @@
             document.getElementById('irp5Code').value = item.irp5_code || '';
             document.getElementById('itemCategory').value = item.category;
             document.getElementById('defaultAmount').value = item.default_amount || '';
+            updateDefaultAmountLabel();
             document.getElementById('isTaxable').value = item.is_taxable ? '1' : '0';
             document.getElementById('affectsUif').value = item.affects_uif ? '1' : '0';
             document.getElementById('taxTreatment').value = item.tax_treatment || 'net_only';
@@ -1352,6 +1355,28 @@
                 optVariable.className = 'behaviour-option';
                 radioFixed.checked  = true;
                 info.style.display = 'none';
+            }
+        }
+
+        function updateDefaultAmountLabel() {
+            var cat   = document.getElementById('itemCategory').value;
+            var label = document.getElementById('defaultAmountLabel');
+            var hint  = document.getElementById('defaultAmountHint');
+            var input = document.getElementById('defaultAmount');
+            if (cat === 'percentage') {
+                label.textContent = 'Default % of Basic Salary';
+                input.placeholder = 'e.g. 5 for 5%';
+                hint.textContent  = 'Enter the percentage number only (e.g. 5 = 5%). Calculated automatically on each payslip.';
+                hint.style.display = 'block';
+            } else if (cat === 'fixed') {
+                label.textContent = 'Default Amount (R)';
+                input.placeholder = 'e.g. 30.00';
+                hint.textContent  = 'This amount will pre-fill automatically when this item is added to an employee.';
+                hint.style.display = 'block';
+            } else {
+                label.textContent  = 'Default Amount';
+                input.placeholder  = '0.00';
+                hint.style.display = 'none';
             }
         }
 

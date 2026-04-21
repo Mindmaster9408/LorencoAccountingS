@@ -2185,8 +2185,9 @@
                     lastCat = item.category;
                 }
                 var col = item.type === 'deduction' ? '#dc3545' : '#28a745';
-                html += '<div class="payroll-list-row" data-is-pct="' + (item.is_percentage ? '1' : '0') + '" data-pct-val="' + (item.percentage_value || 0) + '" onclick="' + selectFn + '(this,\'' + item.type + '\',\'' + item.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="padding:9px 14px; border-bottom:1px solid ' + itemBorder + '; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background=\'' + hoverBg + '\'" onmouseout="if(!this.classList.contains(\'selected-row\'))this.style.background=\'\'">'
-                    + '<span style="font-size:0.88rem; color:var(--text, #333);">' + item.name + (item.is_percentage ? ' <span style="font-size:10px; color:#f0a500;">(' + item.percentage_value + '%)</span>' : '') + '</span>'
+                var defaultAmtDisplay = (!item.is_percentage && item.default_amount > 0) ? ' <span style="font-size:10px; color:#888;">R ' + parseFloat(item.default_amount).toFixed(2) + '</span>' : '';
+                html += '<div class="payroll-list-row" data-is-pct="' + (item.is_percentage ? '1' : '0') + '" data-pct-val="' + (item.percentage_value || 0) + '" data-default-amount="' + (item.default_amount || 0) + '" onclick="' + selectFn + '(this,\'' + item.type + '\',\'' + item.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="padding:9px 14px; border-bottom:1px solid ' + itemBorder + '; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onmouseover="this.style.background=\'' + hoverBg + '\'" onmouseout="if(!this.classList.contains(\'selected-row\'))this.style.background=\'\'">'
+                    + '<span style="font-size:0.88rem; color:var(--text, #333);">' + item.name + (item.is_percentage ? ' <span style="font-size:10px; color:#f0a500;">(' + item.percentage_value + '%)</span>' : '') + defaultAmtDisplay + '</span>'
                     + '<span style="font-size:10px; padding:2px 8px; border-radius:10px; background:' + col + '22; color:' + col + '; font-weight:700; white-space:nowrap; margin-left:8px;">' + item.type + '</span>'
                     + '</div>';
             });
@@ -2209,7 +2210,7 @@
                 })
                 .map(function(ci) {
                     var isPct = ci.category === 'percentage';
-                    return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name, is_percentage: isPct, percentage_value: isPct ? (ci.default_amount || 0) : 0 };
+                    return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name, is_percentage: isPct, percentage_value: isPct ? (ci.default_amount || 0) : 0, default_amount: isPct ? 0 : (ci.default_amount || 0) };
                 });
             var standardItems = REGULAR_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
             var visible = companyItems.concat(standardItems);
@@ -2257,7 +2258,14 @@
                 if (labelEl) { labelEl.style.display = ''; labelEl.textContent = _currentItemIsVariable ? 'Default amount (suggestion, can be R 0):' : 'R per month:'; }
                 if (pctNoteEl) pctNoteEl.style.display = 'none';
                 noteEl.style.display = _currentItemIsVariable ? 'block' : 'none';
-                setTimeout(function() { document.getElementById('regularInputAmount').focus(); }, 50);
+                // Pre-fill default amount for fixed items that have one set
+                var defaultAmt = parseFloat(el.dataset.defaultAmount) || 0;
+                if (defaultAmt > 0 && !_currentItemIsVariable) {
+                    amtInput.value = defaultAmt.toFixed(2);
+                } else {
+                    amtInput.value = '';
+                    setTimeout(function() { document.getElementById('regularInputAmount').focus(); }, 50);
+                }
             }
 
             document.getElementById('regularAmountPane').style.display = '';
@@ -2325,7 +2333,7 @@
                     var freq = ci.frequency || 'both';
                     return (freq === 'once_off' || freq === 'both') && !hidden.includes(ci.item_name);
                 })
-                .map(function(ci) { return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name }; });
+                .map(function(ci) { return { category: 'Your Payroll Items', type: ci.item_type || 'income', name: ci.item_name, default_amount: ci.category !== 'percentage' ? (ci.default_amount || 0) : 0 }; });
             var standardItems = ONCE_OFF_ITEMS.filter(function(i) { return !hidden.includes(i.name); });
             var visible = companyItems.concat(standardItems);
             buildItemList(listEl, visible, 'selectCurrentItem', 'selectCurrentCustom');
@@ -2349,7 +2357,13 @@
             document.getElementById('currentAmountPane').style.display = '';
             document.getElementById('currentSaveBtn').style.display = '';
             document.getElementById('currentSaveBtn').textContent = '✓ Add "' + name + '" to This Month';
-            setTimeout(function() { document.getElementById('currentInputAmount').focus(); }, 50);
+            var defaultAmt = parseFloat(el.dataset.defaultAmount) || 0;
+            if (defaultAmt > 0) {
+                document.getElementById('currentInputAmount').value = defaultAmt.toFixed(2);
+            } else {
+                document.getElementById('currentInputAmount').value = '';
+                setTimeout(function() { document.getElementById('currentInputAmount').focus(); }, 50);
+            }
         }
         function selectCurrentCustom() {
             document.querySelectorAll('#currentItemsList .payroll-list-row').forEach(function(r) { r.classList.remove('selected-row'); r.style.background = ''; });
