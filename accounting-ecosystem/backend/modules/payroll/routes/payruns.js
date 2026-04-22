@@ -106,17 +106,10 @@ router.post(
         // Duplicates were removed — proceed with deduplicated list (no error)
       }
 
-      // ── Guard: no re-run if period already finalized ──────────────────────
-      const existingFinalizedRun = await PayrollHistoryService.getPayrollRun(
-        supabase, req.companyId, period_key, 'finalized'
-      );
-      if (existingFinalizedRun) {
-        return res.status(409).json({
-          success: false,
-          error: `Period ${period_key} is already finalized. Cannot re-run a finalized period.`,
-          run_id: existingFinalizedRun.id
-        });
-      }
+      // NOTE: The period-level finalization guard was removed.
+      // The per-employee guard below already skips employees with locked snapshots,
+      // so supplemental runs (adding employees missed in the original run) are allowed.
+      // The finalize endpoint still prevents double-finalizing a specific run_id.
 
       // ── Employee visibility filter ────────────────────────────────────────
       const filter = await getEmployeeFilter(
@@ -139,7 +132,7 @@ router.post(
       const deniedIds = parsedIds.filter(id => !visibleIds.includes(id));
 
       // ── Fetch period record once (used by every employee snapshot) ────────
-      // Hoisted out of the per-employee loop — constant for all employees.
+      // Auto-create if missing — period dates are fully derivable from period_key.
       let period;
       try {
         period = await PayrollDataService.fetchPeriod(req.companyId, period_key, supabase);
@@ -147,10 +140,40 @@ router.post(
         period = null;
       }
       if (!period) {
-        return res.status(404).json({
-          success: false,
-          error: `Period ${period_key} not found for this company`
-        });
+        // Auto-create the period from period_key (YYYY-MM)
+        const [pyear, pmonth] = period_key.split('-').map(Number);
+        if (!pyear || !pmonth || pmonth < 1 || pmonth > 12) {
+          return res.status(400).json({ success: false, error: `Invalid period_key format: ${period_key}` });
+        }
+        const startDate = `${pyear}-${String(pmonth).padStart(2,'0')}-01`;
+        const lastDay   = new Date(pyear, pmonth, 0).getDate();
+        const endDate   = `${pyear}-${String(pmonth).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+        const payDate   = `${pyear}-${String(pmonth).padStart(2,'0')}-25`;
+        const taxYear   = pmonth >= 3 ? `${pyear}/${pyear+1}` : `${pyear-1}/${pyear}`;
+        try {
+          const { data: newPeriod, error: pErr } = await supabase
+            .from('payroll_periods')
+            .insert({
+              company_id:  req.companyId,
+              period_key,
+              start_date:  startDate,
+              end_date:    endDate,
+              pay_date:    payDate,
+              period_name: new Date(pyear, pmonth - 1, 1).toLocaleString('en-ZA', { month: 'long', year: 'numeric' }),
+              frequency:   'monthly',
+              status:      'draft'
+            })
+            .select('id, start_date, end_date, period_key')
+            .single();
+          if (pErr) throw pErr;
+          period = newPeriod;
+          console.log(`[payruns] Auto-created period ${period_key} for company ${req.companyId}`);
+        } catch (autoErr) {
+          return res.status(500).json({
+            success: false,
+            error: `Period ${period_key} not found and could not be auto-created: ${autoErr.message}`
+          });
+        }
       }
 
       // ── Create payroll_run header ─────────────────────────────────────────
