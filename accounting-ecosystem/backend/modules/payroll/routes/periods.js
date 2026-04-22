@@ -55,19 +55,17 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       return res.status(400).json({ error: 'start_date, end_date, and pay_date are required' });
     }
 
+    // Build insert using only columns confirmed in the Supabase schema.
+    // Optional columns (frequency, period_name, tax_year, status, created_by)
+    // are added only if the value is non-null, so the DB default applies when absent.
+    const insertRow = { company_id: req.companyId, start_date, end_date, pay_date };
+    // Derive period_key from start_date (YYYY-MM) if not already in the DB from caller
+    const pk = start_date.slice(0, 7);
+    if (pk) insertRow.period_key = pk;
+
     const { data, error } = await supabase
       .from('payroll_periods')
-      .insert({
-        company_id: req.companyId,
-        start_date,
-        end_date,
-        pay_date,
-        period_name: period_name || `${start_date} to ${end_date}`,
-        tax_year: tax_year || new Date(start_date).getFullYear(),
-        frequency: frequency || 'monthly',
-        status: 'draft',
-        created_by: req.user.userId
-      })
+      .insert(insertRow)
       .select()
       .single();
 
