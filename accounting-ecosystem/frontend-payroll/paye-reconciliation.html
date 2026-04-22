@@ -655,6 +655,11 @@
                 if (data && data.totals) {
                     // Backend returned data — use it as the primary source
                     payrollTotals = data.totals;
+                    // FIX: use server-side periods so rendering loops have the correct 12-period array
+                    // (localStorage PayrollEngine.getHistoricalPeriods returns empty for the new system)
+                    if (data.periods && data.periods.length > 0) {
+                        filteredPeriods = data.periods;
+                    }
                     // Merge any localStorage periods that exist but aren't in the backend yet
                     var localTotals = ReconService.buildPayrollTotals(currentCompanyId, employees, filteredPeriods);
                     Object.keys(localTotals).forEach(function(period) {
@@ -689,32 +694,40 @@
 
         /**
          * Convert backend API employee list to the empBreakdown format expected by renderBreakdown().
-         * Backend format: [ { employee_id, full_name, periods: { 'YYYY-MM': { gross, paye, uif, sdl, net } } } ]
+         * Backend format: [ { employee_id, full_name, periods: { 'YYYY-MM': { gross, paye, uif, sdl, net,
+         *   basic, overtime, shorttime, voluntary_tax, deductions } } } ]
          * ReconService format: [ { emp: {...}, rows: [ { period, gross, paye, uif, sdl, net, ... } ] } ]
          */
         function _buildBreakdownFromAPI(apiEmployees, periods) {
             return apiEmployees.map(function(apiEmp) {
                 var rows = periods.map(function(period) {
-                    var vals = apiEmp.periods[period] || { gross: 0, paye: 0, uif: 0, sdl: 0, net: 0 };
+                    var vals = apiEmp.periods[period] || {};
+                    var gross = vals.gross || 0;
+                    if (gross === 0 && !vals.paye) return null;
+                    // Use enriched fields from snapshot data when available;
+                    // fall back to approximation for legacy historical records.
+                    var basic     = (vals.basic    !== undefined && vals.basic    > 0) ? vals.basic    : gross;
+                    var overtime  = (vals.overtime !== undefined) ? vals.overtime  : 0;
+                    var shorttime = (vals.shorttime !== undefined) ? vals.shorttime : 0;
                     return {
-                        period:    period,
-                        basic:     vals.gross, // best approximation when no breakdown available
-                        overtime:  0,
-                        allowances: 0,
-                        bonus:     0,
-                        commission: 0,
-                        gross:     vals.gross,
-                        paye:      vals.paye,
-                        uif:       vals.uif,
-                        sdl:       vals.sdl,
-                        pension:   0, medical: 0, garnishee: 0,
-                        otherDeductions: 0,
-                        totalDeductions: ReconService.round2(vals.paye + vals.uif),
-                        net:       vals.net,
-                        bank:      vals.net,
-                        diff:      0
+                        period:         period,
+                        basic:          basic,
+                        overtime:       overtime,
+                        allowances:     0,
+                        bonus:          0,
+                        commission:     0,
+                        gross:          gross,
+                        paye:           vals.paye || 0,
+                        uif:            vals.uif  || 0,
+                        sdl:            vals.sdl  || 0,
+                        pension:        0, medical: 0, garnishee: 0,
+                        otherDeductions: vals.deductions || 0,
+                        totalDeductions: ReconService.round2((vals.paye || 0) + (vals.uif || 0)),
+                        net:            vals.net  || 0,
+                        bank:           vals.net  || 0,
+                        diff:           0
                     };
-                }).filter(function(r) { return r.gross > 0 || r.paye > 0; });
+                }).filter(function(r) { return r && (r.gross > 0 || r.paye > 0); });
 
                 return {
                     emp: {
