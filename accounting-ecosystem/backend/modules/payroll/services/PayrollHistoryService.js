@@ -401,7 +401,6 @@ async function saveSnapshot(supabase, snapshot, payrollRunId = null) {
     period_key:          snapshot.period_key,
     calculation_input:   snapshot.calculation_input,
     calculation_output:  snapshot.calculation_output,
-    tax_context:         snapshot.tax_context || null,
     engine_version:      snapshot.engine_version,
     schema_version:      snapshot.schema_version,
     status:              snapshot.status || 'draft',
