@@ -209,13 +209,10 @@ var DataAccess = (function() {
         },
 
         saveEmployeePayroll: async function(companyId, empId, data) {
-            try {
-                await PUT('/payroll/employees/' + empId + '/salary', data);
-                cacheSet('emp_payroll_' + companyId + '_' + empId, data);
-            } catch(e) {
-                cacheSet('emp_payroll_' + companyId + '_' + empId, data);
-                console.error('Failed to save employee payroll:', e.message);
-            }
+            // Errors are intentionally NOT swallowed here — callers must handle them
+            // so that false-success UI states are impossible.
+            await PUT('/payroll/employees/' + empId + '/salary', data);
+            cacheSet('emp_payroll_' + companyId + '_' + empId, data);
         },
 
         // === PERIOD-SPECIFIC DATA ===

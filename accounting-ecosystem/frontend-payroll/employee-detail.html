@@ -1950,7 +1950,16 @@
                 if (!payrollData) payrollData = { basic_salary: 0, regular_inputs: [] };
                 if (!payrollData.regular_inputs) payrollData.regular_inputs = [];
                 if (payrollData.basic_salary === undefined) payrollData.basic_salary = 0;
-                
+
+                // FIELD ALIGNMENT FIX: employees.basic_salary in the DB is the authoritative
+                // source of truth. loadEmployee() fetches currentEmployee from /api/employees
+                // before this function runs, so currentEmployee.basic_salary is always the
+                // live DB value. Sync it here so Net-to-Gross pushes and any API-level salary
+                // updates are immediately visible without a stale localStorage value masking them.
+                if (currentEmployee && currentEmployee.basic_salary != null) {
+                    payrollData.basic_salary = parseFloat(currentEmployee.basic_salary) || 0;
+                }
+
                 renderPayroll();
                 updatePayslipUI();
                 // Async: check backend for a locked snapshot. If found, populates the KV
@@ -2102,9 +2111,22 @@
             document.getElementById('editBasicModal').classList.add('show');
         }
         function saveBasicSalary() {
-            payrollData.basic_salary = parseFloat(document.getElementById('editBasicValue').value) || 0;
+            var newSalary = parseFloat(document.getElementById('editBasicValue').value) || 0;
+            payrollData.basic_salary = newSalary;
             savePayrollData(); renderPayroll(); closeModal('editBasicModal');
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + payrollData.basic_salary.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+            // FIELD ALIGNMENT FIX: persist to DB (employees.basic_salary) so this edit
+            // survives a page reload and is visible to Net-to-Gross and payroll runs.
+            var empIdToUse = _supabaseEmpId || currentEmpId;
+            if (empIdToUse && /^\d+$/.test(String(empIdToUse))) {
+                DataAccess.saveEmployeePayroll(currentCompanyId, empIdToUse, { basic_salary: newSalary })
+                    .then(function() {
+                        if (currentEmployee) currentEmployee.basic_salary = newSalary;
+                    })
+                    .catch(function(err) {
+                        console.warn('[EmployeeDetail] Basic salary saved locally but failed to persist to backend:', err.message);
+                    });
+            }
         }
 
         function editVariableAmount(id) {
