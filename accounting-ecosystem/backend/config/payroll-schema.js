@@ -147,14 +147,29 @@ async function ensurePayrollSchema(pool) {
       )
     `);
 
-    // ── companies: SDL / UIF registration flags (migration 018) ──────────────
-    // Default true = registered (backward-compatible). These flags control
-    // whether SDL / UIF are calculated in every payroll run for this company.
-    // ADD COLUMN IF NOT EXISTS is idempotent — safe to run on every startup.
+    // ── companies: extended columns (migrations 018 + payslip + logo + export) ─
+    // All ADD COLUMN IF NOT EXISTS — idempotent, safe to run on every startup.
     await client.query(`
       ALTER TABLE companies
-        ADD COLUMN IF NOT EXISTS sdl_registered BOOLEAN NOT NULL DEFAULT true,
-        ADD COLUMN IF NOT EXISTS uif_registered BOOLEAN NOT NULL DEFAULT true
+        ADD COLUMN IF NOT EXISTS sdl_registered        BOOLEAN NOT NULL DEFAULT true,
+        ADD COLUMN IF NOT EXISTS uif_registered        BOOLEAN NOT NULL DEFAULT true,
+        ADD COLUMN IF NOT EXISTS logo_data             TEXT,
+        ADD COLUMN IF NOT EXISTS payslip_display_name  VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS payslip_address_line1 VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS sage_salaries_account    VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS sage_paye_account        VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS sage_uif_account         VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS sage_uif_expense_account VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS sage_sdl_account         VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS sage_sdl_expense_account VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS sage_bank_account        VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS xero_wages_account       VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS xero_paye_account        VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS xero_uif_account         VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS xero_uif_expense_account VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS xero_bank_account        VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS absa_user_code      VARCHAR(50),
+        ADD COLUMN IF NOT EXISTS fnb_originator_code VARCHAR(50)
     `);
 
     console.log('  ✅ Payroll schema ready.');

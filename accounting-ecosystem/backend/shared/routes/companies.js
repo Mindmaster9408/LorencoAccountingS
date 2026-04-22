@@ -260,7 +260,14 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
       'pay_frequencies', 'pay_day', 'normal_work_hours',
       'logo_url', 'logo_data', 'payslip_display_name', 'payslip_address_line1',
       'registration_date', 'directors',
-      'modules_enabled', 'is_active'
+      'modules_enabled', 'is_active',
+      // Accounting export mapping fields (Sage / Xero)
+      'sage_salaries_account', 'sage_paye_account', 'sage_uif_account', 'sage_uif_expense_account',
+      'sage_sdl_account', 'sage_sdl_expense_account', 'sage_bank_account',
+      'xero_wages_account', 'xero_paye_account', 'xero_uif_account', 'xero_uif_expense_account',
+      'xero_bank_account',
+      // Banking export codes
+      'absa_user_code', 'fnb_originator_code',
     ];
     const updates = {};
     for (const key of allowed) {
