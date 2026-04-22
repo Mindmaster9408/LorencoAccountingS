@@ -879,6 +879,20 @@ const PayrollEngine = {
             try { employeeOptions.voluntaryTaxConfig = JSON.parse(_volRaw); } catch(e) {}
         }
 
+        // Load company registration flags so SDL/UIF enforcement matches backend behaviour.
+        // sdl_registered === false  →  company not registered for SDL  →  sdl = 0
+        // uif_registered === false  →  company not registered for UIF  →  uif = 0
+        // null / undefined (column missing or unset)  →  default true (levy calculated normally).
+        if (typeof DataAccess !== 'undefined') {
+            try {
+                var _company = await DataAccess.getCompanyDetails(companyId);
+                if (_company) {
+                    employeeOptions.sdl_registered = _company.sdl_registered !== false;
+                    employeeOptions.uif_registered = _company.uif_registered !== false;
+                }
+            } catch(e) { /* fall through — default both true (backward compatible) */ }
+        }
+
         var currentInputs = useDA
             ? await DataAccess.getCurrentInputs(companyId, empId, period)
             : JSON.parse(safeLocalStorage.getItem('emp_current_' + companyId + '_' + empId + '_' + period) || '[]');
