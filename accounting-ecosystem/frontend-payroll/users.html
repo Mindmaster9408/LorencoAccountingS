@@ -15,9 +15,9 @@
         .container { max-width: 1200px; margin: 0 auto; }
 
         /* MAIN CONTENT */
-        .main-content { background: white; border-radius: 15px; padding: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #eee; }
-        .page-header h1 { color: #667eea; font-size: 1.8rem; }
+        .main-content { background: rgba(255,255,255,0.06); border-radius: 15px; padding: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid rgba(255,255,255,0.08); }
+        .page-header h1 { color: #a78bfa; font-size: 1.8rem; }
         .company-badge { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
 
         .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.2s; }
@@ -36,37 +36,37 @@
             text-align: center; padding: 60px 20px;
         }
         .access-denied-icon { font-size: 4rem; margin-bottom: 20px; }
-        .access-denied h2 { color: #dc3545; margin-bottom: 10px; }
-        .access-denied p { color: #666; margin-bottom: 20px; }
+        .access-denied h2 { color: #f87171; margin-bottom: 10px; }
+        .access-denied p { color: rgba(255,255,255,0.5); margin-bottom: 20px; }
 
         /* USER CARDS */
         .user-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
         .user-card {
-            background: #f8f9fa; border-radius: 12px; padding: 20px;
-            transition: all 0.3s; border: 2px solid transparent; position: relative;
+            background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px;
+            transition: all 0.3s; border: 1px solid rgba(255,255,255,0.08); position: relative;
         }
-        .user-card:hover { border-color: #667eea; transform: translateY(-3px); box-shadow: 0 8px 25px rgba(102,126,234,0.15); }
-        .user-card.inactive { opacity: 0.6; }
-        .user-name { font-size: 1.1rem; font-weight: 700; color: #333; margin-bottom: 3px; }
-        .user-email { font-size: 0.9rem; color: #667eea; font-weight: 500; margin-bottom: 10px; }
+        .user-card:hover { border-color: #667eea; transform: translateY(-3px); box-shadow: 0 8px 25px rgba(102,126,234,0.2); }
+        .user-card.inactive { opacity: 0.5; }
+        .user-name { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 3px; }
+        .user-email { font-size: 0.9rem; color: #a78bfa; font-weight: 500; margin-bottom: 10px; }
         .user-details { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-        .user-detail-label { font-size: 0.75rem; color: #999; text-transform: uppercase; }
-        .user-detail-value { font-size: 0.85rem; color: #555; font-weight: 500; }
+        .user-detail-label { font-size: 0.75rem; color: rgba(255,255,255,0.45); text-transform: uppercase; }
+        .user-detail-value { font-size: 0.85rem; color: rgba(255,255,255,0.75); font-weight: 500; }
         .role-badge {
             display: inline-block; padding: 4px 12px; border-radius: 12px;
             font-size: 0.75rem; font-weight: 600;
         }
-        .role-business_owner { background: #e8f5e9; color: #2e7d32; }
-        .role-manager { background: #e3f2fd; color: #1565c0; }
-        .role-admin { background: #fce4ec; color: #c62828; }
-        .role-accountant { background: #fff3e0; color: #e65100; }
+        .role-business_owner, .role-practice_manager, .role-administrator { background: rgba(167,139,250,0.15); color: #a78bfa; }
+        .role-manager { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .role-admin { background: rgba(248,113,113,0.15); color: #f87171; }
+        .role-accountant { background: rgba(52,211,153,0.15); color: #34d399; }
         .status-badge {
             display: inline-block; padding: 3px 10px; border-radius: 10px;
             font-size: 0.7rem; font-weight: 600; margin-left: 8px;
         }
-        .status-active { background: #d4edda; color: #155724; }
-        .status-inactive { background: #f8d7da; color: #721c24; }
-        .user-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0; }
+        .status-active { background: rgba(52,211,153,0.15); color: #34d399; }
+        .status-inactive { background: rgba(248,113,113,0.15); color: #f87171; }
+        .user-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); }
         .current-user-badge {
             position: absolute; top: 10px; right: 10px;
             background: #667eea; color: white; padding: 3px 10px; border-radius: 10px;
@@ -76,23 +76,26 @@
         /* EMPTY STATE */
         .empty-state { text-align: center; padding: 60px 20px; }
         .empty-icon { font-size: 3rem; margin-bottom: 15px; }
-        .empty-text { font-size: 1.2rem; color: #333; font-weight: 600; margin-bottom: 8px; }
-        .empty-sub { color: #999; font-size: 0.9rem; }
+        .empty-text { font-size: 1.2rem; color: rgba(255,255,255,0.85); font-weight: 600; margin-bottom: 8px; }
+        .empty-sub { color: rgba(255,255,255,0.45); font-size: 0.9rem; }
 
         /* MODAL */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: flex-start; padding-top: 50px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 1000; justify-content: center; align-items: flex-start; padding-top: 50px; }
         .modal.show { display: flex; }
-        .modal-content { background: white; border-radius: 15px; padding: 30px; max-width: 550px; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #667eea; }
-        .modal-header h3 { color: #667eea; margin: 0; }
+        .modal-content { background: #1e1b3a; border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; padding: 30px; max-width: 550px; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid rgba(102,126,234,0.4); }
+        .modal-header h3 { color: #a78bfa; margin: 0; }
         .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; color: #555; font-weight: 600; font-size: 13px; }
+        .form-group label { display: block; margin-bottom: 5px; color: rgba(255,255,255,0.75); font-weight: 600; font-size: 13px; }
         .form-group input, .form-group select {
-            width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; font-family: inherit;
+            width: 100%; padding: 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; font-size: 14px; font-family: inherit;
+            background: rgba(255,255,255,0.06); color: #fff;
         }
-        .form-group input:focus, .form-group select:focus { outline: none; border-color: #667eea; }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.25); }
+        .form-group input::placeholder { color: rgba(255,255,255,0.35); }
+        .form-group select option, .form-group select option:checked { background: #1e1b3a; color: #ffffff; }
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .password-hint { font-size: 11px; color: #999; margin-top: 4px; }
+        .password-hint { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px; }
 
         @media (max-width: 768px) {
             .user-grid { grid-template-columns: 1fr; }
@@ -187,9 +190,9 @@
                 <!-- ── Paytime Access Config ─────────────────────────────────────────── -->
                 <!-- Only shown when editing an existing DB user (numeric id). -->
                 <!-- Saves directly via real API — not localStorage.           -->
-                <div id="paytimeAccessSection" style="display:none;margin-top:24px;padding-top:20px;border-top:1px solid #e5e7eb;">
-                    <h4 style="margin:0 0 4px;font-size:0.95rem;color:#374151;">Paytime Access Settings</h4>
-                    <p style="margin:0 0 14px;font-size:0.8rem;color:#6b7280;">Controls what this user can access within Lorenco Paytime. Leave as default (Full Access / All Employees) to keep unrestricted access.</p>
+                <div id="paytimeAccessSection" style="display:none;margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08);">
+                    <h4 style="margin:0 0 4px;font-size:0.95rem;color:rgba(255,255,255,0.85);">Paytime Access Settings</h4>
+                    <p style="margin:0 0 14px;font-size:0.8rem;color:rgba(255,255,255,0.45);">Controls what this user can access within Lorenco Paytime. Leave as default (Full Access / All Employees) to keep unrestricted access.</p>
                     <div class="form-grid">
                         <div class="form-group">
                             <label>Payroll Module Access</label>
@@ -211,14 +214,14 @@
                             <input type="checkbox" id="f-can-view-confidential" style="width:16px;height:16px;">
                             <span>Can view confidential/executive employees</span>
                         </label>
-                        <div style="font-size:0.78rem;color:#9ca3af;margin-top:4px;">If unchecked, employees marked as Confidential or Executive are hidden from this user.</div>
+                        <div style="font-size:0.78rem;color:rgba(255,255,255,0.4);margin-top:4px;">If unchecked, employees marked as Confidential or Executive are hidden from this user.</div>
                     </div>
                     <div id="paytimeEmployeeListSection" style="display:none;">
                         <label>Assigned Employees</label>
-                        <div id="paytimeEmployeeList" style="max-height:160px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:10px;font-size:0.85rem;color:#374151;">
+                        <div id="paytimeEmployeeList" style="max-height:160px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px;margin-bottom:10px;font-size:0.85rem;color:rgba(255,255,255,0.75);background:rgba(255,255,255,0.04);">
                             Loading…
                         </div>
-                        <div style="font-size:0.78rem;color:#9ca3af;">Employee assignments are managed from the employee record. Use the assigned list above to review.</div>
+                        <div style="font-size:0.78rem;color:rgba(255,255,255,0.4);">Employee assignments are managed from the employee record. Use the assigned list above to review.</div>
                     </div>
                     <div style="margin-top:12px;">
                         <button type="button" class="btn btn-success" onclick="savePaytimeConfig()" style="font-size:0.85rem;padding:8px 18px;">Save Paytime Settings</button>
@@ -227,7 +230,7 @@
                     </div>
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                    <button type="button" class="btn" style="background: #eee; color: #333;" onclick="closeModal('userModal')">Cancel</button>
+                    <button type="button" class="btn" style="background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.1);" onclick="closeModal('userModal')">Cancel</button>
                     <button type="submit" class="btn btn-success">Save User</button>
                 </div>
             </form>

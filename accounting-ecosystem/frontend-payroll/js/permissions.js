@@ -4,26 +4,31 @@
 // Use data-permission="ACTION_NAME" on HTML elements for auto-hide.
 // ============================================================
 
+// Owner-equivalent roles: practice_manager and administrator have the same
+// access as business_owner throughout Paytime. Keep this list in sync with
+// backend/config/permissions.js isOwnerEquivalent().
+var _OWNER_EQUIV = ['super_admin', 'business_owner', 'practice_manager', 'administrator'];
+
 var Permissions = {
 
     // Allowed roles per action
     ACTIONS: {
-        VIEW_PAYROLL:         ['super_admin', 'business_owner', 'accountant', 'manager'],
-        EDIT_PAYROLL:         ['super_admin', 'business_owner', 'accountant'],
-        FINALIZE_PAYSLIP:    ['super_admin', 'business_owner', 'accountant'],
-        UNFINALIZE_PAYSLIP:  ['super_admin', 'business_owner'],
-        CREATE_PAYRUN:       ['super_admin', 'business_owner', 'accountant'],
-        FINALIZE_PAYRUN:     ['super_admin', 'business_owner'],
-        VIEW_EMPLOYEES:      ['super_admin', 'business_owner', 'accountant', 'manager', 'admin'],
-        EDIT_EMPLOYEES:      ['super_admin', 'business_owner', 'accountant', 'admin'],
-        DELETE_EMPLOYEES:    ['super_admin', 'business_owner'],
-        VIEW_BANK_DETAILS:   ['super_admin', 'business_owner', 'accountant'],
-        EDIT_COMPANY:        ['super_admin', 'business_owner'],
-        VIEW_REPORTS:        ['super_admin', 'business_owner', 'accountant', 'manager'],
-        EXPORT_DATA:         ['super_admin', 'business_owner', 'accountant'],
-        MANAGE_PAYROLL_ITEMS: ['super_admin', 'business_owner', 'accountant'],
-        MANAGE_USERS:        ['super_admin', 'business_owner'],
-        VIEW_AUDIT_TRAIL:    ['super_admin', 'business_owner', 'accountant']
+        VIEW_PAYROLL:         [..._OWNER_EQUIV, 'accountant', 'manager'],
+        EDIT_PAYROLL:         [..._OWNER_EQUIV, 'accountant'],
+        FINALIZE_PAYSLIP:    [..._OWNER_EQUIV, 'accountant'],
+        UNFINALIZE_PAYSLIP:  [..._OWNER_EQUIV],
+        CREATE_PAYRUN:       [..._OWNER_EQUIV, 'accountant'],
+        FINALIZE_PAYRUN:     [..._OWNER_EQUIV],
+        VIEW_EMPLOYEES:      [..._OWNER_EQUIV, 'accountant', 'manager', 'admin'],
+        EDIT_EMPLOYEES:      [..._OWNER_EQUIV, 'accountant', 'admin'],
+        DELETE_EMPLOYEES:    [..._OWNER_EQUIV],
+        VIEW_BANK_DETAILS:   [..._OWNER_EQUIV, 'accountant'],
+        EDIT_COMPANY:        [..._OWNER_EQUIV],
+        VIEW_REPORTS:        [..._OWNER_EQUIV, 'accountant', 'manager'],
+        EXPORT_DATA:         [..._OWNER_EQUIV, 'accountant'],
+        MANAGE_PAYROLL_ITEMS: [..._OWNER_EQUIV, 'accountant'],
+        MANAGE_USERS:        [..._OWNER_EQUIV],
+        VIEW_AUDIT_TRAIL:    [..._OWNER_EQUIV, 'accountant']
     },
 
     /**
