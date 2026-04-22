@@ -215,7 +215,15 @@ router.get('/', async (req, res) => {
     // ── Resolve effective company filter ──────────────────────────────────────
     // For non-admins: if a company_id param is supplied, verify they actually
     // belong to that company — prevents enumeration of other firms' clients.
-    let effectiveCompanyId = req.companyId; // default: company from JWT
+    //
+    // BUG FIX: Super admins calling the admin-panel endpoint (?status=all) must
+    // see ALL eco_clients across every managed practice.  Do NOT inherit the JWT
+    // company as a default scope — that silently restricts the result set and hides
+    // clients belonging to other account holders (e.g. Kobus Accountants).
+    // Super admins can still scope explicitly with a ?company_id= query param.
+    let effectiveCompanyId = (req.user.isSuperAdmin && showAll)
+      ? null
+      : (req.companyId || null);
 
     if (company_id) {
       const requestedId = parseInt(company_id);
@@ -571,13 +579,27 @@ router.post('/adopt-company', async (req, res) => {
     // Safety check 1: already a data silo for another eco_client?
     const { data: existingAsSilo } = await supabase
       .from('eco_clients')
-      .select('id, name')
+      .select('id, name, company_id')
       .eq('client_company_id', companyId)
       .limit(1);
 
     if (existingAsSilo && existingAsSilo.length > 0) {
+      const silo = existingAsSilo[0];
+      // Look up which parent company manages this existing record so the error
+      // message tells the operator exactly where to find the client in the UI.
+      const { data: siloParent } = await supabase
+        .from('companies')
+        .select('company_name, trading_name')
+        .eq('id', silo.company_id)
+        .single();
+      const parentDisplayName = siloParent
+        ? (siloParent.trading_name || siloParent.company_name)
+        : `company #${silo.company_id}`;
       return res.status(409).json({
-        error: `This company is already linked as a managed client ("${existingAsSilo[0].name}"). Cannot adopt again.`,
+        error: `This company is already linked as a managed client ("${silo.name}") under "${parentDisplayName}". It is visible in the admin panel under that account holder. To re-assign it, deactivate the existing client record first.`,
+        existingClientId:        silo.id,
+        existingParentCompanyId: silo.company_id,
+        existingParentName:      parentDisplayName,
       });
     }
 

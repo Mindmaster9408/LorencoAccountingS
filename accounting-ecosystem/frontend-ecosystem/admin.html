@@ -1699,24 +1699,55 @@
                         parent_company_id: parseInt(_adoptFirmId),
                     })
                 });
-                if (!res.ok) throw new Error((await res.json()).error || 'Failed to adopt company');
-                const data = await res.json();
-                // Update local state — push new eco_client so the adopted company
-                // appears as a client card and is excluded from account holder list
-                allClients.push(data.client);
-                // Rebuild managingCompanyIds so the new parent's group stays visible
-                managingCompanyIds = new Set(
-                    allClients.filter(c => c.company_id).map(c => Number(c.company_id))
-                );
+                const resData = await res.json();
+                if (!res.ok) {
+                    // If the backend tells us which account holder already owns this company,
+                    // surface it so the operator knows where to look in the panel.
+                    let errMsg = resData.error || 'Failed to adopt company';
+                    if (resData.existingParentName) {
+                        errMsg += ` Look for it under "${resData.existingParentName}" in the panel.`;
+                    }
+                    throw new Error(errMsg);
+                }
+                // Full data reload so allClients, managingCompanyIds, and clientCompanyIdSet
+                // are all rebuilt from the server — prevents stale state after adoption.
                 expandedHolders.add(parseInt(_adoptFirmId));
-                showToast('&#9989; ' + (data.message || 'Company adopted as client'));
+                showToast('&#9989; ' + (resData.message || 'Company adopted as client'));
                 closeAdoptModal();
-                renderStats();
-                applyFilters();
+                await reloadClientsData();
             } catch(err) {
                 showToast('&#10060; ' + err.message, true);
             } finally {
                 btn.disabled = false; btn.textContent = 'Adopt as Client';
+            }
+        }
+
+        // ── Reload clients from server (called after adopt / deactivate / changes) ──
+        async function reloadClientsData() {
+            try {
+                const [clientsRes, billingRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/eco-clients?status=all`,
+                        { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_BASE}/api/eco-clients/payroll-billing-summary`,
+                        { headers: { 'Authorization': `Bearer ${token}` } }).catch(() => null)
+                ]);
+                if (clientsRes.ok) {
+                    const data = await clientsRes.json();
+                    allClients = data.clients || [];
+                }
+                if (billingRes && billingRes.ok) {
+                    const bData = await billingRes.json();
+                    billingSummary  = bData.summary      || {};
+                    billingByClient = bData.by_client_id || {};
+                }
+                // Rebuild derived state from fresh server data
+                managingCompanyIds = new Set(
+                    allClients.filter(c => c.company_id).map(c => Number(c.company_id))
+                );
+                renderStats();
+                applyFilters();
+            } catch(err) {
+                console.error('reloadClientsData error:', err.message);
             }
         }
 
