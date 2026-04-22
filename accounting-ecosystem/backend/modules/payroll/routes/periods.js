@@ -58,9 +58,12 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
     // Build insert using only columns confirmed in the Supabase schema.
     // Optional columns (frequency, period_name, tax_year, status, created_by)
     // are added only if the value is non-null, so the DB default applies when absent.
-    const insertRow = { company_id: req.companyId, start_date, end_date, pay_date };
-    // Derive period_key from start_date (YYYY-MM) if not already in the DB from caller
     const pk = start_date.slice(0, 7);
+    const derivedName = period_name || (() => {
+      const [y, m] = pk.split('-').map(Number);
+      return new Date(y, m - 1, 1).toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
+    })();
+    const insertRow = { company_id: req.companyId, start_date, end_date, pay_date, period_name: derivedName };
     if (pk) insertRow.period_key = pk;
 
     const { data, error } = await supabase

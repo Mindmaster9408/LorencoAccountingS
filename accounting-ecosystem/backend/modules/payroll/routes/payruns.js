@@ -151,14 +151,13 @@ router.post(
         const payDate   = `${pyear}-${String(pmonth).padStart(2,'0')}-25`;
         const taxYear   = pmonth >= 3 ? `${pyear}/${pyear+1}` : `${pyear-1}/${pyear}`;
         try {
-          // Insert only the columns confirmed to exist in the payroll_periods table.
-          // Optional columns (frequency, period_name, status, tax_year) are omitted
-          // because they may not exist in the current Supabase schema.
+          const monthName = new Date(pyear, pmonth - 1, 1).toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
           const periodInsert = {
-            company_id: req.companyId,
+            company_id:  req.companyId,
             period_key,
-            start_date: startDate,
-            end_date:   endDate,
+            start_date:  startDate,
+            end_date:    endDate,
+            period_name: monthName,
           };
           const { data: newPeriod, error: pErr } = await supabase
             .from('payroll_periods')
