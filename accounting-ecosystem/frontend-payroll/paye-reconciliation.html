@@ -140,11 +140,6 @@
             background: #fff; color: #333;
         }
         .recon-table td input[type="number"]:focus { outline: none; border-color: #667eea; background: #f0f4ff; }
-        /* Bank payment input in employee breakdown — tinted to distinguish from SARS/bank table inputs */
-        .recon-table td input.bank-detail-input {
-            background: #f0fff4; border-color: #c3e6cb; min-width: 100px;
-        }
-        .recon-table td input.bank-detail-input:focus { background: #e6f9ed; border-color: #28a745; }
 
         /* Diff highlights */
         .diff-zero    { color: #28a745; font-weight: 700; }
@@ -372,17 +367,6 @@
                 </div>
             </div>
 
-            <!-- ── SECTION 6: PAYROLL RUNS OVERVIEW ── -->
-            <div id="section-runs" class="section-card" style="display:none;">
-                <div class="section-header">
-                    <h2>🗂️ Section 6 — Payroll Runs &amp; Snapshot Status</h2>
-                    <span style="font-size:12px;opacity:0.85;">Shows every batch payrun for this tax year and whether its snapshots are locked</span>
-                </div>
-                <div class="section-body">
-                    <div id="runs-container" style="padding:16px;"></div>
-                </div>
-            </div>
-
             <!-- EMPTY STATE -->
             <div id="empty-state" class="empty-state">
                 <div class="empty-icon">🧾</div>
@@ -413,10 +397,6 @@
         var sarsData          = {};
         var bankData          = {};
         var finalizedData     = {};   // { "2024/2025": { date: '...', user: '...' } }
-        // Manual bank entries typed by the user in the employee breakdown table.
-        // Key: "<employee_id>_<YYYY-MM>", value: number.
-        // Populated from user input; persists across re-renders of the same tax year.
-        var bankDetails       = {};
 
         var saveTimer = null;
 
@@ -622,16 +602,14 @@
 
             apiGet('/payroll/recon/tax-years').then(function(data) {
                 var taxYears = data.taxYears || localTaxYears;
-                // Pass the backend-derived current tax year as the preferred default
-                // so the selector opens on the most relevant year, not the oldest.
-                _populateTaxYearSelector(taxYears, data.currentTaxYear);
+                _populateTaxYearSelector(taxYears);
             }).catch(function() {
                 _populateTaxYearSelector(localTaxYears);
             });
         }
         window.loadData = loadData;
 
-        function _populateTaxYearSelector(taxYears, preferredYear) {
+        function _populateTaxYearSelector(taxYears) {
             var select = document.getElementById('taxYearSelect');
             var current = select.value;
             select.innerHTML = '<option value="">— Select Tax Year —</option>';
@@ -642,14 +620,9 @@
                 select.appendChild(opt);
             });
             if (current && taxYears.indexOf(current) >= 0) {
-                // Preserve the year the user already had selected (e.g., after a carousel switch)
                 select.value = current;
-            } else if (preferredYear && taxYears.indexOf(preferredYear) >= 0) {
-                // Use the backend-supplied current SA tax year as the default
-                select.value = preferredYear;
             } else if (taxYears.length > 0) {
-                // Backend returns years in descending order — first entry is the most recent
-                select.value = taxYears[0];
+                select.value = taxYears[taxYears.length - 1];
             }
             renderYearGrid();
             onTaxYearChange();
@@ -673,29 +646,12 @@
 
             filteredPeriods = ReconService.getPeriodsForTaxYear(allPeriods, currentTaxYear);
 
-            // Clear manual bank entries and runs overview when switching tax year
-            bankDetails = {};
-            var runsContainer = document.getElementById('runs-container');
-            if (runsContainer) runsContainer.innerHTML = '';
-
             // SARS and bank submitted values remain localStorage-based (user-entered, not from payroll)
             sarsData = ReconService.loadSARSValues(currentCompanyId);
             bankData = ReconService.loadBankValues(currentCompanyId);
 
             // Prefer backend summary for payrollTotals — fall back to ReconService (localStorage)
             apiGet('/payroll/recon/summary?taxYear=' + encodeURIComponent(currentTaxYear)).then(function(data) {
-                // Diagnostic: log what the API actually returned so truncation issues are visible
-                console.log('[PAYE Recon] /summary response:', {
-                    taxYear:       data && data.taxYear,
-                    employeeCount: data && data.employees ? data.employees.length : 0,
-                    employees:     data && data.employees ? data.employees.map(function(e) {
-                        return { id: e.employee_id, name: e.full_name, periods: Object.keys(e.periods || {}) };
-                    }) : [],
-                    totalPeriods:  data && data.periods ? data.periods.length : 0,
-                    activeMonths:  data && data.periods ? data.periods.filter(function(p) {
-                        return data.totals[p] && data.totals[p].gross > 0;
-                    }) : []
-                });
                 if (data && data.totals) {
                     // Backend returned data — use it as the primary source
                     payrollTotals = data.totals;
@@ -744,43 +700,38 @@
          */
         function _buildBreakdownFromAPI(apiEmployees, periods) {
             return apiEmployees.map(function(apiEmp) {
-                var empId = String(apiEmp.employee_id);
                 var rows = periods.map(function(period) {
                     var vals = apiEmp.periods[period] || {};
                     var gross = vals.gross || 0;
-                    var paye  = vals.paye  || 0;
-                    // Skip months where this employee has no payroll data at all
-                    if (gross === 0 && paye === 0) return null;
+                    if (gross === 0 && !vals.paye) return null;
+                    // Use enriched fields from snapshot data when available;
+                    // fall back to approximation for legacy historical records.
                     var basic     = (vals.basic    !== undefined && vals.basic    > 0) ? vals.basic    : gross;
                     var overtime  = (vals.overtime !== undefined) ? vals.overtime  : 0;
                     var shorttime = (vals.shorttime !== undefined) ? vals.shorttime : 0;
-                    var net       = vals.net || 0;
-                    // Use stored manual bank value if the user has typed one; otherwise default to net pay
-                    var bankKey   = empId + '_' + period;
-                    var bank      = (bankDetails[bankKey] !== undefined) ? bankDetails[bankKey] : net;
                     return {
-                        period:          period,
-                        basic:           basic,
-                        overtime:        overtime,
-                        allowances:      0,
-                        bonus:           0,
-                        commission:      0,
-                        gross:           gross,
-                        paye:            paye,
-                        uif:             vals.uif  || 0,
-                        sdl:             vals.sdl  || 0,
-                        pension:         0, medical: 0, garnishee: 0,
+                        period:         period,
+                        basic:          basic,
+                        overtime:       overtime,
+                        allowances:     0,
+                        bonus:          0,
+                        commission:     0,
+                        gross:          gross,
+                        paye:           vals.paye || 0,
+                        uif:            vals.uif  || 0,
+                        sdl:            vals.sdl  || 0,
+                        pension:        0, medical: 0, garnishee: 0,
                         otherDeductions: vals.deductions || 0,
-                        totalDeductions: ReconService.round2(paye + (vals.uif || 0)),
-                        net:             net,
-                        bank:            bank,
-                        diff:            ReconService.round2(net - bank)
+                        totalDeductions: ReconService.round2((vals.paye || 0) + (vals.uif || 0)),
+                        net:            vals.net  || 0,
+                        bank:           vals.net  || 0,
+                        diff:           0
                     };
-                }).filter(function(r) { return r !== null; });
+                }).filter(function(r) { return r && (r.gross > 0 || r.paye > 0); });
 
                 return {
                     emp: {
-                        id:         empId,
+                        id:         apiEmp.employee_id,
                         first_name: (apiEmp.full_name || '').split(' ')[0] || '',
                         last_name:  (apiEmp.full_name || '').split(' ').slice(1).join(' ') || '',
                         full_name:  apiEmp.full_name || ''
@@ -793,7 +744,7 @@
         function showEmptyState(show) {
             document.getElementById('empty-state').style.display = show ? 'block' : 'none';
             document.getElementById('summary-cards').style.display  = show ? 'none' : 'flex';
-            ['section-breakdown','section-calc','section-sars','section-bank','section-recon','section-runs'].forEach(function(id) {
+            ['section-breakdown','section-calc','section-sars','section-bank','section-recon'].forEach(function(id) {
                 document.getElementById(id).style.display = show ? 'none' : 'block';
             });
         }
@@ -801,7 +752,7 @@
         function renderAll() {
             if (!currentTaxYear) return;
             var view = document.getElementById('viewSelect').value;
-            var showBreak  = (view === 'all' || view === 'breakdown');
+            var showBreak = (view === 'all' || view === 'breakdown');
             var showTables = (view === 'all' || view === 'tables');
 
             document.getElementById('section-breakdown').style.display = showBreak  ? 'block' : 'none';
@@ -809,8 +760,6 @@
             document.getElementById('section-sars').style.display      = showTables ? 'block' : 'none';
             document.getElementById('section-bank').style.display      = showTables ? 'block' : 'none';
             document.getElementById('section-recon').style.display     = showTables ? 'block' : 'none';
-            // Runs overview always visible (independent of breakdown/tables toggle)
-            document.getElementById('section-runs').style.display      = 'block';
 
             renderSummaryCards();
             if (showBreak)  renderBreakdown();
@@ -820,107 +769,8 @@
                 renderBankTable();
                 renderReconTable();
             }
-            loadRunsOverview();
         }
         window.renderAll = renderAll;
-
-        // ─── Payroll Runs Overview ─────────────────────────────────────────────
-        function loadRunsOverview() {
-            if (!currentTaxYear) return;
-            var container = document.getElementById('runs-container');
-            container.innerHTML = '<div style="color:#999;font-size:0.9rem;">Loading payroll runs…</div>';
-            apiGet('/payroll/recon/runs?taxYear=' + encodeURIComponent(currentTaxYear)).then(function(data) {
-                renderRunsOverview(data);
-            }).catch(function(err) {
-                container.innerHTML = '<div style="color:#dc3545;font-size:0.9rem;">Could not load runs: ' + (err && err.message || 'network error') + '</div>';
-            });
-        }
-
-        function renderRunsOverview(data) {
-            var container = document.getElementById('runs-container');
-            if (!data) { container.innerHTML = '<div style="color:#dc3545;">No data returned.</div>'; return; }
-
-            var runs = data.runs || [];
-            var orphans = data.orphanSnapshots || [];
-
-            if (runs.length === 0 && orphans.length === 0) {
-                container.innerHTML = '<div style="color:#999;padding:12px 0;">No payroll runs found for this tax year. Run payroll from the Payroll Execution page first.</div>';
-                return;
-            }
-
-            var html = '<table class="recon-table" style="font-size:0.85rem;">'
-                + '<thead><tr>'
-                + '<th>Period</th><th>Run ID</th><th>Status</th>'
-                + '<th class="num">Employees</th><th class="num">Snapshots</th>'
-                + '<th class="num">Locked</th><th class="num">Draft</th>'
-                + '<th class="num">Total Gross</th><th>Created</th><th>Finalized</th>'
-                + '</tr></thead><tbody>';
-
-            runs.forEach(function(run) {
-                var allLocked = run.snapshotStats.total > 0 && run.snapshotStats.draft === 0;
-                var hasIssue  = run.status === 'finalized' && run.snapshotStats.draft > 0;
-                var rowStyle  = hasIssue ? ' style="background:#fff3cd;"' : '';
-                var statusBadge = run.status === 'finalized'
-                    ? '<span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;">Finalized</span>'
-                    : '<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;">Draft</span>';
-                var lockBadge = allLocked
-                    ? '<span style="color:#28a745;font-weight:700;">' + run.snapshotStats.locked + ' ✓</span>'
-                    : '<span style="color:#dc3545;font-weight:700;">' + run.snapshotStats.locked + '</span>';
-                var draftBadge = run.snapshotStats.draft > 0
-                    ? '<span style="color:#dc3545;font-weight:700;">' + run.snapshotStats.draft + ' ⚠</span>'
-                    : '<span style="color:#6c757d;">0</span>';
-
-                html += '<tr' + rowStyle + '>'
-                    + '<td><strong>' + run.period_key + '</strong>'
-                    + (ReconService.getMonthInTaxYear ? ' <small style="color:#999;">M' + ReconService.getMonthInTaxYear(run.period_key) + '</small>' : '')
-                    + '</td>'
-                    + '<td style="font-size:0.75rem;color:#999;">' + run.run_id.slice(0, 8) + '…</td>'
-                    + '<td>' + statusBadge + '</td>'
-                    + '<td class="num">' + (run.employee_count || 0) + '</td>'
-                    + '<td class="num">' + run.snapshotStats.total + '</td>'
-                    + '<td class="num">' + lockBadge + '</td>'
-                    + '<td class="num">' + draftBadge + '</td>'
-                    + '<td class="num">' + fmt(run.total_gross || 0) + '</td>'
-                    + '<td style="font-size:0.78rem;">' + (run.created_at ? run.created_at.slice(0,10) : '—') + '</td>'
-                    + '<td style="font-size:0.78rem;">' + (run.finalized_at ? run.finalized_at.slice(0,10) : '—') + '</td>'
-                    + '</tr>';
-
-                // Employee detail rows
-                if (run.employees && run.employees.length > 0) {
-                    run.employees.forEach(function(emp) {
-                        var empLocked = emp.is_locked || emp.status === 'finalized';
-                        html += '<tr style="background:#fafafa;">'
-                            + '<td style="padding-left:24px;color:#666;">' + emp.period_key + '</td>'
-                            + '<td colspan="2" style="color:#555;">' + (emp.employee_name || 'Employee ' + emp.employee_id) + '</td>'
-                            + '<td></td><td></td>'
-                            + '<td class="num">' + (empLocked ? '<span style="color:#28a745;">✓ Locked</span>' : '<span style="color:#dc3545;">✗ Unlocked</span>') + '</td>'
-                            + '<td class="num">' + (empLocked ? '' : '<span style="color:#dc3545;">⚠ Draft</span>') + '</td>'
-                            + '<td colspan="3"></td>'
-                            + '</tr>';
-                    });
-                }
-            });
-
-            html += '</tbody></table>';
-
-            if (orphans.length > 0) {
-                html += '<div style="margin-top:16px;padding:12px;background:#f8d7da;border-radius:8px;border-left:4px solid #dc3545;">'
-                    + '<strong style="color:#721c24;">⚠ Orphan Snapshots (' + orphans.length + ')</strong> — '
-                    + 'These snapshots have no payroll_run_id and cannot be locked by a batch finalize. '
-                    + 'They were likely created via an older code path.<br>'
-                    + '<ul style="margin:8px 0 0 20px;font-size:0.85rem;">';
-                orphans.forEach(function(o) {
-                    html += '<li>' + (o.employee_name || 'Employee ' + o.employee_id)
-                        + ' — ' + o.period_key
-                        + ' — status: <strong>' + o.status + '</strong>'
-                        + (o.is_locked ? ' (locked ✓)' : ' (not locked ✗)')
-                        + '</li>';
-                });
-                html += '</ul></div>';
-            }
-
-            container.innerHTML = html;
-        }
 
         // ─── Summary Cards ────────────────────────────────────────────────────
         function renderSummaryCards() {
@@ -1024,7 +874,7 @@
                         + numTd(r.garnishee)
                         + numTd(r.otherDeductions)
                         + numTd(r.net)
-                        + bankInputTd(emp.id, r.period, r.bank)
+                        + numTd(r.bank)
                         + diffTd(r.diff)
                         + '</tr>';
                 });
@@ -1239,17 +1089,6 @@
         document.addEventListener('input', function(e) {
             var el = e.target;
             if (el.tagName !== 'INPUT' || el.type !== 'number') return;
-
-            // Handle manual bank payment entries in the employee breakdown table
-            if (el.classList.contains('bank-detail-input')) {
-                var bankEmpId = el.getAttribute('data-bank-emp');
-                var bankPeriod = el.getAttribute('data-bank-period');
-                if (bankEmpId && bankPeriod) {
-                    bankDetails[bankEmpId + '_' + bankPeriod] = parseFloat(el.value) || 0;
-                }
-                return; // bank inputs don't trigger SARS/bank table logic
-            }
-
             var table  = el.getAttribute('data-table');
             var period = el.getAttribute('data-period');
             var field  = el.getAttribute('data-field');
@@ -1349,17 +1188,6 @@
             return '<td class="num">'
                 + '<input type="number" step="0.01" min="0" value="' + val.toFixed(2) + '"'
                 + ' data-table="' + tableId + '" data-period="' + period + '" data-field="' + field + '">'
-                + '</td>';
-        }
-        // Editable bank payment cell in the employee breakdown table.
-        // data-bank-emp and data-bank-period allow the input handler to store per-employee values.
-        function bankInputTd(empId, period, val) {
-            val = parseFloat(val) || 0;
-            return '<td class="num">'
-                + '<input type="number" step="0.01" min="0" class="bank-detail-input"'
-                + ' data-bank-emp="' + empId + '" data-bank-period="' + period + '"'
-                + ' value="' + val.toFixed(2) + '"'
-                + ' title="Enter actual bank payment amount">'
                 + '</td>';
         }
         function tableHeader(cols) {

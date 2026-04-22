@@ -685,7 +685,7 @@
             }
         });
 
-        function saveCompanyDetails(e) {
+        async function saveCompanyDetails(e) {
             e.preventDefault();
 
             companyData.name = document.getElementById('f-name').value.trim();
@@ -790,7 +790,17 @@
                 absa_user_code:      companyData.absa_user_code,
                 fnb_originator_code: companyData.fnb_originator_code
             };
-            DataAccess.saveCompanyDetails(currentCompanyId, dbPayload);
+            const saveBtn = e.target.querySelector('button[type="submit"]');
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+            try {
+                await DataAccess.saveCompanyDetails(currentCompanyId, dbPayload);
+            } catch(saveErr) {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Company Details'; }
+                alert('Failed to save company details: ' + (saveErr.message || 'Server error. Please try again.'));
+                return;
+            }
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Company Details'; }
+
             AuditTrail.logUpdate(currentCompanyId, 'company_details', 'Updated company details for ' + (companyData.name || 'Unknown'));
 
             // Update company name in available companies cache

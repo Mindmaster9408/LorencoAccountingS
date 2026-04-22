@@ -128,12 +128,8 @@ var DataAccess = (function() {
         },
 
         saveCompanyDetails: async function(companyId, details) {
-            try {
-                await PUT('/companies/' + companyId, details);
-                cacheSet('company_' + companyId, details);
-            } catch(e) {
-                console.error('Failed to save company details:', e.message);
-            }
+            await PUT('/companies/' + companyId, details);
+            cacheSet('company_' + companyId, details);
         },
 
         // === USERS ===

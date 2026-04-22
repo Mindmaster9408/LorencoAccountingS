@@ -164,23 +164,14 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     // payroll_transactions is a legacy table never written by the batch run system.
     // NOTE: No FK exists between payroll_snapshots and employees, so join is done
     //       via the separate empLookup map above.
-    //
-    // Query uses OR: catches both fully-locked snapshots (is_locked=true) AND
-    // any that reached status='finalized' but is_locked was not set (data edge case).
     const { data: snapData, error: snapErr } = await supabase
       .from('payroll_snapshots')
-      .select('employee_id, period_key, calculation_output, calculation_input, created_at, is_locked, status')
+      .select('employee_id, period_key, calculation_output, calculation_input, created_at')
       .eq('company_id', companyId)
-      .or('is_locked.eq.true,status.eq.finalized')
+      .eq('is_locked', true)
       .in('period_key', periods);
 
     if (snapErr) throw new Error(snapErr.message);
-
-    console.log(`[recon/summary] companyId=${companyId} taxYear=${taxYear} snapshots found: ${(snapData || []).length}`, {
-      byEmployee: Object.entries(
-        (snapData || []).reduce((m, s) => { m[s.employee_id] = (m[s.employee_id] || []); m[s.employee_id].push(s.period_key); return m; }, {})
-      ).map(([id, periods]) => ({ employee_id: id, periods }))
-    });
 
     // Deduplicate: keep most recent locked snapshot per employee+period.
     // (Multiple drafts may exist for the same employee+period before finalization.)
@@ -249,13 +240,9 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     }
 
     // Snapshots: authoritative source — always included, override historical for same period
-    // Defensive: Supabase may return JSONB as a plain string if the column type differs —
-    // parse it here so field access never silently returns undefined.
     for (const snap of Object.values(snapDedup)) {
-      const raw_out = snap.calculation_output;
-      const raw_inp = snap.calculation_input;
-      const out = (typeof raw_out === 'string' ? JSON.parse(raw_out) : raw_out) || {};
-      const inp = (typeof raw_inp === 'string' ? JSON.parse(raw_inp) : raw_inp) || {};
+      const out = snap.calculation_output || {};
+      const inp = snap.calculation_input  || {};
       ensureEmp(snap.employee_id);
       addToPeriod(snap.employee_id, snap.period_key,
         out.gross, out.paye, out.uif, out.sdl, out.net,
@@ -387,7 +374,7 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       .from('payroll_snapshots')
       .select('employee_id, period_key, calculation_output, calculation_input, created_at')
       .eq('company_id', companyId)
-      .or('is_locked.eq.true,status.eq.finalized')
+      .eq('is_locked', true)
       .in('period_key', periods);
 
     if (snap501Err) throw new Error(snap501Err.message);
@@ -493,113 +480,6 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   } catch (err) {
     console.error('EMP501 reconciliation error:', err);
     res.status(500).json({ error: 'Failed to generate EMP501 data' });
-  }
-});
-
-/**
- * GET /api/payroll/recon/runs?taxYear=YYYY/YYYY
- *
- * Returns all payroll runs and their snapshot lock status for the given tax year.
- * Used by the Payroll Runs overview section on the reconciliation page to help
- * diagnose why employees or months may not appear in the summary.
- *
- * Response:
- * {
- *   taxYear: 'YYYY/YYYY',
- *   runs: [{ run_id, period_key, status, employee_count, processed_count,
- *            created_at, finalized_at, snapshotStats: { total, locked, draft } }],
- *   orphanSnapshots: [{ employee_id, period_key, status, is_locked }]  // no run_id
- * }
- */
-router.get('/runs', requirePermission('PAYROLL.VIEW'), async (req, res) => {
-  try {
-    const { taxYear } = req.query;
-    if (!taxYear) return res.status(400).json({ error: 'taxYear is required (format: YYYY/YYYY)' });
-
-    const companyId = req.companyId;
-    let startDate, endDate;
-    try {
-      ({ startDate, endDate } = taxYearToDateRange(taxYear));
-    } catch (e) {
-      return res.status(400).json({ error: e.message });
-    }
-
-    const periods = generatePeriods(startDate, endDate);
-
-    // All payroll runs for this company in the tax year period range
-    const { data: runs, error: runsErr } = await supabase
-      .from('payroll_runs')
-      .select('id, period_key, status, employee_count, processed_count, created_at, finalized_at, total_gross, total_net')
-      .eq('company_id', companyId)
-      .in('period_key', periods)
-      .order('created_at', { ascending: false });
-
-    if (runsErr) throw new Error(runsErr.message);
-
-    // All snapshots for this company in the tax year (any status)
-    const { data: snaps, error: snapsErr } = await supabase
-      .from('payroll_snapshots')
-      .select('employee_id, period_key, status, is_locked, payroll_run_id, created_at')
-      .eq('company_id', companyId)
-      .in('period_key', periods);
-
-    if (snapsErr) throw new Error(snapsErr.message);
-
-    // Employee name lookup
-    const { data: empRows } = await supabase
-      .from('employees')
-      .select('id, first_name, last_name')
-      .eq('company_id', companyId);
-    const empLookup = {};
-    for (const e of (empRows || [])) empLookup[e.id] = `${e.first_name || ''} ${e.last_name || ''}`.trim();
-
-    // Group snapshots by run_id
-    const snapsByRun = {};
-    const orphans = [];
-    for (const s of (snaps || [])) {
-      if (!s.payroll_run_id) {
-        orphans.push({
-          employee_id:   s.employee_id,
-          employee_name: empLookup[s.employee_id] || `Employee ${s.employee_id}`,
-          period_key:    s.period_key,
-          status:        s.status,
-          is_locked:     s.is_locked
-        });
-        continue;
-      }
-      if (!snapsByRun[s.payroll_run_id]) snapsByRun[s.payroll_run_id] = [];
-      snapsByRun[s.payroll_run_id].push(s);
-    }
-
-    const runsOut = (runs || []).map(run => {
-      const runSnaps = snapsByRun[run.id] || [];
-      const locked   = runSnaps.filter(s => s.is_locked || s.status === 'finalized').length;
-      const draft    = runSnaps.filter(s => !s.is_locked && s.status !== 'finalized').length;
-      return {
-        run_id:          run.id,
-        period_key:      run.period_key,
-        status:          run.status,
-        employee_count:  run.employee_count,
-        processed_count: run.processed_count,
-        created_at:      run.created_at,
-        finalized_at:    run.finalized_at,
-        total_gross:     run.total_gross,
-        total_net:       run.total_net,
-        snapshotStats:   { total: runSnaps.length, locked, draft },
-        employees:       runSnaps.map(s => ({
-          employee_id:   s.employee_id,
-          employee_name: empLookup[s.employee_id] || `Employee ${s.employee_id}`,
-          period_key:    s.period_key,
-          status:        s.status,
-          is_locked:     s.is_locked
-        }))
-      };
-    });
-
-    res.json({ taxYear, runs: runsOut, orphanSnapshots: orphans });
-  } catch (err) {
-    console.error('PAYE recon runs error:', err);
-    res.status(500).json({ error: 'Failed to fetch payroll runs' });
   }
 });
 

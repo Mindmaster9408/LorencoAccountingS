@@ -1040,9 +1040,6 @@
         var _currentItemIsPercentage = false;
         var _currentItemPercentageValue = 0;
         let currentPeriod = '';
-        // Company-level SDL/UIF registration flags — populated on first calculatePayslip call.
-        // Defaults to true (both levies apply) for backward compatibility.
-        var _companyRegistrationFlags = { sdl_registered: true, uif_registered: true };
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
@@ -1788,20 +1785,13 @@
                 '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>' +
                 '</div>';
 
-            // Backend-snapshot-locked periods require manager auth (same as pay-run-locked).
-            // psStatus.source === 'backend_snapshot' is set by _syncSnapshotFromBackend()
-            // when a locked record exists in the payroll_snapshots DB table.
-            var isBackendLocked = psStatus.source === 'backend_snapshot';
-            if ((lockedRun || isBackendLocked) && psStatus.status === 'finalized') {
-                // Pay run locked OR backend snapshot locked = manager auth required
-                var lockMsg = lockedRun
-                    ? '🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.'
-                    : '🔒 Locked — This payslip was finalized via a batch payrun. Manager authorization required to make changes.';
-                statusBar.innerHTML = '<div class="payslip-status-bar locked">' + lockMsg + '</div>' + viewBtns;
+            if (lockedRun && psStatus.status === 'finalized') {
+                // Pay run exists AND payslip finalized = fully locked
+                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
                 content.classList.add('locked-overlay');
             } else if (psStatus.status === 'finalized') {
-                // Finalized by user directly (no batch payrun) = can unfinalize freely
+                // Finalized but no pay run yet = can unfinalize freely
                 statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + formatDate(parseStandardDate(psStatus.finalized_date), 'ZA') + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
                 content.classList.add('locked-overlay');
@@ -1847,13 +1837,6 @@
 
         function unfinalizePayslip() {
             if (!Permissions.require('UNFINALIZE_PAYSLIP')) return;
-            // Backend-locked payslips (finalized via batch payrun) require manager auth.
-            // Free unfinalize is only allowed for payslips finalized directly in this view.
-            var ps = getPayslipStatus();
-            if (ps && ps.source === 'backend_snapshot') {
-                requestManagerAuth();
-                return;
-            }
             if (!confirm('Unfinalize this payslip? It will be editable again.')) return;
             safeLocalStorage.removeItem(getPayslipStatusKey());
             // Remove the frozen snapshot so values recalculate live
@@ -1906,11 +1889,6 @@
                 // Success — server has removed the finalization state
                 const authorizedByName = (unlockData.unlockedBy && unlockData.unlockedBy.authorizedByName) || email;
                 closeModal('managerAuthModal');
-                // Reload the KV cache from server so deleted finalization keys are cleared
-                // from _cache (server deleted them; without reload, stale keys remain in memory).
-                if (typeof safeLocalStorage.reload === 'function') {
-                    await safeLocalStorage.reload();
-                }
                 loadPayrollData();   // reload so payroll inputs are live again
                 updatePayslipUI();
                 if (typeof showSaveToast === 'function') {
@@ -1950,22 +1928,9 @@
                 if (!payrollData) payrollData = { basic_salary: 0, regular_inputs: [] };
                 if (!payrollData.regular_inputs) payrollData.regular_inputs = [];
                 if (payrollData.basic_salary === undefined) payrollData.basic_salary = 0;
-
-                // FIELD ALIGNMENT FIX: employees.basic_salary in the DB is the authoritative
-                // source of truth. loadEmployee() fetches currentEmployee from /api/employees
-                // before this function runs, so currentEmployee.basic_salary is always the
-                // live DB value. Sync it here so Net-to-Gross pushes and any API-level salary
-                // updates are immediately visible without a stale localStorage value masking them.
-                if (currentEmployee && currentEmployee.basic_salary != null) {
-                    payrollData.basic_salary = parseFloat(currentEmployee.basic_salary) || 0;
-                }
-
+                
                 renderPayroll();
                 updatePayslipUI();
-                // Async: check backend for a locked snapshot. If found, populates the KV
-                // cache and calls updatePayslipUI() again with the correct locked state.
-                // Fire-and-forget — UI shows draft until sync completes (< 1s in practice).
-                _syncSnapshotFromBackend();
             } catch(e) {
                 console.error('Error loading payroll data:', e);
                 setTimeout(function() {
@@ -2111,22 +2076,9 @@
             document.getElementById('editBasicModal').classList.add('show');
         }
         function saveBasicSalary() {
-            var newSalary = parseFloat(document.getElementById('editBasicValue').value) || 0;
-            payrollData.basic_salary = newSalary;
+            payrollData.basic_salary = parseFloat(document.getElementById('editBasicValue').value) || 0;
             savePayrollData(); renderPayroll(); closeModal('editBasicModal');
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + payrollData.basic_salary.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
-            // FIELD ALIGNMENT FIX: persist to DB (employees.basic_salary) so this edit
-            // survives a page reload and is visible to Net-to-Gross and payroll runs.
-            var empIdToUse = _supabaseEmpId || currentEmpId;
-            if (empIdToUse && /^\d+$/.test(String(empIdToUse))) {
-                DataAccess.saveEmployeePayroll(currentCompanyId, empIdToUse, { basic_salary: newSalary })
-                    .then(function() {
-                        if (currentEmployee) currentEmployee.basic_salary = newSalary;
-                    })
-                    .catch(function(err) {
-                        console.warn('[EmployeeDetail] Basic salary saved locally but failed to persist to backend:', err.message);
-                    });
-            }
         }
 
         function editVariableAmount(id) {
@@ -2495,96 +2447,6 @@
 
         // ========== TOGGLE ==========
         function toggleAdditionalHours() { document.getElementById('additionalHoursSection').style.display = document.getElementById('showAdditionalHours').checked ? 'block' : 'none'; }
-
-        // ========== BACKEND SNAPSHOT SYNC ==========
-        /**
-         * Check if a locked payroll snapshot exists in the backend DB for the current
-         * employee + period. If found, populate the emp_historical_ and emp_payslip_status_
-         * KV keys so that calculatePayslip() / getPayslipData() / updatePayslipUI() all
-         * treat this period as locked WITHOUT needing to recalculate live data.
-         *
-         * Called from:
-         *   - loadPayrollData() — fire-and-forget on period change (updates UI lock state)
-         *   - calculatePayslip() — awaited before fallback to live calc (safety net)
-         *
-         * Idempotent: returns early if emp_historical_ KV key already exists.
-         * After server-side unlock (unlock.js sets is_locked=false), this function
-         * finds is_locked:false and does NOT re-populate — unlock stays effective.
-         */
-        async function _syncSnapshotFromBackend() {
-            if (!currentCompanyId || !currentEmpId || !currentPeriod) return;
-            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-            // Don't overwrite locally-finalized data — local KV takes precedence
-            if (safeLocalStorage.getItem(histKey)) return;
-
-            try {
-                var token = safeLocalStorage.getItem('token');
-                if (!token) return;
-                var resp = await fetch(
-                    window.location.origin + '/api/payroll/calculate/history/' + currentEmpId + '/' + currentPeriod,
-                    { headers: { 'Authorization': 'Bearer ' + token } }
-                );
-                // 404 = no snapshot yet (draft period) — normal, not an error
-                if (!resp.ok) return;
-                var data = await resp.json();
-                // Only act on locked (finalized) snapshots
-                if (!data.success || !data.snapshot || !data.snapshot.is_locked) return;
-
-                // Map calculation_output to emp_historical_ KV format
-                var co = data.snapshot.calculation_output || {};
-                var totalDeductions = typeof co.deductions === 'number'
-                    ? co.deductions
-                    : (Array.isArray(co.deductionsList)
-                        ? co.deductionsList.reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0)
-                        : 0);
-
-                var frozenData = {
-                    // basic_salary from calculation_input (exposed by formatForResponse)
-                    basic_salary:           data.snapshot.basic_salary || 0,
-                    gross:                  co.gross               || 0,
-                    taxableGross:           co.taxableGross        || co.gross || 0,
-                    periodicTaxableGross:   co.periodicTaxableGross  || 0,
-                    onceOffTaxableGross:    co.onceOffTaxableGross   || 0,
-                    paye:                   co.paye                || 0,
-                    uif:                    co.uif                 || 0,
-                    sdl:                    co.sdl                 || 0,
-                    deductions:             [{ description: 'Total Deductions', amount: totalDeductions }],
-                    net:                    co.net                 || 0,
-                    // Marker: distinguishes backend-batch-locked from frontend-finalized.
-                    // updatePayslipUI() uses this to show "Request Unlock" (not free Unfinalize).
-                    source:                 'backend_snapshot',
-                    finalized_date:         data.snapshot.finalized_at  || new Date().toISOString(),
-                    finalized_by:           data.snapshot.finalized_by  ? String(data.snapshot.finalized_by) : 'System',
-                    overtimeAmount:         co.overtimeAmount      || 0,
-                    shortTimeAmount:        co.shortTimeAmount     || 0,
-                    medicalCredit:          co.medicalCredit       || 0,
-                    allowances:             co.allowances          || [],
-                    deductionsList:         co.deductionsList      || []
-                };
-
-                safeLocalStorage.setItem(histKey, JSON.stringify(frozenData));
-
-                // Set payslip status key so updatePayslipUI() shows backend-locked state.
-                // Only write if not already set (don't overwrite a local finalize status).
-                var statusKey = getPayslipStatusKey();
-                if (!safeLocalStorage.getItem(statusKey)) {
-                    safeLocalStorage.setItem(statusKey, JSON.stringify({
-                        status:         'finalized',
-                        source:         'backend_snapshot',
-                        finalized_date: frozenData.finalized_date,
-                        finalized_by:   frozenData.finalized_by
-                    }));
-                }
-
-                // Update UI now that frozen keys are populated
-                updatePayslipUI();
-                renderPayroll();
-
-            } catch(e) {
-                // Non-fatal — log but don't block any user action
-                console.warn('[Payslip] Backend snapshot sync failed (non-fatal):', e.message);
-            }
-        }
         function toggleSection(el) { if (event.target.tagName === 'BUTTON') return; el.classList.toggle('expanded'); }
 
         // ========== CALCULATE PAYSLIP ==========
@@ -2592,15 +2454,6 @@
             // If this period is finalized, use the frozen snapshot instead of recalculating
             var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
             var frozen = safeLocalStorage.getItem(histKey);
-
-            // Safety net: if local KV cache is empty, check if the backend has a locked
-            // snapshot (e.g. batch payrun finalized without this browser being open).
-            // _syncSnapshotFromBackend() is idempotent — safe to call every time.
-            if (!frozen) {
-                await _syncSnapshotFromBackend();
-                frozen = safeLocalStorage.getItem(histKey);
-            }
-
             if (frozen) {
                 try {
                     var snap = JSON.parse(frozen);
@@ -2645,16 +2498,6 @@
                     employeeOptions.taxDirective = parseFloat(currentEmployee.tax_directive) || 0;
                 }
             }
-            // Fetch company SDL/UIF registration flags (uses DataAccess in-memory cache after first call).
-            try {
-                var _co = await DataAccess.getCompanyDetails(currentCompanyId);
-                _companyRegistrationFlags = {
-                    sdl_registered: _co.sdl_registered !== false,
-                    uif_registered: _co.uif_registered !== false
-                };
-            } catch(e) { /* use existing defaults */ }
-            employeeOptions.sdl_registered = _companyRegistrationFlags.sdl_registered;
-            employeeOptions.uif_registered = _companyRegistrationFlags.uif_registered;
 
             var _calcPayrollData = Object.assign({}, payrollData, {
                 workSchedule: _workingDaysData,
@@ -2754,9 +2597,6 @@
                    if (volTaxConfig) {
                        try { employeeOptions.voluntaryTaxConfig = JSON.parse(volTaxConfig); } catch(e) {}
                    }
-                // Inject company SDL/UIF registration flags (populated by calculatePayslip; defaults to true).
-                employeeOptions.sdl_registered = _companyRegistrationFlags.sdl_registered;
-                employeeOptions.uif_registered = _companyRegistrationFlags.uif_registered;
             }
 
             var _calcPayrollData = Object.assign({}, payrollData, {
@@ -2848,24 +2688,8 @@
             }
             html += '<div>';
             html += '<div style="font-size: 20px; font-weight: 700; color: #667eea;">' + companyName + '</div>';
-            if (details.trading_name && details.trading_name !== companyName) {
-                html += '<div style="font-size: 12px; color: #555; margin-top: 1px;">t/a ' + details.trading_name + '</div>';
-            }
-            var screenRefs = [];
-            if (details.reg_number) screenRefs.push('Reg: ' + details.reg_number);
-            if (details.paye_ref)   screenRefs.push('PAYE: ' + details.paye_ref);
-            if (details.uif_ref)    screenRefs.push('UIF: ' + details.uif_ref);
-            if (details.sdl_ref)    screenRefs.push('SDL: ' + details.sdl_ref);
-            if (screenRefs.length > 0) {
-                html += '<div style="font-size: 11px; color: #aaa; margin-top: 2px;">' + screenRefs.join('  |  ') + '</div>';
-            }
-            if (details.address_line1) html += '<div style="font-size: 12px; color: #888; margin-top: 2px;">' + details.address_line1 + '</div>';
-            if (details.phone || details.email) {
-                var screenContact = [];
-                if (details.phone) screenContact.push('Tel: ' + details.phone);
-                if (details.email) screenContact.push('Email: ' + details.email);
-                html += '<div style="font-size: 12px; color: #888;">' + screenContact.join('  |  ') + '</div>';
-            }
+            if (details.address_line1) html += '<div style="font-size: 12px; color: #888;">' + details.address_line1 + '</div>';
+            if (details.phone || details.email) html += '<div style="font-size: 12px; color: #888;">' + (details.phone ? 'Tel: ' + details.phone : '') + (details.phone && details.email ? '  |  ' : '') + (details.email ? 'Email: ' + details.email : '') + '</div>';
             html += '</div></div>';
 
             // Payslip Title Bar
@@ -3001,81 +2825,38 @@
             }
         }
 
-        // Returns the multi-config object (keyed by type) from localStorage.
-        // Handles legacy single-object format transparently.
-        function loadAllVoluntaryTaxConfigs() {
-            var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-            if (!raw) return {};
-            try {
-                var parsed = JSON.parse(raw);
-                // Legacy: single object with a .type property — convert to keyed format
-                if (parsed && parsed.type) {
-                    var upgraded = {};
-                    upgraded[parsed.type] = parsed;
-                    return upgraded;
-                }
-                // New: object keyed by type
-                return parsed || {};
-            } catch(e) { return {}; }
-        }
-
         function saveVoluntaryTaxConfig() {
-            var allConfigs = loadAllVoluntaryTaxConfigs();
-            var savedMsgId = null;
+            var config = null;
+            var savedMsgId = 'volTaxSavedMsg';
             var fixedPanel   = document.getElementById('volTaxPanelFixed');
             var varPanel     = document.getElementById('volTaxPanelVariable');
             var spreadPanel  = document.getElementById('volTaxPanelSpread');
             if (fixedPanel && fixedPanel.style.display !== 'none') {
                 var amt = parseFloat(document.getElementById('volFixedAmount').value) || 0;
-                allConfigs['fixed'] = { type: 'fixed', fixed_amount: amt };
+                config = { type: 'fixed', fixed_amount: amt };
                 savedMsgId = 'volTaxSavedMsg';
             } else if (varPanel && varPanel.style.display !== 'none') {
                 var varAmt    = parseFloat(document.getElementById('volVariableAmount').value) || 0;
                 var varPeriod = document.getElementById('volVariablePeriod').value;
-                allConfigs['variable'] = { type: 'variable', variable_amount: varAmt, period: varPeriod };
+                config = { type: 'variable', variable_amount: varAmt, period: varPeriod };
                 savedMsgId = 'volTaxSavedMsgVar';
             } else if (spreadPanel && spreadPanel.style.display !== 'none') {
                 var sAmt   = parseFloat(document.getElementById('volSpreadAmount').value) || 0;
                 var sStart = document.getElementById('volSpreadStart').value;
                 var sEnd   = document.getElementById('volSpreadEnd').value;
                 var sRef   = document.getElementById('volSpreadRef').value;
-                allConfigs['bonus_spread'] = { type: 'bonus_spread', monthly_spread_amount: sAmt, start_period: sStart, end_period: sEnd, reference: sRef };
+                config = { type: 'bonus_spread', monthly_spread_amount: sAmt, start_period: sStart, end_period: sEnd, reference: sRef };
                 savedMsgId = 'volTaxSavedMsgSpread';
             }
-            if (!savedMsgId) return;
-            safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(allConfigs));
-            updateVolTaxActiveDisplay(allConfigs);
+            if (!config) return;
+            safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(config));
+            updateVolTaxActiveDisplay(config);
             var msg = document.getElementById(savedMsgId);
             if (msg) { msg.style.display = 'inline'; setTimeout(function(){ msg.style.display = 'none'; }, 1500); }
         }
 
         function clearVoluntaryTaxConfig() {
-            // Clear only the currently visible tab type; if no tab is open, clear all
-            var allConfigs = loadAllVoluntaryTaxConfigs();
-            var clearedType = null;
-            var fixedPanel   = document.getElementById('volTaxPanelFixed');
-            var varPanel     = document.getElementById('volTaxPanelVariable');
-            var spreadPanel  = document.getElementById('volTaxPanelSpread');
-            if (fixedPanel && fixedPanel.style.display !== 'none') {
-                clearedType = 'fixed';
-            } else if (varPanel && varPanel.style.display !== 'none') {
-                clearedType = 'variable';
-            } else if (spreadPanel && spreadPanel.style.display !== 'none') {
-                clearedType = 'bonus_spread';
-            }
-            if (clearedType) {
-                delete allConfigs[clearedType];
-                if (Object.keys(allConfigs).length > 0) {
-                    safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(allConfigs));
-                } else {
-                    safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-                }
-            } else {
-                // No tab open — clear all
-                safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-                allConfigs = {};
-            }
-            // Close all panels and reset tab highlights
+            safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
             ['Fixed','Variable','Spread'].forEach(function(t) {
                 var el = document.getElementById('volTaxPanel' + t);
                 if (el) el.style.display = 'none';
@@ -3084,67 +2865,59 @@
                 var el = document.getElementById(id);
                 if (el) { el.style.background = ''; el.style.color = ''; }
             });
-            updateVolTaxActiveDisplay(allConfigs);
+            var disp = document.getElementById('volTaxActiveDisplay');
+            if (disp) disp.style.display = 'none';
         }
 
-        function updateVolTaxActiveDisplay(allConfigs) {
+        function updateVolTaxActiveDisplay(config) {
             var disp = document.getElementById('volTaxActiveDisplay');
             if (!disp) return;
-            // allConfigs may be a legacy single object {type:...} OR new keyed object
-            var configs = allConfigs;
-            if (allConfigs && allConfigs.type) {
-                // Legacy single object — wrap it
-                var tmp = {};
-                tmp[allConfigs.type] = allConfigs;
-                configs = tmp;
+            if (!config || !config.type) { disp.style.display = 'none'; return; }
+            var msg = '';
+            if (config.type === 'fixed') {
+                msg = '\u2713 Active: Fixed R' + (parseFloat(config.fixed_amount) || 0).toFixed(2) + ' extra PAYE per month';
+            } else if (config.type === 'variable') {
+                msg = '\u2713 Active: Variable R' + (parseFloat(config.variable_amount) || 0).toFixed(2) + ' extra PAYE for period ' + (config.period || '');
+            } else if (config.type === 'bonus_spread') {
+                msg = '\u2713 Active: Bonus spread R' + (parseFloat(config.monthly_spread_amount) || 0).toFixed(2) + '/month from ' + (config.start_period || '') + ' to ' + (config.end_period || '');
+                if (config.reference) msg += ' (' + config.reference + ')';
             }
-            var lines = [];
-            if (configs && configs['fixed']) {
-                var c = configs['fixed'];
-                lines.push('\u2713 Fixed: R' + (parseFloat(c.fixed_amount) || 0).toFixed(2) + ' extra PAYE per month');
-            }
-            if (configs && configs['variable']) {
-                var c = configs['variable'];
-                lines.push('\u2713 Variable: R' + (parseFloat(c.variable_amount) || 0).toFixed(2) + ' extra PAYE for period ' + (c.period || ''));
-            }
-            if (configs && configs['bonus_spread']) {
-                var c = configs['bonus_spread'];
-                var spreadLine = '\u2713 Bonus spread: R' + (parseFloat(c.monthly_spread_amount) || 0).toFixed(2) + '/month from ' + (c.start_period || '') + ' to ' + (c.end_period || '');
-                if (c.reference) spreadLine += ' (' + c.reference + ')';
-                lines.push(spreadLine);
-            }
-            if (lines.length === 0) {
-                disp.style.display = 'none';
-            } else {
-                disp.innerHTML = lines.join('<br>');
-                disp.style.display = 'block';
-            }
+            disp.textContent = msg;
+            disp.style.display = 'block';
         }
 
         function loadVoluntaryTaxConfig() {
-            var allConfigs = loadAllVoluntaryTaxConfigs();
-            // Populate each panel with its saved values
-            if (allConfigs['fixed']) {
-                var fa = document.getElementById('volFixedAmount');
-                if (fa) fa.value = allConfigs['fixed'].fixed_amount || '';
+            var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+            if (!raw) {
+                var disp = document.getElementById('volTaxActiveDisplay');
+                if (disp) disp.style.display = 'none';
+                return;
             }
-            if (allConfigs['variable']) {
-                var vp = document.getElementById('volVariablePeriod');
-                var va = document.getElementById('volVariableAmount');
-                if (vp) vp.value = allConfigs['variable'].period || '';
-                if (va) va.value = allConfigs['variable'].variable_amount || '';
-            }
-            if (allConfigs['bonus_spread']) {
-                var ss = document.getElementById('volSpreadAmount');
-                var st = document.getElementById('volSpreadStart');
-                var en = document.getElementById('volSpreadEnd');
-                var rf = document.getElementById('volSpreadRef');
-                if (ss) ss.value = allConfigs['bonus_spread'].monthly_spread_amount || '';
-                if (st) st.value = allConfigs['bonus_spread'].start_period || '';
-                if (en) en.value = allConfigs['bonus_spread'].end_period || '';
-                if (rf) rf.value = allConfigs['bonus_spread'].reference || '';
-            }
-            updateVolTaxActiveDisplay(allConfigs);
+            try {
+                var obj = JSON.parse(raw);
+                updateVolTaxActiveDisplay(obj);
+                if (obj.type === 'fixed') {
+                    switchVolTaxTab('fixed');
+                    var fa = document.getElementById('volFixedAmount');
+                    if (fa) fa.value = obj.fixed_amount || '';
+                } else if (obj.type === 'variable') {
+                    switchVolTaxTab('variable');
+                    var vp = document.getElementById('volVariablePeriod');
+                    var va = document.getElementById('volVariableAmount');
+                    if (vp) vp.value = obj.period || '';
+                    if (va) va.value = obj.variable_amount || '';
+                } else if (obj.type === 'bonus_spread') {
+                    switchVolTaxTab('bonus_spread');
+                    var ss = document.getElementById('volSpreadAmount');
+                    var st = document.getElementById('volSpreadStart');
+                    var en = document.getElementById('volSpreadEnd');
+                    var rf = document.getElementById('volSpreadRef');
+                    if (ss) ss.value = obj.monthly_spread_amount || '';
+                    if (st) st.value = obj.start_period || '';
+                    if (en) en.value = obj.end_period || '';
+                    if (rf) rf.value = obj.reference || '';
+                }
+            } catch(e) {}
         }
 
         // ============================================================

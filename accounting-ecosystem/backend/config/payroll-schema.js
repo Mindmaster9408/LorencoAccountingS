@@ -147,6 +147,16 @@ async function ensurePayrollSchema(pool) {
       )
     `);
 
+    // ── companies: SDL / UIF registration flags (migration 018) ──────────────
+    // Default true = registered (backward-compatible). These flags control
+    // whether SDL / UIF are calculated in every payroll run for this company.
+    // ADD COLUMN IF NOT EXISTS is idempotent — safe to run on every startup.
+    await client.query(`
+      ALTER TABLE companies
+        ADD COLUMN IF NOT EXISTS sdl_registered BOOLEAN NOT NULL DEFAULT true,
+        ADD COLUMN IF NOT EXISTS uif_registered BOOLEAN NOT NULL DEFAULT true
+    `);
+
     console.log('  ✅ Payroll schema ready.');
   } catch (err) {
     console.error('  ❌ Payroll schema migration failed:', err.message);
