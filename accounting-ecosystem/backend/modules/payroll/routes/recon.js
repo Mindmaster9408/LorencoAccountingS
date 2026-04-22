@@ -240,9 +240,13 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     }
 
     // Snapshots: authoritative source — always included, override historical for same period
+    // Defensive: Supabase may return JSONB as a plain string if the column type differs —
+    // parse it here so field access never silently returns undefined.
     for (const snap of Object.values(snapDedup)) {
-      const out = snap.calculation_output || {};
-      const inp = snap.calculation_input  || {};
+      const raw_out = snap.calculation_output;
+      const raw_inp = snap.calculation_input;
+      const out = (typeof raw_out === 'string' ? JSON.parse(raw_out) : raw_out) || {};
+      const inp = (typeof raw_inp === 'string' ? JSON.parse(raw_inp) : raw_inp) || {};
       ensureEmp(snap.employee_id);
       addToPeriod(snap.employee_id, snap.period_key,
         out.gross, out.paye, out.uif, out.sdl, out.net,
