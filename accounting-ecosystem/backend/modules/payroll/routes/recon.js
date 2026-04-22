@@ -151,12 +151,22 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
 
     const periods = generatePeriods(startDate, endDate);
 
+    // ── 0. Fetch employee names lookup (separate query — no FK between snapshots and employees) ──
+    const { data: empRows } = await supabase
+      .from('employees')
+      .select('id, first_name, last_name')
+      .eq('company_id', companyId);
+    const empLookup = {};
+    for (const e of (empRows || [])) empLookup[e.id] = e;
+
     // ── 1. Aggregate from payroll_snapshots (finalized live payroll runs) ─────
     // This is the authoritative source for all payroll run through Paytime.
     // payroll_transactions is a legacy table never written by the batch run system.
+    // NOTE: No FK exists between payroll_snapshots and employees, so join is done
+    //       via the separate empLookup map above.
     const { data: snapData, error: snapErr } = await supabase
       .from('payroll_snapshots')
-      .select('employee_id, period_key, calculation_output, calculation_input, created_at, employees(first_name, last_name)')
+      .select('employee_id, period_key, calculation_output, calculation_input, created_at')
       .eq('company_id', companyId)
       .eq('is_locked', true)
       .in('period_key', periods);
@@ -178,7 +188,7 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     // ── 2. Aggregate from payroll_historical (imported/CSV data) ─────────────
     const { data: histData, error: hErr } = await supabase
       .from('payroll_historical')
-      .select('employee_id, period_key, gross, paye, uif, net, employees(first_name, last_name)')
+      .select('employee_id, period_key, gross, paye, uif, net')
       .eq('company_id', companyId)
       .in('period_key', periods);
 
@@ -189,11 +199,10 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     //   basic, overtime, shorttime, voluntary_tax, deductions } } }
     const empMap = {};
 
-    function ensureEmp(id, nameObj) {
+    function ensureEmp(id) {
       if (!empMap[id]) {
-        const name = nameObj
-          ? `${nameObj.first_name || ''} ${nameObj.last_name || ''}`.trim()
-          : `Employee ${id}`;
+        const e = empLookup[id];
+        const name = e ? `${e.first_name || ''} ${e.last_name || ''}`.trim() : `Employee ${id}`;
         empMap[id] = { employee_id: id, full_name: name, periods: {} };
       }
     }
@@ -226,7 +235,7 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     for (const h of (histData || [])) {
       const key = `${h.employee_id}_${h.period_key}`;
       if (snapshotKeys.has(key)) continue; // snapshot takes precedence
-      ensureEmp(h.employee_id, h.employees);
+      ensureEmp(h.employee_id);
       addToPeriod(h.employee_id, h.period_key, h.gross, h.paye, h.uif, 0, h.net);
     }
 
@@ -234,7 +243,7 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     for (const snap of Object.values(snapDedup)) {
       const out = snap.calculation_output || {};
       const inp = snap.calculation_input  || {};
-      ensureEmp(snap.employee_id, snap.employees);
+      ensureEmp(snap.employee_id);
       addToPeriod(snap.employee_id, snap.period_key,
         out.gross, out.paye, out.uif, out.sdl, out.net,
         {
@@ -348,12 +357,22 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
 
     const periods = generatePeriods(startDate, endDate);
 
+    // Fetch employee details lookup (separate query — no FK between payroll_snapshots and employees)
+    const { data: empRows501 } = await supabase
+      .from('employees')
+      .select('id, first_name, last_name, id_number, tax_number, email')
+      .eq('company_id', companyId);
+    const empLookup501 = {};
+    for (const e of (empRows501 || [])) empLookup501[e.id] = e;
+
     let emp501Records = [];
 
     // Aggregate from payroll_snapshots (authoritative source — replaces payroll_transactions)
+    // NOTE: No FK exists between payroll_snapshots and employees, so join is done
+    //       via the separate empLookup501 map above.
     const { data: snapRows501, error: snap501Err } = await supabase
       .from('payroll_snapshots')
-      .select('employee_id, period_key, calculation_output, calculation_input, created_at, employees(id, first_name, last_name, id_number, tax_number, email)')
+      .select('employee_id, period_key, calculation_output, calculation_input, created_at')
       .eq('company_id', companyId)
       .eq('is_locked', true)
       .in('period_key', periods);
@@ -374,7 +393,7 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     for (const snap of Object.values(snapDedup501)) {
       const eid  = snap.employee_id;
       const out  = snap.calculation_output || {};
-      const emp  = snap.employees || {};
+      const emp  = empLookup501[eid] || {};
 
       if (!empAgg[eid]) {
         empAgg[eid] = {
@@ -424,19 +443,20 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     // Also include historical import data as a separate list (no IRP5 breakdown available)
     const { data: histData501 } = await supabase
       .from('payroll_historical')
-      .select('employee_id, gross, paye, uif, net, employees(first_name, last_name, id_number, tax_number)')
+      .select('employee_id, gross, paye, uif, net')
       .eq('company_id', companyId)
       .in('period_key', periods);
 
     const histAgg = {};
     for (const h of (histData501 || [])) {
       const eid = h.employee_id;
+      const he  = empLookup501[eid] || {};
       if (!histAgg[eid]) {
         histAgg[eid] = {
           employee_id: eid,
-          full_name:   `${h.employees?.first_name || ''} ${h.employees?.last_name || ''}`.trim(),
-          id_number:   h.employees?.id_number  || null,
-          tax_number:  h.employees?.tax_number || null,
+          full_name:   `${he.first_name || ''} ${he.last_name || ''}`.trim(),
+          id_number:   he.id_number  || null,
+          tax_number:  he.tax_number || null,
           gross: 0, paye: 0, uif: 0, net: 0
         };
       }
