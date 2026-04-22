@@ -84,7 +84,6 @@ async function syncToApps(ecoClient) {
 
       const employeeData = {
         company_id: dataCompanyId,
-        full_name: ecoClient.name,
         first_name: firstName,
         last_name: lastName,
         employee_code: empCode,
