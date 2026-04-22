@@ -492,6 +492,9 @@ function normalizeCalculationInput(
       medicalMembers: parseInt(employee.medical_aid_members) || 0,
       taxDirective: employee.tax_directive ? parseFloat(employee.tax_directive) : null,
       rebateCode: employee.tax_rebate_code || 'R',
+      // Directors are excluded from UIF per the Unemployment Insurance Act.
+      // is_director === true → engine sets UIF = 0 regardless of company registration.
+      is_director: employee.is_director === true,
       // Company-level SDL/UIF registration flags (from migration 018).
       // false = company is exempt → engine returns 0 for that levy.
       // Defaults to true for backward compatibility if flags not yet in DB.

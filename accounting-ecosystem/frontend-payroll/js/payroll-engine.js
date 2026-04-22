@@ -285,6 +285,35 @@ const PayrollEngine = {
     // === CORE CALCULATION FUNCTIONS ===
 
     /**
+     * Return annual tax breakdown for payslip display transparency.
+     * Splits the annual tax calculation into bracket tax, age rebate, and net tax.
+     * Used internally by calculateFromData to populate additive output fields.
+     * @param {number} annualGross - Annual taxable income (post-pre-tax deductions)
+     * @param {number} [age]
+     * @param {Object} [tables]
+     * @returns {{ grossTax: number, rebate: number, netTax: number }}
+     */
+    _calcAnnualTaxBreakdown: function(annualGross, age, tables) {
+        if (annualGross <= 0) return { grossTax: 0, rebate: 0, netTax: 0 };
+        var t = tables || this;
+        var brackets = (t.BRACKETS && t.BRACKETS.length) ? t.BRACKETS : this.BRACKETS;
+        var grossTax = 0;
+        for (var i = 0; i < brackets.length; i++) {
+            var b = brackets[i];
+            var bMax = (b.max === null || b.max === undefined) ? Infinity : b.max;
+            if (annualGross <= bMax) {
+                grossTax = b.base + (annualGross - b.min) * b.rate;
+                break;
+            }
+        }
+        var rebate = (typeof t.PRIMARY_REBATE   === 'number' ? t.PRIMARY_REBATE   : this.PRIMARY_REBATE);
+        if (age && age >= 65) rebate += (typeof t.SECONDARY_REBATE === 'number' ? t.SECONDARY_REBATE : this.SECONDARY_REBATE);
+        if (age && age >= 75) rebate += (typeof t.TERTIARY_REBATE  === 'number' ? t.TERTIARY_REBATE  : this.TERTIARY_REBATE);
+        var netTax = Math.max(grossTax - rebate, 0);
+        return { grossTax: this.r2(grossTax), rebate: rebate, netTax: this.r2(netTax) };
+    },
+
+    /**
      * Calculate annual PAYE from annual taxable income.
      * Pure function — uses dynamic brackets so Tax Config overrides and
      * historical tables both take effect automatically.
@@ -694,6 +723,9 @@ const PayrollEngine = {
         // undefined / true (default) → levy calculated normally (backward compatible).
         if (employeeOptions && employeeOptions.uif_registered === false) { uif = 0; }
         if (employeeOptions && employeeOptions.sdl_registered === false) { sdl = 0; }
+        // Directors are excluded from UIF per the Unemployment Insurance Act.
+        // is_director === true overrides even when company is UIF-registered.
+        if (employeeOptions && employeeOptions.is_director === true) { uif = 0; }
 
         // === VOLUNTARY TAX OVER-DEDUCTION ===
         // Three supported scenarios: fixed, variable (current period only), bonus_spread (period range).
@@ -742,6 +774,13 @@ const PayrollEngine = {
         var net = gross - payeWithVoluntary - uif - deductions;
         var negativeNetPay = net < 0;
 
+        // Tax transparency breakdown — for payslip display (SARS spec: tax_before_rebate, rebate).
+        // Computed on the simple-method annual equivalent. When YTD method is active the
+        // actual PAYE deducted may differ; these fields are informational display values only.
+        var annualEquivalentForDisplay = periodicTaxable * 12 + onceOffTaxable;
+        var taxBreakdown = PayrollEngine._calcAnnualTaxBreakdown(annualEquivalentForDisplay, opts.age, tables);
+        var monthlyMedCredit = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
+
         return {
             gross: PayrollEngine.r2(gross),
             taxableGross: PayrollEngine.r2(taxableGross),
@@ -753,14 +792,20 @@ const PayrollEngine = {
             deductions: PayrollEngine.r2(deductions),
             net: PayrollEngine.r2(net),
             negativeNetPay: negativeNetPay,
-            medicalCredit: opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0,
+            medicalCredit: monthlyMedCredit,
             overtimeAmount: PayrollEngine.r2(overtimeAmount),
             shortTimeAmount: PayrollEngine.r2(shortTimeAmount),
             preTaxDeductions: PayrollEngine.r2(preTaxDeductions),
             netOnlyDeductions: PayrollEngine.r2(netOnlyDeductions),
             // Split gross for YTD snapshot storage — enables correct once-off tax treatment
             periodicTaxableGross: PayrollEngine.r2(periodicTaxable),
-            onceOffTaxableGross:  PayrollEngine.r2(onceOffTaxable)
+            onceOffTaxableGross:  PayrollEngine.r2(onceOffTaxable),
+            // === ADDITIVE FIELDS (SARS spec compliance — tax breakdown transparency) ===
+            // taxBeforeRebate: monthly bracket tax before age rebates (annual ÷ 12)
+            // rebate: monthly sum of applicable age rebates (primary + secondary + tertiary)
+            // Breakdown: taxBeforeRebate - rebate - medicalCredit = PAYE (before floor)
+            taxBeforeRebate: PayrollEngine.r2(taxBreakdown.grossTax / 12),
+            rebate: PayrollEngine.r2(taxBreakdown.rebate / 12)
         };
     },
 
