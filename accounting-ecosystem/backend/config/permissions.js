@@ -168,11 +168,21 @@ function hasPermission(role, category, action) {
 }
 
 /**
- * Check if roleA can manage roleB (needs higher level)
+ * Check if roleA can manage roleB.
+ * Rules:
+ *   - super_admin can manage any role including other super_admins.
+ *   - owner-equivalent (business_owner / practice_manager / administrator)
+ *     can assign any role up to and including their own level (95), which
+ *     allows them to create/promote other owner-equivalent users.
+ *     They cannot assign super_admin (platform-only role).
+ *   - All other roles can only manage roles strictly below their own level.
  */
 function canManageRole(managerRole, targetRole) {
+  if (managerRole === 'super_admin') return true;
+  if (targetRole === 'super_admin') return false; // only super_admin can assign super_admin
   const managerLevel = ROLE_LEVELS[managerRole] || 0;
-  const targetLevel = ROLE_LEVELS[targetRole] || 0;
+  const targetLevel  = ROLE_LEVELS[targetRole]  || 0;
+  if (isOwnerEquivalent(managerRole)) return targetLevel <= managerLevel;
   return managerLevel > targetLevel;
 }
 
