@@ -52,6 +52,30 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     throw new Error(`Employee not found: ${employeeId}`);
   }
 
+  // Step 2b: If basic_salary is missing from the employees table, fall back to the
+  // KV store (key: emp_payroll_{companyId}_{employeeId}). The frontend employee-detail
+  // page writes payroll setup (including basic_salary) there via polyfills.js.
+  if (!employee.basic_salary) {
+    try {
+      const kvKey = `emp_payroll_${companyId}_${employeeId}`;
+      const { data: kvRow } = await supabase
+        .from('payroll_kv_store_eco')
+        .select('value')
+        .eq('company_id', companyId)
+        .eq('key', kvKey)
+        .maybeSingle();
+      if (kvRow && kvRow.value) {
+        const kvVal = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+        if (kvVal && kvVal.basic_salary) {
+          employee.basic_salary = kvVal.basic_salary;
+        }
+      }
+    } catch (kvErr) {
+      // KV fallback is best-effort — a missing KV entry is not an error
+      console.warn(`[PayrollDataService] KV salary fallback failed for emp ${employeeId}:`, kvErr.message);
+    }
+  }
+
   // Step 3: Fetch employee's work schedule
   const workSchedule = await fetchWorkSchedule(
     companyId,
