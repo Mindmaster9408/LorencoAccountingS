@@ -39,8 +39,18 @@ const PayrollEngine = require('../../../core/payroll-engine');
  */
 function buildEffectiveTables(cfg) {
     if (!cfg) return null;
+    // JSON.stringify converts Infinity to null when saving tax_config to the KV store.
+    // Normalize null / large-sentinel values back to Infinity so bracket comparisons
+    // are correct for all income levels (including top bracket with no upper limit).
+    function normalizeBrackets(brackets) {
+        return brackets.map(function(b) {
+            var max = (b.max === null || b.max === undefined || (typeof b.max === 'number' && b.max >= 1e15))
+                ? Infinity : b.max;
+            return { min: b.min, max: max, base: b.base, rate: b.rate };
+        });
+    }
     return {
-        BRACKETS:                  Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length ? cfg.BRACKETS : PayrollEngine.BRACKETS,
+        BRACKETS:                  Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length ? normalizeBrackets(cfg.BRACKETS) : PayrollEngine.BRACKETS,
         PRIMARY_REBATE:            typeof cfg.PRIMARY_REBATE            === 'number' ? cfg.PRIMARY_REBATE            : PayrollEngine.PRIMARY_REBATE,
         SECONDARY_REBATE:          typeof cfg.SECONDARY_REBATE          === 'number' ? cfg.SECONDARY_REBATE          : PayrollEngine.SECONDARY_REBATE,
         TERTIARY_REBATE:           typeof cfg.TERTIARY_REBATE           === 'number' ? cfg.TERTIARY_REBATE           : PayrollEngine.TERTIARY_REBATE,

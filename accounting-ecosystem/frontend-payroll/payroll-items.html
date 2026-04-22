@@ -1682,6 +1682,14 @@
                 ? activeCalcYear
                 : labels[labels.length - 1];
 
+            // Always sync tax_config KV key from the active year.
+            // This bridges any gap where tax_years_v2 has been updated (e.g., first-time
+            // bootstrap, or unsaved edits via auto-save) but tax_config was not pushed.
+            // The backend reads only tax_config, so it must always reflect the active year.
+            if (activeCalcYear && taxYearsData[activeCalcYear]) {
+                updatePayrollEngineFromYear(taxYearsData[activeCalcYear]);
+            }
+
             renderTaxYearTabs();
             loadTaxYearIntoForm(currentEditingYear);
         }
@@ -1717,6 +1725,11 @@
                 && !taxYearsData[currentEditingYear].is_finalized) {
                 captureFormIntoYear(currentEditingYear);
                 saveTaxYearsToStorage();
+                // Keep tax_config in sync when navigating away from the active calc year
+                // so the backend always sees the latest values without requiring an explicit Save.
+                if (currentEditingYear === activeCalcYear) {
+                    updatePayrollEngineFromYear(taxYearsData[currentEditingYear]);
+                }
             }
             currentEditingYear = label;
             renderTaxYearTabs();
