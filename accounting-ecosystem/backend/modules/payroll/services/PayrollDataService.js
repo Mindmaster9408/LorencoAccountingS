@@ -24,6 +24,8 @@
  * ============================================================================
  */
 
+const PayrollEngine = require('../../../core/payroll-engine');
+
 /**
  * Fetch and normalize complete payroll calculation input for an employee/period.
  *
