@@ -357,6 +357,9 @@
                 company ? (company.name || company.company_name || company.trading_name || '') : '';
             loadCompaniesCarousel();
 
+            // Apply admin-configured tax tables (same KV key as payroll-items.html)
+            PayrollEngine.loadTaxConfig();
+
             // Pre-fill current period
             var now = new Date();
             var mm = String(now.getMonth() + 1).padStart(2, '0');
