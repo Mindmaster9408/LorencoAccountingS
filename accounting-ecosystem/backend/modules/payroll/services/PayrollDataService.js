@@ -413,7 +413,16 @@ function normalizeCalculationInput(
   period,
   companyRegistrationFlags
 ) {
-  const age = employee.age || calculateAge(employee.dob);
+  // Calculate age at the END of the SA tax year (28/29 Feb) — SARS requires rebate tier
+  // to be determined at year-end, not at today's date or the current pay period date.
+  // E.g. an employee who turns 65 on 15 Jan within the tax year gets the secondary rebate
+  // for the full year. Age at tax year end is the correct reference point.
+  const taxYearEndDate = getTaxYearEndDate(period.period_key);
+  let age = calculateAge(employee.dob, taxYearEndDate);
+  // If dob is not stored but SA ID number is available, derive age from ID.
+  if (age === null && employee.id_number) {
+    age = PayrollEngine.getAgeFromId(employee.id_number, taxYearEndDate);
+  }
 
   // Normalize recurring items into regular_inputs format
   const regularInputs = recurringItems.map(item => ({
@@ -511,18 +520,35 @@ function normalizeCalculationInput(
 }
 
 /**
- * Calculate age from date of birth.
+ * Return the end date of the SA tax year for a given period key ('YYYY-MM').
+ * SA tax year runs 1 March → last day of February.
+ * The end date is 28 or 29 February of the year AFTER the tax year opens.
+ * e.g. '2026-04' → tax year 2026/2027 → returns Date representing 28 Feb 2027
+ * Used to calculate employee age at the correct SARS reference point.
+ */
+function getTaxYearEndDate(periodKey) {
+  const taxYear = PayrollEngine.getTaxYearForPeriod(periodKey || '');
+  const endYear = parseInt(taxYear.split('/')[1], 10);
+  const isLeap = (endYear % 4 === 0 && endYear % 100 !== 0) || (endYear % 400 === 0);
+  return new Date(endYear, 1, isLeap ? 29 : 28);
+}
+
+/**
+ * Calculate age from date of birth at a specific reference date.
+ * @param {string} dob - Date of birth (YYYY-MM-DD or any Date-parseable string)
+ * @param {Date} [refDate] - Reference date for age calculation (defaults to today).
+ *   Pass tax year end date (28/29 Feb) for SARS-compliant rebate tier determination.
  * Returns null if dob not provided.
  */
-function calculateAge(dob) {
+function calculateAge(dob, refDate) {
   if (!dob) return null;
   const birthDate = new Date(dob);
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
+  const ref = refDate || new Date();
+  let age = ref.getFullYear() - birthDate.getFullYear();
+  const monthDiff = ref.getMonth() - birthDate.getMonth();
   if (
     monthDiff < 0 ||
-    (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    (monthDiff === 0 && ref.getDate() < birthDate.getDate())
   ) {
     age--;
   }

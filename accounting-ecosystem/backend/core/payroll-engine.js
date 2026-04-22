@@ -216,8 +216,14 @@ const PayrollEngine = {
             if (!raw) return;
             var cfg = JSON.parse(raw);
             if (cfg.TAX_YEAR)           this.TAX_YEAR           = cfg.TAX_YEAR;
-            if (Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length)
-                                        this.BRACKETS           = cfg.BRACKETS;
+            if (Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length) {
+                // Restore Infinity sentinel (1e99 or null) back to Infinity so bracket
+                // comparisons work correctly for all income levels.
+                this.BRACKETS = cfg.BRACKETS.map(function(b) {
+                    var max = (b.max === null || b.max === undefined || (typeof b.max === 'number' && b.max >= 1e15)) ? Infinity : b.max;
+                    return { min: b.min, max: max, base: b.base, rate: b.rate };
+                });
+            }
             if (typeof cfg.PRIMARY_REBATE   === 'number') this.PRIMARY_REBATE   = cfg.PRIMARY_REBATE;
             if (typeof cfg.SECONDARY_REBATE === 'number') this.SECONDARY_REBATE = cfg.SECONDARY_REBATE;
             if (typeof cfg.TERTIARY_REBATE  === 'number') this.TERTIARY_REBATE  = cfg.TERTIARY_REBATE;
@@ -297,7 +303,10 @@ const PayrollEngine = {
         var mm = parseInt(idNumber.substring(2, 4)) - 1;
         var dd = parseInt(idNumber.substring(4, 6));
         if (isNaN(yy) || isNaN(mm) || isNaN(dd)) return null;
-        var year = yy > 30 ? 1900 + yy : 2000 + yy;
+        // Dynamic century cutoff: yy > last two digits of current year → 1900s, else 2000s.
+        // Avoids the static "> 30" cutoff which misclassifies IDs from 2031 onwards.
+        var currentYY = new Date().getFullYear() % 100;
+        var year = yy > currentYY ? 1900 + yy : 2000 + yy;
         var dob = new Date(year, mm, dd);
         var ref = atDate || new Date();
         var age = ref.getFullYear() - dob.getFullYear();
@@ -340,7 +349,9 @@ const PayrollEngine = {
         var tax = 0;
         for (var i = 0; i < brackets.length; i++) {
             var b = brackets[i];
-            if (annualGross <= b.max) {
+            // Treat null/undefined max as Infinity (safety net for serialization edge-cases)
+            var bMax = (b.max === null || b.max === undefined) ? Infinity : b.max;
+            if (annualGross <= bMax) {
                 tax = b.base + (annualGross - b.min) * b.rate;
                 break;
             }
@@ -514,6 +525,23 @@ const PayrollEngine = {
     },
 
     /**
+     * Return the end date of the SA tax year for a given pay period.
+     * SA tax year runs 1 March → last day of February.
+     * The end date is 28 or 29 February of the year AFTER the tax year opens.
+     * e.g. '2026-04' → tax year 2026/2027 → returns Date(2027, 1, 28)
+     * e.g. '2026-02' → tax year 2025/2026 → returns Date(2026, 1, 29) (leap year)
+     * Used to calculate employee age at the correct SARS reference point.
+     * @param {string} periodStr - 'YYYY-MM'
+     * @returns {Date}
+     */
+    getTaxYearEndDate: function(periodStr) {
+        var taxYear = this.getTaxYearForPeriod(periodStr || '');
+        var endYear = parseInt(taxYear.split('/')[1], 10);
+        var isLeap = (endYear % 4 === 0 && endYear % 100 !== 0) || (endYear % 400 === 0);
+        return new Date(endYear, 1, isLeap ? 29 : 28);
+    },
+
+    /**
      * Return the correct set of tax tables for a given pay period.
      * Looks up HISTORICAL_TABLES by the SA tax year derived from the period.
      * If the period is in the CURRENT tax year, returns `this` (so that any
@@ -527,6 +555,9 @@ const PayrollEngine = {
         var taxYear = this.getTaxYearForPeriod(periodStr);
         // Current year → use taxOverride if provided (backend KV config), else `this`
         if (taxYear === this.TAX_YEAR) return taxOverride || this;
+        // Override explicitly targets this tax year (forward-compatibility: applies even
+        // when the engine's hardcoded TAX_YEAR hasn't been updated to the override year).
+        if (taxOverride && taxOverride.TAX_YEAR === taxYear) return taxOverride;
         // Historical year → use hardcoded verified tables (override not applied to historical)
         if (this.HISTORICAL_TABLES[taxYear]) return this.HISTORICAL_TABLES[taxYear];
         // Future or unknown year → use latest known tables as best estimate

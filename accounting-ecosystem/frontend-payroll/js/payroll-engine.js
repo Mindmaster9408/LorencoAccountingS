@@ -161,8 +161,14 @@ const PayrollEngine = {
             if (!raw) return;
             var cfg = JSON.parse(raw);
             if (cfg.TAX_YEAR)           this.TAX_YEAR           = cfg.TAX_YEAR;
-            if (Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length)
-                                        this.BRACKETS           = cfg.BRACKETS;
+            if (Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length) {
+                // Restore Infinity sentinel (1e99 or null) back to Infinity so bracket
+                // comparisons work correctly for all income levels.
+                this.BRACKETS = cfg.BRACKETS.map(function(b) {
+                    var max = (b.max === null || b.max === undefined || (typeof b.max === 'number' && b.max >= 1e15)) ? Infinity : b.max;
+                    return { min: b.min, max: max, base: b.base, rate: b.rate };
+                });
+            }
             if (typeof cfg.PRIMARY_REBATE   === 'number') this.PRIMARY_REBATE   = cfg.PRIMARY_REBATE;
             if (typeof cfg.SECONDARY_REBATE === 'number') this.SECONDARY_REBATE = cfg.SECONDARY_REBATE;
             if (typeof cfg.TERTIARY_REBATE  === 'number') this.TERTIARY_REBATE  = cfg.TERTIARY_REBATE;
@@ -184,7 +190,12 @@ const PayrollEngine = {
      */
     saveTaxConfig: function(cfg) {
         if (typeof safeLocalStorage === 'undefined') return;
-        safeLocalStorage.setItem('tax_config', JSON.stringify(cfg));
+        // JSON.stringify converts Infinity to null, which breaks bracket lookups for top earners.
+        // Serialize Infinity as 1e99 (a large finite number JSON can represent correctly).
+        var serialized = JSON.stringify(cfg, function(key, value) {
+            return value === Infinity ? 1e99 : value;
+        });
+        safeLocalStorage.setItem('tax_config', serialized);
         this.loadTaxConfig(); // apply immediately
     },
 
@@ -242,7 +253,10 @@ const PayrollEngine = {
         var mm = parseInt(idNumber.substring(2, 4)) - 1;
         var dd = parseInt(idNumber.substring(4, 6));
         if (isNaN(yy) || isNaN(mm) || isNaN(dd)) return null;
-        var year = yy > 30 ? 1900 + yy : 2000 + yy;
+        // Dynamic century cutoff: yy > last two digits of current year → 1900s, else 2000s.
+        // Avoids the static "> 30" cutoff which misclassifies IDs from 2031 onwards.
+        var currentYY = new Date().getFullYear() % 100;
+        var year = yy > currentYY ? 1900 + yy : 2000 + yy;
         var dob = new Date(year, mm, dd);
         var ref = atDate || new Date();
         var age = ref.getFullYear() - dob.getFullYear();
@@ -285,7 +299,9 @@ const PayrollEngine = {
         var tax = 0;
         for (var i = 0; i < brackets.length; i++) {
             var b = brackets[i];
-            if (annualGross <= b.max) {
+            // Treat null/undefined max as Infinity (safety net for serialization edge-cases)
+            var bMax = (b.max === null || b.max === undefined) ? Infinity : b.max;
+            if (annualGross <= bMax) {
                 tax = b.base + (annualGross - b.min) * b.rate;
                 break;
             }
@@ -486,6 +502,23 @@ const PayrollEngine = {
         return month >= 3
             ? year + '/' + (year + 1)
             : (year - 1) + '/' + year;
+    },
+
+    /**
+     * Return the end date of the SA tax year for a given pay period.
+     * SA tax year runs 1 March → last day of February.
+     * The end date is 28 or 29 February of the year AFTER the tax year opens.
+     * e.g. '2026-04' → tax year 2026/2027 → returns Date(2027, 1, 28)
+     * e.g. '2026-02' → tax year 2025/2026 → returns Date(2026, 1, 29) (leap year)
+     * Used to calculate employee age at the correct SARS reference point.
+     * @param {string} periodStr - 'YYYY-MM'
+     * @returns {Date}
+     */
+    getTaxYearEndDate: function(periodStr) {
+        var taxYear = this.getTaxYearForPeriod(periodStr || '');
+        var endYear = parseInt(taxYear.split('/')[1], 10);
+        var isLeap = (endYear % 4 === 0 && endYear % 100 !== 0) || (endYear % 400 === 0);
+        return new Date(endYear, 1, isLeap ? 29 : 28);
     },
 
     /**
@@ -781,9 +814,12 @@ const PayrollEngine = {
             })();
         if (emp) {
             if (emp.id_number) {
-                var parts = period.split('-');
-                var periodEnd = new Date(parseInt(parts[0]), parseInt(parts[1]), 0);
-                employeeOptions.age = PayrollEngine.getAgeFromId(emp.id_number, periodEnd);
+                // Age must be calculated at the END of the SA tax year (28/29 Feb), not
+                // at the end of the current pay period. SARS determines rebate tier at
+                // year-end: an employee who turns 65 any time during the tax year qualifies
+                // for the secondary rebate for the whole year.
+                var taxYearEnd = PayrollEngine.getTaxYearEndDate(period);
+                employeeOptions.age = PayrollEngine.getAgeFromId(emp.id_number, taxYearEnd);
             }
             if (emp.medical_aid_members) {
                 employeeOptions.medicalMembers = parseInt(emp.medical_aid_members) || 0;
