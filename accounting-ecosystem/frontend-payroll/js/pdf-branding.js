@@ -64,17 +64,50 @@ const PDFBranding = {
             var textX = margin;
         }
 
+        var lineY = y;
+
         doc.setFontSize(14);
-        doc.setTextColor(102, 126, 234); // #667eea
-        doc.text(details.company_name || details.name || (company && company.name) || 'Company', textX, y + 7);
+        doc.setTextColor(102, 126, 234);
+        doc.text(details.company_name || details.name || (company && company.name) || 'Company', textX, lineY + 7);
+        lineY += 7;
+
+        // Trading name (only if different from company name)
+        if (details.trading_name && details.trading_name !== (details.company_name || '')) {
+            doc.setFontSize(7.5);
+            doc.setTextColor(80, 80, 80);
+            doc.text('t/a ' + details.trading_name, textX, lineY + 4.5);
+            lineY += 4.5;
+        }
+
+        // Compact refs line: Reg | PAYE | UIF | SDL
+        var refs = [];
+        if (details.reg_number) refs.push('Reg: ' + details.reg_number);
+        if (details.paye_ref)   refs.push('PAYE: ' + details.paye_ref);
+        if (details.uif_ref)    refs.push('UIF: ' + details.uif_ref);
+        if (details.sdl_ref)    refs.push('SDL: ' + details.sdl_ref);
+        if (refs.length > 0) {
+            doc.setFontSize(6.5);
+            doc.setTextColor(120, 120, 120);
+            doc.text(refs.join('  |  '), textX, lineY + 4);
+            lineY += 4;
+        }
 
         doc.setFontSize(7.5);
         doc.setTextColor(120, 120, 120);
-        if (details.address_line1) doc.text(details.address_line1, textX, y + 12);
-        if (details.phone) doc.text('Tel: ' + details.phone + (details.email ? '  |  Email: ' + details.email : ''), textX, y + 16);
+        if (details.address_line1) {
+            doc.text(details.address_line1, textX, lineY + 4);
+            lineY += 4;
+        }
+        if (details.phone || details.email) {
+            var contactParts = [];
+            if (details.phone) contactParts.push('Tel: ' + details.phone);
+            if (details.email) contactParts.push('Email: ' + details.email);
+            doc.text(contactParts.join('  |  '), textX, lineY + 4);
+            lineY += 4;
+        }
 
-        // PAYSLIP title
-        y = 30;
+        // PAYSLIP title — pushed below header content with minimum gap
+        y = Math.max(lineY + 6, 32);
         doc.setFillColor(102, 126, 234);
         doc.rect(margin, y, contentWidth, 8, 'F');
         doc.setFontSize(12);
@@ -243,22 +276,47 @@ const PDFBranding = {
     },
 
     // ---- Helpers ----
+
+    // Normalize a raw company record from any source (API cache, legacy key, AUTH)
+    // to consistent display field names. Returns null if no company name present.
+    // Handles both DB column names (from /api/companies/:id) and legacy short names.
+    _normalizeDetails: function(raw) {
+        if (!raw) return null;
+        var name = raw.company_name || raw.name || '';
+        if (!name) return null;
+        return {
+            company_name:  name,
+            trading_name:  raw.trading_name  || '',
+            reg_number:    raw.reg_number    || raw.registration_number    || '',
+            paye_ref:      raw.paye_ref      || raw.paye_reference_number  || '',
+            uif_ref:       raw.uif_ref       || raw.uif_reference_number   || '',
+            sdl_ref:       raw.sdl_ref       || raw.sdl_reference_number   || '',
+            address_line1: raw.address_line1 || raw.payslip_address_line1  || '',
+            phone:         raw.phone         || raw.contact_number         || '',
+            email:         raw.email         || raw.contact_email          || '',
+            logo_data:     raw.logo_data     || null
+        };
+    },
+
     getCompanyDetails: function(companyId) {
+        var n;
+
         // 1. Try legacy localStorage key (standalone Payroll App)
         try {
             var stored = safeLocalStorage.getItem('company_details_' + companyId);
             if (stored) {
-                var details = JSON.parse(stored);
-                if (details && (details.company_name || details.name)) return details;
+                n = this._normalizeDetails(JSON.parse(stored));
+                if (n) return n;
             }
         } catch(e) {}
 
         // 2. Try DataAccess cache key written by ecosystem data-access.js
+        // Raw DB record — field names normalized by _normalizeDetails (e.g. payslip_address_line1 → address_line1)
         try {
             var apiCached = safeLocalStorage.getItem('cache_company_' + companyId);
             if (apiCached) {
-                var apiData = JSON.parse(apiCached);
-                if (apiData && (apiData.company_name || apiData.name)) return apiData;
+                n = this._normalizeDetails(JSON.parse(apiCached));
+                if (n) return n;
             }
         } catch(e) {}
 
@@ -269,10 +327,11 @@ const PDFBranding = {
                 var authCompany = AUTH.getCompanyById(companyId);
                 if (authCompany) {
                     result.company_name = authCompany.company_name || authCompany.name || authCompany.trading_name || '';
-                    result.name = authCompany.name || authCompany.company_name || '';
-                    result.paye_ref = authCompany.paye_ref || '';
-                    result.uif_ref = authCompany.uif_ref || '';
-                    if (result.company_name || result.name) return result;
+                    result.name = result.company_name;
+                    result.paye_ref = authCompany.paye_ref || authCompany.paye_reference_number || '';
+                    result.uif_ref  = authCompany.uif_ref  || authCompany.uif_reference_number  || '';
+                    n = this._normalizeDetails(result);
+                    if (n) return n;
                 }
             }
         } catch(e) {}

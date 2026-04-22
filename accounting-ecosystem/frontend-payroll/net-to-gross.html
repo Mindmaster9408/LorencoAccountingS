@@ -345,6 +345,7 @@
         var itemIdCounter = 0;
         var itemRows = [];       // { id, description, type, amount }
         var lastResult = null;   // last successful calculation result
+        var _applyModalEmployees = []; // employees loaded for the apply-to-employee modal
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
@@ -631,37 +632,46 @@
         }
 
         // ========== APPLY TO EMPLOYEE MODAL ==========
-        function openApplyModal(basic) {
+        async function openApplyModal(basic) {
             document.getElementById('apply-basic-display').textContent = formatMoney(basic);
             document.getElementById('apply-error').style.display = 'none';
             document.getElementById('apply-success').style.display = 'none';
             document.getElementById('apply-confirm-btn').disabled = false;
             document.getElementById('apply-confirm-btn').textContent = 'Apply Basic Salary';
 
-            // Load employees from localStorage
-            var employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
             var sel = document.getElementById('apply-emp-select');
-            sel.innerHTML = '<option value="">— Select employee —</option>';
-            if (employees.length === 0) {
-                sel.innerHTML += '<option disabled>No employees found for this company</option>';
-            } else {
-                employees.forEach(function(emp) {
-                    var opt = document.createElement('option');
-                    opt.value = emp.id;
-                    opt.textContent = (emp.first_name || '') + ' ' + (emp.last_name || '') +
-                        (emp.employee_number ? ' (' + emp.employee_number + ')' : '');
-                    sel.appendChild(opt);
-                });
-            }
-
+            sel.innerHTML = '<option value="">Loading employees…</option>';
+            sel.disabled = true;
             document.getElementById('applyModal').style.display = 'flex';
+
+            try {
+                _applyModalEmployees = await DataAccess.getEmployees(currentCompanyId);
+                sel.innerHTML = '<option value="">— Select employee —</option>';
+                if (!_applyModalEmployees || _applyModalEmployees.length === 0) {
+                    sel.innerHTML += '<option disabled>No employees found for this company</option>';
+                } else {
+                    _applyModalEmployees.forEach(function(emp) {
+                        var opt = document.createElement('option');
+                        opt.value = emp.id;
+                        opt.textContent = ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim() +
+                            (emp.employee_number ? ' (' + emp.employee_number + ')' : '');
+                        sel.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                _applyModalEmployees = [];
+                sel.innerHTML = '<option value="">— Failed to load —</option>';
+                document.getElementById('apply-error').textContent = 'Could not load employees: ' + (err.message || 'Network error');
+                document.getElementById('apply-error').style.display = 'block';
+            }
+            sel.disabled = false;
         }
 
         function closeApplyModal() {
             document.getElementById('applyModal').style.display = 'none';
         }
 
-        function applyBasicToEmployee() {
+        async function applyBasicToEmployee() {
             if (!lastResult || !lastResult.success) { return; }
             var empId = document.getElementById('apply-emp-select').value;
             if (!empId) {
@@ -670,28 +680,34 @@
                 return;
             }
 
-            var key = 'emp_payroll_' + currentCompanyId + '_' + empId;
-            var payrollData = JSON.parse(safeLocalStorage.getItem(key) || '{"basic_salary":0,"regular_inputs":[]}');
-            var oldBasic = payrollData.basic_salary || 0;
-            payrollData.basic_salary = lastResult.basic;
-            safeLocalStorage.setItem(key, JSON.stringify(payrollData));
-
-            // Audit log
-            if (typeof AuditTrail !== 'undefined') {
-                var employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
-                var emp = employees.find(function(e) { return e.id === empId; });
-                var empName = emp ? ((emp.first_name || '') + ' ' + (emp.last_name || '')) : empId;
-                AuditTrail.log(currentCompanyId, 'UPDATE', 'payroll_setup',
-                    'Net-to-Gross: set basic salary to R' + lastResult.basic.toFixed(2) +
-                    ' (from R' + oldBasic.toFixed(2) + ') for ' + empName);
-            }
-
+            var btn = document.getElementById('apply-confirm-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
             document.getElementById('apply-error').style.display = 'none';
-            document.getElementById('apply-success').textContent =
-                'Basic salary updated to ' + formatMoney(lastResult.basic) + '. The next pay run will use this value.';
-            document.getElementById('apply-success').style.display = 'block';
-            document.getElementById('apply-confirm-btn').disabled = true;
-            document.getElementById('apply-confirm-btn').textContent = 'Applied';
+
+            try {
+                // Persist via API → updates employees.basic_salary column in Supabase
+                await DataAccess.saveEmployeePayroll(currentCompanyId, empId, { basic_salary: lastResult.basic });
+
+                // Audit log — use already-loaded employees list for name lookup
+                if (typeof AuditTrail !== 'undefined') {
+                    var emp = _applyModalEmployees.find(function(e) { return String(e.id) === String(empId); });
+                    var empName = emp ? ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim() : empId;
+                    AuditTrail.log(currentCompanyId, 'UPDATE', 'payroll_setup',
+                        'Net-to-Gross: set basic salary to R' + lastResult.basic.toFixed(2) + ' for ' + empName);
+                }
+
+                document.getElementById('apply-success').textContent =
+                    'Basic salary updated to ' + formatMoney(lastResult.basic) + '. The next pay run will use this value.';
+                document.getElementById('apply-success').style.display = 'block';
+                btn.textContent = 'Applied ✓';
+            } catch (err) {
+                document.getElementById('apply-error').textContent =
+                    'Failed to save: ' + (err.message || 'Network error. Please try again.');
+                document.getElementById('apply-error').style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Apply Basic Salary';
+            }
         }
 
         // Close modal on background click

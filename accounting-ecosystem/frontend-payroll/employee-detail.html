@@ -2826,8 +2826,24 @@
             }
             html += '<div>';
             html += '<div style="font-size: 20px; font-weight: 700; color: #667eea;">' + companyName + '</div>';
-            if (details.address_line1) html += '<div style="font-size: 12px; color: #888;">' + details.address_line1 + '</div>';
-            if (details.phone || details.email) html += '<div style="font-size: 12px; color: #888;">' + (details.phone ? 'Tel: ' + details.phone : '') + (details.phone && details.email ? '  |  ' : '') + (details.email ? 'Email: ' + details.email : '') + '</div>';
+            if (details.trading_name && details.trading_name !== companyName) {
+                html += '<div style="font-size: 12px; color: #555; margin-top: 1px;">t/a ' + details.trading_name + '</div>';
+            }
+            var screenRefs = [];
+            if (details.reg_number) screenRefs.push('Reg: ' + details.reg_number);
+            if (details.paye_ref)   screenRefs.push('PAYE: ' + details.paye_ref);
+            if (details.uif_ref)    screenRefs.push('UIF: ' + details.uif_ref);
+            if (details.sdl_ref)    screenRefs.push('SDL: ' + details.sdl_ref);
+            if (screenRefs.length > 0) {
+                html += '<div style="font-size: 11px; color: #aaa; margin-top: 2px;">' + screenRefs.join('  |  ') + '</div>';
+            }
+            if (details.address_line1) html += '<div style="font-size: 12px; color: #888; margin-top: 2px;">' + details.address_line1 + '</div>';
+            if (details.phone || details.email) {
+                var screenContact = [];
+                if (details.phone) screenContact.push('Tel: ' + details.phone);
+                if (details.email) screenContact.push('Email: ' + details.email);
+                html += '<div style="font-size: 12px; color: #888;">' + screenContact.join('  |  ') + '</div>';
+            }
             html += '</div></div>';
 
             // Payslip Title Bar
