@@ -438,14 +438,25 @@ router.post(
       }
 
       // Lock all draft snapshots in this run
-      const locked = await PayrollHistoryService.lockSnapshotsForPeriod(
-        supabase, req.companyId, period_key, req.user.userId, run_id
-      );
+      let locked;
+      try {
+        locked = await PayrollHistoryService.lockSnapshotsForPeriod(
+          supabase, req.companyId, period_key, req.user.userId, run_id
+        );
+      } catch (lockErr) {
+        console.error('[finalize] lockSnapshotsForPeriod failed:', lockErr);
+        return res.status(500).json({ success: false, error: 'Failed to lock snapshots', detail: lockErr.message });
+      }
 
       // Mark the run as finalized
-      await PayrollHistoryService.finalizePayrollRun(
-        supabase, run_id, req.user.userId
-      );
+      try {
+        await PayrollHistoryService.finalizePayrollRun(
+          supabase, run_id, req.user.userId
+        );
+      } catch (finalErr) {
+        console.error('[finalize] finalizePayrollRun failed:', finalErr);
+        return res.status(500).json({ success: false, error: 'Failed to finalize run', detail: finalErr.message });
+      }
 
       // Audit log
       try {
