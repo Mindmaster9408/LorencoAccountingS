@@ -97,6 +97,20 @@ function prepareSnapshot(
     calculation_input: JSON.parse(JSON.stringify(normalizedInput)), // Deep copy
     calculation_output: JSON.parse(JSON.stringify(calculationOutput)), // Deep copy
 
+    // === Tax Context (explicit discrete fields per spec — for audit, PDF, IRP5 compliance) ===
+    // These are surfaced from calculation_output._meta so they are first-class fields
+    // on the snapshot, not buried inside the output blob.
+    tax_context: {
+      tax_year:               calculationOutput._meta?.taxYear          || null,
+      tax_config_used:        calculationOutput._meta?.taxConfig        || null,
+      age_at_tax_year_end:    normalizedInput.age                       != null ? normalizedInput.age : null,
+      rebate_primary:         calculationOutput._meta?.rebatePrimary    != null ? calculationOutput._meta.rebatePrimary    : null,
+      rebate_secondary:       calculationOutput._meta?.rebateSecondary  != null ? calculationOutput._meta.rebateSecondary  : null,
+      rebate_tertiary:        calculationOutput._meta?.rebateTertiary   != null ? calculationOutput._meta.rebateTertiary   : null,
+      medical_members:        normalizedInput.medical_aid_members       != null ? normalizedInput.medical_aid_members       : null,
+      medical_credit_applied: calculationOutput.medicalCredit           != null ? calculationOutput.medicalCredit           : null
+    },
+
     // === Engine Metadata (for future auditing & versioning) ===
     engine_version: calculationOutput._meta?.engineVersion || 'unknown',
     schema_version: calculationOutput._meta?.schemaVersion || '1.0',
@@ -357,6 +371,8 @@ function formatForResponse(snapshot) {
     basic_salary:   input.basic_salary != null ? input.basic_salary : null,
     // Full calculation output for payslip rendering (all 16 fields)
     calculation_output: snapshot.calculation_output,
+    // Explicit tax context block (age, rebates, medical — discrete fields per spec)
+    tax_context:        snapshot.tax_context || null,
     // calculation_input is internal — not exposed to frontend by default
     _includes_input: !!snapshot.calculation_input
   };
@@ -385,6 +401,7 @@ async function saveSnapshot(supabase, snapshot, payrollRunId = null) {
     period_key:          snapshot.period_key,
     calculation_input:   snapshot.calculation_input,
     calculation_output:  snapshot.calculation_output,
+    tax_context:         snapshot.tax_context || null,
     engine_version:      snapshot.engine_version,
     schema_version:      snapshot.schema_version,
     status:              snapshot.status || 'draft',

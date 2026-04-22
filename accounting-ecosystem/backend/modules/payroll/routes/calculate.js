@@ -134,6 +134,23 @@ router.post(
         });
       }
 
+      // STEP 1b: Finalization guard.
+      // If a locked snapshot already exists for this employee + period, return it
+      // directly without recalculating. Finalized payslips are immutable by design.
+      const existingSnapshot = await PayrollHistoryService.getSnapshot(
+        supabase, req.companyId, empId, period_key
+      );
+      if (existingSnapshot && existingSnapshot.is_locked) {
+        const formatted = PayrollHistoryService.formatForResponse(existingSnapshot);
+        return res.json({
+          success:   true,
+          data:      formatted.calculation_output || {},
+          snapshot:  formatted,
+          locked:    true,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       // STEP 2: Fetch and normalize calculation inputs
       let normalizedInputs;
       try {
