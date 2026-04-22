@@ -1611,9 +1611,49 @@
                 updatePayrollEngineFromYear(yr);
             }
 
+            // If the logged-in user is a super admin (managing practice / Infinite Legacy),
+            // also save this as the global ecosystem standard so all client companies
+            // that have no company-specific tax_config will automatically use these tables.
+            var _isSuperAdmin = (localStorage.getItem('isSuperAdmin') === 'true' ||
+                                 localStorage.getItem('eco_super_admin') === 'true');
+            if (_isSuperAdmin && currentEditingYear === activeCalcYear) {
+                var _globalCfg = {
+                    TAX_YEAR:    yr.label,
+                    BRACKETS:    yr.brackets.map(function(b) {
+                        return { min: b.min, max: (b.max === Infinity || b.max === '' || b.max === undefined || b.max === null || b.max > 9e14) ? null : Number(b.max), base: b.base, rate: b.rate };
+                    }),
+                    PRIMARY_REBATE:            yr.primary_rebate,
+                    SECONDARY_REBATE:          yr.secondary_rebate,
+                    TERTIARY_REBATE:           yr.tertiary_rebate,
+                    UIF_RATE:                  yr.uif_rate,
+                    UIF_MONTHLY_CAP:           yr.uif_monthly_cap,
+                    SDL_RATE:                  yr.sdl_rate,
+                    MEDICAL_CREDIT_MAIN:       yr.medical_credit_main,
+                    MEDICAL_CREDIT_FIRST_DEP:  yr.medical_credit_first_dep,
+                    MEDICAL_CREDIT_ADDITIONAL: yr.medical_credit_additional
+                };
+                try {
+                    var _xhrG = new XMLHttpRequest();
+                    _xhrG.open('PUT', '/api/payroll/kv/global/tax_config', true);
+                    _xhrG.setRequestHeader('Content-Type', 'application/json');
+                    var _tok = localStorage.getItem('paytime_token') || localStorage.getItem('token') || '';
+                    if (_tok) _xhrG.setRequestHeader('Authorization', 'Bearer ' + _tok);
+                    _xhrG.onload = function() {
+                        if (_xhrG.status === 200) {
+                            console.log('[TaxConfig] Global ecosystem tax standard updated.');
+                        } else {
+                            console.warn('[TaxConfig] Global save failed (' + _xhrG.status + '):', _xhrG.responseText);
+                        }
+                    };
+                    _xhrG.onerror = function() { console.warn('[TaxConfig] Global save request error.'); };
+                    _xhrG.send(JSON.stringify({ value: _globalCfg }));
+                } catch(e) { console.warn('[TaxConfig] Could not propagate global tax config:', e.message); }
+            }
+
             AuditTrail.logUpdate(currentCompanyId || 'system', 'tax_tables', 'Saved tax tables for ' + currentEditingYear);
             showTaxMsg('success', '✅ Tax tables saved for ' + currentEditingYear + '.' +
-                (currentEditingYear === activeCalcYear ? ' All payroll calculations now use these values.' : ' Set as active year to use for calculations.'));
+                (currentEditingYear === activeCalcYear ? ' All payroll calculations now use these values.' : ' Set as active year to use for calculations.') +
+                (_isSuperAdmin && currentEditingYear === activeCalcYear ? ' Global ecosystem standard updated.' : ''));
         }
 
         function showTaxMsg(type, text) {

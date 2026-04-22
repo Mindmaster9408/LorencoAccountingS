@@ -179,6 +179,11 @@ router.post(
       // STEP 3: Fetch admin-configured tax tables from Supabase KV.
       // The backend engine cannot use localStorage, so we load the tax_config
       // stored by the Tax Configuration UI and pass it directly to the engine.
+      //
+      // Lookup order:
+      //   1. Company-specific config (company_id = req.companyId)
+      //   2. Global ecosystem default (company_id = '__global__') — set by super admin
+      //      in Infinite Legacy / managing practice account.
       let taxConfig = null;
       try {
         const { data: kvRow } = await supabase
@@ -189,6 +194,22 @@ router.post(
           .maybeSingle();
         if (kvRow && kvRow.value) {
           taxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+        }
+        // Fallback: if this company has no custom tax_config, use the global standard
+        // set by the super admin (stored with sentinel company_id = '__global__').
+        if (!taxConfig) {
+          const { data: globalKvRow } = await supabase
+            .from('payroll_kv_store_eco')
+            .select('value')
+            .eq('company_id', '__global__')
+            .eq('key', 'tax_config')
+            .maybeSingle();
+          if (globalKvRow && globalKvRow.value) {
+            taxConfig = typeof globalKvRow.value === 'string'
+              ? JSON.parse(globalKvRow.value)
+              : globalKvRow.value;
+            console.log('[payroll/calculate] Using global tax_config (no company-specific override).');
+          }
         }
       } catch (kvErr) {
         console.warn('[payroll/calculate] Could not load tax_config from KV:', kvErr.message);

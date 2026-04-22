@@ -134,4 +134,41 @@ router.delete('/:key', requirePermission('PAYROLL.CREATE'), guardSensitiveKey, a
     }
 });
 
+// ── PUT /api/payroll/kv/global/:key  →  upsert an ecosystem-wide default ─────
+// Requires super_admin or business_owner role.
+// Writes with the sentinel company_id = '__global__' so all companies without
+// a company-specific override will fall through to this value.
+// Used by the Tax Configuration UI in the managing-practice (Infinite Legacy)
+// account to propagate standard tax tables to all clients.
+router.put('/global/:key', async (req, res) => {
+    const userRole = req.user && req.user.role;
+    if (!['super_admin', 'business_owner'].includes(userRole)) {
+        return res.status(403).json({
+            error: 'Insufficient permissions to write global ecosystem defaults',
+            required: 'super_admin or business_owner'
+        });
+    }
+    try {
+        const key = req.params.key;
+        let val = req.body.value;
+        if (typeof val === 'string') {
+            try { val = JSON.parse(val); } catch (_) {}
+        }
+
+        const { error } = await supabase
+            .from(TABLE)
+            .upsert(
+                { company_id: '__global__', key, value: val, updated_at: new Date().toISOString() },
+                { onConflict: 'company_id,key' }
+            );
+
+        if (error) throw error;
+        console.log(`[payroll/kv] Global key '${key}' updated by user role '${userRole}'.`);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('PUT /api/payroll/kv/global/:key error:', err.message);
+        res.status(500).json({ error: 'Database write failed' });
+    }
+});
+
 module.exports = router;
