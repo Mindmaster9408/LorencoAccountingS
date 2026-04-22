@@ -1038,7 +1038,17 @@ const PayrollEngine = {
      * @returns {number} Total scheduled hours in [startDate, endDate]
      */
     countScheduledHours: function(startDate, endDate, workSchedule, defaultHoursPerDay) {
-        if (!workSchedule || !workSchedule.length) return 0;
+        // No schedule defined — fall back to standard Mon-Fri 8hr workweek so pro-rata
+        // still produces a sensible factor for mid-month starters/leavers.
+        if (!workSchedule || !workSchedule.length) {
+            workSchedule = [
+                { day: 'MON', enabled: true, type: 'normal' },
+                { day: 'TUE', enabled: true, type: 'normal' },
+                { day: 'WED', enabled: true, type: 'normal' },
+                { day: 'THU', enabled: true, type: 'normal' },
+                { day: 'FRI', enabled: true, type: 'normal' }
+            ];
+        }
         var start = typeof startDate === 'string' ? new Date(startDate) : startDate;
         var end   = typeof endDate === 'string' ? new Date(endDate)     : endDate;
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;

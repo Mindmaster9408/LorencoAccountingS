@@ -240,9 +240,14 @@ router.post(
           const periodStart  = normalizedInputs.period_start_date;
           const periodEnd    = normalizedInputs.period_end_date;
 
+          // Pro-rata is only meaningful when the hire/leave date falls WITHIN the period.
+          // If hire_date is after the period end (e.g. employee added retroactively), skip
+          // auto-proration — the user explicitly selected them, treat as full-month.
           const autoNeedsProRata =
-            (empStartDate && periodStart && empStartDate > periodStart) ||
-            (empEndDate   && periodEnd   && empEndDate   < periodEnd);
+            (empStartDate && periodStart && periodEnd &&
+              empStartDate > periodStart && empStartDate <= periodEnd) ||
+            (empEndDate   && periodStart && periodEnd &&
+              empEndDate   < periodEnd   && empEndDate  >= periodStart);
 
           // Caller-explicit global dates override auto-detected employee dates
           const effectiveStartDate = start_date  || (autoNeedsProRata ? empStartDate  : null);
