@@ -327,7 +327,7 @@ const PayrollEngine = {
     _calcAnnualTaxBreakdown: function(annualGross, age, tables) {
         if (annualGross <= 0) return { grossTax: 0, rebate: 0, netTax: 0 };
         var t = tables || this;
-        var brackets = (t.BRACKETS && t.BRACKETS.length) ? t.BRACKETS : this.BRACKETS;
+        var brackets = t.BRACKETS;
         var grossTax = 0;
         for (var i = 0; i < brackets.length; i++) {
             var b = brackets[i];
@@ -337,9 +337,10 @@ const PayrollEngine = {
                 break;
             }
         }
-        var rebate = (typeof t.PRIMARY_REBATE   === 'number' ? t.PRIMARY_REBATE   : this.PRIMARY_REBATE);
-        if (age && age >= 65) rebate += (typeof t.SECONDARY_REBATE === 'number' ? t.SECONDARY_REBATE : this.SECONDARY_REBATE);
-        if (age && age >= 75) rebate += (typeof t.TERTIARY_REBATE  === 'number' ? t.TERTIARY_REBATE  : this.TERTIARY_REBATE);
+        // Use tables values directly — no fallback to engine defaults.
+        var rebate = t.PRIMARY_REBATE;
+        if (age && age >= 65) rebate += t.SECONDARY_REBATE;
+        if (age && age >= 75) rebate += t.TERTIARY_REBATE;
         var netTax = Math.max(grossTax - rebate, 0);
         return { grossTax: this.r2(grossTax), rebate: rebate, netTax: this.r2(netTax) };
     },
@@ -353,12 +354,10 @@ const PayrollEngine = {
     calculateMedicalCredit: function(numMembers, tables) {
         if (!numMembers || numMembers <= 0) return 0;
         var t = tables || this;
-        var main       = typeof t.MEDICAL_CREDIT_MAIN       === 'number' ? t.MEDICAL_CREDIT_MAIN       : this.MEDICAL_CREDIT_MAIN;
-        var firstDep   = typeof t.MEDICAL_CREDIT_FIRST_DEP  === 'number' ? t.MEDICAL_CREDIT_FIRST_DEP  : this.MEDICAL_CREDIT_FIRST_DEP;
-        var additional = typeof t.MEDICAL_CREDIT_ADDITIONAL === 'number' ? t.MEDICAL_CREDIT_ADDITIONAL : this.MEDICAL_CREDIT_ADDITIONAL;
-        if (numMembers === 1) return main;
-        if (numMembers === 2) return main + firstDep;
-        return main + firstDep + (numMembers - 2) * additional;
+        // Use tables values directly — no fallback to engine defaults.
+        if (numMembers === 1) return t.MEDICAL_CREDIT_MAIN;
+        if (numMembers === 2) return t.MEDICAL_CREDIT_MAIN + t.MEDICAL_CREDIT_FIRST_DEP;
+        return t.MEDICAL_CREDIT_MAIN + t.MEDICAL_CREDIT_FIRST_DEP + (numMembers - 2) * t.MEDICAL_CREDIT_ADDITIONAL;
     },
 
     // === CORE CALCULATION FUNCTIONS ===
@@ -374,7 +373,7 @@ const PayrollEngine = {
     calculateAnnualPAYE: function(annualGross, age, tables) {
         if (annualGross <= 0) return 0;
         var t = tables || this;
-        var brackets = (t.BRACKETS && t.BRACKETS.length) ? t.BRACKETS : this.BRACKETS;
+        var brackets = t.BRACKETS;
         var tax = 0;
         for (var i = 0; i < brackets.length; i++) {
             var b = brackets[i];
@@ -385,9 +384,11 @@ const PayrollEngine = {
                 break;
             }
         }
-        tax -= (typeof t.PRIMARY_REBATE   === 'number' ? t.PRIMARY_REBATE   : this.PRIMARY_REBATE);
-        if (age && age >= 65) tax -= (typeof t.SECONDARY_REBATE === 'number' ? t.SECONDARY_REBATE : this.SECONDARY_REBATE);
-        if (age && age >= 75) tax -= (typeof t.TERTIARY_REBATE  === 'number' ? t.TERTIARY_REBATE  : this.TERTIARY_REBATE);
+        // Use tables values directly — no fallback to engine defaults.
+        // When taxConfig exists, t = taxOverride and ALL values must come from it.
+        tax -= t.PRIMARY_REBATE;
+        if (age && age >= 65) tax -= t.SECONDARY_REBATE;
+        if (age && age >= 75) tax -= t.TERTIARY_REBATE;
         return Math.max(tax, 0);
     },
 
@@ -517,9 +518,8 @@ const PayrollEngine = {
      */
     calculateUIF: function(monthlyGross, tables) {
         var t = tables || this;
-        var rate = typeof t.UIF_RATE        === 'number' ? t.UIF_RATE        : this.UIF_RATE;
-        var cap  = typeof t.UIF_MONTHLY_CAP === 'number' ? t.UIF_MONTHLY_CAP : this.UIF_MONTHLY_CAP;
-        return this.r2(Math.min(monthlyGross * rate, cap));
+        // Use tables values directly — no fallback to engine defaults.
+        return this.r2(Math.min(monthlyGross * t.UIF_RATE, t.UIF_MONTHLY_CAP));
     },
 
     /**
@@ -529,8 +529,8 @@ const PayrollEngine = {
      */
     calculateSDL: function(monthlyGross, tables) {
         var t = tables || this;
-        var rate = typeof t.SDL_RATE === 'number' ? t.SDL_RATE : this.SDL_RATE;
-        return this.r2(monthlyGross * rate);
+        // Use tables values directly — no fallback to engine defaults.
+        return this.r2(monthlyGross * t.SDL_RATE);
     },
 
     // === PERIOD-AWARE TAX TABLE SELECTION ===
@@ -580,18 +580,18 @@ const PayrollEngine = {
      * @returns {Object} Tables object with BRACKETS, PRIMARY_REBATE, etc.
      */
     getTablesForPeriod: function(periodStr, taxOverride) {
-        if (!periodStr) return taxOverride || this;
+        // taxOverride (admin-configured KV tables) is the absolute single source of truth.
+        // When provided it takes precedence over ALL hardcoded defaults AND historical tables.
+        // Rule: "If taxConfig exists — NOTHING ELSE may influence tax calculation."
+        if (taxOverride) return taxOverride;
+        if (!periodStr) return this;
         var taxYear = this.getTaxYearForPeriod(periodStr);
-        // Current year → use taxOverride if provided (backend KV config), else `this`
-        if (taxYear === this.TAX_YEAR) return taxOverride || this;
-        // Override explicitly targets this tax year (forward-compatibility: applies even
-        // when the engine's hardcoded TAX_YEAR hasn't been updated to the override year).
-        if (taxOverride && taxOverride.TAX_YEAR === taxYear) return taxOverride;
-        // Historical year → use hardcoded verified tables (override not applied to historical)
+        if (taxYear === this.TAX_YEAR) return this;
+        // Historical year → use hardcoded verified tables
         if (this.HISTORICAL_TABLES[taxYear]) return this.HISTORICAL_TABLES[taxYear];
         // Future or unknown year → use latest known tables as best estimate
         var keys = Object.keys(this.HISTORICAL_TABLES).sort();
-        return this.HISTORICAL_TABLES[keys[keys.length - 1]] || taxOverride || this;
+        return this.HISTORICAL_TABLES[keys[keys.length - 1]] || this;
     },
 
     /**
@@ -630,6 +630,20 @@ const PayrollEngine = {
         // Select the correct tax tables for the period (auto-applies historical brackets).
         // taxOverride: pre-built tables from backend KV config (Node.js cannot use localStorage).
         var tables = period ? this.getTablesForPeriod(period, taxOverride) : (taxOverride || this);
+
+        // Debug: log which tax source is active for this calculation run.
+        console.log('[PayrollEngine] TAX SOURCE:', JSON.stringify({
+            source: taxOverride ? 'taxConfig (KV override)' : (period ? 'historical/engine-default' : 'engine-default'),
+            TAX_YEAR: tables.TAX_YEAR || this.TAX_YEAR,
+            PRIMARY_REBATE: tables.PRIMARY_REBATE,
+            SECONDARY_REBATE: tables.SECONDARY_REBATE,
+            TERTIARY_REBATE: tables.TERTIARY_REBATE,
+            MEDICAL_CREDIT_MAIN: tables.MEDICAL_CREDIT_MAIN,
+            UIF_RATE: tables.UIF_RATE,
+            UIF_MONTHLY_CAP: tables.UIF_MONTHLY_CAP,
+            SDL_RATE: tables.SDL_RATE,
+            bracketCount: tables.BRACKETS ? tables.BRACKETS.length : 0
+        }));
 
         // Split taxable income into periodic (annualised × 12) and once-off (added once).
         // This ensures bonuses/overtime are not incorrectly projected × 12 in annual PAYE.

@@ -49,7 +49,28 @@ function buildEffectiveTables(cfg) {
             return { min: b.min, max: max, base: b.base, rate: b.rate };
         });
     }
+
+    // Validate all required fields are present in the taxConfig.
+    // Missing fields fall back to engine defaults but produce a warning — this indicates
+    // the KV config is incomplete and the super admin should re-save via Tax Configuration UI.
+    var missingFields = [];
+    var numericFields = [
+        'PRIMARY_REBATE', 'SECONDARY_REBATE', 'TERTIARY_REBATE',
+        'UIF_RATE', 'UIF_MONTHLY_CAP', 'SDL_RATE',
+        'MEDICAL_CREDIT_MAIN', 'MEDICAL_CREDIT_FIRST_DEP', 'MEDICAL_CREDIT_ADDITIONAL'
+    ];
+    numericFields.forEach(function(f) {
+        if (typeof cfg[f] !== 'number') missingFields.push(f);
+    });
+    if (!Array.isArray(cfg.BRACKETS) || !cfg.BRACKETS.length) missingFields.push('BRACKETS');
+    if (missingFields.length > 0) {
+        console.warn('[PayrollCalculationService] taxConfig is missing fields: ' + missingFields.join(', ') +
+            ' — engine defaults used for those fields. Re-save Tax Configuration to resolve.');
+    }
+
     return {
+        // TAX_YEAR included so getTablesForPeriod can match historical periods to the override.
+        TAX_YEAR:                  cfg.TAX_YEAR || null,
         BRACKETS:                  Array.isArray(cfg.BRACKETS) && cfg.BRACKETS.length ? normalizeBrackets(cfg.BRACKETS) : PayrollEngine.BRACKETS,
         PRIMARY_REBATE:            typeof cfg.PRIMARY_REBATE            === 'number' ? cfg.PRIMARY_REBATE            : PayrollEngine.PRIMARY_REBATE,
         SECONDARY_REBATE:          typeof cfg.SECONDARY_REBATE          === 'number' ? cfg.SECONDARY_REBATE          : PayrollEngine.SECONDARY_REBATE,
