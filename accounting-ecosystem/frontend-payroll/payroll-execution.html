@@ -1253,6 +1253,105 @@
     }
 
     // ==========================================================================
+    // FEATURE — PAYSLIP PREVIEW (from snapshot, read-only)
+    // ==========================================================================
+    function openPayslipPreview(snap) {
+        var emp = getEmployee(snap.employee_id);
+        var name = emp
+            ? ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim()
+            : 'Employee #' + snap.employee_id;
+
+        var out   = snap.calculation_output || {};
+        var items = snap.payslip_line_items  || [];
+        var basicSalary = snap.basic_salary != null ? Number(snap.basic_salary) : Number(out.gross || 0);
+
+        // Separate income vs deduction line items
+        var incomeItems     = items.filter(function(i) { return i.type !== 'deduction'; });
+        var deductionItems  = items.filter(function(i) { return i.type === 'deduction'; });
+
+        var statusLabel = snap.is_locked ? 'Finalized' : 'Draft';
+        var periodLabel = snap.period_key || '—';
+
+        document.getElementById('payslip-preview-name').textContent = name;
+        document.getElementById('payslip-preview-meta').textContent =
+            'Period: ' + periodLabel + '  ·  ' + statusLabel +
+            (snap.engine_version ? '  ·  Engine ' + snap.engine_version : '');
+
+        var html = '';
+
+        // ── EARNINGS ──
+        html += '<div class="payslip-section-label">Earnings</div>';
+        html += payslipLine('Basic Salary', basicSalary, '');
+
+        // Additional income items (allowances, benefits, etc.)
+        incomeItems.forEach(function(item) {
+            var amt = Number(item.amount || 0);
+            if (amt !== 0) html += payslipLine(esc(item.description || item.type || 'Income'), amt, '');
+        });
+
+        // Overtime and short-time from engine output
+        var overtimeAmt   = Number(out.overtimeAmount  || 0);
+        var shortTimeAmt  = Number(out.shortTimeAmount || 0);
+        if (overtimeAmt  > 0) html += payslipLine('Overtime', overtimeAmt, '');
+        if (shortTimeAmt > 0) html += payslipLine('Short-Time Adjustment', -shortTimeAmt, '');
+
+        html += payslipLine('Total Gross', out.gross || 0, 'total-line gross-line');
+
+        // ── DEDUCTIONS ──
+        html += '<div class="payslip-section-label">Statutory Deductions</div>';
+        html += payslipLine('PAYE (Income Tax)', -(out.paye || 0), 'deduction-line');
+        html += payslipLine('UIF (Employee)', -(out.uif  || 0), 'deduction-line');
+        html += payslipLine('SDL (Employer)', -(out.sdl  || 0), 'deduction-line');
+
+        var volTax = Number(out.voluntary_overdeduction || 0);
+        if (volTax > 0) html += payslipLine('Voluntary Tax', -volTax, 'deduction-line');
+
+        var medCredit = Number(out.medicalCredit || 0);
+        if (medCredit > 0) html += payslipLine('Medical Aid Credit', medCredit, '');
+
+        // Additional deduction items
+        deductionItems.forEach(function(item) {
+            var amt = Number(item.amount || 0);
+            if (amt !== 0) html += payslipLine(esc(item.description || 'Deduction'), -Math.abs(amt), 'deduction-line');
+        });
+
+        html += payslipLine('Total Deductions', -(out.deductions || 0), 'total-line deduction-line');
+
+        // ── NET PAY ──
+        html += '<div class="payslip-line net-line">' +
+            '<span class="label">NET PAY</span>' +
+            '<span class="amount">' + fmt(out.net || 0) + '</span>' +
+        '</div>';
+
+        // Pro-rata note
+        if (out.prorataFactor != null && out.prorataFactor < 1) {
+            html += '<div style="margin-top:12px;padding:10px 14px;background:#fff3cd;border-radius:8px;font-size:0.8rem;color:#856404;">' +
+                '⚠ Pro-rata applied: ' + Math.round(out.prorataFactor * 100) + '% of full-month salary' +
+            '</div>';
+        }
+
+        document.getElementById('payslip-preview-body').innerHTML = html;
+        document.getElementById('payslipPreviewModal').classList.add('show');
+    }
+
+    function payslipLine(label, amount, extraClass) {
+        var n = Number(amount);
+        return '<div class="payslip-line ' + extraClass + '">' +
+            '<span class="label">' + label + '</span>' +
+            '<span class="amount">' + fmt(n) + '</span>' +
+        '</div>';
+    }
+
+    function closePayslipPreview() {
+        document.getElementById('payslipPreviewModal').classList.remove('show');
+    }
+
+    // Close payslip modal on backdrop click
+    document.getElementById('payslipPreviewModal').addEventListener('click', function(e) {
+        if (e.target === this) closePayslipPreview();
+    });
+
+    // ==========================================================================
     // FEATURE 5 — RUN DETAIL VIEW
     // ==========================================================================
     async function loadRunDetail(runId) {

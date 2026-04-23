@@ -5,7 +5,7 @@
  * then include <script src="js/sidebar.js"></script> before the page inline script.
  *
  * Active state: auto-detected from window.location.pathname filename.
- * First match wins — handles payruns.html appearing twice (Pay Runs + Payslips).
+ * First match wins.
  *
  * The page-level loadCompaniesCarousel() function populates #companies-carousel
  * after this script injects it into the DOM.
@@ -16,7 +16,7 @@
     var SIDEBAR_ITEMS = [
         { label: '📊 Dashboard',           href: 'company-dashboard.html' },
         { label: '👥 Employees',           href: 'employee-management.html' },
-        { label: '💰 Payslips',            href: 'payruns.html' },
+        { label: '💰 Payroll',              href: 'payroll-execution.html' },
         { label: '⚙️ Execute Payroll',     href: 'payroll-execution.html' },
         { label: '📋 Payroll Items',       href: 'payroll-items.html' },
         { label: '⏰ Attendance',           href: 'attendance.html' },
