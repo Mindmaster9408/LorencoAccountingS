@@ -134,6 +134,29 @@ router.delete('/:key', requirePermission('PAYROLL.CREATE'), guardSensitiveKey, a
     }
 });
 
+// ── GET /api/payroll/kv/global/:key  →  read an ecosystem-wide default ───────
+// Any authenticated user with PAYROLL.VIEW can read the global config.
+// Used by the Tax Configuration UI to display the active global standard
+// as read-only for non-governance companies.
+router.get('/global/:key', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+    try {
+        const key = req.params.key;
+        const { data, error } = await supabase
+            .from(TABLE)
+            .select('value, updated_at')
+            .eq('company_id', '__global__')
+            .eq('key', key)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return res.json({ ok: true, value: null, source: 'global' });
+        res.json({ ok: true, value: data.value, updated_at: data.updated_at, source: 'global' });
+    } catch (err) {
+        console.error('GET /api/payroll/kv/global/:key error:', err.message);
+        res.status(500).json({ error: 'Database read failed' });
+    }
+});
+
 // ── PUT /api/payroll/kv/global/:key  →  upsert an ecosystem-wide default ─────
 // Requires super_admin or business_owner role.
 // Writes with the sentinel company_id = '__global__' so all companies without

@@ -180,18 +180,42 @@ router.post(
         supabase, req.companyId, period_key, visibleIds.length, req.user.userId
       );
 
-      // ── Load admin-configured tax tables from KV (once, shared across all employees) ──
-      // Backend engine cannot use localStorage — load tax_config from Supabase KV.
+      // ── Load tax tables from KV (once, shared across all employees in this run) ──
+      // Resolution order:
+      //   1. Global record (__global__) — authoritative standard maintained by Infinite Legacy
+      //   2. Company-specific record    — transitional fallback only
+      //   3. null                       — engine uses hardcoded SA defaults
+      //
+      // Global is checked FIRST so that all companies automatically use the centrally
+      // governed current-year tax table without any per-company configuration required.
       let batchTaxConfig = null;
       try {
-        const { data: kvRow } = await supabase
+        const { data: globalKv } = await supabase
           .from('payroll_kv_store_eco')
           .select('value')
-          .eq('company_id', req.companyId)
+          .eq('company_id', '__global__')
           .eq('key', 'tax_config')
           .maybeSingle();
-        if (kvRow && kvRow.value) {
-          batchTaxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+
+        if (globalKv && globalKv.value) {
+          batchTaxConfig = typeof globalKv.value === 'string'
+            ? JSON.parse(globalKv.value) : globalKv.value;
+          console.log(`[payruns] tax_config source=global for company ${req.companyId}`);
+        } else {
+          // Transitional: company may have configured its own table before global was published
+          const { data: companyKv } = await supabase
+            .from('payroll_kv_store_eco')
+            .select('value')
+            .eq('company_id', req.companyId)
+            .eq('key', 'tax_config')
+            .maybeSingle();
+          if (companyKv && companyKv.value) {
+            batchTaxConfig = typeof companyKv.value === 'string'
+              ? JSON.parse(companyKv.value) : companyKv.value;
+            console.log(`[payruns] tax_config source=company-specific for company ${req.companyId} (no global found)`);
+          } else {
+            console.warn(`[payruns] No tax_config found (global or company) — engine will use hardcoded defaults for company ${req.companyId}`);
+          }
         }
       } catch (kvErr) {
         console.warn('[payruns] Could not load tax_config from KV:', kvErr.message);

@@ -850,11 +850,14 @@
             currentCompanyId = session.company_id;
             PayrollEngine.loadTaxConfig(); // Load Supabase-stored tax tables if set
 
-            // Show Tax Configuration section only for super_admin
+            // Tax Configuration: visible to all, but editable only for super_admin.
+            // Non-super_admin companies see the global standard as read-only.
+            var tcSection = document.getElementById('taxConfigSection');
+            if (tcSection) tcSection.style.display = '';
             if (session.is_super_admin || session.role === 'super_admin') {
-                var tcSection = document.getElementById('taxConfigSection');
-                if (tcSection) tcSection.style.display = '';
                 initTaxConfig();
+            } else {
+                initTaxConfigReadOnly();
             }
 
             loadPageData();
@@ -1613,9 +1616,10 @@
 
             // If the logged-in user is a super admin (managing practice / Infinite Legacy),
             // also save this as the global ecosystem standard so all client companies
-            // that have no company-specific tax_config will automatically use these tables.
-            var _isSuperAdmin = (localStorage.getItem('isSuperAdmin') === 'true' ||
-                                 localStorage.getItem('eco_super_admin') === 'true');
+            // automatically use these tables without any per-company configuration.
+            var _authSession = AUTH.getSession();
+            var _isSuperAdmin = _authSession &&
+                (_authSession.is_super_admin === true || _authSession.role === 'super_admin');
             if (_isSuperAdmin && currentEditingYear === activeCalcYear) {
                 var _globalCfg = {
                     TAX_YEAR:    yr.label,
@@ -1734,6 +1738,100 @@
             loadTaxYearIntoForm(currentEditingYear);
         }
 
+        // ─── READ-ONLY GLOBAL TAX CONFIG (non-super_admin companies) ──────────
+        // Fetches the global tax config from the API and displays it as read-only.
+        // Non-governance companies consume this standard; they cannot edit it.
+        function initTaxConfigReadOnly() {
+            var session = AUTH.getSession();
+            var token = (session && session.token) || localStorage.getItem('token') || '';
+
+            // Hide year management controls — not relevant for read-only consumers
+            var btnAddYear = document.querySelector('[onclick="addNewTaxYear()"]');
+            if (btnAddYear) btnAddYear.style.display = 'none';
+            document.getElementById('taxYearTabs').style.display = 'none';
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/api/payroll/kv/global/tax_config', true);
+            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+            xhr.onload = function() {
+                if (xhr.status !== 200) {
+                    showGlobalConfigBanner('warning', '⚠️ Could not load global tax standard. Contact your administrator.');
+                    updateTaxLockState(true);
+                    return;
+                }
+                try {
+                    var resp = JSON.parse(xhr.responseText);
+                    if (!resp.value) {
+                        showGlobalConfigBanner('warning', '⚠️ Global tax standard not yet published. Contact your administrator (Infinite Legacy).');
+                        updateTaxLockState(true);
+                        return;
+                    }
+                    displayGlobalTaxConfig(resp.value, resp.updated_at);
+                } catch (e) {
+                    showGlobalConfigBanner('warning', '⚠️ Could not parse global tax config. Contact your administrator.');
+                    updateTaxLockState(true);
+                }
+            };
+            xhr.onerror = function() {
+                showGlobalConfigBanner('warning', '⚠️ Could not reach server to load global tax standard.');
+                updateTaxLockState(true);
+            };
+            xhr.send();
+        }
+
+        function displayGlobalTaxConfig(cfg, updatedAt) {
+            document.getElementById('tcTaxYear').value   = cfg.TAX_YEAR || '';
+            document.getElementById('tcPrimary').value   = cfg.PRIMARY_REBATE   != null ? cfg.PRIMARY_REBATE   : '';
+            document.getElementById('tcSecondary').value = cfg.SECONDARY_REBATE != null ? cfg.SECONDARY_REBATE : '';
+            document.getElementById('tcTertiary').value  = cfg.TERTIARY_REBATE  != null ? cfg.TERTIARY_REBATE  : '';
+            document.getElementById('tcUifRate').value   = cfg.UIF_RATE         != null ? cfg.UIF_RATE         : '';
+            document.getElementById('tcUifCap').value    = cfg.UIF_MONTHLY_CAP  != null ? cfg.UIF_MONTHLY_CAP  : '';
+            document.getElementById('tcSdlRate').value   = cfg.SDL_RATE         != null ? cfg.SDL_RATE         : '';
+            document.getElementById('tcMedMain').value   = cfg.MEDICAL_CREDIT_MAIN        != null ? cfg.MEDICAL_CREDIT_MAIN        : '';
+            document.getElementById('tcMedFirst').value  = cfg.MEDICAL_CREDIT_FIRST_DEP   != null ? cfg.MEDICAL_CREDIT_FIRST_DEP   : '';
+            document.getElementById('tcMedAddl').value   = cfg.MEDICAL_CREDIT_ADDITIONAL  != null ? cfg.MEDICAL_CREDIT_ADDITIONAL  : '';
+
+            if (Array.isArray(cfg.BRACKETS)) {
+                var tbody = document.getElementById('taxBracketsBody');
+                var iStyle = 'width:110px;padding:5px;border:1px solid var(--border,#ccc);border-radius:5px;background:var(--surface-alt,#f8f9fa);color:var(--text,#333);text-align:right;';
+                tbody.innerHTML = cfg.BRACKETS.map(function(b, idx) {
+                    var maxVal = (b.max === null || b.max === undefined || b.max > 9e14) ? '' : b.max;
+                    return '<tr>'
+                        + '<td style="padding:7px 8px;text-align:center;opacity:0.5;">' + (idx + 1) + '</td>'
+                        + '<td style="padding:7px 8px;text-align:right;"><input type="number" class="tax-bracket-min"  value="' + b.min    + '" style="' + iStyle + '" readonly></td>'
+                        + '<td style="padding:7px 8px;text-align:right;"><input type="number" class="tax-bracket-max"  value="' + maxVal  + '" placeholder="∞" style="' + iStyle + '" readonly></td>'
+                        + '<td style="padding:7px 8px;text-align:right;"><input type="number" class="tax-bracket-base" value="' + b.base   + '" style="' + iStyle + '" readonly></td>'
+                        + '<td style="padding:7px 8px;text-align:right;"><input type="number" class="tax-bracket-rate" step="0.01" value="' + (b.rate * 100).toFixed(2) + '" style="width:80px;padding:5px;border:1px solid var(--border,#ccc);border-radius:5px;background:var(--surface-alt,#f8f9fa);color:var(--text,#333);text-align:right;" readonly></td>'
+                        + '</tr>';
+                }).join('');
+            }
+
+            updateTaxLockState(true);
+            document.getElementById('taxYearBadge').textContent = '🌐 Global Standard: ' + (cfg.TAX_YEAR || 'Not set');
+
+            var updStr = updatedAt ? ' (published ' + new Date(updatedAt).toLocaleDateString('en-ZA') + ')' : '';
+            showGlobalConfigBanner('info', '🌐 Global Standard tax tables — governed by Infinite Legacy' + updStr + '. Your payroll calculations use these values automatically.');
+
+            // Remove year-management controls irrelevant to read-only consumers
+            var btnSetActive = document.getElementById('btnSetActive');
+            if (btnSetActive) btnSetActive.style.display = 'none';
+        }
+
+        function showGlobalConfigBanner(type, text) {
+            var banner = document.getElementById('taxActiveBanner');
+            banner.style.display = 'block';
+            if (type === 'info') {
+                banner.style.background = '#e0e7ff';
+                banner.style.color      = '#3730a3';
+                banner.style.border     = '1px solid #c7d2fe';
+            } else {
+                banner.style.background = '#fef3c7';
+                banner.style.color      = '#92400e';
+                banner.style.border     = '1px solid #fbbf24';
+            }
+            banner.textContent = text;
+        }
+
         function renderTaxYearTabs() {
             var container = document.getElementById('taxYearTabs');
             if (!container) return;
@@ -1814,7 +1912,7 @@
             banner.style.color      = isActive ? '#065f46' : '#92400e';
             banner.style.border     = '1px solid ' + (isActive ? '#6ee7b7' : '#fbbf24');
             banner.textContent      = isActive
-                ? '✅ This is the active tax year used for all payroll calculations.'
+                ? '✅ Global Standard — This is the active tax year. Values saved here are published to all companies automatically.'
                 : '⚠️ This year is NOT currently active. Click "Set as Active Year" to use it for calculations.';
 
             updateTaxLockState(yr.is_finalized);
