@@ -1071,7 +1071,9 @@
             return;
         }
         if (!res.ok || !res.data.success) {
-            showToast(res.data.error || 'Finalization failed. Please try again.', 'error');
+            var errMsg = res.data.error || 'Finalization failed. Please try again.';
+            if (res.data.detail) errMsg += ' — ' + res.data.detail;
+            showToast(errMsg, 'error');
             return;
         }
 

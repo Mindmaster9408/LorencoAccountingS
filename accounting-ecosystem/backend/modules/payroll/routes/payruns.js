@@ -481,7 +481,7 @@ router.post(
       res.status(500).json({
         success: false,
         error: 'Internal server error during payroll finalization',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+        detail: err.message
       });
     }
   }
