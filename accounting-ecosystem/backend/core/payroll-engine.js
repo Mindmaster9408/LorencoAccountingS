@@ -39,7 +39,23 @@
 //   medicalCredit:                  {number} — monthly medical tax credit (Section 6A/6B)
 //   overtimeAmount:                 {number} — overtime earnings (calculated separately)
 //   shortTimeAmount:                {number} — short-time deductions (calculated separately)
+//   preTaxDeductions:               {number} — qualifying pre-tax deductions (pension, RA)
+//   netOnlyDeductions:              {number} — net-only deductions (medical aid, garnishee)
+//   periodicTaxableGross:           {number} — recurring taxable gross (annualised × 12)
+//   onceOffTaxableGross:            {number} — once-off taxable gross (never annualised)
+//   taxBeforeRebate:                {number} — monthly bracket tax before age rebates
+//   rebate:                         {number} — monthly total age rebate (primary+secondary+tertiary)
+//   primary_rebate_annual:          {number} — annual primary rebate from active tax tables
+//   secondary_rebate_annual:        {number} — annual secondary rebate (age >= 65)
+//   tertiary_rebate_annual:         {number} — annual tertiary rebate (age >= 75)
+//   uif_monthly_cap:                {number} — UIF monthly cap from active tax tables
+//   marginal_rate:                  {string} — marginal bracket rate e.g. "26%"
+//   marginal_bracket:               {string} — marginal bracket range e.g. "R237,101 - R370,500"
+//   tax_year:                       {string} — active tax year e.g. "2026/2027"
 // }
+// NOTE: All display fields (primary_rebate_annual … tax_year) come from the SAME tables
+// object used for the calculation. Frontend must use these fields exclusively for explanation
+// text — NO frontend engine calls, NO hardcoded defaults.
 //
 // OUTPUT RULES:
 // - All numeric values are rounded to 2 decimal places (cents)
@@ -846,6 +862,30 @@ const PayrollEngine = {
         var taxBreakdown = PayrollEngine._calcAnnualTaxBreakdown(annualEquivalentForDisplay, opts.age, tables);
         var monthlyMedCredit = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
 
+        // === MARGINAL BRACKET LOOKUP (payslip display transparency) ===
+        // Uses the same tables object as the PAYE calculation — guaranteed consistent.
+        // Computed here so the frontend never needs to import tables or calculate brackets.
+        var _dispBrackets = tables.BRACKETS;
+        var _marginalRate = '';
+        var _marginalBracket = '';
+        if (_dispBrackets && _dispBrackets.length > 0) {
+            for (var _bi = 0; _bi < _dispBrackets.length; _bi++) {
+                var _db = _dispBrackets[_bi];
+                var _dbMax = (_db.max === null || _db.max === undefined) ? Infinity : _db.max;
+                if (annualEquivalentForDisplay <= _dbMax) {
+                    _marginalRate = Math.round(_db.rate * 100) + '%';
+                    var _minFmt = _db.min === 0 ? 'R0' : 'R' + _db.min.toLocaleString('en-ZA');
+                    if (_dbMax === Infinity) {
+                        var _prevMax = _bi > 0 ? _dispBrackets[_bi - 1].max : _db.min;
+                        _marginalBracket = 'Above R' + _prevMax.toLocaleString('en-ZA');
+                    } else {
+                        _marginalBracket = _minFmt + ' - R' + _dbMax.toLocaleString('en-ZA');
+                    }
+                    break;
+                }
+            }
+        }
+
         return {
             gross: PayrollEngine.r2(gross),
             taxableGross: PayrollEngine.r2(taxableGross),
@@ -873,7 +913,19 @@ const PayrollEngine = {
             // rebate: monthly sum of applicable age rebates (primary + secondary + tertiary)
             // Breakdown: taxBeforeRebate - rebate - medicalCredit = PAYE (before floor)
             taxBeforeRebate: PayrollEngine.r2(taxBreakdown.grossTax / 12),
-            rebate: PayrollEngine.r2(taxBreakdown.rebate / 12)
+            rebate: PayrollEngine.r2(taxBreakdown.rebate / 12),
+            // === ADDITIVE FIELDS (payslip explanation transparency) ===
+            // These fields allow the frontend to display accurate tax explanation text
+            // WITHOUT any frontend tax engine, bracket lookup, or hardcoded defaults.
+            // ALL values are derived from the SAME tables object used for this calculation.
+            // Rule: frontend is display-only. One engine. One source of truth.
+            primary_rebate_annual:   tables.PRIMARY_REBATE,
+            secondary_rebate_annual: tables.SECONDARY_REBATE,
+            tertiary_rebate_annual:  tables.TERTIARY_REBATE,
+            uif_monthly_cap:         tables.UIF_MONTHLY_CAP,
+            marginal_rate:           _marginalRate,
+            marginal_bracket:        _marginalBracket,
+            tax_year:                tables.TAX_YEAR || this.TAX_YEAR
         };
     },
 

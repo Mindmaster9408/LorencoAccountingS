@@ -164,8 +164,8 @@ const NarrativeGenerator = {
 
     // ---- Breakdown ----
     generateBreakdown: function(calc, payrollData, period) {
-        var _taxYearRaw = (typeof PayrollEngine !== 'undefined')
-            ? PayrollEngine.getTaxYearForPeriod(period) : '';
+        // tax_year comes from the backend calculation result — no frontend engine call needed.
+        var _taxYearRaw = calc.tax_year || '';
         var _taxYearDisplay = _taxYearRaw
             ? _taxYearRaw.replace(/(\d{4})\/(\d{4})/, function(m, y1, y2) { return y1 + '/' + y2.slice(2); })
             : '';
@@ -221,7 +221,9 @@ const NarrativeGenerator = {
             category: 'Statutory Deductions',
             name: 'UIF (Unemployment Insurance)',
             amount: calc.uif,
-            description: 'Unemployment insurance contribution at 1% of gross salary' + (calc.uif >= 177.12 ? ' (capped at R177.12/month)' : '') + '. Your employer also contributes 1%.',
+            description: 'Unemployment insurance contribution at 1% of gross salary' +
+                (calc.uif >= (calc.uif_monthly_cap || 177.12) ? ' (capped at ' + this.formatMoney(calc.uif_monthly_cap || 177.12) + '/month)' : '') +
+                '. Your employer also contributes 1%.',
             type: 'deduction'
         });
 
@@ -244,80 +246,46 @@ const NarrativeGenerator = {
     },
 
     // ---- Tax Explanation ----
+    // ARCHITECTURE RULE: Frontend is display-only. There is ONE payroll engine: backend/core/payroll-engine.js.
+    // This function uses ONLY values from the backend calculation result (calc).
+    // NO frontend PayrollEngine calls. NO hardcoded tax defaults. NO bracket lookups.
+    // All tax fields (primary_rebate_annual, marginal_rate, marginal_bracket, uif_monthly_cap,
+    // tax_year) are populated by the backend engine using the active Supabase KV tax tables.
     generateTaxExplanation: function(calc, period) {
         var annualGross = calc.gross * 12;
-        var tables = (typeof PayrollEngine !== 'undefined')
-            ? PayrollEngine.getTablesForPeriod(period)
-            : null;
-        var taxYear = (typeof PayrollEngine !== 'undefined')
-            ? PayrollEngine.getTaxYearForPeriod(period)
-            : PayrollEngine && PayrollEngine.TAX_YEAR;
 
-        // TRACE C — log what the frontend PayrollEngine knows about tax config
-        if (typeof PayrollEngine !== 'undefined') {
-            console.log('[narrative-generator TRACE C] Frontend PayrollEngine state:');
-            console.log('  PayrollEngine.PRIMARY_REBATE (this):', PayrollEngine.PRIMARY_REBATE);
-            console.log('  PayrollEngine.TAX_YEAR:', PayrollEngine.TAX_YEAR);
-            console.log('  period requested:', period, '→ resolved tax year:', taxYear);
-            console.log('  tables object returned by getTablesForPeriod:', tables === PayrollEngine ? 'this (frontend engine defaults)' : 'historical table');
-            console.log('  tables.PRIMARY_REBATE:', tables ? tables.PRIMARY_REBATE : 'null');
+        // All values come directly from the backend calculation result.
+        // The backend engine resolves: global KV config -> company KV config -> engine defaults.
+        // Frontend never participates in this resolution.
+        var primaryRebateAnnual = calc.primary_rebate_annual || (calc.rebate ? calc.rebate * 12 : 0);
+        var uifCap              = calc.uif_monthly_cap || 177.12;
+        var marginalRate        = calc.marginal_rate   || '';
+        var marginalBracket     = calc.marginal_bracket || '';
+
+        // TRACE D — confirm backend display fields are flowing through correctly.
+        // After fix: primary_rebate_annual should equal global KV PRIMARY_REBATE (e.g. 17820).
+        console.log('[narrative-generator TRACE D] Tax explanation source (backend calc):', JSON.stringify({
+            primary_rebate_annual:   calc.primary_rebate_annual,
+            rebate_monthly:          calc.rebate,
+            rebate_annual_derived:   calc.rebate ? Math.round(calc.rebate * 12 * 100) / 100 : null,
+            marginal_rate:           calc.marginal_rate,
+            marginal_bracket:        calc.marginal_bracket,
+            uif_monthly_cap:         calc.uif_monthly_cap,
+            tax_year:                calc.tax_year,
+            taxBeforeRebate_monthly: calc.taxBeforeRebate,
+            primaryRebateAnnual_used: primaryRebateAnnual
+        }));
+
+        var text = 'Based on your monthly gross of ' + this.formatMoney(calc.gross) +
+            ', your annualized income is ' + this.formatMoney(annualGross) + '. ';
+        if (marginalRate && marginalBracket) {
+            text += 'Your marginal tax rate is ' + marginalRate + ' (bracket: ' + marginalBracket + '). ';
         }
-
-        // TRACE D — log what the backend calculation actually produced
-        console.log('[narrative-generator TRACE D] Backend calc output:');
-        console.log('  calc.paye:', calc.paye);
-        console.log('  calc.paye_base:', calc.paye_base);
-        console.log('  calc.rebate (monthly, from backend):', calc.rebate);
-        console.log('  calc.taxBeforeRebate (monthly, from backend):', calc.taxBeforeRebate);
-        console.log('  Annual rebate (calc.rebate * 12):', calc.rebate ? calc.rebate * 12 : 'not in calc object');
-
-        // Format tax year as e.g. "2026/27" for display
-        var taxYearDisplay = taxYear
-            ? taxYear.replace(/(\d{4})\/(\d{4})/, function(m, y1, y2) {
-                return y1 + '/' + y2.slice(2);
-              })
-            : '';
-
-        // Determine marginal bracket from PayrollEngine tables (single source of truth)
-        var bracket = '';
-        var rate = '';
-        var primaryRebate = 17235;
-        var uifCap = 177.12;
-
-        if (tables && tables.BRACKETS) {
-            primaryRebate = tables.PRIMARY_REBATE || primaryRebate;
-            uifCap = (tables.UIF_MONTHLY_CAP !== undefined) ? tables.UIF_MONTHLY_CAP : uifCap;
-            // TRACE E — log the exact primaryRebate value used in explanation text
-            console.log('[narrative-generator TRACE E] primaryRebate resolved from tables.PRIMARY_REBATE:', tables.PRIMARY_REBATE,
-                '→ explanation will show:', primaryRebate);
-            var brackets = tables.BRACKETS;
-            for (var i = 0; i < brackets.length; i++) {
-                if (annualGross <= brackets[i].max) {
-                    var b = brackets[i];
-                    var minFmt = b.min === 0 ? 'R0' : 'R' + b.min.toLocaleString('en-ZA');
-                    var maxFmt = b.max === Infinity ? 'Above R' + brackets[i - 1].max.toLocaleString('en-ZA') : 'R' + b.max.toLocaleString('en-ZA');
-                    bracket = b.max === Infinity
-                        ? 'Above R' + brackets[brackets.length - 2].max.toLocaleString('en-ZA')
-                        : minFmt + ' - ' + maxFmt;
-                    rate = Math.round(b.rate * 100) + '%';
-                    break;
-                }
-            }
-        } else {
-            // Fallback if PayrollEngine not loaded
-            if (annualGross <= 237100) { bracket = 'R0 - R237,100'; rate = '18%'; }
-            else if (annualGross <= 370500) { bracket = 'R237,101 - R370,500'; rate = '26%'; }
-            else if (annualGross <= 512800) { bracket = 'R370,501 - R512,800'; rate = '31%'; }
-            else if (annualGross <= 673000) { bracket = 'R512,801 - R673,000'; rate = '36%'; }
-            else if (annualGross <= 857900) { bracket = 'R673,001 - R857,900'; rate = '39%'; }
-            else if (annualGross <= 1817000) { bracket = 'R857,901 - R1,817,000'; rate = '41%'; }
-            else { bracket = 'Above R1,817,000'; rate = '45%'; }
+        if (primaryRebateAnnual > 0) {
+            text += 'A primary rebate of ' + this.formatMoney(primaryRebateAnnual) + ' is applied annually, reducing your effective tax. ';
         }
-
-        var text = 'Based on your monthly gross of ' + this.formatMoney(calc.gross) + ', your annualized income is ' + this.formatMoney(annualGross) + '. ';
-        text += 'Your marginal tax rate is ' + rate + ' (bracket: ' + bracket + '). ';
-        text += 'A primary rebate of ' + this.formatMoney(primaryRebate) + ' is applied annually, reducing your effective tax. ';
-        text += 'Your UIF contribution is 1% of gross' + (calc.uif >= uifCap ? ', capped at the maximum of ' + this.formatMoney(uifCap) + ' per month' : '') + '.';
+        text += 'Your UIF contribution is 1% of gross' +
+            (calc.uif >= uifCap ? ', capped at the maximum of ' + this.formatMoney(uifCap) + ' per month' : '') + '.';
 
         return text;
     },
