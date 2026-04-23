@@ -186,30 +186,58 @@ router.post(
       //      in Infinite Legacy / managing practice account.
       let taxConfig = null;
       try {
-        const { data: kvRow } = await supabase
+        // TRACE A — company-specific KV lookup
+        const { data: kvRow, error: kvErr1 } = await supabase
           .from('payroll_kv_store_eco')
           .select('value')
           .eq('company_id', req.companyId)
           .eq('key', 'tax_config')
           .maybeSingle();
-        if (kvRow && kvRow.value) {
+        const companyRowFound = !!(kvRow && kvRow.value);
+        if (companyRowFound) {
           taxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
         }
+        console.log('[calculate.js TRACE A] company_id:', req.companyId,
+          '| company-specific tax_config row found:', companyRowFound,
+          kvErr1 ? '| DB error: ' + kvErr1.message : '');
+
         // Fallback: if this company has no custom tax_config, use the global standard
         // set by the super admin (stored with sentinel company_id = '__global__').
+        let globalRowFound = false;
         if (!taxConfig) {
-          const { data: globalKvRow } = await supabase
+          const { data: globalKvRow, error: kvErr2 } = await supabase
             .from('payroll_kv_store_eco')
             .select('value')
             .eq('company_id', '__global__')
             .eq('key', 'tax_config')
             .maybeSingle();
-          if (globalKvRow && globalKvRow.value) {
+          globalRowFound = !!(globalKvRow && globalKvRow.value);
+          if (globalRowFound) {
             taxConfig = typeof globalKvRow.value === 'string'
               ? JSON.parse(globalKvRow.value)
               : globalKvRow.value;
-            console.log('[payroll/calculate] Using global tax_config (no company-specific override).');
           }
+          console.log('[calculate.js TRACE A] __global__ tax_config row found:', globalRowFound,
+            kvErr2 ? '| DB error: ' + kvErr2.message : '');
+        }
+
+        // TRACE B — final taxConfig summary
+        console.log('[calculate.js TRACE B] taxConfig selected source:',
+          taxConfig ? (companyRowFound ? 'company-specific' : '__global__') : 'NONE (engine defaults will apply)');
+        if (taxConfig) {
+          console.log('[calculate.js TRACE B] taxConfig values:', JSON.stringify({
+            TAX_YEAR:          taxConfig.TAX_YEAR,
+            PRIMARY_REBATE:    taxConfig.PRIMARY_REBATE,
+            SECONDARY_REBATE:  taxConfig.SECONDARY_REBATE,
+            TERTIARY_REBATE:   taxConfig.TERTIARY_REBATE,
+            MEDICAL_CREDIT_MAIN: taxConfig.MEDICAL_CREDIT_MAIN,
+            UIF_RATE:          taxConfig.UIF_RATE,
+            UIF_MONTHLY_CAP:   taxConfig.UIF_MONTHLY_CAP,
+            SDL_RATE:          taxConfig.SDL_RATE,
+            bracketCount:      Array.isArray(taxConfig.BRACKETS) ? taxConfig.BRACKETS.length : 0
+          }));
+        } else {
+          console.warn('[calculate.js TRACE B] NO taxConfig loaded — engine will use hardcoded defaults (PRIMARY_REBATE = 17235)');
         }
       } catch (kvErr) {
         console.warn('[payroll/calculate] Could not load tax_config from KV:', kvErr.message);

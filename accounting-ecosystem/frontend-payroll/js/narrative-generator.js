@@ -253,6 +253,24 @@ const NarrativeGenerator = {
             ? PayrollEngine.getTaxYearForPeriod(period)
             : PayrollEngine && PayrollEngine.TAX_YEAR;
 
+        // TRACE C — log what the frontend PayrollEngine knows about tax config
+        if (typeof PayrollEngine !== 'undefined') {
+            console.log('[narrative-generator TRACE C] Frontend PayrollEngine state:');
+            console.log('  PayrollEngine.PRIMARY_REBATE (this):', PayrollEngine.PRIMARY_REBATE);
+            console.log('  PayrollEngine.TAX_YEAR:', PayrollEngine.TAX_YEAR);
+            console.log('  period requested:', period, '→ resolved tax year:', taxYear);
+            console.log('  tables object returned by getTablesForPeriod:', tables === PayrollEngine ? 'this (frontend engine defaults)' : 'historical table');
+            console.log('  tables.PRIMARY_REBATE:', tables ? tables.PRIMARY_REBATE : 'null');
+        }
+
+        // TRACE D — log what the backend calculation actually produced
+        console.log('[narrative-generator TRACE D] Backend calc output:');
+        console.log('  calc.paye:', calc.paye);
+        console.log('  calc.paye_base:', calc.paye_base);
+        console.log('  calc.rebate (monthly, from backend):', calc.rebate);
+        console.log('  calc.taxBeforeRebate (monthly, from backend):', calc.taxBeforeRebate);
+        console.log('  Annual rebate (calc.rebate * 12):', calc.rebate ? calc.rebate * 12 : 'not in calc object');
+
         // Format tax year as e.g. "2026/27" for display
         var taxYearDisplay = taxYear
             ? taxYear.replace(/(\d{4})\/(\d{4})/, function(m, y1, y2) {
@@ -269,6 +287,9 @@ const NarrativeGenerator = {
         if (tables && tables.BRACKETS) {
             primaryRebate = tables.PRIMARY_REBATE || primaryRebate;
             uifCap = (tables.UIF_MONTHLY_CAP !== undefined) ? tables.UIF_MONTHLY_CAP : uifCap;
+            // TRACE E — log the exact primaryRebate value used in explanation text
+            console.log('[narrative-generator TRACE E] primaryRebate resolved from tables.PRIMARY_REBATE:', tables.PRIMARY_REBATE,
+                '→ explanation will show:', primaryRebate);
             var brackets = tables.BRACKETS;
             for (var i = 0; i < brackets.length; i++) {
                 if (annualGross <= brackets[i].max) {
