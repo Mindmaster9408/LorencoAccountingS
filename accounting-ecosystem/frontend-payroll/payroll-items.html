@@ -1640,7 +1640,7 @@
                     var _xhrG = new XMLHttpRequest();
                     _xhrG.open('PUT', '/api/payroll/kv/global/tax_config', true);
                     _xhrG.setRequestHeader('Content-Type', 'application/json');
-                    var _tok = localStorage.getItem('paytime_token') || localStorage.getItem('token') || '';
+                    var _tok = safeLocalStorage.getItem('token') || '';
                     if (_tok) _xhrG.setRequestHeader('Authorization', 'Bearer ' + _tok);
                     _xhrG.onload = function() {
                         if (_xhrG.status === 200) {
@@ -1743,7 +1743,7 @@
         // Non-governance companies consume this standard; they cannot edit it.
         function initTaxConfigReadOnly() {
             var session = AUTH.getSession();
-            var token = (session && session.token) || localStorage.getItem('token') || '';
+            var token = safeLocalStorage.getItem('token') || '';
 
             // Hide year management controls — not relevant for read-only consumers
             var btnAddYear = document.querySelector('[onclick="addNewTaxYear()"]');

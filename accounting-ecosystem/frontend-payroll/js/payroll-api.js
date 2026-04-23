@@ -16,7 +16,7 @@ var PayrollAPI = (function () {
     'use strict';
 
     var BASE = window.location.origin + '/api/payroll';
-    var ls   = window.safeLocalStorage || window.localStorage;
+    var ls   = window.safeLocalStorage;
 
     function getToken() {
         return ls.getItem('token');
