@@ -224,15 +224,12 @@ var DataAccess = (function() {
         },
 
         saveCurrentInputs: async function(companyId, empId, period, inputs) {
-            try {
-                await POST('/payroll/transactions/inputs', {
-                    employee_id: empId,
-                    period_key: period,
-                    inputs: inputs
-                });
-            } catch(e) {
-                cacheSet('emp_current_' + companyId + '_' + empId + '_' + period, inputs);
-            }
+            // Errors propagate — callers must handle; no silent browser fallback.
+            await POST('/payroll/transactions/inputs', {
+                employee_id: empId,
+                period_key: period,
+                inputs: inputs
+            });
         },
 
         getOvertime: async function(companyId, empId, period) {
@@ -245,13 +242,9 @@ var DataAccess = (function() {
         },
 
         saveOvertime: async function(companyId, empId, period, entries) {
-            try {
-                await POST('/payroll/transactions/overtime', {
-                    employee_id: empId, period_key: period, entries: entries
-                });
-            } catch(e) {
-                cacheSet('emp_overtime_' + companyId + '_' + empId + '_' + period, entries);
-            }
+            await POST('/payroll/transactions/overtime', {
+                employee_id: empId, period_key: period, entries: entries
+            });
         },
 
         getShortTime: async function(companyId, empId, period) {
@@ -264,13 +257,9 @@ var DataAccess = (function() {
         },
 
         saveShortTime: async function(companyId, empId, period, entries) {
-            try {
-                await POST('/payroll/transactions/short-time', {
-                    employee_id: empId, period_key: period, entries: entries
-                });
-            } catch(e) {
-                cacheSet('emp_short_time_' + companyId + '_' + empId + '_' + period, entries);
-            }
+            await POST('/payroll/transactions/short-time', {
+                employee_id: empId, period_key: period, entries: entries
+            });
         },
 
         getMultiRate: async function(companyId, empId, period) {
@@ -283,13 +272,9 @@ var DataAccess = (function() {
         },
 
         saveMultiRate: async function(companyId, empId, period, entries) {
-            try {
-                await POST('/payroll/transactions/multi-rate', {
-                    employee_id: empId, period_key: period, entries: entries
-                });
-            } catch(e) {
-                cacheSet('emp_multi_rate_' + companyId + '_' + empId + '_' + period, entries);
-            }
+            await POST('/payroll/transactions/multi-rate', {
+                employee_id: empId, period_key: period, entries: entries
+            });
         },
 
         // === PAYSLIP STATUS ===
@@ -305,14 +290,10 @@ var DataAccess = (function() {
         },
 
         savePayslipStatus: async function(companyId, empId, period, statusObj) {
-            try {
-                await PUT('/payroll/transactions/status', {
-                    employee_id: empId, period_key: period,
-                    status: statusObj.status || statusObj
-                });
-            } catch(e) {
-                cacheSet('emp_payslip_status_' + companyId + '_' + empId + '_' + period, statusObj);
-            }
+            await PUT('/payroll/transactions/status', {
+                employee_id: empId, period_key: period,
+                status: statusObj.status || statusObj
+            });
         },
 
         removePayslipStatus: async function(companyId, empId, period) {
@@ -402,11 +383,7 @@ var DataAccess = (function() {
         },
 
         saveNotes: async function(companyId, empId, notes) {
-            try {
-                await POST('/payroll/employees/' + empId + '/notes', { notes: notes });
-            } catch(e) {
-                cacheSet('emp_notes_' + companyId + '_' + empId, notes);
-            }
+            await POST('/payroll/employees/' + empId + '/notes', { notes: notes });
         },
 
         // === ATTENDANCE ===
@@ -423,11 +400,7 @@ var DataAccess = (function() {
         },
 
         saveAttendance: async function(companyId, dateStr, entries) {
-            try {
-                await POST('/payroll/attendance', { date: dateStr, entries: entries });
-            } catch(e) {
-                cacheSet('attendance_' + companyId + '_' + dateStr, entries);
-            }
+            await POST('/payroll/attendance', { date: dateStr, entries: entries });
         },
 
         // === HISTORICAL DATA ===
@@ -442,13 +415,9 @@ var DataAccess = (function() {
         },
 
         saveHistoricalRecord: async function(companyId, empId, period, data) {
-            try {
-                await POST('/payroll/employees/' + empId + '/historical', {
-                    period_key: period, ...data
-                });
-            } catch(e) {
-                cacheSet('emp_historical_' + companyId + '_' + empId + '_' + period, data);
-            }
+            await POST('/payroll/employees/' + empId + '/historical', {
+                period_key: period, ...data
+            });
         },
 
         removeHistoricalRecord: async function(companyId, empId, period) {
@@ -467,7 +436,8 @@ var DataAccess = (function() {
         },
 
         saveHistoricalImportLog: async function(companyId, log) {
-            cacheSet('historical_import_log_' + companyId, log);
+            // No-op: historical import log is read from /payroll/employees/historical-log
+            // Write-back to browser cache removed — no API endpoint for saves.
         },
 
         // === AUDIT LOG ===
@@ -482,25 +452,14 @@ var DataAccess = (function() {
         },
 
         saveAuditLog: function(companyId, log) {
-            cacheSet('audit_log_' + companyId, log);
+            // No-op: audit logging is handled server-side by backend middleware.
         },
 
         appendAuditLog: function(companyId, entry) {
-            // Audit is auto-logged by backend middleware
-            var log = cacheGet('audit_log_' + companyId) || [];
-            log.push(entry);
-            cacheSet('audit_log_' + companyId, log);
+            // No-op: audit is auto-logged by backend middleware.
         },
 
-        // === REPORT HISTORY ===
-
-        getReportHistory: async function(companyId) {
-            return cacheGet('report_history_' + companyId) || [];
-        },
-
-        saveReportHistory: async function(companyId, history) {
-            cacheSet('report_history_' + companyId, history);
-        },
+        // REMOVED: getReportHistory / saveReportHistory were cache-only with no API backing and no callers.
 
         // === NARRATIVE ===
 
@@ -514,13 +473,9 @@ var DataAccess = (function() {
         },
 
         saveNarrative: async function(companyId, empId, period, narrative) {
-            try {
-                await POST('/payroll/employees/' + empId + '/narrative', {
-                    period_key: period, narrative: narrative
-                });
-            } catch(e) {
-                cacheSet('narrative_' + companyId + '_' + empId + '_' + period, narrative);
-            }
+            await POST('/payroll/employees/' + empId + '/narrative', {
+                period_key: period, narrative: narrative
+            });
         },
 
         removeNarrative: async function(companyId, empId, period) {

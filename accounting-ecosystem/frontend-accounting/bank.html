@@ -1824,7 +1824,7 @@
         let selectedBankAccountId = null;
         let bankAccountsData = [];
 
-        localStorage.setItem('seanAIEnabled', 'true');
+        safeLocalStorage.setItem('seanAIEnabled', 'true');
 
         // Store uploaded files for each transaction
         const transactionFiles = {};

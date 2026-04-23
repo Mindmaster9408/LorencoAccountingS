@@ -371,8 +371,9 @@ function formatForResponse(snapshot) {
     basic_salary:   input.basic_salary != null ? input.basic_salary : null,
     // Full calculation output for payslip rendering (all 16 fields)
     calculation_output: snapshot.calculation_output,
-    // Explicit tax context block (age, rebates, medical — discrete fields per spec)
-    tax_context:        snapshot.tax_context || null,
+    // Expose regular_inputs (allowances/deductions line items) for payslip preview.
+    // These are the normalized items used in the calculation — read-only, snapshot-frozen.
+    payslip_line_items: Array.isArray(input.regular_inputs) ? input.regular_inputs : [],
     // calculation_input is internal — not exposed to frontend by default
     _includes_input: !!snapshot.calculation_input
   };

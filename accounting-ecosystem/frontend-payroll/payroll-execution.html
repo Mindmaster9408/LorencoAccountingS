@@ -349,6 +349,55 @@
         .emp-loading {
             padding: 24px; text-align: center; color: #aaa; font-size: 0.9rem;
         }
+
+        /* ── PAYSLIP PREVIEW MODAL ── */
+        .payslip-modal-box {
+            background: white; border-radius: 15px; padding: 0;
+            max-width: 560px; width: 95%; max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+        }
+        .payslip-modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 20px 28px; border-radius: 15px 15px 0 0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .payslip-modal-header h3 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+        .payslip-modal-header .sub { font-size: 0.8rem; opacity: 0.85; margin-top: 3px; }
+        .payslip-modal-body { padding: 24px 28px; }
+        .payslip-section-label {
+            font-size: 0.7rem; font-weight: 700; color: #999;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            border-bottom: 2px solid #eee; padding-bottom: 6px; margin: 18px 0 10px;
+        }
+        .payslip-section-label:first-child { margin-top: 0; }
+        .payslip-line {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 5px 0; font-size: 0.88rem; color: #444;
+        }
+        .payslip-line .label { flex: 1; }
+        .payslip-line .amount { font-weight: 600; text-align: right; }
+        .payslip-line.total-line {
+            border-top: 1px solid #e0e0e0; margin-top: 6px; padding-top: 10px;
+            font-weight: 700; font-size: 0.92rem; color: #333;
+        }
+        .payslip-line.gross-line .amount { color: #2196f3; }
+        .payslip-line.deduction-line .amount { color: #dc3545; }
+        .payslip-line.net-line {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white; border-radius: 8px; padding: 14px 16px; margin-top: 14px;
+            font-size: 1rem; font-weight: 700;
+        }
+        .payslip-line.net-line .amount { color: white; font-size: 1.05rem; }
+        .payslip-close-btn {
+            background: none; border: none; color: white; font-size: 1.4rem;
+            cursor: pointer; padding: 0; line-height: 1; opacity: 0.85;
+        }
+        .payslip-close-btn:hover { opacity: 1; }
+        .snapshot-row-clickable { cursor: pointer; }
+        .snapshot-row-clickable:hover td { background: #f0f4ff; }
+        .snapshot-row-click-hint {
+            font-size: 0.72rem; color: #aaa; font-style: italic;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/mobile-responsive.css">
@@ -535,6 +584,22 @@
 
     <!-- Toast Container -->
     <div class="toast-container" id="toast-container"></div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         PAYSLIP PREVIEW MODAL
+    ═══════════════════════════════════════════════════════════════ -->
+    <div class="modal" id="payslipPreviewModal">
+        <div class="payslip-modal-box">
+            <div class="payslip-modal-header">
+                <div>
+                    <h3 id="payslip-preview-name">Employee Payslip</h3>
+                    <div class="sub" id="payslip-preview-meta"></div>
+                </div>
+                <button class="payslip-close-btn" onclick="closePayslipPreview()">✕</button>
+            </div>
+            <div class="payslip-modal-body" id="payslip-preview-body"></div>
+        </div>
+    </div>
 
     <script src="js/polyfills.js"></script>
     <script src="js/auth.js"></script>
@@ -1155,9 +1220,10 @@
             var net   = out.net   || 0;
             var badgeClass = snap.is_locked ? 'status-finalized' : 'status-draft';
             var badgeLabel = snap.is_locked ? 'Finalized' : 'Draft';
+            var snapJson   = esc(JSON.stringify(snap));
 
-            html += '<tr>' +
-                '<td>' + name + '</td>' +
+            html += '<tr class="snapshot-row-clickable" onclick="openPayslipPreview(' + snapJson + ')" title="Click to view payslip">' +
+                '<td>' + name + ' <span class="snapshot-row-click-hint">— view payslip</span></td>' +
                 '<td><span class="status-badge ' + badgeClass + '">' + badgeLabel + '</span></td>' +
                 '<td class="amount">' + fmt(gross) + '</td>' +
                 '<td class="amount">' + fmt(out.paye || 0) + '</td>' +
@@ -1169,11 +1235,12 @@
 
         html += '</tbody></table>';
 
-        // Load full run header detail if we have a real run_id
+        // Action bar: run summary + reports link
         if (runId !== 'no-run') {
-            html += '<div style="margin-top:16px;">' +
-                '<button class="btn btn-outline btn-sm" onclick="loadRunDetail(\'' + esc(runId) + '\')">Load Full Run Summary</button>' +
-                '<div id="run-header-' + esc(runId) + '" style="margin-top:12px;"></div>' +
+            html += '<div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+                '<button type="button" class="btn btn-outline btn-sm" onclick="loadRunDetail(\'' + esc(runId) + '\')">Load Full Run Summary</button>' +
+                '<a href="reports.html" class="btn btn-outline btn-sm" style="text-decoration:none;">📊 View Reports →</a>' +
+                '<div id="run-header-' + esc(runId) + '" style="margin-top:12px;width:100%;"></div>' +
             '</div>';
         }
 
