@@ -484,28 +484,28 @@ app.get('/sean/*', (req, res) => {
 // Inventory frontend — mirrors the same pattern as /pos and /payroll
 app.use('/inventory', express.static(inventoryFrontendPath, staticOptions));
 app.get('/inventory',  (req, res) => {
-  const filePath = path.join(process.cwd(), 'frontend-inventory', 'index.html');
+  const filePath = path.join(__dirname, '..', 'frontend-inventory', 'index.html');
   res.sendFile(filePath, (err) => {
     if (err) {
-      console.error('[inventory] sendFile error:', err.message, '| path:', filePath, '| cwd:', process.cwd());
+      console.error('[inventory] sendFile error:', err.message, '| path:', filePath);
       res.status(500).json({ error: 'Inventory frontend not found', path: filePath });
     }
   });
 });
 app.get('/inventory/', (req, res) => {
-  const filePath = path.join(process.cwd(), 'frontend-inventory', 'index.html');
+  const filePath = path.join(__dirname, '..', 'frontend-inventory', 'index.html');
   res.sendFile(filePath, (err) => {
     if (err) {
-      console.error('[inventory] sendFile error:', err.message, '| path:', filePath, '| cwd:', process.cwd());
+      console.error('[inventory] sendFile error:', err.message, '| path:', filePath);
       res.status(500).json({ error: 'Inventory frontend not found', path: filePath });
     }
   });
 });
 app.get('/inventory/*', (req, res) => {
-  const filePath = path.join(process.cwd(), 'frontend-inventory', 'index.html');
+  const filePath = path.join(__dirname, '..', 'frontend-inventory', 'index.html');
   res.sendFile(filePath, (err) => {
     if (err) {
-      console.error('[inventory] sendFile error:', err.message, '| path:', filePath, '| cwd:', process.cwd());
+      console.error('[inventory] sendFile error:', err.message, '| path:', filePath);
       res.status(500).json({ error: 'Inventory frontend not found', path: filePath });
     }
   });
@@ -513,11 +513,11 @@ app.get('/inventory/*', (req, res) => {
 
 // TEMP DEBUG — remove after confirming /inventory works
 app.get('/inventory-test', (req, res) => {
-  const filePath = path.join(process.cwd(), 'frontend-inventory', 'index.html');
+  const filePath = path.join(__dirname, '..', 'frontend-inventory', 'index.html');
   res.sendFile(filePath, (err) => {
     if (err) {
       console.error('[inventory-test] error:', err.message, '| path:', filePath);
-      res.status(500).send('FAIL: ' + err.message + ' | path: ' + filePath + ' | cwd: ' + process.cwd());
+      res.status(500).send('FAIL: ' + err.message + ' | path: ' + filePath);
     }
   });
 });
