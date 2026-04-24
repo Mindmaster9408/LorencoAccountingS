@@ -7,20 +7,35 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-  --bg: #0a0e1a;
-  --surface: rgba(255,255,255,0.05);
-  --surface-hover: rgba(255,255,255,0.09);
-  --border: rgba(255,255,255,0.08);
-  --text: #f0f4ff;
-  --text-muted: rgba(240,244,255,0.5);
-  --accent: #22d3ee;
-  --accent-glow: rgba(34,211,238,0.25);
-  --danger: #f43f5e;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --purple: #a78bfa;
+  /* Lorenco Ecosystem Colour Palette */
+  --eco-bg:           #0f172a;
+  --eco-panel:        #1e1b4b;
+  --eco-panel-soft:   #312e81;
+  --eco-card:         #37325f;
+  --eco-border:       rgba(125, 211, 252, 0.35);
+  --eco-border-soft:  rgba(255, 255, 255, 0.10);
+  --eco-cyan:         #22d3ee;
+  --eco-cyan-dark:    #0891b2;
+  --eco-gold:         #f5c542;
+  --eco-green:        #34d399;
+  --eco-red:          #fb7185;
+  --eco-text:         #f8fafc;
+  --eco-muted:        #cbd5e1;
+  /* Mapped to existing variable names used throughout the rest of the stylesheet */
+  --bg:           var(--eco-bg);
+  --surface:      rgba(49, 46, 129, 0.40);
+  --surface-hover:rgba(55, 50, 95, 0.55);
+  --border:       var(--eco-border);
+  --text:         var(--eco-text);
+  --text-muted:   var(--eco-muted);
+  --accent:       var(--eco-cyan);
+  --accent-glow:  rgba(34, 211, 238, 0.25);
+  --danger:       var(--eco-red);
+  --success:      var(--eco-green);
+  --warning:      var(--eco-gold);
+  --purple:       #a78bfa;
 }
-body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg,#0a0e1a 0%,#0d1b2a 50%,#0a1628 100%); min-height: 100vh; color: var(--text); }
+body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, var(--eco-bg) 0%, var(--eco-panel) 50%, #0f1729 100%); min-height: 100vh; color: var(--text); }
 
 /* ── Topbar ── */
 .topbar { background: rgba(0,0,0,0.4); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 58px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
@@ -104,10 +119,10 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 /* ── Modal ── */
 .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(10,14,26,0.85); backdrop-filter: blur(6px); z-index: 500; align-items: center; justify-content: center; padding: 20px; }
 .modal-overlay.show { display: flex; }
-.modal { background: #0d1b2a; border: 1px solid var(--border); border-radius: 20px; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+.modal { background: var(--eco-panel); border: 1px solid var(--border); border-radius: 20px; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
 .modal-lg { max-width: 720px; }
 .modal-xl { max-width: 900px; }
-.modal-header { padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #0d1b2a; padding-bottom: 16px; border-bottom: 1px solid var(--border); z-index: 1; }
+.modal-header { padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--eco-panel); padding-bottom: 16px; border-bottom: 1px solid var(--border); z-index: 1; }
 .modal-header h3 { font-size: 1.1rem; font-weight: 700; }
 .modal-close { width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; }
 .modal-close:hover { background: rgba(244,63,94,0.2); color: #fda4af; }
@@ -314,6 +329,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
         <option value="">All Statuses</option>
         <option value="draft">Draft</option>
         <option value="sent">Sent</option>
+        <option value="partial_receipt">Partial Receipt</option>
         <option value="received">Received</option>
         <option value="cancelled">Cancelled</option>
       </select>
@@ -630,6 +646,27 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
 </div>
 
+<!-- PO RECEIVE MODAL -->
+<div class="modal-overlay" id="poReceiveModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 id="poReceiveTitle">Receive Purchase Order</h3>
+      <button class="modal-close" onclick="closeModal('poReceiveModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="poReceiveLines"></div>
+      <div class="form-field" style="margin-top:16px;">
+        <label>Notes (optional)</label>
+        <input id="poReceiveNotes" placeholder="e.g. Delivery note #123">
+      </div>
+      <div class="form-actions" style="margin-top:20px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('poReceiveModal')">Cancel</button>
+        <button type="button" class="btn btn-success" onclick="submitPoReceive()">Receive Stock</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -646,6 +683,8 @@ let _whEditId = null;
 let _supEditId = null;
 let _bomEditId = null;
 let _woCompleteId = null;
+let _poReceiveId = null;
+let _poReceiveLinesData = [];
 
 function getToken() {
   if (!token) token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
@@ -685,8 +724,8 @@ function itemTypeBadge(t) {
   return `<span class="badge ${map[t]||'badge-neutral'}">${label}</span>`;
 }
 function statusBadge(s) {
-  const map = { draft:'badge-neutral', active:'badge-success', inactive:'badge-neutral', released:'badge-info', in_progress:'badge-warning', completed:'badge-success', cancelled:'badge-danger', sent:'badge-info', received:'badge-success' };
-  return `<span class="badge ${map[s]||'badge-neutral'}">${(s||'').replace('_',' ')}</span>`;
+  const map = { draft:'badge-neutral', active:'badge-success', inactive:'badge-neutral', released:'badge-info', in_progress:'badge-warning', completed:'badge-success', cancelled:'badge-danger', sent:'badge-info', received:'badge-success', partial_receipt:'badge-warning' };
+  return `<span class="badge ${map[s]||'badge-neutral'}">${(s||'').replace(/_/g,' ')}</span>`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1110,15 +1149,76 @@ async function loadOrders() {
     const wrap = document.getElementById('ordersTable');
     if (!pos.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">🛒</div><p>No purchase orders found.</p></div>'; return; }
     wrap.innerHTML = `<table><thead><tr>
-      <th>Date</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th>
+      <th>Date</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th><th>Actions</th>
     </tr></thead><tbody>${pos.map(p=>`<tr>
       <td>${fmtDate(p.created_at)}</td>
       <td>${esc(p.suppliers?.name||'—')}</td>
       <td>${statusBadge(p.status)}</td>
       <td>${fmtR(p.total_amount)}</td>
       <td>${fmtDate(p.expected_date)}</td>
+      <td class="td-actions">${['draft','sent','partial_receipt'].includes(p.status) ? `<button class="btn btn-success btn-xs" onclick="openReceivePoModal(${p.id})">Receive</button>` : '—'}</td>
     </tr>`).join('')}</tbody></table>`;
   } catch(e) { showToast('Failed to load purchase orders', true); }
+}
+
+async function openReceivePoModal(poId) {
+  _poReceiveId = poId;
+  _poReceiveLinesData = [];
+  document.getElementById('poReceiveNotes').value = '';
+  document.getElementById('poReceiveLines').innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:16px;">Loading PO lines…</p>';
+  openModal('poReceiveModal');
+  try {
+    const d = await apiFetch('/purchase-orders/' + poId);
+    const po = d.purchase_order;
+    document.getElementById('poReceiveTitle').textContent = `Receive PO #${po.po_number || poId}`;
+    const lines = po.lines || [];
+    if (!lines.length) {
+      document.getElementById('poReceiveLines').innerHTML = '<p style="color:var(--text-muted)">No lines found on this purchase order.</p>';
+      return;
+    }
+    _poReceiveLinesData = lines;
+    const rows = lines.map((l, i) => {
+      const remaining = parseFloat(l.quantity) - parseFloat(l.received_qty || 0);
+      return `<div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <strong style="font-size:0.9rem;">${esc(l.inventory_items?.name || 'Unknown Item')}</strong>
+          <div style="font-size:0.75rem;color:var(--text-muted);">Ordered: ${l.quantity} | Received: ${l.received_qty||0} | Remaining: ${remaining.toFixed(3)}</div>
+        </div>
+        <div style="font-size:0.8rem;color:var(--text-muted);">${esc(l.inventory_items?.unit || '')}</div>
+        <input type="number" step="0.001" min="0" max="${remaining}"
+          id="rcvQty_${l.id}" value="${remaining > 0 ? remaining : 0}"
+          style="width:90px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;"
+          ${remaining <= 0 ? 'disabled' : ''}>
+      </div>`;
+    }).join('');
+    document.getElementById('poReceiveLines').innerHTML = rows;
+  } catch(e) {
+    document.getElementById('poReceiveLines').innerHTML = `<p style="color:var(--danger)">Failed to load PO: ${esc(e.message)}</p>`;
+  }
+}
+
+async function submitPoReceive() {
+  if (!_poReceiveId || !_poReceiveLinesData.length) return;
+  const notes = document.getElementById('poReceiveNotes').value.trim();
+  const lines = [];
+  for (const l of _poReceiveLinesData) {
+    const input = document.getElementById('rcvQty_' + l.id);
+    if (!input || input.disabled) continue;
+    const qty = parseFloat(input.value);
+    if (isNaN(qty) || qty <= 0) continue;
+    lines.push({ po_item_id: l.id, received_qty: qty });
+  }
+  if (!lines.length) { showToast('Enter a received quantity for at least one line', true); return; }
+  try {
+    const d = await apiFetch('/purchase-orders/' + _poReceiveId + '/receive', {
+      method: 'POST',
+      body: JSON.stringify({ lines, notes: notes || undefined })
+    });
+    closeModal('poReceiveModal');
+    showToast(`Stock received — PO is now ${d.status.replace(/_/g, ' ')}`);
+    await loadOrders();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

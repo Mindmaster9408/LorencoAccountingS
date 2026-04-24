@@ -235,42 +235,72 @@ router.post('/movements', async (req, res) => {
   }
 
   const qty = parseFloat(quantity);
+  if (isNaN(qty) || qty <= 0) {
+    return res.status(400).json({ error: 'quantity must be a positive number' });
+  }
+
+  // Determine stock delta (positive = stock in, negative = stock out)
+  // transfer and adjustment have delta 0 — they log a movement without stock update
+  const delta = ['in', 'return'].includes(type) ? qty : (type === 'out' ? -qty : 0);
+
+  if (delta !== 0) {
+    // Use atomic RPC — stock update and movement record in one DB transaction
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
+      p_company_id:    req.companyId,
+      p_item_id:       parseInt(item_id),
+      p_delta:         delta,
+      p_movement_type: type,
+      p_warehouse_id:  warehouse_id ? parseInt(warehouse_id) : null,
+      p_reference:     reference || null,
+      p_notes:         notes || null,
+      p_cost_price:    cost_price ? parseFloat(cost_price) : null,
+      p_created_by:    req.user.userId
+    });
+
+    if (rpcErr) return res.status(500).json({ error: rpcErr.message });
+    if (!rpcResult.success) {
+      const status = rpcResult.error === 'Insufficient stock' ? 422 : 400;
+      return res.status(status).json({
+        error:     rpcResult.error,
+        available: rpcResult.available,
+        requested: qty
+      });
+    }
+
+    // Fetch the newly created movement for the response
+    const { data: movement } = await supabase
+      .from('stock_movements')
+      .select('*')
+      .eq('company_id', req.companyId)
+      .eq('item_id', parseInt(item_id))
+      .eq('type', type)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    await auditFromReq(req, 'CREATE', 'stock_movement', movement?.id, { module: 'inventory', metadata: { type, qty } });
+    return res.status(201).json({ movement: movement || { item_id, type, quantity: qty } });
+  }
+
+  // For transfer / adjustment (delta = 0): insert movement record only, no stock change
   const { data: movement, error: mvErr } = await supabase
     .from('stock_movements')
     .insert({
-      company_id: req.companyId,
-      item_id: parseInt(item_id),
+      company_id:  req.companyId,
+      item_id:     parseInt(item_id),
       warehouse_id: warehouse_id ? parseInt(warehouse_id) : null,
-      type, quantity: qty,
-      reference: reference || null,
-      notes: notes || null,
-      cost_price: cost_price ? parseFloat(cost_price) : null,
-      created_by: req.user.userId
+      type,
+      quantity:    qty,
+      reference:   reference || null,
+      notes:       notes || null,
+      cost_price:  cost_price ? parseFloat(cost_price) : null,
+      created_by:  req.user.userId
     })
     .select().single();
   if (mvErr) return res.status(500).json({ error: mvErr.message });
 
-  // Update item stock level
-  const delta = ['in', 'return'].includes(type) ? qty : (type === 'out' ? -qty : 0);
-  if (delta !== 0) {
-    const { data: item } = await supabase
-      .from('inventory_items')
-      .select('current_stock')
-      .eq('id', item_id)
-      .eq('company_id', req.companyId)
-      .single();
-    if (item) {
-      const newStock = (item.current_stock || 0) + delta;
-      await supabase
-        .from('inventory_items')
-        .update({ current_stock: newStock, updated_at: new Date().toISOString() })
-        .eq('id', item_id)
-        .eq('company_id', req.companyId);
-    }
-  }
-
   await auditFromReq(req, 'CREATE', 'stock_movement', movement.id, { module: 'inventory', metadata: { type, qty } });
-  res.status(201).json({ movement });
+  return res.status(201).json({ movement });
 });
 
 // ═══ SUPPLIERS ════════════════════════════════════════════════════════════════
@@ -332,6 +362,24 @@ router.get('/purchase-orders', async (req, res) => {
   res.json({ purchase_orders: data || [] });
 });
 
+router.get('/purchase-orders/:id', async (req, res) => {
+  const { data: po, error: poErr } = await supabase
+    .from('purchase_orders')
+    .select('*, suppliers:supplier_id(name, email, phone)')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+  if (poErr || !po) return res.status(404).json({ error: 'Purchase order not found' });
+
+  const { data: lines, error: linesErr } = await supabase
+    .from('purchase_order_items')
+    .select('*, inventory_items:item_id(name, sku, unit)')
+    .eq('po_id', po.id);
+  if (linesErr) return res.status(500).json({ error: linesErr.message });
+
+  res.json({ purchase_order: { ...po, lines: lines || [] } });
+});
+
 router.post('/purchase-orders', async (req, res) => {
   const { supplier_id, notes, expected_date, items } = req.body;
   if (!supplier_id) return res.status(400).json({ error: 'supplier_id is required' });
@@ -380,6 +428,114 @@ router.put('/purchase-orders/:id', async (req, res) => {
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json({ purchase_order: data });
+});
+
+// ─── PO Receiving Flow ────────────────────────────────────────────────────────
+// POST /purchase-orders/:id/receive
+// Payload: { lines: [{ po_item_id, received_qty }], notes? }
+// Atomically receives goods: updates received_qty on each line, creates stock-in
+// movements via RPC, and updates PO status to partial_receipt or received.
+router.post('/purchase-orders/:id/receive', async (req, res) => {
+  const { lines, notes } = req.body;
+
+  if (!Array.isArray(lines) || lines.length === 0) {
+    return res.status(400).json({ error: 'lines array with at least one entry is required' });
+  }
+
+  // Verify PO belongs to this company and is in a receivable state
+  const { data: po, error: poErr } = await supabase
+    .from('purchase_orders')
+    .select('id, status, supplier_id')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+
+  if (poErr || !po) return res.status(404).json({ error: 'Purchase order not found' });
+  if (po.status === 'cancelled') return res.status(400).json({ error: 'Cannot receive against a cancelled purchase order' });
+  if (po.status === 'received')  return res.status(400).json({ error: 'Purchase order is already fully received' });
+
+  // Fetch all PO lines for this PO
+  const poItemIds = lines.map(l => parseInt(l.po_item_id)).filter(id => !isNaN(id));
+  const { data: poItems, error: itemsErr } = await supabase
+    .from('purchase_order_items')
+    .select('id, item_id, quantity, received_qty')
+    .eq('po_id', req.params.id)
+    .in('id', poItemIds);
+
+  if (itemsErr) return res.status(500).json({ error: itemsErr.message });
+
+  // Pre-validate all lines before applying any changes
+  for (const line of lines) {
+    const poItem = (poItems || []).find(i => i.id === parseInt(line.po_item_id));
+    if (!poItem) {
+      return res.status(400).json({ error: `PO line ${line.po_item_id} not found on this purchase order` });
+    }
+    const recQty = parseFloat(line.received_qty);
+    if (isNaN(recQty) || recQty <= 0) {
+      return res.status(400).json({ error: `received_qty must be > 0 for line ${line.po_item_id}` });
+    }
+    const totalWouldReceive = (parseFloat(poItem.received_qty) || 0) + recQty;
+    if (totalWouldReceive > parseFloat(poItem.quantity)) {
+      return res.status(400).json({
+        error: `Over-receiving prevented on line ${line.po_item_id}. Ordered: ${poItem.quantity}, already received: ${poItem.received_qty}, trying to receive: ${recQty}`
+      });
+    }
+  }
+
+  // Apply all lines
+  for (const line of lines) {
+    const poItem = (poItems || []).find(i => i.id === parseInt(line.po_item_id));
+    const recQty = parseFloat(line.received_qty);
+    const newReceivedQty = (parseFloat(poItem.received_qty) || 0) + recQty;
+
+    // Update received_qty on PO line
+    const { error: lineUpdateErr } = await supabase
+      .from('purchase_order_items')
+      .update({ received_qty: newReceivedQty })
+      .eq('id', poItem.id);
+    if (lineUpdateErr) return res.status(500).json({ error: lineUpdateErr.message });
+
+    // Atomic stock-in via RPC
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
+      p_company_id:    req.companyId,
+      p_item_id:       poItem.item_id,
+      p_delta:         recQty,
+      p_movement_type: 'in',
+      p_warehouse_id:  null,
+      p_reference:     `PO-${req.params.id}`,
+      p_notes:         notes || `Received from PO #${req.params.id}`,
+      p_cost_price:    null,
+      p_created_by:    req.user.userId
+    });
+
+    if (rpcErr || !rpcResult?.success) {
+      return res.status(500).json({ error: rpcErr?.message || rpcResult?.error || 'Stock update failed' });
+    }
+  }
+
+  // Determine new PO status — re-fetch all lines to check completion
+  const { data: allLines } = await supabase
+    .from('purchase_order_items')
+    .select('quantity, received_qty')
+    .eq('po_id', req.params.id);
+
+  const fullyReceived = (allLines || []).length > 0 &&
+    (allLines || []).every(l => (parseFloat(l.received_qty) || 0) >= parseFloat(l.quantity));
+  const newStatus = fullyReceived ? 'received' : 'partial_receipt';
+
+  const { data: updatedPo, error: updateErr } = await supabase
+    .from('purchase_orders')
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .select().single();
+  if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+  await auditFromReq(req, 'UPDATE', 'purchase_order', req.params.id, {
+    module: 'inventory',
+    metadata: { action: 'receive', lines_count: lines.length, new_status: newStatus }
+  });
+  res.json({ purchase_order: updatedPo, status: newStatus });
 });
 
 // ═══ CATEGORIES ══════════════════════════════════════════════════════════════

@@ -260,47 +260,60 @@ router.post('/:id/complete', async (req, res) => {
     return res.status(400).json({ error: `Cannot complete a WO in '${wo.status}' status` });
   }
 
+  // PRE-COMPLETION SAFETY CHECK: all materials must be fully issued
+  // A WO with no materials (no BOM) is allowed to complete without this check.
+  const { data: materials, error: matErr } = await supabase
+    .from('work_order_materials')
+    .select('id, item_id, required_qty, issued_qty, inventory_items:item_id(name)')
+    .eq('work_order_id', wo.id);
+  if (matErr) return res.status(500).json({ error: matErr.message });
+
+  if (materials && materials.length > 0) {
+    const missingMaterials = materials.filter(
+      m => parseFloat(m.issued_qty || 0) < parseFloat(m.required_qty || 0)
+    );
+    if (missingMaterials.length > 0) {
+      return res.status(422).json({
+        error: 'Cannot complete work order. Required materials have not been fully issued.',
+        missing_materials: missingMaterials.map(m => ({
+          material_id:  m.id,
+          item_name:    m.inventory_items?.name || 'Unknown',
+          required_qty: m.required_qty,
+          issued_qty:   m.issued_qty,
+          remaining:    parseFloat(m.required_qty) - parseFloat(m.issued_qty || 0)
+        }))
+      });
+    }
+  }
+
   const qtyProduced = quantity_produced !== undefined
     ? parseFloat(quantity_produced)
     : wo.quantity_to_produce;
   if (qtyProduced <= 0) return res.status(400).json({ error: 'quantity_produced must be > 0' });
 
-  // Record a stock-in movement for the finished goods
-  await supabase.from('stock_movements').insert({
-    company_id:  req.companyId,
-    item_id:     wo.item_id,
-    type:        'in',
-    quantity:    qtyProduced,
-    reference:   `WO ${req.params.id}`,
-    notes:       'Received from work order',
-    created_by:  req.user.userId
+  // Atomic stock-in for finished goods via RPC
+  const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
+    p_company_id:    req.companyId,
+    p_item_id:       wo.item_id,
+    p_delta:         qtyProduced,
+    p_movement_type: 'in',
+    p_warehouse_id:  null,
+    p_reference:     `WO-${req.params.id}`,
+    p_notes:         'Received from work order completion',
+    p_cost_price:    null,
+    p_created_by:    req.user.userId
   });
 
-  // Update item current_stock
-  const { data: itemRow } = await supabase
-    .from('inventory_items')
-    .select('current_stock')
-    .eq('id', wo.item_id)
-    .eq('company_id', req.companyId)
-    .single();
-  if (itemRow) {
-    await supabase
-      .from('inventory_items')
-      .update({
-        current_stock: (itemRow.current_stock || 0) + qtyProduced,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', wo.item_id)
-      .eq('company_id', req.companyId);
-  }
+  if (rpcErr) return res.status(500).json({ error: rpcErr.message });
+  if (!rpcResult.success) return res.status(500).json({ error: rpcResult.error || 'Stock update failed' });
 
   const { data, error } = await supabase
     .from('work_orders')
     .update({
-      status:              'completed',
-      quantity_produced:   qtyProduced,
-      actual_end_date:     new Date().toISOString().split('T')[0],
-      updated_at:          new Date().toISOString()
+      status:            'completed',
+      quantity_produced:  qtyProduced,
+      actual_end_date:    new Date().toISOString().split('T')[0],
+      updated_at:         new Date().toISOString()
     })
     .eq('id', req.params.id)
     .eq('company_id', req.companyId)
@@ -322,7 +335,8 @@ router.post('/:id/cancel', async (req, res) => {
 
 // ─── Issue Materials ──────────────────────────────────────────────────────────
 // Records that materials have been physically taken from stock for this WO.
-// Updates issued_qty on work_order_materials and deducts from inventory.
+// All-or-nothing: ALL materials are pre-validated before ANY stock is changed.
+// Returns 422 if any material has insufficient stock.
 router.post('/:id/issue-materials', async (req, res) => {
   const { issues } = req.body; // Array of { material_id, qty }
 
@@ -341,65 +355,71 @@ router.post('/:id/issue-materials', async (req, res) => {
     return res.status(400).json({ error: 'Can only issue materials to an in-progress work order' });
   }
 
-  const errors = [];
+  // ─── PHASE 1: Pre-validate ALL issues before applying any changes (all-or-nothing)
+  const resolvedIssues = [];
   for (const issue of issues) {
     const qty = parseFloat(issue.qty);
-    if (!issue.material_id || !qty || qty <= 0) {
-      errors.push(`Invalid issue: material_id and qty > 0 required`);
-      continue;
+    if (!issue.material_id || isNaN(qty) || qty <= 0) {
+      return res.status(422).json({ error: 'Each issue requires material_id and qty > 0' });
     }
 
-    // Get the material record
     const { data: mat } = await supabase
       .from('work_order_materials')
       .select('id, item_id, required_qty, issued_qty')
       .eq('id', parseInt(issue.material_id))
       .eq('work_order_id', wo.id)
       .single();
-
     if (!mat) {
-      errors.push(`Material ${issue.material_id} not found on this WO`);
-      continue;
+      return res.status(422).json({ error: `Material ${issue.material_id} not found on this work order` });
     }
 
-    // Update issued qty
-    await supabase
-      .from('work_order_materials')
-      .update({ issued_qty: (mat.issued_qty || 0) + qty })
-      .eq('id', mat.id);
-
-    // Deduct from inventory
+    // Confirm available stock before committing
     const { data: itemRow } = await supabase
       .from('inventory_items')
-      .select('current_stock')
+      .select('current_stock, name')
       .eq('id', mat.item_id)
       .eq('company_id', req.companyId)
       .single();
-    if (itemRow) {
-      await supabase
-        .from('inventory_items')
-        .update({
-          current_stock: Math.max(0, (itemRow.current_stock || 0) - qty),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', mat.item_id)
-        .eq('company_id', req.companyId);
+    if (!itemRow) {
+      return res.status(422).json({ error: `Inventory item for material ${issue.material_id} not found` });
+    }
+    if ((parseFloat(itemRow.current_stock) || 0) < qty) {
+      return res.status(422).json({
+        error:     `Insufficient stock for ${itemRow.name}`,
+        available: itemRow.current_stock,
+        requested: qty
+      });
     }
 
-    // Record movement
-    await supabase.from('stock_movements').insert({
-      company_id:  req.companyId,
-      item_id:     mat.item_id,
-      type:        'out',
-      quantity:    qty,
-      reference:   `WO ${req.params.id}`,
-      notes:       'Issued to work order',
-      created_by:  req.user.userId
-    });
+    resolvedIssues.push({ mat, qty });
   }
 
-  if (errors.length > 0) {
-    return res.status(400).json({ error: errors.join('; ') });
+  // ─── PHASE 2: Apply all changes (all pre-validated; atomic RPC per item)
+  for (const { mat, qty } of resolvedIssues) {
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
+      p_company_id:    req.companyId,
+      p_item_id:       mat.item_id,
+      p_delta:         -qty,
+      p_movement_type: 'out',
+      p_warehouse_id:  null,
+      p_reference:     `WO-${req.params.id}`,
+      p_notes:         `Issued to work order ${req.params.id}`,
+      p_cost_price:    null,
+      p_created_by:    req.user.userId
+    });
+
+    if (rpcErr || !rpcResult?.success) {
+      return res.status(422).json({
+        error:     rpcResult?.error || rpcErr?.message || 'Stock deduction failed',
+        available: rpcResult?.available
+      });
+    }
+
+    // Update issued_qty on work_order_materials
+    await supabase
+      .from('work_order_materials')
+      .update({ issued_qty: (parseFloat(mat.issued_qty) || 0) + qty })
+      .eq('id', mat.id);
   }
 
   await auditFromReq(req, 'UPDATE', 'work_order', wo.id, {
