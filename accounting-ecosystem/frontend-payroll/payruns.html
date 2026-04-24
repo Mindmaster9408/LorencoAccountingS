@@ -833,7 +833,7 @@
                 const statusBadge = psStatus.status === 'finalized'
                     ? '<span class="emp-payment-badge badge-finalized">✓ Finalized</span>'
                     : '<span class="emp-payment-badge badge-draft">Draft</span>';
-                return '<div class="employee-card" onclick="openEmployeeDetail(\'' + emp.id + '\')">' +
+                return '<div class="employee-card" onclick="openEmployeeDetail(\'' + emp.id + '\', \'' + currentPeriod + '\')">' +
                     '<div class="emp-name">' + emp.first_name + ' ' + emp.last_name + '</div>' +
                     '<div class="emp-number">#' + emp.employee_number + '</div>' +
                     '<div class="emp-details">' +
@@ -861,8 +861,10 @@
             displayEmployees(filtered);
         }
 
-        function openEmployeeDetail(empId) {
-            window.location.href = 'employee-detail.html?id=' + empId;
+        function openEmployeeDetail(empId, period) {
+            var url = 'employee-detail.html?id=' + empId;
+            if (period) url += '&period=' + encodeURIComponent(period);
+            window.location.href = url;
         }
 
         // ========== PAYROLL RUNS TAB ==========

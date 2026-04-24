@@ -1040,6 +1040,10 @@
         var _currentItemIsPercentage = false;
         var _currentItemPercentageValue = 0;
         let currentPeriod = '';
+        // Cached backend calculation result — set by calculatePayslip(), consumed by
+        // getPayslipData() (synchronous) for PDF/preview so it always uses the same
+        // authoritative numbers as the payslip summary panel.
+        var _lastBackendCalc = null;
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
@@ -1684,6 +1688,23 @@
             addOpt.value = '__custom__';
             addOpt.textContent = '📅 Add older period...';
             select.appendChild(addOpt);
+
+            // Honour ?period=YYYY-MM from inbound navigation (e.g. from payruns.html)
+            var urlPeriod = new URLSearchParams(window.location.search).get('period');
+            if (urlPeriod && /^\d{4}-\d{2}$/.test(urlPeriod)) {
+                var existing = Array.from(select.options).find(function(o) { return o.value === urlPeriod; });
+                if (!existing) {
+                    // Period is older than 12 months — inject it before the sentinel
+                    var parts = urlPeriod.split('-');
+                    var newOpt = document.createElement('option');
+                    newOpt.value = urlPeriod;
+                    newOpt.textContent = months[parseInt(parts[1]) - 1] + ' ' + parts[0];
+                    var sentinel = Array.from(select.options).find(function(o) { return o.value === '__custom__'; });
+                    select.insertBefore(newOpt, sentinel);
+                }
+                select.value = urlPeriod;
+            }
+
             currentPeriod = select.value;
         }
 
@@ -1921,6 +1942,8 @@
                 }
                 if (periodSelect.value === '__custom__') return;
                 currentPeriod = periodSelect.value;
+                // Clear cached backend calc when period changes — prevents stale PDF/preview
+                _lastBackendCalc = null;
                 const stored = safeLocalStorage.getItem(getPayrollKey());
                 payrollData = stored ? JSON.parse(stored) : { basic_salary: 0, regular_inputs: [] };
                 
@@ -2451,83 +2474,89 @@
 
         // ========== CALCULATE PAYSLIP ==========
         async function calculatePayslip() {
-            // If this period is finalized, use the frozen snapshot instead of recalculating
-            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-            var frozen = safeLocalStorage.getItem(histKey);
-            if (frozen) {
+            // ----------------------------------------------------------------
+            // AUTHORITATIVE SOURCE: backend payroll engine via API.
+            // The frontend PayrollEngine is NOT used for calculation here —
+            // it has hardcoded tax tables that diverge from the admin-configured
+            // KV tax_config used by Execute Payroll.
+            //
+            // Priority order:
+            //   1. GET history snapshot (exists after any Execute Payroll run)
+            //   2. POST /api/payroll/calculate (backend engine, correct tax_config)
+            //
+            // The backend POST endpoint already handles locked snapshots: if the
+            // period is finalized it returns the immutable locked snapshot directly
+            // without recalculating. We therefore do NOT read the old
+            // emp_historical_... KV blob here (it was computed by the frontend
+            // engine with wrong tax tables).
+            // ----------------------------------------------------------------
+
+            var calc = null;
+
+            // Step 1: Try to fetch an existing backend snapshot (fastest — no recalc)
+            try {
+                var histResult = await PayrollAPI.getEmployeePeriodHistory(currentEmpId, currentPeriod);
+                if (histResult.ok && histResult.data && histResult.data.success) {
+                    // GET history returns { success, snapshot: { calculation_output, ... } }
+                    calc = (histResult.data.snapshot && histResult.data.snapshot.calculation_output) || null;
+                }
+            } catch(e) {
+                console.warn('[calculatePayslip] history fetch error:', e.message);
+            }
+
+            // Step 2: No snapshot yet — call backend engine directly
+            if (!calc) {
                 try {
-                    var snap = JSON.parse(frozen);
-                    var frozenDeductions = (snap.deductions || []).reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0);
-                    var calc = { gross: snap.gross || 0, paye: snap.paye || 0, uif: snap.uif || 0, sdl: snap.sdl || 0, deductions: frozenDeductions, net: snap.net || 0, medicalCredit: 0, negativeNetPay: false, overtimeAmount: snap.overtimeAmount || 0, shortTimeAmount: snap.shortTimeAmount || 0 };
-                    document.getElementById('totalGross').textContent = formatMoney(calc.gross);
-                    document.getElementById('totalPAYE').textContent = formatMoney(calc.paye);
-                    document.getElementById('totalUIF').textContent = formatMoney(calc.uif);
-                    document.getElementById('totalDeductions').textContent = formatMoney(calc.deductions);
-                    document.getElementById('totalNet').textContent = formatMoney(calc.net);
-                    document.getElementById('medicalCreditRow').style.display = 'none';
-                    document.getElementById('totalNet').style.color = '#28a745';
-                    document.getElementById('negativeNetWarning').style.display = 'none';
-                    document.getElementById('payslipActions').style.display = 'flex';
-                    // Show overtime/short time breakdown rows if present
-                    var sotR = document.getElementById('summaryOvertimeRow'), sstR = document.getElementById('summaryShortTimeRow');
-                    if (sotR) sotR.style.display = calc.overtimeAmount > 0 ? '' : 'none';
-                    if (sotR && calc.overtimeAmount > 0) document.getElementById('summaryOvertimeAmt').textContent = formatMoney(calc.overtimeAmount);
-                    if (sstR) sstR.style.display = calc.shortTimeAmount > 0 ? '' : 'none';
-                    if (sstR && calc.shortTimeAmount > 0) document.getElementById('summaryShortTimeAmt').textContent = '- ' + formatMoney(calc.shortTimeAmount);
-                    return calc;
-                } catch(e) { /* fall through to live calculation */ }
-            }
-
-            var currentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
-            var overtime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
-            var multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
-            var shortTime = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
-
-            // Build employee options for age/medical/directive
-            var employeeOptions = {};
-            if (currentEmployee) {
-                if (currentEmployee.id_number) {
-                    var parts = currentPeriod.split('-');
-                    var periodEnd = new Date(parseInt(parts[0]), parseInt(parts[1]), 0);
-                    employeeOptions.age = PayrollEngine.getAgeFromId(currentEmployee.id_number, periodEnd);
-                }
-                if (currentEmployee.medical_aid_members) {
-                    employeeOptions.medicalMembers = parseInt(currentEmployee.medical_aid_members) || 0;
-                }
-                if (currentEmployee.tax_directive) {
-                    employeeOptions.taxDirective = parseFloat(currentEmployee.tax_directive) || 0;
+                    var calcResult = await PayrollAPI.calculate(currentEmpId, currentPeriod);
+                    if (calcResult.ok && calcResult.data && calcResult.data.success) {
+                        // POST calculate returns { success, data: {...13 locked fields...}, snapshot: { calculation_output: {...all fields...} } }
+                        // Prefer snapshot.calculation_output — it includes display fields
+                        // (primary_rebate_annual, marginal_rate, tax_year, etc.)
+                        calc = (calcResult.data.snapshot && calcResult.data.snapshot.calculation_output)
+                            || calcResult.data.data
+                            || null;
+                    } else if (calcResult.data && calcResult.data.error) {
+                        console.error('[calculatePayslip] backend error:', calcResult.data.error);
+                    }
+                } catch(e) {
+                    console.error('[calculatePayslip] calculate API error:', e.message);
                 }
             }
 
-            var _calcPayrollData = Object.assign({}, payrollData, {
-                workSchedule: _workingDaysData,
-                hours_per_day: _workScheduleHoursPerDay
-            });
-            var calc = PayrollEngine.calculateFromData(
-                _calcPayrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod,
-                PayrollEngine.getYTDData(currentCompanyId, currentEmpId, currentPeriod)
-            );
+            if (!calc) {
+                // Both backend calls failed — surface error and stop
+                console.error('[calculatePayslip] Could not obtain result from backend.');
+                return null;
+            }
 
-            document.getElementById('totalGross').textContent = formatMoney(calc.gross);
-            document.getElementById('totalPAYE').textContent = formatMoney(calc.paye);
-            document.getElementById('totalUIF').textContent = formatMoney(calc.uif);
+            // Normalise: backend uses 'deductions' as total deductions number
+            var deductionsTotal = typeof calc.deductions === 'number'
+                ? calc.deductions
+                : (Array.isArray(calc.deductions)
+                    ? calc.deductions.reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0)
+                    : 0);
+            calc.deductions = deductionsTotal;
+
+            document.getElementById('totalGross').textContent = formatMoney(calc.gross || 0);
+            document.getElementById('totalPAYE').textContent = formatMoney(calc.paye || 0);
+            document.getElementById('totalUIF').textContent = formatMoney(calc.uif || 0);
             document.getElementById('totalDeductions').textContent = formatMoney(calc.deductions);
-            document.getElementById('totalNet').textContent = formatMoney(calc.net);
+            document.getElementById('totalNet').textContent = formatMoney(calc.net || 0);
 
-            // Overtime and short time breakdown rows (transparent display — they are independent components)
+            // Overtime and short time breakdown rows
             var sotR = document.getElementById('summaryOvertimeRow');
             var sstR = document.getElementById('summaryShortTimeRow');
             if (sotR) {
-                sotR.style.display = calc.overtimeAmount > 0 ? '' : 'none';
-                if (calc.overtimeAmount > 0) document.getElementById('summaryOvertimeAmt').textContent = formatMoney(calc.overtimeAmount);
+                sotR.style.display = (calc.overtimeAmount || 0) > 0 ? '' : 'none';
+                if ((calc.overtimeAmount || 0) > 0) document.getElementById('summaryOvertimeAmt').textContent = formatMoney(calc.overtimeAmount);
             }
             if (sstR) {
-                sstR.style.display = calc.shortTimeAmount > 0 ? '' : 'none';
-                if (calc.shortTimeAmount > 0) document.getElementById('summaryShortTimeAmt').textContent = '- ' + formatMoney(calc.shortTimeAmount);
+                sstR.style.display = (calc.shortTimeAmount || 0) > 0 ? '' : 'none';
+                if ((calc.shortTimeAmount || 0) > 0) document.getElementById('summaryShortTimeAmt').textContent = '- ' + formatMoney(calc.shortTimeAmount);
             }
 
             // Medical credit display
-            if (calc.medicalCredit > 0) {
+            if ((calc.medicalCredit || 0) > 0) {
                 document.getElementById('medicalCreditRow').style.display = '';
                 document.getElementById('totalMedicalCredit').textContent = '- ' + formatMoney(calc.medicalCredit);
             } else {
@@ -2545,70 +2574,35 @@
                 warningEl.style.display = 'none';
             }
 
-            // Trigger narrative generation
-            await generateNarrative(calc.gross, calc.paye, calc.uif, calc.deductions, calc.net);
+            // Trigger narrative generation — pass full calc so narrative-generator.js
+            // can read calc.primary_rebate_annual, calc.marginal_rate etc.
+            await generateNarrative(calc.gross, calc.paye, calc.uif, calc.deductions, calc.net, calc);
 
             // Show payslip action buttons
             document.getElementById('payslipActions').style.display = 'flex';
+            // Cache for synchronous getPayslipData() (PDF/preview)
+            _lastBackendCalc = calc;
             return calc;
         }
 
         // ========== PAYSLIP PREVIEW & PDF EXPORT ==========
         function getPayslipData() {
-            // If finalized, return the frozen snapshot so preview/PDF never reflect post-finalize changes
-            var _histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-            var _frozen = safeLocalStorage.getItem(_histKey);
-            if (_frozen) {
-                try {
-                    var snap = JSON.parse(_frozen);
-                    if (snap && snap.allowances) {
-                        var frozenDedTotal = (snap.deductions || []).reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0);
-                        var frozenCalc = {
-                            gross: snap.gross || 0, taxableGross: snap.taxableGross || snap.gross || 0,
-                            paye: snap.paye || 0, uif: snap.uif || 0, sdl: snap.sdl || 0,
-                            deductions: frozenDedTotal, net: snap.net || 0,
-                            medicalCredit: snap.medicalCredit || 0, negativeNetPay: false,
-                            overtimeAmount: snap.overtimeAmount || 0, shortTimeAmount: snap.shortTimeAmount || 0,
-                            basicSalary: snap.basic_salary || 0,
-                            allowances: snap.allowances, deductionsList: snap.deductionsList || [],
-                            totalDeductions: frozenDedTotal
-                        };
-                        return { calc: frozenCalc, employee: currentEmployee, period: currentPeriod, companyId: currentCompanyId };
-                    }
-                } catch(e) {}
-            }
+            // Authoritative numbers come from _lastBackendCalc (set by calculatePayslip()).
+            // The emp_historical_... KV blob fallback has been removed — it was written
+            // by the old frontend engine with incorrect tax tables (pre-2026/2027 fix).
+            //
+            // Itemized allowances/deductions lists are built from the KV input data
+            // (display-only for PDF) and are combined with the backend totals.
 
+            var backedCalc = _lastBackendCalc;
+
+            // Build itemized display lists from KV input data (for PDF line items only —
+            // NOT used for gross/paye/net totals which come from backedCalc).
             var currentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
             var overtime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
             var multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
             var shortTime = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
 
-            var employeeOptions = {};
-            if (currentEmployee) {
-                if (currentEmployee.id_number) {
-                    var parts = currentPeriod.split('-');
-                    var periodEnd = new Date(parseInt(parts[0]), parseInt(parts[1]), 0);
-                    employeeOptions.age = PayrollEngine.getAgeFromId(currentEmployee.id_number, periodEnd);
-                }
-                if (currentEmployee.medical_aid_members) employeeOptions.medicalMembers = parseInt(currentEmployee.medical_aid_members) || 0;
-                if (currentEmployee.tax_directive) employeeOptions.taxDirective = parseFloat(currentEmployee.tax_directive) || 0;
-                   // Load voluntary tax config from localStorage
-                   var volTaxConfig = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-                   if (volTaxConfig) {
-                       try { employeeOptions.voluntaryTaxConfig = JSON.parse(volTaxConfig); } catch(e) {}
-                   }
-            }
-
-            var _calcPayrollData = Object.assign({}, payrollData, {
-                workSchedule: _workingDaysData,
-                hours_per_day: _workScheduleHoursPerDay
-            });
-            var calc = PayrollEngine.calculateFromData(
-                _calcPayrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, currentPeriod,
-                PayrollEngine.getYTDData(currentCompanyId, currentEmpId, currentPeriod)
-            );
-
-            // Build itemized allowances list
             var _basicSalForPct = payrollData.basic_salary || 0;
             var allowances = [];
             (payrollData.regular_inputs || []).forEach(function(ri) {
@@ -2619,7 +2613,6 @@
                 if (ci.type !== 'deduction') allowances.push({ description: ci.description || ci.type, amount: ci.amount });
             });
 
-            // Build itemized deductions list
             var deductionsList = [];
             (payrollData.regular_inputs || []).forEach(function(ri) {
                 var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
@@ -2629,20 +2622,16 @@
                 if (ci.type === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
             });
 
-            // Calculate overtime amount (for display — engine also returns this in calc.overtimeAmount)
+            // Compute display-only overtime/short-time amounts from KV inputs
             var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
             var overtimeAmount = 0;
             overtime.forEach(function(ot) {
                 overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
             });
-
-            // Calculate short time amount (for display — independent of overtime, shown as earnings reduction)
             var shortTimeAmount = 0;
             shortTime.forEach(function(st) {
                 shortTimeAmount += (parseFloat(st.hours_missed) || 0) * hourlyRate;
             });
-
-            // Calculate multi-rate amount
             var multiRateAmount = 0;
             multiRate.forEach(function(mr) {
                 multiRateAmount += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
@@ -2651,16 +2640,19 @@
                 allowances.push({ description: 'Paid at Different Rate', amount: multiRateAmount });
             }
 
-            // Enrich calc with itemized data for PDF
+            // Build the calc object: authoritative numbers from backend, display lists from KV
+            var calc = backedCalc ? Object.assign({}, backedCalc) : {
+                gross: 0, taxableGross: 0, paye: 0, uif: 0, sdl: 0,
+                deductions: 0, net: 0, medicalCredit: 0, negativeNetPay: false,
+                overtimeAmount: overtimeAmount, shortTimeAmount: shortTimeAmount
+            };
             calc.basicSalary = payrollData.basic_salary || 0;
             calc.allowances = allowances;
             calc.deductionsList = deductionsList;
-            calc.overtimeAmount = overtimeAmount;
-            calc.shortTimeAmount = shortTimeAmount;
+            // Only override overtime/shortTime display amounts from KV if backend didn't return them
+            if (!calc.overtimeAmount) calc.overtimeAmount = overtimeAmount;
+            if (!calc.shortTimeAmount) calc.shortTimeAmount = shortTimeAmount;
             calc.totalDeductions = calc.deductions;
-
-               // voluntary_overdeduction is already included in calc.paye by the engine
-               // — shown as a breakdown line in previewPayslip
 
             return {
                 calc: calc,
@@ -2933,21 +2925,27 @@
         }
 
         // ========== NARRATIVE FUNCTIONS ==========
-        async function generateNarrative(gross, paye, uif, deductions, net) {
+        async function generateNarrative(gross, paye, uif, deductions, net, fullCalc) {
             if (typeof NarrativeGenerator === 'undefined') return;
 
-            var currentCalc = {
+            // Build currentCalc — start from the scalar values that are always present,
+            // then merge any extended backend fields (primary_rebate_annual, marginal_rate,
+            // tax_year, etc.) from fullCalc if available.
+            var currentCalc = Object.assign({
                 gross: gross, paye: paye, uif: uif,
                 totalDeductions: deductions, net: net,
                 basicSalary: payrollData.basic_salary || 0,
                 overtimeAmount: 0, currentInputsTotal: 0
-            };
+            }, fullCalc || {});
 
-            // Calculate overtime amount
-            var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
-            JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').forEach(function(ot) {
-                currentCalc.overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
-            });
+            // Ensure overtimeAmount reflects the KV input entries (display-only fallback
+            // when backend didn't return it).
+            if (!currentCalc.overtimeAmount) {
+                var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
+                JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').forEach(function(ot) {
+                    currentCalc.overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
+                });
+            }
 
             // Calculate current inputs total
             JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]').forEach(function(ci) {
@@ -2967,19 +2965,26 @@
         }
 
         async function calculatePeriodSilent(period) {
-            var _calcPayrollData = Object.assign({}, payrollData, {
-                workSchedule: _workingDaysData,
-                hours_per_day: _workScheduleHoursPerDay
-            });
-            var calc = await PayrollEngine.calculateEmployeePeriod(currentCompanyId, currentEmpId, period, _calcPayrollData);
-            // Calculate overtime amount separately for narrative
-            var hr = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
-            var otKey = 'emp_overtime_' + currentCompanyId + '_' + currentEmpId + '_' + period;
-            var otAmount = 0;
-            JSON.parse(safeLocalStorage.getItem(otKey) || '[]').forEach(function(ot) {
-                otAmount += (parseFloat(ot.hours)||0) * hr * (parseFloat(ot.rate_multiplier)||1.5);
-            });
-            return { gross: calc.gross, paye: calc.paye, uif: calc.uif, totalDeductions: calc.deductions, net: calc.net, basicSalary: payrollData.basic_salary || 0, overtimeAmount: otAmount, currentInputsTotal: 0 };
+            // Use backend history snapshot for previous-period comparison in narrative.
+            // Frontend PayrollEngine is NOT used — it has wrong tax tables.
+            // Returns null if no snapshot exists (narrative will skip the comparison).
+            try {
+                var result = await PayrollAPI.getEmployeePeriodHistory(currentEmpId, period);
+                if (result.ok && result.data && result.data.success) {
+                    var d = (result.data.snapshot && result.data.snapshot.calculation_output) || null;
+                    if (d) {
+                        return {
+                            gross: d.gross || 0, paye: d.paye || 0, uif: d.uif || 0,
+                            totalDeductions: d.deductions || 0, net: d.net || 0,
+                            basicSalary: payrollData.basic_salary || 0,
+                            overtimeAmount: d.overtimeAmount || 0, currentInputsTotal: 0
+                        };
+                    }
+                }
+            } catch(e) {
+                console.warn('[calculatePeriodSilent] error for period ' + period + ':', e.message);
+            }
+            return null;
         }
 
         function getPreviousPeriod(period) {

@@ -100,6 +100,23 @@ var PayrollAPI = (function () {
         getEmployeePeriodHistory: function (employeeId, periodKey) {
             return request('GET', BASE + '/calculate/history/' +
                 encodeURIComponent(employeeId) + '/' + encodeURIComponent(periodKey));
+        },
+
+        // POST /api/payroll/calculate
+        // Body: { employee_id, period_key, include_snapshot }
+        // 200: { success, data: { gross, paye, uif, sdl, net, paye_base, medicalCredit,
+        //        primary_rebate_annual, secondary_rebate_annual, tertiary_rebate_annual,
+        //        uif_monthly_cap, marginal_rate, marginal_bracket, tax_year, ... },
+        //        snapshot, locked, timestamp }
+        // 400: missing fields
+        // 403: permission denied
+        // 404: employee or period not found
+        calculate: function (employeeId, periodKey) {
+            return request('POST', BASE + '/calculate', {
+                employee_id:      employeeId,
+                period_key:       periodKey,
+                include_snapshot: true
+            });
         }
 
     };

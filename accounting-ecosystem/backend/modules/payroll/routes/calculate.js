@@ -180,50 +180,50 @@ router.post(
       // The backend engine cannot use localStorage, so we load the tax_config
       // stored by the Tax Configuration UI and pass it directly to the engine.
       //
-      // Lookup order:
-      //   1. Company-specific config (company_id = req.companyId)
-      //   2. Global ecosystem default (company_id = '__global__') — set by super admin
+      // Lookup order (matches payruns.js — global MUST win):
+      //   1. Global ecosystem standard (company_id = '__global__') — set by super admin
       //      in Infinite Legacy / managing practice account.
+      //   2. Company-specific override (company_id = req.companyId) — only if no global set.
       let taxConfig = null;
       try {
-        // TRACE A — company-specific KV lookup
-        const { data: kvRow, error: kvErr1 } = await supabase
+        // TRACE A — global KV lookup FIRST (authoritative SA tax tables from super admin)
+        let globalRowFound = false;
+        const { data: globalKvRow, error: kvErr1 } = await supabase
           .from('payroll_kv_store_eco')
           .select('value')
-          .eq('company_id', req.companyId)
+          .eq('company_id', '__global__')
           .eq('key', 'tax_config')
           .maybeSingle();
-        const companyRowFound = !!(kvRow && kvRow.value);
-        if (companyRowFound) {
-          taxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+        globalRowFound = !!(globalKvRow && globalKvRow.value);
+        if (globalRowFound) {
+          taxConfig = typeof globalKvRow.value === 'string'
+            ? JSON.parse(globalKvRow.value)
+            : globalKvRow.value;
         }
-        console.log('[calculate.js TRACE A] company_id:', req.companyId,
-          '| company-specific tax_config row found:', companyRowFound,
+        console.log('[calculate.js TRACE A] __global__ tax_config row found:', globalRowFound,
           kvErr1 ? '| DB error: ' + kvErr1.message : '');
 
-        // Fallback: if this company has no custom tax_config, use the global standard
-        // set by the super admin (stored with sentinel company_id = '__global__').
-        let globalRowFound = false;
+        // Fallback: if no global config exists, use company-specific
+        let companyRowFound = false;
         if (!taxConfig) {
-          const { data: globalKvRow, error: kvErr2 } = await supabase
+          const { data: kvRow, error: kvErr2 } = await supabase
             .from('payroll_kv_store_eco')
             .select('value')
-            .eq('company_id', '__global__')
+            .eq('company_id', req.companyId)
             .eq('key', 'tax_config')
             .maybeSingle();
-          globalRowFound = !!(globalKvRow && globalKvRow.value);
-          if (globalRowFound) {
-            taxConfig = typeof globalKvRow.value === 'string'
-              ? JSON.parse(globalKvRow.value)
-              : globalKvRow.value;
+          companyRowFound = !!(kvRow && kvRow.value);
+          if (companyRowFound) {
+            taxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
           }
-          console.log('[calculate.js TRACE A] __global__ tax_config row found:', globalRowFound,
+          console.log('[calculate.js TRACE A] company_id:', req.companyId,
+            '| company-specific tax_config row found:', companyRowFound,
             kvErr2 ? '| DB error: ' + kvErr2.message : '');
         }
 
         // TRACE B — final taxConfig summary
         console.log('[calculate.js TRACE B] taxConfig selected source:',
-          taxConfig ? (companyRowFound ? 'company-specific' : '__global__') : 'NONE (engine defaults will apply)');
+          taxConfig ? (globalRowFound ? '__global__' : 'company-specific') : 'NONE (engine defaults will apply)');
         if (taxConfig) {
           console.log('[calculate.js TRACE B] taxConfig values:', JSON.stringify({
             TAX_YEAR:          taxConfig.TAX_YEAR,
