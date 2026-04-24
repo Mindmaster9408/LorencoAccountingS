@@ -631,6 +631,19 @@
     <div class="toast-container" id="toast-container"></div>
 
     <!-- ═══════════════════════════════════════════════════════════════
+         STATUTORY RETURNS PREVIEW MODAL (EMP201 / UIF / EMP501 / WCF)
+    ═══════════════════════════════════════════════════════════════ -->
+    <div class="modal" id="srtnModal">
+        <div class="srtn-modal-box">
+            <div class="srtn-modal-header">
+                <h3 id="srtn-modal-title">Statutory Return</h3>
+                <button class="payslip-close-btn" onclick="closeStatutoryModal()">✕</button>
+            </div>
+            <div class="srtn-modal-body" id="srtn-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
          PAYSLIP PREVIEW MODAL
     ═══════════════════════════════════════════════════════════════ -->
     <div class="modal" id="payslipPreviewModal">
@@ -666,6 +679,11 @@
         runResult:     null,      // full /run response data
         isFinalized:   false      // whether current run has been finalized
     };
+
+    // Cache of computed statutory return data keyed by runId.
+    // Populated synchronously when renderRunDetailPanel builds the cards;
+    // consumed by openEMP201Preview / openUIFPreview / openEMP501Preview / openWCFPreview.
+    var _statutoryCache = {};
 
     // ==========================================================================
     // INIT
@@ -1291,6 +1309,12 @@
             '</div>';
         }
 
+        // Statutory returns section — backend-authoritative (from snapshot calculation_output).
+        // Only shown for finalized runs with a known run ID.
+        if (isFinalized && runId !== 'no-run') {
+            html += buildStatutoryReturnsHTML(runId, snapshots);
+        }
+
         return html;
     }
 
@@ -1480,6 +1504,248 @@
         } catch (e) {
             return iso;
         }
+    }
+
+    // ==========================================================================
+    // STATUTORY RETURNS — backend-authoritative previews from snapshot data
+    // ==========================================================================
+
+    function _computeReturnsFromSnapshots(snaps) {
+        var totalPaye = 0, totalSdl = 0, totalUifEmp = 0, totalUifEr = 0, totalGross = 0;
+        var empDetails = [];
+        snaps.forEach(function (snap) {
+            var out   = snap.calculation_output || {};
+            var gross = Number(out.gross || 0);
+            if (gross <= 0) return;
+            var paye  = Number(out.paye || 0);
+            var sdl   = Number(out.sdl  || 0);
+            var uif   = Number(out.uif  || 0);
+            totalGross  += gross;
+            totalPaye   += paye;
+            totalSdl    += sdl;
+            totalUifEmp += uif;
+            totalUifEr  += uif; // employer matches employee contribution
+            var emp = getEmployee(snap.employee_id);
+            empDetails.push({
+                name:   emp ? ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim()
+                            : 'Employee #' + snap.employee_id,
+                id_num: emp ? (emp.id_number || emp.sa_id || '—') : '—',
+                gross: gross, paye: paye, sdl: sdl, uif: uif, net: Number(out.net || 0)
+            });
+        });
+        var r = function (v) { return Math.round(v * 100) / 100; };
+        return {
+            totalGross:  r(totalGross),
+            totalPaye:   r(totalPaye),
+            totalSdl:    r(totalSdl),
+            totalUifEmp: r(totalUifEmp),
+            totalUifEr:  r(totalUifEr),
+            uifTotal:    r(totalUifEmp + totalUifEr),
+            emp201Total: r(totalPaye + totalSdl + totalUifEmp + totalUifEr),
+            employees:   empDetails
+        };
+    }
+
+    function _getEMP501PeriodLabel(periodKey) {
+        if (!periodKey) return 'Unknown Period';
+        var m = parseInt((periodKey.split('-')[1]) || 0);
+        return (m >= 3 && m <= 8) ? 'Mar–Aug Interim' : 'Sep–Feb Annual';
+    }
+
+    function _formatPeriodLabel(periodKey) {
+        if (!periodKey) return '—';
+        var parts  = periodKey.split('-');
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return (months[parseInt(parts[1]) - 1] || '?') + ' ' + (parts[0] || '');
+    }
+
+    function buildStatutoryReturnsHTML(runId, snaps) {
+        var calc      = _computeReturnsFromSnapshots(snaps);
+        var periodKey = (snaps[0] && snaps[0].period_key) || '';
+        _statutoryCache[runId] = { calc: calc, periodKey: periodKey };
+
+        var safeId = esc(runId);
+        var html = '<div class="statutory-returns-section">' +
+            '<div class="statutory-returns-title">📋 Statutory Returns</div>' +
+            '<div class="statutory-returns-grid">';
+
+        html += _buildReturnCard('EMP201',    'Monthly Employer Declaration to SARS',
+            'Total Payable: ' + fmt(calc.emp201Total), safeId, 'openEMP201Preview');
+        html += _buildReturnCard('UIF Return','Monthly Declaration — Department of Labour',
+            'Total UIF: '     + fmt(calc.uifTotal),    safeId, 'openUIFPreview');
+        html += _buildReturnCard('EMP501',
+            'Bi-Annual Reconciliation (' + _getEMP501PeriodLabel(periodKey) + ')',
+            'PAYE + SDL + UIF Reconciliation',          safeId, 'openEMP501Preview');
+        html += _buildReturnCard('WCF Return',"Workmen’s Compensation Fund Return",
+            'Total Earnings: ' + fmt(calc.totalGross), safeId, 'openWCFPreview');
+
+        html += '</div></div>';
+        return html;
+    }
+
+    function _buildReturnCard(title, desc, amountText, safeRunId, previewFn) {
+        return '<div class="return-card">' +
+            '<div class="return-card-title">' + title + '</div>' +
+            '<div class="return-card-desc">' + esc(desc) + '</div>' +
+            '<div class="return-card-amount">' + amountText + '</div>' +
+            '<div class="return-card-actions">' +
+            '<button type="button" class="btn btn-outline btn-sm" ' +
+            'onclick="event.stopPropagation(); ' + previewFn + '(\'' + safeRunId + '\')">Preview</button>' +
+            '</div></div>';
+    }
+
+    function closeStatutoryModal() {
+        document.getElementById('srtnModal').classList.remove('show');
+    }
+
+    function _openStatutoryModal(title, bodyHtml) {
+        document.getElementById('srtn-modal-title').textContent = title;
+        document.getElementById('srtn-modal-body').innerHTML    = bodyHtml;
+        document.getElementById('srtnModal').classList.add('show');
+    }
+
+    function openEMP201Preview(runId) {
+        var cached = _statutoryCache[runId];
+        if (!cached) { showToast('Run data not loaded — please reload history.', 'warning'); return; }
+        var c = cached.calc;
+        var period = _formatPeriodLabel(cached.periodKey);
+
+        var html = '<p style="margin:0 0 14px;font-size:0.9rem;color:#555;">Period: <strong>' + period + '</strong></p>';
+        html += '<table class="srtn-table"><thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>';
+        html += '<tr><td>PAYE (Income Tax)</td><td class="amount">' + fmt(c.totalPaye) + '</td></tr>';
+        html += '<tr><td>SDL (Skills Development Levy)</td><td class="amount">' + fmt(c.totalSdl) + '</td></tr>';
+        html += '<tr><td>UIF – Employee Contribution (1%)</td><td class="amount">' + fmt(c.totalUifEmp) + '</td></tr>';
+        html += '<tr><td>UIF – Employer Contribution (1%)</td><td class="amount">' + fmt(c.totalUifEr) + '</td></tr>';
+        html += '<tr class="srtn-total-row"><td><strong>Total Payable to SARS</strong></td>' +
+                '<td class="amount"><strong>' + fmt(c.emp201Total) + '</strong></td></tr>';
+        html += '</tbody></table>';
+
+        html += '<div style="font-size:0.75rem;font-weight:700;color:#999;text-transform:uppercase;margin:16px 0 8px;">Employee Breakdown</div>';
+        html += '<table class="srtn-table"><thead><tr>' +
+            '<th>Employee</th>' +
+            '<th style="text-align:right">Gross</th>' +
+            '<th style="text-align:right">PAYE</th>' +
+            '<th style="text-align:right">SDL</th>' +
+            '<th style="text-align:right">UIF</th>' +
+            '</tr></thead><tbody>';
+        c.employees.forEach(function (e) {
+            html += '<tr>' +
+                '<td>' + esc(e.name) + '</td>' +
+                '<td class="amount">' + fmt(e.gross) + '</td>' +
+                '<td class="amount">' + fmt(e.paye)  + '</td>' +
+                '<td class="amount">' + fmt(e.sdl)   + '</td>' +
+                '<td class="amount">' + fmt(e.uif)   + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+
+        _openStatutoryModal('EMP201 – Monthly Employer Declaration', html);
+    }
+
+    function openUIFPreview(runId) {
+        var cached = _statutoryCache[runId];
+        if (!cached) { showToast('Run data not loaded — please reload history.', 'warning'); return; }
+        var c = cached.calc;
+        var period = _formatPeriodLabel(cached.periodKey);
+
+        var html = '<p style="margin:0 0 14px;font-size:0.9rem;color:#555;">Period: <strong>' + period + '</strong></p>';
+        html += '<table class="srtn-table"><thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>';
+        html += '<tr><td>UIF – Employee Contributions (1%)</td><td class="amount">' + fmt(c.totalUifEmp) + '</td></tr>';
+        html += '<tr><td>UIF – Employer Contributions (1%)</td><td class="amount">' + fmt(c.totalUifEr)  + '</td></tr>';
+        html += '<tr class="srtn-total-row"><td><strong>Total UIF Payable</strong></td>' +
+                '<td class="amount"><strong>' + fmt(c.uifTotal) + '</strong></td></tr>';
+        html += '</tbody></table>';
+
+        html += '<div style="font-size:0.75rem;font-weight:700;color:#999;text-transform:uppercase;margin:16px 0 8px;">Per-Employee UIF Detail</div>';
+        html += '<table class="srtn-table"><thead><tr>' +
+            '<th>Employee</th>' +
+            '<th>ID Number</th>' +
+            '<th style="text-align:right">Gross</th>' +
+            '<th style="text-align:right">Employee (1%)</th>' +
+            '<th style="text-align:right">Employer (1%)</th>' +
+            '<th style="text-align:right">Total</th>' +
+            '</tr></thead><tbody>';
+        c.employees.forEach(function (e) {
+            html += '<tr>' +
+                '<td>' + esc(e.name)   + '</td>' +
+                '<td>' + esc(e.id_num) + '</td>' +
+                '<td class="amount">' + fmt(e.gross)     + '</td>' +
+                '<td class="amount">' + fmt(e.uif)       + '</td>' +
+                '<td class="amount">' + fmt(e.uif)       + '</td>' +
+                '<td class="amount">' + fmt(e.uif * 2)   + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+
+        _openStatutoryModal('UIF Return – Monthly Declaration', html);
+    }
+
+    function openEMP501Preview(runId) {
+        var cached = _statutoryCache[runId];
+        if (!cached) { showToast('Run data not loaded — please reload history.', 'warning'); return; }
+        var c = cached.calc;
+        var period     = _formatPeriodLabel(cached.periodKey);
+        var periodType = _getEMP501PeriodLabel(cached.periodKey);
+
+        var html = '<p style="margin:0 0 14px;font-size:0.9rem;color:#555;">' +
+            'Month: <strong>' + period + '</strong> &mdash; ' + periodType + ' Period</p>';
+        html += '<div style="background:#fff3cd;padding:12px;border-radius:8px;margin-bottom:16px;color:#856404;font-size:0.85rem;">' +
+            '<strong>Note:</strong> EMP501 is a bi-annual reconciliation that aggregates all EMP201 declarations for the period. ' +
+            'This preview shows data for <strong>' + period + '</strong> only. ' +
+            'For the full submission, aggregate all months in the ' + periodType.toLowerCase() + ' period.' +
+            '</div>';
+        html += '<table class="srtn-table"><thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>';
+        html += '<tr><td>PAYE (Income Tax)</td><td class="amount">'             + fmt(c.totalPaye)   + '</td></tr>';
+        html += '<tr><td>SDL (Skills Development Levy)</td><td class="amount">' + fmt(c.totalSdl)    + '</td></tr>';
+        html += '<tr><td>UIF – Employee Contributions</td><td class="amount">' + fmt(c.totalUifEmp) + '</td></tr>';
+        html += '<tr><td>UIF – Employer Contributions</td><td class="amount">' + fmt(c.totalUifEr)  + '</td></tr>';
+        html += '<tr class="srtn-total-row"><td><strong>Total Due to SARS</strong></td>' +
+                '<td class="amount"><strong>' + fmt(c.emp201Total) + '</strong></td></tr>';
+        html += '</tbody></table>';
+        html += '<div style="margin-top:16px;">' +
+            '<a href="paye-reconciliation.html" class="btn btn-outline btn-sm" style="text-decoration:none;">' +
+            '📊 Open Full PAYE Reconciliation →</a></div>';
+
+        _openStatutoryModal('EMP501 – Bi-Annual Employer Reconciliation', html);
+    }
+
+    function openWCFPreview(runId) {
+        var cached = _statutoryCache[runId];
+        if (!cached) { showToast('Run data not loaded — please reload history.', 'warning'); return; }
+        var c = cached.calc;
+        var period  = _formatPeriodLabel(cached.periodKey);
+        var wcfRate = 0.01; // estimated 1%; actual rate varies by industry classification
+        var wcfAmt  = Math.round(c.totalGross * wcfRate * 100) / 100;
+
+        var html = '<p style="margin:0 0 14px;font-size:0.9rem;color:#555;">Period: <strong>' + period + '</strong></p>';
+        html += '<div style="background:#e3f2fd;padding:12px;border-radius:8px;margin-bottom:16px;color:#0d47a1;font-size:0.85rem;">' +
+            '<strong>Note:</strong> WCF returns are typically submitted annually. ' +
+            'The assessment rate varies by industry classification. This preview uses an estimated rate of ' +
+            (wcfRate * 100).toFixed(1) + '%.' +
+            '</div>';
+        html += '<table class="srtn-table"><thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>';
+        html += '<tr><td>Total Gross Earnings</td><td class="amount">'         + fmt(c.totalGross) + '</td></tr>';
+        html += '<tr><td>Estimated Assessment Rate</td><td class="amount">'   + (wcfRate * 100).toFixed(1) + '%</td></tr>';
+        html += '<tr class="srtn-total-row"><td><strong>Estimated WCF Assessment</strong></td>' +
+                '<td class="amount"><strong>' + fmt(wcfAmt) + '</strong></td></tr>';
+        html += '</tbody></table>';
+
+        html += '<div style="font-size:0.75rem;font-weight:700;color:#999;text-transform:uppercase;margin:16px 0 8px;">Employee Earnings</div>';
+        html += '<table class="srtn-table"><thead><tr>' +
+            '<th>Employee</th>' +
+            '<th style="text-align:right">Gross</th>' +
+            '<th style="text-align:right">Est. Levy</th>' +
+            '</tr></thead><tbody>';
+        c.employees.forEach(function (e) {
+            html += '<tr>' +
+                '<td>' + esc(e.name) + '</td>' +
+                '<td class="amount">' + fmt(e.gross) + '</td>' +
+                '<td class="amount">' + fmt(Math.round(e.gross * wcfRate * 100) / 100) + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+
+        _openStatutoryModal("WCF Return – Workmen’s Compensation Fund", html);
     }
 
     // ==========================================================================
