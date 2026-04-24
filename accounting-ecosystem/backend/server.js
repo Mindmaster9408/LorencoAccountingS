@@ -482,11 +482,12 @@ app.get('/sean/*', (req, res) => {
 });
 
 // Inventory frontend
-app.use('/inventory', express.static(inventoryFrontendPath));
+app.use('/inventory', express.static(inventoryFrontendPath, staticOptions));
+app.get('/inventory', (req, res) => sendHtml(res, path.join(inventoryFrontendPath, 'index.html')));
 app.get('/inventory/*', (req, res) => {
   const indexPath = path.join(inventoryFrontendPath, 'index.html');
   if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
+    sendHtml(res, indexPath);
   } else {
     res.status(404).json({ error: 'Inventory frontend not found' });
   }
