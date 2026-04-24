@@ -27,8 +27,8 @@ FROM node:22-alpine
 
 # OCR dependencies: tesseract (engine + English data) + poppler-utils (pdftoppm for PDF→image)
 # tesseract-ocr-data-eng: ~15MB — add more langs e.g. tesseract-ocr-data-afr for Afrikaans
-# Cache-bust: 2026-04-24-v1 — forced full layer invalidation; ensures COPY . . includes frontend-inventory
-ARG CACHE_BUST=2026-04-24-v1
+# Cache-bust: 2026-04-24-v2 — forced full layer invalidation; ensures COPY . . includes frontend-inventory
+ARG CACHE_BUST=2026-04-24-v2
 RUN echo "cache-bust: $CACHE_BUST" && apk update && apk add --no-cache \
     tesseract-ocr \
     tesseract-ocr-data-eng \
@@ -46,6 +46,12 @@ RUN cd backend && npm install --production
 # This single COPY covers backend + every current and future frontend directory
 # automatically. No manual update needed when new frontend apps are added.
 COPY . .
+
+# Explicit per-folder copy — belt-and-suspenders: ensures Docker cache cannot
+# silently omit frontend-inventory even if the COPY . . layer is stale/cached
+# from before this folder was added. Docker re-evaluates this layer against the
+# current folder content independently of the broader COPY . . layer above.
+COPY frontend-inventory ./frontend-inventory
 
 EXPOSE 3000
 

@@ -481,23 +481,45 @@ app.get('/sean/*', (req, res) => {
   }
 });
 
-// Inventory frontend
+// Inventory frontend — mirrors the same pattern as /pos and /payroll
 app.use('/inventory', express.static(inventoryFrontendPath, staticOptions));
-app.get('/inventory', (req, res) => {
-  const indexPath = path.join(inventoryFrontendPath, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    sendHtml(res, indexPath);
-  } else {
-    res.status(404).json({ error: 'Inventory frontend not found' });
-  }
+app.get('/inventory',  (req, res) => {
+  const filePath = path.join(process.cwd(), 'frontend-inventory', 'index.html');
+  res.sendFile(filePath, (err) => {
+    if (err) {
+      console.error('[inventory] sendFile error:', err.message, '| path:', filePath, '| cwd:', process.cwd());
+      res.status(500).json({ error: 'Inventory frontend not found', path: filePath });
+    }
+  });
+});
+app.get('/inventory/', (req, res) => {
+  const filePath = path.join(process.cwd(), 'frontend-inventory', 'index.html');
+  res.sendFile(filePath, (err) => {
+    if (err) {
+      console.error('[inventory] sendFile error:', err.message, '| path:', filePath, '| cwd:', process.cwd());
+      res.status(500).json({ error: 'Inventory frontend not found', path: filePath });
+    }
+  });
 });
 app.get('/inventory/*', (req, res) => {
-  const indexPath = path.join(inventoryFrontendPath, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    sendHtml(res, indexPath);
-  } else {
-    res.status(404).json({ error: 'Inventory frontend not found' });
-  }
+  const filePath = path.join(process.cwd(), 'frontend-inventory', 'index.html');
+  res.sendFile(filePath, (err) => {
+    if (err) {
+      console.error('[inventory] sendFile error:', err.message, '| path:', filePath, '| cwd:', process.cwd());
+      res.status(500).json({ error: 'Inventory frontend not found', path: filePath });
+    }
+  });
+});
+
+// TEMP DEBUG — remove after confirming /inventory works
+app.get('/inventory-test', (req, res) => {
+  const filePath = path.join(process.cwd(), 'frontend-inventory', 'index.html');
+  res.sendFile(filePath, (err) => {
+    if (err) {
+      console.error('[inventory-test] error:', err.message, '| path:', filePath);
+      res.status(500).send('FAIL: ' + err.message + ' | path: ' + filePath + ' | cwd: ' + process.cwd());
+    }
+  });
 });
 
 // Practice frontend
