@@ -27,9 +27,9 @@ FROM node:22-alpine
 
 # OCR dependencies: tesseract (engine + English data) + poppler-utils (pdftoppm for PDF→image)
 # tesseract-ocr-data-eng: ~15MB — add more langs e.g. tesseract-ocr-data-afr for Afrikaans
-# Cache-bust: 2026-04-17-v3 — forced full layer invalidation; Zeabur was serving stale cached image
-ARG CACHE_BUST=2026-04-17-v3
-RUN apk update && apk add --no-cache \
+# Cache-bust: 2026-04-24-v1 — forced full layer invalidation; ensures COPY . . includes frontend-inventory
+ARG CACHE_BUST=2026-04-24-v1
+RUN echo "cache-bust: $CACHE_BUST" && apk update && apk add --no-cache \
     tesseract-ocr \
     tesseract-ocr-data-eng \
     poppler-utils \
