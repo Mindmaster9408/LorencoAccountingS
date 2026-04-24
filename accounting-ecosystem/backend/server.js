@@ -374,7 +374,7 @@ const payrollFrontendPath   = path.join(__dirname, '..', 'frontend-payroll');
 const seanFrontendPath      = path.join(__dirname, '..', 'frontend-sean');
 const accountingFrontendPath = path.join(__dirname, '..', 'frontend-accounting');
 const coachingFrontendPath  = path.join(__dirname, '..', 'frontend-coaching');
-const inventoryFrontendPath = path.join(__dirname, '..', 'frontend-inventory');
+const inventoryFrontendPath = path.join(__dirname, 'frontend-inventory'); // inside backend/ — guaranteed copy by any Node.js Dockerfile
 const practiceFrontendPath  = path.join(__dirname, '..', 'frontend-practice');
 
 // ── Cache-Control helper ──────────────────────────────────────────────────────
@@ -481,10 +481,11 @@ app.get('/sean/*', (req, res) => {
   }
 });
 
-// Inventory frontend — mirrors the same pattern as /pos and /payroll
+// Inventory frontend — frontend-inventory/ is inside backend/ so it is always
+// copied regardless of whether Zeabur uses our Dockerfile or auto-generates one.
 app.use('/inventory', express.static(inventoryFrontendPath, staticOptions));
 app.get('/inventory',  (req, res) => {
-  const filePath = path.join(__dirname, '..', 'frontend-inventory', 'index.html');
+  const filePath = path.join(__dirname, 'frontend-inventory', 'index.html');
   res.sendFile(filePath, (err) => {
     if (err) {
       console.error('[inventory] sendFile error:', err.message, '| path:', filePath);
@@ -493,7 +494,7 @@ app.get('/inventory',  (req, res) => {
   });
 });
 app.get('/inventory/', (req, res) => {
-  const filePath = path.join(__dirname, '..', 'frontend-inventory', 'index.html');
+  const filePath = path.join(__dirname, 'frontend-inventory', 'index.html');
   res.sendFile(filePath, (err) => {
     if (err) {
       console.error('[inventory] sendFile error:', err.message, '| path:', filePath);
@@ -502,7 +503,7 @@ app.get('/inventory/', (req, res) => {
   });
 });
 app.get('/inventory/*', (req, res) => {
-  const filePath = path.join(__dirname, '..', 'frontend-inventory', 'index.html');
+  const filePath = path.join(__dirname, 'frontend-inventory', 'index.html');
   res.sendFile(filePath, (err) => {
     if (err) {
       console.error('[inventory] sendFile error:', err.message, '| path:', filePath);
@@ -513,7 +514,7 @@ app.get('/inventory/*', (req, res) => {
 
 // TEMP DEBUG — remove after confirming /inventory works
 app.get('/inventory-test', (req, res) => {
-  const filePath = path.join(__dirname, '..', 'frontend-inventory', 'index.html');
+  const filePath = path.join(__dirname, 'frontend-inventory', 'index.html');
   res.sendFile(filePath, (err) => {
     if (err) {
       console.error('[inventory-test] error:', err.message, '| path:', filePath);

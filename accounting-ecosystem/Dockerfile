@@ -27,8 +27,8 @@ FROM node:22-alpine
 
 # OCR dependencies: tesseract (engine + English data) + poppler-utils (pdftoppm for PDF→image)
 # tesseract-ocr-data-eng: ~15MB — add more langs e.g. tesseract-ocr-data-afr for Afrikaans
-# Cache-bust: 2026-04-24-v3 — add hard build failure if frontend-inventory missing
-ARG CACHE_BUST=2026-04-24-v3
+# Cache-bust: 2026-04-24-v4 — frontend-inventory moved inside backend/ for guaranteed copy
+ARG CACHE_BUST=2026-04-24-v4
 RUN echo "cache-bust: $CACHE_BUST" && apk update && apk add --no-cache \
     tesseract-ocr \
     tesseract-ocr-data-eng \
@@ -42,29 +42,15 @@ WORKDIR /app
 COPY backend/package*.json backend/
 RUN cd backend && npm install --production
 
-# Copy ALL source files — .dockerignore excludes node_modules/.env/tests
-# This single COPY covers backend + every current and future frontend directory
-# automatically. No manual update needed when new frontend apps are added.
+# Copy ALL source files — frontend-inventory is now inside backend/ so it is
+# always included regardless of build method. No separate COPY needed.
 COPY . .
 
-# Explicit per-folder copy — belt-and-suspenders: ensures Docker cache cannot
-# silently omit frontend-inventory even if the COPY . . layer is stale/cached
-# from before this folder was added. Docker re-evaluates this layer against the
-# current folder content independently of the broader COPY . . layer above.
-COPY frontend-inventory ./frontend-inventory
-
-# ── BUILD VERIFICATION — fails the build if the file is missing ───────────────
-# If this step fails, the COPY above did not include frontend-inventory/index.html.
-# Check: (a) that frontend-inventory/ is in the git repo, (b) that it is not
-# excluded by .dockerignore, (c) that Zeabur Root Directory = accounting-ecosystem.
-RUN echo "=== /app contents ===" \
-  && ls -la /app \
-  && echo "=== /app/frontend-inventory contents ===" \
-  && ls -la /app/frontend-inventory || echo "WARNING: frontend-inventory directory not found" \
-  && test -f /app/frontend-inventory/index.html \
-  || (echo "FATAL: /app/frontend-inventory/index.html is missing from Docker image" \
-      && echo "Build context must include frontend-inventory/ at its root" \
-      && exit 1)
+# ── BUILD VERIFICATION — fails the build if the inventory frontend is missing ──
+RUN echo "=== /app/backend/frontend-inventory ===" \
+  && ls -la /app/backend/frontend-inventory \
+  && test -f /app/backend/frontend-inventory/index.html \
+  || (echo "FATAL: /app/backend/frontend-inventory/index.html is missing" && exit 1)
 
 EXPOSE 3000
 
