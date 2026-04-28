@@ -15,7 +15,7 @@ ALTER TABLE employees
 -- One row per company + period_key. Updated by the PAYE recon page.
 CREATE TABLE IF NOT EXISTS payroll_recon_submitted (
   id            BIGSERIAL PRIMARY KEY,
-  company_id    UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id    INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   period_key    VARCHAR(7) NOT NULL,          -- 'YYYY-MM'
   paye_submitted NUMERIC(12,2) DEFAULT 0,     -- what was submitted to SARS
   uif_submitted  NUMERIC(12,2) DEFAULT 0,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS payroll_recon_submitted (
 -- One row per company + tax_year (e.g. '2025/2026').
 CREATE TABLE IF NOT EXISTS payroll_recon_finalized (
   id            BIGSERIAL PRIMARY KEY,
-  company_id    UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id    INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   tax_year      VARCHAR(9) NOT NULL,          -- 'YYYY/YYYY'
   is_finalized  BOOLEAN DEFAULT FALSE,
   finalized_by  TEXT,
