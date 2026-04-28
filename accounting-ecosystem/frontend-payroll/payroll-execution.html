@@ -937,17 +937,18 @@
         document.getElementById('exec-loading').style.display = 'flex';
         document.getElementById('exec-results').style.display = 'none';
 
-        // Collect voluntary tax configs from the API employee list (SQL-backed).
-        // Fall back to KV for employees whose config pre-dates migration 012.
+        // Collect voluntary tax configs from SQL-backed employee records.
+        // Array format (multi-entry) is the current standard. Single-object legacy
+        // entries are wrapped in an array for backward compat.
         var voluntaryConfigs = {};
         employeeIds.forEach(function(empId) {
             var emp = (state.employees || []).find(function(e) { return String(e.id) === String(empId); });
             var cfg = emp && emp.voluntary_tax_config;
-            if (!cfg) {
-                var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + state.companyId + '_' + empId);
-                try { cfg = raw ? JSON.parse(raw) : null; } catch(e) { cfg = null; }
+            if (Array.isArray(cfg) && cfg.length > 0) {
+                voluntaryConfigs[String(empId)] = cfg;
+            } else if (cfg && cfg.type) {
+                voluntaryConfigs[String(empId)] = [cfg];
             }
-            if (cfg && cfg.type) voluntaryConfigs[String(empId)] = cfg;
         });
 
         var res = await PayrollAPI.run(periodKey, employeeIds, voluntaryConfigs);

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -384,54 +384,65 @@
                     <div class="section" style="margin-bottom: 18px;">
                         <div class="section-title">Voluntary Tax Over-Deduction</div>
                         <div style="font-size:12px; color:#b85c00; background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:7px 10px; margin-bottom:10px;">
-                            ⚠ This increases PAYE paid to SARS — it is <strong>not</strong> a standard deduction. It appears as a separate line on the payslip.
+                            ⚠ This increases PAYE paid to SARS — it is <strong>not</strong> a standard deduction. Multiple entries are supported. Each appears separately on the payslip.
                         </div>
 
-                        <!-- Scenario selector -->
+                        <!-- Active entries list -->
+                        <div id="volTaxEntriesList" style="margin-bottom:10px;"></div>
+
+                        <!-- Add new entry — type selector -->
                         <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+                            <span style="font-size:12px; color:#666; align-self:center; font-weight:600;">Add:</span>
                             <button type="button" id="volTaxTabFixed"    class="btn btn-sm" onclick="switchVolTaxTab('fixed')"        style="font-size:12px;">Fixed Monthly</button>
-                            <button type="button" id="volTaxTabVariable" class="btn btn-sm" onclick="switchVolTaxTab('variable')"     style="font-size:12px;">Variable (This Period)</button>
+                            <button type="button" id="volTaxTabVariable" class="btn btn-sm" onclick="switchVolTaxTab('variable')"     style="font-size:12px;">Variable (Period)</button>
                             <button type="button" id="volTaxTabSpread"   class="btn btn-sm" onclick="switchVolTaxTab('bonus_spread')" style="font-size:12px;">Bonus Spread</button>
-                            <button type="button" id="volTaxTabClear"    class="btn btn-sm" onclick="clearVoluntaryTaxConfig()"       style="font-size:12px; background:#eee; color:#666;">✕ Clear</button>
                         </div>
 
                         <!-- Scenario 1: Fixed Monthly -->
-                        <div id="volTaxPanelFixed" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0;">
+                        <div id="volTaxPanelFixed" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
                             <label style="margin-bottom:0; font-size:13px; font-weight:600;">Extra PAYE per month:</label>
                             <span style="font-size:13px;">R</span>
                             <input type="number" id="volFixedAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
-                            <button class="btn btn-success btn-sm" onclick="saveVoluntaryTaxConfig()" style="font-size:12px;">Save Fixed</button>
-                            <span id="volTaxSavedMsg" style="color:#28a745; display:none; margin-left:6px; font-size:12px;">✓ Saved</span>
+                            <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('fixed')" style="font-size:12px;">Add Entry</button>
+                            <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
                         </div>
 
                         <!-- Scenario 2: Variable (current period only) -->
-                        <div id="volTaxPanelVariable" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0;">
+                        <div id="volTaxPanelVariable" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
                             <label style="margin-bottom:0; font-size:13px; font-weight:600;">Extra PAYE for period:</label>
                             <input type="month" id="volVariablePeriod" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
                             <span style="font-size:13px;">R</span>
                             <input type="number" id="volVariableAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
-                            <button class="btn btn-success btn-sm" onclick="saveVoluntaryTaxConfig()" style="font-size:12px;">Save Variable</button>
-                            <span id="volTaxSavedMsgVar" style="color:#28a745; display:none; margin-left:6px; font-size:12px;">✓ Saved</span>
-                            <div style="width:100%; font-size:11px; color:#888; margin-top:4px;">This extra tax applies <strong>only</strong> to the selected period. It does not carry forward.</div>
+                            <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('variable')" style="font-size:12px;">Add Entry</button>
+                            <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
+                            <div style="width:100%; font-size:11px; color:#888; margin-top:4px;">Applies <strong>only</strong> to the selected period. Does not carry forward.</div>
                         </div>
 
-                        <!-- Scenario 3: Bonus Spread -->
-                        <div id="volTaxPanelSpread" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0;">
-                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">Monthly spread amount:</label>
-                            <span style="font-size:13px;">R</span>
-                            <input type="number" id="volSpreadAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
-                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">From:</label>
-                            <input type="month" id="volSpreadStart" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
-                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">To:</label>
-                            <input type="month" id="volSpreadEnd" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
-                            <input type="text" id="volSpreadRef" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:12px; width:160px;" placeholder="Reference note (optional)">
-                            <button class="btn btn-success btn-sm" onclick="saveVoluntaryTaxConfig()" style="font-size:12px;">Save Spread</button>
-                            <span id="volTaxSavedMsgSpread" style="color:#28a745; display:none; margin-left:6px; font-size:12px;">✓ Saved</span>
-                            <div style="width:100%; font-size:11px; color:#888; margin-top:4px;">Applies the same fixed amount each period between the From and To months (inclusive).</div>
+                        <!-- Scenario 3: Bonus Spread — backend calculates incremental PAYE -->
+                        <div id="volTaxPanelSpread" style="display:none; gap:10px; align-items:flex-start; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; width:100%;">
+                                <label style="margin-bottom:0; font-size:13px; font-weight:600;">Bonus amount:</label>
+                                <span style="font-size:13px;">R</span>
+                                <input type="number" id="volBonusAmount" min="0" step="0.01" style="width:120px;" placeholder="0.00">
+                                <label style="margin-bottom:0; font-size:13px; font-weight:600;">Spread over:</label>
+                                <input type="number" id="volSpreadPeriods" min="1" max="60" value="12" style="width:60px;">
+                                <span style="font-size:13px;">months from</span>
+                                <input type="month" id="volSpreadStart" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
+                                <button id="volSpreadCalcBtn" class="btn btn-sm" onclick="calcBonusSpread(event)" style="font-size:12px; background:#667eea; color:white;">Calculate PAYE</button>
+                            </div>
+                            <!-- Result shown after Calculate -->
+                            <div id="volSpreadCalcResult" style="display:none; width:100%; padding:8px 10px; background:#e3f2fd; border-radius:4px; border-left:3px solid #2196f3; font-size:12px;">
+                                <div style="margin-bottom:4px;">Incremental PAYE on bonus: <strong>R<span id="volSpreadIncrPaye">0.00</span></strong></div>
+                                <div style="margin-bottom:8px;">Monthly spread amount: <strong>R<span id="volSpreadMonthly">0.00</span></strong> × <span id="volSpreadPeriodsLabel">12</span> months (<span id="volSpreadStartLabel"></span> → <span id="volSpreadEndLabel"></span>)</div>
+                                <input type="hidden" id="volSpreadEnd">
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                    <input type="text" id="volSpreadRef" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:12px; width:180px;" placeholder="Reference note (e.g. Annual Bonus 2026)">
+                                    <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('bonus_spread')" style="font-size:12px;">Add Entry</button>
+                                    <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
+                                </div>
+                            </div>
+                            <div id="volSpreadCalcNotice" style="width:100%; font-size:11px; color:#888; margin-top:4px;">Backend calculates the incremental PAYE from the bonus, then spreads it evenly across the selected periods.</div>
                         </div>
-
-                        <!-- Active config display -->
-                        <div id="volTaxActiveDisplay" style="display:none; margin-top:8px; font-size:12px; color:#555; padding:6px 10px; background:#e8f5e9; border-radius:4px; border-left:3px solid #28a745;"></div>
                     </div>
                 <div class="card" style="margin-top: 20px; background: linear-gradient(135deg, #f0f4ff 0%, #e8eaf6 100%);">
                     <h3>💰 Payroll Summary</h3>
@@ -2917,75 +2928,107 @@
         }
 
         // ============================================================
-        // VOLUNTARY TAX OVER-DEDUCTION — UI Functions
+        // VOLUNTARY TAX OVER-DEDUCTION — Multi-entry UI
         // ============================================================
+        // In-memory list synced to SQL on every change. No localStorage.
+
+        var _volTaxEntries = [];
 
         function switchVolTaxTab(type) {
             ['Fixed','Variable','Spread'].forEach(function(t) {
                 var el = document.getElementById('volTaxPanel' + t);
                 if (el) el.style.display = 'none';
             });
-            var map = { fixed: 'Fixed', variable: 'Variable', bonus_spread: 'Spread' };
-            if (map[type]) {
-                var panel = document.getElementById('volTaxPanel' + map[type]);
+            ['volTaxTabFixed','volTaxTabVariable','volTaxTabSpread'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) { el.style.background = ''; el.style.color = ''; }
+            });
+            if (!type) return;
+            var panelMap = { fixed: 'Fixed', variable: 'Variable', bonus_spread: 'Spread' };
+            if (panelMap[type]) {
+                var panel = document.getElementById('volTaxPanel' + panelMap[type]);
                 if (panel) panel.style.display = 'flex';
             }
-            ['volTaxTabFixed','volTaxTabVariable','volTaxTabSpread'].forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el) { el.style.background = ''; el.style.color = ''; }
-            });
-            var activeMap = { fixed: 'volTaxTabFixed', variable: 'volTaxTabVariable', bonus_spread: 'volTaxTabSpread' };
-            if (activeMap[type]) {
-                var btn = document.getElementById(activeMap[type]);
+            var tabMap = { fixed: 'volTaxTabFixed', variable: 'volTaxTabVariable', bonus_spread: 'volTaxTabSpread' };
+            if (tabMap[type]) {
+                var btn = document.getElementById(tabMap[type]);
                 if (btn) { btn.style.background = '#667eea'; btn.style.color = 'white'; }
             }
+            if (type === 'bonus_spread') {
+                var cr = document.getElementById('volSpreadCalcResult');
+                if (cr) cr.style.display = 'none';
+            }
         }
 
-        function saveVoluntaryTaxConfig() {
-            var config = null;
-            var savedMsgId = 'volTaxSavedMsg';
-            var fixedPanel   = document.getElementById('volTaxPanelFixed');
-            var varPanel     = document.getElementById('volTaxPanelVariable');
-            var spreadPanel  = document.getElementById('volTaxPanelSpread');
-            if (fixedPanel && fixedPanel.style.display !== 'none') {
+        function renderVolTaxEntries() {
+            var list = document.getElementById('volTaxEntriesList');
+            if (!list) return;
+            if (!_volTaxEntries.length) {
+                list.innerHTML = '<div style="color:#999; font-size:12px; margin-bottom:4px;">No voluntary tax entries configured.</div>';
+                return;
+            }
+            list.innerHTML = _volTaxEntries.map(function(entry) {
+                var label = '';
+                if (entry.type === 'fixed') {
+                    label = 'Fixed: R' + (parseFloat(entry.fixed_amount) || 0).toFixed(2) + ' extra PAYE per month';
+                } else if (entry.type === 'variable') {
+                    label = 'Variable: R' + (parseFloat(entry.variable_amount) || 0).toFixed(2) + ' for period ' + (entry.period || '');
+                } else if (entry.type === 'bonus_spread') {
+                    label = 'Bonus Spread: R' + (parseFloat(entry.monthly_spread_amount) || 0).toFixed(2) + '/month ' + (entry.start_period || '') + ' to ' + (entry.end_period || '');
+                    if (entry.reference) label += ' — ' + entry.reference;
+                }
+                var eid = (entry.id || '').replace(/'/g, "\\'");
+                return '<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:#e8f5e9; border-radius:4px; border-left:3px solid #28a745; margin-bottom:5px; font-size:12px;">' +
+                    '<span style="color:#2e7d32;">✓ ' + label + '</span>' +
+                    '<button type="button" onclick="removeVolTaxEntry(\'' + eid + '\')" title="Remove this entry" style="border:none; background:none; color:#dc3545; cursor:pointer; font-size:15px; padding:0 4px; line-height:1;">&times;</button>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function addVolTaxEntry(type) {
+            var entry = { id: String(Date.now()) };
+            if (type === 'fixed') {
                 var amt = parseFloat(document.getElementById('volFixedAmount').value) || 0;
-                config = { type: 'fixed', fixed_amount: amt };
-                savedMsgId = 'volTaxSavedMsg';
-            } else if (varPanel && varPanel.style.display !== 'none') {
+                if (!amt) { showToast('Enter a fixed amount', 'error'); return; }
+                entry.type = 'fixed';
+                entry.fixed_amount = amt;
+                document.getElementById('volFixedAmount').value = '';
+            } else if (type === 'variable') {
                 var varAmt    = parseFloat(document.getElementById('volVariableAmount').value) || 0;
                 var varPeriod = document.getElementById('volVariablePeriod').value;
-                config = { type: 'variable', variable_amount: varAmt, period: varPeriod };
-                savedMsgId = 'volTaxSavedMsgVar';
-            } else if (spreadPanel && spreadPanel.style.display !== 'none') {
-                var sAmt   = parseFloat(document.getElementById('volSpreadAmount').value) || 0;
-                var sStart = document.getElementById('volSpreadStart').value;
-                var sEnd   = document.getElementById('volSpreadEnd').value;
-                var sRef   = document.getElementById('volSpreadRef').value;
-                config = { type: 'bonus_spread', monthly_spread_amount: sAmt, start_period: sStart, end_period: sEnd, reference: sRef };
-                savedMsgId = 'volTaxSavedMsgSpread';
+                if (!varAmt || !varPeriod) { showToast('Enter amount and period', 'error'); return; }
+                entry.type = 'variable';
+                entry.variable_amount = varAmt;
+                entry.period = varPeriod;
+                document.getElementById('volVariableAmount').value = '';
+            } else if (type === 'bonus_spread') {
+                var monthlyEl = document.getElementById('volSpreadMonthly');
+                var monthly   = monthlyEl ? parseFloat(monthlyEl.textContent) || 0 : 0;
+                var sStart    = document.getElementById('volSpreadStart').value;
+                var sEnd      = document.getElementById('volSpreadEnd').value;
+                var bonusAmt  = parseFloat(document.getElementById('volBonusAmount').value) || 0;
+                if (!monthly || !sStart || !sEnd) { showToast('Click Calculate PAYE first', 'error'); return; }
+                entry.type = 'bonus_spread';
+                entry.bonus_amount = bonusAmt;
+                entry.monthly_spread_amount = monthly;
+                entry.start_period = sStart;
+                entry.end_period   = sEnd;
+                entry.reference    = (document.getElementById('volSpreadRef').value || '').trim();
+                document.getElementById('volBonusAmount').value = '';
+                document.getElementById('volSpreadRef').value = '';
+            } else {
+                return;
             }
-            if (!config) return;
-            // KV fallback (offline resilience) + SQL persistence
-            safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(config));
-            _saveVolTaxToAPI(config);
-            updateVolTaxActiveDisplay(config);
-            var msg = document.getElementById(savedMsgId);
-            if (msg) { msg.style.display = 'inline'; setTimeout(function(){ msg.style.display = 'none'; }, 1500); }
+            _volTaxEntries.push(entry);
+            _saveVolTaxToAPI(_volTaxEntries);
+            renderVolTaxEntries();
+            switchVolTaxTab(null);
         }
 
-        function clearVoluntaryTaxConfig() {
-            safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-            _saveVolTaxToAPI(null);
-            ['Fixed','Variable','Spread'].forEach(function(t) {
-                var el = document.getElementById('volTaxPanel' + t);
-                if (el) el.style.display = 'none';
-            });
-            ['volTaxTabFixed','volTaxTabVariable','volTaxTabSpread'].forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el) { el.style.background = ''; el.style.color = ''; }
-            });
-            var disp = document.getElementById('volTaxActiveDisplay');
-            if (disp) disp.style.display = 'none';
+        function removeVolTaxEntry(id) {
+            _volTaxEntries = _volTaxEntries.filter(function(e) { return e.id !== id; });
+            _saveVolTaxToAPI(_volTaxEntries.length > 0 ? _volTaxEntries : null);
+            renderVolTaxEntries();
         }
 
         function _saveVolTaxToAPI(config) {
@@ -2998,59 +3041,62 @@
             }).catch(function() {});
         }
 
-        function updateVolTaxActiveDisplay(config) {
-            var disp = document.getElementById('volTaxActiveDisplay');
-            if (!disp) return;
-            if (!config || !config.type) { disp.style.display = 'none'; return; }
-            var msg = '';
-            if (config.type === 'fixed') {
-                msg = '\u2713 Active: Fixed R' + (parseFloat(config.fixed_amount) || 0).toFixed(2) + ' extra PAYE per month';
-            } else if (config.type === 'variable') {
-                msg = '\u2713 Active: Variable R' + (parseFloat(config.variable_amount) || 0).toFixed(2) + ' extra PAYE for period ' + (config.period || '');
-            } else if (config.type === 'bonus_spread') {
-                msg = '\u2713 Active: Bonus spread R' + (parseFloat(config.monthly_spread_amount) || 0).toFixed(2) + '/month from ' + (config.start_period || '') + ' to ' + (config.end_period || '');
-                if (config.reference) msg += ' (' + config.reference + ')';
+        async function calcBonusSpread(evt) {
+            if (evt) evt.preventDefault();
+            var bonusAmt    = parseFloat(document.getElementById('volBonusAmount').value) || 0;
+            var numPer      = parseInt(document.getElementById('volSpreadPeriods').value, 10) || 12;
+            var startPeriod = document.getElementById('volSpreadStart').value;
+            if (!bonusAmt || bonusAmt <= 0) { showToast('Enter a bonus amount', 'error'); return; }
+            if (!startPeriod) { showToast('Select a start period', 'error'); return; }
+
+            var sd = new Date(startPeriod + '-01');
+            sd.setMonth(sd.getMonth() + numPer - 1);
+            var endPeriod = sd.getFullYear() + '-' + String(sd.getMonth() + 1).padStart(2, '0');
+            document.getElementById('volSpreadEnd').value = endPeriod;
+
+            var calcBtn = document.getElementById('volSpreadCalcBtn');
+            if (calcBtn) { calcBtn.disabled = true; calcBtn.textContent = 'Calculating...'; }
+
+            try {
+                var token = safeLocalStorage.getItem('token');
+                var resp = await fetch(window.location.origin + '/api/payroll/voluntary-tax/calculate-bonus-spread', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({
+                        employee_id: currentEmpId,
+                        period_key:  startPeriod,
+                        bonus_amount: bonusAmt,
+                        num_periods:  numPer
+                    })
+                });
+                var data = await resp.json();
+                if (!data.success) { showToast(data.error || 'Calculation failed', 'error'); return; }
+
+                document.getElementById('volSpreadIncrPaye').textContent    = (data.incremental_paye      || 0).toFixed(2);
+                document.getElementById('volSpreadMonthly').textContent      = (data.monthly_spread_amount || 0).toFixed(2);
+                document.getElementById('volSpreadPeriodsLabel').textContent = String(numPer);
+                document.getElementById('volSpreadStartLabel').textContent   = startPeriod;
+                document.getElementById('volSpreadEndLabel').textContent     = endPeriod;
+                document.getElementById('volSpreadCalcResult').style.display = 'block';
+                var notice = document.getElementById('volSpreadCalcNotice');
+                if (notice) notice.style.display = 'none';
+            } catch(e) {
+                showToast('Error calculating bonus spread', 'error');
+            } finally {
+                if (calcBtn) { calcBtn.disabled = false; calcBtn.textContent = 'Calculate PAYE'; }
             }
-            disp.textContent = msg;
-            disp.style.display = 'block';
         }
 
         function loadVoluntaryTaxConfig() {
-            // Prefer SQL-backed employee record; fall back to KV if not yet migrated
-            var obj = (currentEmployee && currentEmployee.voluntary_tax_config) || null;
-            if (!obj) {
-                var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-                try { obj = raw ? JSON.parse(raw) : null; } catch(e) { obj = null; }
+            var cfg = (currentEmployee && currentEmployee.voluntary_tax_config) || null;
+            if (cfg && !Array.isArray(cfg) && cfg.type) {
+                _volTaxEntries = [Object.assign({ id: String(Date.now()) }, cfg)];
+            } else if (Array.isArray(cfg)) {
+                _volTaxEntries = cfg;
+            } else {
+                _volTaxEntries = [];
             }
-            if (!obj) {
-                var disp = document.getElementById('volTaxActiveDisplay');
-                if (disp) disp.style.display = 'none';
-                return;
-            }
-            try {
-                updateVolTaxActiveDisplay(obj);
-                if (obj.type === 'fixed') {
-                    switchVolTaxTab('fixed');
-                    var fa = document.getElementById('volFixedAmount');
-                    if (fa) fa.value = obj.fixed_amount || '';
-                } else if (obj.type === 'variable') {
-                    switchVolTaxTab('variable');
-                    var vp = document.getElementById('volVariablePeriod');
-                    var va = document.getElementById('volVariableAmount');
-                    if (vp) vp.value = obj.period || '';
-                    if (va) va.value = obj.variable_amount || '';
-                } else if (obj.type === 'bonus_spread') {
-                    switchVolTaxTab('bonus_spread');
-                    var ss = document.getElementById('volSpreadAmount');
-                    var st = document.getElementById('volSpreadStart');
-                    var en = document.getElementById('volSpreadEnd');
-                    var rf = document.getElementById('volSpreadRef');
-                    if (ss) ss.value = obj.monthly_spread_amount || '';
-                    if (st) st.value = obj.start_period || '';
-                    if (en) en.value = obj.end_period || '';
-                    if (rf) rf.value = obj.reference || '';
-                }
-            } catch(e) {}
+            renderVolTaxEntries();
         }
 
         // ============================================================

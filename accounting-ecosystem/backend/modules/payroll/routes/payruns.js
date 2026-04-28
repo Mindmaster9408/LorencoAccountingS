@@ -249,9 +249,13 @@ router.post(
             req.companyId, empId, period_key, supabase
           );
 
-          // Inject voluntary tax config if provided in the request payload
+          // Inject voluntary tax config if provided in the request payload.
+          // Accepts array (multi-entry) or legacy single object — both handled by the engine.
           const volConfig = voluntary_configs && (voluntary_configs[String(empId)] || voluntary_configs[empId]);
-          if (volConfig && volConfig.type) {
+          const hasVolConfig = volConfig && (
+            Array.isArray(volConfig) ? volConfig.length > 0 : !!volConfig.type
+          );
+          if (hasVolConfig) {
             normalizedInputs.employeeOptions = normalizedInputs.employeeOptions || {};
             normalizedInputs.employeeOptions.voluntaryTaxConfig = volConfig;
           }

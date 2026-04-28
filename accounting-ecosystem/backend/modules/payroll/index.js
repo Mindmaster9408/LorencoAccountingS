@@ -35,7 +35,8 @@ const reconRoutes        = require('./routes/recon');
 const unlockRoutes       = require('./routes/unlock');
 const calculateRoutes    = require('./routes/calculate');    // NEW — Workstream 2 Step 6
 const payrunsRoutes      = require('./routes/payruns');      // NEW — Workstream 2 Step 7
-const paySchedulesRoutes = require('./routes/pay-schedules'); // NEW — multi-schedule support
+const paySchedulesRoutes  = require('./routes/pay-schedules'); // NEW — multi-schedule support
+const voluntaryTaxRoutes  = require('./routes/voluntary-tax'); // Backend-authoritative voluntary tax calc
 
 const router = express.Router();
 
@@ -59,6 +60,9 @@ router.use('/unlock', unlockRoutes);
 
 // Pay schedule definitions (per company groupings for pay run filtering)
 router.use('/pay-schedules', paySchedulesRoutes);
+
+// Backend-authoritative voluntary tax calculations (bonus spread PAYE computation)
+router.use('/voluntary-tax', voluntaryTaxRoutes);
 
 // Health check for Payroll module
 router.get('/status', (req, res) => {
