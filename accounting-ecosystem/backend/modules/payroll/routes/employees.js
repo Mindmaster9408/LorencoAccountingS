@@ -226,10 +226,12 @@ router.put('/:id/bank-details', requirePermission('PAYROLL.CREATE'), requirePayt
     const { data: existing } = await supabase
       .from('employee_bank_details')
       .select('id')
+      .eq('company_id', req.companyId)
       .eq('employee_id', empId)
       .maybeSingle();
 
     const payload = {
+      company_id: req.companyId,
       employee_id: empId,
       bank_name,
       account_number,
