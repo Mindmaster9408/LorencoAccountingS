@@ -431,9 +431,9 @@
                                 <button id="volSpreadCalcBtn" class="btn btn-sm" onclick="calcBonusSpread(event)" style="font-size:12px; background:#667eea; color:white;">Calculate PAYE</button>
                             </div>
                             <!-- Result shown after Calculate -->
-                            <div id="volSpreadCalcResult" style="display:none; width:100%; padding:8px 10px; background:#e3f2fd; border-radius:4px; border-left:3px solid #2196f3; font-size:12px; color:#1a1a2e;">
-                                <div style="margin-bottom:4px;">Incremental PAYE on bonus: <strong>R<span id="volSpreadIncrPaye">0.00</span></strong></div>
-                                <div style="margin-bottom:8px;">Monthly spread amount: <strong>R<span id="volSpreadMonthly">0.00</span></strong> × <span id="volSpreadPeriodsLabel">12</span> months (<span id="volSpreadStartLabel"></span> → <span id="volSpreadEndLabel"></span>)</div>
+                            <div id="volSpreadCalcResult" style="display:none; width:100%; padding:10px 12px; background:#1a237e; border-radius:4px; border-left:4px solid #42a5f5; font-size:13px; color:#ffffff;">
+                                <div style="margin-bottom:6px; color:#ffffff;">Incremental PAYE on bonus: <strong style="color:#ffeb3b;">R<span id="volSpreadIncrPaye" style="color:#ffeb3b;">0.00</span></strong></div>
+                                <div style="margin-bottom:10px; color:#ffffff;">Monthly spread amount: <strong style="color:#69f0ae;">R<span id="volSpreadMonthly" style="color:#69f0ae;">0.00</span></strong> <span style="color:#fff;">×</span> <span id="volSpreadPeriodsLabel" style="color:#ffeb3b;">12</span> <span style="color:#fff;">months (</span><span id="volSpreadStartLabel" style="color:#ffeb3b;"></span> <span style="color:#fff;">→</span> <span id="volSpreadEndLabel" style="color:#ffeb3b;"></span><span style="color:#fff;">)</span></div>
                                 <input type="hidden" id="volSpreadEnd">
                                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                                     <input type="text" id="volSpreadRef" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:12px; width:180px;" placeholder="Reference note (e.g. Annual Bonus 2026)">
@@ -3057,13 +3057,17 @@
             var calcBtn = document.getElementById('volSpreadCalcBtn');
             if (calcBtn) { calcBtn.disabled = true; calcBtn.textContent = 'Calculating...'; }
 
+            // Use the resolved Supabase integer ID — required by the payroll engine.
+            var empIdForCalc = _supabaseEmpId || currentEmpId;
+            if (!empIdForCalc) { showToast('Employee ID not resolved yet — please wait and try again', 'error'); if (calcBtn) { calcBtn.disabled = false; calcBtn.textContent = 'Calculate PAYE'; } return; }
+
             try {
                 var token = safeLocalStorage.getItem('token');
                 var resp = await fetch(window.location.origin + '/api/payroll/voluntary-tax/calculate-bonus-spread', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({
-                        employee_id: currentEmpId,
+                        employee_id: empIdForCalc,
                         period_key:  startPeriod,
                         bonus_amount: bonusAmt,
                         num_periods:  numPer
