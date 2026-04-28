@@ -389,9 +389,8 @@
         // ─── State ────────────────────────────────────────────────────────────
         var currentCompanyId  = null;
         var currentTaxYear    = null;
-        var allPeriods        = [];
+        var _taxYears         = [];   // populated from API — never from localStorage
         var filteredPeriods   = [];
-        var employees         = [];
         var payrollTotals     = {};
         var empBreakdown      = [];
         var sarsData          = {};
@@ -458,7 +457,7 @@
         // Render the top year-status cards
         function renderYearGrid() {
             var grid = document.getElementById('year-status-grid');
-            var allYears = ReconService.getTaxYears(allPeriods);
+            var allYears = _taxYears;
             if (allYears.length === 0) { grid.style.display = 'none'; return; }
             grid.style.display = 'flex';
             grid.innerHTML = '';
@@ -588,23 +587,13 @@
 
         // ─── Load Data ────────────────────────────────────────────────────────
         function loadData() {
-            // Get employees from localStorage cache (still used for breakdown display)
-            try {
-                employees = JSON.parse(safeLocalStorage.getItem('employees_' + currentCompanyId) || '[]');
-            } catch(e) { employees = []; }
-
-            // Get all payroll periods from localStorage (for ReconService fallback)
-            allPeriods = PayrollEngine.getHistoricalPeriods ? PayrollEngine.getHistoricalPeriods(currentCompanyId) : [];
             loadFinalized();
-
-            // Prefer backend tax years — fall back to localStorage-derived list
-            var localTaxYears = ReconService.getTaxYears(allPeriods);
-
             apiGet('/payroll/recon/tax-years').then(function(data) {
-                var taxYears = data.taxYears || localTaxYears;
-                _populateTaxYearSelector(taxYears);
+                _taxYears = data.taxYears || [];
+                _populateTaxYearSelector(_taxYears);
             }).catch(function() {
-                _populateTaxYearSelector(localTaxYears);
+                _taxYears = [];
+                _populateTaxYearSelector([]);
             });
         }
         window.loadData = loadData;
@@ -644,47 +633,33 @@
             }
             showEmptyState(false);
 
-            filteredPeriods = ReconService.getPeriodsForTaxYear(allPeriods, currentTaxYear);
+            filteredPeriods = [];
 
             // SARS and bank submitted values remain localStorage-based (user-entered, not from payroll)
             sarsData = ReconService.loadSARSValues(currentCompanyId);
             bankData = ReconService.loadBankValues(currentCompanyId);
 
-            // Prefer backend summary for payrollTotals — fall back to ReconService (localStorage)
             apiGet('/payroll/recon/summary?taxYear=' + encodeURIComponent(currentTaxYear)).then(function(data) {
                 if (data && data.totals) {
-                    // Backend returned data — use it as the primary source
                     payrollTotals = data.totals;
-                    // FIX: use server-side periods so rendering loops have the correct 12-period array
-                    // (localStorage PayrollEngine.getHistoricalPeriods returns empty for the new system)
                     if (data.periods && data.periods.length > 0) {
                         filteredPeriods = data.periods;
                     }
-                    // Merge any localStorage periods that exist but aren't in the backend yet
-                    var localTotals = ReconService.buildPayrollTotals(currentCompanyId, employees, filteredPeriods);
-                    Object.keys(localTotals).forEach(function(period) {
-                        if (!payrollTotals[period] || payrollTotals[period].gross === 0) {
-                            payrollTotals[period] = localTotals[period];
-                        }
-                    });
-                    // Build employee breakdown — always from backend employees list if available
                     if (data.employees && data.employees.length > 0) {
                         empBreakdown = _buildBreakdownFromAPI(data.employees, data.periods || filteredPeriods);
                     } else {
-                        empBreakdown = ReconService.getEmployeeBreakdown(currentCompanyId, employees, filteredPeriods);
+                        empBreakdown = [];
                     }
                 } else {
-                    // Fallback: build entirely from localStorage
-                    payrollTotals = ReconService.buildPayrollTotals(currentCompanyId, employees, filteredPeriods);
-                    empBreakdown  = ReconService.getEmployeeBreakdown(currentCompanyId, employees, filteredPeriods);
+                    payrollTotals = {};
+                    empBreakdown  = [];
                 }
                 updateFinalizeUI();
                 renderAll();
                 applyFinalizedLock();
             }).catch(function() {
-                // API unavailable — fall back to localStorage ReconService entirely
-                payrollTotals = ReconService.buildPayrollTotals(currentCompanyId, employees, filteredPeriods);
-                empBreakdown  = ReconService.getEmployeeBreakdown(currentCompanyId, employees, filteredPeriods);
+                payrollTotals = {};
+                empBreakdown  = [];
                 updateFinalizeUI();
                 renderAll();
                 applyFinalizedLock();
