@@ -472,6 +472,7 @@
             <div class="top-tabs">
                 <button class="top-tab active" onclick="switchTab('execute', this)">▶ Run Payroll</button>
                 <button class="top-tab"        onclick="switchTab('history', this)">📋 History</button>
+                <button class="top-tab"        onclick="switchTab('reports', this)">📊 Reports</button>
             </div>
 
             <!-- ─────────────────────────────────────────────────────────
@@ -599,6 +600,38 @@
                     <div class="history-empty">
                         <div class="icon">📋</div>
                         <p>Select a pay period and click Load History.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─────────────────────────────────────────────────────────
+                 TAB: REPORTS
+            ───────────────────────────────────────────────────────── -->
+            <div id="reports-view" class="tab-view">
+                <h3 style="color:#333;font-size:1.1rem;font-weight:700;margin-bottom:20px;">📊 Monthly Reports</h3>
+
+                <div style="background:#f8f9fa;border-radius:10px;padding:20px;margin-bottom:24px;border:1px solid #e8e8e8;">
+                    <div style="font-weight:700;color:#555;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:14px;">Select Period</div>
+                    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                        <div class="form-group" style="margin:0;">
+                            <label for="rpt-period" style="font-size:0.8rem;color:#666;margin-bottom:4px;display:block;">Pay Period</label>
+                            <input type="month" id="rpt-period">
+                        </div>
+                        <button class="btn btn-primary" onclick="loadReports()">Load Reports</button>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div class="loading-block" id="rpt-loading" style="display:none;margin-bottom:20px;">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Loading reports…</div>
+                </div>
+
+                <!-- Report cards -->
+                <div id="rpt-content">
+                    <div class="history-empty">
+                        <div class="icon">📊</div>
+                        <p>Select a pay period and click Load Reports.</p>
                     </div>
                 </div>
             </div>
@@ -1204,6 +1237,39 @@
         }
 
         renderHistorySnapshots(periodKey, snapshots);
+    }
+
+    // ==========================================================================
+    // FEATURE 4b — REPORTS VIEW (backend-authoritative statutory reports by period)
+    // ==========================================================================
+    async function loadReports() {
+        var periodKey = document.getElementById('rpt-period').value;
+        if (!periodKey) { showToast('Select a pay period first.', 'warning'); return; }
+
+        document.getElementById('rpt-loading').style.display = 'flex';
+        document.getElementById('rpt-content').innerHTML = '';
+
+        var res = await PayrollAPI.getHistory(periodKey);
+        document.getElementById('rpt-loading').style.display = 'none';
+
+        if (!res.ok || !res.data.success) {
+            showToast(res.data.error || 'Failed to load reports.', 'error');
+            document.getElementById('rpt-content').innerHTML =
+                '<div class="history-empty"><div class="icon">⚠</div><p>Could not load data for ' + esc(periodKey) + '.</p></div>';
+            return;
+        }
+
+        var snapshots = res.data.snapshots || [];
+        if (snapshots.length === 0) {
+            document.getElementById('rpt-content').innerHTML =
+                '<div class="history-empty"><div class="icon">📊</div><p>No payroll records found for ' + esc(periodKey) + '. Run and finalize payroll for this period first.</p></div>';
+            return;
+        }
+
+        // Aggregate all snapshots for the period into one statutory returns view.
+        // Re-uses the existing backend-authoritative _computeReturnsFromSnapshots + buildStatutoryReturnsHTML.
+        var cacheKey = 'rpt-' + periodKey;
+        document.getElementById('rpt-content').innerHTML = buildStatutoryReturnsHTML(cacheKey, snapshots);
     }
 
     function renderHistorySnapshots(periodKey, snapshots) {

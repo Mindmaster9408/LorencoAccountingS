@@ -470,50 +470,6 @@
         </div>
     </div>
 
-    <!-- EMP201 PREVIEW MODAL -->
-    <div id="emp201Modal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
-            <div class="modal-header">
-                <h3>📋 EMP201 - Monthly Employer Declaration</h3>
-                <button class="btn btn-danger btn-sm" onclick="closeModal('emp201Modal')">Close</button>
-            </div>
-            <div id="emp201-content"></div>
-        </div>
-    </div>
-
-    <!-- UIF RETURN PREVIEW MODAL -->
-    <div id="uifModal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
-            <div class="modal-header">
-                <h3>📋 UIF Monthly Declaration</h3>
-                <button class="btn btn-danger btn-sm" onclick="closeModal('uifModal')">Close</button>
-            </div>
-            <div id="uif-content"></div>
-        </div>
-    </div>
-
-    <!-- EMP501 PREVIEW MODAL -->
-    <div id="emp501Modal" class="modal">
-        <div class="modal-content" style="max-width: 900px;">
-            <div class="modal-header">
-                <h3>📋 EMP501 - Employer Reconciliation Declaration</h3>
-                <button class="btn btn-danger btn-sm" onclick="closeModal('emp501Modal')">Close</button>
-            </div>
-            <div id="emp501-content"></div>
-        </div>
-    </div>
-
-    <!-- WCF PREVIEW MODAL -->
-    <div id="wcfModal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
-            <div class="modal-header">
-                <h3>📋 WCF Return - Workmen's Compensation Fund</h3>
-                <button class="btn btn-danger btn-sm" onclick="closeModal('wcfModal')">Close</button>
-            </div>
-            <div id="wcf-content"></div>
-        </div>
-    </div>
-
     <!-- BANKING FORMAT MODAL -->
     <div id="bankingModal" class="modal">
         <div class="modal-content" style="max-width: 450px;">
@@ -1072,9 +1028,6 @@
             } else {
                 // Payment breakdown
                 html += createPaymentBreakdown(run, stats);
-
-                // EMP201 & UIF Returns
-                html += await createReturnsSection(run);
 
                 // Actions
                 html += '<div class="action-buttons" style="margin-top: 15px;">';
