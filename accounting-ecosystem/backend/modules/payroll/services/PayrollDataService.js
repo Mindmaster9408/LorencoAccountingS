@@ -142,7 +142,47 @@ async function fetchPeriod(companyId, periodKey, supabase) {
     .maybeSingle();
 
   if (error && error.code !== 'PGRST116') throw error;
-  return data;
+  if (data) return data;
+
+  // Period doesn't exist yet — auto-create it from the YYYY-MM key.
+  // This avoids requiring the user to manually create periods before calculating.
+  const [y, m] = periodKey.split('-').map(Number);
+  if (!y || !m || m < 1 || m > 12) return null;
+  const startDate = new Date(y, m - 1, 1);
+  const endDate   = new Date(y, m, 0); // last day of month
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  const { data: created, error: createErr } = await supabase
+    .from('payroll_periods')
+    .insert({
+      company_id:  companyId,
+      period_key:  periodKey,
+      period_name: months[m - 1] + ' ' + y,
+      start_date:  fmt(startDate),
+      end_date:    fmt(endDate),
+      pay_date:    fmt(endDate)
+    })
+    .select('id, start_date, end_date, period_key')
+    .single();
+
+  if (createErr) {
+    // Race condition: another request created it between our read and insert.
+    // Retry the read once.
+    if (createErr.code === '23505') {
+      const { data: retry } = await supabase
+        .from('payroll_periods')
+        .select('id, start_date, end_date, period_key')
+        .eq('company_id', companyId)
+        .eq('period_key', periodKey)
+        .maybeSingle();
+      return retry || null;
+    }
+    console.error('[fetchPeriod] auto-create failed:', createErr.message);
+    return null;
+  }
+  console.log('[fetchPeriod] auto-created period:', periodKey, 'id:', created.id);
+  return created;
 }
 
 /**

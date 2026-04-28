@@ -14,6 +14,18 @@ const { auditFromReq } = require('../../middleware/audit');
 
 const router = express.Router();
 
+// Enum constants — must match DB CHECK constraints (see migration 011)
+const TASK_TYPES = [
+  'general','vat_return','tax_return','annual_financial','management_accounts',
+  'payroll','audit','bookkeeping','secretarial','other'
+];
+const DEADLINE_TYPES = [
+  'general','vat_return','tax_return','paye','uif','sdl',
+  'annual_financial','provisional_tax_p1','provisional_tax_p2',
+  'provisional_tax_top_up','cipc_annual_return','beneficial_ownership','other'
+];
+const DEADLINE_STATUSES = ['pending','submitted','completed','missed'];
+
 // ─── Health ──────────────────────────────────────────────────────────────────
 router.get('/status', (req, res) => {
   res.json({ module: 'practice', status: 'active', version: '1.0.0' });
@@ -155,13 +167,17 @@ router.get('/tasks/:id', async (req, res) => {
 router.post('/tasks', async (req, res) => {
   const { client_id, title, description, type, priority, due_date, assigned_to, notes } = req.body;
   if (!title) return res.status(400).json({ error: 'Task title is required' });
+  const resolvedType = type || 'general';
+  if (!TASK_TYPES.includes(resolvedType)) {
+    return res.status(400).json({ error: `Invalid task type. Must be one of: ${TASK_TYPES.join(', ')}` });
+  }
   const { data, error } = await supabase
     .from('practice_tasks')
     .insert({
       company_id: req.companyId,
       client_id: client_id ? parseInt(client_id) : null,
       title, description: description || null,
-      type: type || 'general',
+      type: resolvedType,
       priority: priority || 'medium',
       due_date: due_date || null,
       assigned_to: assigned_to ? parseInt(assigned_to) : null,
@@ -176,9 +192,14 @@ router.post('/tasks', async (req, res) => {
 });
 
 router.put('/tasks/:id', async (req, res) => {
+  if (req.body.type !== undefined && !TASK_TYPES.includes(req.body.type)) {
+    return res.status(400).json({ error: `Invalid task type. Must be one of: ${TASK_TYPES.join(', ')}` });
+  }
   const allowed = ['title', 'description', 'type', 'priority', 'status', 'due_date', 'assigned_to', 'notes', 'client_id'];
   const updates = { updated_at: new Date().toISOString() };
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+  if (updates.client_id !== undefined) updates.client_id = updates.client_id ? parseInt(updates.client_id) : null;
+  if (updates.assigned_to !== undefined) updates.assigned_to = updates.assigned_to ? parseInt(updates.assigned_to) : null;
   if (req.body.status === 'completed' && !updates.completed_at) {
     updates.completed_at = new Date().toISOString();
   }
@@ -293,12 +314,16 @@ router.get('/deadlines', async (req, res) => {
 router.post('/deadlines', async (req, res) => {
   const { client_id, title, type, due_date, notes } = req.body;
   if (!title || !due_date) return res.status(400).json({ error: 'title and due_date are required' });
+  const resolvedType = type || 'general';
+  if (!DEADLINE_TYPES.includes(resolvedType)) {
+    return res.status(400).json({ error: `Invalid deadline type. Must be one of: ${DEADLINE_TYPES.join(', ')}` });
+  }
   const { data, error } = await supabase
     .from('practice_deadlines')
     .insert({
       company_id: req.companyId,
       client_id: client_id ? parseInt(client_id) : null,
-      title, type: type || 'general',
+      title, type: resolvedType,
       due_date, notes: notes || null,
       status: 'pending'
     })
@@ -308,9 +333,19 @@ router.post('/deadlines', async (req, res) => {
 });
 
 router.put('/deadlines/:id', async (req, res) => {
+  if (req.body.type !== undefined && !DEADLINE_TYPES.includes(req.body.type)) {
+    return res.status(400).json({ error: `Invalid deadline type. Must be one of: ${DEADLINE_TYPES.join(', ')}` });
+  }
+  if (req.body.status !== undefined && !DEADLINE_STATUSES.includes(req.body.status)) {
+    return res.status(400).json({ error: `Invalid deadline status. Must be one of: ${DEADLINE_STATUSES.join(', ')}` });
+  }
   const allowed = ['title', 'type', 'due_date', 'notes', 'status', 'client_id'];
   const updates = { updated_at: new Date().toISOString() };
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+  if (updates.client_id !== undefined) updates.client_id = updates.client_id ? parseInt(updates.client_id) : null;
+  if (req.body.status === 'submitted' && !updates.submitted_at) {
+    updates.submitted_at = new Date().toISOString();
+  }
   const { data, error } = await supabase
     .from('practice_deadlines')
     .update(updates)
@@ -319,6 +354,17 @@ router.put('/deadlines/:id', async (req, res) => {
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json({ deadline: data });
+});
+
+router.delete('/deadlines/:id', async (req, res) => {
+  const { error } = await supabase
+    .from('practice_deadlines')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId);
+  if (error) return res.status(500).json({ error: error.message });
+  await auditFromReq(req, 'DELETE', 'practice_deadline', req.params.id, { module: 'practice' });
+  res.json({ success: true });
 });
 
 module.exports = router;

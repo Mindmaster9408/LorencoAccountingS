@@ -1041,6 +1041,11 @@
         var _currentItemIsPercentage = false;
         var _currentItemPercentageValue = 0;
         let currentPeriod = '';
+        // Period-specific inputs loaded from backend (overtime, short-time, current inputs).
+        // Populated by loadPeriodInputs() on every period load/change.
+        // Used by renderPayroll(), getPayslipData(), and generateNarrative() instead of KV reads.
+        var _periodInputsCache = { overtime: [], shortTime: [], currentInputs: [], multiRate: [] };
+
         // Cached backend calculation result — set by calculatePayslip(), consumed by
         // getPayslipData() (synchronous) for PDF/preview so it always uses the same
         // authoritative numbers as the payslip summary panel.
@@ -1933,7 +1938,7 @@
         }
 
         // ========== PAYROLL DATA ==========
-        function loadPayrollData() {
+        async function loadPayrollData() {
             try {
                 var periodSelect = document.getElementById('payPeriod');
                 if (!periodSelect) {
@@ -1947,12 +1952,16 @@
                 _lastBackendCalc = null;
                 const stored = safeLocalStorage.getItem(getPayrollKey());
                 payrollData = stored ? JSON.parse(stored) : { basic_salary: 0, regular_inputs: [] };
-                
+
                 // Ensure payrollData has required structure (cross-browser compatibility)
                 if (!payrollData) payrollData = { basic_salary: 0, regular_inputs: [] };
                 if (!payrollData.regular_inputs) payrollData.regular_inputs = [];
                 if (payrollData.basic_salary === undefined) payrollData.basic_salary = 0;
-                
+
+                // Load period-specific inputs (overtime, short-time, extras) from backend.
+                // Must complete before renderPayroll() so the UI shows correct data.
+                await loadPeriodInputs();
+
                 renderPayroll();
                 updatePayslipUI();
             } catch(e) {
@@ -1961,6 +1970,42 @@
                     try { renderPayroll(); updatePayslipUI(); } catch(e2) { console.error('Retry failed:', e2); }
                 }, 200);
             }
+        }
+
+        // Load overtime, short-time, and current inputs from backend into _periodInputsCache.
+        // Called on every period load/change and after every save/delete of period inputs.
+        async function loadPeriodInputs() {
+            if (!currentEmpId || !currentPeriod) return;
+            try {
+                var token = safeLocalStorage.getItem('token') || '';
+                var url = '/api/payroll/transactions/period-inputs?employee_id=' +
+                    encodeURIComponent(currentEmpId) + '&period_key=' + encodeURIComponent(currentPeriod);
+                var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+                if (!r.ok) { console.warn('[loadPeriodInputs] HTTP', r.status); return; }
+                var d = await r.json();
+                _periodInputsCache = {
+                    overtime:      d.overtime      || [],
+                    shortTime:     d.shortTime     || [],
+                    currentInputs: d.currentInputs || [],
+                    multiRate:     d.multiRate     || []
+                };
+            } catch(e) {
+                console.warn('[loadPeriodInputs] failed:', e.message);
+                // Keep existing cache on network error — don't reset to empty
+            }
+        }
+
+        // Internal helper: POST period-input data to backend and reload cache.
+        async function _savePeriodInputs(path, body) {
+            var token = safeLocalStorage.getItem('token') || '';
+            var r = await fetch(path, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            var d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Save failed');
+            return d;
         }
 
         function savePayrollData() {
@@ -2046,45 +2091,46 @@
                 return '<div class="salary-item editable"><span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span></span><span><span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ri.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button></span></div>';
             }).join('');
 
-            // Current inputs
+            // Current inputs — read from backend cache (not KV)
             const ciList = document.getElementById('currentInputsList');
-            const currentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
+            const currentInputs = _periodInputsCache.currentInputs;
             if (currentInputs.length === 0) {
                 ciList.innerHTML = '<p style="color: #999; font-size: 14px;">No current inputs for this period</p>';
             } else {
                 ciList.innerHTML = currentInputs.map(ci => {
-                    const color = ci.type === 'deduction' ? '#dc3545' : '#28a745';
-                    const prefix = ci.type === 'deduction' ? '- ' : '+ ';
-                    return '<div class="salary-item"><span class="salary-label">' + ci.description + ' <span style="color:' + color + '; font-size:11px;">(' + ci.type + ')</span></span><span><span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ci.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteCurrentInput(\'' + ci.id + '\')">x</button></span></div>';
+                    const ciType = ci.item_type || ci.type || 'earning';
+                    const color = ciType === 'deduction' ? '#dc3545' : '#28a745';
+                    const prefix = ciType === 'deduction' ? '- ' : '+ ';
+                    return '<div class="salary-item"><span class="salary-label">' + ci.description + ' <span style="color:' + color + '; font-size:11px;">(' + ciType + ')</span></span><span><span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ci.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteCurrentInput(' + ci.id + ')">x</button></span></div>';
                 }).join('');
             }
 
             // Auto-show additional hours section if any items exist for this period
-            var hasOT = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').length > 0;
-            var hasST = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]').length > 0;
-            var hasMR = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]').length > 0;
+            var hasOT = _periodInputsCache.overtime.length > 0;
+            var hasST = _periodInputsCache.shortTime.length > 0;
+            var hasMR = _periodInputsCache.multiRate.length > 0;
             if (hasOT || hasST || hasMR) {
                 document.getElementById('showAdditionalHours').checked = true;
                 document.getElementById('additionalHoursSection').style.display = 'block';
             }
 
-            // Overtime
+            // Overtime — read from backend cache (not KV); IDs are real DB integers
             const otList = document.getElementById('overtimeList');
-            const overtime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
+            const overtime = _periodInputsCache.overtime;
             otList.innerHTML = overtime.length === 0 ? '<p style="color:#999;font-size:14px;">No overtime recorded</p>' :
-                overtime.map(ot => '<div class="salary-item"><span class="salary-label">' + ot.date + ' - ' + ot.hours + 'hrs @ ' + ot.rate_multiplier + 'x' + (ot.description ? ' (' + ot.description + ')' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteOvertime(\'' + ot.id + '\')">x</button></div>').join('');
+                overtime.map(ot => '<div class="salary-item"><span class="salary-label">' + (ot.date ? ot.date + ' - ' : '') + ot.hours + 'hrs @ ' + ot.rate_multiplier + 'x' + (ot.description ? ' (' + ot.description + ')' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteOvertime(' + ot.id + ')">x</button></div>').join('');
 
-            // Short time
+            // Short time — read from backend cache (not KV)
             const stList = document.getElementById('shortTimeList');
-            const shortTime = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
+            const shortTime = _periodInputsCache.shortTime;
             stList.innerHTML = shortTime.length === 0 ? '<p style="color:#999;font-size:14px;">No short time recorded</p>' :
-                shortTime.map(st => '<div class="salary-item"><span class="salary-label">' + st.date + ' - ' + st.hours_missed + 'hrs missed' + (st.reason ? ' (' + st.reason + ')' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteShortTime(\'' + st.id + '\')">x</button></div>').join('');
+                shortTime.map(st => '<div class="salary-item"><span class="salary-label">' + (st.date ? st.date + ' - ' : '') + st.hours_missed + 'hrs missed' + (st.description ? ' (' + st.description + ')' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteShortTime(' + st.id + ')">x</button></div>').join('');
 
             // Multi-rate
             const mrList = document.getElementById('multiRateList');
-            const multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
+            const multiRate = _periodInputsCache.multiRate;
             mrList.innerHTML = multiRate.length === 0 ? '<p style="color:#999;font-size:14px;">No multi-rate hours recorded</p>' :
-                multiRate.map(mr => '<div class="salary-item"><span class="salary-label">' + mr.description + ' - ' + mr.hours + 'hrs @ R' + parseFloat(mr.hourly_rate).toFixed(2) + '/hr</span><span><span class="salary-value">' + formatMoney(mr.hours * mr.hourly_rate) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteMultiRate(\'' + mr.id + '\')">x</button></span></div>').join('');
+                multiRate.map(mr => '<div class="salary-item"><span class="salary-label">' + mr.description + ' - ' + mr.hours + 'hrs @ R' + parseFloat(mr.rate_multiplier).toFixed(2) + '/hr</span><span><span class="salary-value">' + formatMoney(mr.hours * mr.rate_multiplier) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteMultiRate(' + mr.id + ')">x</button></span></div>').join('');
             _updateHourlyRateDisplay();
             Permissions.enforceUI();
         }
@@ -2401,73 +2447,148 @@
             document.getElementById('currentSaveBtn').textContent = '✓ Add Custom Item to This Month';
             setTimeout(function() { document.getElementById('currentInputDesc').focus(); }, 50);
         }
-        function saveCurrentInput() {
+        async function saveCurrentInput() {
             if (!_requireNotLocked()) return;
             var desc = document.getElementById('currentInputDesc').value.trim();
             var type = document.getElementById('currentInputType').value;
             var amount = parseFloat(document.getElementById('currentInputAmount').value);
             if (!desc) { alert('Please select an item or enter a description'); return; }
             if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
-            var input = {
-                id: 'ci-' + Math.random().toString(36).substr(2, 9),
-                type: type,
-                description: desc,
-                amount: amount
-            };
-            const items = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
-            items.push(input);
-            safeLocalStorage.setItem(getCurrentKey(), JSON.stringify(items)); renderPayroll(); closeModal('addCurrentModal');
-            AuditTrail.logCreate(currentCompanyId, 'current_input', 'Added current input "' + desc + '" (' + type + ') R' + amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + currentPeriod);
+            var inputs = _periodInputsCache.currentInputs.map(function(ci) {
+                return { type: ci.item_type || ci.type, description: ci.description, amount: ci.amount };
+            });
+            inputs.push({ type: type, description: desc, amount: amount });
+            try {
+                await _savePeriodInputs('/api/payroll/transactions/inputs', {
+                    employee_id: currentEmpId, period_key: currentPeriod, inputs: inputs
+                });
+                await loadPeriodInputs();
+                renderPayroll();
+                closeModal('addCurrentModal');
+            } catch(e) { alert('Failed to save input: ' + e.message); }
         }
-        function deleteCurrentInput(id) {
+        async function deleteCurrentInput(id) {
             if (!_requireNotLocked()) return;
             if (!confirm('Delete this current input?')) return;
-            var allItems = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
-            var deleted = allItems.find(i => i.id === id);
-            const items = allItems.filter(i => i.id !== id);
-            safeLocalStorage.setItem(getCurrentKey(), JSON.stringify(items)); renderPayroll();
-            AuditTrail.logDelete(currentCompanyId, 'current_input', 'Deleted current input "' + (deleted ? deleted.description : id) + '" for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + currentPeriod);
+            var inputs = _periodInputsCache.currentInputs
+                .filter(function(ci) { return ci.id !== id; })
+                .map(function(ci) { return { type: ci.item_type || ci.type, description: ci.description, amount: ci.amount }; });
+            try {
+                await _savePeriodInputs('/api/payroll/transactions/inputs', {
+                    employee_id: currentEmpId, period_key: currentPeriod, inputs: inputs
+                });
+                await loadPeriodInputs();
+                renderPayroll();
+            } catch(e) { alert('Failed to delete input: ' + e.message); }
         }
 
         // ========== OVERTIME ==========
         function openAddOvertime() { document.getElementById('overtimeDate').value = ''; document.getElementById('overtimeHours').value = ''; document.getElementById('overtimeDesc').value = ''; document.getElementById('addOvertimeModal').classList.add('show'); }
-        function saveOvertime() {
+        async function saveOvertime() {
             if (!_requireNotLocked()) return;
-            const date = document.getElementById('overtimeDate').value;
             const hours = parseFloat(document.getElementById('overtimeHours').value);
             if (!hours) { alert('Please enter hours'); return; }
-            const items = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
-            items.push({ id: 'ot-' + Math.random().toString(36).substr(2, 9), date: date || '', hours: hours, rate_multiplier: parseFloat(document.getElementById('overtimeRate').value), description: document.getElementById('overtimeDesc').value.trim() });
-            safeLocalStorage.setItem(getOvertimeKey(), JSON.stringify(items)); renderPayroll(); closeModal('addOvertimeModal');
+            const rate = parseFloat(document.getElementById('overtimeRate').value);
+            const desc = document.getElementById('overtimeDesc').value.trim();
+            // Build updated set: existing entries + new entry
+            const entries = _periodInputsCache.overtime.map(function(ot) {
+                return { hours: ot.hours, rate_multiplier: ot.rate_multiplier, description: ot.description || '' };
+            });
+            entries.push({ hours: hours, rate_multiplier: rate, description: desc });
+            try {
+                await _savePeriodInputs('/api/payroll/transactions/overtime', {
+                    employee_id: currentEmpId, period_key: currentPeriod, entries: entries
+                });
+                await loadPeriodInputs();
+                renderPayroll();
+                closeModal('addOvertimeModal');
+            } catch(e) { alert('Failed to save overtime: ' + e.message); }
         }
-        function deleteOvertime(id) { if (!_requireNotLocked()) return; if (!confirm('Delete?')) return; const items = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').filter(i => i.id !== id); safeLocalStorage.setItem(getOvertimeKey(), JSON.stringify(items)); renderPayroll(); }
+        async function deleteOvertime(id) {
+            if (!_requireNotLocked()) return;
+            if (!confirm('Delete this overtime entry?')) return;
+            const entries = _periodInputsCache.overtime
+                .filter(function(ot) { return ot.id !== id; })
+                .map(function(ot) { return { hours: ot.hours, rate_multiplier: ot.rate_multiplier, description: ot.description || '' }; });
+            try {
+                await _savePeriodInputs('/api/payroll/transactions/overtime', {
+                    employee_id: currentEmpId, period_key: currentPeriod, entries: entries
+                });
+                await loadPeriodInputs();
+                renderPayroll();
+            } catch(e) { alert('Delete failed: ' + e.message); }
+        }
 
         // ========== SHORT TIME ==========
         function openAddShortTime() { document.getElementById('shortTimeDate').value = ''; document.getElementById('shortTimeHours').value = ''; document.getElementById('shortTimeReason').value = ''; document.getElementById('addShortTimeModal').classList.add('show'); }
-        function saveShortTime() {
+        async function saveShortTime() {
             if (!_requireNotLocked()) return;
-            const date = document.getElementById('shortTimeDate').value;
             const hours = parseFloat(document.getElementById('shortTimeHours').value);
             if (!hours) { alert('Please enter hours missed'); return; }
-            const items = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
-            items.push({ id: 'st-' + Math.random().toString(36).substr(2, 9), date: date || '', hours_missed: hours, reason: document.getElementById('shortTimeReason').value.trim() });
-            safeLocalStorage.setItem(getShortTimeKey(), JSON.stringify(items)); renderPayroll(); closeModal('addShortTimeModal');
+            const reason = document.getElementById('shortTimeReason').value.trim();
+            const entries = _periodInputsCache.shortTime.map(function(st) {
+                return { hours_missed: st.hours_missed, description: st.description || '' };
+            });
+            entries.push({ hours_missed: hours, description: reason });
+            try {
+                await _savePeriodInputs('/api/payroll/transactions/short-time', {
+                    employee_id: currentEmpId, period_key: currentPeriod, entries: entries
+                });
+                await loadPeriodInputs();
+                renderPayroll();
+                closeModal('addShortTimeModal');
+            } catch(e) { alert('Failed to save short time: ' + e.message); }
         }
-        function deleteShortTime(id) { if (!_requireNotLocked()) return; if (!confirm('Delete?')) return; const items = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]').filter(i => i.id !== id); safeLocalStorage.setItem(getShortTimeKey(), JSON.stringify(items)); renderPayroll(); }
+        async function deleteShortTime(id) {
+            if (!_requireNotLocked()) return;
+            if (!confirm('Delete this short time entry?')) return;
+            const entries = _periodInputsCache.shortTime
+                .filter(function(st) { return st.id !== id; })
+                .map(function(st) { return { hours_missed: st.hours_missed, description: st.description || '' }; });
+            try {
+                await _savePeriodInputs('/api/payroll/transactions/short-time', {
+                    employee_id: currentEmpId, period_key: currentPeriod, entries: entries
+                });
+                await loadPeriodInputs();
+                renderPayroll();
+            } catch(e) { alert('Delete failed: ' + e.message); }
+        }
 
         // ========== MULTI-RATE ==========
         function openAddMultiRate() { document.getElementById('multiRateDesc').value = ''; document.getElementById('multiRateHourly').value = ''; document.getElementById('multiRateHours').value = ''; document.getElementById('addMultiRateModal').classList.add('show'); }
-        function saveMultiRate() {
+        async function saveMultiRate() {
             if (!_requireNotLocked()) return;
             const desc = document.getElementById('multiRateDesc').value.trim();
             const rate = parseFloat(document.getElementById('multiRateHourly').value);
             const hours = parseFloat(document.getElementById('multiRateHours').value);
             if (!desc || !rate || !hours) { alert('Please fill in all fields'); return; }
-            const items = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
-            items.push({ id: 'mr-' + Math.random().toString(36).substr(2, 9), description: desc, hourly_rate: rate, hours: hours });
-            safeLocalStorage.setItem(getMultiRateKey(), JSON.stringify(items)); renderPayroll(); closeModal('addMultiRateModal');
+            const entries = _periodInputsCache.multiRate.map(function(mr) {
+                return { hours: mr.hours, rate_multiplier: mr.rate_multiplier, description: mr.description || '' };
+            });
+            entries.push({ hours: hours, rate_multiplier: rate, description: desc });
+            try {
+                await _savePeriodInputs('/api/payroll/transactions/multi-rate', {
+                    employee_id: currentEmpId, period_key: currentPeriod, entries: entries
+                });
+                await loadPeriodInputs();
+                renderPayroll();
+                closeModal('addMultiRateModal');
+            } catch(e) { alert('Failed to save multi-rate: ' + e.message); }
         }
-        function deleteMultiRate(id) { if (!_requireNotLocked()) return; if (!confirm('Delete?')) return; const items = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]').filter(i => i.id !== id); safeLocalStorage.setItem(getMultiRateKey(), JSON.stringify(items)); renderPayroll(); }
+        async function deleteMultiRate(id) {
+            if (!_requireNotLocked()) return;
+            if (!confirm('Delete?')) return;
+            const entries = _periodInputsCache.multiRate
+                .filter(function(mr) { return mr.id !== id; })
+                .map(function(mr) { return { hours: mr.hours, rate_multiplier: mr.rate_multiplier, description: mr.description || '' }; });
+            try {
+                await _savePeriodInputs('/api/payroll/transactions/multi-rate', {
+                    employee_id: currentEmpId, period_key: currentPeriod, entries: entries
+                });
+                await loadPeriodInputs();
+                renderPayroll();
+            } catch(e) { alert('Failed to delete multi-rate: ' + e.message); }
+        }
 
         // ========== TOGGLE ==========
         function toggleAdditionalHours() { document.getElementById('additionalHoursSection').style.display = document.getElementById('showAdditionalHours').checked ? 'block' : 'none'; }
@@ -2597,12 +2718,12 @@
 
             var backedCalc = _lastBackendCalc;
 
-            // Build itemized display lists from KV input data (for PDF line items only —
+            // Build itemized display lists from server-backed cache (for PDF line items only —
             // NOT used for gross/paye/net totals which come from backedCalc).
-            var currentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
-            var overtime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
-            var multiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
-            var shortTime = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
+            var currentInputs = _periodInputsCache.currentInputs;
+            var overtime     = _periodInputsCache.overtime;
+            var multiRate    = _periodInputsCache.multiRate;
+            var shortTime    = _periodInputsCache.shortTime;
 
             var _basicSalForPct = payrollData.basic_salary || 0;
             var allowances = [];
@@ -2611,7 +2732,8 @@
                 if (ri.type !== 'deduction') allowances.push({ description: ri.description || ri.type, amount: amount });
             });
             currentInputs.forEach(function(ci) {
-                if (ci.type !== 'deduction') allowances.push({ description: ci.description || ci.type, amount: ci.amount });
+                var ciType = ci.item_type || ci.type;
+                if (ciType !== 'deduction') allowances.push({ description: ci.description || ciType, amount: ci.amount });
             });
 
             var deductionsList = [];
@@ -2620,10 +2742,11 @@
                 if (ri.type === 'deduction') deductionsList.push({ description: ri.description || 'Deduction', amount: amount });
             });
             currentInputs.forEach(function(ci) {
-                if (ci.type === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
+                var ciType = ci.item_type || ci.type;
+                if (ciType === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
             });
 
-            // Compute display-only overtime/short-time amounts from KV inputs
+            // Compute display-only overtime/short-time amounts from server-backed cache
             var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
             var overtimeAmount = 0;
             overtime.forEach(function(ot) {
@@ -2635,7 +2758,7 @@
             });
             var multiRateAmount = 0;
             multiRate.forEach(function(mr) {
-                multiRateAmount += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
+                multiRateAmount += (parseFloat(mr.hours) || 0) * (parseFloat(mr.rate_multiplier) || 0);
             });
             if (multiRateAmount > 0) {
                 allowances.push({ description: 'Paid at Different Rate', amount: multiRateAmount });
@@ -2939,18 +3062,19 @@
                 overtimeAmount: 0, currentInputsTotal: 0
             }, fullCalc || {});
 
-            // Ensure overtimeAmount reflects the KV input entries (display-only fallback
-            // when backend didn't return it).
+            // Ensure overtimeAmount reflects the server-backed cache entries (display-only
+            // fallback when backend didn't return it).
             if (!currentCalc.overtimeAmount) {
                 var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
-                JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]').forEach(function(ot) {
+                _periodInputsCache.overtime.forEach(function(ot) {
                     currentCalc.overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
                 });
             }
 
             // Calculate current inputs total
-            JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]').forEach(function(ci) {
-                if (ci.type !== 'deduction') currentCalc.currentInputsTotal += parseFloat(ci.amount) || 0;
+            _periodInputsCache.currentInputs.forEach(function(ci) {
+                var ciType = ci.item_type || ci.type;
+                if (ciType !== 'deduction') currentCalc.currentInputsTotal += parseFloat(ci.amount) || 0;
             });
 
             // Get previous period calc
@@ -3081,7 +3205,13 @@
             document.getElementById('editBranchCode').value = e.branch_code || '';
             document.getElementById('editEmployeeModal').classList.add('show');
         }
-        function saveEmployeeInfo() {
+        async function saveEmployeeInfo() {
+            var empId = _supabaseEmpId || currentEmpId;
+            if (!empId || !/^\d+$/.test(String(empId))) {
+                alert('Cannot save: employee has no valid database ID. Please refresh the page and try again.');
+                return;
+            }
+
             currentEmployee.first_name = document.getElementById('editFirstName').value.trim();
             currentEmployee.last_name = document.getElementById('editLastName').value.trim();
             currentEmployee.email = document.getElementById('editEmailInput').value.trim();
@@ -3104,25 +3234,59 @@
             currentEmployee.account_number = document.getElementById('editAccountNumber').value.trim();
             currentEmployee.branch_code = document.getElementById('editBranchCode').value.trim();
 
-            // Persist employment dates to backend (fire-and-forget — localStorage save continues below)
-            var _empIdForDates = _supabaseEmpId || currentEmpId;
-            if (_empIdForDates && /^\d+$/.test(String(_empIdForDates))) {
-                fetch('/api/payroll/employees/' + _empIdForDates + '/employment-dates', {
+            try {
+                // ── 1. Save all core + payroll-detail fields to the employees table ──
+                var coreResp = await fetch('/api/employees/' + empId, {
                     method: 'PUT',
                     headers: _authHeaders(),
                     body: JSON.stringify({
-                        hire_date: currentEmployee.date_appointed || null,
-                        termination_date: currentEmployee.termination_date || null
+                        first_name:          currentEmployee.first_name,
+                        last_name:           currentEmployee.last_name,
+                        email:               currentEmployee.email,
+                        phone:               currentEmployee.phone,
+                        id_number:           currentEmployee.id_number,
+                        tax_number:          currentEmployee.tax_number,
+                        department:          currentEmployee.department,
+                        position:            currentEmployee.position,
+                        job_title:           currentEmployee.job_title,
+                        date_appointed:      currentEmployee.date_appointed || null,
+                        hire_date:           currentEmployee.date_appointed || null,
+                        termination_date:    currentEmployee.termination_date || null,
+                        payment_method:      currentEmployee.payment_method,
+                        medical_aid_members: currentEmployee.medical_aid_members,
+                        tax_directive:       currentEmployee.tax_directive,
+                        bank_name:           currentEmployee.bank_name,
+                        account_holder:      currentEmployee.account_holder,
+                        account_number:      currentEmployee.account_number,
+                        branch_code:         currentEmployee.branch_code
                     })
-                }).catch(function(e) { console.warn('[employment-dates] API save failed:', e); });
-            }
+                });
+                if (!coreResp.ok) {
+                    var errData = await coreResp.json().catch(function() { return {}; });
+                    throw new Error(errData.error || ('Employee update failed (' + coreResp.status + ')'));
+                }
 
-            const stored = safeLocalStorage.getItem('employees_' + currentCompanyId);
-            const employees = stored ? JSON.parse(stored) : [];
-            const idx = employees.findIndex(e => e.id === currentEmpId);
-            if (idx !== -1) { employees[idx] = currentEmployee; safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees)); }
-            AuditTrail.logUpdate(currentCompanyId, 'employee', 'Updated employee info for ' + currentEmployee.first_name + ' ' + currentEmployee.last_name + ' (' + (currentEmployee.employee_number || currentEmpId) + ')');
-            loadEmployee(); closeModal('editEmployeeModal'); alert('Employee information saved!');
+                // ── 2. Also save bank details to employee_bank_details table (for payslip use) ──
+                if (currentEmployee.bank_name || currentEmployee.account_number) {
+                    await fetch('/api/payroll/employees/' + empId + '/bank-details', {
+                        method: 'PUT',
+                        headers: _authHeaders(),
+                        body: JSON.stringify({
+                            bank_name:      currentEmployee.bank_name,
+                            account_holder: currentEmployee.account_holder,
+                            account_number: currentEmployee.account_number,
+                            branch_code:    currentEmployee.branch_code
+                        })
+                    }).catch(function(e) { console.warn('[bank-details] secondary save failed:', e); });
+                }
+
+                AuditTrail.logUpdate(currentCompanyId, 'employee', 'Updated employee info for ' + currentEmployee.first_name + ' ' + currentEmployee.last_name + ' (' + (currentEmployee.employee_number || currentEmpId) + ')');
+                await loadEmployee();
+                closeModal('editEmployeeModal');
+                alert('Employee information saved!');
+            } catch (err) {
+                alert('Failed to save employee information: ' + err.message);
+            }
         }
 
         // ========== LEAVE ==========

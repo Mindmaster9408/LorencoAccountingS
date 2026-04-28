@@ -47,9 +47,11 @@ router.get('/', requirePermission('EMPLOYEES.VIEW'), async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     // Alias employee_code → employee_number so all frontend consumers use consistent field name
+    // Alias hire_date → date_appointed for employee-detail.html compatibility
     const employees = (data || []).map(emp => ({
       ...emp,
-      employee_number: emp.employee_number || emp.employee_code || ''
+      employee_number: emp.employee_number || emp.employee_code || '',
+      date_appointed: emp.date_appointed || emp.hire_date || null
     }));
 
     res.json({ employees });
@@ -71,7 +73,7 @@ router.get('/:id', requirePermission('EMPLOYEES.VIEW'), async (req, res) => {
       .single();
 
     if (error || !data) return res.status(404).json({ error: 'Employee not found' });
-    res.json({ employee: { ...data, employee_number: data.employee_number || data.employee_code || '' } });
+    res.json({ employee: { ...data, employee_number: data.employee_number || data.employee_code || '', date_appointed: data.date_appointed || data.hire_date || null } });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -148,7 +150,10 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
     const allowed = [
       'first_name', 'last_name', 'email', 'phone', 'id_number',
       'department', 'position', 'employment_status', 'hire_date', 'termination_date',
-      'hourly_rate', 'salary', 'tax_number', 'is_active'
+      'hourly_rate', 'salary', 'tax_number', 'is_active',
+      // Payroll-detail fields added by payroll-schema.js auto-migration
+      'job_title', 'payment_method', 'medical_aid_members', 'tax_directive',
+      'basic_salary', 'bank_name', 'account_holder', 'account_number', 'branch_code'
     ];
     const updates = {};
     for (const key of allowed) {
@@ -156,6 +161,10 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
     }
     // Map employee_number → employee_code (DB column name)
     if (req.body.employee_number !== undefined) updates.employee_code = req.body.employee_number;
+    // Frontend uses date_appointed; DB column is hire_date — accept both
+    if (req.body.date_appointed !== undefined && req.body.hire_date === undefined) {
+      updates.hire_date = req.body.date_appointed || null;
+    }
     updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase

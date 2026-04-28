@@ -188,7 +188,9 @@
                     <option value="">All Statuses</option>
                     <option value="open">Open</option>
                     <option value="in_progress">In Progress</option>
+                    <option value="review">In Review</option>
                     <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
                 </select>
                 <select class="filter-select" id="taskClientFilter" onchange="loadTasks()">
                     <option value="">All Clients</option>
@@ -196,12 +198,15 @@
                 <select class="filter-select" id="taskTypeFilter" onchange="loadTasks()">
                     <option value="">All Types</option>
                     <option value="vat_return">VAT Return</option>
-                    <option value="annual_financials">Annual Financials</option>
+                    <option value="annual_financial">Annual Financial Statements</option>
+                    <option value="management_accounts">Management Accounts</option>
                     <option value="payroll">Payroll</option>
                     <option value="tax_return">Tax Return</option>
-                    <option value="management_accounts">Management Accounts</option>
                     <option value="audit">Audit</option>
+                    <option value="bookkeeping">Bookkeeping</option>
+                    <option value="secretarial">Secretarial</option>
                     <option value="general">General</option>
+                    <option value="other">Other</option>
                 </select>
                 <button class="btn btn-primary" onclick="openTaskModal()">+ Add Task</button>
             </div>
@@ -281,7 +286,9 @@
                 <select class="filter-select" id="dlStatusFilter" onchange="loadDeadlines()">
                     <option value="">All</option>
                     <option value="pending">Pending</option>
-                    <option value="done">Done</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="completed">Completed</option>
+                    <option value="missed">Missed</option>
                 </select>
                 <button class="btn btn-primary" onclick="openDeadlineModal()">+ Add Deadline</button>
             </div>
@@ -304,15 +311,19 @@
                         <select id="tType">
                             <option value="general">General</option>
                             <option value="vat_return">VAT Return</option>
-                            <option value="annual_financials">Annual Financials</option>
+                            <option value="annual_financial">Annual Financial Statements</option>
+                            <option value="management_accounts">Management Accounts</option>
                             <option value="payroll">Payroll</option>
                             <option value="tax_return">Tax Return</option>
-                            <option value="management_accounts">Management Accounts</option>
                             <option value="audit">Audit</option>
+                            <option value="bookkeeping">Bookkeeping</option>
+                            <option value="secretarial">Secretarial</option>
+                            <option value="other">Other</option>
                         </select>
                     </div>
                     <div class="form-field"><label>Priority</label>
                         <select id="tPriority">
+                            <option value="urgent">🚨 Urgent</option>
                             <option value="high">🔴 High</option>
                             <option value="medium" selected>🟡 Medium</option>
                             <option value="low">🟢 Low</option>
@@ -322,7 +333,9 @@
                         <select id="tStatus">
                             <option value="open">Open</option>
                             <option value="in_progress">In Progress</option>
+                            <option value="review">In Review</option>
                             <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
                         </select>
                     </div>
                     <div class="form-field"><label>Due Date</label><input type="date" id="tDueDate"></div>
@@ -374,18 +387,34 @@
                     <div class="form-field"><label>Client</label><select id="dlClient"><option value="">All / General</option></select></div>
                     <div class="form-field"><label>Type</label>
                         <select id="dlType">
-                            <option value="vat">VAT Return</option>
-                            <option value="tax">Income Tax</option>
-                            <option value="paye">PAYE/UIF</option>
-                            <option value="financials">Financial Statements</option>
-                            <option value="payroll">Payroll</option>
                             <option value="general">General</option>
+                            <option value="vat_return">VAT Return</option>
+                            <option value="tax_return">Tax Return</option>
+                            <option value="paye">PAYE</option>
+                            <option value="uif">UIF</option>
+                            <option value="sdl">SDL</option>
+                            <option value="annual_financial">Annual Financial Statements</option>
+                            <option value="provisional_tax_p1">Provisional Tax P1</option>
+                            <option value="provisional_tax_p2">Provisional Tax P2</option>
+                            <option value="provisional_tax_top_up">Provisional Tax Top-Up</option>
+                            <option value="cipc_annual_return">CIPC Annual Return</option>
+                            <option value="beneficial_ownership">Beneficial Ownership</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Status</label>
+                        <select id="dlStatus">
+                            <option value="pending">Pending</option>
+                            <option value="submitted">Submitted to SARS</option>
+                            <option value="completed">Completed</option>
+                            <option value="missed">Missed</option>
                         </select>
                     </div>
                     <div class="form-field"><label>Due Date *</label><input type="date" id="dlDueDate" required></div>
                     <div class="form-field"><label>Notes</label><textarea id="dlNotes" rows="2"></textarea></div>
                 </div>
                 <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm" id="dlDeleteBtn" onclick="deleteDeadline()" style="margin-right:auto;display:none;">Delete</button>
                     <button type="button" class="btn btn-ghost" onclick="closeModal('deadlineModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save</button>
                 </div>
@@ -562,7 +591,7 @@ function renderTasks(tasks) {
     const statusBadge = { open:'badge-open', in_progress:'badge-in-progress', completed:'badge-completed' };
     const statusLabel = { open:'Open', in_progress:'In Progress', completed:'Completed' };
     const priBadge = { high:'badge-high', medium:'badge-medium', low:'badge-low' };
-    const typeLabel = { vat_return:'VAT Return', annual_financials:'Annual Financials', payroll:'Payroll', tax_return:'Tax Return', management_accounts:'Mgmt Accounts', audit:'Audit', general:'General' };
+    const typeLabel = { general:'General', vat_return:'VAT Return', tax_return:'Tax Return', annual_financial:'Annual Financial', management_accounts:'Mgmt Accounts', payroll:'Payroll', audit:'Audit', bookkeeping:'Bookkeeping', secretarial:'Secretarial', other:'Other' };
 
     el.innerHTML = tasks.map(t => {
         const isOverdue = t.due_date && t.due_date < today && t.status !== 'completed';
@@ -704,7 +733,8 @@ async function loadDeadlines() {
     try {
         const res = await fetch(url, { headers: getHeaders() });
         const d = await res.json();
-        renderDeadlines(d.deadlines||[]);
+        allDeadlines = d.deadlines || [];
+        renderDeadlines(allDeadlines);
     } catch(e) {}
 }
 
@@ -712,19 +742,20 @@ function renderDeadlines(deadlines) {
     const el = document.getElementById('deadlinesTable');
     if (!deadlines.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">📅</div><p>No deadlines set.</p></div>`; return; }
     const today = new Date().toISOString().split('T')[0];
-    const statusClass = { pending:'badge-pending', done:'badge-completed' };
-    const typeLabel = { vat:'VAT', tax:'Income Tax', paye:'PAYE/UIF', financials:'Financials', payroll:'Payroll', general:'General' };
+    const statusClass = { pending:'badge-pending', submitted:'badge-in-progress', completed:'badge-completed', missed:'badge-overdue' };
+    const statusLabel = { pending:'Pending', submitted:'Submitted', completed:'Completed', missed:'Missed' };
+    const typeLabel = { general:'General', vat_return:'VAT Return', tax_return:'Income Tax', paye:'PAYE', uif:'UIF', sdl:'SDL', annual_financial:'Annual Financial', provisional_tax_p1:'Prov Tax P1', provisional_tax_p2:'Prov Tax P2', provisional_tax_top_up:'Prov Tax Top-Up', cipc_annual_return:'CIPC Annual Return', beneficial_ownership:'Beneficial Ownership', other:'Other' };
     el.innerHTML = `<table><thead><tr><th>Title</th><th>Client</th><th>Type</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>
         ${deadlines.map(dl => {
-            const isOverdue = dl.due_date < today && dl.status !== 'done';
+            const isOverdue = dl.due_date < today && dl.status !== 'completed';
             return `<tr ${isOverdue ? 'class="overdue-row"' : ''}>
                 <td><strong>${escHtml(dl.title)}</strong>${isOverdue ? ' <span class="badge badge-overdue" style="margin-left:4px">OVERDUE</span>' : ''}</td>
                 <td>${escHtml(dl.practice_clients?.name||'General')}</td>
                 <td>${typeLabel[dl.type]||dl.type}</td>
                 <td><strong>${dl.due_date}</strong></td>
-                <td><span class="badge ${statusClass[dl.status]||'badge-pending'}">${dl.status}</span></td>
+                <td><span class="badge ${statusClass[dl.status]||'badge-pending'}">${statusLabel[dl.status]||dl.status}</span></td>
                 <td><div class="td-actions">
-                    ${dl.status !== 'done' ? `<button class="btn btn-success btn-sm" onclick="markDeadlineDone(${dl.id})">✓ Done</button>` : ''}
+                    ${dl.status !== 'completed' ? `<button class="btn btn-success btn-sm" onclick="markDeadlineDone(${dl.id})">✓ Done</button>` : ''}
                     <button class="btn btn-ghost btn-sm" onclick="openDeadlineModal(${dl.id})">Edit</button>
                 </div></td>
             </tr>`;
@@ -733,27 +764,33 @@ function renderDeadlines(deadlines) {
 }
 
 async function markDeadlineDone(id) {
-    const res = await fetch(`${API}/api/practice/deadlines/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ status: 'done' }) });
+    const res = await fetch(`${API}/api/practice/deadlines/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ status: 'completed' }) });
     if (res.ok) { showToast('Deadline marked done!'); loadDeadlines(); loadDashboard(); }
+    else showToast('❌ Failed to update deadline', true);
 }
 
 let allDeadlines = [];
 function openDeadlineModal(id) {
     editingDlId = id || null;
     document.getElementById('dlModalTitle').textContent = id ? 'Edit Deadline' : 'Add Deadline';
-    document.getElementById('dlTitle').value = '';
-    document.getElementById('dlClient').value = '';
-    document.getElementById('dlType').value = 'vat';
-    document.getElementById('dlDueDate').value = '';
-    document.getElementById('dlNotes').value = '';
-    // populate client select
+    const dl = id ? allDeadlines.find(x => x.id === id) : null;
+    document.getElementById('dlTitle').value = dl?.title || '';
+    document.getElementById('dlType').value = dl?.type || 'general';
+    document.getElementById('dlStatus').value = dl?.status || 'pending';
+    document.getElementById('dlDueDate').value = dl?.due_date || '';
+    document.getElementById('dlNotes').value = dl?.notes || '';
+    // populate client select then set value
     document.getElementById('dlClient').innerHTML = '<option value="">All / General</option>' + allClients.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    document.getElementById('dlClient').value = dl?.client_id || '';
+    // show delete button only when editing
+    const delBtn = document.getElementById('dlDeleteBtn');
+    if (delBtn) delBtn.style.display = id ? 'inline-flex' : 'none';
     openModal('deadlineModal');
 }
 
 async function saveDeadline(e) {
     e.preventDefault();
-    const body = { title: document.getElementById('dlTitle').value.trim(), client_id: document.getElementById('dlClient').value||null, type: document.getElementById('dlType').value, due_date: document.getElementById('dlDueDate').value, notes: document.getElementById('dlNotes').value.trim() };
+    const body = { title: document.getElementById('dlTitle').value.trim(), client_id: document.getElementById('dlClient').value||null, type: document.getElementById('dlType').value, status: document.getElementById('dlStatus').value, due_date: document.getElementById('dlDueDate').value, notes: document.getElementById('dlNotes').value.trim() };
     try {
         const url = editingDlId ? `${API}/api/practice/deadlines/${editingDlId}` : `${API}/api/practice/deadlines`;
         const res = await fetch(url, { method: editingDlId ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(body) });
@@ -764,6 +801,19 @@ async function saveDeadline(e) {
         loadDeadlines(); loadDashboard();
     } catch(err) { showToast('❌ ' + err.message, true); }
     return false;
+}
+
+async function deleteDeadline() {
+    if (!editingDlId) return;
+    const dl = allDeadlines.find(x => x.id === editingDlId);
+    if (!confirm(`Delete deadline "${dl?.title || editingDlId}"?`)) return;
+    try {
+        const res = await fetch(`${API}/api/practice/deadlines/${editingDlId}`, { method: 'DELETE', headers: getHeaders() });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+        closeModal('deadlineModal');
+        showToast('Deadline deleted.');
+        loadDeadlines(); loadDashboard();
+    } catch(err) { showToast('❌ ' + err.message, true); }
 }
 
 function escHtml(str) { const d = document.createElement('div'); d.textContent = str||''; return d.innerHTML; }

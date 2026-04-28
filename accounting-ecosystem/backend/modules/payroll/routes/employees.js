@@ -205,7 +205,7 @@ router.put('/:id/employment-dates', requirePermission('PAYROLL.CREATE'), require
 router.put('/:id/bank-details', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
     const empId = req.params.id;
-    const { bank_name, account_number, branch_code, account_type } = req.body;
+    const { bank_name, account_number, branch_code, account_type, account_holder } = req.body;
 
     // Verify employee belongs to company + visibility check
     const { data: emp } = await supabase
@@ -235,6 +235,15 @@ router.put('/:id/bank-details', requirePermission('PAYROLL.CREATE'), requirePayt
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+
+    // Also mirror bank fields onto employees table so GET /api/employees returns them
+    // without requiring a separate join on employee_bank_details.
+    const bankUpdates = { updated_at: new Date().toISOString() };
+    if (bank_name      !== undefined) bankUpdates.bank_name       = bank_name;
+    if (account_holder !== undefined) bankUpdates.account_holder  = account_holder;
+    if (account_number !== undefined) bankUpdates.account_number  = account_number;
+    if (branch_code    !== undefined) bankUpdates.branch_code     = branch_code;
+    await supabase.from('employees').update(bankUpdates).eq('id', empId).eq('company_id', req.companyId);
 
     await auditFromReq(req, 'UPDATE', 'bank_details', empId, {
       module: 'payroll',

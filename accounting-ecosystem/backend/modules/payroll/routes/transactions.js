@@ -12,6 +12,7 @@ const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
 const { getEmployeeFilter, requirePaytimeModule } = require('../services/paytimeAccess');
+const PayrollDataService = require('../services/PayrollDataService');
 
 const router = express.Router();
 
@@ -78,8 +79,69 @@ router.get('/', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * GET /api/payroll/transactions/period-inputs
+ * Load all period-specific inputs for display in the payslip UI.
+ * Returns overtime, shortTime, currentInputs, multiRate arrays
+ * with real DB IDs (used for individual deletes via re-save).
+ */
+router.get('/period-inputs', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+  try {
+    const { employee_id, period_key } = req.query;
+    if (!employee_id || !period_key) {
+      return res.status(400).json({ error: 'employee_id and period_key required' });
+    }
+    if (!/^\d+$/.test(String(employee_id))) {
+      return res.json({ overtime: [], shortTime: [], currentInputs: [], multiRate: [] });
+    }
+
+    const { data: period } = await supabase
+      .from('payroll_periods').select('id')
+      .eq('company_id', req.companyId)
+      .eq('period_key', period_key)
+      .maybeSingle();
+
+    if (!period) {
+      return res.json({ overtime: [], shortTime: [], currentInputs: [], multiRate: [] });
+    }
+
+    const empId = parseInt(employee_id);
+    const periodId = period.id;
+
+    const [otRes, stRes, ciRes, mrRes] = await Promise.all([
+      supabase.from('payroll_overtime')
+        .select('id, hours, rate_multiplier, description')
+        .eq('company_id', req.companyId).eq('employee_id', empId)
+        .eq('payroll_period_id', periodId).eq('is_deleted', false),
+      supabase.from('payroll_short_time')
+        .select('id, hours_missed, description')
+        .eq('company_id', req.companyId).eq('employee_id', empId)
+        .eq('payroll_period_id', periodId).eq('is_deleted', false),
+      supabase.from('payroll_period_inputs')
+        .select('id, description, amount, item_type')
+        .eq('company_id', req.companyId).eq('employee_id', empId)
+        .eq('payroll_period_id', periodId).eq('is_deleted', false),
+      supabase.from('payroll_multi_rate')
+        .select('id, hours, rate_multiplier, description')
+        .eq('company_id', req.companyId).eq('employee_id', empId)
+        .eq('payroll_period_id', periodId).eq('is_deleted', false)
+    ]);
+
+    res.json({
+      overtime:      otRes.data || [],
+      shortTime:     stRes.data || [],
+      currentInputs: ciRes.data || [],
+      multiRate:     mrRes.data || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * POST /api/payroll/transactions/inputs
- * Save current period inputs for an employee
+ * Save current period inputs for an employee.
+ * Replaces the full set for this employee+period (delete-then-insert).
+ * Writes to payroll_period_inputs (the table PayrollDataService reads).
  */
 router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
@@ -88,37 +150,32 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
       return res.status(400).json({ error: 'employee_id and period_key required' });
     }
 
-    // Find the period
-    const { data: period } = await supabase
-      .from('payroll_periods')
-      .select('id')
-      .eq('company_id', req.companyId)
-      .eq('period_key', period_key)
-      .single();
-
+    const period = await PayrollDataService.fetchPeriod(req.companyId, period_key, supabase);
     const periodId = period ? period.id : null;
+    if (!periodId) return res.status(404).json({ error: 'Period not found' });
 
-    // Delete existing inputs of type 'earning'/'deduction' for this employee+period
-    if (periodId) {
-      await supabase.from('period_inputs').delete()
-        .eq('company_id', req.companyId)
-        .eq('employee_id', employee_id)
-        .eq('period_id', periodId)
-        .in('input_type', ['earning', 'deduction']);
-    }
+    // Replace the full set for this employee+period
+    await supabase.from('payroll_period_inputs').delete()
+      .eq('company_id', req.companyId)
+      .eq('employee_id', employee_id)
+      .eq('payroll_period_id', periodId);
 
-    // Insert new inputs
-    if (inputs && inputs.length > 0 && periodId) {
-      const records = inputs.map(i => ({
-        company_id: req.companyId,
-        period_id: periodId,
-        employee_id: parseInt(employee_id),
-        input_type: i.type || i.input_type || 'earning',
-        description: i.description || i.name || '',
-        amount: parseFloat(i.amount) || 0,
-        is_taxable: i.is_taxable !== false
-      }));
-      const { error } = await supabase.from('period_inputs').insert(records);
+    if (inputs && inputs.length > 0) {
+      const records = inputs.map(i => {
+        const rawType = i.type || i.input_type || 'earning';
+        // Normalize to valid DB enum: only 'deduction' maps to 'deduction'; everything else is 'earning'
+        const itemType = rawType === 'deduction' ? 'deduction' : 'earning';
+        return {
+          company_id: req.companyId,
+          payroll_period_id: periodId,
+          employee_id: parseInt(employee_id),
+          item_type: itemType,
+          description: i.description || i.name || '',
+          amount: parseFloat(i.amount) || 0,
+          is_deleted: false
+        };
+      });
+      const { error } = await supabase.from('payroll_period_inputs').insert(records);
       if (error) return res.status(500).json({ error: error.message });
     }
 
@@ -130,7 +187,8 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
 
 /**
  * POST /api/payroll/transactions/overtime
- * Save overtime entries for an employee in a period
+ * Save overtime entries for an employee in a period.
+ * Replaces the full set. Writes to payroll_overtime (the table PayrollDataService reads).
  */
 router.post('/overtime', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
@@ -139,30 +197,27 @@ router.post('/overtime', requirePermission('PAYROLL.CREATE'), async (req, res) =
       return res.status(400).json({ error: 'employee_id and period_key required' });
     }
 
-    const { data: period } = await supabase
-      .from('payroll_periods').select('id')
-      .eq('company_id', req.companyId).eq('period_key', period_key).single();
-
+    const period = await PayrollDataService.fetchPeriod(req.companyId, period_key, supabase);
     const periodId = period ? period.id : null;
     if (!periodId) return res.status(404).json({ error: 'Period not found' });
 
-    // Delete existing overtime for this employee+period
-    await supabase.from('period_inputs').delete()
-      .eq('company_id', req.companyId).eq('employee_id', employee_id)
-      .eq('period_id', periodId).eq('input_type', 'overtime');
+    // Replace full set for this employee+period
+    await supabase.from('payroll_overtime').delete()
+      .eq('company_id', req.companyId)
+      .eq('employee_id', employee_id)
+      .eq('payroll_period_id', periodId);
 
     if (entries && entries.length > 0) {
       const records = entries.map(e => ({
-        company_id: req.companyId, period_id: periodId,
-        employee_id: parseInt(employee_id), input_type: 'overtime',
-        description: e.description || 'Overtime',
-        amount: parseFloat(e.amount) || 0,
+        company_id: req.companyId,
+        payroll_period_id: periodId,
+        employee_id: parseInt(employee_id),
         hours: parseFloat(e.hours) || 0,
-        rate: parseFloat(e.rate) || 0,
         rate_multiplier: parseFloat(e.rate_multiplier) || 1.5,
-        is_taxable: true
+        description: e.description || 'Overtime',
+        is_deleted: false
       }));
-      const { error } = await supabase.from('period_inputs').insert(records);
+      const { error } = await supabase.from('payroll_overtime').insert(records);
       if (error) return res.status(500).json({ error: error.message });
     }
 
@@ -174,7 +229,8 @@ router.post('/overtime', requirePermission('PAYROLL.CREATE'), async (req, res) =
 
 /**
  * POST /api/payroll/transactions/short-time
- * Save short-time entries for an employee in a period
+ * Save short-time entries for an employee in a period.
+ * Writes to payroll_short_time (the table PayrollDataService reads).
  */
 router.post('/short-time', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
@@ -183,28 +239,25 @@ router.post('/short-time', requirePermission('PAYROLL.CREATE'), async (req, res)
       return res.status(400).json({ error: 'employee_id and period_key required' });
     }
 
-    const { data: period } = await supabase
-      .from('payroll_periods').select('id')
-      .eq('company_id', req.companyId).eq('period_key', period_key).single();
-
+    const period = await PayrollDataService.fetchPeriod(req.companyId, period_key, supabase);
     const periodId = period ? period.id : null;
     if (!periodId) return res.status(404).json({ error: 'Period not found' });
 
-    await supabase.from('period_inputs').delete()
-      .eq('company_id', req.companyId).eq('employee_id', employee_id)
-      .eq('period_id', periodId).eq('input_type', 'short_time');
+    await supabase.from('payroll_short_time').delete()
+      .eq('company_id', req.companyId)
+      .eq('employee_id', employee_id)
+      .eq('payroll_period_id', periodId);
 
     if (entries && entries.length > 0) {
       const records = entries.map(e => ({
-        company_id: req.companyId, period_id: periodId,
-        employee_id: parseInt(employee_id), input_type: 'short_time',
-        description: e.description || 'Short time',
-        amount: parseFloat(e.amount) || 0,
-        hours: parseFloat(e.hours) || 0,
-        rate: parseFloat(e.rate) || 0,
-        is_taxable: true
+        company_id: req.companyId,
+        payroll_period_id: periodId,
+        employee_id: parseInt(employee_id),
+        hours_missed: parseFloat(e.hours_missed || e.hours) || 0,
+        description: e.description || e.reason || 'Short time',
+        is_deleted: false
       }));
-      const { error } = await supabase.from('period_inputs').insert(records);
+      const { error } = await supabase.from('payroll_short_time').insert(records);
       if (error) return res.status(500).json({ error: error.message });
     }
 
@@ -216,7 +269,8 @@ router.post('/short-time', requirePermission('PAYROLL.CREATE'), async (req, res)
 
 /**
  * POST /api/payroll/transactions/multi-rate
- * Save multi-rate entries for an employee in a period
+ * Save multi-rate entries for an employee in a period.
+ * Writes to payroll_multi_rate (the table PayrollDataService reads).
  */
 router.post('/multi-rate', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
@@ -225,29 +279,26 @@ router.post('/multi-rate', requirePermission('PAYROLL.CREATE'), async (req, res)
       return res.status(400).json({ error: 'employee_id and period_key required' });
     }
 
-    const { data: period } = await supabase
-      .from('payroll_periods').select('id')
-      .eq('company_id', req.companyId).eq('period_key', period_key).single();
-
+    const period = await PayrollDataService.fetchPeriod(req.companyId, period_key, supabase);
     const periodId = period ? period.id : null;
     if (!periodId) return res.status(404).json({ error: 'Period not found' });
 
-    await supabase.from('period_inputs').delete()
-      .eq('company_id', req.companyId).eq('employee_id', employee_id)
-      .eq('period_id', periodId).eq('input_type', 'multi_rate');
+    await supabase.from('payroll_multi_rate').delete()
+      .eq('company_id', req.companyId)
+      .eq('employee_id', employee_id)
+      .eq('payroll_period_id', periodId);
 
     if (entries && entries.length > 0) {
       const records = entries.map(e => ({
-        company_id: req.companyId, period_id: periodId,
-        employee_id: parseInt(employee_id), input_type: 'multi_rate',
-        description: e.description || 'Multi-rate',
-        amount: parseFloat(e.amount) || 0,
+        company_id: req.companyId,
+        payroll_period_id: periodId,
+        employee_id: parseInt(employee_id),
         hours: parseFloat(e.hours) || 0,
-        rate: parseFloat(e.rate) || 0,
         rate_multiplier: parseFloat(e.rate_multiplier) || 1,
-        is_taxable: true
+        description: e.description || 'Multi-rate',
+        is_deleted: false
       }));
-      const { error } = await supabase.from('period_inputs').insert(records);
+      const { error } = await supabase.from('payroll_multi_rate').insert(records);
       if (error) return res.status(500).json({ error: error.message });
     }
 

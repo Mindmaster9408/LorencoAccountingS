@@ -54,6 +54,27 @@ async function ensurePayrollSchema(pool) {
       ADD COLUMN IF NOT EXISTS is_contractor BOOLEAN NOT NULL DEFAULT false
     `);
 
+    // ── employees: payroll-detail fields (required by employee-detail UI + PayrollDataService) ─
+    // These fields are entered in the Edit Employee modal and must survive page reload.
+    // basic_salary     — primary payroll salary (PayrollDataService reads employee.basic_salary)
+    // medical_aid_members — number of medical-aid dependants (drives SARS medical credit calc)
+    // tax_directive    — fixed tax directive rate % from SARS letter (overrides PAYE calc)
+    // payment_method   — 'EFT' or 'Cash' (controls bank section visibility on payslip)
+    // job_title        — display job title (separate from the HR-classification 'position' field)
+    // bank_name / account_holder / account_number / branch_code — banking details for EFT payroll
+    await client.query(`
+      ALTER TABLE employees
+        ADD COLUMN IF NOT EXISTS basic_salary       DECIMAL(12,2) DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS medical_aid_members INTEGER       DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS tax_directive      DECIMAL(10,4) DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS payment_method     VARCHAR(50)   DEFAULT 'EFT',
+        ADD COLUMN IF NOT EXISTS job_title          VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS bank_name          VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS account_holder     VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS account_number     VARCHAR(50),
+        ADD COLUMN IF NOT EXISTS branch_code        VARCHAR(50)
+    `);
+
     // ── employee_work_schedule ────────────────────────────────────────────────
     // Per-employee work schedule: hourly flag, hours/day, Mon-Sun day types.
     await client.query(`
