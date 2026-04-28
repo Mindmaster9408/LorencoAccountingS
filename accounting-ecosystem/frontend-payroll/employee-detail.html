@@ -2626,34 +2626,30 @@
 
             var calc = null;
 
-            // Step 1: Try to fetch an existing backend snapshot (fastest — no recalc)
+            // Always use the resolved Supabase integer ID for backend calls.
+            var empIdForCalc = _supabaseEmpId || currentEmpId;
+
+            // Always call the live backend calculate endpoint.
+            // The endpoint itself returns the locked immutable snapshot for finalized
+            // periods, or a fresh live calculation for draft/current periods.
+            // We do NOT use the history snapshot shortcut here because:
+            //   1. Stale snapshots (from a previous Execute Payroll run) do not reflect
+            //      inputs added/changed since that run.
+            //   2. The calculate endpoint already handles the finalized-snapshot guard.
             try {
-                var histResult = await PayrollAPI.getEmployeePeriodHistory(currentEmpId, currentPeriod);
-                if (histResult.ok && histResult.data && histResult.data.success) {
-                    // GET history returns { success, snapshot: { calculation_output, ... } }
-                    calc = (histResult.data.snapshot && histResult.data.snapshot.calculation_output) || null;
+                var calcResult = await PayrollAPI.calculate(empIdForCalc, currentPeriod);
+                if (calcResult.ok && calcResult.data && calcResult.data.success) {
+                    // POST calculate returns { success, data: {...13 locked fields...}, snapshot: { calculation_output: {...all fields...} } }
+                    // Prefer snapshot.calculation_output — it includes display fields
+                    // (primary_rebate_annual, marginal_rate, tax_year, etc.)
+                    calc = (calcResult.data.snapshot && calcResult.data.snapshot.calculation_output)
+                        || calcResult.data.data
+                        || null;
+                } else if (calcResult.data && calcResult.data.error) {
+                    console.error('[calculatePayslip] backend error:', calcResult.data.error);
                 }
             } catch(e) {
-                console.warn('[calculatePayslip] history fetch error:', e.message);
-            }
-
-            // Step 2: No snapshot yet — call backend engine directly
-            if (!calc) {
-                try {
-                    var calcResult = await PayrollAPI.calculate(currentEmpId, currentPeriod);
-                    if (calcResult.ok && calcResult.data && calcResult.data.success) {
-                        // POST calculate returns { success, data: {...13 locked fields...}, snapshot: { calculation_output: {...all fields...} } }
-                        // Prefer snapshot.calculation_output — it includes display fields
-                        // (primary_rebate_annual, marginal_rate, tax_year, etc.)
-                        calc = (calcResult.data.snapshot && calcResult.data.snapshot.calculation_output)
-                            || calcResult.data.data
-                            || null;
-                    } else if (calcResult.data && calcResult.data.error) {
-                        console.error('[calculatePayslip] backend error:', calcResult.data.error);
-                    }
-                } catch(e) {
-                    console.error('[calculatePayslip] calculate API error:', e.message);
-                }
+                console.error('[calculatePayslip] calculate API error:', e.message);
             }
 
             if (!calc) {

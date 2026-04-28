@@ -562,7 +562,13 @@ function normalizeCalculationInput(
       // false = company is exempt → engine returns 0 for that levy.
       // Defaults to true for backward compatibility if flags not yet in DB.
       sdl_registered: companyRegistrationFlags ? companyRegistrationFlags.sdl_registered !== false : true,
-      uif_registered: companyRegistrationFlags ? companyRegistrationFlags.uif_registered !== false : true
+      uif_registered: companyRegistrationFlags ? companyRegistrationFlags.uif_registered !== false : true,
+      // Voluntary tax over-deduction config from the employee's saved record.
+      // Normalised here so that both /api/payroll/calculate (single-employee preview)
+      // and /api/payroll/run (Execute Payroll) receive the same config automatically.
+      // payruns.js may still override this with a caller-supplied voluntary_configs
+      // map (for backward compat) — its injection runs after fetchCalculationInputs.
+      voluntaryTaxConfig: employee.voluntary_tax_config || null
     },
 
     // === Period Context ===
