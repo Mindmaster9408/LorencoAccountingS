@@ -432,6 +432,15 @@
         }
         .srtn-modal-header h3 { margin: 0; font-size: 1.1rem; font-weight: 700; }
         .srtn-modal-body { padding: 24px 28px; }
+        /* Override dark-theme for modal body — higher specificity !important beats dark-theme generic rules */
+        .srtn-modal-body p    { color: #555 !important; }
+        .srtn-modal-body div  { color: #333 !important; }
+        .srtn-modal-body a    { color: #667eea !important; }
+        .srtn-modal-body table { color: #333 !important; }
+        .srtn-modal-body td   { color: #333 !important; border-bottom-color: #f0f0f0 !important; background: transparent !important; }
+        .srtn-modal-body th   { color: #666 !important; background: #f8f9fa !important; border-bottom-color: #e9ecef !important; }
+        .srtn-modal-body tbody tr:hover { background: #f5f5f5 !important; }
+        .srtn-modal-body strong { color: inherit !important; }
         .srtn-table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
         .srtn-table th {
             background: #f8f9fa; padding: 8px 10px; text-align: left;
