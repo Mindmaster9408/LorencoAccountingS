@@ -241,13 +241,13 @@ export function getPhaseProgress(client, phase) {
 
 // Initialize journey progress for a client
 export function initializeJourneyProgress(client) {
-    if (!client.journeyProgress) {
-        client.journeyProgress = {
-            currentStep: 1,
-            completedSteps: [],
-            stepNotes: {},
-            stepCompletionDates: {}
-        };
+    if (!client.journeyProgress || typeof client.journeyProgress !== 'object') {
+        client.journeyProgress = {};
     }
+    const jp = client.journeyProgress;
+    if (!Array.isArray(jp.completedSteps)) jp.completedSteps = [];
+    if (!jp.stepNotes || typeof jp.stepNotes !== 'object') jp.stepNotes = {};
+    if (!jp.stepCompletionDates || typeof jp.stepCompletionDates !== 'object') jp.stepCompletionDates = {};
+    if (!jp.currentStep) jp.currentStep = 1;
     return client;
 }

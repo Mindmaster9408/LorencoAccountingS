@@ -68,20 +68,18 @@ window.complete4Quadrant = async function() {
     await save4QuadrantExercise();
 
     // Mark step 1 as complete and move to step 2
-    if (!currentClient.journeyProgress) {
-        currentClient.journeyProgress = {
-            currentStep: 2,
-            completedSteps: [1],
-            stepNotes: {},
-            stepCompletionDates: {}
-        };
-    } else {
-        if (!currentClient.journeyProgress.completedSteps.includes(1)) {
-            currentClient.journeyProgress.completedSteps.push(1);
-        }
-        currentClient.journeyProgress.currentStep = 2;
-        currentClient.journeyProgress.stepCompletionDates[1] = new Date().toISOString();
+    if (!currentClient.journeyProgress || typeof currentClient.journeyProgress !== 'object') {
+        currentClient.journeyProgress = {};
     }
+    const jp1 = currentClient.journeyProgress;
+    if (!Array.isArray(jp1.completedSteps)) jp1.completedSteps = [];
+    if (!jp1.stepNotes) jp1.stepNotes = {};
+    if (!jp1.stepCompletionDates) jp1.stepCompletionDates = {};
+    if (!jp1.completedSteps.includes(1)) {
+        jp1.completedSteps.push(1);
+    }
+    jp1.currentStep = 2;
+    jp1.stepCompletionDates[1] = new Date().toISOString();
 
     await saveClient(currentClient);
     alert('✓ Step 1 completed! Moving to Step 2...');

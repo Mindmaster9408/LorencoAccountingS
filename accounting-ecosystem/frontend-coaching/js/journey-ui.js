@@ -235,9 +235,7 @@ function attachJourneyListeners(client) {
 }
 
 async function completeStep(client, stepNum) {
-    if (!client.journeyProgress) {
-        initializeJourneyProgress(client);
-    }
+    initializeJourneyProgress(client);
 
     // Add to completed steps if not already there
     if (!client.journeyProgress.completedSteps.includes(stepNum)) {
@@ -257,7 +255,7 @@ async function completeStep(client, stepNum) {
 }
 
 async function uncompleteStep(client, stepNum) {
-    if (!client.journeyProgress) return;
+    initializeJourneyProgress(client);
 
     // Remove from completed steps
     client.journeyProgress.completedSteps = client.journeyProgress.completedSteps.filter(s => s !== stepNum);
@@ -273,13 +271,7 @@ async function uncompleteStep(client, stepNum) {
 }
 
 async function saveStepNotes(client, stepNum, notes) {
-    if (!client.journeyProgress) {
-        initializeJourneyProgress(client);
-    }
-
-    if (!client.journeyProgress.stepNotes) {
-        client.journeyProgress.stepNotes = {};
-    }
+    initializeJourneyProgress(client);
 
     client.journeyProgress.stepNotes[stepNum] = notes;
     await saveClient(client);
