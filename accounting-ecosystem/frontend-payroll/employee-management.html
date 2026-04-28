@@ -903,14 +903,20 @@
                 phone:           document.getElementById('phone').value.trim()        || null,
                 department:      document.getElementById('department').value.trim()   || null,
                 position:        position || jobTitle                                 || null,
-                hire_date:       document.getElementById('date_appointed').value      || null
+                hire_date:       document.getElementById('date_appointed').value      || null,
+                payment_method:  document.getElementById('payment_method').value      || 'EFT',
+                bank_name:       document.getElementById('bank_name').value.trim()    || null,
+                account_holder:  document.getElementById('account_holder').value.trim() || null,
+                account_number:  document.getElementById('account_number').value.trim() || null,
+                branch_code:     document.getElementById('branch_code').value.trim()  || null
             };
 
-            // Bank details — submitted separately to /api/payroll/employees/:id/bank-details
+            // Also send bank details to the secondary bank-details endpoint for employee_bank_details table
             var bankData = {
-                bank_name:      document.getElementById('bank_name').value.trim()      || null,
-                account_number: document.getElementById('account_number').value.trim() || null,
-                branch_code:    document.getElementById('branch_code').value.trim()    || null
+                bank_name:      payload.bank_name,
+                account_holder: payload.account_holder,
+                account_number: payload.account_number,
+                branch_code:    payload.branch_code
             };
             var hasBankData = bankData.bank_name || bankData.account_number || bankData.branch_code;
 
@@ -975,6 +981,7 @@
                 headers: headers,
                 body: JSON.stringify({
                     bank_name:      bankData.bank_name,
+                    account_holder: bankData.account_holder,
                     account_number: bankData.account_number,
                     branch_code:    bankData.branch_code,
                     account_type:   'savings'
