@@ -430,9 +430,10 @@ router.get(
       );
 
       if (!snapshot) {
-        return res.status(404).json({
+        return res.status(200).json({
           success: false,
-          error: `No payroll snapshot found for employee ${empId} in period ${period_key}`
+          snapshot: null,
+          error: null
         });
       }
 
