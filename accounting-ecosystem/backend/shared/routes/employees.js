@@ -153,7 +153,9 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
       'hourly_rate', 'salary', 'tax_number', 'is_active',
       // Payroll-detail fields added by payroll-schema.js auto-migration
       'job_title', 'payment_method', 'medical_aid_members', 'tax_directive',
-      'basic_salary', 'bank_name', 'account_holder', 'account_number', 'branch_code'
+      'basic_salary', 'bank_name', 'account_holder', 'account_number', 'branch_code',
+      // Voluntary PAYE over-deduction config (migration 012)
+      'voluntary_tax_config'
     ];
     const updates = {};
     for (const key of allowed) {

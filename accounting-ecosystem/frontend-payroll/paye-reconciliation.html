@@ -417,13 +417,36 @@
         function _finalKey() { return 'recon_final_' + currentCompanyId; }
 
         function loadFinalized() {
+            // KV fast-path (avoids blank render on first load)
             try {
                 finalizedData = JSON.parse(safeLocalStorage.getItem(_finalKey()) || '{}');
             } catch(e) { finalizedData = {}; }
         }
 
+        function _loadFinalizedFromAPI() {
+            return apiGet('/payroll/recon/finalized').then(function(data) {
+                if (data && data.finalized) {
+                    // Merge API state into finalizedData (SQL is authoritative)
+                    Object.assign(finalizedData, data.finalized);
+                    safeLocalStorage.setItem(_finalKey(), JSON.stringify(finalizedData));
+                }
+            }).catch(function() {});
+        }
+
         function saveFinalized() {
+            // KV (fast local update)
             safeLocalStorage.setItem(_finalKey(), JSON.stringify(finalizedData));
+        }
+
+        function _saveFinalizedToAPI(taxYear, isFinalized, userEmail) {
+            apiGet; // ensure apiGet in scope
+            var token = safeLocalStorage.getItem('token');
+            if (!token) return;
+            fetch(window.location.origin + '/api/payroll/recon/finalized', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ tax_year: taxYear, is_finalized: isFinalized, finalized_by: userEmail || null })
+            }).catch(function() {});
         }
 
         function isFinalized(taxYear) {
@@ -433,19 +456,22 @@
         // Called by both Finalize and Unfinalize buttons
         window.handleFinalize = function() {
             if (!currentTaxYear) return;
+            var session = AUTH.getSession ? AUTH.getSession() : {};
+            var userEmail = session.email || session.name || 'Unknown';
             if (isFinalized(currentTaxYear)) {
                 // Unfinalize
                 if (!confirm('Remove the finalized status from ' + currentTaxYear + '? This allows editing again.')) return;
                 delete finalizedData[currentTaxYear];
+                _saveFinalizedToAPI(currentTaxYear, false, userEmail);
             } else {
                 // Finalize
                 if (!confirm('Finalize the PAYE Reconciliation for ' + currentTaxYear + '?\n\nInputs will be locked and this year will be marked as complete.')) return;
-                var session = AUTH.getSession ? AUTH.getSession() : {};
                 finalizedData[currentTaxYear] = {
                     finalized: true,
                     date: new Date().toISOString(),
-                    user: session.email || session.name || 'Unknown'
+                    user: userEmail
                 };
+                _saveFinalizedToAPI(currentTaxYear, true, userEmail);
             }
             saveFinalized();
             renderYearGrid();
@@ -588,6 +614,11 @@
         // ─── Load Data ────────────────────────────────────────────────────────
         function loadData() {
             loadFinalized();
+            // Refresh finalized state from SQL (async — won't block initial render)
+            _loadFinalizedFromAPI().then(function() {
+                renderYearGrid();
+                updateFinalizeUI();
+            });
             apiGet('/payroll/recon/tax-years').then(function(data) {
                 _taxYears = data.taxYears || [];
                 _populateTaxYearSelector(_taxYears);
@@ -635,9 +666,18 @@
 
             filteredPeriods = [];
 
-            // SARS and bank submitted values remain localStorage-based (user-entered, not from payroll)
+            // Load SARS/bank submitted values: SQL-primary, KV fallback
             sarsData = ReconService.loadSARSValues(currentCompanyId);
             bankData = ReconService.loadBankValues(currentCompanyId);
+            apiGet('/payroll/recon/submitted?taxYear=' + encodeURIComponent(currentTaxYear)).then(function(d) {
+                if (d && d.submitted) {
+                    Object.keys(d.submitted).forEach(function(p) {
+                        var s = d.submitted[p];
+                        sarsData[p] = { paye: s.paye_submitted || 0, uif: s.uif_submitted || 0, sdl: s.sdl_submitted || 0 };
+                        bankData[p] = { paye: s.paye_bank || 0, uif: s.uif_bank || 0, sdl: s.sdl_bank || 0 };
+                    });
+                }
+            }).catch(function() {});
 
             apiGet('/payroll/recon/summary?taxYear=' + encodeURIComponent(currentTaxYear)).then(function(data) {
                 if (data && data.totals) {
@@ -1092,6 +1132,21 @@
                     ReconService.saveSARSValues(currentCompanyId, sarsData);
                 } else {
                     ReconService.saveBankValues(currentCompanyId, bankData);
+                }
+                // SQL persistence — fire-and-forget
+                var token = safeLocalStorage.getItem('token');
+                if (token && period) {
+                    var sv = sarsData[period] || {};
+                    var bv = bankData[period]  || {};
+                    fetch(window.location.origin + '/api/payroll/recon/submitted', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({
+                            period_key:     period,
+                            paye_submitted: sv.paye || 0, uif_submitted: sv.uif || 0, sdl_submitted: sv.sdl || 0,
+                            paye_bank:      bv.paye || 0, uif_bank:      bv.uif || 0, sdl_bank:      bv.sdl || 0
+                        })
+                    }).catch(function() {});
                 }
                 updateManualTotals(table);
                 renderReconTable();

@@ -446,6 +446,31 @@
         var csvParsedData = null;
         var pdfExtractedRows = [];
 
+        // ========== SQL SYNC HELPER ==========
+        // Pushes each imported historical record to the SQL backend after KV write succeeds.
+        // Fire-and-forget — never blocks the UI or rolls back the KV transaction.
+        function _syncHistoricalToSQL(records) {
+            if (!records || records.length === 0) return;
+            var token = safeLocalStorage.getItem('token');
+            if (!token) return;
+            var base = window.location.origin + '/api/payroll/employees/';
+            var headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+            records.forEach(function(r) {
+                fetch(base + encodeURIComponent(r.empId) + '/historical', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        period_key: r.period,
+                        gross: r.gross || 0,
+                        paye:  r.paye  || 0,
+                        uif:   r.uif   || 0,
+                        net:   r.net   || 0,
+                        source: r.source || 'import'
+                    })
+                }).catch(function() {});
+            });
+        }
+
         // ========== PDF.JS WORKER ==========
         if (typeof pdfjsLib !== 'undefined') {
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -866,6 +891,7 @@
 
             // Transaction rollback: collect all keys we'll write
             var keysWritten = [];
+            var sqlBatch = [];
             var importedCount = 0;
             var periodsCreated = {};
             var periodStats = {};
@@ -893,6 +919,7 @@
                     };
                     safeLocalStorage.setItem(histKey, JSON.stringify(histData));
                     keysWritten.push(histKey);
+                    sqlBatch.push({ empId: row._empId, period: row.period, gross: row.gross, paye: row.paye, uif: row.uif, net: row.net, source: 'csv_import' });
 
                     // Accumulate stats per period
                     if (!periodStats[row.period]) {
@@ -918,6 +945,8 @@
                 alert('Import failed and was rolled back: ' + err.message);
                 return;
             }
+
+            _syncHistoricalToSQL(sqlBatch);
 
             resetCsvUpload();
             loadImportLog();
@@ -1474,6 +1503,7 @@
             var periodsCreated = {};
             var periodStats = {};
             var keysWritten = [];
+            var sqlBatch = [];
             var importTimestamp = new Date().toISOString();
 
             try {
@@ -1527,6 +1557,7 @@
                     };
                     safeLocalStorage.setItem(histKey, JSON.stringify(histData));
                     keysWritten.push(histKey);
+                    sqlBatch.push({ empId: empId, period: period, gross: gross, paye: paye, uif: uif, net: net, source: 'pdf_import' });
 
                     if (!periodStats[period]) {
                         periodStats[period] = { count: 0, gross: 0, paye: 0, uif: 0, net: 0 };
@@ -1551,6 +1582,7 @@
                 return;
             }
 
+            _syncHistoricalToSQL(sqlBatch);
             resetPdfUpload();
             loadImportLog();
 
@@ -1843,6 +1875,7 @@
             var periodsCreated = {};
             var periodStats = {};
             var keysWritten = [];
+            var sqlBatch = [];
             var importTimestamp = new Date().toISOString();
 
             try {
@@ -1891,6 +1924,7 @@
                     };
                     safeLocalStorage.setItem(histKey, JSON.stringify(histData));
                     keysWritten.push(histKey);
+                    sqlBatch.push({ empId: empId, period: period, gross: gross, paye: paye, uif: uif, net: net, source: 'manual_entry' });
 
                     if (!periodStats[period]) {
                         periodStats[period] = { count: 0, gross: 0, paye: 0, uif: 0, net: 0 };
@@ -1921,6 +1955,7 @@
                 return;
             }
 
+            _syncHistoricalToSQL(sqlBatch);
             loadImportLog();
 
             var resultMsg = 'Successfully saved ' + savedCount + ' historical record(s) across ' + Object.keys(periodsCreated).length + ' period(s).';

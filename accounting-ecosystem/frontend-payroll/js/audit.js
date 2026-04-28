@@ -31,17 +31,24 @@ var AuditTrail = {
             company_id: companyId
         };
 
+        // KV cache (capped — local display only)
         var key = 'audit_log_' + companyId;
         var log = [];
         try { log = JSON.parse(safeLocalStorage.getItem(key) || '[]'); } catch(e) { log = []; }
         log.push(entry);
+        if (log.length > 1000) { log = log.slice(log.length - 1000); }
+        safeLocalStorage.setItem(key, JSON.stringify(log));
 
-        // Keep last 1000 entries to prevent localStorage overflow
-        if (log.length > 1000) {
-            log = log.slice(log.length - 1000);
+        // SQL persistence — fire-and-forget, never blocks the UI
+        var token = safeLocalStorage.getItem('token');
+        if (token) {
+            fetch(window.location.origin + '/api/audit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ action_type: actionType, entity_type: entityType, description: description, details: details || null })
+            }).catch(function() {});
         }
 
-        safeLocalStorage.setItem(key, JSON.stringify(log));
         return entry;
     },
 

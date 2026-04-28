@@ -937,14 +937,17 @@
         document.getElementById('exec-loading').style.display = 'flex';
         document.getElementById('exec-results').style.display = 'none';
 
-        // Collect voluntary tax configs from localStorage for each selected employee
+        // Collect voluntary tax configs from the API employee list (SQL-backed).
+        // Fall back to KV for employees whose config pre-dates migration 012.
         var voluntaryConfigs = {};
-        var ls = safeLocalStorage;
         employeeIds.forEach(function(empId) {
-            var raw = ls.getItem('voluntaryTaxConfig_' + state.companyId + '_' + empId);
-            if (raw) {
-                try { voluntaryConfigs[String(empId)] = JSON.parse(raw); } catch(e) {}
+            var emp = (state.employees || []).find(function(e) { return String(e.id) === String(empId); });
+            var cfg = emp && emp.voluntary_tax_config;
+            if (!cfg) {
+                var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + state.companyId + '_' + empId);
+                try { cfg = raw ? JSON.parse(raw) : null; } catch(e) { cfg = null; }
             }
+            if (cfg && cfg.type) voluntaryConfigs[String(empId)] = cfg;
         });
 
         var res = await PayrollAPI.run(periodKey, employeeIds, voluntaryConfigs);

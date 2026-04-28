@@ -483,4 +483,136 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   }
 });
 
+// ─── SARS / Bank submitted values (H1) ──────────────────────────────────────
+
+/**
+ * GET /api/payroll/recon/submitted?taxYear=YYYY/YYYY
+ * Returns { submitted: { 'YYYY-MM': { paye_submitted, uif_submitted, sdl_submitted,
+ *                                      paye_bank, uif_bank, sdl_bank } } }
+ */
+router.get('/submitted', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+  try {
+    const { taxYear } = req.query;
+    if (!taxYear) return res.status(400).json({ error: 'taxYear required' });
+    let startDate, endDate;
+    try { ({ startDate, endDate } = taxYearToDateRange(taxYear)); } catch(e) {
+      return res.status(400).json({ error: e.message });
+    }
+    const periods = generatePeriods(startDate, endDate);
+    const { data, error } = await supabase
+      .from('payroll_recon_submitted')
+      .select('period_key, paye_submitted, uif_submitted, sdl_submitted, paye_bank, uif_bank, sdl_bank')
+      .eq('company_id', req.companyId)
+      .in('period_key', periods);
+    if (error) return res.status(500).json({ error: error.message });
+    const submitted = {};
+    for (const row of (data || [])) {
+      submitted[row.period_key] = {
+        paye_submitted: row.paye_submitted || 0,
+        uif_submitted:  row.uif_submitted  || 0,
+        sdl_submitted:  row.sdl_submitted  || 0,
+        paye_bank:      row.paye_bank      || 0,
+        uif_bank:       row.uif_bank       || 0,
+        sdl_bank:       row.sdl_bank       || 0
+      };
+    }
+    res.json({ submitted });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/payroll/recon/submitted
+ * Body: { period_key, paye_submitted?, uif_submitted?, sdl_submitted?,
+ *                     paye_bank?, uif_bank?, sdl_bank? }
+ */
+router.put('/submitted', requirePermission('PAYROLL.APPROVE'), async (req, res) => {
+  try {
+    const { period_key, paye_submitted, uif_submitted, sdl_submitted,
+            paye_bank, uif_bank, sdl_bank } = req.body;
+    if (!period_key) return res.status(400).json({ error: 'period_key required' });
+    const payload = {
+      company_id:     req.companyId,
+      period_key,
+      updated_at:     new Date().toISOString()
+    };
+    if (paye_submitted !== undefined) payload.paye_submitted = parseFloat(paye_submitted) || 0;
+    if (uif_submitted  !== undefined) payload.uif_submitted  = parseFloat(uif_submitted)  || 0;
+    if (sdl_submitted  !== undefined) payload.sdl_submitted  = parseFloat(sdl_submitted)  || 0;
+    if (paye_bank      !== undefined) payload.paye_bank      = parseFloat(paye_bank)      || 0;
+    if (uif_bank       !== undefined) payload.uif_bank       = parseFloat(uif_bank)       || 0;
+    if (sdl_bank       !== undefined) payload.sdl_bank       = parseFloat(sdl_bank)       || 0;
+    const { data, error } = await supabase
+      .from('payroll_recon_submitted')
+      .upsert(payload, { onConflict: 'company_id,period_key' })
+      .select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Finalized recon state (H2) ─────────────────────────────────────────────
+
+/**
+ * GET /api/payroll/recon/finalized?taxYear=YYYY/YYYY
+ * Returns { finalized: { [taxYear]: { is_finalized, finalized_by, finalized_at } } }
+ */
+router.get('/finalized', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+  try {
+    const { taxYear } = req.query;
+    let query = supabase
+      .from('payroll_recon_finalized')
+      .select('tax_year, is_finalized, finalized_by, finalized_at')
+      .eq('company_id', req.companyId);
+    if (taxYear) query = query.eq('tax_year', taxYear);
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    const finalized = {};
+    for (const row of (data || [])) {
+      if (row.is_finalized) {
+        finalized[row.tax_year] = {
+          finalized:      true,
+          finalized_by:   row.finalized_by,
+          finalized_at:   row.finalized_at,
+          date:           row.finalized_at
+        };
+      }
+    }
+    res.json({ finalized });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/payroll/recon/finalized
+ * Body: { tax_year, is_finalized, finalized_by? }
+ */
+router.put('/finalized', requirePermission('PAYROLL.APPROVE'), async (req, res) => {
+  try {
+    const { tax_year, is_finalized, finalized_by } = req.body;
+    if (!tax_year) return res.status(400).json({ error: 'tax_year required' });
+    const now = new Date().toISOString();
+    const payload = {
+      company_id:   req.companyId,
+      tax_year,
+      is_finalized: !!is_finalized,
+      finalized_by: is_finalized ? (finalized_by || null) : null,
+      finalized_at: is_finalized ? now : null,
+      updated_at:   now
+    };
+    const { data, error } = await supabase
+      .from('payroll_recon_finalized')
+      .upsert(payload, { onConflict: 'company_id,tax_year' })
+      .select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

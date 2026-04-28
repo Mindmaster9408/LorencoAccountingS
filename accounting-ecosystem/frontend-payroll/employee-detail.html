@@ -2965,7 +2965,9 @@
                 savedMsgId = 'volTaxSavedMsgSpread';
             }
             if (!config) return;
+            // KV fallback (offline resilience) + SQL persistence
             safeLocalStorage.setItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId, JSON.stringify(config));
+            _saveVolTaxToAPI(config);
             updateVolTaxActiveDisplay(config);
             var msg = document.getElementById(savedMsgId);
             if (msg) { msg.style.display = 'inline'; setTimeout(function(){ msg.style.display = 'none'; }, 1500); }
@@ -2973,6 +2975,7 @@
 
         function clearVoluntaryTaxConfig() {
             safeLocalStorage.removeItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+            _saveVolTaxToAPI(null);
             ['Fixed','Variable','Spread'].forEach(function(t) {
                 var el = document.getElementById('volTaxPanel' + t);
                 if (el) el.style.display = 'none';
@@ -2983,6 +2986,16 @@
             });
             var disp = document.getElementById('volTaxActiveDisplay');
             if (disp) disp.style.display = 'none';
+        }
+
+        function _saveVolTaxToAPI(config) {
+            var token = safeLocalStorage.getItem('token');
+            if (!token || !currentEmpId) return;
+            fetch(window.location.origin + '/api/employees/' + encodeURIComponent(currentEmpId), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ voluntary_tax_config: config || null })
+            }).catch(function() {});
         }
 
         function updateVolTaxActiveDisplay(config) {
@@ -3003,14 +3016,18 @@
         }
 
         function loadVoluntaryTaxConfig() {
-            var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
-            if (!raw) {
+            // Prefer SQL-backed employee record; fall back to KV if not yet migrated
+            var obj = (currentEmployee && currentEmployee.voluntary_tax_config) || null;
+            if (!obj) {
+                var raw = safeLocalStorage.getItem('voluntaryTaxConfig_' + currentCompanyId + '_' + currentEmpId);
+                try { obj = raw ? JSON.parse(raw) : null; } catch(e) { obj = null; }
+            }
+            if (!obj) {
                 var disp = document.getElementById('volTaxActiveDisplay');
                 if (disp) disp.style.display = 'none';
                 return;
             }
             try {
-                var obj = JSON.parse(raw);
                 updateVolTaxActiveDisplay(obj);
                 if (obj.type === 'fixed') {
                     switchVolTaxTab('fixed');

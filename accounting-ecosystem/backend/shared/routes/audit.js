@@ -10,11 +10,39 @@
 const express = require('express');
 const { supabase } = require('../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../middleware/auth');
+const { logAudit } = require('../../middleware/audit');
 
 const router = express.Router();
 
 router.use(authenticateToken);
 router.use(requireCompany);
+
+/**
+ * POST /api/audit
+ * Frontend-originated audit events (import confirmations, finalize actions, etc.)
+ * These complement the automatic server-side audit middleware.
+ */
+router.post('/', async (req, res) => {
+  try {
+    const { action_type, entity_type, entity_id, description, details } = req.body;
+    if (!action_type || !entity_type) {
+      return res.status(400).json({ error: 'action_type and entity_type are required' });
+    }
+    await logAudit({
+      companyId:  req.companyId,
+      userId:     req.user?.userId || null,
+      userEmail:  req.user?.email  || 'frontend',
+      module:     'payroll',
+      actionType: action_type,
+      entityType: entity_type,
+      entityId:   entity_id   || null,
+      metadata:   { description: description || null, details: details || null }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 /**
  * GET /api/audit
