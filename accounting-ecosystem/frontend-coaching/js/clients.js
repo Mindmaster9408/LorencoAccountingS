@@ -62,10 +62,12 @@ export async function openClient(clientId, options = {}) {
             `<div class="client-photo" style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: 700; margin: 0 auto 16px;">${(client.name || '')[0] || 'P'}</div>`;
 
         sidebarInfo.innerHTML = `
-            <a href="#" id="back-to-tower" style="display: block; margin-bottom: 16px; color: #3b82f6; text-decoration: none;">← Back to Control Tower</a>
+            <a href="#" id="back-to-tower" style="display: inline-flex; align-items: center; color: #3b82f6; text-decoration: none; font-size: 14px; white-space: nowrap;">← Back to Control Tower</a>
             ${photoHtml}
-            <div class="client-name-large" style="font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 8px;">${escapeHtml(client.name)}</div>
-            <div class="client-dream" style="font-size: 14px; color: #64748b; text-align: center;">${client.dream ? escapeHtml(client.dream) : 'No dream set yet'}</div>
+            <div style="display:flex;flex-direction:column;justify-content:center;min-width:0;">
+                <div class="client-name-large" style="font-size: 20px; font-weight: 700;">${escapeHtml(client.name)}</div>
+                <div class="client-dream" style="font-size: 14px; color: #64748b; margin-top: 4px;">${client.dream ? escapeHtml(client.dream) : 'No dream set yet'}</div>
+            </div>
         `;
     }
 
