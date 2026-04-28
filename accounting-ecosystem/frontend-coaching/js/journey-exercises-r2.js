@@ -377,7 +377,7 @@ function renderPresentGapFuture(client, container) {
             ` : ''}
 
             <!-- Three Column Grid -->
-            <div class="pgf-grid">
+            <div class="pgf-grid" id="pgf-grid">
                 <!-- Present Column -->
                 <div class="pgf-column present-column">
                     <h3>Present Questions</h3>
@@ -395,6 +395,8 @@ function renderPresentGapFuture(client, container) {
                         </div>
                     `).join('')}
                 </div>
+
+                <div class="pgf-resize-handle" title="Drag to resize"></div>
 
                 <!-- Gap Column -->
                 <div class="pgf-column gap-column">
@@ -428,6 +430,8 @@ function renderPresentGapFuture(client, container) {
                         </div>
                     `).join('')}
                 </div>
+
+                <div class="pgf-resize-handle" title="Drag to resize"></div>
 
                 <!-- Future Column -->
                 <div class="pgf-column future-column">
@@ -564,9 +568,44 @@ function renderPresentGapFuture(client, container) {
             }
         }, 100);
     }
+
+    // Init column resize handles
+    setTimeout(() => initPgfResize(), 50);
 }
 
-// Step 3: Flight Plan
+function initPgfResize() {
+    const grid = document.getElementById('pgf-grid');
+    if (!grid) return;
+    const handles = grid.querySelectorAll('.pgf-resize-handle');
+    handles.forEach(handle => {
+        handle.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            const leftCol  = handle.previousElementSibling;
+            const rightCol = handle.nextElementSibling;
+            if (!leftCol || !rightCol) return;
+            handle.classList.add('dragging');
+            const startX      = e.clientX;
+            const startLeftW  = leftCol.getBoundingClientRect().width;
+            const startRightW = rightCol.getBoundingClientRect().width;
+            const totalW      = startLeftW + startRightW;
+            function onMove(ev) {
+                const delta   = ev.clientX - startX;
+                const newLeft = Math.max(120, Math.min(totalW - 120, startLeftW + delta));
+                leftCol.style.flex  = 'none';
+                leftCol.style.width = newLeft + 'px';
+                rightCol.style.flex  = 'none';
+                rightCol.style.width = (totalW - newLeft) + 'px';
+            }
+            function onUp() {
+                handle.classList.remove('dragging');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    });
+}
 function renderFlightPlan(client, container) {
     // Initialize exercise data if not exists
     if (!client.exerciseData) client.exerciseData = {};
