@@ -1,5 +1,5 @@
 // Journey Exercise Pages - Interactive exercises for each step
-import { $, escapeHtml } from './config.js';
+import { $, escapeHtml, formatDate, formatDateTime, parseStandardDate } from './config.js';
 import { saveClient } from './storage.js';
 import { JOURNEY_STEPS } from './journey-data.js';
 import { renderAIChat } from './journey-helpers.js';

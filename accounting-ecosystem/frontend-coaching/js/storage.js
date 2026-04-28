@@ -16,6 +16,14 @@ export async function readStore() {
 }
 
 export async function saveClient(client) {
+    // Keep snake_case DB fields in sync with camelCase aliases used by exercise code
+    if (client.exerciseData && client.exerciseData !== client.exercise_data) {
+        client.exercise_data = client.exerciseData;
+    }
+    if (client.journeyProgress && client.journeyProgress !== client.journey_progress) {
+        client.journey_progress = client.journeyProgress;
+    }
+
     if (client.id && typeof client.id === 'number') {
         await api.updateClient(client.id, client);
     } else {

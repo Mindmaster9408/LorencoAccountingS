@@ -45,3 +45,27 @@ export function $all(sel) {
 export function escapeHtml(s) {
     return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;');
 }
+
+// Date utilities — shared across coaching frontend
+export function formatDate(date, locale) {
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-ZA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+export function formatDateTime(date) {
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-ZA', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+export function parseStandardDate(str) {
+    if (!str) return null;
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+// Valid coaching client status values (must match DB ENUM)
+export const VALID_CLIENT_STATUSES = ['active', 'paused', 'completed', 'archived'];

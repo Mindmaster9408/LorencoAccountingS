@@ -1,6 +1,7 @@
 // Client management and individual client view
-import { $, escapeHtml } from './config.js';
+import { $, escapeHtml, VALID_CLIENT_STATUSES } from './config.js';
 import { readStore, saveClient, createNewClient } from './storage.js';
+import { api } from './api.js';
 import { renderCockpit, saveGauges } from './gauges.js';
 import { renderDashboard } from './dashboard.js';
 import { renderBASISAssessment } from './basis-ui.js?v=2';
@@ -8,10 +9,21 @@ import { renderJourneyTracker } from './journey-ui.js';
 
 export async function openClient(clientId, options = {}) {
     const store = await readStore();
-    const client = store.clients.find(c => c.id === clientId);
+    let client = store.clients.find(c => c.id === clientId);
     if(!client) return;
 
-    // Ensure client has gauges initialized
+    // Load full client detail (steps, gauges, sessions) from backend
+    try {
+        const detail = await api.getClient(clientId);
+        if (detail && detail.client) {
+            // Merge full data into client — gauges come as object, steps/sessions as arrays
+            client = { ...client, ...detail.client };
+        }
+    } catch (err) {
+        console.warn('[openClient] Could not load full client detail, using list data:', err.message);
+    }
+
+    // Ensure client has gauges initialized (fallback if detail load failed)
     if(!client.gauges) {
         client.gauges = {
             fuel: 50,
@@ -25,6 +37,13 @@ export async function openClient(clientId, options = {}) {
             nav: 50
         };
     }
+
+    // Ensure exercise_data and journey_progress exist
+    if (!client.exercise_data) client.exercise_data = {};
+    if (!client.journey_progress) client.journey_progress = {};
+    // Legacy alias so existing exercise code using client.exerciseData still works
+    if (!client.exerciseData) client.exerciseData = client.exercise_data;
+    if (!client.journeyProgress) client.journeyProgress = client.journey_progress;
 
     // Switch to clients view
     switchToView('clients');
@@ -132,10 +151,10 @@ export async function openClient(clientId, options = {}) {
                     <div class="form-group">
                         <label>Status</label>
                         <select id="detail-status">
-                            <option value="Active" ${(client.status || 'Active') === 'Active' ? 'selected' : ''}>Active</option>
-                            <option value="Archived" ${client.status === 'Archived' ? 'selected' : ''}>Archived</option>
-                            <option value="On Hold" ${client.status === 'On Hold' ? 'selected' : ''}>On Hold</option>
-                            <option value="Completed" ${client.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                            <option value="active" ${(client.status || 'active') === 'active' ? 'selected' : ''}>Active</option>
+                            <option value="paused" ${client.status === 'paused' ? 'selected' : ''}>On Hold / Paused</option>
+                            <option value="completed" ${client.status === 'completed' ? 'selected' : ''}>Completed</option>
+                            <option value="archived" ${client.status === 'archived' ? 'selected' : ''}>Archived</option>
                         </select>
                     </div>
                 </div>
@@ -257,11 +276,21 @@ function setupTabSwitching(header, client) {
             client.email = $('#detail-email').value.trim();
             client.phone = $('#detail-phone').value.trim();
             client.preferred_lang = $('#detail-language').value;
-            client.status = $('#detail-status').value.trim();
+            // Only save status if it's a valid DB ENUM value
+            const rawStatus = ($('#detail-status') ? $('#detail-status').value.trim() : '').toLowerCase();
+            if (VALID_CLIENT_STATUSES.includes(rawStatus)) {
+                client.status = rawStatus;
+            }
             client.notes = $('#detail-notes').value.trim();
 
             // Save to storage
-            await saveClient(client);
+            try {
+                await saveClient(client);
+            } catch (err) {
+                console.error('[Save Details] Failed:', err);
+                alert('Failed to save: ' + (err.message || 'Unknown error. Check your connection.'));
+                return;
+            }
 
             // Update sidebar info
             const sidebarInfo = $('#client-sidebar-info');
@@ -295,10 +324,9 @@ export async function createNewPilot() {
 export async function addSampleClient() {
     const client = createNewClient('Lia van der Merwe');
     client.preferred_lang = 'Afrikaans';
-    client.status = 'Active - Step 1';
-    client.summary = 'Dream: Freelance success; Stress: Time management';
+    client.status = 'active';
+    client.dream = 'Freelance success; improve time management';
     client.progress_completed = 3;
-    client.progress_total = 15;
     await saveClient(client);
     await renderDashboard();
     alert('Sample client added!');

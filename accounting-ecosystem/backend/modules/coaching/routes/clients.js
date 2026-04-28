@@ -148,22 +148,57 @@ router.post('/',
 router.put('/:clientId', requireClientAccess, async (req, res) => {
   try {
     const { clientId } = req.params;
-    const { name, email, phone, preferred_lang, status, dream, current_step, progress_completed } = req.body;
+    const { name, email, phone, preferred_lang, dream, current_step, progress_completed, exercise_data, journey_progress } = req.body;
 
-    const result = await query(
-      `UPDATE coaching_clients
-       SET name = COALESCE($1, name),
-           email = COALESCE($2, email),
-           phone = COALESCE($3, phone),
-           preferred_lang = COALESCE($4, preferred_lang),
-           status = COALESCE($5, status),
-           dream = COALESCE($6, dream),
-           current_step = COALESCE($7, current_step),
-           progress_completed = COALESCE($8, progress_completed),
-           last_session = CURRENT_DATE
-       WHERE id = $9 RETURNING *`,
-      [name, email, phone, preferred_lang, status, dream, current_step, progress_completed, clientId]
-    );
+    // Only pass status if it is a valid ENUM value — reject silently otherwise to avoid DB error
+    const VALID_STATUSES = ['active', 'paused', 'completed', 'archived'];
+    const status = VALID_STATUSES.includes(req.body.status) ? req.body.status : null;
+
+    // Safely serialize JSONB fields (must be object or null)
+    const safeExerciseData = (exercise_data && typeof exercise_data === 'object') ? JSON.stringify(exercise_data) : null;
+    const safeJourneyProgress = (journey_progress && typeof journey_progress === 'object') ? JSON.stringify(journey_progress) : null;
+
+    let result;
+    try {
+      // Full update including exercise_data/journey_progress (requires migration 019 to have run)
+      result = await query(
+        `UPDATE coaching_clients
+         SET name = COALESCE($1, name),
+             email = COALESCE($2, email),
+             phone = COALESCE($3, phone),
+             preferred_lang = COALESCE($4, preferred_lang),
+             status = COALESCE($5::coaching_client_status, status),
+             dream = COALESCE($6, dream),
+             current_step = COALESCE($7, current_step),
+             progress_completed = COALESCE($8, progress_completed),
+             exercise_data = COALESCE($9::jsonb, exercise_data),
+             journey_progress = COALESCE($10::jsonb, journey_progress),
+             last_session = CURRENT_DATE
+         WHERE id = $11 RETURNING *`,
+        [name, email, phone, preferred_lang, status, dream, current_step, progress_completed, safeExerciseData, safeJourneyProgress, clientId]
+      );
+    } catch (innerErr) {
+      // Fallback if migration 019 has not been run yet (columns don't exist)
+      if (innerErr.code === '42703') {
+        console.warn('[Coaching] exercise_data/journey_progress columns missing — falling back to base update. Run migration 019.');
+        result = await query(
+          `UPDATE coaching_clients
+           SET name = COALESCE($1, name),
+               email = COALESCE($2, email),
+               phone = COALESCE($3, phone),
+               preferred_lang = COALESCE($4, preferred_lang),
+               status = COALESCE($5::coaching_client_status, status),
+               dream = COALESCE($6, dream),
+               current_step = COALESCE($7, current_step),
+               progress_completed = COALESCE($8, progress_completed),
+               last_session = CURRENT_DATE
+           WHERE id = $9 RETURNING *`,
+          [name, email, phone, preferred_lang, status, dream, current_step, progress_completed, clientId]
+        );
+      } else {
+        throw innerErr;
+      }
+    }
 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Client not found' });
 
