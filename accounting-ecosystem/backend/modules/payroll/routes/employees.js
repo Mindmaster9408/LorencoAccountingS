@@ -220,19 +220,38 @@ router.put('/:id/bank-details', requirePermission('PAYROLL.CREATE'), requirePayt
     const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp);
     if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
 
-    // Upsert bank details
-    const { data, error } = await supabase
+    // Upsert bank details — manual check-then-update-or-insert because
+    // employee_bank_details may not have a unique constraint on employee_id,
+    // which Supabase requires for onConflict upserts.
+    const { data: existing } = await supabase
       .from('employee_bank_details')
-      .upsert({
-        employee_id: empId,
-        bank_name,
-        account_number,
-        branch_code,
-        account_type: account_type || 'savings',
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'employee_id' })
-      .select()
-      .single();
+      .select('id')
+      .eq('employee_id', empId)
+      .maybeSingle();
+
+    const payload = {
+      employee_id: empId,
+      bank_name,
+      account_number,
+      branch_code,
+      account_type: account_type || 'savings',
+      updated_at: new Date().toISOString()
+    };
+    let data, error;
+    if (existing) {
+      ({ data, error } = await supabase
+        .from('employee_bank_details')
+        .update(payload)
+        .eq('id', existing.id)
+        .select()
+        .single());
+    } else {
+      ({ data, error } = await supabase
+        .from('employee_bank_details')
+        .insert(payload)
+        .select()
+        .single());
+    }
 
     if (error) return res.status(500).json({ error: error.message });
 
