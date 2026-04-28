@@ -511,9 +511,6 @@ function normalizeCalculationInput(
     tax_treatment: item.payroll_items?.tax_treatment || 'net_only'
   }));
 
-  // Combine recurring + period inputs
-  const allInputs = [...regularInputs, ...normalizedPeriodInputs];
-
   // Normalize overtime (preserve decimal hours)
   const overtimeNormalized = periodInputs.overtime.map(ot => ({
     hours: parseFloat(ot.hours) || 0, // Decimal hours
@@ -534,7 +531,7 @@ function normalizeCalculationInput(
   const normalizedInput = {
     // === Employee & Context ===
     basic_salary: parseFloat(employee.basic_salary) || 0,
-    regular_inputs: allInputs,
+    regular_inputs: regularInputs,
     workSchedule: workSchedule,
     hours_per_day: parseFloat(employee.hours_per_day || 8), // Decimal
 
