@@ -161,8 +161,8 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
     }
     // Map employee_number → employee_code (DB column name)
     if (req.body.employee_number !== undefined) updates.employee_code = req.body.employee_number;
-    // Frontend uses date_appointed; DB column is hire_date — accept both
-    if (req.body.date_appointed !== undefined && req.body.hire_date === undefined) {
+    // Frontend uses date_appointed; DB column is hire_date — always map when present
+    if (req.body.date_appointed !== undefined) {
       updates.hire_date = req.body.date_appointed || null;
     }
     updates.updated_at = new Date().toISOString();
