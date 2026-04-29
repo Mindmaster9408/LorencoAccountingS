@@ -19,6 +19,12 @@ import express from 'express';
 import crypto from 'crypto';
 import { query } from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
+import {
+    scoreBasisAnswers,
+    toLegacyBasisResults,
+    ALL_QUESTION_KEYS,
+    TOTAL_QUESTIONS
+} from '../domain/basis.engine.js';
 
 const router = express.Router();
 
@@ -122,21 +128,39 @@ router.get('/public/:token', async (req, res) => {
  * PUT /api/basis/public/:token
  * Client submits their completed answers.
  * Accepts basis_answers in flat format: { "BALANS_1": 7, ... }
- * Accepts basis_results: { sectionScores: {...}, basisOrder: [...], timestamp }
+ *
+ * Any client-provided basisResults are intentionally ignored.
+ * The backend recomputes results server-side from basisAnswers using the
+ * hardened scoring engine, producing a legacy-compatible basis_results
+ * object that matches what generateBASISReport() expects.
  */
 router.put('/public/:token', async (req, res) => {
     const token = sanitiseString(req.params.token, 200);
     if (!token) return res.status(400).json({ error: 'Invalid token.' });
 
+    // basisResults from the request body is deliberately not destructured —
+    // we do not read it and we do not trust it.
     const { respondentName, respondentEmail, respondentPhone, preferredLang,
-            basisAnswers, basisResults } = req.body;
+            basisAnswers } = req.body;
 
     if (!basisAnswers || typeof basisAnswers !== 'object' || Array.isArray(basisAnswers)) {
-        return res.status(400).json({ error: 'basisAnswers must be an object.' });
+        return res.status(400).json({ error: 'basisAnswers must be a plain object.' });
     }
-    if (!basisResults || !Array.isArray(basisResults.basisOrder) || typeof basisResults.sectionScores !== 'object') {
-        return res.status(400).json({ error: 'basisResults must contain basisOrder array and sectionScores object.' });
+
+    // Completeness check: count how many submitted keys are recognised question keys.
+    // Unknown keys (e.g. injected garbage) are simply ignored by the engine but we
+    // still enforce that all 50 real questions were answered.
+    const validCount = Object.keys(basisAnswers).filter(k => ALL_QUESTION_KEYS.has(k)).length;
+    if (validCount < TOTAL_QUESTIONS) {
+        return res.status(400).json({
+            error: `Incomplete assessment: ${validCount} of ${TOTAL_QUESTIONS} questions answered.`
+        });
     }
+
+    // Server-side scoring — engine applies all hardening patches internally.
+    // toLegacyBasisResults() converts to the integer sum format (0–100 per section)
+    // that matches generateBASISReport() and basis-ui.js displayResults().
+    const serverBasisResults = toLegacyBasisResults(scoreBasisAnswers(basisAnswers));
 
     try {
         const check = await query(
@@ -172,7 +196,7 @@ router.put('/public/:token', async (req, res) => {
              RETURNING id, status`,
             [
                 JSON.stringify(basisAnswers),
-                JSON.stringify(basisResults),
+                JSON.stringify(serverBasisResults),
                 cleanName,
                 cleanEmail,
                 cleanPhone,
@@ -288,15 +312,20 @@ router.get('/:id', authenticateToken, async (req, res) => {
 /**
  * PUT /api/basis/:id
  * Partial update — only touches fields that are present in the request body.
- * Supports: basisAnswers, basisResults, reportGenerated, status,
+ * Supports: basisAnswers, reportGenerated, status,
  *           respondentName, preferredLang, linkedClientId
+ *
+ * basisResults is no longer accepted as a direct input. When basisAnswers is
+ * provided, basis_results is always recomputed server-side from those answers.
+ * Any basisResults value in the request body is silently ignored.
  */
 router.put('/:id', authenticateToken, async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid submission ID.' });
 
-    const { basisAnswers, basisResults, reportGenerated, status,
+    const { basisAnswers, reportGenerated, status,
             respondentName, preferredLang, linkedClientId } = req.body;
+    // basisResults intentionally not destructured — it is never read from the request body.
 
     try {
         // Verify ownership before touching
@@ -312,12 +341,17 @@ router.put('/:id', authenticateToken, async (req, res) => {
         let p = 1;
 
         if (basisAnswers !== undefined) {
+            if (typeof basisAnswers !== 'object' || Array.isArray(basisAnswers)) {
+                return res.status(400).json({ error: 'basisAnswers must be a plain object.' });
+            }
             sets.push(`basis_answers = $${p++}`);
             params.push(JSON.stringify(basisAnswers));
-        }
-        if (basisResults !== undefined) {
+
+            // Always recompute results server-side from the provided answers.
+            // basisResults from the request body is ignored.
+            const serverBasisResults = toLegacyBasisResults(scoreBasisAnswers(basisAnswers));
             sets.push(`basis_results = $${p++}`);
-            params.push(JSON.stringify(basisResults));
+            params.push(JSON.stringify(serverBasisResults));
         }
         if (reportGenerated !== undefined) {
             sets.push(`report_generated = $${p++}`);

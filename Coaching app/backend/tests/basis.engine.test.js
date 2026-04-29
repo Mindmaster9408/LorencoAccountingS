@@ -4,7 +4,15 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreBasisAnswers, calculateSectionScores, determineLevel, CONFIG } from '../domain/basis.engine.js';
+import {
+    scoreBasisAnswers,
+    toLegacyBasisResults,
+    calculateSectionScores,
+    determineLevel,
+    CONFIG,
+    ALL_QUESTION_KEYS,
+    TOTAL_QUESTIONS
+} from '../domain/basis.engine.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -196,4 +204,149 @@ test('determineLevel returns correct level for boundary values', () => {
     assert.equal(determineLevel(4),   'medium');  // at threshold
     assert.equal(determineLevel(3.99),'low');
     assert.equal(determineLevel(0),   'low');
+});
+
+// ─── CONFIG / constants ───────────────────────────────────────────────────────
+test('ALL_QUESTION_KEYS contains exactly 50 keys (5 sections × 10 questions)', () => {
+    assert.equal(TOTAL_QUESTIONS, 50);
+    assert.equal(ALL_QUESTION_KEYS.size, 50);
+    assert.ok(ALL_QUESTION_KEYS.has('BALANS_1'));
+    assert.ok(ALL_QUESTION_KEYS.has('STRUKTUUR_10'));
+    assert.ok(!ALL_QUESTION_KEYS.has('BALANS_0'));
+    assert.ok(!ALL_QUESTION_KEYS.has('BALANS_11'));
+    assert.ok(!ALL_QUESTION_KEYS.has('UNKNOWN_1'));
+});
+
+// ─── toLegacyBasisResults — output contract ───────────────────────────────────
+test('toLegacyBasisResults output has correct shape', () => {
+    const engineOutput = scoreBasisAnswers(allSectionAnswers(
+        { BALANS: 7, AKSIE: 6, SORG: 5, INSIG: 8, STRUKTUUR: 4 }
+    ));
+    const legacy = toLegacyBasisResults(engineOutput);
+
+    // Shape
+    assert.ok('sectionScores' in legacy);
+    assert.ok('basisOrder'    in legacy);
+    assert.ok('timestamp'     in legacy);
+    assert.ok('computedBy'    in legacy);
+    assert.equal(legacy.computedBy, 'server');
+
+    // sectionScores values must be plain numbers, not objects
+    for (const [key, val] of Object.entries(legacy.sectionScores)) {
+        assert.equal(typeof val, 'number', `sectionScores.${key} must be a number`);
+    }
+
+    // basisOrder must be an array of all 5 section keys
+    assert.ok(Array.isArray(legacy.basisOrder));
+    assert.equal(legacy.basisOrder.length, 5);
+});
+
+test('toLegacyBasisResults sectionScores are integers in range 0–100', () => {
+    const engineOutput = scoreBasisAnswers(allSectionAnswers(
+        { BALANS: 8, AKSIE: 5, SORG: 3, INSIG: 9, STRUKTUUR: 6 }
+    ));
+    const legacy = toLegacyBasisResults(engineOutput);
+
+    for (const [key, val] of Object.entries(legacy.sectionScores)) {
+        assert.ok(Number.isInteger(val),       `${key} score must be an integer`);
+        assert.ok(val >= 0 && val <= 100,      `${key} score must be 0–100, got ${val}`);
+    }
+});
+
+test('toLegacyBasisResults sum exactly matches legacy frontend calculateSectionScore', () => {
+    // Full BALANS section, all raw answers = 8:
+    //   q1–q8 (normal)  : 8 × 8 = 64
+    //   q9  (reverse)   : 11 - 8 = 3
+    //   q10 (reverse)   : 11 - 8 = 3
+    //   total           = 70
+    // The legacy frontend calculateSectionScore() produces the same 70.
+    const answers     = fullSectionAnswers('BALANS', 8);
+    const engineOut   = scoreBasisAnswers(answers);
+    const legacy      = toLegacyBasisResults(engineOut);
+
+    assert.equal(legacy.sectionScores.BALANS, 70);
+});
+
+test('toLegacyBasisResults sum matches for all-5 midpoint answers', () => {
+    // Full AKSIE section, all raw answers = 5:
+    //   q1–q8 (normal)  : 5 × 8 = 40
+    //   q9  (reverse)   : 11 - 5 = 6
+    //   q10 (reverse)   : 11 - 5 = 6
+    //   total           = 52
+    const answers   = fullSectionAnswers('AKSIE', 5);
+    const engineOut = scoreBasisAnswers(answers);
+    const legacy    = toLegacyBasisResults(engineOut);
+
+    assert.equal(legacy.sectionScores.AKSIE, 52);
+});
+
+test('toLegacyBasisResults basisOrder matches engine basisOrder', () => {
+    const buildWithReverse = (sectionKey, normalVal, reverseAdjVal) => {
+        const section = CONFIG.sections[sectionKey];
+        return Object.fromEntries(section.questions.map(k => [
+            k,
+            section.reverse.has(k) ? reverseAdjVal : normalVal
+        ]));
+    };
+    const answers = {
+        ...buildWithReverse('INSIG',     10, 1),
+        ...buildWithReverse('AKSIE',      9, 2),
+        ...buildWithReverse('BALANS',     8, 3),
+        ...buildWithReverse('SORG',       7, 4),
+        ...buildWithReverse('STRUKTUUR',  5, 6)
+    };
+
+    const engineOut = scoreBasisAnswers(answers);
+    const legacy    = toLegacyBasisResults(engineOut);
+
+    assert.deepEqual(legacy.basisOrder,    engineOut.basisOrder);
+    assert.deepEqual(legacy.basisOrder,    ['INSIG', 'AKSIE', 'BALANS', 'SORG', 'STRUKTUUR']);
+    assert.equal(legacy.sectionScores.INSIG, 100);  // 10×10 = 100
+});
+
+test('toLegacyBasisResults with empty answers returns all zeros', () => {
+    const legacy = toLegacyBasisResults(scoreBasisAnswers({}));
+    for (const val of Object.values(legacy.sectionScores)) {
+        assert.equal(val, 0);
+    }
+});
+
+test('frontend-provided basisResults are irrelevant — engine recomputes from answers', () => {
+    // Simulate what the frontend sends: basisAnswers (truth) + basisResults (untrusted)
+    const basisAnswers = allSectionAnswers({ BALANS: 8, AKSIE: 7, SORG: 6, INSIG: 9, STRUKTUUR: 5 });
+
+    // Frontend claims BALANS scored 999 (malicious/wrong)
+    const frontendBasisResults = { sectionScores: { BALANS: 999 }, basisOrder: ['BALANS'] };
+
+    // Backend ignores frontendBasisResults entirely and recomputes
+    const serverResults = toLegacyBasisResults(scoreBasisAnswers(basisAnswers));
+
+    // Server result must NOT contain the poisoned value
+    assert.notEqual(serverResults.sectionScores.BALANS, frontendBasisResults.sectionScores.BALANS);
+    // Server result must be a valid integer 0–100
+    assert.ok(Number.isInteger(serverResults.sectionScores.BALANS));
+    assert.ok(serverResults.sectionScores.BALANS >= 0 && serverResults.sectionScores.BALANS <= 100);
+    // computedBy confirms server origin
+    assert.equal(serverResults.computedBy, 'server');
+});
+
+test('report generator receives expected shape from toLegacyBasisResults', () => {
+    // generateBASISReport() destructures: const { basisOrder, sectionScores } = client.basisResults
+    // Then accesses sectionScores[type] as a number for display
+    const answers = allSectionAnswers({ BALANS: 7, AKSIE: 8, SORG: 6, INSIG: 9, STRUKTUUR: 5 });
+    const stored  = toLegacyBasisResults(scoreBasisAnswers(answers));
+
+    // Simulate what the report generator does
+    const { basisOrder, sectionScores } = stored;
+
+    // basisOrder[0] is the primary type — used as BASIS_DEFINITIONS key
+    assert.ok(typeof basisOrder[0] === 'string');
+    assert.ok(['BALANS', 'AKSIE', 'SORG', 'INSIG', 'STRUKTUUR'].includes(basisOrder[0]));
+
+    // sectionScores[type] used as: `${sectionScores[type]}/100` and `width: ${score}%`
+    for (const type of basisOrder) {
+        const score = sectionScores[type];
+        assert.equal(typeof score, 'number');
+        assert.ok(score >= 0 && score <= 100, `score for ${type} must be 0–100`);
+    }
 });
