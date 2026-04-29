@@ -148,7 +148,12 @@ router.post('/',
 router.put('/:clientId', requireClientAccess, async (req, res) => {
   try {
     const { clientId } = req.params;
-    const { name, email, phone, preferred_lang, dream, current_step, progress_completed, exercise_data, journey_progress } = req.body;
+    const {
+      name, email, phone, preferred_lang, dream, current_step, progress_completed,
+      exercise_data, journey_progress,
+      // BASIS assessment data — stored as camelCase on the client object in the frontend
+      basisAnswers, basisResults
+    } = req.body;
 
     // Only pass status if it is a valid ENUM value — reject silently otherwise to avoid DB error
     const VALID_STATUSES = ['active', 'paused', 'completed', 'archived'];
@@ -157,10 +162,12 @@ router.put('/:clientId', requireClientAccess, async (req, res) => {
     // Safely serialize JSONB fields (must be object or null)
     const safeExerciseData = (exercise_data && typeof exercise_data === 'object') ? JSON.stringify(exercise_data) : null;
     const safeJourneyProgress = (journey_progress && typeof journey_progress === 'object') ? JSON.stringify(journey_progress) : null;
+    const safeBasisAnswers = (basisAnswers && typeof basisAnswers === 'object') ? JSON.stringify(basisAnswers) : null;
+    const safeBasisResults = (basisResults && typeof basisResults === 'object') ? JSON.stringify(basisResults) : null;
 
     let result;
     try {
-      // Full update including exercise_data/journey_progress (requires migration 019 to have run)
+      // Full update including all JSONB fields (requires migrations 019 + 020)
       result = await query(
         `UPDATE coaching_clients
          SET name = COALESCE($1, name),
@@ -173,28 +180,57 @@ router.put('/:clientId', requireClientAccess, async (req, res) => {
              progress_completed = COALESCE($8, progress_completed),
              exercise_data = COALESCE($9::jsonb, exercise_data),
              journey_progress = COALESCE($10::jsonb, journey_progress),
+             basis_answers = COALESCE($11::jsonb, basis_answers),
+             basis_results = COALESCE($12::jsonb, basis_results),
              last_session = CURRENT_DATE
-         WHERE id = $11 RETURNING *`,
-        [name, email, phone, preferred_lang, status, dream, current_step, progress_completed, safeExerciseData, safeJourneyProgress, clientId]
+         WHERE id = $13 RETURNING *`,
+        [name, email, phone, preferred_lang, status, dream, current_step, progress_completed,
+         safeExerciseData, safeJourneyProgress, safeBasisAnswers, safeBasisResults, clientId]
       );
     } catch (innerErr) {
-      // Fallback if migration 019 has not been run yet (columns don't exist)
       if (innerErr.code === '42703') {
-        console.warn('[Coaching] exercise_data/journey_progress columns missing — falling back to base update. Run migration 019.');
-        result = await query(
-          `UPDATE coaching_clients
-           SET name = COALESCE($1, name),
-               email = COALESCE($2, email),
-               phone = COALESCE($3, phone),
-               preferred_lang = COALESCE($4, preferred_lang),
-               status = COALESCE($5::coaching_client_status, status),
-               dream = COALESCE($6, dream),
-               current_step = COALESCE($7, current_step),
-               progress_completed = COALESCE($8, progress_completed),
-               last_session = CURRENT_DATE
-           WHERE id = $9 RETURNING *`,
-          [name, email, phone, preferred_lang, status, dream, current_step, progress_completed, clientId]
-        );
+        // Migration 020 (basis columns) not yet run — try without them
+        console.warn('[Coaching] basis_answers/basis_results columns missing — falling back. Run migration 020.');
+        try {
+          result = await query(
+            `UPDATE coaching_clients
+             SET name = COALESCE($1, name),
+                 email = COALESCE($2, email),
+                 phone = COALESCE($3, phone),
+                 preferred_lang = COALESCE($4, preferred_lang),
+                 status = COALESCE($5::coaching_client_status, status),
+                 dream = COALESCE($6, dream),
+                 current_step = COALESCE($7, current_step),
+                 progress_completed = COALESCE($8, progress_completed),
+                 exercise_data = COALESCE($9::jsonb, exercise_data),
+                 journey_progress = COALESCE($10::jsonb, journey_progress),
+                 last_session = CURRENT_DATE
+             WHERE id = $11 RETURNING *`,
+            [name, email, phone, preferred_lang, status, dream, current_step, progress_completed,
+             safeExerciseData, safeJourneyProgress, clientId]
+          );
+        } catch (innerErr2) {
+          if (innerErr2.code === '42703') {
+            // Migration 019 also not run — base update only
+            console.warn('[Coaching] exercise_data/journey_progress columns also missing — falling back to base update. Run migration 019.');
+            result = await query(
+              `UPDATE coaching_clients
+               SET name = COALESCE($1, name),
+                   email = COALESCE($2, email),
+                   phone = COALESCE($3, phone),
+                   preferred_lang = COALESCE($4, preferred_lang),
+                   status = COALESCE($5::coaching_client_status, status),
+                   dream = COALESCE($6, dream),
+                   current_step = COALESCE($7, current_step),
+                   progress_completed = COALESCE($8, progress_completed),
+                   last_session = CURRENT_DATE
+               WHERE id = $9 RETURNING *`,
+              [name, email, phone, preferred_lang, status, dream, current_step, progress_completed, clientId]
+            );
+          } else {
+            throw innerErr2;
+          }
+        }
       } else {
         throw innerErr;
       }

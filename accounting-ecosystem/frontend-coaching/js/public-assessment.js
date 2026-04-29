@@ -116,6 +116,8 @@ function renderAllSections() {
 function renderQuestion(section, index, question) {
     const globalIndex = getGlobalQuestionIndex(section, index);
     const isReverse = question.reverse ? ' <span class="reverse-tag">REVERSE</span>' : '';
+    // Use flat key format matching calculateSectionScore: "SECTION_id" (1-based question.id)
+    const questionKey = `${section}_${question.id}`;
 
     return `
         <div class="basis-question">
@@ -125,7 +127,7 @@ function renderQuestion(section, index, question) {
             </div>
             <div class="question-scale">
                 ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => `
-                    <button class="scale-btn" data-section="${section}" data-index="${index}" data-value="${val}">${val}</button>
+                    <button class="scale-btn" data-question="${questionKey}" data-value="${val}">${val}</button>
                 `).join('')}
             </div>
         </div>
@@ -148,19 +150,17 @@ function attachEventListeners() {
     // Scale button clicks
     document.querySelectorAll('.scale-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const section = btn.dataset.section;
-            const index = parseInt(btn.dataset.index);
+            const questionKey = btn.dataset.question;  // e.g. "BALANS_1"
             const value = parseInt(btn.dataset.value);
 
-            // Store answer
-            if (!basisAnswers[section]) basisAnswers[section] = {};
-            basisAnswers[section][index] = value;
+            // Store answer in flat format matching calculateSectionScore expectations
+            basisAnswers[questionKey] = value;
 
-            // Update button states
-            const sectionButtons = document.querySelectorAll(
-                `.scale-btn[data-section="${section}"][data-index="${index}"]`
+            // Update button states for this question
+            const questionButtons = document.querySelectorAll(
+                `.scale-btn[data-question="${questionKey}"]`
             );
-            sectionButtons.forEach(b => b.classList.remove('selected'));
+            questionButtons.forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
 
             updateProgress();
@@ -182,9 +182,8 @@ function attachEventListeners() {
 
 function updateProgress() {
     const totalQuestions = Object.values(BASIS_QUESTIONS).reduce((sum, arr) => sum + arr.length, 0);
-    const answeredCount = Object.values(basisAnswers).reduce((sum, section) =>
-        sum + Object.keys(section).length, 0
-    );
+    // basisAnswers is now flat { "BALANS_1": 7, ... } — count keys directly
+    const answeredCount = Object.keys(basisAnswers).length;
 
     const percentage = Math.round((answeredCount / totalQuestions) * 100);
 
@@ -198,9 +197,8 @@ function updateProgress() {
 async function submitAssessment() {
     // Check if all questions answered
     const totalQuestions = Object.values(BASIS_QUESTIONS).reduce((sum, arr) => sum + arr.length, 0);
-    const answeredCount = Object.values(basisAnswers).reduce((sum, section) =>
-        sum + Object.keys(section).length, 0
-    );
+    // basisAnswers is now flat { "BALANS_1": 7, ... } — count keys directly
+    const answeredCount = Object.keys(basisAnswers).length;
 
     if (answeredCount < totalQuestions) {
         alert(`Please answer all questions. You have answered ${answeredCount} out of ${totalQuestions}.`);

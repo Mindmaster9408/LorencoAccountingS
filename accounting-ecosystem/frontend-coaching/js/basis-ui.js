@@ -2,6 +2,7 @@
 import { $, escapeHtml } from './config.js';
 import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
 import { saveClient } from './storage.js';
+import { renderBASISReportViewer } from './basis-report-ui.js';
 
 export function renderBASISAssessment(client, containerId = 'basis-assessment-container') {
     const container = document.getElementById(containerId);
@@ -11,11 +12,15 @@ export function renderBASISAssessment(client, containerId = 'basis-assessment-co
     const hasAnswers = client.basisAnswers && Object.keys(client.basisAnswers).length > 0;
     const hasResults = !!client.basisResults;
 
-    // Show options screen if no answers yet
-    if (!hasAnswers && !hasResults) {
-        renderBASISOptions(client, container);
+    // If results exist — show the report viewer (with option to retake)
+    if (hasResults) {
+        renderBASISCompletedView(client, container, containerId);
+    } else if (hasAnswers) {
+        // Assessment in progress — continue questionnaire
+        renderBASISQuestionnaire(client, container, containerId);
     } else {
-        renderBASISQuestionnaire(client, container);
+        // No answers yet — show options screen
+        renderBASISOptions(client, container, containerId);
     }
 }
 
@@ -281,11 +286,46 @@ function calculateAndShowResults(client) {
     // Store results in client
     client.basisResults = results;
 
-    // Save to storage
+    // Save to storage (basis data now persisted to DB via migration 020)
     saveClient(client);
 
-    // Show results
-    displayResults(results);
+    // Transition to completed view — shows the full report generator
+    const container = document.getElementById('basis-assessment-container');
+    if (container) {
+        renderBASISCompletedView(client, container, 'basis-assessment-container');
+    }
+}
+
+// Shown when client already has BASIS results — displays report viewer + retake option
+function renderBASISCompletedView(client, container, containerId) {
+    container.innerHTML = `
+        <div class="basis-completed-view">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
+                <h3 style="margin: 0; color: #1e293b;">BASIS Assessment Complete</h3>
+                <button id="retake-basis-btn" class="btn-secondary" style="font-size: 13px; padding: 8px 16px;">
+                    ↩ Retake Assessment
+                </button>
+            </div>
+            <div id="basis-report-viewer-inner"></div>
+        </div>
+    `;
+
+    // Render the full report viewer inside the inner container
+    renderBASISReportViewer(client, 'basis-report-viewer-inner');
+
+    // Retake: clear stored answers and results, restart questionnaire
+    const retakeBtn = document.getElementById('retake-basis-btn');
+    if (retakeBtn) {
+        retakeBtn.addEventListener('click', () => {
+            if (!confirm('Are you sure you want to retake the assessment? Current results will be cleared.')) return;
+            client.basisAnswers = {};
+            client.basisResults = null;
+            client.basis_answers = null;
+            client.basis_results = null;
+            saveClient(client);
+            renderBASISQuestionnaire(client, container);
+        });
+    }
 }
 
 function displayResults(results) {

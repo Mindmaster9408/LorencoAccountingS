@@ -23,6 +23,13 @@ export async function saveClient(client) {
     if (client.journeyProgress && client.journeyProgress !== client.journey_progress) {
         client.journey_progress = client.journeyProgress;
     }
+    // Sync BASIS assessment camelCase fields → snake_case DB fields (migration 020)
+    if (client.basisAnswers && client.basisAnswers !== client.basis_answers) {
+        client.basis_answers = client.basisAnswers;
+    }
+    if (client.basisResults && client.basisResults !== client.basis_results) {
+        client.basis_results = client.basisResults;
+    }
 
     if (client.id && typeof client.id === 'number') {
         await api.updateClient(client.id, client);

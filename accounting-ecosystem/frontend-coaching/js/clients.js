@@ -45,6 +45,10 @@ export async function openClient(clientId, options = {}) {
     if (!client.exerciseData) client.exerciseData = client.exercise_data;
     if (!client.journeyProgress) client.journeyProgress = client.journey_progress;
 
+    // Map BASIS assessment snake_case DB fields → camelCase aliases for frontend modules
+    if (client.basis_answers && !client.basisAnswers) client.basisAnswers = client.basis_answers;
+    if (client.basis_results && !client.basisResults) client.basisResults = client.basis_results;
+
     // Switch to clients view
     switchToView('clients');
 
