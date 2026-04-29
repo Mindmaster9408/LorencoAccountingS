@@ -16,6 +16,7 @@ import aiRoutes from './routes/ai.routes.js';
 import leadsRoutes from './routes/leads.routes.js';
 import kvRoutes from './routes/kv.routes.js';
 import basisRoutes from './routes/basis.routes.js';
+import spilRoutes from './routes/spil.routes.js';
 
 // Load environment variables
 dotenv.config();
@@ -69,6 +70,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/leads', leadsRoutes);
 app.use('/api/kv', kvRoutes);
 app.use('/api/basis', basisRoutes);
+app.use('/api/spil', spilRoutes);
 
 // Serve frontend static files (parent directory = Coaching app root)
 const __filename = fileURLToPath(import.meta.url);

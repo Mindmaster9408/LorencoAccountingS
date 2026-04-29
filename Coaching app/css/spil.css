@@ -1,0 +1,539 @@
+/* SPIL-E Assessment & Profile Styles */
+
+/* ── Layout ─────────────────────────────────────────────── */
+.spil-view {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* ── Panel / card base ──────────────────────────────────── */
+.spil-card {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.spil-card h2 {
+    margin: 0 0 8px 0;
+    color: #1f2937;
+    font-size: 22px;
+}
+
+.spil-card p {
+    color: #64748b;
+    margin: 0 0 16px 0;
+    line-height: 1.5;
+}
+
+/* ── Header bar ─────────────────────────────────────────── */
+.spil-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.spil-header h2 { margin: 0; color: #1f2937; font-size: 24px; }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.spil-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.spil-btn-primary {
+    background: #2563eb;
+    color: #fff;
+}
+.spil-btn-primary:hover { background: #1d4ed8; }
+
+.spil-btn-secondary {
+    background: #f1f5f9;
+    color: #374151;
+    border: 1px solid #e2e8f0;
+}
+.spil-btn-secondary:hover { background: #e2e8f0; }
+
+.spil-btn-danger {
+    background: rgba(220,38,38,0.08);
+    color: #dc2626;
+    border: 1px solid rgba(220,38,38,0.2);
+}
+.spil-btn-danger:hover { background: rgba(220,38,38,0.15); }
+
+.spil-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Profile list ───────────────────────────────────────── */
+.spil-profiles-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.spil-profile-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.spil-profile-row:hover { background: #eff6ff; border-color: #bfdbfe; }
+.spil-profile-row.active { background: #eff6ff; border-color: #2563eb; }
+
+.spil-profile-name { font-weight: 600; color: #1f2937; }
+.spil-profile-code { font-size: 12px; color: #2563eb; font-weight: 600; margin-top: 2px; }
+.spil-profile-meta { font-size: 12px; color: #94a3b8; }
+
+.spil-profile-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.badge-complete { background: #d1fae5; color: #065f46; }
+.badge-draft    { background: #fef9c3; color: #854d0e; }
+
+.spil-empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #94a3b8;
+    font-size: 15px;
+}
+
+/* ── Create form ────────────────────────────────────────── */
+.spil-create-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.spil-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.spil-field label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.spil-field input,
+.spil-field select {
+    padding: 9px 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 7px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.2s;
+    background: #fff;
+}
+
+.spil-field input:focus,
+.spil-field select:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.spil-form-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+/* ── Progress bar ───────────────────────────────────────── */
+.spil-progress-wrap {
+    margin-bottom: 20px;
+}
+
+.spil-progress-track {
+    width: 100%;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.spil-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #2563eb);
+    transition: width 0.3s ease;
+}
+
+.spil-progress-label {
+    font-size: 13px;
+    color: #64748b;
+    margin-top: 5px;
+}
+
+/* ── Dimension section ──────────────────────────────────── */
+.spil-section {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    border-left: 4px solid #3b82f6;
+}
+
+.spil-section-title {
+    margin: 0 0 4px 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.spil-section-desc {
+    font-size: 13px;
+    color: #64748b;
+    margin: 0 0 20px 0;
+}
+
+.spil-section-questions {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/* ── Question row ───────────────────────────────────────── */
+.spil-question {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.spil-question-header {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.spil-question-num {
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+    min-width: 22px;
+    padding-top: 1px;
+}
+
+.spil-question-text {
+    color: #1f2937;
+    line-height: 1.5;
+    font-size: 15px;
+}
+
+.spil-scale {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.spil-scale-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 4px;
+    padding: 0 2px;
+}
+
+.spil-scale-btn {
+    width: 38px;
+    height: 38px;
+    border: 2px solid #cbd5e1;
+    background: #fff;
+    color: #64748b;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.spil-scale-btn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+    transform: translateY(-2px);
+}
+
+.spil-scale-btn.selected {
+    background: #2563eb;
+    border-color: #1d4ed8;
+    color: #fff;
+    transform: scale(1.1);
+}
+
+/* ── Submit / validation ────────────────────────────────── */
+.spil-submit-area {
+    text-align: center;
+    padding: 20px;
+}
+
+.spil-validation-msg {
+    color: #dc2626;
+    font-size: 14px;
+    margin-top: 10px;
+    display: none;
+}
+
+/* ── Results panel ──────────────────────────────────────── */
+.spil-results {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.spil-code-display {
+    text-align: center;
+    padding: 28px;
+    background: linear-gradient(135deg, #1e40af, #1d4ed8);
+    border-radius: 12px;
+    color: #fff;
+}
+
+.spil-code-label {
+    font-size: 13px;
+    opacity: 0.8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+
+.spil-code-value {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+/* dimension score bars */
+.spil-scores-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.spil-score-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.spil-score-dim {
+    width: 120px;
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.spil-score-bar-track {
+    flex: 1;
+    height: 12px;
+    background: #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.spil-score-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #2563eb);
+    border-radius: 6px;
+    transition: width 0.6s ease;
+}
+
+.spil-score-num {
+    width: 54px;
+    text-align: right;
+    font-size: 14px;
+    font-weight: 700;
+    color: #2563eb;
+    flex-shrink: 0;
+}
+
+/* ranking list */
+.spil-ranking-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.spil-ranking-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    background: #f8fafc;
+    border-radius: 7px;
+    border: 1px solid #e2e8f0;
+    font-size: 14px;
+}
+
+.spil-rank-pos {
+    font-weight: 700;
+    color: #94a3b8;
+    width: 22px;
+    text-align: center;
+}
+
+.spil-rank-name {
+    font-weight: 600;
+    color: #1f2937;
+    flex: 1;
+}
+
+/* ── Report / notes panels ──────────────────────────────── */
+.spil-report-panel {
+    background: #fff;
+    border-radius: 10px;
+    padding: 28px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    line-height: 1.7;
+    font-size: 15px;
+    color: #1f2937;
+}
+
+.spil-report-panel h1 { font-size: 22px; margin: 0 0 12px 0; color: #1e40af; }
+.spil-report-panel h2 { font-size: 18px; margin: 28px 0 8px 0; color: #1f2937; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+.spil-report-panel h3 { font-size: 15px; margin: 16px 0 6px 0; color: #374151; }
+.spil-report-panel p  { margin: 0 0 12px 0; }
+.spil-report-panel hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
+.spil-report-panel table { border-collapse: collapse; width: 100%; margin-bottom: 16px; font-size: 14px; }
+.spil-report-panel th { background: #f1f5f9; padding: 8px 12px; text-align: left; font-weight: 600; color: #374151; }
+.spil-report-panel td { padding: 8px 12px; border-top: 1px solid #e2e8f0; }
+.spil-report-panel strong { color: #1e40af; }
+.spil-report-panel em { color: #64748b; }
+.spil-report-panel blockquote { border-left: 3px solid #3b82f6; margin: 16px 0; padding: 8px 16px; background: #eff6ff; color: #1e40af; font-style: italic; border-radius: 0 6px 6px 0; }
+.spil-report-panel ol, .spil-report-panel ul { padding-left: 22px; margin: 0 0 12px 0; }
+.spil-report-panel li { margin-bottom: 5px; }
+
+.spil-notes-toggle-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    background: #fef9c3;
+    border: 1px solid #fde047;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.spil-notes-toggle-bar span { font-weight: 600; font-size: 14px; color: #854d0e; }
+.spil-notes-toggle-bar small { font-size: 12px; color: #92400e; opacity: 0.7; }
+
+.spil-notes-panel {
+    background: #fffbeb;
+    border: 1px solid #fde047;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 24px;
+    display: none;
+}
+
+.spil-notes-panel.visible { display: block; }
+
+/* ── Error / notice ─────────────────────────────────────── */
+.spil-notice {
+    padding: 14px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+.spil-notice-info    { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+.spil-notice-warn    { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.spil-notice-error   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.spil-notice-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+
+/* ── Tabs (list / questionnaire / results) ──────────────── */
+.spil-tabs {
+    display: flex;
+    gap: 4px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    padding: 4px;
+    margin-bottom: 20px;
+    width: fit-content;
+}
+
+.spil-tab {
+    padding: 8px 18px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.spil-tab.active {
+    background: #fff;
+    color: #2563eb;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* ── Spinner ─────────────────────────────────────────────── */
+.spil-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #e2e8f0;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spil-spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+}
+
+@keyframes spil-spin { to { transform: rotate(360deg); } }
+
+/* ── Back link ───────────────────────────────────────────── */
+.spil-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #64748b;
+    cursor: pointer;
+    margin-bottom: 16px;
+    transition: color 0.15s;
+}
+.spil-back-link:hover { color: #2563eb; }
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+    .spil-create-form { grid-template-columns: 1fr; }
+    .spil-score-dim   { width: 80px; font-size: 12px; }
+    .spil-code-value  { font-size: 16px; }
+    .spil-scale-btn   { width: 32px; height: 32px; font-size: 12px; }
+}

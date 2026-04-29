@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="af">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPIL-E Profiele — Coaching App</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="css/login.css" />
+    <link rel="stylesheet" href="css/spil.css" />
+    <script src="js/polyfills.js"></script>
+</head>
+<body class="body-bg">
+<div class="app">
+
+    <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+        <div class="brand">
+            <span>Coaching App</span>
+        </div>
+        <nav>
+            <ul>
+                <li onclick="window.location.href='index.html'">Dashboard</li>
+                <li class="active">🧭 SPIL Profiele</li>
+            </ul>
+        </nav>
+        <div class="sidebar-footer">
+            <button id="spil-logout-btn" class="logout-btn" title="Logout">🚪 Logout</button>
+            <div class="privacy-text">☁️ Cloud — data via API</div>
+        </div>
+    </aside>
+
+    <!-- ── Main ────────────────────────────────────────────────────────── -->
+    <main class="main" style="overflow-y: auto; padding: 24px;">
+
+        <!-- ▌ VIEW: LIST ────────────────────────────────────────────────── -->
+        <div id="spil-view-list" class="spil-view">
+
+            <div class="spil-header">
+                <h2>🧭 SPIL-E Profiele</h2>
+                <button id="btn-new-profile" class="spil-btn spil-btn-primary">+ Nuwe Profiel</button>
+            </div>
+
+            <!-- Create form (hidden by default) -->
+            <div id="spil-create-panel" class="spil-card" style="display:none;">
+                <h2>Nuwe Profiel Skep</h2>
+                <p>Vul die respondent se besonderhede in om 'n nuwe SPIL-E profiel te begin.</p>
+
+                <div id="spil-create-notice"></div>
+
+                <div class="spil-create-form">
+                    <div class="spil-field">
+                        <label for="new-name">Naam <span style="color:#dc2626">*</span></label>
+                        <input type="text" id="new-name" placeholder="Voornaam Van" maxlength="200" autocomplete="off" />
+                    </div>
+                    <div class="spil-field">
+                        <label for="new-email">E-pos</label>
+                        <input type="email" id="new-email" placeholder="naam@voorbeeld.co.za" maxlength="200" autocomplete="off" />
+                    </div>
+                    <div class="spil-field">
+                        <label for="new-phone">Selfoon</label>
+                        <input type="tel" id="new-phone" placeholder="+27 82 000 0000" maxlength="50" autocomplete="off" />
+                    </div>
+                    <div class="spil-field">
+                        <label for="new-lang">Taal</label>
+                        <select id="new-lang">
+                            <option value="af">Afrikaans</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
+                    <div class="spil-form-actions">
+                        <button id="btn-cancel-create" class="spil-btn spil-btn-secondary">Kanselleer</button>
+                        <button id="btn-save-create"   class="spil-btn spil-btn-primary">Skep Profiel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notice area for list view -->
+            <div id="spil-list-notice"></div>
+
+            <!-- Profile list -->
+            <div id="spil-profiles-container" class="spil-card">
+                <div id="spil-profiles-list">
+                    <div class="spil-empty-state">
+                        <span class="spil-spinner"></span> Profiele laai...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ▌ VIEW: QUESTIONNAIRE ──────────────────────────────────────── -->
+        <div id="spil-view-questionnaire" class="spil-view" style="display:none;">
+
+            <div class="spil-back-link" id="btn-back-from-q">← Terug na profiele</div>
+
+            <div class="spil-card" style="margin-bottom: 16px;">
+                <h2 id="q-profile-name">SPIL-E Vraelys</h2>
+                <p style="margin:0;">Kies 'n syfer van <strong>1</strong> (stem glad nie saam nie) tot <strong>10</strong> (stem heeltemal saam) vir elke stelling.</p>
+            </div>
+
+            <!-- Progress -->
+            <div class="spil-progress-wrap">
+                <div class="spil-progress-track">
+                    <div class="spil-progress-fill" id="q-progress-fill" style="width:0%"></div>
+                </div>
+                <div class="spil-progress-label" id="q-progress-label">0 / 60 vrae beantwoord</div>
+            </div>
+
+            <!-- Question sections (rendered by JS) -->
+            <div id="q-sections"></div>
+
+            <!-- Submit area -->
+            <div class="spil-submit-area">
+                <div id="q-submit-notice"></div>
+                <button id="btn-submit-answers" class="spil-btn spil-btn-primary" style="font-size:16px; padding:14px 36px;">
+                    Vraelys Indien
+                </button>
+                <div class="spil-validation-msg" id="q-validation-msg">
+                    Beantwoord asseblief alle 60 vrae voor indiening.
+                </div>
+            </div>
+        </div>
+
+        <!-- ▌ VIEW: RESULTS ────────────────────────────────────────────── -->
+        <div id="spil-view-results" class="spil-view" style="display:none;">
+
+            <div class="spil-back-link" id="btn-back-from-results">← Terug na profiele</div>
+
+            <div id="results-notice"></div>
+
+            <!-- SPIL Code -->
+            <div class="spil-code-display" id="results-code-display">
+                <div class="spil-code-label">SPIL-E Kode</div>
+                <div class="spil-code-value" id="results-spil-code">—</div>
+            </div>
+
+            <!-- Tabs: Scores / Rapport / Afrigtingsnotas -->
+            <div class="spil-tabs" style="margin-top: 20px;">
+                <button class="spil-tab active" data-tab="scores">Tellings</button>
+                <button class="spil-tab"        data-tab="report">Verslag</button>
+                <button class="spil-tab"        data-tab="notes">Afrigternotas</button>
+            </div>
+
+            <!-- Tab: Scores -->
+            <div id="tab-scores" class="spil-card">
+                <h2>Dimensie Tellings</h2>
+
+                <!-- Ranking list -->
+                <div style="margin-bottom: 20px;">
+                    <div style="font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px;">Rangorde</div>
+                    <ol class="spil-ranking-list" id="results-ranking"></ol>
+                </div>
+
+                <!-- Score bars -->
+                <div style="font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px;">Tellings (0–100)</div>
+                <div class="spil-scores-grid" id="results-scores"></div>
+            </div>
+
+            <!-- Tab: Report -->
+            <div id="tab-report" style="display:none;">
+                <div id="results-report-content" class="spil-report-panel"></div>
+            </div>
+
+            <!-- Tab: Coach Notes -->
+            <div id="tab-notes" style="display:none;">
+                <div class="spil-notes-toggle-bar" id="notes-toggle-bar" role="button" aria-expanded="false">
+                    <span>🔒 Afrigternotas (vertroulik)</span>
+                    <small id="notes-toggle-hint">Klik om te wys</small>
+                </div>
+                <div class="spil-notes-panel" id="notes-panel">
+                    <div id="results-notes-content" class="spil-report-panel" style="box-shadow:none; padding: 0; background: transparent;"></div>
+                </div>
+            </div>
+
+            <!-- Re-take / re-submit -->
+            <div style="text-align:center; margin-top: 24px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                <button id="btn-retake" class="spil-btn spil-btn-secondary">🔄 Vraelys Herhaal</button>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<script type="module" src="js/spil-ui.js"></script>
+</body>
+</html>
