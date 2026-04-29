@@ -2785,6 +2785,23 @@
             if (!calc.shortTimeAmount) calc.shortTimeAmount = shortTimeAmount;
             calc.totalDeductions = calc.deductions;
 
+            // Recompute UIF from the correct display gross so the payslip is internally consistent.
+            // The backend may have calculated UIF on a lower gross if some allowances exist only in
+            // localStorage (not yet in the employee_payroll_items DB table). We recompute here for
+            // display purposes only: 1% of gross up to the SA UIF monthly remuneration ceiling.
+            // Only override when UIF applies (calc.uif > 0 from the engine).
+            if ((calc.uif || 0) > 0) {
+                var displayGrossForUif = parseFloat(calc.basicSalary || 0);
+                (allowances || []).forEach(function(a) { displayGrossForUif += parseFloat(a.amount) || 0; });
+                displayGrossForUif += parseFloat(calc.overtimeAmount || 0);
+                displayGrossForUif -= parseFloat(calc.shortTimeAmount || 0);
+                if (displayGrossForUif > 0) {
+                    var SA_UIF_MONTHLY_CEILING = 17712;
+                    var uifBase = Math.min(displayGrossForUif, SA_UIF_MONTHLY_CEILING);
+                    calc.uif = Math.round(uifBase * 0.01 * 100) / 100;
+                }
+            }
+
             return {
                 calc: calc,
                 employee: currentEmployee,
