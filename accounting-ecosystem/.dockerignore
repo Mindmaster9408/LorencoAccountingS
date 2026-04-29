@@ -8,6 +8,8 @@
 
 # Dependencies — installed inside Docker by RUN npm install, never from context
 **/node_modules
+# Lock files — Docker always installs fresh from package.json; lockfiles can pin old native packages
+**/package-lock.json
 
 # Secrets — NEVER in a Docker image
 .env
