@@ -34,6 +34,13 @@ export async function renderReports() {
         </div>
     `;
 
+    // Map snake_case DB fields -> camelCase for the reports page
+    // (readStore returns the raw list query — camelCase mapping only happens in openClient)
+    store.clients.forEach(c => {
+        if (c.basis_results && !c.basisResults) c.basisResults = c.basis_results;
+        if (c.basis_answers && !c.basisAnswers) c.basisAnswers = c.basis_answers;
+    });
+
     attachReportsListeners(store.clients);
 }
 
@@ -78,9 +85,9 @@ function attachReportsListeners(clients) {
             // Add active class to clicked item
             item.classList.add('active');
 
-            // Get client
+            // Get client — dataset values are always strings; c.id from DB is a number
             const clientId = item.dataset.clientId;
-            const client = clients.find(c => c.id === clientId);
+            const client = clients.find(c => String(c.id) === clientId);
 
             if (client) {
                 displayClientReport(client);
