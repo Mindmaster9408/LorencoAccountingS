@@ -77,7 +77,10 @@ function setupRouting() {
     document.querySelectorAll('.sidebar nav li').forEach(li => {
         li.addEventListener('click', () => {
             const route = li.dataset.route;
-            
+
+            // No data-route means the item handles its own navigation (e.g. spil.html link)
+            if (!route) return;
+
             if(route === 'clients') {
                 // Toggle clients sidebar list
                 toggleSidebarClients();
