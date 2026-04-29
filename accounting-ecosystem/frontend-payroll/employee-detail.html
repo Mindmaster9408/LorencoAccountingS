@@ -1969,6 +1969,10 @@
                 if (!payrollData.regular_inputs) payrollData.regular_inputs = [];
                 if (payrollData.basic_salary === undefined) payrollData.basic_salary = 0;
 
+                // Load recurring items from DB — replaces localStorage regular_inputs
+                // for DB-backed employees. Migrates localStorage items to DB on first run.
+                await loadRecurringItemsFromDB();
+
                 // Load period-specific inputs (overtime, short-time, extras) from backend.
                 // Must complete before renderPayroll() so the UI shows correct data.
                 await loadPeriodInputs();
@@ -1980,6 +1984,112 @@
                 setTimeout(function() {
                     try { renderPayroll(); updatePayslipUI(); } catch(e2) { console.error('Retry failed:', e2); }
                 }, 200);
+            }
+        }
+
+        // ========== RECURRING ITEMS — DB LOAD & MIGRATION ==========
+
+        /**
+         * Load recurring payroll items from employee_payroll_items (DB).
+         * If DB has items — replace payrollData.regular_inputs with DB data.
+         * If DB empty but localStorage has items — trigger one-time migration.
+         * Gracefully falls back to localStorage on any error.
+         */
+        async function loadRecurringItemsFromDB() {
+            if (!currentEmpId || !/^\d+$/.test(String(currentEmpId))) return;
+            try {
+                var token = safeLocalStorage.getItem('token') || '';
+                var r = await fetch('/api/payroll/items/employee?employee_id=' + encodeURIComponent(currentEmpId), {
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'x-company-id': String(currentCompanyId)
+                    }
+                });
+                if (!r.ok) {
+                    console.warn('[loadRecurringItemsFromDB] HTTP', r.status, '— using localStorage fallback');
+                    return;
+                }
+                var d = await r.json();
+                var dbItems = d.items || [];
+
+                if (dbItems.length > 0) {
+                    // DB is authoritative — map to the regular_inputs shape
+                    payrollData.regular_inputs = dbItems.map(function(item) {
+                        var master = item.payroll_items || {};
+                        var isPct = item.percentage != null && parseFloat(item.percentage) > 0;
+                        var isVar = !isPct && (item.amount == null);
+                        // Reverse-map DB item_type → frontend type using item_category if stored
+                        var type = item.item_type === 'deduction' ? 'deduction'
+                                 : (master.item_category || 'allowance');
+                        return {
+                            id:               'ri-db-' + item.id,
+                            _dbId:            item.id,
+                            type:             type,
+                            description:      master.name || master.code || 'Unknown',
+                            amount:           isPct ? 0 : (parseFloat(item.amount) || 0),
+                            is_variable:      isVar,
+                            is_percentage:    isPct,
+                            percentage_value: isPct ? parseFloat(item.percentage) : 0
+                        };
+                    });
+                    savePayrollData(); // sync back to localStorage for backward compat
+                } else if ((payrollData.regular_inputs || []).length > 0) {
+                    // DB has nothing but localStorage has items — migrate once
+                    await _migrateLocalStorageRecurringToDB();
+                }
+            } catch(e) {
+                console.warn('[loadRecurringItemsFromDB] failed, using localStorage fallback:', e.message);
+            }
+        }
+
+        /**
+         * One-time migration: push existing localStorage regular_inputs to employee_payroll_items.
+         * After success, the items gain _dbId and use the DB-backed id format.
+         */
+        async function _migrateLocalStorageRecurringToDB() {
+            var token = safeLocalStorage.getItem('token') || '';
+            var items = (payrollData.regular_inputs || []).slice();
+            var failCount = 0;
+
+            for (var i = 0; i < items.length; i++) {
+                var item = items[i];
+                // Skip already-migrated items
+                if (item._dbId) continue;
+                try {
+                    var r = await fetch('/api/payroll/items/employee', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'x-company-id': String(currentCompanyId),
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            employee_id:      currentEmpId,
+                            description:      item.description,
+                            item_type:        item.type,
+                            amount:           item.amount,
+                            is_percentage:    item.is_percentage,
+                            percentage_value: item.percentage_value,
+                            is_variable:      item.is_variable
+                        })
+                    });
+                    if (!r.ok) { failCount++; continue; }
+                    var d = await r.json();
+                    var ri = payrollData.regular_inputs.find(function(x) { return x.id === item.id; });
+                    if (ri && d.item) {
+                        ri._dbId = d.item.id;
+                        ri.id    = 'ri-db-' + d.item.id;
+                    }
+                } catch(e) {
+                    failCount++;
+                    console.warn('[_migrateLocalStorageRecurringToDB] item failed:', item.description, e.message);
+                }
+            }
+
+            if (failCount === 0) {
+                savePayrollData(); // commit updated ids to localStorage
+            } else {
+                console.warn('[_migrateLocalStorageRecurringToDB] ' + failCount + ' item(s) failed to migrate');
             }
         }
 
@@ -2176,12 +2286,31 @@
                 inp.focus(); inp.select();
             }, 100);
         }
-        function saveVariableAmount() {
+        async function saveVariableAmount() {
             var id = document.getElementById('editVariableId').value;
             var ri = payrollData.regular_inputs.find(function(r) { return r.id === id; });
             if (!ri) return;
             ri.amount = parseFloat(document.getElementById('editVariableValue').value) || 0;
             savePayrollData(); renderPayroll(); closeModal('editVariableModal');
+
+            // Persist to DB if item has a DB id
+            if (ri._dbId) {
+                try {
+                    var token = safeLocalStorage.getItem('token') || '';
+                    await fetch('/api/payroll/items/employee/' + ri._dbId, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'x-company-id': String(currentCompanyId),
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ amount: ri.amount })
+                    });
+                } catch(e) {
+                    console.warn('[saveVariableAmount] DB update error:', e.message);
+                }
+            }
+
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated variable item "' + ri.description + '" to R' + ri.amount.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
 
@@ -2369,7 +2498,7 @@
             document.getElementById('regularSaveBtn').textContent = '✓ Add Custom Item to Monthly Payslip';
             setTimeout(function() { document.getElementById('regularInputDesc').focus(); }, 50);
         }
-        function saveRegularInput() {
+        async function saveRegularInput() {
             if (!_requireNotLocked()) return;
             var desc = document.getElementById('regularInputDesc').value.trim();
             var type = document.getElementById('regularInputType').value;
@@ -2385,24 +2514,95 @@
                 is_percentage: _currentItemIsPercentage,
                 percentage_value: _currentItemIsPercentage ? _currentItemPercentageValue : 0
             };
+
+            // Persist to DB if this is a DB-backed employee (integer ID)
+            if (/^\d+$/.test(String(currentEmpId))) {
+                try {
+                    var token = safeLocalStorage.getItem('token') || '';
+                    var r = await fetch('/api/payroll/items/employee', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'x-company-id': String(currentCompanyId),
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            employee_id:      currentEmpId,
+                            description:      desc,
+                            item_type:        type,
+                            amount:           _currentItemIsPercentage ? 0 : amount,
+                            is_percentage:    _currentItemIsPercentage,
+                            percentage_value: _currentItemIsPercentage ? _currentItemPercentageValue : 0,
+                            is_variable:      _currentItemIsVariable
+                        })
+                    });
+                    if (r.ok) {
+                        var d = await r.json();
+                        if (d.item) {
+                            input._dbId = d.item.id;
+                            input.id    = 'ri-db-' + d.item.id;
+                        }
+                    } else {
+                        console.warn('[saveRegularInput] DB save failed, storing in localStorage only');
+                    }
+                } catch(e) {
+                    console.warn('[saveRegularInput] DB save error:', e.message);
+                }
+            }
+
             payrollData.regular_inputs.push(input);
             savePayrollData(); renderPayroll(); closeModal('addRegularModal');
             var logAmt = _currentItemIsPercentage ? (_currentItemPercentageValue + '% of basic salary') : ('R' + amount.toFixed(2));
             AuditTrail.logCreate(currentCompanyId, 'regular_input', 'Added regular input "' + desc + '" (' + type + ') ' + logAmt + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
-        function deleteRegularInput(id) {
+        async function deleteRegularInput(id) {
             if (!_requireNotLocked()) return;
             if (!confirm('Delete this regular input?')) return;
             var deleted = payrollData.regular_inputs.find(r => r.id === id);
+
+            // Soft-delete from DB if item has a DB id
+            if (deleted && deleted._dbId) {
+                try {
+                    var token = safeLocalStorage.getItem('token') || '';
+                    await fetch('/api/payroll/items/employee/' + deleted._dbId, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'x-company-id': String(currentCompanyId)
+                        }
+                    });
+                } catch(e) {
+                    console.warn('[deleteRegularInput] DB delete error:', e.message);
+                }
+            }
+
             payrollData.regular_inputs = payrollData.regular_inputs.filter(r => r.id !== id);
             savePayrollData(); renderPayroll();
             AuditTrail.logDelete(currentCompanyId, 'regular_input', 'Deleted regular input "' + (deleted ? deleted.description : id) + '" for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
-        function updateVariableAmount(id, value) {
+        async function updateVariableAmount(id, value) {
             var ri = payrollData.regular_inputs.find(function(r) { return r.id === id; });
             if (!ri) return;
             ri.amount = parseFloat(value) || 0;
             savePayrollData();
+
+            // Persist to DB if item has a DB id
+            if (ri._dbId) {
+                try {
+                    var token = safeLocalStorage.getItem('token') || '';
+                    await fetch('/api/payroll/items/employee/' + ri._dbId, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'x-company-id': String(currentCompanyId),
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ amount: ri.amount })
+                    });
+                } catch(e) {
+                    console.warn('[updateVariableAmount] DB update error:', e.message);
+                }
+            }
         }
 
         // ========== CURRENT INPUTS ==========
@@ -2763,6 +2963,27 @@
             shortTime.forEach(function(st) {
                 shortTimeAmount += (parseFloat(st.hours_missed) || 0) * hourlyRate;
             });
+
+            // Build Rates & Quantities entries (shown when overtime or short-time present)
+            var weeklyHoursForRates = PayrollEngine.calcWeeklyHours(_workingDaysData, _workScheduleHoursPerDay);
+            var normalHoursPerMonth = weeklyHoursForRates > 0
+                ? Math.round(weeklyHoursForRates * 4.33 * 100) / 100
+                : PayrollEngine.HOURLY_DIVISOR;
+            var ratesEntries = [];
+            overtime.forEach(function(ot) {
+                var hrs = parseFloat(ot.hours) || 0;
+                if (hrs <= 0) return;
+                var multiplier = parseFloat(ot.rate_multiplier) || 1.5;
+                var label = multiplier === 1.5 ? 'Overtime'
+                          : multiplier === 2.0 ? 'Double Time'
+                          : 'OT \u00d7' + multiplier;
+                ratesEntries.push({ type: label, quantity: hrs, rate: PayrollEngine.r2(hourlyRate * multiplier) });
+            });
+            shortTime.forEach(function(st) {
+                var hrs = parseFloat(st.hours_missed) || 0;
+                if (hrs <= 0) return;
+                ratesEntries.push({ type: 'Short Time', quantity: hrs, rate: hourlyRate });
+            });
             var multiRateAmount = 0;
             multiRate.forEach(function(mr) {
                 multiRateAmount += (parseFloat(mr.hours) || 0) * (parseFloat(mr.rate_multiplier) || 0);
@@ -2784,6 +3005,11 @@
             if (!calc.overtimeAmount) calc.overtimeAmount = overtimeAmount;
             if (!calc.shortTimeAmount) calc.shortTimeAmount = shortTimeAmount;
             calc.totalDeductions = calc.deductions;
+
+            // Rates & Quantities data (for payslip display and PDF)
+            calc.hourlyRate        = hourlyRate;
+            calc.normalHoursPerMonth = normalHoursPerMonth;
+            calc.ratesEntries      = ratesEntries;
 
             // Recompute UIF from the correct display gross so the payslip is internally consistent.
             // The backend may have calculated UIF on a lower gross if some allowances exist only in
@@ -2937,6 +3163,33 @@
             html += '<span style="font-size: 18px; font-weight: 700;">NET PAY</span>';
             html += '<span style="font-size: 22px; font-weight: 700;">' + formatMoney(previewNet) + '</span>';
             html += '</div>';
+
+            // Rates & Quantities Section — only shown when overtime or short-time is present
+            if (calc.ratesEntries && calc.ratesEntries.length > 0) {
+                html += '<div style="margin-bottom: 15px;">';
+                html += '<div style="background: #495057; color: white; padding: 6px 15px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; font-weight: 700; font-size: 12px;">';
+                html += '<span>RATES &amp; QUANTITIES</span></div>';
+                html += '<div style="border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 6px 6px; overflow: hidden;">';
+                html += '<table style="width:100%; border-collapse: collapse; font-size: 13px;">';
+                html += '<thead><tr style="background:#f5f5f5; font-weight:700; color:#555;">';
+                html += '<th style="text-align:left; padding:5px 15px;">Type</th>';
+                html += '<th style="text-align:right; padding:5px 10px;">Quantity</th>';
+                html += '<th style="text-align:right; padding:5px 15px;">Rate</th>';
+                html += '</tr></thead><tbody>';
+                // Normal hours row
+                if (calc.normalHoursPerMonth > 0 && calc.hourlyRate > 0) {
+                    html += '<tr><td style="padding:4px 15px;">Normal</td>';
+                    html += '<td style="text-align:right; padding:4px 10px;">' + calc.normalHoursPerMonth.toFixed(1) + ' hrs</td>';
+                    html += '<td style="text-align:right; padding:4px 15px;">R ' + calc.hourlyRate.toFixed(2) + '/hr</td></tr>';
+                }
+                calc.ratesEntries.forEach(function(re) {
+                    html += '<tr><td style="padding:4px 15px;">' + re.type + '</td>';
+                    html += '<td style="text-align:right; padding:4px 10px;">' + re.quantity.toFixed(1) + ' hrs</td>';
+                    html += '<td style="text-align:right; padding:4px 15px;">R ' + re.rate.toFixed(2) + '/hr</td></tr>';
+                });
+                html += '</tbody></table>';
+                html += '</div></div>';
+            }
 
             // Footer
             html += '<div style="font-size: 10px; color: #999; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">';

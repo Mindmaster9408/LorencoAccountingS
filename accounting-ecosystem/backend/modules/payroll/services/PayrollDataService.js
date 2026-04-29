@@ -226,40 +226,45 @@ async function fetchEmployee(companyId, employeeId, supabase) {
  * E.g., 6.5 hours, not "6:30".
  */
 async function fetchWorkSchedule(companyId, employeeId, supabase) {
-  // employee_work_schedules table is created by payroll-schema.js migration.
-  // If not yet migrated, catch the "relation does not exist" error and
-  // fall back to the default Mon-Fri 8h schedule.
-  const { data, error } = await supabase
-    .from('employee_work_schedules')
-    .select(
-      `id, day_of_week, is_enabled, schedule_type,
-       hours_per_day, notes`
-    )
-    .eq('company_id', companyId)
-    .eq('employee_id', employeeId)
-    .order('day_of_week', { ascending: true });
+  // The work schedule is stored in employee_work_schedule (singular) — one row
+  // per employee. It holds hours_per_day (the standard daily hours) and a
+  // working_days JSONB array describing each day's enabled/partial state.
+  try {
+    const { data, error } = await supabase
+      .from('employee_work_schedule')
+      .select('hours_per_day, working_days')
+      .eq('company_id', companyId)
+      .eq('employee_id', employeeId)
+      .single();
 
-  if (error) {
-    // PGRST116 = no rows found; anything else including 42P01 (table not found)
-    // → fall back to default schedule
-    if (error.code !== 'PGRST116') {
-      console.warn('[PayrollDataService] fetchWorkSchedule: table unavailable, using default schedule.', error.code);
+    if (error || !data) {
+      if (error && error.code !== 'PGRST116') {
+        console.warn('[PayrollDataService] fetchWorkSchedule: query error, using default schedule.', error.code);
+      }
+      return getDefaultWorkSchedule();
     }
+
+    const hpd = parseFloat(data.hours_per_day) || 8;
+    const days = Array.isArray(data.working_days) ? data.working_days : [];
+    if (days.length === 0) return getDefaultWorkSchedule();
+
+    // All days use `type: 'partial'` with explicit partial_hours so that
+    // calcWeeklyHours uses the stored value instead of a fallback default.
+    // For 'partial' days the stored partial_hours override takes precedence;
+    // for 'normal' days the row-level hours_per_day applies to all.
+    return days.map(d => {
+      const isPartial = d.type === 'partial' && d.partial_hours != null && parseFloat(d.partial_hours) > 0;
+      return {
+        day:           normalizeDayOfWeek(d.day),
+        enabled:       d.enabled === true,
+        type:          'partial',
+        partial_hours: isPartial ? parseFloat(d.partial_hours) : hpd
+      };
+    });
+  } catch (ex) {
+    console.warn('[PayrollDataService] fetchWorkSchedule: exception, using default schedule.', ex.message);
     return getDefaultWorkSchedule();
   }
-
-  if (!data || data.length === 0) {
-    // Default: Monday-Friday, 8 hours/day (if no schedule exists)
-    return getDefaultWorkSchedule();
-  }
-
-  // Normalize database schedule to engine format
-  return data.map(row => ({
-    day: normalizeDayOfWeek(row.day_of_week),
-    enabled: row.is_enabled === true,
-    type: row.schedule_type === 'partial' ? 'partial' : 'normal',
-    partial_hours: row.hours_per_day // Preserved as decimal
-  }));
 }
 
 /**

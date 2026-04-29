@@ -277,6 +277,52 @@ const PDFBranding = {
         var netStr = this.formatMoney(displayNet);
         doc.text(netStr, pageWidth - margin - 5 - doc.getTextWidth(netStr), y + 8);
 
+        // ---- Rates & Quantities Section (only when overtime/short-time present) ----
+        if (calc.ratesEntries && calc.ratesEntries.length > 0) {
+            y += 7;
+            doc.setFillColor(73, 80, 87);
+            doc.rect(margin, y, contentWidth, 6, 'F');
+            doc.setFontSize(8);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text('RATES & QUANTITIES', margin + 3, y + 4.5);
+
+            y += 9;
+            doc.setTextColor(80, 80, 80);
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(7.5);
+            var col1 = margin + 3;
+            var col2 = margin + contentWidth * 0.50;
+            var col3 = pageWidth - margin - 3;
+            doc.text('Type', col1, y);
+            doc.text('Quantity', col2, y);
+            doc.text('Rate', col3 - doc.getTextWidth('Rate'), y);
+            y += 1.5;
+            doc.setDrawColor(200, 200, 200);
+            doc.line(margin + 2, y, pageWidth - margin - 2, y);
+            y += 3.5;
+            doc.setFont(undefined, 'normal');
+
+            // Normal hours row
+            if (calc.normalHoursPerMonth > 0 && calc.hourlyRate > 0) {
+                doc.text('Normal', col1, y);
+                var qtyStr = calc.normalHoursPerMonth.toFixed(1) + ' hrs';
+                doc.text(qtyStr, col2, y);
+                var rateStr = 'R ' + calc.hourlyRate.toFixed(2) + '/hr';
+                doc.text(rateStr, col3 - doc.getTextWidth(rateStr), y);
+                y += 4.5;
+            }
+
+            calc.ratesEntries.forEach(function(re) {
+                doc.text(re.type, col1, y);
+                var qStr = re.quantity.toFixed(1) + ' hrs';
+                doc.text(qStr, col2, y);
+                var rStr = 'R ' + re.rate.toFixed(2) + '/hr';
+                doc.text(rStr, col3 - doc.getTextWidth(rStr), y);
+                y += 4.5;
+            });
+        }
+
         // ---- Footer ----
         y += 20;
         doc.setFontSize(7);

@@ -212,4 +212,186 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// EMPLOYEE RECURRING ITEMS — employee_payroll_items table
+// These endpoints manage per-employee recurring allowances and deductions.
+// Backed by: payroll_items (master) and employee_payroll_items (assignments).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/payroll/items/employee?employee_id=X
+ * Fetch all active recurring payroll items assigned to an employee.
+ */
+router.get('/employee', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+  try {
+    const { employee_id } = req.query;
+    if (!employee_id || !/^\d+$/.test(String(employee_id))) {
+      return res.status(400).json({ error: 'employee_id (integer) required' });
+    }
+
+    const { data, error } = await supabase
+      .from('employee_payroll_items')
+      .select(
+        `id, payroll_item_id, amount, percentage, item_type,
+         payroll_items(id, code, name, item_category, is_taxable, tax_treatment)`
+      )
+      .eq('company_id', req.companyId)
+      .eq('employee_id', parseInt(employee_id))
+      .eq('is_active', true)
+      .order('created_at');
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ items: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/payroll/items/employee
+ * Assign a recurring payroll item to an employee.
+ * Creates a payroll_items master record if one doesn't already exist for this description.
+ */
+router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const { employee_id, description, item_type, amount, is_percentage, percentage_value, is_variable, is_taxable } = req.body;
+
+    if (!employee_id || !description || !item_type) {
+      return res.status(400).json({ error: 'employee_id, description, and item_type are required' });
+    }
+    if (!/^\d+$/.test(String(employee_id))) {
+      return res.status(400).json({ error: 'employee_id must be an integer' });
+    }
+
+    // Map frontend item_type ('allowance', 'income', 'benefit', 'other', 'deduction')
+    // to DB item_type ('earning', 'deduction', 'company_contribution')
+    const dbItemType = item_type === 'deduction' ? 'deduction' : 'earning';
+
+    // Find an existing payroll_items master record for this company + description
+    let masterItemId = null;
+    const { data: existingMaster } = await supabase
+      .from('payroll_items')
+      .select('id')
+      .eq('company_id', req.companyId)
+      .ilike('name', description)
+      .maybeSingle();
+
+    if (existingMaster) {
+      masterItemId = existingMaster.id;
+    } else {
+      // Generate a URL-safe code from the description
+      const baseCode = description.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .substring(0, 45) || 'item';
+
+      const tryInsert = async (code) => {
+        return supabase
+          .from('payroll_items')
+          .insert({
+            company_id:    req.companyId,
+            code,
+            name:          description,
+            item_type:     dbItemType,
+            item_category: item_type,
+            is_taxable:    is_taxable !== false,
+            is_recurring:  true
+          })
+          .select('id')
+          .single();
+      };
+
+      let { data: created, error: createErr } = await tryInsert(baseCode);
+      if (createErr && createErr.code === '23505') {
+        // Unique code collision — add a numeric suffix
+        const { data: c2, error: e2 } = await tryInsert(baseCode + '_' + Date.now().toString().slice(-6));
+        if (e2) return res.status(500).json({ error: e2.message });
+        created = c2;
+      } else if (createErr) {
+        return res.status(500).json({ error: createErr.message });
+      }
+      masterItemId = created.id;
+    }
+
+    // Build insert payload for employee_payroll_items
+    const insertPayload = {
+      company_id:      req.companyId,
+      employee_id:     parseInt(employee_id),
+      payroll_item_id: masterItemId,
+      item_type:       dbItemType,
+      is_active:       true
+    };
+
+    if (is_percentage) {
+      insertPayload.percentage = parseFloat(percentage_value) || 0;
+    } else if (!is_variable) {
+      insertPayload.amount = parseFloat(amount) || 0;
+    }
+    // is_variable items leave both amount and percentage as null
+    // so the user can enter the amount each period in the UI
+
+    const { data: empItem, error: empErr } = await supabase
+      .from('employee_payroll_items')
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (empErr) return res.status(500).json({ error: empErr.message });
+    res.status(201).json({ item: empItem });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/payroll/items/employee/:id
+ * Update the amount or percentage of an employee recurring item.
+ */
+router.put('/employee/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const { amount, percentage_value } = req.body;
+    const updates = { updated_at: new Date().toISOString() };
+
+    if (amount !== undefined) updates.amount = parseFloat(amount) || 0;
+    if (percentage_value !== undefined) updates.percentage = parseFloat(percentage_value) || 0;
+
+    if (Object.keys(updates).length === 1) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const { data, error } = await supabase
+      .from('employee_payroll_items')
+      .update(updates)
+      .eq('id', parseInt(req.params.id))
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'Item not found' });
+    res.json({ item: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * DELETE /api/payroll/items/employee/:id
+ * Soft-delete an employee recurring item (sets is_active = false).
+ */
+router.delete('/employee/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('employee_payroll_items')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', parseInt(req.params.id))
+      .eq('company_id', req.companyId);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;
