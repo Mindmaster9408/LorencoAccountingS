@@ -2845,6 +2845,12 @@
                     calc = (calcResult.data.snapshot && calcResult.data.snapshot.calculation_output)
                         || calcResult.data.data
                         || null;
+                    // Carry the input basic_salary from the snapshot into calc so
+                    // getPayslipData() can use the locked salary instead of the
+                    // live employee record (avoids March showing April's salary).
+                    if (calc && calcResult.data.snapshot && calcResult.data.snapshot.basic_salary != null) {
+                        calc._snapshotBasicSalary = calcResult.data.snapshot.basic_salary;
+                    }
                 } else if (calcResult.data && calcResult.data.error) {
                     console.error('[calculatePayslip] backend error:', calcResult.data.error);
                 }
@@ -2932,7 +2938,13 @@
             var multiRate    = _periodInputsCache.multiRate;
             var shortTime    = _periodInputsCache.shortTime;
 
-            var _basicSalForPct = payrollData.basic_salary || 0;
+            // Use the locked snapshot's basic salary when available (_snapshotBasicSalary is set
+            // from snapshot.basic_salary in calculatePayslip). Falls back to live payrollData only
+            // for draft/uncalculated periods where no snapshot exists.
+            var _lockedBasicSalary = (backedCalc && backedCalc._snapshotBasicSalary != null)
+                ? backedCalc._snapshotBasicSalary
+                : (payrollData.basic_salary || 0);
+            var _basicSalForPct = _lockedBasicSalary;
             var allowances = [];
             (payrollData.regular_inputs || []).forEach(function(ri) {
                 var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
@@ -2954,7 +2966,7 @@
             });
 
             // Compute display-only overtime/short-time amounts from server-backed cache
-            var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, _workingDaysData, _workScheduleHoursPerDay);
+            var hourlyRate = PayrollEngine.calcHourlyRate(_lockedBasicSalary, _workingDaysData, _workScheduleHoursPerDay);
             var overtimeAmount = 0;
             overtime.forEach(function(ot) {
                 overtimeAmount += (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
@@ -2998,7 +3010,7 @@
                 deductions: 0, net: 0, medicalCredit: 0, negativeNetPay: false,
                 overtimeAmount: overtimeAmount, shortTimeAmount: shortTimeAmount
             };
-            calc.basicSalary = payrollData.basic_salary || 0;
+            calc.basicSalary = _lockedBasicSalary;
             calc.allowances = allowances;
             calc.deductionsList = deductionsList;
             // Only override overtime/shortTime display amounts from KV if backend didn't return them
