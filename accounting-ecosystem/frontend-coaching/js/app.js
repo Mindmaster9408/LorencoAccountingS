@@ -4,7 +4,7 @@ import { renderDashboard, setupDashboardListeners } from './dashboard.js';
 import { renderReports } from './reports.js';
 import { renderLeads, setupLeadsListeners } from './leads.js';
 import { renderSettings } from './settings.js';
-import { isAuthenticated, getCurrentUser, logout } from './api.js';
+import { isAuthenticated, getCurrentUser, logout, api } from './api.js';
 
 // Initialize the app
 function init() {
@@ -196,10 +196,15 @@ function setupLogout() {
 }
 
 // Update company branding (logo and name) in sidebar and dashboard
-function updateCompanyBranding() {
-    const settingsStr = localStorage.getItem('coaching_app_settings');
-    const settings = settingsStr ? JSON.parse(settingsStr) : {};
-    const company = settings.company || {};
+async function updateCompanyBranding() {
+    let company = {};
+    try {
+        const result = await api.getSettings();
+        company = (result.settings && result.settings.company) ? result.settings.company : {};
+    } catch (err) {
+        // Non-critical — branding will stay as default if API fails
+        console.warn('[App] Could not load settings for branding:', err.message);
+    }
 
     // Update sidebar brand
     const sidebarBrand = $('#sidebar-brand');

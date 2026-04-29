@@ -1,16 +1,15 @@
 // User Authentication and Management
+// NOTE: This module is legacy code retained for admin.html only.
+// The main application (app.js, login.js) uses JWT-based auth via api.js.
+// Do not add new features here.
 
 const USERS_KEY = 'coaching_app_users';
 const CURRENT_USER_KEY = 'coaching_app_current_user';
 const ADMIN_MODE_KEY = 'coaching_app_admin_mode';
 
-// Admin credentials
-const ADMIN_USER = {
-    username: 'ruanvlog@lorenco.co.za',
-    password: 'Mindmaster@277477',
-    fullName: 'Ruan van Loggerenberg (Admin)',
-    isAdmin: true
-};
+// Admin credentials must not be hardcoded. Legacy references removed.
+// Access is controlled via the server-side JWT auth system.
+const ADMIN_EMAIL = 'ruanvlog@lorenco.co.za'; // public email only (no password)
 
 // Get all registered users
 export function getAllUsers() {
@@ -29,10 +28,10 @@ export function getCurrentUser() {
     if (!username) return null;
 
     // Check if admin
-    if (username === ADMIN_USER.username) {
+    if (username === ADMIN_EMAIL) {
         return {
-            username: ADMIN_USER.username,
-            fullName: ADMIN_USER.fullName,
+            username: ADMIN_EMAIL,
+            fullName: 'Admin',
             isAdmin: true
         };
     }
@@ -120,20 +119,12 @@ export function getUserStorageKey(username) {
 
 // Admin-specific functions
 export function isAdmin(user) {
-    return (user && user.isAdmin === true) || (user && user.username === ADMIN_USER.username);
+    return (user && user.isAdmin === true) || (user && user.username === ADMIN_EMAIL);
 }
 
-export function loginAdmin(password) {
-    if (password !== ADMIN_USER.password) {
-        throw new Error('Invalid admin password');
-    }
-
-    setCurrentUser(ADMIN_USER.username);
-    return {
-        username: ADMIN_USER.username,
-        fullName: ADMIN_USER.fullName,
-        isAdmin: true
-    };
+// loginAdmin is legacy — admin auth uses JWT via /api/auth/login
+export function loginAdmin(_password) {
+    throw new Error('Use the JWT login endpoint (/api/auth/login) for authentication.');
 }
 
 export function setAdminMode(isAdminMode) {

@@ -6,10 +6,12 @@ const express = require('express');
 
 const router = express.Router();
 
-router.use('/auth',    require('./routes/auth'));
-router.use('/clients', require('./routes/clients'));
-router.use('/admin',   require('./routes/admin'));
-router.use('/leads',   require('./routes/leads'));
+router.use('/auth',               require('./routes/auth'));
+router.use('/clients',            require('./routes/clients'));
+router.use('/admin',              require('./routes/admin'));
+router.use('/leads',              require('./routes/leads'));
+router.use('/settings',           require('./routes/settings'));
+router.use('/assessment-tokens',  require('./routes/assessment-tokens'));
 
 // AI routes — only mount if ANTHROPIC_API_KEY is configured
 if (process.env.ANTHROPIC_API_KEY) {

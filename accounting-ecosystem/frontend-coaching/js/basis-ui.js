@@ -3,6 +3,7 @@ import { $, escapeHtml } from './config.js';
 import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
 import { saveClient } from './storage.js';
 import { renderBASISReportViewer } from './basis-report-ui.js';
+import { api } from './api.js';
 
 export function renderBASISAssessment(client, containerId = 'basis-assessment-container') {
     const container = document.getElementById(containerId);
@@ -90,21 +91,19 @@ function renderBASISOptions(client, container) {
     });
 }
 
-function generateAssessmentLink(client) {
-    // Generate a unique token for this assessment
-    const token = btoa(`${client.id}_${Date.now()}`).replace(/=/g, '');
+async function generateAssessmentLink(client) {
     const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
-    const assessmentUrl = `${baseUrl}client-assessment.html?token=${token}`;
 
-    // Store the token mapping
-    const tokens = JSON.parse(localStorage.getItem('assessment_tokens') || '{}');
-    tokens[token] = {
-        clientId: client.id,
-        clientName: client.name,
-        createdAt: new Date().toISOString(),
-        completed: false
-    };
-    localStorage.setItem('assessment_tokens', JSON.stringify(tokens));
+    let token;
+    try {
+        const result = await api.createAssessmentToken(client.id, client.name);
+        token = result.token;
+    } catch (err) {
+        alert('Could not generate assessment link: ' + (err.message || 'Server error. Please try again.'));
+        return;
+    }
+
+    const assessmentUrl = `${baseUrl}client-assessment.html?token=${token}`;
 
     // Show the link
     const linkSection = $('#assessment-link-section');

@@ -1,15 +1,24 @@
 // Settings Module - Company details, report templates, and app configuration
 import { $, escapeHtml } from './config.js';
+import { api } from './api.js';
 
-const SETTINGS_KEY = 'coaching_app_settings';
-
-function loadSettings() {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    return raw ? JSON.parse(raw) : null;
+async function loadSettings() {
+    try {
+        const result = await api.getSettings();
+        return result.settings && Object.keys(result.settings).length > 0 ? result.settings : null;
+    } catch (err) {
+        console.warn('[Settings] Could not load settings from server:', err.message);
+        return null;
+    }
 }
 
-function saveSettings(settings) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+async function saveSettings(settings) {
+    try {
+        await api.saveSettings(settings);
+    } catch (err) {
+        console.error('[Settings] Could not save settings to server:', err.message);
+        throw err;
+    }
 }
 
 let currentSettings = null;
@@ -28,8 +37,19 @@ export function renderSettings() {
     const view = $('#settings');
     if (!view) return;
 
-    // Load settings from localStorage (or use defaults)
-    currentSettings = loadSettings() || {
+    // Show loading state while settings are fetched from server
+    view.innerHTML = '<div style="padding:40px;text-align:center;opacity:0.6;">Loading settings…</div>';
+
+    loadSettings().then(loaded => {
+        _renderSettingsUI(view, loaded);
+    }).catch(() => {
+        _renderSettingsUI(view, null);
+    });
+}
+
+function _renderSettingsUI(view, loadedSettings) {
+    // Populate currentSettings from server or use defaults
+    currentSettings = loadedSettings || {
         company: {
             name: 'The Neuro-Coach Method',
             logo: '',
@@ -345,7 +365,7 @@ export function renderSettings() {
     `;
 
     attachSettingsListeners();
-}
+} // end _renderSettingsUI
 
 function attachSettingsListeners() {
     const tabBtns = document.querySelectorAll('.tab-btn');
@@ -490,18 +510,20 @@ function processLogoFile(file) {
     reader.readAsDataURL(file);
 }
 
-window.removeCompanyLogo = function() {
+window.removeCompanyLogo = async function() {
     if (!confirm('Remove company logo?')) return;
 
     currentSettings.company.logo = '';
-    saveSettings(currentSettings);
-
-    // Re-render to show placeholder
-    renderSettings();
-    alert('Logo removed.');
+    try {
+        await saveSettings(currentSettings);
+        renderSettings();
+        alert('Logo removed.');
+    } catch (err) {
+        alert('Failed to remove logo. Please try again.');
+    }
 };
 
-window.saveAllSettings = function() {
+window.saveAllSettings = async function() {
     currentSettings = {
         company: {
             name: getInputValue('#company-name', 'The Neuro-Coach Method') || 'The Neuro-Coach Method',
@@ -527,7 +549,12 @@ window.saveAllSettings = function() {
         }
     };
 
-    saveSettings(currentSettings);
+    try {
+        await saveSettings(currentSettings);
+    } catch (err) {
+        alert('Failed to save settings to server. Please try again.');
+        return;
+    }
 
     // Update branding in main app
     if (window.updateCompanyBranding) {
@@ -537,7 +564,7 @@ window.saveAllSettings = function() {
     alert('✓ Settings saved successfully!');
 };
 
-window.resetToDefaults = function() {
+window.resetToDefaults = async function() {
     if (!confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
         return;
     }
@@ -567,8 +594,14 @@ window.resetToDefaults = function() {
         }
     };
 
+    try {
+        await saveSettings(currentSettings);
+    } catch (err) {
+        // Non-critical — settings will still re-render with defaults
+        console.warn('[Settings] Could not persist reset to server:', err.message);
+    }
     renderSettings();
-    alert('Settings reset to defaults. Click "Save All Settings" to apply.');
+    alert('Settings reset to defaults.');
 };
 
 // Template management functions - temporary file to append to settings.js

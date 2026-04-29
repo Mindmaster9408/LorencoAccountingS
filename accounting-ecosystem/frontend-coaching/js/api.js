@@ -166,5 +166,21 @@ export const api = {
             body: JSON.stringify({ isActive })
         }),
 
-    getStats: () => apiRequest('/admin/stats')
+    getStats: () => apiRequest('/admin/stats'),
+
+    // Settings
+    getSettings: () => apiRequest('/settings'),
+
+    saveSettings: (settings) =>
+        apiRequest('/settings', {
+            method: 'PUT',
+            body: JSON.stringify({ settings })
+        }),
+
+    // Assessment tokens — coach creates; client validates/submits (public endpoint)
+    createAssessmentToken: (clientId, clientName) =>
+        apiRequest('/assessment-tokens', {
+            method: 'POST',
+            body: JSON.stringify({ clientId, clientName })
+        })
 };
