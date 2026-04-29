@@ -5,6 +5,7 @@ import { renderCockpit, saveGauges } from './gauges.js';
 import { renderDashboard } from './dashboard.js';
 import { renderBASISAssessment } from './basis-ui.js?v=2';
 import { renderJourneyTracker } from './journey-ui.js';
+import { renderSpilClientPanel } from './spil-client.js';
 
 export async function openClient(clientId, options = {}) {
     const store = await readStore();
@@ -170,6 +171,9 @@ export async function openClient(clientId, options = {}) {
         <div id="basis-panel" class="client-panel" style="display:none">
             <div id="basis-assessment-container"></div>
         </div>
+        <div id="spil-client-panel" class="client-panel" style="display:none">
+            <div id="spil-client-container"></div>
+        </div>
     `;
     detailArea.appendChild(mainContent);
 
@@ -213,6 +217,7 @@ function createClientHeader() {
             <button class="client-tab" data-view="journey">Journey Map</button>
             <button class="client-tab" data-view="destination">Destination</button>
             <button class="client-tab" data-view="basis">BASIS Assessment</button>
+            <button class="client-tab" data-view="spil">🧭 SPIL-E</button>
         </div>
     `;
     return header;
@@ -230,10 +235,16 @@ function setupTabSwitching(header, client) {
             $('#flowchart-canvas').style.display = view === 'journey' ? '' : 'none';
             $('#destination-panel').style.display = view === 'destination' ? '' : 'none';
             $('#basis-panel').style.display = view === 'basis' ? '' : 'none';
+            $('#spil-client-panel').style.display = view === 'spil' ? '' : 'none';
 
             // Render BASIS assessment when tab is opened
             if (view === 'basis') {
                 renderBASISAssessment(client, 'basis-assessment-container');
+            }
+
+            // Render SPIL-E panel when tab is opened
+            if (view === 'spil') {
+                renderSpilClientPanel(client, 'spil-client-container');
             }
 
             // Render Journey tracker when tab is opened
