@@ -2863,9 +2863,14 @@
                 html += '<span>Short Time</span><span>- ' + formatMoney(calc.shortTimeAmount) + '</span></div>';
             }
 
-            // Total Gross
+            // Total Gross — derived from displayed earnings so total always matches line items
+            var previewGross = parseFloat(calc.basicSalary || 0);
+            (calc.allowances || []).forEach(function(a) { previewGross += parseFloat(a.amount) || 0; });
+            previewGross += parseFloat(calc.overtimeAmount || 0);
+            previewGross -= parseFloat(calc.shortTimeAmount || 0);
+            if (previewGross <= 0 && (calc.gross || 0) > 0) previewGross = calc.gross;
             html += '<div style="border-top: 2px solid #333; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">';
-            html += '<span>TOTAL GROSS</span><span>' + formatMoney(calc.gross) + '</span></div>';
+            html += '<span>TOTAL GROSS</span><span>' + formatMoney(previewGross) + '</span></div>';
             html += '</div></div>';
 
             // Deductions Section
@@ -2901,16 +2906,19 @@
                 });
             }
 
-            // Total Deductions (calc.paye = paye_base + voluntary — engine handles combined total)
-            var totalDed = (calc.paye || 0) + (calc.uif || 0) + (calc.deductions || 0);
+            // Total Deductions — derived from displayed line items (matches what's listed above)
+            var previewDed = (parseFloat(calc.paye) || 0) + (parseFloat(calc.uif) || 0) - (parseFloat(calc.medicalCredit) || 0);
+            (calc.deductionsList || []).forEach(function(d) { previewDed += parseFloat(d.amount) || 0; });
+            if (previewDed < 0) previewDed = 0;
+            var previewNet = Math.max(0, previewGross - previewDed);
             html += '<div style="border-top: 2px solid #333; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">';
-            html += '<span>TOTAL DEDUCTIONS</span><span>' + formatMoney(totalDed) + '</span></div>';
+            html += '<span>TOTAL DEDUCTIONS</span><span>' + formatMoney(previewDed) + '</span></div>';
             html += '</div></div>';
 
             // NET PAY
             html += '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">';
             html += '<span style="font-size: 18px; font-weight: 700;">NET PAY</span>';
-            html += '<span style="font-size: 22px; font-weight: 700;">' + formatMoney(calc.net) + '</span>';
+            html += '<span style="font-size: 22px; font-weight: 700;">' + formatMoney(previewNet) + '</span>';
             html += '</div>';
 
             // Footer

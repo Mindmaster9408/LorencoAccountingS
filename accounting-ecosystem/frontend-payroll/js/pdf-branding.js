@@ -55,6 +55,22 @@ const PDFBranding = {
         var margin = 14;
         var contentWidth = pageWidth - (margin * 2);
 
+        // Pre-compute display totals so that TOTAL GROSS, TOTAL DEDUCTIONS and
+        // NET PAY all reflect the line items actually shown on this payslip.
+        // This prevents a mismatch where items stored only in localStorage appear
+        // as line items but are absent from the backend-calculated totals.
+        var displayGross = parseFloat(calc.basicSalary || 0);
+        (calc.allowances || []).forEach(function(a) { displayGross += parseFloat(a.amount) || 0; });
+        displayGross += parseFloat(calc.overtimeAmount || 0);
+        displayGross -= parseFloat(calc.shortTimeAmount || 0);
+        if (displayGross <= 0 && (calc.gross || 0) > 0) displayGross = calc.gross;
+
+        var displayDed = (parseFloat(calc.paye) || 0) + (parseFloat(calc.uif) || 0) - (parseFloat(calc.medicalCredit) || 0);
+        (calc.deductionsList || []).forEach(function(d) { displayDed += parseFloat(d.amount) || 0; });
+        if (displayDed < 0) displayDed = 0;
+
+        var displayNet = Math.max(0, displayGross - displayDed);
+
         // ---- Company Header ----
         // Logo (if available)
         if (details.logo_data) {
@@ -197,7 +213,7 @@ const PDFBranding = {
         y += 4;
         doc.setFont(undefined, 'bold');
         doc.text('TOTAL GROSS', margin + 3, y);
-        doc.text(this.formatMoney(calc.gross), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(calc.gross)), y);
+        doc.text(this.formatMoney(displayGross), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(displayGross)), y);
         doc.setFont(undefined, 'normal');
 
         // ---- Deductions Section ----
@@ -242,13 +258,12 @@ const PDFBranding = {
             });
         }
 
-        // Total Deductions
-        var totalDed = (calc.paye || 0) + (calc.uif || 0) + (calc.deductions || calc.totalDeductions || 0);
+        // Total Deductions — pre-computed from displayed line items (matches what's shown above)
         doc.line(margin + 3, y, pageWidth - margin - 3, y);
         y += 4;
         doc.setFont(undefined, 'bold');
         doc.text('TOTAL DEDUCTIONS', margin + 3, y);
-        doc.text(this.formatMoney(totalDed), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(totalDed)), y);
+        doc.text(this.formatMoney(displayDed), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(displayDed)), y);
         doc.setFont(undefined, 'normal');
 
         // ---- NET PAY Section ----
@@ -259,7 +274,7 @@ const PDFBranding = {
         doc.setTextColor(255, 255, 255);
         doc.setFont(undefined, 'bold');
         doc.text('NET PAY', margin + 5, y + 8);
-        var netStr = this.formatMoney(calc.net);
+        var netStr = this.formatMoney(displayNet);
         doc.text(netStr, pageWidth - margin - 5 - doc.getTextWidth(netStr), y + 8);
 
         // ---- Footer ----
