@@ -298,6 +298,65 @@
             color: #999;
         }
 
+        /* SEARCH & FILTER BAR */
+        .search-filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+
+        .search-filter-bar .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        .search-filter-bar .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .filter-pills {
+            display: flex;
+            gap: 6px;
+        }
+
+        .filter-pill {
+            padding: 8px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 20px;
+            background: white;
+            color: #666;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-pill:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .filter-pill.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea;
+            color: white;
+        }
+
+        .search-result-count {
+            font-size: 13px;
+            color: #999;
+            white-space: nowrap;
+        }
+
         /* MODAL STYLES */
         .modal {
             display: none;
@@ -498,6 +557,24 @@
                     <button class="btn" data-permission="EDIT_EMPLOYEES" onclick="openBulkUploadModal()">Upload CSV/Excel</button>
                     <button class="btn btn-success" data-permission="EDIT_EMPLOYEES" onclick="openAddEmployeeModal()">+ Add Employee</button>
                 </div>
+            </div>
+
+            <!-- SEARCH & FILTER BAR -->
+            <div class="search-filter-bar">
+                <input
+                    type="text"
+                    class="search-input"
+                    id="employee-search"
+                    placeholder="Search employees…"
+                    oninput="filterEmployees()"
+                    autocomplete="off"
+                >
+                <div class="filter-pills">
+                    <button class="filter-pill active" id="pill-number" onclick="setFilterType('number')">Nr</button>
+                    <button class="filter-pill" id="pill-name" onclick="setFilterType('name')">Name</button>
+                    <button class="filter-pill" id="pill-surname" onclick="setFilterType('surname')">Surname</button>
+                </div>
+                <span class="search-result-count" id="search-result-count"></span>
             </div>
 
             <table class="employee-table" id="employee-table">
@@ -785,12 +862,44 @@
             displayEmployees();
         }
 
-        function displayEmployees() {
+        // Search/filter state — default filter is employee number
+        let currentFilterType = 'number';
+
+        function setFilterType(type) {
+            currentFilterType = type;
+            document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+            document.getElementById('pill-' + type).classList.add('active');
+            filterEmployees();
+        }
+
+        function filterEmployees() {
+            const term = (document.getElementById('employee-search').value || '').trim().toLowerCase();
+            const filtered = employees.filter(emp => {
+                if (!term) return true;
+                if (currentFilterType === 'number') {
+                    return (emp.employee_number || '').toLowerCase().includes(term);
+                } else if (currentFilterType === 'name') {
+                    return (emp.first_name || '').toLowerCase().includes(term);
+                } else {
+                    return (emp.last_name || '').toLowerCase().includes(term);
+                }
+            });
+            displayEmployees(filtered);
+        }
+
+        function displayEmployees(list) {
+            // If called without argument (e.g. after load), use current filter
+            if (list === undefined) {
+                filterEmployees();
+                return;
+            }
             let html = '';
             if (employees.length === 0) {
                 html = '<tr><td colspan="8" class="empty-message">No employees yet. Click "Add Employee" to get started.</td></tr>';
+            } else if (list.length === 0) {
+                html = '<tr><td colspan="8" class="empty-message">No employees match your search.</td></tr>';
             } else {
-                employees.forEach(emp => {
+                list.forEach(emp => {
                     html += `
                         <tr>
                             <td><strong>${emp.employee_number}</strong></td>
@@ -810,6 +919,14 @@
                 });
             }
             document.getElementById('employee-list').innerHTML = html;
+            // Update result count only when a search term is active
+            const term = (document.getElementById('employee-search').value || '').trim();
+            const countEl = document.getElementById('search-result-count');
+            if (term) {
+                countEl.textContent = list.length + ' of ' + employees.length + ' employees';
+            } else {
+                countEl.textContent = employees.length + ' employee' + (employees.length !== 1 ? 's' : '');
+            }
             Permissions.enforceUI();
         }
 
