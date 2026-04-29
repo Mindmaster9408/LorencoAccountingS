@@ -345,7 +345,8 @@ class JournalService {
     const { error: updateErr } = await supabase
       .from('journals')
       .update(updatePayload)
-      .eq('id', journalId);
+      .eq('id', journalId)
+      .eq('company_id', companyId);  // defense-in-depth: confirm tenant scope on write
 
     if (updateErr) throw new Error(updateErr.message);
 
@@ -552,6 +553,21 @@ class JournalService {
 
     if (originalJournal.reversed_by_journal_id) {
       throw new Error('Journal has already been reversed');
+    }
+
+    // Guard: if the ORIGINAL journal falls in a locked accounting period, block the reversal.
+    //
+    // Why: reverseJournal marks the original journal status='reversed'. Reports filter
+    // by status='posted', so a reversed original disappears from locked-period reports —
+    // silently mutating historical books.  The caller must unlock the period first, or
+    // post a manual correcting entry in the current period instead.
+    const isOriginalPeriodLocked = await this.isPeriodLocked(companyId, originalJournal.date);
+    if (isOriginalPeriodLocked) {
+      throw new Error(
+        `Cannot reverse journal ${originalJournalId} — it falls in a locked accounting period ` +
+        `(journal date: ${originalJournal.date}). Unlock the period first, or post a manual ` +
+        `correcting entry in the current open period.`
+      );
     }
 
     // Check period lock for reversal date (today)

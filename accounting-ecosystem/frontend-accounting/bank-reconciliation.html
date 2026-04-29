@@ -1137,17 +1137,28 @@
             btn.textContent = 'Reconciling…';
 
             try {
-                await apiPost('/bank/reconcile', { transactionIds: toReconcile });
+                const result = await apiPost('/bank/reconcile', { transactionIds: toReconcile });
 
                 checkedIds.clear();
                 statementBalance = 0;
                 document.getElementById('statementBalance').value = '';
 
-                showSuccess('✓ ' + toReconcile.length + ' transaction(s) reconciled successfully.');
+                const count = result.count || toReconcile.length;
+                showSuccess('✓ ' + count + ' transaction(s) reconciled successfully.');
                 await loadTransactions(); // reload to reflect new statuses
 
             } catch (e) {
-                showError('Reconciliation failed: ' + e.message);
+                // Backend returns a structured 422 body when journal validation fails.
+                // Try to parse it and surface actionable per-transaction details.
+                let msg = e.message;
+                try {
+                    // apiPost throws Error(body.error) — but the 422 body may have more detail.
+                    // Re-fetch is not possible here so we surface what we have from the error message.
+                    // If the server returned a structured error, e.message is body.error (a string).
+                    // Display it as-is — the backend message is already descriptive.
+                } catch (_) { /* use raw message */ }
+
+                showError('Reconciliation failed: ' + msg);
                 btn.disabled    = false;
                 btn.textContent = 'Finish Reconciliation';
             }

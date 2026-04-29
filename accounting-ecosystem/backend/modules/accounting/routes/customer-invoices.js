@@ -187,6 +187,27 @@ router.post('/', async (req, res) => {
   if (!lines || !lines.length) return res.status(400).json({ error: 'At least one line item is required' });
 
   try {
+    // ── Duplicate invoice guard ────────────────────────────────────────────────
+    // If an explicit invoice number is provided, reject a second creation for the
+    // same company + invoice number. Covers accidental double-submission.
+    if (invoiceNumber && invoiceNumber.trim()) {
+      const { data: dup } = await supabase
+        .from('customer_invoices')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('invoice_number', invoiceNumber.trim())
+        .not('status', 'in', '("void","cancelled")')
+        .maybeSingle();
+      if (dup) {
+        return res.status(409).json({
+          error: `Invoice number '${invoiceNumber.trim()}' already exists`,
+          errorCode: 'DUPLICATE_INVOICE',
+          existingInvoiceId: dup.id,
+        });
+      }
+    }
+    // ── End duplicate guard ────────────────────────────────────────────────────
+
     const processedLines = lines.map((l, i) => {
       const { subtotalExVat, vatAmount, totalIncVat } = calcLineVAT(
         l.quantity, l.unitPrice, l.vatRate != null ? l.vatRate : 15, vatInclusive === true

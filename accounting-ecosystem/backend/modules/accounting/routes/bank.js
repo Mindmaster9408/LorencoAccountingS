@@ -688,7 +688,55 @@ router.post('/import/pdf',
         'PDF bank statement parsed for review'
       );
 
-      return res.json(result);
+      // ── Account detection: match extracted accountNumber against bank_accounts ──
+      // Helps the frontend pre-select or propose the correct bank account.
+      // Does NOT block the response — account matching failure is surfaced as
+      // accountMatch.found = false, not as an error.
+      let accountMatch = {
+        found:    false,
+        extracted: {
+          accountNumber: result.accountNumber || null,
+          bank:          result.bank || null,
+        },
+      };
+
+      if (result.accountNumber) {
+        // Extract digits only, then take the last 4 for masked-account matching.
+        // e.g., "1234567890" → "7890"; "****1234" → "1234"
+        const digitsOnly = result.accountNumber.replace(/\D/g, '');
+        const lastFour   = digitsOnly.slice(-4);
+
+        if (lastFour.length === 4) {
+          const { data: matched } = await supabase
+            .from('bank_accounts')
+            .select('id, name, bank_name, account_number_masked')
+            .eq('company_id', req.user.companyId)
+            .eq('is_active', true)
+            .ilike('account_number_masked', `%${lastFour}`);
+
+          if (matched && matched.length === 1) {
+            accountMatch = {
+              found:              true,
+              bankAccountId:      matched[0].id,
+              bankAccountName:    matched[0].name,
+              bankName:           matched[0].bank_name,
+              accountNumberMasked: matched[0].account_number_masked,
+              extracted:          accountMatch.extracted,
+            };
+          } else if (matched && matched.length > 1) {
+            accountMatch = {
+              found:          false,
+              multipleMatches: true,
+              candidates:     matched,
+              extracted:      accountMatch.extracted,
+            };
+          }
+          // If matched.length === 0: accountMatch stays found=false with extracted details
+          // Frontend should offer to create a new bank account with these details
+        }
+      }
+
+      return res.json({ ...result, accountMatch });
 
     } catch (err) {
       console.error('PDF import error:', err);
@@ -895,6 +943,86 @@ async function findVatAccount(companyId, code) {
 }
 
 /**
+ * Post-posting safety guard — re-reads the journal and its lines fresh from the
+ * database and verifies that every integrity condition is met before the bank
+ * transaction is allowed to move to 'matched'.
+ *
+ * Called AFTER JournalService.postJournal() succeeds, BEFORE the bank_transaction
+ * status update.  If any check fails the caller must reverse the journal and
+ * return an error — the bank transaction stays 'unmatched'.
+ *
+ * Checks:
+ *   1. Journal exists with status='posted'
+ *   2. Journal company_id matches the allocating company (tenant safety)
+ *   3. journal.metadata.bankTransactionId matches the bank transaction id
+ *   4. Journal has at least 2 lines
+ *   5. Total debits === total credits (within 0.01)
+ *   6. At least one line uses the bank ledger account (bank-side line present)
+ *   7. At least one line does NOT use the bank ledger account (allocation line present)
+ *   8. Bank-side line gross amount matches the bank transaction amount (within 0.01)
+ *
+ * @returns {{ valid: true }} on success
+ * @returns {{ valid: false, reason: string }} on failure
+ */
+async function _validatePostedAllocationJournal(companyId, journalId, bankTxn, ledgerAccountId) {
+  const { data: journal, error: jErr } = await supabase
+    .from('journals')
+    .select('id, status, company_id, metadata')
+    .eq('id', journalId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+
+  if (jErr || !journal) {
+    return { valid: false, reason: `Journal ${journalId} not found after posting (${jErr?.message || 'no row'})` };
+  }
+  if (journal.status !== 'posted') {
+    return { valid: false, reason: `Journal ${journalId} status is '${journal.status}', expected 'posted'` };
+  }
+  // company_id already filtered in the query above — belt-and-suspenders explicit check
+  if (String(journal.company_id) !== String(companyId)) {
+    return { valid: false, reason: `Journal ${journalId} company ${journal.company_id} !== allocating company ${companyId}` };
+  }
+  const meta = journal.metadata || {};
+  if (parseInt(meta.bankTransactionId) !== parseInt(bankTxn.id)) {
+    return { valid: false, reason: `Journal ${journalId} metadata.bankTransactionId (${meta.bankTransactionId}) !== bank transaction ${bankTxn.id}` };
+  }
+
+  const { data: jLines, error: lErr } = await supabase
+    .from('journal_lines')
+    .select('account_id, debit, credit')
+    .eq('journal_id', journalId);
+
+  if (lErr) return { valid: false, reason: `Failed to read journal lines: ${lErr.message}` };
+  if (!jLines || jLines.length < 2) {
+    return { valid: false, reason: `Journal ${journalId} has ${jLines?.length ?? 0} line(s) — minimum 2 required` };
+  }
+
+  const totalDebit  = jLines.reduce((s, l) => s + parseFloat(l.debit  || 0), 0);
+  const totalCredit = jLines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
+  if (Math.abs(totalDebit - totalCredit) > 0.01) {
+    return { valid: false, reason: `Journal ${journalId} out of balance: debits=${totalDebit.toFixed(2)}, credits=${totalCredit.toFixed(2)}` };
+  }
+
+  const bankLines    = jLines.filter(l => l.account_id === ledgerAccountId);
+  const nonBankLines = jLines.filter(l => l.account_id !== ledgerAccountId);
+  if (bankLines.length === 0) {
+    return { valid: false, reason: `Journal ${journalId} has no line for bank ledger account ${ledgerAccountId}` };
+  }
+  if (nonBankLines.length === 0) {
+    return { valid: false, reason: `Journal ${journalId} has no allocation line (all lines are bank account lines)` };
+  }
+
+  // Bank-side gross = sum of whichever side carries the bank amount (debit for money-in, credit for money-out)
+  const bankSideGross = bankLines.reduce((s, l) => s + parseFloat(l.debit || 0) + parseFloat(l.credit || 0), 0);
+  const expectedGross = Math.abs(parseFloat(bankTxn.amount));
+  if (Math.abs(bankSideGross - expectedGross) > 0.01) {
+    return { valid: false, reason: `Journal ${journalId} bank-side amount ${bankSideGross.toFixed(2)} !== bank transaction amount ${expectedGross.toFixed(2)}` };
+  }
+
+  return { valid: true };
+}
+
+/**
  * POST /api/bank/transactions/:id/allocate
  * Allocate bank transaction and atomically post the journal.
  * Journal is always 'posted' on success — no silent draft-only state possible.
@@ -967,6 +1095,15 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       (vsRows || []).forEach(vs => { vatSettingMap[vs.id] = vs; });
     }
 
+    // Pre-cache the VAT account once — isMoneyIn is constant per transaction so
+    // the required VAT account code (1400 input / 2300 output) never changes
+    // across lines. Avoids N sequential DB queries for N VAT-bearing lines.
+    let cachedVatAccount = null;
+    if (vatSettingIds.length > 0) {
+      const vatCode = isMoneyIn ? '2300' : '1400';
+      cachedVatAccount = await findVatAccount(req.user.companyId, vatCode);
+    }
+
     // Process each allocation line
     for (const line of lines) {
       const gross = Math.round(Number(line.amount) * 100) / 100;
@@ -996,8 +1133,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         });
 
         // VAT account line — Input (1400) for payments out, Output (2300) for receipts in
-        const vatAccountCode = isMoneyIn ? '2300' : '1400';
-        const vatAccount = await findVatAccount(req.user.companyId, vatAccountCode);
+        const vatAccount = cachedVatAccount;
         if (vatAccount) {
           journalLines.push({
             accountId:   vatAccount.id,
@@ -1042,6 +1178,36 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     // Post the journal — guarantees journal.status = 'posted' on success.
     await JournalService.postJournal(journal.id, req.user.companyId, req.user.id);
 
+    // ── Post-posting safety validation ───────────────────────────────────────
+    // Re-read the journal fresh from the DB and confirm every accounting
+    // integrity condition before allowing the bank transaction to be marked
+    // 'matched'.  A failed check reverses the journal and surfaces a clear error.
+    const validation = await _validatePostedAllocationJournal(
+      req.user.companyId, journal.id, bankTxn, ledgerAccountId
+    );
+    if (!validation.valid) {
+      console.error(
+        '[bank.allocate] Post-posting validation failed. Journal ID:', journal.id,
+        '| Reason:', validation.reason,
+        '— Attempting reversal to prevent a dangling GL entry.'
+      );
+      try {
+        await JournalService.reverseJournal(
+          journal.id,
+          req.user.companyId,
+          req.user.id,
+          `Auto-reversed: post-posting validation failed — ${validation.reason}`
+        );
+      } catch (revErr) {
+        console.error('[bank.allocate] Reversal also failed. Journal', journal.id,
+          'may be dangling in GL. Manual cleanup required.', revErr.message);
+      }
+      return res.status(500).json({
+        error: `Allocation failed post-posting validation: ${validation.reason}. The journal has been reversed.`,
+        journalId: journal.id
+      });
+    }
+
     // Mark transaction as matched
     const { error: updErr } = await supabase
       .from('bank_transactions')
@@ -1054,9 +1220,35 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       .eq('id', bankTxn.id);
 
     if (updErr) {
-      // Journal is already posted — log warning but still return success.
-      // Bank transaction status update can be retried if needed.
-      console.warn('Warning: journal posted but bank_transaction status update failed:', updErr.message);
+      // Journal is posted but bank transaction linkage update failed.
+      // This would leave a dangling posted journal in the GL with no bank transaction pointing at it.
+      // Attempt to reverse the journal to restore a clean state, then surface a real error to the caller.
+      console.error(
+        '[bank.allocate] Bank transaction status update failed after journal posted.',
+        'Journal ID:', journal.id, '| Bank transaction ID:', bankTxn.id,
+        '| Error:', updErr.message,
+        '— Attempting journal reversal to prevent dangling GL entry.'
+      );
+      try {
+        await JournalService.reverseJournal(
+          journal.id,
+          req.user.companyId,
+          req.user.id,
+          `Auto-reversed: bank transaction ${bankTxn.id} linkage update failed during allocation`
+        );
+        console.warn('[bank.allocate] Journal', journal.id, 'reversed after bank transaction link failure. Bank transaction remains unmatched.');
+      } catch (reverseErr) {
+        // Reversal also failed — GL has a dangling posted journal that needs manual cleanup.
+        console.error(
+          '[bank.allocate] Reversal also failed. Journal ID', journal.id,
+          'is posted in GL without a bank transaction link. Manual cleanup required.',
+          reverseErr.message
+        );
+      }
+      return res.status(500).json({
+        error: 'Allocation failed: the journal was posted but the bank transaction could not be linked. The journal has been reversed. Please try again.',
+        journalId: journal.id
+      });
     }
 
     await AuditLogger.logUserAction(
@@ -1233,32 +1425,161 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
   try {
     const { transactionIds } = req.body;
 
-    if (!transactionIds || !Array.isArray(transactionIds)) {
+    if (!transactionIds || !Array.isArray(transactionIds) || transactionIds.length === 0) {
       return res.status(400).json({ error: 'Transaction IDs array is required' });
     }
 
+    // ── Step 1: Fetch all requested transactions scoped to this company ──────
+    const { data: txns, error: fetchErr } = await supabase
+      .from('bank_transactions')
+      .select('id, status, matched_entity_id, matched_entity_type, description')
+      .in('id', transactionIds)
+      .eq('company_id', req.user.companyId);
+
+    if (fetchErr) throw new Error(fetchErr.message);
+
+    const txnMap = {};
+    (txns || []).forEach(t => { txnMap[t.id] = t; });
+
+    // ── Step 2: Validate each requested transaction ──────────────────────────
+    // A transaction may only be reconciled if:
+    //   a) it exists and belongs to this company
+    //   b) its status is 'matched'
+    //   c) it has a linked journal (matched_entity_id is not null)
+    const valid   = [];   // can proceed to journal verification
+    const invalid = [];   // rejected with reason — nothing will be reconciled
+
     for (const txnId of transactionIds) {
-      await supabase
-        .from('bank_transactions')
-        .update({ status: 'reconciled', reconciled_at: new Date().toISOString() })
-        .eq('id', txnId)
-        .eq('company_id', req.user.companyId)
-        .eq('status', 'matched');
+      const txn = txnMap[txnId];
+      if (!txn) {
+        invalid.push({ id: txnId, reason: 'Transaction not found or does not belong to this company' });
+        continue;
+      }
+      if (txn.status !== 'matched') {
+        invalid.push({ id: txnId, reason: `Status is '${txn.status}', expected 'matched'` });
+        continue;
+      }
+      if (!txn.matched_entity_id) {
+        invalid.push({
+          id: txnId,
+          reason: 'Transaction has no linked journal (matched_entity_id is missing). Unallocate and reallocate the transaction first.'
+        });
+        continue;
+      }
+      valid.push(txn);
     }
 
-    await AuditLogger.logUserAction(
-      req,
-      'RECONCILE',
-      'BANK_TRANSACTIONS',
-      null,
-      null,
-      { transactionIds, count: transactionIds.length },
-      'Bank transactions reconciled'
-    );
+    // ── Step 3: Verify all linked journals exist and are posted ──────────────
+    // Reconciliation MUST be backed by a real posted journal.
+    // A transaction pointing at a missing or unposted journal cannot be reconciled.
+    if (valid.length > 0) {
+      const journalIds = [...new Set(valid.map(t => t.matched_entity_id))];
+      const { data: journals, error: jErr } = await supabase
+        .from('journals')
+        .select('id, status')
+        .in('id', journalIds)
+        .eq('company_id', req.user.companyId);
+
+      if (jErr) throw new Error(jErr.message);
+
+      const journalMap = {};
+      (journals || []).forEach(j => { journalMap[j.id] = j; });
+
+      const verified = [];
+      for (const txn of valid) {
+        const j = journalMap[txn.matched_entity_id];
+        if (!j) {
+          invalid.push({
+            id: txn.id,
+            reason: `Linked journal (ID ${txn.matched_entity_id}) not found in the GL. ` +
+                    `Cannot reconcile without a valid posted journal. Unallocate and reallocate.`
+          });
+        } else if (j.status !== 'posted') {
+          invalid.push({
+            id: txn.id,
+            reason: `Linked journal (ID ${txn.matched_entity_id}) has status '${j.status}', ` +
+                    `not 'posted'. Only transactions backed by a posted journal can be reconciled.`
+          });
+        } else {
+          verified.push(txn);
+        }
+      }
+      valid.length = 0;
+      valid.push(...verified);
+    }
+
+    // ── Step 4: Reject the entire batch if any transaction cannot be reconciled
+    // All-or-nothing: don't partially reconcile. Return the validation errors so
+    // the accountant can fix the problem before retrying.
+    if (invalid.length > 0) {
+      return res.status(422).json({
+        error: `${invalid.length} transaction(s) failed validation. No changes were made.`,
+        invalidTransactions: invalid,
+        validCount: valid.length
+      });
+    }
+
+    // ── Step 5: Mark all verified transactions as reconciled ─────────────────
+    const reconciledAt = new Date().toISOString();
+    const succeeded    = [];
+    const failed       = [];
+
+    for (const txn of valid) {
+      try {
+        const { error: updErr } = await supabase
+          .from('bank_transactions')
+          .update({ status: 'reconciled', reconciled_at: reconciledAt })
+          .eq('id', txn.id)
+          .eq('company_id', req.user.companyId)
+          .eq('status', 'matched');  // double-guard: must still be matched at write time
+
+        if (updErr) {
+          failed.push({ id: txn.id, reason: updErr.message });
+          console.error('[bank.reconcile] Update failed for txn', txn.id, ':', updErr.message);
+        } else {
+          succeeded.push(txn.id);
+        }
+      } catch (itemErr) {
+        failed.push({ id: txn.id, reason: itemErr.message });
+        console.error('[bank.reconcile] Exception for txn', txn.id, ':', itemErr.message);
+      }
+    }
+
+    // ── Step 6: Audit log — one entry per successfully reconciled transaction ─
+    for (const txnId of succeeded) {
+      const txn = txnMap[txnId];
+      AuditLogger.logUserAction(
+        req,
+        'RECONCILE',
+        'BANK_TRANSACTION',
+        txnId,
+        { status: 'matched', journalId: txn?.matched_entity_id },
+        { status: 'reconciled', reconciled_at: reconciledAt },
+        'Bank transaction reconciled'
+      ).catch(err => console.error('[bank.reconcile] Audit log error for txn', txnId, ':', err.message));
+    }
+
+    // ── Step 7: Return structured result ─────────────────────────────────────
+    if (failed.length > 0 && succeeded.length === 0) {
+      return res.status(500).json({
+        error: 'All reconciliation updates failed',
+        failedTransactions: failed
+      });
+    }
+
+    if (failed.length > 0) {
+      return res.status(207).json({
+        message: `${succeeded.length} transaction(s) reconciled. ${failed.length} update(s) failed.`,
+        count: succeeded.length,
+        reconciledIds: succeeded,
+        failedTransactions: failed
+      });
+    }
 
     res.json({
-      message: 'Transactions reconciled successfully',
-      count: transactionIds.length
+      message: `${succeeded.length} transaction(s) reconciled successfully`,
+      count: succeeded.length,
+      reconciledIds: succeeded
     });
 
   } catch (error) {

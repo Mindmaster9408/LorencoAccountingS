@@ -46,9 +46,12 @@ router.get('/status', (req, res) => {
 // These are mounted UNDER /api/accounting/ by server.js
 
 // Core accounting
-router.use('/accounts', require('./routes/accounts'));
-router.use('/journals', require('./routes/journals'));
-router.use('/bank', require('./routes/bank'));
+router.use('/accounts',  require('./routes/accounts'));
+router.use('/journals',  require('./routes/journals'));
+router.use('/periods',   require('./routes/accounting-periods'));
+router.use('/year-end',  require('./routes/yearEnd'));
+router.use('/bank',         require('./routes/bank'));
+router.use('/bank/staging', require('./routes/bankStaging'));
 router.use('/pos', require('./routes/pos-bridge'));
 router.use('/reports', require('./routes/reports'));
 router.use('/suppliers', require('./routes/suppliers'));

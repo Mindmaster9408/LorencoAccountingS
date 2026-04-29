@@ -12,9 +12,25 @@
  */
 
 const express = require('express');
-const router = express.Router();
-const { supabase } = require('../../../config/database');
-const JournalService = require('../services/journalService');
+const multer  = require('multer');
+const path    = require('path');
+const router  = express.Router();
+const { supabase }       = require('../../../config/database');
+const JournalService     = require('../services/journalService');
+const InvoiceOcrService  = require('../../../sean/invoice-ocr-service');
+const { hasPermission }  = require('../middleware/auth');
+
+// ── Multer: in-memory file upload for OCR invoice scanning ────────────────────
+const invoiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
+  fileFilter: (req, file, cb) => {
+    if (InvoiceOcrService.isAllowedFile(file.mimetype, file.originalname)) {
+      return cb(null, true);
+    }
+    cb(new Error('Only JPG, PNG, WEBP images and PDF files are accepted for invoice OCR'));
+  },
+});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -312,6 +328,29 @@ router.post('/invoices', async (req, res) => {
     if (supErr) throw new Error(supErr.message);
     if (!supRow) return res.status(400).json({ error: 'Supplier not found for this company' });
     const supplierName = supRow.name;
+
+    // ── Duplicate invoice guard ────────────────────────────────────────────────
+    // If an explicit invoice number is provided, reject a second creation for the
+    // same supplier + invoice number. This prevents double-submission of the same
+    // supplier invoice (e.g. double-click or retry with identical data).
+    if (invoiceNumber && invoiceNumber.trim()) {
+      const { data: dup } = await supabase
+        .from('supplier_invoices')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('supplier_id', parseInt(supplierId))
+        .eq('invoice_number', invoiceNumber.trim())
+        .neq('status', 'cancelled')
+        .maybeSingle();
+      if (dup) {
+        return res.status(409).json({
+          error: `Invoice number '${invoiceNumber.trim()}' already exists for this supplier`,
+          errorCode: 'DUPLICATE_INVOICE',
+          existingInvoiceId: dup.id,
+        });
+      }
+    }
+    // ── End duplicate guard ────────────────────────────────────────────────────
 
     // Calculate line totals
     const processedLines = lines.map((l, i) => {
@@ -1308,5 +1347,57 @@ router.put('/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /invoices/ocr
+// ─────────────────────────────────────────────────────────────────────────────
+// Upload an invoice image (JPG / PNG / WEBP) or text/scanned PDF and extract
+// structured invoice data using OCR.
+//
+// IMPORTANT:
+//   - This endpoint NEVER writes to the database.
+//   - All extracted fields are tagged status='UNVERIFIED'.
+//   - The caller must display extracted values for user confirmation before
+//     creating a real supplier invoice via POST /invoices.
+//
+// Request  : multipart/form-data with field name "file"
+// Response : InvoiceExtractionResult (see invoice-ocr-service.js for shape)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post(
+  '/invoices/ocr',
+  hasPermission('ap.manage'),
+  invoiceUpload.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          error: 'No file uploaded. Send the invoice image or PDF in form field "file".',
+        });
+      }
+
+      const isPdf = req.file.mimetype === 'application/pdf' ||
+                    path.extname(req.file.originalname).toLowerCase() === '.pdf';
+
+      const result = isPdf
+        ? await InvoiceOcrService.parseInvoicePdf(req.file.buffer, req.file.originalname)
+        : await InvoiceOcrService.parseInvoiceImage(req.file.buffer, req.file.originalname);
+
+      // Always set status=UNVERIFIED regardless of extraction result
+      return res.json({ ...result, status: result.status || 'UNVERIFIED' });
+
+    } catch (err) {
+      console.error('[suppliers/invoices/ocr] Error:', err);
+
+      // Multer file-type rejection
+      if (err.message && err.message.includes('accepted for invoice OCR')) {
+        return res.status(400).json({ error: err.message });
+      }
+
+      return res.status(500).json({
+        error: 'OCR processing failed: ' + (err.message || 'Unknown error'),
+      });
+    }
+  }
+);
 
 module.exports = router;

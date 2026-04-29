@@ -11,17 +11,38 @@
   'use strict';
 
   // ─── API URL Rewriting ──────────────────────────────────────────────────────
+  // Routes that must NOT be rewritten — they are ECO-shared endpoints, not
+  // accounting-module endpoints. Adding /api/accounting/ prefix would 404 them.
+  const ECO_SHARED_PREFIXES = [
+    '/api/eco-clients',
+    '/api/auth/',
+    '/api/employees',
+    '/api/audit',
+  ];
+
+  function isEcoSharedRoute(u) {
+    return ECO_SHARED_PREFIXES.some(p => u.startsWith(p));
+  }
+
+  function rewriteUrl(u) {
+    if (u.startsWith('/api/') && !u.startsWith('/api/accounting/') && !isEcoSharedRoute(u)) {
+      return u.replace('/api/', '/api/accounting/');
+    }
+    return u;
+  }
+
   const originalFetch = window.fetch;
 
   window.fetch = function(url, options) {
     if (typeof url === 'string') {
-      // Rewrite /api/* to /api/accounting/* (but not /api/accounting/* which is already correct)
-      if (url.startsWith('/api/') && !url.startsWith('/api/accounting/')) {
-        url = url.replace('/api/', '/api/accounting/');
-      }
-      // Handle absolute localhost URLs
-      if (url.includes('://') && url.includes('/api/') && !url.includes('/api/accounting/')) {
-        url = url.replace('/api/', '/api/accounting/');
+      url = rewriteUrl(url);
+      // Handle absolute URLs (e.g. http://localhost:3000/api/...)
+      if (url.includes('://')) {
+        const match = url.match(/^(https?:\/\/[^/]+)(\/api\/.*)$/);
+        if (match) {
+          const rewritten = rewriteUrl(match[2]);
+          if (rewritten !== match[2]) url = match[1] + rewritten;
+        }
       }
     }
     return originalFetch.call(this, url, options);
@@ -31,11 +52,13 @@
   const originalXHROpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url, ...rest) {
     if (typeof url === 'string') {
-      if (url.startsWith('/api/') && !url.startsWith('/api/accounting/')) {
-        url = url.replace('/api/', '/api/accounting/');
-      }
-      if (url.includes('://') && url.includes('/api/') && !url.includes('/api/accounting/')) {
-        url = url.replace('/api/', '/api/accounting/');
+      url = rewriteUrl(url);
+      if (url.includes('://')) {
+        const match = url.match(/^(https?:\/\/[^/]+)(\/api\/.*)$/);
+        if (match) {
+          const rewritten = rewriteUrl(match[2]);
+          if (rewritten !== match[2]) url = match[1] + rewritten;
+        }
       }
     }
     return originalXHROpen.call(this, method, url, ...rest);

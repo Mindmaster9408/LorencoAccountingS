@@ -66,15 +66,43 @@ router.get('/:id', authenticate, hasPermission('journal.view'), async (req, res)
 
 /**
  * POST /api/journals
- * Create a new draft journal
+ * Create a new draft journal.
+ *
+ * Optional body field `idempotencyKey` (string): if supplied and a journal with that
+ * key was already created for this company within the last 24 hours, the existing
+ * journal is returned (HTTP 200, { ...journal, duplicate: true }) instead of
+ * creating a new one. This prevents double-click and network-retry duplicates.
  */
 router.post('/', authenticate, hasPermission('journal.create'), async (req, res) => {
   try {
-    const { date, reference, description, sourceType = 'manual', lines, metadata } = req.body;
+    const { date, reference, description, sourceType = 'manual', lines, metadata, idempotencyKey } = req.body;
 
     if (!date || !description || !lines) {
       return res.status(400).json({ error: 'Date, description, and lines are required' });
     }
+
+    // ── Idempotency guard ─────────────────────────────────────────────────────
+    // If the caller supplies an idempotency key, look for an existing journal
+    // created with that key in the last 24 h and return it instead of duplicating.
+    if (idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.trim()) {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: existing } = await supabase
+        .from('journals')
+        .select('id')
+        .eq('company_id', req.user.companyId)
+        .filter('metadata->>idempotency_key', 'eq', idempotencyKey.trim())
+        .gte('created_at', cutoff)
+        .maybeSingle();
+      if (existing) {
+        const fullJournal = await JournalService.getJournalWithLines(existing.id, req.user.companyId);
+        return res.status(200).json({ ...fullJournal, duplicate: true });
+      }
+    }
+
+    // Merge idempotency key into journal metadata so future lookups can find it.
+    const resolvedMetadata = idempotencyKey && idempotencyKey.trim()
+      ? { ...(metadata || {}), idempotency_key: idempotencyKey.trim() }
+      : (metadata || undefined);
 
     const journal = await JournalService.createDraftJournal({
       companyId: req.user.companyId,
@@ -84,7 +112,7 @@ router.post('/', authenticate, hasPermission('journal.create'), async (req, res)
       sourceType,
       createdByUserId: req.user.id,
       lines,
-      metadata
+      metadata: resolvedMetadata
     });
 
     await AuditLogger.logUserAction(

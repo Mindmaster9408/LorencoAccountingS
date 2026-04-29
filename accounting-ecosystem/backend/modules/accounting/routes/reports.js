@@ -1,47 +1,63 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
+const db = require('../config/database'); // direct pg Pool — avoids .in() URL-length limits
 const { authenticate, hasPermission } = require('../middleware/auth');
 
 const router = express.Router();
 
 // ─── Helper: fetch posted journal lines for a company within a date range ────
-// Returns array of { account_id, debit, credit } aggregated per account.
+// Uses a SQL JOIN instead of two-step Supabase fetch + .in(journalIds) to avoid
+// PostgREST URL-length limits that silently truncate results for large companies.
 async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, types, segmentValueId } = {}) {
-  // Fetch accounts
+  // Accounts — small table, no .in() risk
   let acctQ = supabase.from('accounts').select('id, code, name, type, sub_type, reporting_group, parent_id, sort_order')
     .eq('company_id', companyId).eq('is_active', true);
   if (types) acctQ = acctQ.in('type', types);
   const { data: accounts, error: acctErr } = await acctQ;
   if (acctErr) throw new Error(acctErr.message);
 
-  // Fetch posted journals for the company within range
-  let jQ = supabase.from('journals').select('id, date').eq('company_id', companyId).eq('status', 'posted');
-  if (asOfDate)  jQ = jQ.lte('date', asOfDate);
-  if (fromDate)  jQ = jQ.gte('date', fromDate);
-  if (toDate)    jQ = jQ.lte('date', toDate);
-  const { data: journals, error: jErr } = await jQ;
-  if (jErr) throw new Error(jErr.message);
+  // Build parameterised date clauses for direct SQL
+  const baseParams = [companyId];
+  let dateClauses = '';
+  if (asOfDate) { baseParams.push(asOfDate); dateClauses += ` AND j.date <= $${baseParams.length}`; }
+  if (fromDate) { baseParams.push(fromDate); dateClauses += ` AND j.date >= $${baseParams.length}`; }
+  if (toDate)   { baseParams.push(toDate);   dateClauses += ` AND j.date <= $${baseParams.length}`; }
 
-  const journalCount = journals ? journals.length : 0;
-
-  if (!journals || journals.length === 0) {
-    return { accounts: accounts || [], lines: [], journalCount: 0 };
-  }
-
-  const journalIds = journals.map(j => j.id);
-
-  // Fetch journal lines for those journals (batch — Supabase supports .in() up to 1000)
-  let lQ = supabase.from('journal_lines').select('account_id, debit, credit').in('journal_id', journalIds);
+  // Segment clause (untagged = IS NULL, numeric id = exact match)
+  const linesParams = [...baseParams];
+  let segClause = '';
   if (segmentValueId === 'untagged') {
-    lQ = lQ.is('segment_value_id', null);   // lines with no division tag
+    segClause = ' AND jl.segment_value_id IS NULL';
   } else if (segmentValueId) {
-    lQ = lQ.eq('segment_value_id', parseInt(segmentValueId));
+    linesParams.push(parseInt(segmentValueId));
+    segClause = ` AND jl.segment_value_id = $${linesParams.length}`;
   }
-  // no filter = ALL lines (used for company-total and existing balance-sheet/trial-balance)
-  const { data: lines, error: lErr } = await lQ;
-  if (lErr) throw new Error(lErr.message);
 
-  return { accounts: accounts || [], lines: lines || [], journalCount };
+  // Lines via JOIN + journal count — run in parallel, no .in() batching
+  const linesSql = `
+    SELECT jl.account_id, jl.debit, jl.credit
+    FROM journal_lines jl
+    INNER JOIN journals j ON j.id = jl.journal_id
+    WHERE j.company_id = $1
+      AND j.status = 'posted'${dateClauses}${segClause}
+  `;
+  const countSql = `
+    SELECT COUNT(DISTINCT j.id)::int AS count
+    FROM journals j
+    WHERE j.company_id = $1
+      AND j.status = 'posted'${dateClauses}
+  `;
+
+  const [linesResult, countResult] = await Promise.all([
+    db.query(linesSql, linesParams),
+    db.query(countSql, baseParams),
+  ]);
+
+  return {
+    accounts: accounts || [],
+    lines: linesResult.rows,
+    journalCount: countResult.rows[0]?.count || 0,
+  };
 }
 
 // Aggregate lines by account_id → { accountId: { debit, credit } }
@@ -116,54 +132,62 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
       .eq('id', accountId).eq('company_id', req.user.companyId).single();
     if (aErr || !account) return res.status(404).json({ error: 'Account not found' });
 
-    // Opening balance: all posted lines before fromDate
+    // Opening balance and period lines via SQL JOIN — no .in() batching
+    // Both run in parallel since they are independent queries.
+    const obParams = fromDate ? [req.user.companyId, fromDate, accountId] : null;
+    const periodParams = [req.user.companyId, accountId];
+    let periodDateClauses = '';
+    if (fromDate) { periodParams.push(fromDate); periodDateClauses += ` AND j.date >= $${periodParams.length}`; }
+    if (toDate)   { periodParams.push(toDate);   periodDateClauses += ` AND j.date <= $${periodParams.length}`; }
+
+    const [obResult, periodResult] = await Promise.all([
+      obParams
+        ? db.query(
+            `SELECT jl.debit, jl.credit
+             FROM journal_lines jl
+             INNER JOIN journals j ON j.id = jl.journal_id
+             WHERE j.company_id = $1 AND j.status = 'posted'
+               AND j.date < $2 AND jl.account_id = $3`,
+            obParams
+          )
+        : Promise.resolve({ rows: [] }),
+      db.query(
+        `SELECT jl.journal_id, jl.description AS line_description, jl.debit, jl.credit,
+                j.date::text AS date, j.reference,
+                j.description AS journal_description, j.source_type
+         FROM journal_lines jl
+         INNER JOIN journals j ON j.id = jl.journal_id
+         WHERE j.company_id = $1 AND j.status = 'posted'
+           AND jl.account_id = $2${periodDateClauses}`,
+        periodParams
+      ),
+    ]);
+
+    // Opening balance
     let openingBalance = 0;
-    if (fromDate) {
-      const { data: priorJournals } = await supabase
-        .from('journals').select('id')
-        .eq('company_id', req.user.companyId).eq('status', 'posted').lt('date', fromDate);
-      if (priorJournals && priorJournals.length > 0) {
-        const { data: priorLines } = await supabase
-          .from('journal_lines').select('debit, credit')
-          .eq('account_id', accountId)
-          .in('journal_id', priorJournals.map(j => j.id));
-        for (const l of priorLines || []) {
-          openingBalance += parseFloat(l.debit || 0) - parseFloat(l.credit || 0);
-        }
-      }
+    for (const l of obResult.rows) {
+      openingBalance += parseFloat(l.debit || 0) - parseFloat(l.credit || 0);
     }
 
-    // Period journals
-    let jQ = supabase.from('journals')
-      .select('id, date, reference, description, source_type')
-      .eq('company_id', req.user.companyId).eq('status', 'posted');
-    if (fromDate) jQ = jQ.gte('date', fromDate);
-    if (toDate)   jQ = jQ.lte('date', toDate);
-    const { data: journals } = await jQ;
-
-    const transactions = [];
-    if (journals && journals.length > 0) {
-      const { data: lines } = await supabase
-        .from('journal_lines').select('journal_id, description, debit, credit')
-        .eq('account_id', accountId)
-        .in('journal_id', journals.map(j => j.id));
-
-      const journalMap = {};
-      for (const j of journals) journalMap[j.id] = j;
-
-      let running = openingBalance;
-      const withMeta = (lines || []).map(l => {
-        const j = journalMap[l.journal_id] || {};
-        const d = parseFloat(l.debit || 0);
-        const c = parseFloat(l.credit || 0);
-        running += d - c;
-        return { journal_id: l.journal_id, date: j.date, reference: j.reference,
-                 journal_description: j.description, line_description: l.description,
-                 source_type: j.source_type, debit: d, credit: c, balance: running };
-      });
-      withMeta.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.journal_id - b.journal_id);
-      transactions.push(...withMeta);
-    }
+    // Period transactions — map without running balance, sort by date/journal, then accumulate.
+    // Running balance must be computed after sort — computing it during the map
+    // produces wrong per-row balances because DB row order is not date order.
+    const mapped = periodResult.rows.map(l => ({
+      journal_id: l.journal_id,
+      date: l.date,
+      reference: l.reference,
+      journal_description: l.journal_description,
+      line_description: l.line_description,
+      source_type: l.source_type,
+      debit: parseFloat(l.debit || 0),
+      credit: parseFloat(l.credit || 0),
+    }));
+    mapped.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.journal_id - b.journal_id);
+    let running = openingBalance;
+    const transactions = mapped.map(line => {
+      running += line.debit - line.credit;
+      return { ...line, balance: running };
+    });
 
     const totalDebit   = transactions.reduce((s, t) => s + t.debit,  0);
     const totalCredit  = transactions.reduce((s, t) => s + t.credit, 0);
@@ -205,18 +229,21 @@ router.get('/bank-reconciliation', authenticate, hasPermission('report.view'), a
       ? parseFloat(lastTxn[0].balance)
       : parseFloat(bankAccount.opening_balance || 0);
 
-    // Ledger balance from posted journals
+    // Ledger balance from posted journals via SQL JOIN — no .in() batching
     let ledgerBalance = parseFloat(bankAccount.opening_balance || 0);
     if (bankAccount.ledger_account_id) {
-      const { data: jnls } = await supabase.from('journals').select('id')
-        .eq('company_id', req.user.companyId).eq('status', 'posted').lte('date', date);
-      if (jnls && jnls.length > 0) {
-        const { data: lns } = await supabase.from('journal_lines').select('debit, credit')
-          .eq('account_id', bankAccount.ledger_account_id)
-          .in('journal_id', jnls.map(j => j.id));
-        for (const l of lns || []) {
-          ledgerBalance += parseFloat(l.debit || 0) - parseFloat(l.credit || 0);
-        }
+      const { rows: lns } = await db.query(
+        `SELECT jl.debit, jl.credit
+         FROM journal_lines jl
+         INNER JOIN journals j ON j.id = jl.journal_id
+         WHERE j.company_id = $1
+           AND j.status = 'posted'
+           AND j.date <= $2
+           AND jl.account_id = $3`,
+        [req.user.companyId, date, bankAccount.ledger_account_id]
+      );
+      for (const l of lns) {
+        ledgerBalance += parseFloat(l.debit || 0) - parseFloat(l.credit || 0);
       }
     }
 
