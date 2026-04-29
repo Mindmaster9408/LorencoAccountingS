@@ -7,7 +7,7 @@
  * ============================================================================
  */
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const MASTER_USER = {
   username: 'ruanvlog@lorenco.co.za',

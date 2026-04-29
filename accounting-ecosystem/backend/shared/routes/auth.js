@@ -8,7 +8,7 @@
  */
 
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { supabase } = require('../../config/database');
 const { authenticateToken, JWT_SECRET } = require('../../middleware/auth');

@@ -2,7 +2,7 @@
  * Coaching Module — Auth Routes (CJS)
  */
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { query } = require('../db');
 const { generateToken, authenticateToken } = require('../middleware/auth');

@@ -172,7 +172,7 @@ app.get('/api/admin/reset-master', async (req, res) => {
     return res.status(403).json({ error: 'Disabled' });
   }
   try {
-    const bcrypt = require('bcrypt');
+    const bcrypt = require('bcryptjs');
     const { supabase } = require('./config/database');
     const email = 'ruanvlog@lorenco.co.za';
     const password = 'Mindmaster@277477';
