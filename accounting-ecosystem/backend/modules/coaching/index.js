@@ -12,6 +12,7 @@ router.use('/admin',              require('./routes/admin'));
 router.use('/leads',              require('./routes/leads'));
 router.use('/settings',           require('./routes/settings'));
 router.use('/assessment-tokens',  require('./routes/assessment-tokens'));
+router.use('/spil',               require('./routes/spil'));
 
 // AI routes — only mount if ANTHROPIC_API_KEY is configured
 if (process.env.ANTHROPIC_API_KEY) {
