@@ -16,7 +16,7 @@
 
 import express from 'express';
 import { query } from '../config/database.js';
-import { authenticateToken } from '../middleware/auth.middleware.js';
+import { authenticateToken } from '../middleware/auth.js';
 import {
     buildResults,
     validateAnswers,
