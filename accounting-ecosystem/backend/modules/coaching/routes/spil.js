@@ -9,7 +9,8 @@ const { authenticateToken, requireCoach } = require('../middleware/auth');
 const router = express.Router();
 
 router.use(authenticateToken);
-router.use(requireCoach);
+// Removed requireCoach — SPIL profiles are user-specific, accessible by any authenticated coach/user
+// router.use(requireCoach);
 
 // ─── Ensure Table Exists ─────────────────────────────────────────────────────
 async function ensureSpilTable() {
