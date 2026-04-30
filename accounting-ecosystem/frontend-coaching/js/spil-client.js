@@ -57,7 +57,7 @@ export async function renderSpilClientPanel(client, containerId) {
 
     let profiles = [];
     try {
-        profiles = await apiRequest('/coaching/spil');
+        profiles = await apiRequest('/spil');
     } catch (err) {
         listEl.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:8px 0">
             Kon nie profiele laai nie: ${escapeHtml(err.message)}
