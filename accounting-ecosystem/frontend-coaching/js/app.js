@@ -156,7 +156,7 @@ function renderSidebarClients() {
                 li.classList.add('active');
                 
                 // Open client
-                import('./clients.js').then(module => {
+                import('./clients.js?v=2').then(module => {
                     module.openClient(client.id);
                 });
             });
