@@ -1,7 +1,7 @@
 /**
- * spil-client.js — SPIL-E panel embedded in the Client Board
+ * spil-client.js — VITA Profile panel embedded in the Client Board
  *
- * Renders a compact SPIL-E summary inside the client's "SPIL-E" tab.
+ * Renders a compact VITA Profile summary inside the client's "VITA Profiel" tab.
  * Fetches profiles from GET /api/spil and filters to this client via
  * linked_client_id. No localStorage. API is the source of truth.
  *
@@ -37,11 +37,11 @@ export async function renderSpilClientPanel(client, containerId) {
     container.innerHTML = `
         <div style="padding:20px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                <h3 style="margin:0;font-size:16px;font-weight:600;color:#1e293b">🧭 SPIL-E Personality Profiles</h3>
+                <h3 style="margin:0;font-size:16px;font-weight:600;color:#1e293b">🧭 VITA Profiele</h3>
                 <button id="spil-client-open-btn" style="
                     padding:7px 14px;background:#0f172a;color:#e2e8f0;border:none;
                     border-radius:6px;cursor:pointer;font-size:13px;font-weight:600
-                ">Open SPIL-E App →</button>
+                ">Open VITA App →</button>
             </div>
             <div id="spil-client-list">
                 <div style="color:#64748b;font-size:13px">Profiele laai...</div>
@@ -91,9 +91,9 @@ export async function renderSpilClientPanel(client, containerId) {
     if (all.length === 0) {
         listEl.innerHTML = `
             <div style="color:#64748b;font-size:13px;padding:12px 0;border-top:1px solid #f1f5f9">
-                Geen SPIL-E profiele vir hierdie kliënt nie.<br>
+                Geen VITA profiele vir hierdie kliënt nie.<br>
                 <span style="opacity:0.7">
-                    Klik <strong>"Open SPIL-E App"</strong> hierbo en skep 'n nuwe profiel
+                    Klik <strong>"Open VITA App"</strong> hierbo en skep 'n nuwe profiel
                     met hierdie kliënt se naam of e-pos.
                 </span>
             </div>`;

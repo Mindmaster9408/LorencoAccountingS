@@ -217,7 +217,7 @@ function createClientHeader() {
             <button class="client-tab" data-view="journey">Journey Map</button>
             <button class="client-tab" data-view="destination">Destination</button>
             <button class="client-tab" data-view="basis">BASIS Assessment</button>
-            <button class="client-tab" data-view="spil">🧭 SPIL-E</button>
+            <button class="client-tab" data-view="spil">🧭 VITA Profiel</button>
         </div>
     `;
     return header;

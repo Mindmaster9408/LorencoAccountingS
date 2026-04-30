@@ -152,13 +152,13 @@ export function generateReport(results, respondentName = 'Jy', lang = 'af') {
     const lines = [];
 
     // ── HEADER ────────────────────────────────────────────────────────────────
-    lines.push('# Jou SPIL-E Profiel');
+    lines.push('# Jou VITA Profiel');
     lines.push('');
     lines.push("*'n Praktiese insig in hoe jy dink, optree, verbind en bou.*");
     lines.push('');
     lines.push(`**Naam:** ${name}`);
     lines.push(`**Datum:** ${new Date(generatedAt).toLocaleDateString('af-ZA')}`);
-    lines.push(`**SPIL-E Kode:** ${spilCode}`);
+    lines.push(`**VITA Kode:** ${spilCode}`);
     lines.push('');
     lines.push('| Dimensie | Telling |');
     lines.push('|---|---|');
@@ -169,10 +169,28 @@ export function generateReport(results, respondentName = 'Jy', lang = 'af') {
     lines.push('---');
     lines.push('');
 
-    // ── SECTION 1 — SPIL-E CODE ───────────────────────────────────────────────
-    lines.push('## Jou SPIL-E Kode');
+    // ── VITA EXPLANATION SECTION ──────────────────────────────────────────────
+    lines.push('## Wat VITA Verteenwoordig');
     lines.push('');
-    lines.push('Jou SPIL-E kode is:');
+    lines.push('VITA wys hoe jy dink (Insig), optree (Toewyding), verbind (Aansluiting), voel (Lewe) en waarheen jy beweeg (Visie).');
+    lines.push('');
+    lines.push('| | Interpretasie | Dryfkrag |');
+    lines.push('|---|---|---|');
+    lines.push('| **V — Visie** | Rigting, roeping, langtermyn-denke | INISIATIEF + INSIG |');
+    lines.push('| **I — Insig** | Kennis, wysheid, duidelikheid | INSIG |');
+    lines.push('| **T — Toewyding** | Aksie, verbintenis, uitvoering | PRESTASIE |');
+    lines.push('| **A — Aansluiting** | Verhoudings, verbinding, empatie | LIEFDE |');
+    lines.push('| **L — Lewe** | Emosionele toestand, balans, innerlike vrede | EMOSIE |');
+    lines.push('');
+    lines.push('*STRUKTUUR voed beide Visie (stabiliseer langtermyn-rigting) en Toewyding (volhoubare uitvoering) — dit is die fondasie van jou groei.*');
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+
+    // ── SECTION 1 — VITA CODE ─────────────────────────────────────────────────
+    lines.push('## Jou VITA Kode');
+    lines.push('');
+    lines.push('Jou VITA kode is:');
     lines.push('');
     lines.push(`**${spilCode}**`);
     lines.push('');
@@ -266,9 +284,9 @@ export function generateReport(results, respondentName = 'Jy', lang = 'af') {
     lines.push('');
     lines.push('Hierdie verslag is slegs die beginpunt.');
     lines.push('');
-    lines.push("Jou SPIL-E profiel wys jou natuurlike patroon, maar die ware transformasie kom deur te verstaan hoe hierdie patroon jou besluite, verhoudings, werk, energie en toekomstige rigting beïnvloed.");
+    lines.push("Jou VITA Profiel wys jou natuurlike patroon, maar die ware transformasie kom deur te verstaan hoe hierdie patroon jou besluite, verhoudings, werk, energie en toekomstige rigting beïnvloed.");
     lines.push('');
-    lines.push("Die volgende stap is om te ondersoek hoe om hierdie profiel prakties te gebruik in jou lewe, gesin, besigheid en nalatenskap-reis.");
+    lines.push("Die volgende stap is om te ondersoek hoe om hierdie VITA Profiel prakties te gebruik in jou lewe, gesin, besigheid en nalatenskap-reis.");
     lines.push('');
 
     return {
@@ -300,7 +318,7 @@ export function generateInternalNotes(results, respondentName = 'Respondent') {
     // ── Header ────────────────────────────────────────────────────────────────
     lines.push(`# Interne Notas: ${name}`);
     lines.push('');
-    lines.push(`**SPIL-E Kode:** ${spilCode}`);
+    lines.push(`**VITA Kode:** ${spilCode}`);
     lines.push(`**Gegenereer:** ${new Date(generatedAt).toLocaleString('af-ZA')}`);
     lines.push('');
     lines.push('> *Hierdie notas is vir die afrigter alleen. Deel dit nie met die kliënt nie.*');

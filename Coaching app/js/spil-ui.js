@@ -1,5 +1,5 @@
 /**
- * spil-ui.js — SPIL-E Frontend Controller
+ * spil-ui.js — VITA Profile Frontend Controller
  *
  * State:   In-memory only. API is the single source of truth.
  * Storage: NONE. Zero localStorage / sessionStorage usage.
@@ -353,7 +353,7 @@ function renderQuestionnaire(profile) {
     state.answers = {};
 
     document.getElementById('q-profile-name').textContent =
-        `SPIL-E Vraelys — ${profile.respondent_name}`;
+        `VITA Profiel Vraelys — ${profile.respondent_name}`;
 
     clearNotice('q-submit-notice');
     document.getElementById('q-validation-msg').style.display = 'none';

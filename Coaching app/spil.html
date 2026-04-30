@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SPIL-E Profiele — Coaching App</title>
+    <title>VITA Profiele — Coaching App</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="css/login.css" />
@@ -21,7 +21,7 @@
         <nav>
             <ul>
                 <li onclick="window.location.href='index.html'">Dashboard</li>
-                <li class="active">🧭 SPIL Profiele</li>
+                <li class="active">🧭 VITA Profiele</li>
             </ul>
         </nav>
         <div class="sidebar-footer">
@@ -37,14 +37,14 @@
         <div id="spil-view-list" class="spil-view">
 
             <div class="spil-header">
-                <h2>🧭 SPIL-E Profiele</h2>
+                <h2>🧭 VITA Profiele</h2>
                 <button id="btn-new-profile" class="spil-btn spil-btn-primary">+ Nuwe Profiel</button>
             </div>
 
             <!-- Create form (hidden by default) -->
             <div id="spil-create-panel" class="spil-card" style="display:none;">
                 <h2>Nuwe Profiel Skep</h2>
-                <p>Vul die respondent se besonderhede in om 'n nuwe SPIL-E profiel te begin.</p>
+                <p>Vul die respondent se besonderhede in om 'n nuwe VITA profiel te begin.</p>
 
                 <div id="spil-create-notice"></div>
 
@@ -94,7 +94,7 @@
             <div class="spil-back-link" id="btn-back-from-q">← Terug na profiele</div>
 
             <div class="spil-card" style="margin-bottom: 16px;">
-                <h2 id="q-profile-name">SPIL-E Vraelys</h2>
+                <h2 id="q-profile-name">VITA Profiel Vraelys</h2>
                 <p style="margin:0;">Kies 'n syfer van <strong>1</strong> (stem glad nie saam nie) tot <strong>10</strong> (stem heeltemal saam) vir elke stelling.</p>
             </div>
 
@@ -128,9 +128,9 @@
 
             <div id="results-notice"></div>
 
-            <!-- SPIL Code -->
+            <!-- VITA Code -->
             <div class="spil-code-display" id="results-code-display">
-                <div class="spil-code-label">SPIL-E Kode</div>
+                <div class="spil-code-label">VITA Kode</div>
                 <div class="spil-code-value" id="results-spil-code">—</div>
             </div>
 
