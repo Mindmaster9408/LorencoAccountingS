@@ -1236,13 +1236,55 @@
             var status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
             safeLocalStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
             // Save frozen snapshot so salary changes don't affect this period
+            // Read period-specific inputs now to capture exact values at finalization time
+            var snapCurrentInputs = JSON.parse(safeLocalStorage.getItem(getCurrentKey()) || '[]');
+            var snapOvertime = JSON.parse(safeLocalStorage.getItem(getOvertimeKey()) || '[]');
+            var snapMultiRate = JSON.parse(safeLocalStorage.getItem(getMultiRateKey()) || '[]');
+            var snapShortTime = JSON.parse(safeLocalStorage.getItem(getShortTimeKey()) || '[]');
+            var snapHourlyRate = (payrollData.basic_salary || 0) / (PayrollEngine.HOURLY_DIVISOR || 195);
+            // Allowances: permanent regular_inputs (non-deduction) + period current inputs (non-deduction)
+            var snapAllowances = [];
+            (payrollData.regular_inputs || []).forEach(function(ri) {
+                if (ri.type !== 'deduction') snapAllowances.push({ description: ri.description || ri.label || 'Allowance', amount: parseFloat(ri.amount) || 0 });
+            });
+            (snapCurrentInputs || []).forEach(function(ci) {
+                if (ci.type !== 'deduction') snapAllowances.push({ description: ci.description || ci.label || 'Allowance', amount: parseFloat(ci.amount) || 0 });
+            });
+            // Deductions: permanent regular_inputs (deduction type) + period current inputs (deduction type)
+            var snapDeductionItems = [];
+            (payrollData.regular_inputs || []).forEach(function(ri) {
+                if (ri.type === 'deduction') snapDeductionItems.push({ description: ri.description || ri.label || 'Deduction', amount: parseFloat(ri.amount) || 0 });
+            });
+            (snapCurrentInputs || []).forEach(function(ci) {
+                if (ci.type === 'deduction') snapDeductionItems.push({ description: ci.description || ci.label || 'Deduction', amount: parseFloat(ci.amount) || 0 });
+            });
+            // Overtime entries with computed amounts
+            var snapOvertimeEntries = (snapOvertime || []).filter(function(ot) { return (parseFloat(ot.hours) || 0) > 0; }).map(function(ot) {
+                var hrs = parseFloat(ot.hours) || 0;
+                var mult = parseFloat(ot.rate_multiplier) || 1.5;
+                return { hours: hrs, rate_multiplier: mult, amount: hrs * snapHourlyRate * mult };
+            });
+            // Multi-rate entries with computed amounts
+            var snapMultiRateEntries = (snapMultiRate || []).filter(function(mr) { return (parseFloat(mr.hours) || 0) > 0; }).map(function(mr) {
+                var mhrs = parseFloat(mr.hours) || 0, mrate = parseFloat(mr.hourly_rate) || 0;
+                return { description: mr.description || ('Hours @ R' + mrate.toFixed(2) + '/h'), hours: mhrs, hourly_rate: mrate, amount: mhrs * mrate };
+            });
+            // Short-time entries with computed deduction amounts
+            var snapShortTimeEntries = (snapShortTime || []).filter(function(st) { return (parseFloat(st.hours_missed) || 0) > 0; }).map(function(st) {
+                var missed = parseFloat(st.hours_missed) || 0;
+                return { hours_missed: missed, amount: missed * snapHourlyRate };
+            });
             var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
             safeLocalStorage.setItem(histKey, JSON.stringify({
                 basic_salary: payrollData.basic_salary || 0,
                 gross: calc.gross, paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
-                deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
+                deductions: snapDeductionItems.length > 0 ? snapDeductionItems : [{ description: 'Total Deductions', amount: calc.deductions }],
                 net: calc.net, source: 'finalized',
-                finalized_date: status.finalized_date, finalized_by: status.finalized_by
+                finalized_date: status.finalized_date, finalized_by: status.finalized_by,
+                allowances: snapAllowances,
+                overtime: snapOvertimeEntries,
+                multi_rate: snapMultiRateEntries,
+                short_time: snapShortTimeEntries
             }));
 
             // === Archive payslip for 11-year retention ===
