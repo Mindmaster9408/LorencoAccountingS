@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="af">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VITA Verslag Genereerder</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ─── Reset / Base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+
+    /* ─── Header ───────────────────────────────────────────── */
+    .vita-header {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .vita-header .back-link {
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.15s;
+    }
+    .vita-header .back-link:hover { color: #e2e8f0; }
+    .vita-header .sep { color: #334155; }
+    .vita-header .page-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .vita-badge {
+      background: #0ea5e9;
+      color: white;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    /* ─── Main Layout ──────────────────────────────────────── */
+    .vita-main {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+      padding: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) {
+      .vita-main { grid-template-columns: 1fr; }
+    }
+
+    /* ─── Cards ────────────────────────────────────────────── */
+    .vita-card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+    .vita-card-header {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 14px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .vita-card-body { padding: 20px; }
+
+    /* ─── Client Name Input ────────────────────────────────── */
+    .client-field {
+      margin-bottom: 16px;
+    }
+    .client-field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    .client-field input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #1e293b;
+      background: #f8fafc;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .client-field input:focus {
+      outline: none;
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 3px rgba(14,165,233,0.12);
+      background: white;
+    }
+
+    /* ─── Instruction text ─────────────────────────────────── */
+    .rank-instructions {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+      margin-bottom: 16px;
+      padding: 10px 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border-left: 3px solid #0ea5e9;
+    }
+
+    /* ─── Ranking List ─────────────────────────────────────── */
+    #ranking-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .rank-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      cursor: grab;
+      transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+      user-select: none;
+    }
+    .rank-item:hover { background: #f1f5f9; border-color: #cbd5e1; }
+    .rank-item.dragging { opacity: 0.4; cursor: grabbing; }
+    .rank-item.drag-over {
+      border-color: #0ea5e9;
+      background: #e0f2fe;
+      box-shadow: 0 0 0 2px rgba(14,165,233,0.25);
+    }
+    .rank-pos {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    /* Position colour coding */
+    .rank-pos.pos-1  { background: #fef3c7; color: #92400e; border: 1.5px solid #f59e0b; }
+    .rank-pos.pos-2  { background: #e2e8f0; color: #374151; border: 1.5px solid #94a3b8; }
+    .rank-pos.pos-3  { background: #fde8d8; color: #9a3412; border: 1.5px solid #fb923c; }
+    .rank-pos.pos-4  { background: #fee2e2; color: #991b1b; border: 1.5px solid #f87171; }
+    .rank-pos.pos-5  { background: #dcfce7; color: #166534; border: 1.5px solid #4ade80; }
+    .rank-pos.pos-6  { background: #ede9fe; color: #5b21b6; border: 1.5px solid #a78bfa; }
+    .rank-icon { font-size: 20px; flex-shrink: 0; }
+    .rank-info { flex: 1; min-width: 0; }
+    .rank-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .rank-sub {
+      font-size: 11px;
+      color: #64748b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rank-role {
+      font-size: 10px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-align: right;
+      flex-shrink: 0;
+      width: 52px;
+      letter-spacing: 0.3px;
+    }
+    .drag-handle {
+      color: #cbd5e1;
+      font-size: 16px;
+      cursor: grab;
+      flex-shrink: 0;
+    }
+
+    /* ─── Action Buttons ───────────────────────────────────── */
+    .card-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .btn-primary {
+      flex: 1;
+      padding: 11px 16px;
+      background: #0f172a;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover:not(:disabled) { background: #1e293b; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-ghost {
+      padding: 11px 14px;
+      background: transparent;
+      color: #64748b;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-ghost:hover { background: #f1f5f9; color: #1e293b; }
+
+    /* ─── Output Panel States ──────────────────────────────── */
+    .output-state {
+      padding: 48px 24px;
+      text-align: center;
+      color: #94a3b8;
+    }
+    .output-state .state-icon { font-size: 40px; margin-bottom: 12px; }
+    .output-state .state-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    .output-state .state-desc { font-size: 13px; line-height: 1.5; }
+    .output-state.error .state-title { color: #dc2626; }
+    .hidden { display: none !important; }
+
+    /* ─── Loading Spinner ──────────────────────────────────── */
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #0ea5e9;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Report View ──────────────────────────────────────── */
+    .report-scroll {
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
+    #report-view {
+      padding: 24px 28px;
+      font-size: 14px;
+      line-height: 1.75;
+      color: #1e293b;
+    }
+    #report-view h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0 0 4px 0;
+    }
+    #report-view .vita-code-line {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+    #report-view h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 28px 0 10px 0;
+      padding-left: 10px;
+      border-left: 3px solid #0ea5e9;
+    }
+    #report-view h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #334155;
+      margin: 16px 0 8px 0;
+    }
+    #report-view h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      margin: 12px 0 6px 0;
+    }
+    #report-view p {
+      margin: 0 0 12px 0;
+      color: #334155;
+    }
+    #report-view ul {
+      margin: 6px 0 12px 0;
+      padding-left: 20px;
+    }
+    #report-view li { margin-bottom: 4px; color: #334155; }
+    #report-view strong { color: #1e293b; }
+    #report-view em { color: #64748b; font-style: italic; }
+    #report-view hr {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 24px 0;
+    }
+
+    /* ─── Export Bar ───────────────────────────────────────── */
+    .export-bar {
+      padding: 14px 20px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .export-bar .btn-primary { flex: none; }
+
+    /* ─── Print Area (hidden on screen, visible when printing) */
+    #print-area {
+      display: none;
+    }
+
+    /* ─── @media print ─────────────────────────────────────── */
+    @media print {
+      .vita-header,
+      .vita-main {
+        display: none !important;
+      }
+      #print-area {
+        display: block !important;
+      }
+      body {
+        background: white;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12pt;
+        color: #000;
+        margin: 0;
+      }
+      #print-area {
+        padding: 20mm;
+      }
+      .print-meta {
+        margin-bottom: 20pt;
+        padding-bottom: 12pt;
+        border-bottom: 2pt solid #0f172a;
+      }
+      .print-badge {
+        font-size: 9pt;
+        font-weight: 700;
+        letter-spacing: 3pt;
+        color: #0f172a;
+        text-transform: uppercase;
+      }
+      .print-client-name {
+        font-size: 18pt;
+        font-weight: 700;
+        margin: 6pt 0 2pt 0;
+        color: #0f172a;
+      }
+      .print-date {
+        font-size: 10pt;
+        color: #555;
+      }
+      .print-content h1 {
+        font-size: 20pt;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0 0 6pt 0;
+        page-break-after: avoid;
+      }
+      .print-content h2 {
+        font-size: 14pt;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 20pt 0 8pt 0;
+        padding-left: 8pt;
+        border-left: 3pt solid #0ea5e9;
+        page-break-after: avoid;
+      }
+      .print-content h3 {
+        font-size: 12pt;
+        font-weight: 600;
+        margin: 14pt 0 6pt 0;
+        page-break-after: avoid;
+      }
+      .print-content p {
+        margin: 0 0 8pt 0;
+        line-height: 1.6;
+      }
+      .print-content ul {
+        margin: 4pt 0 10pt 0;
+        padding-left: 16pt;
+        page-break-inside: avoid;
+      }
+      .print-content li { margin-bottom: 3pt; }
+      .print-content hr {
+        border: none;
+        border-top: 0.5pt solid #ccc;
+        margin: 16pt 0;
+      }
+      .print-content strong { font-weight: 700; }
+      .print-content em { font-style: italic; color: #444; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header (hidden when printing) -->
+  <header class="vita-header">
+    <a href="/coaching/index.html" class="back-link">← Terug</a>
+    <span class="sep">|</span>
+    <span class="vita-badge">VITA</span>
+    <span class="page-title">Verslag Genereerder</span>
+  </header>
+
+  <!-- Main layout (hidden when printing) -->
+  <main class="vita-main">
+
+    <!-- Left: Ranking Input Card -->
+    <div class="vita-card" style="align-self: start;">
+      <div class="vita-card-header">
+        <span class="vita-badge">VITA</span>
+        Rangorde Invoer
+      </div>
+      <div class="vita-card-body">
+
+        <div class="client-field">
+          <label for="client-name-input">Kliënt se naam (opsioneel)</label>
+          <input id="client-name-input" type="text" placeholder="bv. Jan van der Merwe">
+        </div>
+
+        <p class="rank-instructions">
+          Sleep die dimensies in volgorde van mees aktief (1) tot minste aktief (6).
+          Posisie 1 = Primêr &bull; 4 = Stres &bull; 5 = Groei &bull; 6 = Skadu
+        </p>
+
+        <div id="ranking-list">
+          <!-- Populated by vita-ui.js -->
+        </div>
+
+        <div class="card-actions">
+          <button id="generate-btn" class="btn-primary">Genereer Verslag</button>
+          <button id="reset-btn" class="btn-ghost" title="Herstel na standaard volgorde">↺</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Right: Report Output Card -->
+    <div class="vita-card" style="display: flex; flex-direction: column;">
+      <div class="vita-card-header">
+        Verslag Uitvoer
+      </div>
+
+      <!-- Empty state -->
+      <div id="output-state-empty" class="output-state">
+        <div class="state-icon">📋</div>
+        <div class="state-title">Nog geen verslag nie</div>
+        <div class="state-desc">
+          Rangskik die dimensies aan die linkerkant<br>en klik <strong>Genereer Verslag</strong>.
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div id="output-state-loading" class="output-state hidden">
+        <div class="spinner"></div>
+        <div class="state-title">Genereer verslag&hellip;</div>
+        <div class="state-desc">Verwerk VITA-profiel…</div>
+      </div>
+
+      <!-- Error state -->
+      <div id="output-state-error" class="output-state error hidden">
+        <div class="state-icon">⚠️</div>
+        <div class="state-title">Fout tydens generering</div>
+        <div id="error-msg" class="state-desc"></div>
+      </div>
+
+      <!-- Report output (scrollable) -->
+      <div class="report-scroll" style="flex: 1;">
+        <div id="report-view" class="hidden"></div>
+      </div>
+
+      <!-- Export bar -->
+      <div id="export-bar" class="export-bar hidden">
+        <button id="export-pdf-btn" class="btn-primary">🖨️ Druk / Stoor as PDF</button>
+        <button id="export-html-btn" class="btn-ghost">⬇️ Aflaai HTML</button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Print-only area: rendered when window.print() is called -->
+  <div id="print-area">
+    <div class="print-meta">
+      <div class="print-badge">VITA Profiel Verslag</div>
+      <div id="print-client-name" class="print-client-name"></div>
+      <div id="print-date" class="print-date"></div>
+    </div>
+    <div id="print-content" class="print-content"></div>
+  </div>
+
+  <script type="module" src="js/vita-ui.js?v=1"></script>
+</body>
+</html>
