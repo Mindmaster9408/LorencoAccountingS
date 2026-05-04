@@ -48,6 +48,7 @@ const customersRoutes = require('./shared/routes/customers');
 const ecoClientsRoutes = require('./shared/routes/eco-clients');
 // Global KV store — all ecosystem frontend business data (NEVER in localStorage)
 const globalKvRoutes = require('./shared/routes/kv');
+const vitaRoutes = require('./routes/vita.routes');
 const ocrRoutes          = require('./shared/routes/ocr');
 const featureFlagsRoutes = require('./shared/routes/featureFlags');
 const pdfImportRoutes    = require('./shared/routes/pdfImport');
@@ -218,6 +219,8 @@ app.use('/api/eco-clients', authenticateToken, ecoClientsRoutes);
 app.use('/api/customers', authenticateToken, customersRoutes);
 // Global KV store — ecosystem-wide cloud persistence (NO browser localStorage for business data)
 app.use('/api/kv', globalKvRoutes);
+// VITA Report Engine — dynamic report generation from VITA Profile ranking
+app.use('/api/vita', vitaRoutes);
 // OCR — image and scanned-PDF text extraction (any authenticated user)
 app.use('/api/ocr', authenticateToken, ocrRoutes);
 // Feature flags — admin management + per-user/company flag checks
