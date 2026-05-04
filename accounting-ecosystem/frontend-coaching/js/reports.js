@@ -17,6 +17,17 @@ export async function renderReports() {
                 <p class="reports-subtitle">Generate and download professional BASIS reports for your clients</p>
             </header>
 
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px;">
+                <a href="/coaching/vita.html" style="display:flex;align-items:flex-start;gap:14px;padding:18px 22px;background:white;border:1px solid #e2e8f0;border-radius:12px;text-decoration:none;color:inherit;min-width:240px;max-width:320px;box-shadow:0 1px 4px rgba(0,0,0,0.06);transition:box-shadow 0.15s;"
+                   onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.12)'" onmouseout="this.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)'">
+                    <span style="font-size:28px;line-height:1;">🧭</span>
+                    <div>
+                        <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px;">VITA Verslag Genereerder</div>
+                        <div style="font-size:12px;color:#64748b;line-height:1.4;">Genereer 'n persoonlike VITA-profiel verslag vanuit 'n dimensie-rangorde. PDF en HTML uitvoer ingesluit.</div>
+                    </div>
+                </a>
+            </div>
+
             <div class="reports-content">
                 <div class="client-selector">
                     <h3>Select a Client</h3>
