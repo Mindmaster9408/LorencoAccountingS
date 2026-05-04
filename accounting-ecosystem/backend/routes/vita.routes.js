@@ -63,15 +63,17 @@ function validateRanking(ranking) {
 // ─── POST /api/vita/report ────────────────────────────────────────────────────
 
 router.post('/report', (req, res) => {
-  const { ranking } = req.body;
+  const { ranking, clientName } = req.body;
 
   const validationError = validateRanking(ranking);
   if (validationError) {
     return res.status(400).json({ error: validationError });
   }
 
+  const safeName = typeof clientName === 'string' ? clientName.trim() : '';
+
   try {
-    const report = generateVitaReport(ranking);
+    const report = generateVitaReport(ranking, safeName);
     return res.status(200).json({ report });
   } catch (err) {
     console.error('[vita] POST /report engine error:', err.message);

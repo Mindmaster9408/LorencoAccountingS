@@ -1,40 +1,69 @@
 'use strict';
 
 /**
- * vita.template.js — VITA Report Markdown Template
+ * vita.template.js — VITA Report Markdown Template (Full Premium Edition)
  *
  * All {{PLACEHOLDER}} variables are replaced by vita.engine.js.
  * Edit this file to change report structure without touching engine logic.
  *
- * Variable naming convention:
- *   {{RANKED_CODE}}            — full VITA code string (e.g. "INSIG – PRESTASIE – ...")
- *   {{PRIMARY_LABEL}}          — human label of 1st dimension
+ * Variable index:
+ *   {{CLIENT_NAME_LINE}}       — "**Kliënt:** Name\n" or "" if anonymous
+ *   {{RANKED_CODE}}            — full VITA code string (em-dash separated)
+ *   {{VITA_DATE}}              — formatted date (af-ZA locale)
+ *   {{INTRODUCTION}}           — what VITA is and what the code means
+ *   {{CODE_EXPLANATION}}       — derived explanation of top-3 combination
+ *   {{PRIMARY_LABEL}}          — 1st dimension label
  *   {{PRIMARY_VALUES}}         — comma-separated core values
- *   {{PRIMARY_BEHAVIOUR}}      — behaviour description paragraph
- *   {{PRIMARY_STRENGTHS}}      — bulleted strengths list
- *   {{PRIMARY_WEAKNESSES}}     — bulleted weaknesses list
+ *   {{PRIMARY_BEHAVIOUR}}      — behaviour description
+ *   {{PRIMARY_STRENGTHS}}      — bullet list
+ *   {{PRIMARY_WEAKNESSES}}     — bullet list
  *   {{SECONDARY_LABEL}}        — 2nd dimension label
  *   {{SECONDARY_VALUES}}       — 2nd dimension values
  *   {{SECONDARY_BEHAVIOUR}}    — 2nd dimension behaviour
+ *   {{SECONDARY_STRENGTHS}}    — bullet list
+ *   {{SECONDARY_WEAKNESSES}}   — bullet list
  *   {{THIRD_LABEL}}            — 3rd dimension label
  *   {{THIRD_VALUES}}           — 3rd dimension values
- *   {{STRESS_LABEL}}           — 4th dimension label (stress coping)
- *   {{GROWTH_LABEL}}           — 5th dimension label (growth opportunity)
- *   {{SHADOW_LABEL}}           — 6th dimension label (least active / shadow)
- *   {{SHADOW_WEAKNESSES}}      — shadow dimension weakness list
- *   {{VISION_INTERPRETATION}}  — derived from INSIG + INISIATIEF positions
- *   {{PROFILE_PATTERN}}        — named pattern from top-3 combination
- *   {{COMMUNICATION_STYLE}}    — derived communication approach
- *   {{RELATIONSHIP_STYLE}}     — derived relationship approach
+ *   {{THIRD_BEHAVIOUR}}        — 3rd dimension behaviour
+ *   {{THIRD_STRENGTHS}}        — bullet list
+ *   {{STRESS_LABEL}}           — 4th dimension label
+ *   {{STRESS_TEXT}}            — stress context paragraph
+ *   {{GROWTH_LABEL}}           — 5th dimension label
+ *   {{GROWTH_TEXT}}            — growth advice paragraph
+ *   {{SHADOW_LABEL}}           — 6th dimension label
+ *   {{SHADOW_WEAKNESSES}}      — bullet list (blind spots)
+ *   {{STRENGTHS_SUMMARY}}      — top-3 combined strengths
+ *   {{TRIGGERS}}               — what energizes (top-2 derived)
+ *   {{TRIPWIRES}}              — what drains (primary + shadow derived)
+ *   {{COMMUNICATION_STYLE}}    — derived from primary driver
+ *   {{COMM_TIPS}}              — how to communicate with each type
+ *   {{RELATIONSHIP_STYLE}}     — derived from love/emotion positions
  *   {{WORK_ENVIRONMENT}}       — ideal work context
- *   {{ENERGY_GIVERS}}          — what fuels this person
- *   {{ENERGY_DRAINERS}}        — what depletes this person
+ *   {{ENERGY_GIVERS}}          — bullet list
+ *   {{ENERGY_DRAINERS}}        — bullet list
+ *   {{PROFILE_PATTERN}}        — named pattern + description
+ *   {{VISION_INTERPRETATION}}  — derived from Insig/Inisiatief positions
+ *   {{REFLECTION_QUESTIONS}}   — 5 ranked reflection prompts
+ *   {{NEXT_STEP}}              — coaching call to action
  *   {{GENERATED_AT}}           — ISO timestamp
  */
 
 const VITA_TEMPLATE = `# VITA Profiel Verslag
 
-**VITA Kode:** {{RANKED_CODE}}
+{{CLIENT_NAME_LINE}}**VITA Kode:** {{RANKED_CODE}}
+**Datum:** {{VITA_DATE}}
+
+---
+
+## Inleiding
+
+{{INTRODUCTION}}
+
+---
+
+## Jou VITA Kode
+
+{{CODE_EXPLANATION}}
 
 ---
 
@@ -57,81 +86,139 @@ Jou primêre dryfkrag is **{{PRIMARY_LABEL}}**.
 
 ## 2. Ondersteunende Krag — {{SECONDARY_LABEL}}
 
-Jou ondersteunende krag is **{{SECONDARY_LABEL}}**. Dit werk hand-aan-hand met jou primêre dryfkrag om jou gedrag te vorm.
+Jou ondersteunende krag is **{{SECONDARY_LABEL}}**. Dit werk hand-aan-hand met jou primêre dryfkrag om jou gedrag en besluitneming te vorm.
 
 **Kern-waardes:** {{SECONDARY_VALUES}}
 
 **Gedragspatroon:**
 {{SECONDARY_BEHAVIOUR}}
 
+**Sterkpunte:**
+{{SECONDARY_STRENGTHS}}
+
+**Uitdagings:**
+{{SECONDARY_WEAKNESSES}}
+
 ---
 
-## 3. Derde Krag — {{THIRD_LABEL}}
+## 3. Derde Dimensie / Verborge Potensiaal — {{THIRD_LABEL}}
 
-Jou derde krag **{{THIRD_LABEL}}** aktiveer in spesifieke kontekste waar jou eerste twee dryfkragte alleen nie genoeg is nie.
+Jou derde krag **{{THIRD_LABEL}}** aktiveer in spesifieke kontekste waar jou eerste twee dryfkragte alleen nie genoeg is nie. Dit is dikwels \'n bron van onontginde potensiaal.
 
 **Kern-waardes:** {{THIRD_VALUES}}
+
+**Gedragspatroon:**
+{{THIRD_BEHAVIOUR}}
+
+**Sterkpunte:**
+{{THIRD_STRENGTHS}}
 
 ---
 
 ## 4. Stres-dimensie — {{STRESS_LABEL}}
 
-Onder volgehoue druk of wanneer jou energie uitgeput is, aktiveer jy **{{STRESS_LABEL}}** as \'n onbewuste copingmeganisme. Dit kan mense verras wat jou normaal goed ken.
+{{STRESS_TEXT}}
 
 ---
 
 ## 5. Groei-area — {{GROWTH_LABEL}}
 
-Jou groei-area is **{{GROWTH_LABEL}}**. Dit verteenwoordig \'n dimensie wat jy bewustelik kan ontwikkel om jou impak en effektiwiteit aansienlik te verhoog.
+{{GROWTH_TEXT}}
 
 ---
 
-## 6. Skadu — {{SHADOW_LABEL}}
+## 6. Skadu / Laagste Dimensie — {{SHADOW_LABEL}}
 
-Jou skadu-dimensie is **{{SHADOW_LABEL}}** — die minste aktiewe deel van jou profiel. Dit verteenwoordig moontlike blinde kolle en beperkings wat onbewustelik jou groei beïnvloed.
+Jou skadu-dimensie **{{SHADOW_LABEL}}** is die minste aktiewe deel van jou profiel. Dit verteenwoordig moontlike blinde kolle en beperkings wat onbewustelik jou groei beïnvloed.
 
 **Potensiële blinde kolle:**
 {{SHADOW_WEAKNESSES}}
 
 ---
 
-## 7. Visie en Toekoms
+## 7. Sterkpunte Opsomming
 
-{{VISION_INTERPRETATION}}
+Jou top-3 dryfkragte lewer saam die volgende sterkpunte:
 
----
-
-## 8. Profiel-patroon
-
-{{PROFILE_PATTERN}}
+{{STRENGTHS_SUMMARY}}
 
 ---
 
-## 9. Kommunikasiestyl
+## 8. Triggers — Wat Gee Jou Energie
+
+Hierdie is die omstandighede, aktiwiteite en situasies wat jou laai en motiveer:
+
+{{TRIGGERS}}
+
+---
+
+## 9. Tripwires — Wat Dreineer Jou
+
+Hierdie is die omstandighede wat jou energie roof en jou minder effektief maak:
+
+{{TRIPWIRES}}
+
+---
+
+## 10. Kommunikasiestyl
 
 {{COMMUNICATION_STYLE}}
 
 ---
 
-## 10. Verhoudingstyl
+## 11. Kommunikasiewenke per Dimensie
+
+Hoe om effektief te kommunikeer met mense wie se primêre dryfkrag verskil van joune:
+
+{{COMM_TIPS}}
+
+---
+
+## 12. Verhoudingsinsig
 
 {{RELATIONSHIP_STYLE}}
 
 ---
 
-## 11. Ideale Werkomgewing
+## 13. Werk- en Besigheidsinsig
 
 {{WORK_ENVIRONMENT}}
 
 ---
 
-## 12. Energie-gevers en -drainers
+## 14. Energie-patroon
 
 **Gee jou energie:**
 {{ENERGY_GIVERS}}
 
 **Dreineer jou energie:**
 {{ENERGY_DRAINERS}}
+
+---
+
+## 15. Profiel-patroon
+
+{{PROFILE_PATTERN}}
+
+---
+
+## 16. Visie en Toekoms
+
+{{VISION_INTERPRETATION}}
+
+---
+
+## 17. Refleksie Vrae
+
+Gebruik hierdie vrae as \'n persoonlike refleksie-oefening:
+
+{{REFLECTION_QUESTIONS}}
+
+---
+
+## 18. Volgende Stap
+
+{{NEXT_STEP}}
 
 ---
 

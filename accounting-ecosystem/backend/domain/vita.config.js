@@ -40,6 +40,21 @@ const VITA_CONFIG = {
       'Oorplanning en voorbereiding wat vordering vertraag',
       'Ongemak met ambiguïteit en onvoltooide raamwerke',
     ],
+    stressText:
+      'Wanneer Struktuur as stres-dimensie aktiveer, mag die persoon skielik oormatig kontrolerend, rigied of ' +
+      'perfeksionisties word. Hulle kan vasval in besonderhede en haas probeer \'n situasie "beheer" wat hulle ' +
+      'onseker laat voel. Dit is \'n teken dat die diep behoefte aan sekerheid en voorspelbaarheid nie vervul ' +
+      'word nie — die beheer-gedrag is \'n beskerming, nie \'n aanval nie.',
+    growthText:
+      'Om Struktuur as groei-area te ontwikkel, oefen om meer sistematies en konsekwent te werk. ' +
+      'Bou stappe vir jou dag, week en projekte doelbewus in. ' +
+      'Leer om eenvoudige prosesse op te stel wat jy kan herhaal — dit skakel onsekerheid om in ' +
+      'voorspelbare uitkomste. Begin klein: een roetine wat jy elke dag volg.',
+    commWith:
+      'Wees georganiseer en spesifiek. Gee \'n agenda vooraf en kom vroeg. ' +
+      'Formuleer vrae met duidelike antwoorde en vermy vae ooreenkomste. ' +
+      'Volg beloftes konsekwent na — betroubaarheid is hul geldeenheid. ' +
+      'Moenie in besprekings afwyk van die punt af nie.',
   },
 
   PRESTASIE: {
@@ -62,6 +77,20 @@ const VITA_CONFIG = {
       'Sukkel om ander se tempo te respekteer of te akkommodeer',
       'Erken selde die proses — slegs die eindresultaat tel',
     ],
+    stressText:
+      'Wanneer Prestasie as stres-dimensie aktiveer, kan die persoon skielik kompetitief, ongeduldig of ' +
+      'selfkrities raak. Hulle jaag resultate op \'n wyse wat ander kan verwar of uitput. ' +
+      'Hulle mag hul eie welstand opsy skuif om \'n doel te bereik en erken nie hul eie grense nie. ' +
+      'Dit is \'n teken dat hul sin van waarde te nou aan prestasie vasgeheg is.',
+    growthText:
+      'Om Prestasie as groei-area te ontwikkel, begin om doelwitte duideliker te stel en vordering aktief te meet. ' +
+      'Vier klein oorwinnings — dit bou momentum. Leer om meting en verantwoordbaarheid as ' +
+      'energiebron te gebruik in plaas van iets om te vrees. ' +
+      'Stel een meetbare doelwit per week en track jou vordering sigbaar.',
+    commWith:
+      'Kom direk by die punt. Praat in uitkomste, tydraamwerke en resultate. ' +
+      'Respekteer hul tyd — moenie rondomtalie praat of onnodige agtergrond gee nie. ' +
+      'Erken prestasies openlik en gee duidelike, direkte terugvoer oor wat goed en wat verkeerd gaan.',
   },
 
   INSIG: {
@@ -84,6 +113,22 @@ const VITA_CONFIG = {
       'Kan afstandelik of koud voorkom in sosiale situasies',
       'Sukkel om inligting te deel voor dit in die eie oog "volmaak" is',
     ],
+    stressText:
+      'Wanneer Insig as stres-dimensie aktiveer, kan die persoon skielik intens analities word of in ' +
+      'ooranalise verval. Hulle mag stil, onttrokke of kriteries raak en probeer inligting versamel ' +
+      'om \'n situasie "te verstaan" voor hulle kan reageer. ' +
+      'Dit mag ander frustreer wat vinnige antwoorde verwag, maar is regtig \'n beskerming teen ' +
+      'die ongemak van onsekerheid.',
+    growthText:
+      'Om Insig as groei-area te ontwikkel, oefen om vrae te vra in plaas van net na te dink. ' +
+      'Lees, luister na gedagteprovoerende inhoud of leer van ander mense se ervarings. ' +
+      'Pas strategiese denke toe op jou eie lewe: "Waarom doen ek dit?" en "Wat is die regte vraag?" ' +
+      'Neem tyd om diep te dink oor ten minste een probleem per week.',
+    commWith:
+      'Gee die "hoekom" eerste. Ondersteun jou stellings met data, redes en verwysings. ' +
+      'Gee hulle tyd om te dink voor hulle antwoord — hulle sal terugkeer met diepgaande reaksies. ' +
+      'Moenie haastige, oppervlakkige gesprekke verwag nie. ' +
+      'Stuur inligting vooraf sodat hulle kan voorberei.',
   },
 
   LIEFDE: {
@@ -106,6 +151,21 @@ const VITA_CONFIG = {
       'Eie behoeftes word chronies laaste geprioritiseer',
       'Neem persoonlike verwerping of kritiek baie swaar',
     ],
+    stressText:
+      'Wanneer Liefde as stres-dimensie aktiveer, mag die persoon skielik baie sensitief vir ander se ' +
+      'emosies raak. Hulle mag probeer situasies "reg maak" of konflik in die kiem sny — dikwels ' +
+      'ten koste van eerlike kommunikasie. Verwerping of spanning in verhoudings tref hulle dan ' +
+      'harder as normaal en hul eie behoeftes verdwyn agter die behoefte om harmonie te herstel.',
+    growthText:
+      'Om Liefde as groei-area te ontwikkel, oefen om meer bewustelik verbindings te bou. ' +
+      'Leer om mense werklik te sien en te waardeer, nie net instrumenteel te beskou nie. ' +
+      'Ontwikkel empatie as \'n bewuste vaardigheid — vra hoe mense voel en luister sonder om ' +
+      'onmiddellik op te los. Een opregte gesprek per week kan hierdie dimensie aansienlik aktiveer.',
+    commWith:
+      'Begin persoonlik. Vra hoe dit met hulle gaan voordat jy sake bespreek. ' +
+      'Toon dat jy werklik luister en hul perspektief respekteer. ' +
+      'Vermy koue, formele kommunikasie — dit skep onnodig afstand en ondermyn vertroue. ' +
+      'Wees geduldig en laat hulle die verhouding voor die transaksie stel.',
   },
 
   EMOSIE: {
@@ -128,6 +188,21 @@ const VITA_CONFIG = {
       'Kwesbaar vir kritiek, verwerping en persoonlike aanvalle',
       'Subjektiewe besluitneming wanneer emosies hoog loop',
     ],
+    stressText:
+      'Wanneer Emosie as stres-dimensie aktiveer, kan die persoon skielik ekspressief, reaktief of ' +
+      'emosioneel oorweldigend word. Hulle kan hul gevoelens nie maklik terughou nie en dit mag op ' +
+      'maniere uitkom wat die situasie versleg. Hulle benodig ruimte om te prosesseer ' +
+      'voor hulle effektief kan reageer — dwang tot rasionaliteit op hierdie moment werk selde.',
+    growthText:
+      'Om Emosie as groei-area te ontwikkel, oefen om meer aandag te gee aan jou eie gevoelens as ' +
+      'bruikbare data. Leer om outentiek te kommunikeer — selfs oor moeilike emosies — op \'n ' +
+      'konstruktiewe wyse. Kreatiewe uitdrukking soos skryf, kuns of musiek kan hierdie dimensie ' +
+      'op \'n veilige wyse aktiveer en groei-energie vrystel.',
+    commWith:
+      'Wees outentiek en persoonlik. Vermy robotmatiese, formele kommunikasie. ' +
+      'Deel jou eie gevoel of reaksie — dit skep onmiddellike verbinding. ' +
+      'Erken hul passie en energie; moenie dit "af-koel" as onprofessioneel nie. ' +
+      'Toon dat jy werklik betrokke is, nie net die motiewe deurvoer nie.',
   },
 
   INISIATIEF: {
@@ -150,6 +225,21 @@ const VITA_CONFIG = {
       'Ongeduld met stadige prosesse of burokrasie',
       'Neem gelyktydig te veel nuwe projekte aan',
     ],
+    stressText:
+      'Wanneer Inisiatief as stres-dimensie aktiveer, kan die persoon impulsiewe besluite neem of nuwe ' +
+      'projekte begin om \'n gevoel van beheer terug te kry. Hulle vlug dikwels na nuutheid wanneer \'n ' +
+      'situasie te swaar raak — "begin iets nuuts" is hul manier om energie te herstel. ' +
+      'Dit mag soos wankonsekwentheid lyk vir ander, maar is regtig \'n uitlaatklep vir opgeboude spanning.',
+    growthText:
+      'Om Inisiatief as groei-area te ontwikkel, oefen om nuwe moontlikhede aktief te identifiseer en ' +
+      'te eksperimenteer. Neem bewuste risiko\'s, stel nuwe idees voor en bevraagteken die status quo ' +
+      'konstruktief. Leer dat voorwaartse beweging — selfs klein stappe — \'n kragtige bron van energie ' +
+      'en momentum kan wees wat jou profiel diep bemagtig.',
+    commWith:
+      'Skets die groot prentjie eerste — visie, potensiaal en moontlikhede inspireer hulle. ' +
+      'Hou detail-gesprekke so kort as moontlik: stuur die besonderhede in \'n e-pos. ' +
+      'Ondersteun hul idees voor jy dit evalueer — hulle floreer wanneer hulle voel hul visie ' +
+      'word ernstig opgeneem. Wees bereid om vinnig te beweeg en saam te eksperimenteer.',
   },
 };
 

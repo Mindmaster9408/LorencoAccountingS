@@ -12,7 +12,7 @@
  *   buildSpecialSections(data) — derives VISION, PATTERN, COMMUNICATION, etc.
  */
 
-const { VITA_CONFIG, VITA_LABELS } = require('./vita.config');
+const { VITA_CONFIG, VITA_LABELS, VITA_DIMENSIONS } = require('./vita.config');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +43,117 @@ function deriveSections(ranking) {
     GROWTH:    ranking[4],  // 5th — conscious development opportunity
     SHADOW:    ranking[5],  // 6th — least active; blind spots
   };
+}
+
+// ─── Static report sections ───────────────────────────────────────────────────
+
+const VITA_INTRODUCTION =
+  'VITA staan vir ses kerndryfkragte wat menslike gedrag en besluitneming rig: ' +
+  'Struktuur, Prestasie, Insig, Liefde, Emosie en Inisiatief.\n\n' +
+  'Jou VITA-kode toon in watter volgorde hierdie dryfkragte in jou huidige funksionering aktief is — ' +
+  'van die mees aktief (primêr) tot die minste aktief (skadu). ' +
+  'Dit is nie \'n vaste etiket nie. ' +
+  'Dit beskryf hoe jy tans neig om te dink, te besluit en te reageer in jou alledaagse lewe.\n\n' +
+  'Hierdie profiel is \'n bewustheidsinstrument. ' +
+  'Gebruik dit om jouself beter te verstaan, nie om jouself in \'n boks te plaas nie.';
+
+const VITA_NEXT_STEP =
+  'Hierdie verslag is die beginpunt van \'n dieper reis. ' +
+  'Die werklike waarde lê nie in die lees nie — dit lê in die toepassing.\n\n' +
+  'Tydens \'n begeleidingsessie word jou VITA-profiel gebruik om:\n' +
+  '- Spesifieke uitdagings in jou lewe of besigheid aan te spreek\n' +
+  '- Blinde kolle te identifiseer wat jou groei beperk\n' +
+  '- Doelwitte te stel wat in lyn is met jou dryfkragte\n' +
+  '- Konkrete strategieë te bou wat by jou unieke profiel pas\n\n' +
+  '*Praat met jou begeleier oor jou volgende stap.*';
+
+// ─── New build functions ──────────────────────────────────────────────────────
+
+function buildCodeExplanation(sections) {
+  const p = VITA_LABELS[sections.PRIMARY];
+  const s = VITA_LABELS[sections.SECONDARY];
+  const t = VITA_LABELS[sections.THIRD];
+  return (
+    `Jou huidige VITA-kode begin met **${p}**, ondersteun deur **${s}**, ` +
+    `met **${t}** as jou derde aktiewe dryfkrag. ` +
+    `Hierdie kombinasie beteken dat jy die meeste energie en motivasie put uit sake wat met ` +
+    `**${p}** verband hou, terwyl **${s}** jou aanpak en besluitneming vorm. ` +
+    `**${t}** tree op die voorgrond in spesifieke situasies waar jou eerste twee dryfkragte ` +
+    `alleen nie genoeg is nie.`
+  );
+}
+
+function buildStressText(sections) {
+  const cfg = VITA_CONFIG[sections.STRESS];
+  const label = VITA_LABELS[sections.STRESS];
+  return (
+    `Jou vierde dimensie, **${label}**, aktiveer as \'n onbewuste copingmeganisme wanneer jy ` +
+    `onder volgehoue druk of emosionele uitputting verkeer.\n\n` +
+    cfg.stressText
+  );
+}
+
+function buildGrowthText(sections) {
+  const cfg = VITA_CONFIG[sections.GROWTH];
+  const label = VITA_LABELS[sections.GROWTH];
+  return (
+    `Jou vyfde dimensie, **${label}**, verteenwoordig jou groei-area — ` +
+    `\'n dimensie wat jy bewustelik kan ontwikkel om jou impak en effektiwiteit aansienlik te verhoog.\n\n` +
+    cfg.growthText
+  );
+}
+
+function buildStrengthsSummary(sections) {
+  const dims = [sections.PRIMARY, sections.SECONDARY, sections.THIRD];
+  const allStrengths = dims.flatMap(d => VITA_CONFIG[d].strengths.slice(0, 2));
+  return bulletList(allStrengths);
+}
+
+function buildTriggers(sections) {
+  const energyMap = {
+    STRUKTUUR:  ['Voltooide take en afgemerkte lyste', 'Duidelike prosesse en orde', 'Sistemiese probleemoplossing'],
+    PRESTASIE:  ['Uitdagende doelwitte bereik', 'Sigbare vordering en resultate', 'Erkenning van prestasies'],
+    INSIG:      ['Leer en nuwe kennis opdoen', 'Diepgaande gesprekke en analitiese uitdagings', 'Probleme vanuit eerste beginsels oplos'],
+    LIEFDE:     ['Betekenisvolle verhoudings bou en versorg', 'Ander help en ondersteun', 'Saamwerk en span-energie ervaar'],
+    EMOSIE:     ['Outentieke, diep ervarings', 'Kreatiewe uitdrukking en persoonlike ekspressie', 'Inspirerende stories en mense ontmoet'],
+    INISIATIEF: ['Nuwe idees en projekte begin', 'Innovasie en eksperimentering', 'Visionêre gesprekke wat moontlikhede oopmaak'],
+  };
+  const items = [...energyMap[sections.PRIMARY], ...energyMap[sections.SECONDARY]];
+  return bulletList(items);
+}
+
+function buildTripwires(sections) {
+  const drainMap = {
+    STRUKTUUR:  ['Chaos, onduidelikheid en voortdurend veranderende planne', 'Onafgewerkte take en onopgeloste lossies', 'Onverwagte verstoings sonder konteks'],
+    PRESTASIE:  ['Stadige vordering of onnodige blokkasies', 'Gebrek aan erkenning vir bydraes', 'Onproduktiewe vergaderings en vermorsde tyd'],
+    INSIG:      ['Oppervlakkige gesprekke en haastige besluite sonder data', 'Onvolledige of onbetroubare inligting', 'Gedwonge sosiale interaksie sonder diepte'],
+    LIEFDE:     ['Konflik en gebrekkige harmonie in span of verhoudings', 'Koue, onpersoonlike omgewings', 'Verwerping of miskenning van bydraes'],
+    EMOSIE:     ['Onderdrukte, inoutentieke of valse omgewings', 'Robotmatiese, prosesgedrewe werk sonder betekenis', 'Kritiek sonder enige erkenning of balans'],
+    INISIATIEF: ['Herhaling, roetine en geslote strukture', 'Burokrasie en stadige besluitneming', 'Rigide omgewings sonder ruimte vir eksperimentering'],
+  };
+  const items = [...drainMap[sections.PRIMARY], ...drainMap[sections.SHADOW]];
+  return bulletList(items);
+}
+
+function buildCommTips() {
+  return VITA_DIMENSIONS.map(dim => {
+    const label = VITA_LABELS[dim];
+    const cfg   = VITA_CONFIG[dim];
+    return `**Met \'n ${label}-profiel:** ${cfg.commWith}`;
+  }).join('\n\n');
+}
+
+function buildReflectionQuestions(sections) {
+  const primary = VITA_LABELS[sections.PRIMARY];
+  const shadow  = VITA_LABELS[sections.SHADOW];
+  const growth  = VITA_LABELS[sections.GROWTH];
+  return [
+    `- Hoe gebruik jy jou primêre dryfkrag (**${primary}**) tans op \'n wyse wat jou en ander bemagtig?`,
+    `- In watter situasie het jou skadu-dimensie (**${shadow}**) onlangs jou besluitneming beïnvloed sonder dat jy dit agtergehad het?`,
+    `- Watter een konkrete stap kan jy hierdie week neem om jou groei-area (**${growth}**) bewustelik te aktiveer?`,
+    `- Dink aan \'n resente konflik of misverstand — hoe het jou profiel moontlik \'n rol gespeel?`,
+    `- Wie in jou nabye kring het \'n baie ander VITA-profiel as jy, en hoe kan jy die verskil as \'n aanvulling benut?`,
+  ].join('\n');
 }
 
 // ─── buildSpecialSections ─────────────────────────────────────────────────────
@@ -205,26 +316,54 @@ function buildVitaData(ranking) {
   const shadowCfg    = pick(sections.SHADOW);
 
   return {
-    RANKED_CODE: ranking.join(' \u2013 '),   // em-dash separated VITA code
+    // ── Header defaults (overridden by generateVitaReport) ──────────────────
+    CLIENT_NAME_LINE: '',
+    VITA_DATE:        '',
 
+    // ── Core code ───────────────────────────────────────────────────────────
+    RANKED_CODE:     ranking.join(' \u2013 '),
+
+    // ── Static sections ─────────────────────────────────────────────────────
+    INTRODUCTION:    VITA_INTRODUCTION,
+    CODE_EXPLANATION: buildCodeExplanation(sections),
+
+    // ── Primary dimension ───────────────────────────────────────────────────
     PRIMARY_LABEL:      primaryCfg.label,
     PRIMARY_VALUES:     commaList(primaryCfg.values),
     PRIMARY_BEHAVIOUR:  primaryCfg.behaviour,
     PRIMARY_STRENGTHS:  bulletList(primaryCfg.strengths),
     PRIMARY_WEAKNESSES: bulletList(primaryCfg.weaknesses),
 
-    SECONDARY_LABEL:     secondaryCfg.label,
-    SECONDARY_VALUES:    commaList(secondaryCfg.values),
-    SECONDARY_BEHAVIOUR: secondaryCfg.behaviour,
+    // ── Secondary dimension ─────────────────────────────────────────────────
+    SECONDARY_LABEL:      secondaryCfg.label,
+    SECONDARY_VALUES:     commaList(secondaryCfg.values),
+    SECONDARY_BEHAVIOUR:  secondaryCfg.behaviour,
+    SECONDARY_STRENGTHS:  bulletList(secondaryCfg.strengths),
+    SECONDARY_WEAKNESSES: bulletList(secondaryCfg.weaknesses),
 
-    THIRD_LABEL:  thirdCfg.label,
-    THIRD_VALUES: commaList(thirdCfg.values),
+    // ── Third dimension ─────────────────────────────────────────────────────
+    THIRD_LABEL:      thirdCfg.label,
+    THIRD_VALUES:     commaList(thirdCfg.values),
+    THIRD_BEHAVIOUR:  thirdCfg.behaviour,
+    THIRD_STRENGTHS:  bulletList(thirdCfg.strengths),
 
+    // ── Stress / Growth / Shadow ────────────────────────────────────────────
     STRESS_LABEL: VITA_LABELS[sections.STRESS],
+    STRESS_TEXT:  buildStressText(sections),
     GROWTH_LABEL: VITA_LABELS[sections.GROWTH],
-    SHADOW_LABEL: shadowCfg.label,
+    GROWTH_TEXT:  buildGrowthText(sections),
+    SHADOW_LABEL:      shadowCfg.label,
     SHADOW_WEAKNESSES: bulletList(shadowCfg.weaknesses),
 
+    // ── New enriched sections ───────────────────────────────────────────────
+    STRENGTHS_SUMMARY:    buildStrengthsSummary(sections),
+    TRIGGERS:             buildTriggers(sections),
+    TRIPWIRES:            buildTripwires(sections),
+    COMM_TIPS:            buildCommTips(),
+    REFLECTION_QUESTIONS: buildReflectionQuestions(sections),
+    NEXT_STEP:            VITA_NEXT_STEP,
+
+    // ── Derived special sections ────────────────────────────────────────────
     ...special,
   };
 }

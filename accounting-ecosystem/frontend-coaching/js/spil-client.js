@@ -10,6 +10,7 @@ import {
     VITA_DIMENSIONS, VITA_QUESTIONS,
     DIM_LABELS, DIM_COLORS, DIM_DESCRIPTIONS, DIM_GROWTH
 } from './spil-questions.js';
+import { renderVitaReportPanel } from './vita-report-panel.js';
 
 export async function renderSpilClientPanel(client, containerId) {
     const container = document.getElementById(containerId);
@@ -253,10 +254,24 @@ function renderReport(container, profile, client, containerId) {
                     Dit is slegs die beginpunt. Hierdie profiel lei bewustheid - dit definieer nie identiteit nie.
                 </p>
             </div>
+            <div style="margin-top:16px;padding:14px 16px;border:1px solid #e0d0ff;border-radius:8px;background:#f8f4ff">
+                <div style="font-size:10px;font-weight:700;color:#7c5cbf;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">Volledige Verslag</div>
+                <p style="margin:0 0 10px 0;font-size:13px;color:#64748b;line-height:1.55">Genereer 'n volledige 18-afdeling VITA-verslag vir hierdie profiel.</p>
+                <button id="vita-full-report-btn" style="padding:9px 20px;background:#7c5cbf;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">Genereer Volledige Verslag</button>
+            </div>
+            <div id="vita-full-report-area"></div>
         </div>`;
 
     document.getElementById('vita-retake-btn').addEventListener('click', () => {
         renderQuestionnaire(container, client, containerId, profile);
+    });
+
+    document.getElementById('vita-full-report-btn').addEventListener('click', function () {
+        this.disabled = true;
+        this.textContent = 'Genereer...';
+        const area = document.getElementById('vita-full-report-area');
+        const downloadName = (client.name || 'Klient').replace(/\s+/g, '_');
+        renderVitaReportPanel(area, ranking, client.name || '', downloadName);
     });
 }
 

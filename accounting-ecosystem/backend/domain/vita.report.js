@@ -48,12 +48,22 @@ function mergeTemplate(template, data) {
  * @param {string[]} ranking — 6-element ordered array of VITA dimension keys
  * @returns {{ markdown: string, generatedAt: string }}
  */
-function generateVitaReport(ranking) {
+function generateVitaReport(ranking, clientName = '') {
   const generatedAt = new Date().toISOString();
   const data        = buildVitaData(ranking);
 
   // Inject the timestamp into the data map so the template can use {{GENERATED_AT}}
   data.GENERATED_AT = generatedAt;
+
+  // Inject client name line (empty string if anonymous — template renders nothing)
+  data.CLIENT_NAME_LINE = clientName
+    ? `**Kliënt:** ${clientName}\n`
+    : '';
+
+  // Inject formatted date in Afrikaans locale
+  data.VITA_DATE = new Date().toLocaleDateString('af-ZA', {
+    day: '2-digit', month: 'long', year: 'numeric',
+  });
 
   const markdown = mergeTemplate(VITA_TEMPLATE, data);
 
