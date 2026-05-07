@@ -3067,18 +3067,43 @@
                 allowances.push({ description: 'Paid at Different Rate', amount: multiRateAmount });
             }
 
+            // Frozen-period flag: true for DB locked snapshots AND old localStorage snapshots
+            var _isFrozenPeriod = !!(backedCalc && backedCalc._isLockedSnapshot) || !!_frozenLocalSnap;
+
             // Build the calc object: authoritative numbers from backend, display lists from KV
             var calc = backedCalc ? Object.assign({}, backedCalc) : {
                 gross: 0, taxableGross: 0, paye: 0, uif: 0, sdl: 0,
                 deductions: 0, net: 0, medicalCredit: 0, negativeNetPay: false,
                 overtimeAmount: overtimeAmount, shortTimeAmount: shortTimeAmount
             };
+
+            // For old individually-finalized periods (localStorage snapshot, no DB locked snapshot):
+            // the backend recalculated from the current salary — ALL financial totals must be
+            // overridden with frozen values from the localStorage snapshot so the payslip stays
+            // immutable after salary changes in other periods.
+            if (_frozenLocalSnap && !(backedCalc && backedCalc._isLockedSnapshot)) {
+                if (_frozenLocalSnap.gross         != null) calc.gross         = _frozenLocalSnap.gross;
+                if (_frozenLocalSnap.taxableGross  != null) calc.taxableGross  = _frozenLocalSnap.taxableGross;
+                if (_frozenLocalSnap.paye          != null) calc.paye          = _frozenLocalSnap.paye;
+                if (_frozenLocalSnap.uif           != null) calc.uif           = _frozenLocalSnap.uif;
+                if (_frozenLocalSnap.net           != null) calc.net           = _frozenLocalSnap.net;
+                if (_frozenLocalSnap.medicalCredit != null) calc.medicalCredit = _frozenLocalSnap.medicalCredit;
+                if (_frozenLocalSnap.overtimeAmount  != null) calc.overtimeAmount  = _frozenLocalSnap.overtimeAmount;
+                if (_frozenLocalSnap.shortTimeAmount != null) calc.shortTimeAmount = _frozenLocalSnap.shortTimeAmount;
+                // deductions stored as [{description, amount}] — extract total number
+                if (Array.isArray(_frozenLocalSnap.deductions) && _frozenLocalSnap.deductions[0])
+                    calc.deductions = parseFloat(_frozenLocalSnap.deductions[0].amount) || 0;
+            }
+
             calc.basicSalary = _lockedBasicSalary;
             calc.allowances = allowances;
             calc.deductionsList = deductionsList;
-            // Only override overtime/shortTime display amounts from KV if backend didn't return them
-            if (!calc.overtimeAmount) calc.overtimeAmount = overtimeAmount;
-            if (!calc.shortTimeAmount) calc.shortTimeAmount = shortTimeAmount;
+            // For draft periods only: fall back to locally computed overtime/short-time if backend
+            // didn't return them. Frozen periods already have correct values from above.
+            if (!_isFrozenPeriod) {
+                if (!calc.overtimeAmount)  calc.overtimeAmount  = overtimeAmount;
+                if (!calc.shortTimeAmount) calc.shortTimeAmount = shortTimeAmount;
+            }
             calc.totalDeductions = calc.deductions;
 
             // Rates & Quantities data (for payslip display and PDF)
@@ -3091,7 +3116,6 @@
             // localStorage (not yet in the employee_payroll_items DB table). We recompute here for
             // display purposes only: 1% of gross up to the SA UIF monthly remuneration ceiling.
             // EXCEPTION: finalized snapshots have authoritative frozen UIF — never override.
-            var _isFrozenPeriod = !!(backedCalc && backedCalc._isLockedSnapshot) || !!_frozenLocalSnap;
             if ((calc.uif || 0) > 0 && !_isFrozenPeriod) {
                 var displayGrossForUif = parseFloat(calc.basicSalary || 0);
                 (allowances || []).forEach(function(a) { displayGrossForUif += parseFloat(a.amount) || 0; });
