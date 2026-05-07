@@ -357,6 +357,7 @@ function formatForResponse(snapshot) {
     id:             snapshot.id,
     company_id:     snapshot.company_id,
     employee_id:    snapshot.employee_id,
+    payroll_run_id: snapshot.payroll_run_id || null,
     period_key:     snapshot.period_key,
     status:         snapshot.status,
     is_locked:      snapshot.is_locked,

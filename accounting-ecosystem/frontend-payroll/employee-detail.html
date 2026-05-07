@@ -2851,6 +2851,16 @@
                     if (calc && calcResult.data.snapshot && calcResult.data.snapshot.basic_salary != null) {
                         calc._snapshotBasicSalary = calcResult.data.snapshot.basic_salary;
                     }
+                    // Store locked-snapshot flag and frozen line items so getPayslipData()
+                    // can use the immutable snapshot allowances/deductions instead of
+                    // live DB items — preventing post-finalization item changes leaking
+                    // into historical payslip display.
+                    if (calc && calcResult.data.locked) {
+                        calc._isLockedSnapshot = true;
+                    }
+                    if (calc && calcResult.data.snapshot && Array.isArray(calcResult.data.snapshot.payslip_line_items)) {
+                        calc._snapshotLineItems = calcResult.data.snapshot.payslip_line_items;
+                    }
                 } else if (calcResult.data && calcResult.data.error) {
                     console.error('[calculatePayslip] backend error:', calcResult.data.error);
                 }
@@ -2917,6 +2927,14 @@
             document.getElementById('payslipActions').style.display = 'flex';
             // Cache for synchronous getPayslipData() (PDF/preview)
             _lastBackendCalc = calc;
+            // For Execute Payroll-finalized periods: update the basic salary display in the
+            // summary panel now that we have the authoritative frozen value from the backend.
+            // renderPayroll() runs before calculatePayslip() and may show the cross-period
+            // payrollData.basic_salary if no emp_historical_... localStorage key exists.
+            if (calc && calc._isLockedSnapshot && calc._snapshotBasicSalary != null) {
+                var _bsEl = document.getElementById('basicSalary');
+                if (_bsEl) _bsEl.textContent = formatMoney(calc._snapshotBasicSalary);
+            }
             return calc;
         }
 
@@ -2938,32 +2956,77 @@
             var multiRate    = _periodInputsCache.multiRate;
             var shortTime    = _periodInputsCache.shortTime;
 
-            // Use the locked snapshot's basic salary when available (_snapshotBasicSalary is set
-            // from snapshot.basic_salary in calculatePayslip). Falls back to live payrollData only
-            // for draft/uncalculated periods where no snapshot exists.
+            // ── FINALIZED SNAPSHOT FALLBACK CHAIN ─────────────────────────────
+            // For finalized periods, never use the cross-period payrollData.basic_salary
+            // as the salary source. It is NOT period-specific: any salary edit (e.g. for
+            // April) overwrites the same key and would contaminate all historical views.
+            //
+            // Priority order:
+            //   1. backedCalc._snapshotBasicSalary  — from DB locked snapshot (Execute Payroll)
+            //   2. emp_historical_... localStorage  — from old individual-finalize button
+            //   3. payrollData.basic_salary         — only for draft/uncalculated periods
+            var _frozenLocalSnap = null;
+            try {
+                var _histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+                var _histStr = safeLocalStorage.getItem(_histKey);
+                if (_histStr) _frozenLocalSnap = JSON.parse(_histStr);
+            } catch(e) {}
+
             var _lockedBasicSalary = (backedCalc && backedCalc._snapshotBasicSalary != null)
                 ? backedCalc._snapshotBasicSalary
-                : (payrollData.basic_salary || 0);
+                : (_frozenLocalSnap && _frozenLocalSnap.basic_salary != null)
+                    ? _frozenLocalSnap.basic_salary
+                    : (payrollData.basic_salary || 0);
             var _basicSalForPct = _lockedBasicSalary;
+
+            // ── ALLOWANCES — use frozen items for finalized periods ────────────
             var allowances = [];
-            (payrollData.regular_inputs || []).forEach(function(ri) {
-                var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
-                if (ri.type !== 'deduction') allowances.push({ description: ri.description || ri.type, amount: amount });
-            });
-            currentInputs.forEach(function(ci) {
-                var ciType = ci.item_type || ci.type;
-                if (ciType !== 'deduction') allowances.push({ description: ci.description || ciType, amount: ci.amount });
-            });
+            if (backedCalc && backedCalc._isLockedSnapshot && Array.isArray(backedCalc._snapshotLineItems)) {
+                // DB locked snapshot (Execute Payroll): use frozen recurring items
+                backedCalc._snapshotLineItems.forEach(function(item) {
+                    if (item.type !== 'deduction') allowances.push({ description: item.description || item.type, amount: Number(item.amount) || 0 });
+                });
+                // Period-specific one-off inputs are frozen by payroll_period_id in DB
+                currentInputs.forEach(function(ci) {
+                    var ciType = ci.item_type || ci.type;
+                    if (ciType !== 'deduction') allowances.push({ description: ci.description || ciType, amount: ci.amount });
+                });
+            } else if (_frozenLocalSnap && Array.isArray(_frozenLocalSnap.allowances)) {
+                // Old localStorage snapshot (individual finalize button): use stored frozen list
+                allowances = _frozenLocalSnap.allowances.slice();
+            } else {
+                // Draft / no frozen snapshot: use current live items
+                (payrollData.regular_inputs || []).forEach(function(ri) {
+                    var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
+                    if (ri.type !== 'deduction') allowances.push({ description: ri.description || ri.type, amount: amount });
+                });
+                currentInputs.forEach(function(ci) {
+                    var ciType = ci.item_type || ci.type;
+                    if (ciType !== 'deduction') allowances.push({ description: ci.description || ciType, amount: ci.amount });
+                });
+            }
 
             var deductionsList = [];
-            (payrollData.regular_inputs || []).forEach(function(ri) {
-                var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
-                if (ri.type === 'deduction') deductionsList.push({ description: ri.description || 'Deduction', amount: amount });
-            });
-            currentInputs.forEach(function(ci) {
-                var ciType = ci.item_type || ci.type;
-                if (ciType === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
-            });
+            if (backedCalc && backedCalc._isLockedSnapshot && Array.isArray(backedCalc._snapshotLineItems)) {
+                backedCalc._snapshotLineItems.forEach(function(item) {
+                    if (item.type === 'deduction') deductionsList.push({ description: item.description || 'Deduction', amount: Number(item.amount) || 0 });
+                });
+                currentInputs.forEach(function(ci) {
+                    var ciType = ci.item_type || ci.type;
+                    if (ciType === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
+                });
+            } else if (_frozenLocalSnap && Array.isArray(_frozenLocalSnap.deductionsList)) {
+                deductionsList = _frozenLocalSnap.deductionsList.slice();
+            } else {
+                (payrollData.regular_inputs || []).forEach(function(ri) {
+                    var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
+                    if (ri.type === 'deduction') deductionsList.push({ description: ri.description || 'Deduction', amount: amount });
+                });
+                currentInputs.forEach(function(ci) {
+                    var ciType = ci.item_type || ci.type;
+                    if (ciType === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
+                });
+            }
 
             // Compute display-only overtime/short-time amounts from server-backed cache
             var hourlyRate = PayrollEngine.calcHourlyRate(_lockedBasicSalary, _workingDaysData, _workScheduleHoursPerDay);
@@ -3027,8 +3090,9 @@
             // The backend may have calculated UIF on a lower gross if some allowances exist only in
             // localStorage (not yet in the employee_payroll_items DB table). We recompute here for
             // display purposes only: 1% of gross up to the SA UIF monthly remuneration ceiling.
-            // Only override when UIF applies (calc.uif > 0 from the engine).
-            if ((calc.uif || 0) > 0) {
+            // EXCEPTION: finalized snapshots have authoritative frozen UIF — never override.
+            var _isFrozenPeriod = !!(backedCalc && backedCalc._isLockedSnapshot) || !!_frozenLocalSnap;
+            if ((calc.uif || 0) > 0 && !_isFrozenPeriod) {
                 var displayGrossForUif = parseFloat(calc.basicSalary || 0);
                 (allowances || []).forEach(function(a) { displayGrossForUif += parseFloat(a.amount) || 0; });
                 displayGrossForUif += parseFloat(calc.overtimeAmount || 0);
