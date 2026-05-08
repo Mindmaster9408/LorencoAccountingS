@@ -2870,6 +2870,32 @@
             }
             // Sync the locked-state UI — DB snapshot is the only source of truth
             updatePayslipUI(!!(calc && calc._isLockedSnapshot));
+
+            // Re-sync Payroll Summary with display-correct values.
+            // The raw backend calc.gross excludes allowances (it is the taxable-income gross).
+            // getPayslipData() adds allowances to produce the full earnings total shown on the payslip.
+            // We patch gross, UIF (recomputed from full gross), and net here so the summary
+            // matches the payslip exactly.
+            try {
+                var _pd = getPayslipData();
+                var _pc = _pd.calc;
+                var _dGross = parseFloat(_pc.basicSalary || 0);
+                (_pc.allowances || []).forEach(function(a) { _dGross += parseFloat(a.amount) || 0; });
+                _dGross += parseFloat(_pc.overtimeAmount || 0);
+                _dGross -= parseFloat(_pc.shortTimeAmount || 0);
+                _dGross = Math.round(_dGross * 100) / 100;
+                var _dDeductions = (_pc.deductionsList || []).reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0);
+                var _dNet = Math.round((_dGross - parseFloat(_pc.paye || 0) - parseFloat(_pc.uif || 0) - _dDeductions) * 100) / 100;
+                document.getElementById('totalGross').textContent = formatMoney(_dGross);
+                document.getElementById('totalUIF').textContent = formatMoney(_pc.uif || 0);
+                document.getElementById('totalDeductions').textContent = formatMoney(_dDeductions);
+                var _netEl2 = document.getElementById('totalNet');
+                _netEl2.textContent = formatMoney(_dNet);
+                _netEl2.style.color = _dNet < 0 ? '#dc3545' : '#28a745';
+                var _warnEl2 = document.getElementById('negativeNetWarning');
+                if (_warnEl2) _warnEl2.style.display = _dNet < 0 ? 'block' : 'none';
+            } catch(e) { console.warn('[calculatePayslip] summary sync:', e); }
+
             return calc;
         }
 
