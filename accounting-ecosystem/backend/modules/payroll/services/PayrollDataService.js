@@ -89,12 +89,11 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     supabase
   );
 
-  // Step 4b: Fetch company SDL/UIF registration flags from companies table.
-  // These control whether SDL/UIF are calculated (true = calculate, false = 0).
-  const companyRegistrationFlags = await fetchCompanyRegistrationFlags(
-    companyId,
-    supabase
-  );
+  // Step 4b: Fetch company SDL/UIF registration flags and employee UIF exemption in parallel.
+  const [companyRegistrationFlags, employeeUifExempt] = await Promise.all([
+    fetchCompanyRegistrationFlags(companyId, supabase),
+    fetchUifExempt(companyId, employeeId, supabase)
+  ]);
 
   // Step 5: Fetch recurring payroll items for this employee
   const recurringItems = await fetchRecurringPayrollItems(
@@ -119,7 +118,8 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     recurringItems,
     periodInputs,
     period,
-    companyRegistrationFlags
+    companyRegistrationFlags,
+    employeeUifExempt
   );
 
   return normalizedInput;
@@ -376,6 +376,26 @@ async function fetchCompanyRegistrationFlags(companyId, supabase) {
 }
 
 /**
+ * Fetch employee-level UIF exemption flag from employee_payroll_setup.
+ * Returns false (not exempt) by default — safe for employees with no setup row.
+ */
+async function fetchUifExempt(companyId, employeeId, supabase) {
+  const { data, error } = await supabase
+    .from('employee_payroll_setup')
+    .select('uif_exempt')
+    .eq('company_id', companyId)
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[PayrollDataService] fetchUifExempt: query error, defaulting to not exempt.', error.code);
+    return false;
+  }
+
+  return data?.uif_exempt === true;
+}
+
+/**
  * Fetch recurring payroll items assigned to employee.
  * E.g., commission, allowances, deductions, etc.
  */
@@ -482,7 +502,8 @@ function normalizeCalculationInput(
   recurringItems,
   periodInputs,
   period,
-  companyRegistrationFlags
+  companyRegistrationFlags,
+  employeeUifExempt
 ) {
   // Calculate age at the END of the SA tax year (28/29 Feb) — SARS requires rebate tier
   // to be determined at year-end, not at today's date or the current pay period date.
@@ -568,6 +589,9 @@ function normalizeCalculationInput(
       // Defaults to true for backward compatibility if flags not yet in DB.
       sdl_registered: companyRegistrationFlags ? companyRegistrationFlags.sdl_registered !== false : true,
       uif_registered: companyRegistrationFlags ? companyRegistrationFlags.uif_registered !== false : true,
+      // Employee-level UIF exemption from employee_payroll_setup.uif_exempt.
+      // true = this specific employee is exempt from UIF regardless of company registration.
+      uif_exempt: employeeUifExempt === true,
       // Voluntary tax over-deduction config from the employee's saved record.
       // Normalised here so that both /api/payroll/calculate (single-employee preview)
       // and /api/payroll/run (Execute Payroll) receive the same config automatically.
@@ -652,6 +676,7 @@ module.exports = {
   fetchWorkSchedule,
   fetchCompanyPayrollSettings,
   fetchCompanyRegistrationFlags,
+  fetchUifExempt,
   fetchRecurringPayrollItems,
   fetchPeriodInputs
 };

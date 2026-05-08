@@ -3032,11 +3032,15 @@
             calc.ratesEntries      = ratesEntries;
 
             // Recompute UIF from the correct display gross so the payslip is internally consistent.
-            // The backend may have calculated UIF on a lower gross if some allowances exist only in
-            // localStorage (not yet in the employee_payroll_items DB table). We recompute here for
-            // display purposes only: 1% of gross up to the SA UIF monthly remuneration ceiling.
-            // EXCEPTION: finalized snapshots have authoritative frozen UIF — never override.
-            if ((calc.uif || 0) > 0 && !_isFrozenPeriod) {
+            // The backend may have calculated UIF on a different gross (e.g. allowances added after
+            // the last Execute Payroll run). We recompute here for display: 1% up to the SA ceiling.
+            // EXCEPTIONS that keep UIF = 0:
+            //   - Finalized (locked) snapshots — frozen value is authoritative.
+            //   - Backend returned 0 AND employee is a director or the company is not UIF-registered
+            //     (detected by checking backedCalc flags from the snapshot).
+            // For all other draft periods: always recompute so UIF matches the displayed earnings.
+            var _uifIntentionallyZero = !!(backedCalc && (backedCalc.is_director || backedCalc.uif_exempt));
+            if (!_isFrozenPeriod && !_uifIntentionallyZero) {
                 var displayGrossForUif = parseFloat(calc.basicSalary || 0);
                 (allowances || []).forEach(function(a) { displayGrossForUif += parseFloat(a.amount) || 0; });
                 displayGrossForUif += parseFloat(calc.overtimeAmount || 0);

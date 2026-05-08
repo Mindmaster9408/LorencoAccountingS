@@ -806,6 +806,8 @@ const PayrollEngine = {
         // Directors are excluded from UIF per the Unemployment Insurance Act.
         // is_director === true overrides even when company is UIF-registered.
         if (employeeOptions && employeeOptions.is_director === true) { uif = 0; }
+        // Employee-level UIF exemption (stored in employee_payroll_setup.uif_exempt).
+        if (employeeOptions && employeeOptions.uif_exempt === true) { uif = 0; }
 
         // === VOLUNTARY TAX OVER-DEDUCTION ===
         // Three supported scenarios: fixed, variable (current period only), bonus_spread (period range).
@@ -925,7 +927,11 @@ const PayrollEngine = {
             uif_monthly_cap:         tables.UIF_MONTHLY_CAP,
             marginal_rate:           _marginalRate,
             marginal_bracket:        _marginalBracket,
-            tax_year:                tables.TAX_YEAR || this.TAX_YEAR
+            tax_year:                tables.TAX_YEAR || this.TAX_YEAR,
+            // Exemption flags — included so the frontend can detect intentional UIF = 0
+            // and avoid incorrectly recomputing UIF from display gross for exempt employees.
+            is_director:  !!(employeeOptions && employeeOptions.is_director),
+            uif_exempt:   !!(employeeOptions && employeeOptions.uif_exempt)
         };
     },
 
