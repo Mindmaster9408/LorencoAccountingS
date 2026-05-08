@@ -1776,111 +1776,50 @@
         function getMultiRateKey() { return 'emp_multi_rate_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod; }
         function getLeaveKey() { return 'emp_leave_' + currentCompanyId + '_' + currentEmpId; }
         function getNotesKey() { return 'emp_notes_' + currentCompanyId + '_' + currentEmpId; }
-        function getPayslipStatusKey() { return 'emp_payslip_status_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod; }
-
-        // ========== PAYSLIP STATUS ==========
-        function getPayslipStatus() {
-            const stored = safeLocalStorage.getItem(getPayslipStatusKey());
-            return stored ? JSON.parse(stored) : { status: 'draft' };
-        }
-
+        // ========== PAYSLIP LOCKED STATE \u2014 DB SNAPSHOT ONLY ==========
+        // Lock status is read exclusively from the backend payroll_snapshots.is_locked flag,
+        // returned by POST /api/payroll/calculate when the period is finalized.
+        // The old localStorage-based individual finalize path has been removed.
+        // Finalization is only possible through Execute Payroll \u2192 Finalize.
         function isPayrunLockedForPeriod() {
-            const payruns = JSON.parse(safeLocalStorage.getItem('payruns_' + currentCompanyId) || '[]');
-            return payruns.find(pr => pr.period === currentPeriod && (pr.status === 'finalized' || pr.status === 'paid'));
+            return !!(window._lastBackendCalc && window._lastBackendCalc._isLockedSnapshot);
         }
 
         function isPayslipLocked() {
-            if (isPayrunLockedForPeriod()) return true;
-            var ps = getPayslipStatus();
-            return !!(ps && ps.status === 'finalized');
+            return isPayrunLockedForPeriod();
         }
 
         function _requireNotLocked() {
             if (isPayrunLockedForPeriod()) {
-                alert('This period is locked by a finalized pay run. Use Request Unlock to make changes.');
-                return false;
-            }
-            var ps = getPayslipStatus();
-            if (ps && ps.status === 'finalized') {
-                alert('This payslip is finalized. Click "\u21A9 Unfinalize" to make changes.');
+                alert('This period is locked by a finalized pay run. Use Execute Payroll to manage finalized payslips.');
                 return false;
             }
             return true;
         }
 
-        function updatePayslipUI() {
-            const psStatus = getPayslipStatus();
-            const lockedRun = isPayrunLockedForPeriod();
-            const statusBar = document.getElementById('payslipStatusBar');
-            const btnArea = document.getElementById('finalizeBtn');
-            const content = document.getElementById('payrollContent');
+        function updatePayslipUI(isLocked) {
+            var locked = !!isLocked;
+            var statusBar = document.getElementById('payslipStatusBar');
+            var btnArea = document.getElementById('finalizeBtn');
+            var content = document.getElementById('payrollContent');
+            if (!statusBar || !content) return;
 
             content.classList.remove('locked-overlay');
 
-            // Buttons injected into the status bar sit outside #payrollContent and are never covered by the overlay
-            var viewBtns = '<div style="display:flex; gap:10px; margin-top:10px;">' +
-                '<button class="btn" style="flex:1;" onclick="calculatePayslip().then(previewPayslip)">👁 View Payslip</button>' +
-                '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>' +
-                '</div>';
+            var viewBtns = '<div style="display:flex; gap:10px; margin-top:10px;">'
+                + '<button class="btn" style="flex:1;" onclick="calculatePayslip().then(previewPayslip)">👁 View Payslip</button>'
+                + '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>'
+                + '</div>';
 
-            if (lockedRun && psStatus.status === 'finalized') {
-                // Pay run exists AND payslip finalized = fully locked
-                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>' + viewBtns;
-                btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
-                content.classList.add('locked-overlay');
-            } else if (psStatus.status === 'finalized') {
-                // Finalized but no pay run yet = can unfinalize freely
-                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + formatDate(parseStandardDate(psStatus.finalized_date), 'ZA') + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
-                btnArea.innerHTML = '<button class="btn-unfinalize" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
+            if (locked) {
+                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Finalized — Locked by a finalized pay run. Manage via Execute Payroll.</div>' + viewBtns;
+                if (btnArea) btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
                 content.classList.add('locked-overlay');
             } else {
-                // Draft
-                statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 Draft — Finalize this payslip to include it in a pay run.</div>';
-                btnArea.innerHTML = '<button class="btn-finalize" onclick="finalizePayslip()">✓ Finalize Payslip</button>';
+                statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 Draft — Run through Execute Payroll to finalize.</div>';
+                if (btnArea) btnArea.innerHTML = '';
             }
             Permissions.enforceUI();
-        }
-
-        async function finalizePayslip() {
-            if (!Permissions.require('FINALIZE_PAYSLIP')) return;
-            // Auto-calculate before finalizing and capture result to freeze values
-            var calc = await calculatePayslip();
-            // Capture full itemized data before confirming — so preview/PDF stay correct after lock
-            var fullData = getPayslipData();
-            const session = AUTH.getSession();
-            if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '? It will be locked for editing.')) return;
-            const status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
-            safeLocalStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
-            // Save frozen snapshot — includes itemized allowances/deductions so preview/PDF never recalculate
-            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-            safeLocalStorage.setItem(histKey, JSON.stringify({
-                basic_salary: payrollData.basic_salary || 0,
-                gross: calc.gross, taxableGross: calc.taxableGross || calc.gross,
-                periodicTaxableGross: calc.periodicTaxableGross || 0,
-                onceOffTaxableGross:  calc.onceOffTaxableGross  || 0,
-                paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
-                deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
-                net: calc.net, source: 'finalized',
-                finalized_date: status.finalized_date, finalized_by: status.finalized_by,
-                overtimeAmount: calc.overtimeAmount || 0,
-                shortTimeAmount: calc.shortTimeAmount || 0,
-                medicalCredit: calc.medicalCredit || 0,
-                // Full itemized lists — used by preview/PDF to avoid recalculation
-                allowances: fullData.calc.allowances || [],
-                deductionsList: fullData.calc.deductionsList || []
-            }));
-            AuditTrail.logFinalize(currentCompanyId, 'payslip', 'Finalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
-            updatePayslipUI();
-        }
-
-        function unfinalizePayslip() {
-            if (!Permissions.require('UNFINALIZE_PAYSLIP')) return;
-            if (!confirm('Unfinalize this payslip? It will be editable again.')) return;
-            safeLocalStorage.removeItem(getPayslipStatusKey());
-            // Remove the frozen snapshot so values recalculate live
-            safeLocalStorage.removeItem('emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod);
-            AuditTrail.logUnfinalize(currentCompanyId, 'payslip', 'Unfinalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
-            updatePayslipUI();
         }
 
         function requestManagerAuth() {
@@ -1927,8 +1866,8 @@
                 // Success — server has removed the finalization state
                 const authorizedByName = (unlockData.unlockedBy && unlockData.unlockedBy.authorizedByName) || email;
                 closeModal('managerAuthModal');
-                loadPayrollData();   // reload so payroll inputs are live again
-                updatePayslipUI();
+                updatePayslipUI(false);  // immediate feedback — reload will confirm via DB
+                loadPayrollData();       // reload so payroll inputs are live again
                 if (typeof showSaveToast === 'function') {
                     showSaveToast('Payslip unlocked by ' + authorizedByName, 'warning', 4000);
                 } else {
@@ -1979,6 +1918,10 @@
 
                 renderPayroll();
                 updatePayslipUI();
+                // Auto-calculate to determine locked state from DB snapshot.
+                // updatePayslipUI() above shows draft by default; calculatePayslip()
+                // will call updatePayslipUI(true/false) with the authoritative DB state.
+                calculatePayslip().catch(function(e) { console.warn('[loadPayrollData] auto-calc failed:', e); });
             } catch(e) {
                 console.error('Error loading payroll data:', e);
                 setTimeout(function() {
@@ -2162,18 +2105,9 @@
                     payrollData.regular_inputs = [];
                 }
                 
-                // Show frozen basic salary for finalized periods
-                var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-                var frozen = safeLocalStorage.getItem(histKey);
+                // Show current employee basic salary. For finalized periods, calculatePayslip()
+                // will overwrite this element with the frozen DB snapshot value after it resolves.
                 var displaySalary = payrollData.basic_salary || 0;
-                if (frozen) { 
-                    try { 
-                        var snap = JSON.parse(frozen); 
-                        if (snap && snap.basic_salary !== undefined) displaySalary = snap.basic_salary; 
-                    } catch(e) { 
-                        console.warn('Error parsing frozen data:', e); 
-                    } 
-                }
                 
                 var basicSalaryEl = document.getElementById('basicSalary');
                 if (basicSalaryEl) {
@@ -2927,25 +2861,24 @@
             document.getElementById('payslipActions').style.display = 'flex';
             // Cache for synchronous getPayslipData() (PDF/preview)
             _lastBackendCalc = calc;
-            // For Execute Payroll-finalized periods: update the basic salary display in the
-            // summary panel now that we have the authoritative frozen value from the backend.
-            // renderPayroll() runs before calculatePayslip() and may show the cross-period
-            // payrollData.basic_salary if no emp_historical_... localStorage key exists.
+            // For finalized periods: update basic salary display with the frozen value from
+            // the DB snapshot. renderPayroll() runs before this and uses the live cross-period
+            // payrollData.basic_salary which may be from a different period.
             if (calc && calc._isLockedSnapshot && calc._snapshotBasicSalary != null) {
                 var _bsEl = document.getElementById('basicSalary');
                 if (_bsEl) _bsEl.textContent = formatMoney(calc._snapshotBasicSalary);
             }
+            // Sync the locked-state UI — DB snapshot is the only source of truth
+            updatePayslipUI(!!(calc && calc._isLockedSnapshot));
             return calc;
         }
 
         // ========== PAYSLIP PREVIEW & PDF EXPORT ==========
         function getPayslipData() {
             // Authoritative numbers come from _lastBackendCalc (set by calculatePayslip()).
-            // The emp_historical_... KV blob fallback has been removed — it was written
-            // by the old frontend engine with incorrect tax tables (pre-2026/2027 fix).
-            //
-            // Itemized allowances/deductions lists are built from the KV input data
-            // (display-only for PDF) and are combined with the backend totals.
+            // Authoritative numbers come from _lastBackendCalc (set by calculatePayslip()).
+            // For finalized periods, the backend returns the immutable locked snapshot directly.
+            // payroll_snapshots is the only finalization truth — no localStorage fallback.
 
             var backedCalc = _lastBackendCalc;
 
@@ -2956,46 +2889,27 @@
             var multiRate    = _periodInputsCache.multiRate;
             var shortTime    = _periodInputsCache.shortTime;
 
-            // ── FINALIZED SNAPSHOT FALLBACK CHAIN ─────────────────────────────
-            // For finalized periods, never use the cross-period payrollData.basic_salary
-            // as the salary source. It is NOT period-specific: any salary edit (e.g. for
-            // April) overwrites the same key and would contaminate all historical views.
-            //
-            // Priority order:
-            //   1. backedCalc._snapshotBasicSalary  — from DB locked snapshot (Execute Payroll)
-            //   2. emp_historical_... localStorage  — from old individual-finalize button
-            //   3. payrollData.basic_salary         — only for draft/uncalculated periods
-            var _frozenLocalSnap = null;
-            try {
-                var _histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-                var _histStr = safeLocalStorage.getItem(_histKey);
-                if (_histStr) _frozenLocalSnap = JSON.parse(_histStr);
-            } catch(e) {}
-
+            // ── SALARY SOURCE ──────────────────────────────────────────────────
+            // For DB locked snapshots: use the frozen basic_salary from calculation_input.
+            // For draft periods: use the current live employee salary.
             var _lockedBasicSalary = (backedCalc && backedCalc._snapshotBasicSalary != null)
                 ? backedCalc._snapshotBasicSalary
-                : (_frozenLocalSnap && _frozenLocalSnap.basic_salary != null)
-                    ? _frozenLocalSnap.basic_salary
-                    : (payrollData.basic_salary || 0);
+                : (payrollData.basic_salary || 0);
             var _basicSalForPct = _lockedBasicSalary;
 
-            // ── ALLOWANCES — use frozen items for finalized periods ────────────
+            // ── ALLOWANCES ─────────────────────────────────────────────────────
             var allowances = [];
             if (backedCalc && backedCalc._isLockedSnapshot && Array.isArray(backedCalc._snapshotLineItems)) {
-                // DB locked snapshot (Execute Payroll): use frozen recurring items
+                // DB locked snapshot: use frozen recurring items from snapshot
                 backedCalc._snapshotLineItems.forEach(function(item) {
                     if (item.type !== 'deduction') allowances.push({ description: item.description || item.type, amount: Number(item.amount) || 0 });
                 });
-                // Period-specific one-off inputs are frozen by payroll_period_id in DB
                 currentInputs.forEach(function(ci) {
                     var ciType = ci.item_type || ci.type;
                     if (ciType !== 'deduction') allowances.push({ description: ci.description || ciType, amount: ci.amount });
                 });
-            } else if (_frozenLocalSnap && Array.isArray(_frozenLocalSnap.allowances)) {
-                // Old localStorage snapshot (individual finalize button): use stored frozen list
-                allowances = _frozenLocalSnap.allowances.slice();
             } else {
-                // Draft / no frozen snapshot: use current live items
+                // Draft: use current live items
                 (payrollData.regular_inputs || []).forEach(function(ri) {
                     var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
                     if (ri.type !== 'deduction') allowances.push({ description: ri.description || ri.type, amount: amount });
@@ -3015,8 +2929,6 @@
                     var ciType = ci.item_type || ci.type;
                     if (ciType === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
                 });
-            } else if (_frozenLocalSnap && Array.isArray(_frozenLocalSnap.deductionsList)) {
-                deductionsList = _frozenLocalSnap.deductionsList.slice();
             } else {
                 (payrollData.regular_inputs || []).forEach(function(ri) {
                     var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
@@ -3067,8 +2979,8 @@
                 allowances.push({ description: 'Paid at Different Rate', amount: multiRateAmount });
             }
 
-            // Frozen-period flag: true for DB locked snapshots AND old localStorage snapshots
-            var _isFrozenPeriod = !!(backedCalc && backedCalc._isLockedSnapshot) || !!_frozenLocalSnap;
+            // Frozen-period flag: DB locked snapshot only
+            var _isFrozenPeriod = !!(backedCalc && backedCalc._isLockedSnapshot);
 
             // Build the calc object: authoritative numbers from backend, display lists from KV
             var calc = backedCalc ? Object.assign({}, backedCalc) : {
@@ -3077,29 +2989,11 @@
                 overtimeAmount: overtimeAmount, shortTimeAmount: shortTimeAmount
             };
 
-            // For old individually-finalized periods (localStorage snapshot, no DB locked snapshot):
-            // the backend recalculated from the current salary — ALL financial totals must be
-            // overridden with frozen values from the localStorage snapshot so the payslip stays
-            // immutable after salary changes in other periods.
-            if (_frozenLocalSnap && !(backedCalc && backedCalc._isLockedSnapshot)) {
-                if (_frozenLocalSnap.gross         != null) calc.gross         = _frozenLocalSnap.gross;
-                if (_frozenLocalSnap.taxableGross  != null) calc.taxableGross  = _frozenLocalSnap.taxableGross;
-                if (_frozenLocalSnap.paye          != null) calc.paye          = _frozenLocalSnap.paye;
-                if (_frozenLocalSnap.uif           != null) calc.uif           = _frozenLocalSnap.uif;
-                if (_frozenLocalSnap.net           != null) calc.net           = _frozenLocalSnap.net;
-                if (_frozenLocalSnap.medicalCredit != null) calc.medicalCredit = _frozenLocalSnap.medicalCredit;
-                if (_frozenLocalSnap.overtimeAmount  != null) calc.overtimeAmount  = _frozenLocalSnap.overtimeAmount;
-                if (_frozenLocalSnap.shortTimeAmount != null) calc.shortTimeAmount = _frozenLocalSnap.shortTimeAmount;
-                // deductions stored as [{description, amount}] — extract total number
-                if (Array.isArray(_frozenLocalSnap.deductions) && _frozenLocalSnap.deductions[0])
-                    calc.deductions = parseFloat(_frozenLocalSnap.deductions[0].amount) || 0;
-            }
-
             calc.basicSalary = _lockedBasicSalary;
             calc.allowances = allowances;
             calc.deductionsList = deductionsList;
             // For draft periods only: fall back to locally computed overtime/short-time if backend
-            // didn't return them. Frozen periods already have correct values from above.
+            // didn't return them. Frozen periods already have correct values from the DB snapshot.
             if (!_isFrozenPeriod) {
                 if (!calc.overtimeAmount)  calc.overtimeAmount  = overtimeAmount;
                 if (!calc.shortTimeAmount) calc.shortTimeAmount = shortTimeAmount;
