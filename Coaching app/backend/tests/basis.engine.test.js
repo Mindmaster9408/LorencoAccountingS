@@ -110,24 +110,24 @@ test('partial section answers calculate average of answered questions only', () 
 
 // ─── Test 6: Full answers produce correct average with reverse scoring ────────
 test('full BALANS section with rawValue 8 produces correct reverse-adjusted average', () => {
-    // q1–q8 (normal):  8 × 8 = 64
-    // q9, q10 (reverse): 11 - 8 = 3, × 2 = 6
-    // total = 70, count = 10, avg = 7.00 → level 'high'
+    // q1–q8 (normal):           8 × 8 = 64
+    // q9, q10, q11, q12 (reverse): 11 - 8 = 3, × 4 = 12
+    // total = 76, count = 12, avg = 76/12 ≈ 6.33 → level 'medium'
     const answers = fullSectionAnswers('BALANS', 8);
     const result  = scoreBasisAnswers(answers);
 
-    assert.equal(result.sectionScores.BALANS.score, 7.00);
-    assert.equal(result.sectionScores.BALANS.level, 'high');
+    assert.equal(result.sectionScores.BALANS.score, Number((76/12).toFixed(2)));
+    assert.equal(result.sectionScores.BALANS.level, 'medium');
 });
 
 test('full section with all answers 5 (midpoint) produces correct average', () => {
-    // q1–q8 (normal):  5 × 8 = 40
-    // q9, q10 (reverse): 11 - 5 = 6, × 2 = 12
-    // total = 52, count = 10, avg = 5.20 → level 'medium'
+    // AKSIE: q1–q8, q11 (normal, 9 questions): 5 × 9 = 45
+    //        q9, q10, q12 (reverse, 3 questions): 11 - 5 = 6, × 3 = 18
+    // total = 63, count = 12, avg = 5.25 → level 'medium'
     const answers = fullSectionAnswers('AKSIE', 5);
     const result  = scoreBasisAnswers(answers);
 
-    assert.equal(result.sectionScores.AKSIE.score, 5.20);
+    assert.equal(result.sectionScores.AKSIE.score, 5.25);
     assert.equal(result.sectionScores.AKSIE.level, 'medium');
 });
 
@@ -207,13 +207,15 @@ test('determineLevel returns correct level for boundary values', () => {
 });
 
 // ─── CONFIG / constants ───────────────────────────────────────────────────────
-test('ALL_QUESTION_KEYS contains exactly 50 keys (5 sections × 10 questions)', () => {
-    assert.equal(TOTAL_QUESTIONS, 50);
-    assert.equal(ALL_QUESTION_KEYS.size, 50);
+test('ALL_QUESTION_KEYS contains exactly 60 keys (5 sections × 12 questions)', () => {
+    assert.equal(TOTAL_QUESTIONS, 60);
+    assert.equal(ALL_QUESTION_KEYS.size, 60);
     assert.ok(ALL_QUESTION_KEYS.has('BALANS_1'));
-    assert.ok(ALL_QUESTION_KEYS.has('STRUKTUUR_10'));
+    assert.ok(ALL_QUESTION_KEYS.has('STRUKTUUR_12'));
+    assert.ok(ALL_QUESTION_KEYS.has('BALANS_11'));
+    assert.ok(ALL_QUESTION_KEYS.has('BALANS_12'));
     assert.ok(!ALL_QUESTION_KEYS.has('BALANS_0'));
-    assert.ok(!ALL_QUESTION_KEYS.has('BALANS_11'));
+    assert.ok(!ALL_QUESTION_KEYS.has('BALANS_13'));
     assert.ok(!ALL_QUESTION_KEYS.has('UNKNOWN_1'));
 });
 
@@ -241,7 +243,7 @@ test('toLegacyBasisResults output has correct shape', () => {
     assert.equal(legacy.basisOrder.length, 5);
 });
 
-test('toLegacyBasisResults sectionScores are integers in range 0–100', () => {
+test('toLegacyBasisResults sectionScores are integers in range 0–120', () => {
     const engineOutput = scoreBasisAnswers(allSectionAnswers(
         { BALANS: 8, AKSIE: 5, SORG: 3, INSIG: 9, STRUKTUUR: 6 }
     ));
@@ -249,35 +251,33 @@ test('toLegacyBasisResults sectionScores are integers in range 0–100', () => {
 
     for (const [key, val] of Object.entries(legacy.sectionScores)) {
         assert.ok(Number.isInteger(val),       `${key} score must be an integer`);
-        assert.ok(val >= 0 && val <= 100,      `${key} score must be 0–100, got ${val}`);
+        assert.ok(val >= 0 && val <= 120,      `${key} score must be 0–120, got ${val}`);
     }
 });
 
 test('toLegacyBasisResults sum exactly matches legacy frontend calculateSectionScore', () => {
     // Full BALANS section, all raw answers = 8:
-    //   q1–q8 (normal)  : 8 × 8 = 64
-    //   q9  (reverse)   : 11 - 8 = 3
-    //   q10 (reverse)   : 11 - 8 = 3
-    //   total           = 70
-    // The legacy frontend calculateSectionScore() produces the same 70.
+    //   q1–q8 (normal)              : 8 × 8 = 64
+    //   q9, q10, q11, q12 (reverse) : 11 - 8 = 3, × 4 = 12
+    //   total                       = 76
+    // The legacy frontend calculateSectionScore() produces the same 76.
     const answers     = fullSectionAnswers('BALANS', 8);
     const engineOut   = scoreBasisAnswers(answers);
     const legacy      = toLegacyBasisResults(engineOut);
 
-    assert.equal(legacy.sectionScores.BALANS, 70);
+    assert.equal(legacy.sectionScores.BALANS, 76);
 });
 
 test('toLegacyBasisResults sum matches for all-5 midpoint answers', () => {
     // Full AKSIE section, all raw answers = 5:
-    //   q1–q8 (normal)  : 5 × 8 = 40
-    //   q9  (reverse)   : 11 - 5 = 6
-    //   q10 (reverse)   : 11 - 5 = 6
-    //   total           = 52
+    //   q1–q8, q11 (normal, 9 questions) : 5 × 9 = 45
+    //   q9, q10, q12 (reverse, 3 questions): 11 - 5 = 6, × 3 = 18
+    //   total                             = 63
     const answers   = fullSectionAnswers('AKSIE', 5);
     const engineOut = scoreBasisAnswers(answers);
     const legacy    = toLegacyBasisResults(engineOut);
 
-    assert.equal(legacy.sectionScores.AKSIE, 52);
+    assert.equal(legacy.sectionScores.AKSIE, 63);
 });
 
 test('toLegacyBasisResults basisOrder matches engine basisOrder', () => {

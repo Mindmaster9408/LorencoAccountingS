@@ -20,24 +20,24 @@ function buildKeys(prefix, count) {
 const CONFIG = {
     sections: {
         BALANS: {
-            questions: buildKeys('BALANS', 10),
-            reverse:   new Set(['BALANS_9', 'BALANS_10'])
+            questions: buildKeys('BALANS', 12),
+            reverse:   new Set(['BALANS_9', 'BALANS_10', 'BALANS_11', 'BALANS_12'])
         },
         AKSIE: {
-            questions: buildKeys('AKSIE', 10),
-            reverse:   new Set(['AKSIE_9', 'AKSIE_10'])
+            questions: buildKeys('AKSIE', 12),
+            reverse:   new Set(['AKSIE_9', 'AKSIE_10', 'AKSIE_12'])
         },
         SORG: {
-            questions: buildKeys('SORG', 10),
+            questions: buildKeys('SORG', 12),
             reverse:   new Set(['SORG_9', 'SORG_10'])
         },
         INSIG: {
-            questions: buildKeys('INSIG', 10),
+            questions: buildKeys('INSIG', 12),
             reverse:   new Set(['INSIG_9', 'INSIG_10'])
         },
         STRUKTUUR: {
-            questions: buildKeys('STRUKTUUR', 10),
-            reverse:   new Set(['STRUKTUUR_9', 'STRUKTUUR_10'])
+            questions: buildKeys('STRUKTUUR', 12),
+            reverse:   new Set(['STRUKTUUR_9', 'STRUKTUUR_10', 'STRUKTUUR_11', 'STRUKTUUR_12'])
         }
     },
     interpretation: {
@@ -117,7 +117,7 @@ export function scoreBasisAnswers(answers) {
 //   basisOrder         = string[] (section keys, highest to lowest)
 //
 // This function produces an identical result to the frontend getBASISResults()
-// for fully-answered submissions (all 50 questions present). For partial
+// for fully-answered submissions (all 60 questions present). For partial
 // submissions the sum reflects only the answered questions (no defaulting to 5).
 export function toLegacyBasisResults(engineOutput) {
     const legacySectionScores = {};
@@ -142,6 +142,6 @@ export const ALL_QUESTION_KEYS = new Set(
         : []
 );
 
-export const TOTAL_QUESTIONS = ALL_QUESTION_KEYS.size; // 50
+export const TOTAL_QUESTIONS = ALL_QUESTION_KEYS.size; // 60
 
 export { CONFIG, determineLevel, calculateSectionScores };

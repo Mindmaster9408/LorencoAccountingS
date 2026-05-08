@@ -27,7 +27,9 @@ export const BASIS_QUESTIONS = {
         { id: 7, text: 'I avoid unnecessary confrontation if I can.', reverse: false },
         { id: 8, text: 'I work best when things feel stable and settled.', reverse: false },
         { id: 9, text: 'I am comfortable addressing difficult conversations directly.', reverse: true },
-        { id: 10, text: 'Conflict does not bother me; I prefer to face it openly.', reverse: true }
+        { id: 10, text: 'Conflict does not bother me; I prefer to face it openly.', reverse: true },
+        { id: 11, text: 'When everything around me is uncertain, I find a way to stay grounded and keep moving.', reverse: true },
+        { id: 12, text: 'I am comfortable standing alone in my position even when everyone around me disagrees.', reverse: true }
     ],
     AKSIE: [
         { id: 1, text: 'I feel energised when things move forward quickly.', reverse: false },
@@ -39,7 +41,9 @@ export const BASIS_QUESTIONS = {
         { id: 7, text: 'I enjoy challenges that push me to act.', reverse: false },
         { id: 8, text: 'I\'m motivated by measurable results.', reverse: false },
         { id: 9, text: 'I prefer to wait and observe before taking action.', reverse: true },
-        { id: 10, text: 'I rarely make quick decisions; I prefer to think things through slowly.', reverse: true }
+        { id: 10, text: 'I rarely make quick decisions; I prefer to think things through slowly.', reverse: true },
+        { id: 11, text: 'When I see an opportunity, I move before I feel completely ready.', reverse: false },
+        { id: 12, text: 'I would rather fail at something bold than succeed at something safe.', reverse: true }
     ],
     SORG: [
         { id: 1, text: 'I care deeply about how other people feel.', reverse: false },
@@ -51,7 +55,9 @@ export const BASIS_QUESTIONS = {
         { id: 7, text: 'I often put people\'s well-being before outcomes.', reverse: false },
         { id: 8, text: 'I\'m motivated by work that feels meaningful.', reverse: false },
         { id: 9, text: 'I usually focus more on tasks than on people\'s emotions.', reverse: true },
-        { id: 10, text: 'I sometimes struggle to notice what others are feeling.', reverse: true }
+        { id: 10, text: 'I sometimes struggle to notice what others are feeling.', reverse: true },
+        { id: 11, text: 'I believe the loyalty of the people around me matters more than their skill level.', reverse: false },
+        { id: 12, text: 'I would walk away from a profitable opportunity if it meant compromising someone I care about.', reverse: false }
     ],
     INSIG: [
         { id: 1, text: 'I prefer understanding something deeply before acting.', reverse: false },
@@ -63,7 +69,9 @@ export const BASIS_QUESTIONS = {
         { id: 7, text: 'I like seeing the "big picture" and long-term implications.', reverse: false },
         { id: 8, text: 'I\'m comfortable working with complex ideas.', reverse: false },
         { id: 9, text: 'I prefer intuition over data when making decisions.', reverse: true },
-        { id: 10, text: 'I don\'t always need to fully understand something before I start.', reverse: true }
+        { id: 10, text: 'I don\'t always need to fully understand something before I start.', reverse: true },
+        { id: 11, text: 'I naturally find connections between ideas that seem completely unrelated to each other.', reverse: false },
+        { id: 12, text: 'I am drawn to questions that most people around me are not even asking yet.', reverse: false }
     ],
     STRUKTUUR: [
         { id: 1, text: 'I feel more secure when there is a clear plan.', reverse: false },
@@ -75,7 +83,9 @@ export const BASIS_QUESTIONS = {
         { id: 7, text: 'I plan ahead rather than leaving things to chance.', reverse: false },
         { id: 8, text: 'I get stressed by last-minute changes.', reverse: false },
         { id: 9, text: 'I thrive when my day is spontaneous and unstructured.', reverse: true },
-        { id: 10, text: 'I enjoy it when plans change—it keeps things interesting.', reverse: true }
+        { id: 10, text: 'I enjoy it when plans change—it keeps things interesting.', reverse: true },
+        { id: 11, text: 'I am comfortable building the plane while flying it — figuring things out as I go.', reverse: true },
+        { id: 12, text: 'I perform better when I set my own rules rather than following someone else\'s system.', reverse: true }
     ]
 };
 

@@ -146,7 +146,7 @@ function renderBASISQuestionnaire(client, container) {
                     <div class="progress-bar">
                         <div class="progress-fill" id="basis-progress-fill" style="width: 0%"></div>
                     </div>
-                    <span id="basis-progress-text">0 / 50 questions answered</span>
+                    <span id="basis-progress-text">0 / 60 questions answered</span>
                 </div>
             </div>
 
@@ -196,7 +196,7 @@ function renderSectionQuestions(sectionKey, client) {
             <div class="basis-question">
                 <div class="question-header">
                     <span class="question-number">${index + 1}.</span>
-                    <span class="question-text">${escapeHtml(question.text)}${question.reverse ? ' <span class="reverse-tag">[R]</span>' : ''}</span>
+                    <span class="question-text">${escapeHtml(question.text)}</span>
                 </div>
                 <div class="question-scale">
                     ${renderScaleButtons(questionId, currentAnswer)}
@@ -268,7 +268,7 @@ function attachBASISListeners(client) {
 }
 
 function updateProgress(client) {
-    const totalQuestions = 50;
+    const totalQuestions = 60;
     const answeredCount = Object.keys(client.basisAnswers || {}).length;
     const percentage = Math.round((answeredCount / totalQuestions) * 100);
 
@@ -285,7 +285,7 @@ function updateProgress(client) {
 }
 
 function calculateAndShowResults(client) {
-    const totalQuestions = 50;
+    const totalQuestions = 60;
     const answeredCount = Object.keys(client.basisAnswers || {}).length;
 
     if (answeredCount < totalQuestions) {
