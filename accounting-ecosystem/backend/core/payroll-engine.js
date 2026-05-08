@@ -534,8 +534,13 @@ const PayrollEngine = {
      */
     calculateUIF: function(monthlyGross, tables) {
         var t = tables || this;
-        // Use tables values directly — no fallback to engine defaults.
-        return this.r2(Math.min(monthlyGross * t.UIF_RATE, t.UIF_MONTHLY_CAP));
+        // Guard: if UIF_RATE is missing, empty-string, or 0 (e.g. admin tax config saved
+        // with a blank field), fall back to the engine's statutory default (1%).
+        // monthlyGross * '' = 0 and monthlyGross * undefined = NaN — both produce wrong results.
+        var rate = (t.UIF_RATE && !isNaN(Number(t.UIF_RATE))) ? Number(t.UIF_RATE) : this.UIF_RATE;
+        var cap  = (t.UIF_MONTHLY_CAP != null && t.UIF_MONTHLY_CAP !== '' && !isNaN(Number(t.UIF_MONTHLY_CAP)))
+            ? Number(t.UIF_MONTHLY_CAP) : this.UIF_MONTHLY_CAP;
+        return this.r2(Math.min(monthlyGross * rate, cap));
     },
 
     /**
@@ -545,8 +550,9 @@ const PayrollEngine = {
      */
     calculateSDL: function(monthlyGross, tables) {
         var t = tables || this;
-        // Use tables values directly — no fallback to engine defaults.
-        return this.r2(monthlyGross * t.SDL_RATE);
+        // Same guard as calculateUIF — fall back to engine default if SDL_RATE is invalid.
+        var rate = (t.SDL_RATE && !isNaN(Number(t.SDL_RATE))) ? Number(t.SDL_RATE) : this.SDL_RATE;
+        return this.r2(monthlyGross * rate);
     },
 
     // === PERIOD-AWARE TAX TABLE SELECTION ===
