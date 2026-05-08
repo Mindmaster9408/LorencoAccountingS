@@ -1,7 +1,7 @@
 # CLAUDE.md — Lorenco Ecosystem Master Operating Standard
 
 > **This file is the primary persistent instruction file for all Claude sessions working in this repository.**  
-> Last updated: March 2026  
+> Last updated: May 2026  
 > All rules in this file are permanent operating standards. They apply to every task, every session, every feature.
 
 ---
@@ -15,6 +15,7 @@
 5. [Format Standards](#5-format-standards)
 6. [Implementation Readiness Standards](#6-implementation-readiness-standards)
 7. [Part C — Zeabur Deployment Rules (PERMANENT — NEVER VIOLATE)](#7-part-c--zeabur-deployment-rules)
+8. [Part D — Absolute No Browser Storage Rule (PERMANENT — HARD CODING GATE)](#8-part-d--absolute-no-browser-storage-rule)
 
 ---
 
@@ -493,7 +494,7 @@ Before shipping any feature:
 - [ ] Error states handled (API failure, empty data, missing company context)
 - [ ] Cross-browser compatibility considered (see BROWSER_COMPATIBILITY_AUDIT_2026.md)
 - [ ] Auth and permission logic preserved
-- [ ] Data not stored only in localStorage (business data must be server-backed)
+- [ ] No browser storage used for business data — `localStorage`, `sessionStorage`, `indexedDB`, `safeLocalStorage` KV bridge all forbidden for business data (see Part D)
 - [ ] Follow-up notes written for any uncertainty
 - [ ] Session handoff created for significant changes
 
@@ -594,6 +595,128 @@ Before any commit that touches `accounting-ecosystem/`:
 
 ---
 
+## 8. PART D — ABSOLUTE NO BROWSER STORAGE RULE
+
+> **This rule is permanent, non-negotiable, and a hard coding gate.**
+> Root-caused through a full ecosystem audit (May 2026). Do not weaken or add exceptions.
+
+---
+
+### RULE D1 — ABSOLUTE PROHIBITION ON BROWSER STORAGE FOR BUSINESS DATA
+
+**`localStorage`, `sessionStorage`, `indexedDB`, `cookies`, and any other browser-side storage mechanism must NEVER be used for business data.**
+
+This is a zero-tolerance rule. No exceptions. No "temporary until we migrate it." No "it's backed by the cloud anyway."
+
+**Business data** means anything that, if lost, causes data integrity failure, audit failure, compliance failure, or incorrect financial outcomes. This includes but is not limited to:
+
+- Payroll records, payslips, finalization state, snapshots
+- Employee records, salary, tax, deductions
+- Financial transactions, invoices, payments, receipts
+- Accounting entries, ledgers, reconciliations
+- Tax configuration, PAYE, UIF, SDL settings
+- Voluntary tax overrides, attendance records
+- SARS/IRP5 data, compliance data
+- Client data, company data, bank allocations
+- Any data with an audit trail requirement
+
+---
+
+### RULE D2 — PERMITTED BROWSER STORAGE (EXHAUSTIVE LIST)
+
+Browser storage is **only** permitted for the following categories. If a use case is not on this list, it goes to the server.
+
+| Permitted | Examples |
+|---|---|
+| Session/auth tokens | JWT, refresh token, Supabase session |
+| UI preferences | Theme, language, sidebar collapsed state |
+| SSO app-handoff tokens | Cross-app login token (short-lived, not business data) |
+| Draft form state with explicit user warning | "Unsaved draft — will be lost if you close" |
+
+**Auth tokens in browser storage are only safe because re-authentication recovers them. Business data has no such recovery.**
+
+---
+
+### RULE D3 — THE `safeLocalStorage` BRIDGE IS NOT A LOOPHOLE
+
+The `safeLocalStorage` / `DataAccess` KV bridge in `shared/js/polyfills.js` routes some `localStorage` calls to Supabase KV (`payroll_kv_store_eco`). This bridge was a migration aid, not a final architecture.
+
+**KV-backed storage for business data is NOT compliant with this rule.** KV is a schemaless, unstructured blob store with no relational integrity, no foreign keys, no audit trail, and no query capability. It is not a substitute for proper SQL tables.
+
+Business data that currently flows through `safeLocalStorage` → KV must be migrated to proper relational tables. The bridge may only remain in place for **auth tokens and UI preferences**.
+
+Known KV keys that require SQL migration (tracked follow-ups):
+
+- `voluntaryTaxConfig_*` → `employee_tax_overrides` table
+- `attendance_*` → `attendance_records` table
+- `paye_recon_*` → `paye_reconciliation` table
+- `sean_learning_*` → `sean_knowledge_mappings` table
+- `bank_allocations_*` → `bank_transaction_allocations` table
+
+---
+
+### RULE D4 — ALL FINALIZATION STATE MUST BE DB-AUTHORITATIVE
+
+Specifically for payroll: the locked/finalized state of any payslip or pay period must be sourced exclusively from the `payroll_snapshots` database table (`is_locked = true`). No localStorage or sessionStorage flag may be used to determine whether a period is finalized.
+
+This rule was enforced in May 2026 when the old individual localStorage finalize path was removed from `employee-detail.html`. The only finalization path is Execute Payroll → DB snapshot.
+
+---
+
+### RULE D5 — CODE REVIEW GATE (HARD BLOCK)
+
+**Any code that writes business data to browser storage must be blocked at review and refused.**
+
+Code review checklist item (added to Section 6):
+
+- [ ] No `localStorage.setItem()`, `sessionStorage.setItem()`, or `indexedDB` write with business data
+- [ ] No `safeLocalStorage.setItem()` with business data (KV bridge is not exempt)
+- [ ] Business data reads/writes go to server API endpoints backed by SQL tables
+- [ ] If uncertain whether data is "business data" — treat it as business data
+
+**If Claude generates code that violates this rule, it must immediately correct it before the user sees it. There is no "I'll note it as a follow-up" — it is a hard pre-output gate.**
+
+---
+
+### RULE D6 — PATTERN FOR COMPLIANT DATA STORAGE
+
+```javascript
+// ✅ CORRECT — business data to SQL via API
+await fetch('/api/payroll/voluntary-tax', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ employeeId, companyId, config })
+});
+
+// ✅ CORRECT — auth token to localStorage
+localStorage.setItem('sb-session', JSON.stringify(session));
+
+// ❌ ILLEGAL — business data to localStorage
+localStorage.setItem('voluntaryTaxConfig_comp_emp', JSON.stringify(config));
+
+// ❌ ILLEGAL — business data to safeLocalStorage KV bridge
+safeLocalStorage.setItem('voluntaryTaxConfig_comp_emp', JSON.stringify(config));
+
+// ❌ ILLEGAL — finalization state to localStorage
+localStorage.setItem('emp_payslip_status_comp_emp_period', 'finalized');
+```
+
+---
+
+### RULE D7 — VIOLATION CONSEQUENCES
+
+Writing business data to browser storage:
+
+1. Causes silent data loss when browser storage is cleared
+2. Causes multi-device data divergence (no cross-device sync)
+3. Breaks audit trails required for tax compliance
+4. Creates state inconsistency between finalization and display
+5. Creates security risk (business data exposed in browser storage)
+
+Any of these is a production incident. Treat browser storage of business data as a production bug, not a technical debt item.
+
+---
+
 ## RELATED DOCUMENTS
 
 | Document | Purpose |
@@ -601,7 +724,7 @@ Before any commit that touches `accounting-ecosystem/`:
 | `docs/ecosystem-architecture.md` | Master architecture: apps, backend, auth, data flows |
 | `WORKING_FEATURES_REGISTRY.md` | Registry of confirmed working features — do not regress these |
 | `BROWSER_COMPATIBILITY_AUDIT_2026.md` | Cross-browser audit results and fix plan |
-| `docs/DATA_PERSISTENCE_POLICY.md` | What goes in localStorage vs server storage |
+| `docs/DATA_PERSISTENCE_POLICY.md` | Browser storage prohibition policy (absolute, no exceptions) |
 | `SESSION_HANDOFF_*.md` | Per-session change records and handoff notes |
 
 ---
