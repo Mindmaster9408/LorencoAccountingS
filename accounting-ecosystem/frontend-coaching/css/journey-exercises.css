@@ -373,9 +373,11 @@
     margin-bottom: 32px;
 }
 
-/* The grid inside the wrapper — strip its own margin-bottom (wrapper owns it) */
+/* The grid inside the wrapper — strip its own margin-bottom (wrapper owns it)
+   and widen the row gap so the 120px avatar has clearance above and below */
 .quadrant-axis-wrapper .four-quadrants-grid {
     margin-bottom: 0;
+    row-gap: 140px;
 }
 
 .transformation-axis {
@@ -483,6 +485,9 @@
         height: 96px;
         font-size: 34px;
     }
+    .quadrant-axis-wrapper .four-quadrants-grid {
+        row-gap: 112px;
+    }
     .axis-label {
         display: none;
     }
@@ -495,6 +500,9 @@
         height: 72px;
         font-size: 26px;
         border-width: 4px;
+    }
+    .quadrant-axis-wrapper .four-quadrants-grid {
+        row-gap: 80px;
     }
     .axis-label {
         display: none;
