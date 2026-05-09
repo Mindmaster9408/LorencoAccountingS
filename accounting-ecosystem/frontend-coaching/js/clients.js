@@ -10,7 +10,8 @@ import { renderJourneyTracker } from './journey-ui.js';
 
 export async function openClient(clientId, options = {}) {
     const store = await readStore();
-    let client = store.clients.find(c => c.id === clientId);
+    const numericClientId = typeof clientId === 'string' ? parseInt(clientId, 10) : clientId;
+    let client = store.clients.find(c => c.id === numericClientId);
     if(!client) return;
 
     // Load full client detail (steps, gauges, sessions) from backend
