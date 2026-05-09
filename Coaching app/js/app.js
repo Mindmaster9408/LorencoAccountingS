@@ -8,6 +8,7 @@ import { renderSettings } from './settings.js';
 import { isLoggedIn, getCurrentUser, isAdmin, getAdminMode } from './auth.js';
 import { showLoginScreen, showUserInfo } from './login-ui.js';
 import { renderAdminPanel } from './admin-panel.js';
+import { renderQuestionBuilder } from './question-builder.js';
 
 // Initialize the app
 function init() {
@@ -107,18 +108,19 @@ function switchRoute(route) {
     // Update page title
     const titleEl = $('#page-title');
     if(titleEl) {
-        const titleText = route.charAt(0).toUpperCase() + route.slice(1);
+        const pageTitles = { 'question-builder': 'Question Builder' };
+        const titleText = pageTitles[route] || (route.charAt(0).toUpperCase() + route.slice(1));
         titleEl.textContent = titleText;
         titleEl.style.display = route === 'clients' ? 'none' : '';
     }
-    
+
     // Render content based on route
     if(route === 'dashboard') {
         renderDashboard();
     } else if(route === 'leads') {
         renderLeads();
-    } else if(route === 'training') {
-        renderTraining();
+    } else if(route === 'question-builder') {
+        renderQuestionBuilder();
     } else if(route === 'reports') {
         renderReports();
     } else if(route === 'settings') {
@@ -181,10 +183,6 @@ function renderSidebarClients() {
     });
 }
 
-function renderTraining() {
-    console.log('Training view - placeholder');
-    // Training module will be added later if needed
-}
 
 function setupLogout() {
     const logoutBtn = document.getElementById('logout-btn');

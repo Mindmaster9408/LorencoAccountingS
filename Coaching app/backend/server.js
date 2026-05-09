@@ -17,6 +17,7 @@ import leadsRoutes from './routes/leads.routes.js';
 import kvRoutes from './routes/kv.routes.js';
 import basisRoutes from './routes/basis.routes.js';
 import spilRoutes from './routes/spil.routes.js';
+import questionBuilderRoutes from './routes/question-builder.routes.js';
 import debugRoutes from './routes/debug.routes.js';
 
 // Load environment variables
@@ -72,6 +73,7 @@ app.use('/api/leads', leadsRoutes);
 app.use('/api/kv', kvRoutes);
 app.use('/api/basis', basisRoutes);
 app.use('/api/spil', spilRoutes);
+app.use('/api/coaching/question-builder', questionBuilderRoutes);
 
 // TEMPORARY — debug endpoint, remove after diagnosis
 app.use('/api/debug', debugRoutes);

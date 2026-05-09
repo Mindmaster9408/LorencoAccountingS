@@ -222,5 +222,52 @@ export const api = {
                 method: 'PUT',
                 body: JSON.stringify(data)
             })
+    },
+
+    // Question Builder — global reusable question library
+    questionBuilder: {
+        listQuestions: (params = {}) => {
+            const qs = new URLSearchParams();
+            if (params.category)                         qs.set('category',    params.category);
+            if (params.contextKey)                       qs.set('context_key', params.contextKey);
+            if (params.active !== undefined && params.active !== '') qs.set('active', params.active);
+            const query = qs.toString() ? '?' + qs.toString() : '';
+            return apiRequest(`/coaching/question-builder/questions${query}`);
+        },
+
+        createQuestion: (data) =>
+            apiRequest('/coaching/question-builder/questions', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            }),
+
+        updateQuestion: (id, data) =>
+            apiRequest(`/coaching/question-builder/questions/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            }),
+
+        deactivateQuestion: (id) =>
+            apiRequest(`/coaching/question-builder/questions/${id}`, {
+                method: 'DELETE'
+            }),
+
+        listContexts: () =>
+            apiRequest('/coaching/question-builder/contexts'),
+
+        getClientContextQuestions: (clientId, contextKey) =>
+            apiRequest(`/coaching/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}`),
+
+        assignClientQuestions: (clientId, contextKey, questionIds) =>
+            apiRequest(`/coaching/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}/assign`, {
+                method: 'POST',
+                body: JSON.stringify({ questionIds })
+            }),
+
+        saveClientQuestionAnswers: (clientId, contextKey, answers) =>
+            apiRequest(`/coaching/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}/answers`, {
+                method: 'PUT',
+                body: JSON.stringify({ answers })
+            })
     }
 };
