@@ -299,7 +299,7 @@ function render4QuadrantExercise(client, container) {
 
             <!-- Footer Actions -->
             <div class="exercise-footer">
-                <button class="btn-download" onclick="downloadQuadrantPDF()">📥 Download PDF</button>
+                <button class="btn-download" onclick="showPDFDownloadModal()">📥 Download PDF</button>
                 <button class="btn-save" onclick="save4QuadrantExercise()">💾 Save Progress</button>
                 <button class="btn-complete" onclick="complete4Quadrant()">✓ Complete & Move to Next Step</button>
             </div>
@@ -574,6 +574,7 @@ function renderPresentGapFuture(client, container) {
             </div>
 
             <div class="exercise-footer">
+                <button class="btn-download" onclick="showPDFDownloadModal()">📥 Download PDF</button>
                 <button class="btn-save" onclick="savePresentGapFuture()">💾 Save Progress</button>
                 <button class="btn-complete" onclick="completePresentGapFuture()">✓ Complete & Move to Next Step</button>
             </div>
@@ -858,6 +859,7 @@ function renderFlightPlan(client, container) {
             </div>
 
             <div class="exercise-footer">
+                <button class="btn-download" onclick="showPDFDownloadModal()">📥 Download PDF</button>
                 <button class="btn-save" onclick="saveFlightPlan()">💾 Save Progress</button>
                 <button class="btn-complete" onclick="completeFlightPlan()">✓ Complete & Move to Next Step</button>
             </div>
@@ -1072,6 +1074,7 @@ function renderDeepDive(client, container) {
             </div>
 
             <div class="exercise-footer">
+                <button class="btn-download" onclick="showPDFDownloadModal()">📥 Download PDF</button>
                 <button class="btn-save" onclick="saveDeepDive()">💾 Save Progress</button>
                 <button class="btn-complete" onclick="completeDeepDive()">✓ Complete & Move to Next Step</button>
             </div>
@@ -1339,6 +1342,7 @@ function renderEcochart(client, container) {
             </div>
 
             <div class="exercise-footer">
+                <button class="btn-download" onclick="showPDFDownloadModal()">📥 Download PDF</button>
                 <button class="btn-save" onclick="saveEcochart()">💾 Save Progress</button>
                 <button class="btn-complete" onclick="completeEcochart()">✓ Complete & Move to Next Step</button>
             </div>
@@ -1771,6 +1775,7 @@ function renderAssessments(client, container) {
             </div>
 
             <div class="exercise-footer">
+                <button class="btn-download" onclick="showPDFDownloadModal()">📥 Download PDF</button>
                 <button class="btn-save" onclick="saveAssessments()">💾 Save Progress</button>
                 <button class="btn-complete" onclick="completeAssessments()">✓ Complete & Move to Next Step</button>
             </div>
@@ -2057,6 +2062,7 @@ function renderMLNP(client, container) {
 
                 <!-- Action Buttons -->
                 <div class="exercise-actions">
+                    <button class="btn-download" onclick="showPDFDownloadModal()">📥 Download PDF</button>
                     <button class="btn-save" onclick="saveMLNP()">💾 Save Progress</button>
                     <button class="btn-complete" onclick="completeMLNP()">✓ Complete Step 9</button>
                 </div>
@@ -2127,6 +2133,7 @@ function renderPlaceholder(container, stepNum, title, subtitle) {
             </div>
 
             <div class="exercise-footer">
+                <button class="btn-download" onclick="showPDFDownloadModal()">📥 Download PDF</button>
                 <button class="btn-save" onclick="saveExercise()">💾 Save Progress</button>
                 <button class="btn-complete" onclick="completeExercise()">✓ Mark Complete & Continue</button>
             </div>

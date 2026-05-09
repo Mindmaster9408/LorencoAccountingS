@@ -134,9 +134,249 @@ I notice from the 4 Quadrant Exercise that the client has shared valuable inform
     await saveClient(currentClient);
 };
 
-window.downloadQuadrantPDF = function() {
-    alert('PDF download will be implemented. This will create a professional PDF with Infinite Legacy branding.');
+// ---------------------------------------------------------------------------
+// PDF Download — shared across ALL exercise pages
+// ---------------------------------------------------------------------------
+
+window.showPDFDownloadModal = function() {
+    const existing = document.getElementById('pdf-mode-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'pdf-mode-modal';
+    modal.innerHTML = `
+        <div class="pdf-modal-backdrop" onclick="closePDFModal()"></div>
+        <div class="pdf-modal-box">
+            <h3 class="pdf-modal-title">📄 Download PDF Report</h3>
+            <p class="pdf-modal-subtitle">Choose what to include:</p>
+            <div class="pdf-modal-options">
+                <button class="pdf-modal-btn pdf-modal-btn--client" onclick="downloadExercisePDF('client')">
+                    <span class="pdf-btn-icon">👤</span>
+                    <span class="pdf-btn-label">Client Report</span>
+                    <span class="pdf-btn-desc">Exercise content only — no session notes or AI discussions</span>
+                </button>
+                <button class="pdf-modal-btn pdf-modal-btn--coach" onclick="downloadExercisePDF('coach')">
+                    <span class="pdf-btn-icon">🎓</span>
+                    <span class="pdf-btn-label">Coach Report</span>
+                    <span class="pdf-btn-desc">Full report — includes session notes and AI coach discussions</span>
+                </button>
+            </div>
+            <button class="pdf-modal-cancel" onclick="closePDFModal()">Cancel</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
 };
+
+window.closePDFModal = function() {
+    const modal = document.getElementById('pdf-mode-modal');
+    if (modal) modal.remove();
+};
+
+window.downloadExercisePDF = function(mode) {
+    closePDFModal();
+
+    const exercisePage = document.querySelector('.exercise-page');
+    if (!exercisePage) {
+        alert('No exercise content found to export.');
+        return;
+    }
+
+    // Capture live values BEFORE cloning (cloneNode does not copy input.value)
+    const liveTextareas = Array.from(exercisePage.querySelectorAll('textarea'));
+    const liveInputs    = Array.from(exercisePage.querySelectorAll('input[type="text"], input:not([type])'));
+    const liveSelects   = Array.from(exercisePage.querySelectorAll('select'));
+    const liveCheckboxes = Array.from(exercisePage.querySelectorAll('input[type="checkbox"]'));
+
+    const clone = exercisePage.cloneNode(true);
+
+    // Replace textareas with readable divs containing the live value
+    const clonedTextareas = Array.from(clone.querySelectorAll('textarea'));
+    clonedTextareas.forEach((ta, i) => {
+        const val = liveTextareas[i] ? liveTextareas[i].value : '';
+        const div = document.createElement('div');
+        div.className = 'pdf-text-value';
+        div.textContent = val;
+        ta.parentNode.replaceChild(div, ta);
+    });
+
+    // Replace text inputs
+    const clonedInputs = Array.from(clone.querySelectorAll('input[type="text"], input:not([type])'));
+    clonedInputs.forEach((inp, i) => {
+        const val = liveInputs[i] ? liveInputs[i].value : '';
+        const div = document.createElement('div');
+        div.className = 'pdf-input-value';
+        div.textContent = val;
+        inp.parentNode.replaceChild(div, inp);
+    });
+
+    // Sync select values
+    const clonedSelects = Array.from(clone.querySelectorAll('select'));
+    clonedSelects.forEach((sel, i) => {
+        if (liveSelects[i]) sel.value = liveSelects[i].value;
+    });
+
+    // Sync checkboxes
+    const clonedCheckboxes = Array.from(clone.querySelectorAll('input[type="checkbox"]'));
+    clonedCheckboxes.forEach((cb, i) => {
+        if (liveCheckboxes[i]) cb.checked = liveCheckboxes[i].checked;
+    });
+
+    // Client mode: strip coach-only sections
+    if (mode === 'client') {
+        clone.querySelectorAll('.session-notes-section, .ai-coach-section').forEach(el => el.remove());
+    }
+
+    // Always strip interactive chrome
+    clone.querySelectorAll('.exercise-footer, .exercise-actions, .btn-back, .btn-ai-send, .btn-save-emotion').forEach(el => el.remove());
+
+    // Hide the transformation axis overlay (content is already in the grid cards)
+    clone.querySelectorAll('.transformation-axis').forEach(el => el.remove());
+
+    const titleEl = exercisePage.querySelector('h1, .exercise-title');
+    const title = titleEl ? titleEl.textContent.trim() : 'Exercise Report';
+    const dateStr = new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
+    const modeLabel = mode === 'client' ? '👤 Client Report' : '🎓 Coach Report';
+
+    const printWindow = window.open('', '_blank', 'width=1000,height=800');
+    if (!printWindow) {
+        alert('Popup blocked. Please allow popups for this site to download PDF reports.');
+        return;
+    }
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>${escapeHtml(title)} — ${mode === 'client' ? 'Client' : 'Coach'} Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: white;
+            color: #1e293b;
+            padding: 24px 32px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .pdf-report-header {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            padding: 20px 28px;
+            border-radius: 10px;
+            margin-bottom: 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pdf-report-header h2 { color: white; font-size: 20px; }
+        .pdf-report-header .pdf-meta { font-size: 12px; opacity: 0.88; text-align: right; line-height: 1.8; }
+        .exercise-page { max-width: 860px; margin: 0 auto; }
+        .exercise-header { margin-bottom: 20px; border-bottom: 3px solid #3b82f6; padding-bottom: 14px; }
+        .exercise-header h1 { font-size: 24px; color: #1e293b; }
+        .exercise-subtitle { color: #64748b; font-size: 14px; margin-top: 4px; }
+        .four-quadrants-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            row-gap: 16px;
+            margin-bottom: 20px;
+        }
+        .quadrant-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 14px;
+            background: #f8fafc;
+            page-break-inside: avoid;
+        }
+        .quadrant-title { font-weight: 700; font-size: 14px; margin-bottom: 10px; color: #334155; }
+        .quadrant-axis-wrapper { position: static; }
+        .transformation-axis { display: none !important; }
+        .pdf-text-value {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 10px 12px;
+            min-height: 48px;
+            white-space: pre-wrap;
+            font-size: 13px;
+            color: #1e293b;
+            margin-bottom: 6px;
+            width: 100%;
+        }
+        .pdf-input-value {
+            padding: 6px 0;
+            font-size: 13px;
+            color: #1e293b;
+            border-bottom: 1px solid #cbd5e1;
+            min-height: 24px;
+            margin-bottom: 6px;
+            width: 100%;
+        }
+        .session-notes-section {
+            margin-top: 20px;
+            padding: 18px;
+            background: #f0f9ff;
+            border-radius: 10px;
+            border-left: 4px solid #0ea5e9;
+            page-break-inside: avoid;
+        }
+        .session-notes-section h3 { color: #0369a1; margin-bottom: 10px; }
+        .ai-coach-section {
+            margin-top: 20px;
+            padding: 18px;
+            background: #f0fdf4;
+            border-radius: 10px;
+            border-left: 4px solid #22c55e;
+            page-break-inside: avoid;
+        }
+        .ai-coach-section h3 { color: #15803d; margin-bottom: 10px; }
+        .ai-chat-container { display: flex; flex-direction: column; gap: 10px; }
+        .ai-message { display: flex; gap: 10px; }
+        .message-avatar { font-size: 18px; flex-shrink: 0; }
+        .ai-message.user .message-content { background: #dbeafe; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+        .ai-message.assistant .message-content { background: #dcfce7; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+        .ai-input-section { display: none; }
+        .exercise-section, .exercise-card, .exercise-group, .pgf-column, .flight-section,
+        .deep-dive-section, .eco-section, .assessment-section {
+            margin-bottom: 18px;
+            padding: 14px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            page-break-inside: avoid;
+        }
+        h2 { font-size: 17px; color: #1e293b; margin: 18px 0 8px; }
+        h3 { font-size: 14px; color: #334155; margin: 14px 0 6px; }
+        h4 { font-size: 13px; color: #475569; margin: 10px 0 4px; }
+        label, .field-label, .input-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            display: block;
+            margin-bottom: 3px;
+        }
+        @page { margin: 14mm 12mm; size: A4; }
+        @media print { body { padding: 0; } }
+    </style>
+</head>
+<body>
+    <div class="pdf-report-header">
+        <h2>${escapeHtml(title)}</h2>
+        <div class="pdf-meta">${modeLabel}<br>${dateStr}</div>
+    </div>
+    ${clone.outerHTML}
+    <script>
+        window.onload = function() { setTimeout(function() { window.print(); }, 500); };
+    <\/script>
+</body>
+</html>`);
+    printWindow.document.close();
+};
+
+// Keep old name as alias so existing onclick="downloadQuadrantPDF()" still works
+window.downloadQuadrantPDF = window.showPDFDownloadModal;
 
 window.closeExercise = function() {
     if (!currentClient) return;
