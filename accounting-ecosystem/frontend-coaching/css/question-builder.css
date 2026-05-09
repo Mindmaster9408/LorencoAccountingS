@@ -246,6 +246,15 @@
     padding: 20px;
 }
 
+/* styles.css defines .hidden { display: none } without !important.
+   This file loads after styles.css, so .qb-modal-overlay { display: flex }
+   would win the cascade and prevent .hidden from hiding the overlay.
+   Use two-class specificity (0-2-0) + !important to guarantee the overlay
+   is always hidden when the hidden class is present. */
+.qb-modal-overlay.hidden {
+    display: none !important;
+}
+
 .qb-modal {
     background: white;
     border-radius: 12px;

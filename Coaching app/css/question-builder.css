@@ -246,6 +246,10 @@
     padding: 20px;
 }
 
+.qb-modal-overlay.hidden {
+    display: none !important;
+}
+
 .qb-modal {
     background: white;
     border-radius: 12px;
