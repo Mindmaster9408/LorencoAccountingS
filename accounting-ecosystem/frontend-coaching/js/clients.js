@@ -125,7 +125,7 @@ export async function openClient(clientId, options = {}) {
                             <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${(client.name || '')[0] || 'P'}</div>
                             <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Drag & drop photo here or click to browse</p>
                         `}
-                        <input type="file" id="client-photo-input" accept="image/*" style="display: none;" onchange="handleClientPhotoUpload(event, '${client.id}')" />
+                        <input type="file" id="client-photo-input" accept="image/*" style="display: none;" />
                     </div>
                 </div>
                 <div class="form-row">
@@ -375,7 +375,23 @@ window.handleClientPhotoAreaClick = function(event, clientId) {
     if (event.target.classList.contains('btn-remove-photo')) return;
 
     const fileInput = $('#client-photo-input');
-    if (fileInput) fileInput.click();
+    if (!fileInput) return;
+
+    // Attach change listener fresh each time (avoids inline onchange issues)
+    fileInput.onchange = null;
+    fileInput.addEventListener('change', function handler(e) {
+        fileInput.removeEventListener('change', handler);
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file.');
+            return;
+        }
+        processClientPhotoFile(file, clientId);
+    });
+    // Reset value so the same file can be re-selected
+    fileInput.value = '';
+    fileInput.click();
 };
 
 window.handleClientPhotoDrop = function(event, clientId) {
