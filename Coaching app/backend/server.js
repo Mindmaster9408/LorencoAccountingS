@@ -72,6 +72,20 @@ app.use('/api/kv', kvRoutes);
 app.use('/api/basis', basisRoutes);
 app.use('/api/spil', spilRoutes);
 
+// COMPATIBILITY ALIASES — temporary aliases in case any caller uses the /api/coaching/* prefix.
+// These are aliases only. Canonical paths remain /api/clients etc.
+app.use('/api/coaching/clients', clientRoutes);
+app.use('/api/coaching/auth', authRoutes);
+
+// Settings alias — no dedicated settings table exists; return defaults so app startup
+// never blocks on a settings 500. Settings are managed client-side via KV store.
+app.all('/api/coaching/settings', (req, res) => {
+    res.json({ success: true, settings: {} });
+});
+app.all('/api/settings', (req, res) => {
+    res.json({ success: true, settings: {} });
+});
+
 // Serve frontend static files (parent directory = Coaching app root)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

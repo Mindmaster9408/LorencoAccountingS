@@ -139,8 +139,14 @@ function toggleSidebarClients() {
 }
 
 function renderSidebarClients() {
-    import('./storage.js').then(storageModule => {
-        const store = storageModule.readStore();
+    import('./storage.js').then(async storageModule => {
+        let store;
+        try {
+            store = await storageModule.readStore();
+        } catch (e) {
+            console.warn('renderSidebarClients: could not fetch store', e.message);
+            return;
+        }
         const list = document.getElementById('sidebar-clients-list');
         if(!list) return;
         
@@ -214,8 +220,15 @@ function setupLogout() {
 }
 
 // Update company branding (logo and name) in sidebar and dashboard
-function updateCompanyBranding() {
-    const store = readStore();
+// Async — readStore() is a cloud fetch. Called fire-and-forget from init().
+async function updateCompanyBranding() {
+    let store;
+    try {
+        store = await readStore();
+    } catch (e) {
+        console.warn('updateCompanyBranding: could not fetch store', e.message);
+        return;
+    }
     const settings = store.appSettings || {};
     const company = settings.company || {};
 

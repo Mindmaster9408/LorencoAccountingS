@@ -5,6 +5,12 @@ import { query } from '../config/database.js';
 // Verify JWT token
 export const authenticateToken = async (req, res, next) => {
     try {
+        // Guard: JWT_SECRET must be configured. If missing, all auth would fail silently.
+        if (!process.env.JWT_SECRET) {
+            console.error('FATAL: JWT_SECRET environment variable is not set');
+            return res.status(500).json({ error: 'Server configuration error: JWT_SECRET not set' });
+        }
+
         const authHeader = req.headers['authorization'];
         const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
@@ -41,8 +47,8 @@ export const authenticateToken = async (req, res, next) => {
         if (error.name === 'TokenExpiredError') {
             return res.status(403).json({ error: 'Token expired' });
         }
-        console.error('Authentication error:', error);
-        return res.status(500).json({ error: 'Authentication failed' });
+        console.error('Authentication error:', error.message || error);
+        return res.status(500).json({ error: 'Authentication failed', detail: error.message });
     }
 };
 

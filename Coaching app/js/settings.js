@@ -18,7 +18,13 @@ export async function renderSettings() {
     const view = $('#settings');
     if (!view) return;
 
-    const store = await readStore();
+    let store;
+    try {
+        store = await readStore();
+    } catch (e) {
+        console.warn('Settings: could not load store, using defaults.', e.message);
+        store = {};
+    }
 
     // Initialize settings if not exists
     if (!store.appSettings) {

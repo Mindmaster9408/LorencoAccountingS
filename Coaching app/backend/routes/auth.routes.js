@@ -47,8 +47,13 @@ router.post('/login',
                 return res.status(401).json({ error: 'Invalid email or password' });
             }
 
-            // Update last login
-            await query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+            // Update last login — wrapped in try-catch because column may not exist on
+            // older database schemas. Login must succeed even if this update fails.
+            try {
+                await query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+            } catch (lastLoginErr) {
+                console.warn('Could not update last_login (column may not exist):', lastLoginErr.message);
+            }
 
             // Generate token
             const token = generateToken(user.id, user.email, user.role);
