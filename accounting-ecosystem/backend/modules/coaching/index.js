@@ -14,6 +14,9 @@ router.use('/settings',           require('./routes/settings'));
 router.use('/assessment-tokens',  require('./routes/assessment-tokens'));
 router.use('/spil',               require('./routes/spil'));
 
+// TEMPORARY — diagnostic only, remove after diagnosis
+router.use('/debug',              require('./routes/debug'));
+
 // AI routes — only mount if ANTHROPIC_API_KEY is configured
 if (process.env.ANTHROPIC_API_KEY) {
   router.use('/ai', require('./routes/ai'));
