@@ -110,12 +110,12 @@ export const testConnection = async () => {
 export const ensureClientPhotoNotesColumns = async () => {
     try {
         await pool.query(`
-            ALTER TABLE clients ADD COLUMN IF NOT EXISTS photo TEXT;
-            ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes TEXT;
+            ALTER TABLE coaching_clients ADD COLUMN IF NOT EXISTS photo TEXT;
+            ALTER TABLE coaching_clients ADD COLUMN IF NOT EXISTS notes TEXT;
         `);
-        console.log('[DB INIT] clients.photo and clients.notes columns confirmed');
+        console.log('[DB INIT] coaching_clients.photo and coaching_clients.notes columns confirmed');
     } catch (err) {
-        console.error('[DB INIT] Could not ensure photo/notes columns on clients:', err.message);
+        console.error('[DB INIT] Could not ensure photo/notes columns on coaching_clients:', err.message);
     }
 };
 

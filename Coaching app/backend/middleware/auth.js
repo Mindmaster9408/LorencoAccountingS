@@ -93,7 +93,7 @@ export const requireClientAccess = async (req, res, next) => {
 
         // Check if coach owns this client
         const result = await query(
-            'SELECT id FROM clients WHERE id = $1 AND coach_id = $2',
+            'SELECT id FROM coaching_clients WHERE id = $1 AND coach_id = $2',
             [clientId, req.user.id]
         );
 

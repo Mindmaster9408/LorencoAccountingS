@@ -9,6 +9,15 @@ const router = express.Router();
 // Debug flag — set DEBUG_PHOTO_NOTES=true in Zeabur env vars to trace photo/notes on save and fetch
 const DEBUG_PHOTO_NOTES = process.env.DEBUG_PHOTO_NOTES === 'true';
 
+// AUTHORITATIVE TABLE — all client CRUD must use this table.
+// Confirmed: live data lives in public.coaching_clients.
+const CLIENT_TABLE = 'coaching_clients';
+
+console.log('[CLIENT TABLE DEBUG] GET LIST  table:', CLIENT_TABLE);
+console.log('[CLIENT TABLE DEBUG] GET ONE   table:', CLIENT_TABLE);
+console.log('[CLIENT TABLE DEBUG] PUT UPDATE table:', CLIENT_TABLE);
+console.log('[CLIENT TABLE DEBUG] POST CREATE table:', CLIENT_TABLE);
+
 // All routes require authentication
 router.use(authenticateToken);
 router.use(requireCoach);
@@ -39,7 +48,7 @@ router.get('/', async (req, res) => {
             SELECT c.*,
                    COUNT(DISTINCT cs.id) as session_count,
                    MAX(cs.session_date) as last_actual_session
-            FROM clients c
+            FROM coaching_clients c
             LEFT JOIN client_sessions cs ON c.id = cs.client_id
             WHERE c.coach_id = $1
         `;
@@ -74,7 +83,7 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
 
         // Get client basic info
         const clientResult = await query(
-            'SELECT * FROM clients WHERE id = $1',
+            'SELECT * FROM coaching_clients WHERE id = $1',
             [clientId]
         );
 
@@ -152,7 +161,7 @@ router.post('/',
 
             // Create client with initial journey_progress (step 1 is Four Quadrants)
             const result = await query(
-                `INSERT INTO clients (coach_id, name, email, phone, preferred_lang, dream, current_step, exercise_data, journey_progress, last_session)
+                `INSERT INTO coaching_clients (coach_id, name, email, phone, preferred_lang, dream, current_step, exercise_data, journey_progress, last_session)
                  VALUES ($1, $2, $3, $4, $5, $6, 1, '{}'::jsonb, '{"currentStep": 1, "completedSteps": [], "stepNotes": {}, "stepCompletionDates": {}}'::jsonb, CURRENT_DATE)
                  RETURNING *`,
                 [req.user.id, name, email || null, phone || null, preferred_lang || 'English', dream || '']
@@ -254,7 +263,7 @@ router.put('/:clientId',
             // a direct API call with only current_step in the payload.
             if (current_step !== undefined && Number(current_step) > 1 && !journeyProgress) {
                 const progressResult = await query(
-                    'SELECT journey_progress FROM clients WHERE id = $1',
+                    'SELECT journey_progress FROM coaching_clients WHERE id = $1',
                     [clientId]
                 );
                 if (progressResult.rows.length > 0) {
@@ -279,12 +288,13 @@ router.put('/:clientId',
             }
 
             if (DEBUG_PHOTO_NOTES) {
-                console.log('[DB PUT /clients/:id] id:', clientId,
+                console.log('[CLIENT UPDATE DEBUG] id:', clientId,
                     'notesLen:', notes !== undefined ? (notes || '').length : 'absent',
-                    'hasPhoto:', photo !== undefined && photo !== null && photo !== '');
+                    'hasPhoto:', photo !== undefined && photo !== null && photo !== '',
+                    'table: coaching_clients');
             }
             const result = await query(
-                `UPDATE clients
+                `UPDATE coaching_clients
                  SET name = COALESCE($1, name),
                      email = COALESCE($2, email),
                      phone = COALESCE($3, phone),
@@ -314,9 +324,10 @@ router.put('/:clientId',
             }
             if (DEBUG_PHOTO_NOTES) {
                 const rr = result.rows[0];
-                console.log('[DB PUT /clients/:id] RETURNING id:', rr.id,
+                console.log('[CLIENT UPDATE DEBUG] RETURNING id:', rr.id,
                     'notesLen:', (rr.notes || '').length,
-                    'hasPhoto:', !!(rr.photo && rr.photo !== ''));
+                    'hasPhoto:', !!(rr.photo && rr.photo !== ''),
+                    'updatedRows: 1', 'table: coaching_clients');
             }
             res.json({
                 success: true,
@@ -354,7 +365,7 @@ router.put('/:clientId/gauges',
 
             // Update client last_session
             await query(
-                'UPDATE clients SET last_session = CURRENT_DATE WHERE id = $1',
+                'UPDATE coaching_clients SET last_session = CURRENT_DATE WHERE id = $1',
                 [clientId]
             );
 
@@ -376,7 +387,7 @@ router.delete('/:clientId', requireClientAccess, async (req, res) => {
         const { clientId } = req.params;
 
         await query(
-            `UPDATE clients
+            `UPDATE coaching_clients
              SET status = 'archived', archived_at = CURRENT_TIMESTAMP
              WHERE id = $1`,
             [clientId]
