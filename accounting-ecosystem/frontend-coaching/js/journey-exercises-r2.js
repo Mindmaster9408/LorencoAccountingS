@@ -116,42 +116,71 @@ function render4QuadrantExercise(client, container) {
                 </div>
             </div>
 
-            <!-- 4 Quadrants Grid -->
-            <div class="four-quadrants-grid">
-                <div class="quadrant top-left">
-                    <h3>Pains & Frustrations</h3>
-                    <textarea
-                        id="q-pains"
-                        placeholder="What pains and frustrations is the client experiencing?"
-                        rows="8"
-                    >${escapeHtml(data.painsAndFrustrations)}</textarea>
+            <!-- 4 Quadrants Grid — wrapped so the transformation axis can overlay the midline -->
+            <div class="quadrant-axis-wrapper">
+                <div class="four-quadrants-grid">
+                    <div class="quadrant top-left">
+                        <h3>Pains & Frustrations</h3>
+                        <textarea
+                            id="q-pains"
+                            placeholder="What pains and frustrations is the client experiencing?"
+                            rows="8"
+                        >${escapeHtml(data.painsAndFrustrations)}</textarea>
+                    </div>
+
+                    <div class="quadrant top-right">
+                        <h3>Goals & Desires</h3>
+                        <textarea
+                            id="q-goals"
+                            placeholder="What are the client's goals and desires?"
+                            rows="8"
+                        >${escapeHtml(data.goalsAndDesires)}</textarea>
+                    </div>
+
+                    <div class="quadrant bottom-left">
+                        <h3>Fears & Implications</h3>
+                        <textarea
+                            id="q-fears"
+                            placeholder="What fears and implications are holding them back?"
+                            rows="8"
+                        >${escapeHtml(data.fearsAndImplications)}</textarea>
+                    </div>
+
+                    <div class="quadrant bottom-right">
+                        <h3>Dreams & Aspirations</h3>
+                        <textarea
+                            id="q-dreams"
+                            placeholder="What are their dreams and aspirations?"
+                            rows="8"
+                        >${escapeHtml(data.dreamsAndAspirations)}</textarea>
+                    </div>
                 </div>
 
-                <div class="quadrant top-right">
-                    <h3>Goals & Desires</h3>
-                    <textarea
-                        id="q-goals"
-                        placeholder="What are the client's goals and desires?"
-                        rows="8"
-                    >${escapeHtml(data.goalsAndDesires)}</textarea>
-                </div>
+                <!-- Horizontal Transformation Axis
+                     The client avatar sits centred on the midline between the top and bottom rows.
+                     LEFT  ← = moving away from dreams (pain / fear side)
+                     RIGHT → = moving toward dreams (goals / aspirations side)
+                     pointer-events: none so textareas remain fully interactive -->
+                <div class="transformation-axis" aria-hidden="true">
+                    <div class="axis-wing axis-wing--left">
+                        <span class="axis-glyph">←</span>
+                        <div class="axis-line"></div>
+                        <span class="axis-label">Away from dreams</span>
+                    </div>
 
-                <div class="quadrant bottom-left">
-                    <h3>Fears & Implications</h3>
-                    <textarea
-                        id="q-fears"
-                        placeholder="What fears and implications are holding them back?"
-                        rows="8"
-                    >${escapeHtml(data.fearsAndImplications)}</textarea>
-                </div>
+                    <div class="axis-avatar" data-initial="${escapeHtml((client.name||'')[0]||'P')}">
+                        ${(client.photo_signed_url || client.photo)
+                            ? `<img src="${escapeHtml(client.photo_signed_url || client.photo)}" class="axis-avatar-img" alt=""
+                                   onerror="this.style.display='none';this.parentElement.textContent=this.parentElement.dataset.initial;">`
+                            : escapeHtml((client.name||'')[0]||'P')
+                        }
+                    </div>
 
-                <div class="quadrant bottom-right">
-                    <h3>Dreams & Aspirations</h3>
-                    <textarea
-                        id="q-dreams"
-                        placeholder="What are their dreams and aspirations?"
-                        rows="8"
-                    >${escapeHtml(data.dreamsAndAspirations)}</textarea>
+                    <div class="axis-wing axis-wing--right">
+                        <span class="axis-label">Toward dreams</span>
+                        <div class="axis-line"></div>
+                        <span class="axis-glyph">→</span>
+                    </div>
                 </div>
             </div>
 

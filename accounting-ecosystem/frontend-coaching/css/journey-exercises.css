@@ -361,6 +361,162 @@
     }
 }
 
+/* ─── Horizontal Transformation Axis ─────────────────────────────────────────
+   The wrapper is position:relative so the axis overlay can use position:absolute.
+   The axis sits exactly at top:50% of the wrapper — the gap between the two
+   quadrant rows — so the avatar straddles the horizontal midline.
+   pointer-events:none keeps textareas fully interactive beneath the overlay.
+──────────────────────────────────────────────────────────────────────────── */
+
+.quadrant-axis-wrapper {
+    position: relative;
+    margin-bottom: 32px;
+}
+
+/* The grid inside the wrapper — strip its own margin-bottom (wrapper owns it) */
+.quadrant-axis-wrapper .four-quadrants-grid {
+    margin-bottom: 0;
+}
+
+.transformation-axis {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    z-index: 20;
+}
+
+/* Left and right wings: each flex:1 fills the space between edge and avatar */
+.axis-wing {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0; /* prevent flex overflow */
+}
+
+.axis-wing--left {
+    flex-direction: row;      /* ← glyph | line ——— | label */
+    padding-right: 14px;
+}
+
+.axis-wing--right {
+    flex-direction: row-reverse; /* mirrors left: label | ——— line | → glyph */
+    padding-left: 14px;
+}
+
+/* The thin connecting line — fades toward the edge for a premium feel */
+.axis-line {
+    flex: 1;
+    height: 1px;
+    min-width: 20px;
+    background: rgba(102, 126, 234, 0.3);
+}
+
+.axis-wing--left  .axis-line {
+    background: linear-gradient(to right, transparent, rgba(102, 126, 234, 0.35));
+}
+
+.axis-wing--right .axis-line {
+    background: linear-gradient(to left, transparent, rgba(102, 126, 234, 0.35));
+}
+
+/* Arrow glyphs — intentionally subdued, not decorative */
+.axis-glyph {
+    font-size: 15px;
+    line-height: 1;
+    color: rgba(102, 126, 234, 0.5);
+    flex-shrink: 0;
+    font-weight: 400;
+}
+
+/* Small uppercase directional label */
+.axis-label {
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: rgba(102, 126, 234, 0.45);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Client avatar — circular, elevated, premium shadow */
+.axis-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: 4px solid #fff;
+    box-shadow:
+        0 6px 20px rgba(102, 126, 234, 0.28),
+        0 2px 8px rgba(0, 0, 0, 0.10);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 26px;
+    font-weight: 700;
+    flex-shrink: 0;
+    overflow: hidden;
+    /* Slight vertical lift to read as "above" the grid midline */
+    transform: translateY(-2px);
+    z-index: 21;
+}
+
+.axis-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 50%;
+}
+
+/* Tablet: preserve overlap, just tighten spacing */
+@media (max-width: 1024px) {
+    .axis-label {
+        display: none;
+    }
+}
+
+/* Mobile: smaller avatar, shorter arrows */
+@media (max-width: 768px) {
+    .axis-avatar {
+        width: 56px;
+        height: 56px;
+        font-size: 20px;
+        border-width: 3px;
+    }
+    .axis-label {
+        display: none;
+    }
+    .axis-glyph {
+        font-size: 13px;
+    }
+    .axis-wing--left  { padding-right: 8px; }
+    .axis-wing--right { padding-left:  8px; }
+}
+
+/* PDF / print: flatten shadows, force brand colour, keep overlap intact */
+@media print {
+    .transformation-axis {
+        position: absolute; /* keep overlay in place */
+    }
+    .axis-avatar {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        box-shadow: none;
+        border-color: #667eea;
+    }
+    .axis-line {
+        background: rgba(102, 126, 234, 0.4) !important;
+    }
+}
+
 /* 4 Quadrant Exercise Specific Styles */
 .four-quadrant-page {
     max-width: 1600px;
