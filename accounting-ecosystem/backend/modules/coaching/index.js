@@ -13,6 +13,7 @@ router.use('/leads',              require('./routes/leads'));
 router.use('/settings',           require('./routes/settings'));
 router.use('/assessment-tokens',  require('./routes/assessment-tokens'));
 router.use('/spil',               require('./routes/spil'));
+router.use('/question-builder',   require('./routes/question-builder'));
 
 // TEMPORARY — diagnostic only, remove after diagnosis
 router.use('/debug',              require('./routes/debug'));

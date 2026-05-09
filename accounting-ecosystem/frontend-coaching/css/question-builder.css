@@ -1,0 +1,412 @@
+/* css/question-builder.css — Question Builder feature styles */
+
+/* ─── Page header ─────────────────────────────────────────────────────────── */
+.qb-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.qb-title {
+    margin: 0 0 4px 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.qb-subtitle {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.95rem;
+}
+
+/* ─── PGF context note ────────────────────────────────────────────────────── */
+.qb-pgf-note {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    color: #1d4ed8;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+/* ─── Filters ─────────────────────────────────────────────────────────────── */
+.qb-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.qb-filters select {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    color: #1e293b;
+    font-size: 0.88rem;
+    cursor: pointer;
+}
+
+.qb-filters select:focus {
+    outline: none;
+    border-color: #6366f1;
+}
+
+/* ─── Question list ───────────────────────────────────────────────────────── */
+.qb-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.qb-loading,
+.qb-error {
+    padding: 20px;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.95rem;
+}
+
+.qb-error {
+    color: #dc2626;
+}
+
+/* ─── Question card ───────────────────────────────────────────────────────── */
+.qb-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    transition: box-shadow 0.15s;
+}
+
+.qb-card:hover {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
+}
+
+.qb-card-inactive {
+    opacity: 0.55;
+}
+
+.qb-card-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.qb-card-text {
+    font-size: 0.97rem;
+    font-weight: 500;
+    color: #1e293b;
+    margin-bottom: 8px;
+    line-height: 1.45;
+}
+
+.qb-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+}
+
+.qb-card-help {
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-top: 5px;
+    font-style: italic;
+}
+
+/* ─── Meta chips ──────────────────────────────────────────────────────────── */
+.qb-meta-chip {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #f1f5f9;
+    color: #475569;
+    white-space: nowrap;
+}
+
+.qb-chip-type {
+    background: #e0e7ff;
+    color: #4338ca;
+    font-weight: 600;
+}
+
+.qb-chip-ctx {
+    background: #ecfdf5;
+    color: #059669;
+    font-family: monospace;
+    font-size: 0.73rem;
+}
+
+.qb-tag-pgf {
+    font-size: 0.72rem;
+    padding: 2px 7px;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 4px;
+    font-weight: 700;
+}
+
+/* ─── Status badges ───────────────────────────────────────────────────────── */
+.qb-badge {
+    font-size: 0.73rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.qb-badge-active {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.qb-badge-inactive {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* ─── Card action buttons ─────────────────────────────────────────────────── */
+.qb-card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.qb-btn-secondary {
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    color: #475569;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.13s, border-color 0.13s;
+}
+
+.qb-btn-secondary:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.qb-btn-danger {
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    border: 1px solid #fca5a5;
+    background: white;
+    color: #dc2626;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.13s;
+}
+
+.qb-btn-danger:hover {
+    background: #fef2f2;
+}
+
+/* ─── Empty state ─────────────────────────────────────────────────────────── */
+.qb-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #64748b;
+}
+
+.qb-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.qb-empty p {
+    font-size: 0.97rem;
+    margin-bottom: 20px;
+}
+
+/* ─── Modal overlay ───────────────────────────────────────────────────────── */
+.qb-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.qb-modal {
+    background: white;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+/* ─── Modal header ────────────────────────────────────────────────────────── */
+.qb-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 1;
+}
+
+.qb-modal-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.qb-close-btn {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    color: #64748b;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    line-height: 1;
+    transition: background 0.13s;
+}
+
+.qb-close-btn:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+/* ─── Form ────────────────────────────────────────────────────────────────── */
+.qb-form {
+    padding: 20px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.qb-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+}
+
+.qb-form-group label {
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.qb-form-group input[type="text"],
+.qb-form-group input[type="number"],
+.qb-form-group textarea,
+.qb-form-group select {
+    padding: 8px 11px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: #1e293b;
+    background: white;
+    font-family: inherit;
+    transition: border-color 0.13s, box-shadow 0.13s;
+    resize: vertical;
+}
+
+.qb-form-group input:focus,
+.qb-form-group textarea:focus,
+.qb-form-group select:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.qb-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.qb-form-row-checks {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+}
+
+/* ─── Conditional section (rating / choice) ───────────────────────────────── */
+.qb-conditional-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* ─── Checkbox labels ─────────────────────────────────────────────────────── */
+.qb-check-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+}
+
+.qb-check-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #6366f1;
+}
+
+/* ─── Inline markers ──────────────────────────────────────────────────────── */
+.qb-required {
+    color: #dc2626;
+}
+
+.qb-hint {
+    font-weight: 400;
+    color: #94a3b8;
+    font-size: 0.8rem;
+}
+
+/* ─── Form actions ────────────────────────────────────────────────────────── */
+.qb-form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding-top: 6px;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 540px) {
+    .qb-form-row {
+        grid-template-columns: 1fr;
+    }
+    .qb-card {
+        flex-direction: column;
+    }
+    .qb-card-actions {
+        flex-direction: row;
+    }
+}

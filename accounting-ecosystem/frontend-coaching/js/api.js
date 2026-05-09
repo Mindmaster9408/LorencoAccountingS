@@ -210,5 +210,52 @@ export const api = {
     },
 
     deleteClientPhoto: (clientId) =>
-        apiRequest(`/clients/${clientId}/photo`, { method: 'DELETE' })
+        apiRequest(`/clients/${clientId}/photo`, { method: 'DELETE' }),
+
+    // Question Builder — global reusable question library
+    questionBuilder: {
+        listQuestions: (params = {}) => {
+            const qs = new URLSearchParams();
+            if (params.category)                                    qs.set('category',    params.category);
+            if (params.contextKey)                                  qs.set('context_key', params.contextKey);
+            if (params.active !== undefined && params.active !== '') qs.set('active',      params.active);
+            const q = qs.toString() ? '?' + qs.toString() : '';
+            return apiRequest(`/question-builder/questions${q}`);
+        },
+
+        createQuestion: (data) =>
+            apiRequest('/question-builder/questions', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            }),
+
+        updateQuestion: (id, data) =>
+            apiRequest(`/question-builder/questions/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            }),
+
+        deactivateQuestion: (id) =>
+            apiRequest(`/question-builder/questions/${id}`, {
+                method: 'DELETE'
+            }),
+
+        listContexts: () =>
+            apiRequest('/question-builder/contexts'),
+
+        getClientContextQuestions: (clientId, contextKey) =>
+            apiRequest(`/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}`),
+
+        assignClientQuestions: (clientId, contextKey, questionIds) =>
+            apiRequest(`/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}/assign`, {
+                method: 'POST',
+                body: JSON.stringify({ questionIds })
+            }),
+
+        saveClientQuestionAnswers: (clientId, contextKey, answers) =>
+            apiRequest(`/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}/answers`, {
+                method: 'PUT',
+                body: JSON.stringify({ answers })
+            })
+    }
 };

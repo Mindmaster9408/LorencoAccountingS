@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="css/leads.css" />
     <link rel="stylesheet" href="css/journey.css" />
     <link rel="stylesheet" href="css/journey-exercises.css" />
+    <link rel="stylesheet" href="css/question-builder.css" />
 </head>
 <body class="body-bg">
     <div class="app">
@@ -24,7 +25,7 @@
                 <ul>
                     <li data-route="dashboard" class="active">Dashboard</li>
                     <li data-route="leads">Leads</li>
-                    <li data-route="training">Training My App</li>
+                    <li data-route="question-builder">Question Builder</li>
                     <li data-route="reports">Reports</li>
                     <li data-route="settings">⚙️ Settings</li>
                 </ul>
@@ -85,32 +86,7 @@
                 </div>
             </section>
 
-            <section id="training" class="view hidden">
-                <h2>Training My App</h2>
-                <div class="training-grid">
-                    <div class="training-card">
-                        <h3>Neuro Coach Part</h3>
-                        <input type="file" id="upload-neuro" multiple />
-                        <select id="neuro-tag"><option value="neuro_coach">neuro_coach</option></select>
-                        <button id="neuro-upload-btn">Upload & Tag</button>
-                    </div>
-
-                    <div class="training-card">
-                        <h3>BASIS Report Side</h3>
-                        <input type="file" id="upload-basis" multiple />
-                        <select id="basis-tag"><option value="basis_report">basis_report</option></select>
-                        <button id="basis-upload-btn">Upload & Tag</button>
-                    </div>
-
-                    <div class="training-card full">
-                        <h3>Prompt Insertion</h3>
-                        <textarea id="prompt-text" placeholder="Paste custom prompt or instruction here"></textarea>
-                        <button id="learn-prompt-btn">Teach AI</button>
-                    </div>
-                </div>
-
-                <div id="training-log" class="training-log"></div>
-            </section>
+            <section id="question-builder" class="view hidden"></section>
 
             <section id="leads" class="view hidden">
                 <div class="leads-header">
