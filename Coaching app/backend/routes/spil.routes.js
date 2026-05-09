@@ -139,7 +139,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     try {
         const result = await query(
-            `INSERT INTO coaching_spil_profiles
+            `INSERT INTO spil_profiles
                 (respondent_name, respondent_email, respondent_phone, preferred_lang,
                  answers, scores, ranking, spil_code,
                  report_generated, report_internal,
@@ -180,7 +180,7 @@ router.get('/', authenticateToken, async (req, res) => {
                     (scores IS NOT NULL)           AS has_results,
                     (report_generated IS NOT NULL) AS has_report,
                     created_at, updated_at
-             FROM coaching_spil_profiles
+             FROM spil_profiles
              WHERE created_by_user_id = $1
              ORDER BY created_at DESC`,
             [req.user.id]
@@ -203,7 +203,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 
     try {
         const result = await query(
-            `SELECT * FROM coaching_spil_profiles
+            `SELECT * FROM spil_profiles
              WHERE id = $1 AND created_by_user_id = $2`,
             [id, req.user.id]
         );
@@ -254,7 +254,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     try {
         // Confirm profile exists and belongs to this coach
         const check = await query(
-            `SELECT id, respondent_name, preferred_lang FROM coaching_spil_profiles
+            `SELECT id, respondent_name, preferred_lang FROM spil_profiles
              WHERE id = $1 AND created_by_user_id = $2`,
             [id, req.user.id]
         );
@@ -273,7 +273,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         const internalNotes = generateInternalNotes(results, useName);
 
         const updated = await query(
-            `UPDATE coaching_spil_profiles
+            `UPDATE spil_profiles
              SET answers             = $1,
                  scores              = $2,
                  ranking             = $3,

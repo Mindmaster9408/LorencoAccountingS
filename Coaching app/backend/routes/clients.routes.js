@@ -36,8 +36,8 @@ router.get('/', async (req, res) => {
             SELECT c.*,
                    COUNT(DISTINCT cs.id) as session_count,
                    MAX(cs.session_date) as last_actual_session
-            FROM coaching_clients c
-            LEFT JOIN coaching_client_sessions cs ON c.id = cs.client_id
+            FROM clients c
+            LEFT JOIN client_sessions cs ON c.id = cs.client_id
             WHERE c.coach_id = $1
         `;
 
@@ -71,7 +71,7 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
 
         // Get client basic info
         const clientResult = await query(
-            'SELECT * FROM coaching_clients WHERE id = $1',
+            'SELECT * FROM clients WHERE id = $1',
             [clientId]
         );
 
@@ -81,14 +81,14 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
 
         const client = clientResult.rows[0];
         const stepsResult = await query(
-            'SELECT * FROM coaching_client_steps WHERE client_id = $1 ORDER BY step_order',
+            'SELECT * FROM client_steps WHERE client_id = $1 ORDER BY step_order',
             [clientId]
         );
 
         // Get latest gauges
         const gaugesResult = await query(
             `SELECT DISTINCT ON (gauge_key) gauge_key, gauge_value, recorded_at
-             FROM coaching_client_gauges
+             FROM client_gauges
              WHERE client_id = $1
              ORDER BY gauge_key, recorded_at DESC`,
             [clientId]
@@ -96,7 +96,7 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
 
         // Get recent sessions
         const sessionsResult = await query(
-            `SELECT * FROM coaching_client_sessions
+            `SELECT * FROM client_sessions
              WHERE client_id = $1
              ORDER BY session_date DESC
              LIMIT 10`,
@@ -144,7 +144,7 @@ router.post('/',
 
             // Create client with initial journey_progress (step 1 is Four Quadrants)
             const result = await query(
-                `INSERT INTO coaching_clients (coach_id, name, email, phone, preferred_lang, dream, current_step, exercise_data, journey_progress, last_session)
+                `INSERT INTO clients (coach_id, name, email, phone, preferred_lang, dream, current_step, exercise_data, journey_progress, last_session)
                  VALUES ($1, $2, $3, $4, $5, $6, 1, '{}'::jsonb, '{"currentStep": 1, "completedSteps": [], "stepNotes": {}, "stepCompletionDates": {}}'::jsonb, CURRENT_DATE)
                  RETURNING *`,
                 [req.user.id, name, email || null, phone || null, preferred_lang || 'English', dream || '']
@@ -173,7 +173,7 @@ router.post('/',
 
             for (const step of steps) {
                 await query(
-                    `INSERT INTO coaching_client_steps (client_id, step_id, step_name, step_order)
+                    `INSERT INTO client_steps (client_id, step_id, step_name, step_order)
                      VALUES ($1, $2, $3, $4)`,
                     [newClient.id, step.id, step.name, step.order]
                 );
@@ -183,7 +183,7 @@ router.post('/',
             const gaugeKeys = ['fuel', 'horizon', 'thrust', 'engine', 'compass', 'positive', 'weight', 'nav', 'negative'];
             for (const gaugeKey of gaugeKeys) {
                 await query(
-                    `INSERT INTO coaching_client_gauges (client_id, gauge_key, gauge_value)
+                    `INSERT INTO client_gauges (client_id, gauge_key, gauge_value)
                      VALUES ($1, $2, 50)`,
                     [newClient.id, gaugeKey]
                 );
@@ -246,7 +246,7 @@ router.put('/:clientId',
             // a direct API call with only current_step in the payload.
             if (current_step !== undefined && Number(current_step) > 1 && !journeyProgress) {
                 const progressResult = await query(
-                    'SELECT journey_progress FROM coaching_clients WHERE id = $1',
+                    'SELECT journey_progress FROM clients WHERE id = $1',
                     [clientId]
                 );
                 if (progressResult.rows.length > 0) {
@@ -271,7 +271,7 @@ router.put('/:clientId',
             }
 
             const result = await query(
-                `UPDATE coaching_clients
+                `UPDATE clients
                  SET name = COALESCE($1, name),
                      email = COALESCE($2, email),
                      phone = COALESCE($3, phone),
@@ -328,7 +328,7 @@ router.put('/:clientId/gauges',
             // Insert new gauge readings
             for (const [gaugeKey, gaugeValue] of Object.entries(gauges)) {
                 await query(
-                    `INSERT INTO coaching_client_gauges (client_id, gauge_key, gauge_value)
+                    `INSERT INTO client_gauges (client_id, gauge_key, gauge_value)
                      VALUES ($1, $2, $3)`,
                     [clientId, gaugeKey, gaugeValue]
                 );
@@ -336,7 +336,7 @@ router.put('/:clientId/gauges',
 
             // Update client last_session
             await query(
-                'UPDATE coaching_clients SET last_session = CURRENT_DATE WHERE id = $1',
+                'UPDATE clients SET last_session = CURRENT_DATE WHERE id = $1',
                 [clientId]
             );
 
@@ -358,7 +358,7 @@ router.delete('/:clientId', requireClientAccess, async (req, res) => {
         const { clientId } = req.params;
 
         await query(
-            `UPDATE coaching_clients
+            `UPDATE clients
              SET status = 'archived', archived_at = CURRENT_TIMESTAMP
              WHERE id = $1`,
             [clientId]

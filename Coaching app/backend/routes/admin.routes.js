@@ -15,7 +15,7 @@ router.get('/users', async (req, res) => {
     try {
         const result = await query(
             `SELECT id, email, first_name, last_name, role, is_active, created_at, last_login
-             FROM coaching_users
+             FROM users
              ORDER BY created_at DESC`
         );
 
@@ -33,7 +33,7 @@ router.get('/users', async (req, res) => {
 router.get('/modules', async (req, res) => {
     try {
         const result = await query(
-            'SELECT * FROM coaching_program_modules ORDER BY module_name'
+            'SELECT * FROM program_modules ORDER BY module_name'
         );
 
         res.json({
@@ -53,8 +53,8 @@ router.get('/coaches/:coachId/modules', async (req, res) => {
 
         const result = await query(
             `SELECT pm.*, cpa.is_enabled, cpa.enabled_at
-             FROM coaching_program_modules pm
-             LEFT JOIN coaching_coach_program_access cpa ON pm.id = cpa.module_id AND cpa.coach_id = $1
+             FROM program_modules pm
+             LEFT JOIN coach_program_access cpa ON pm.id = cpa.module_id AND cpa.coach_id = $1
              ORDER BY pm.module_name`,
             [coachId]
         );
@@ -86,7 +86,7 @@ router.post('/coaches/:coachId/modules/:moduleId',
 
             // Check if coach exists
             const coachResult = await query(
-                'SELECT id, role FROM coaching_users WHERE id = $1',
+                'SELECT id, role FROM users WHERE id = $1',
                 [coachId]
             );
 
@@ -100,7 +100,7 @@ router.post('/coaches/:coachId/modules/:moduleId',
 
             // Check if module exists
             const moduleResult = await query(
-                'SELECT id FROM coaching_program_modules WHERE id = $1',
+                'SELECT id FROM program_modules WHERE id = $1',
                 [moduleId]
             );
 
@@ -110,7 +110,7 @@ router.post('/coaches/:coachId/modules/:moduleId',
 
             // Upsert coach_program_access
             await query(
-                `INSERT INTO coaching_coach_program_access (coach_id, module_id, is_enabled, enabled_by)
+                `INSERT INTO coach_program_access (coach_id, module_id, is_enabled, enabled_by)
                  VALUES ($1, $2, $3, $4)
                  ON CONFLICT (coach_id, module_id)
                  DO UPDATE SET is_enabled = $3, enabled_at = CURRENT_TIMESTAMP, enabled_by = $4`,
@@ -145,7 +145,7 @@ router.patch('/users/:userId/status',
             }
 
             await query(
-                'UPDATE coaching_users SET is_active = $1 WHERE id = $2',
+                'UPDATE users SET is_active = $1 WHERE id = $2',
                 [isActive, userId]
             );
 
@@ -169,7 +169,7 @@ router.get('/stats', async (req, res) => {
         // Total users by role
         const usersResult = await query(
             `SELECT role, COUNT(*) as count
-             FROM coaching_users
+             FROM users
              WHERE is_active = true
              GROUP BY role`
         );
@@ -178,21 +178,21 @@ router.get('/stats', async (req, res) => {
         // Total clients by status
         const clientsResult = await query(
             `SELECT status, COUNT(*) as count
-             FROM coaching_clients
+             FROM clients
              GROUP BY status`
         );
         stats.clients = clientsResult.rows;
 
         // Total sessions
         const sessionsResult = await query(
-            'SELECT COUNT(*) as total_sessions FROM coaching_client_sessions'
+            'SELECT COUNT(*) as total_sessions FROM client_sessions'
         );
         stats.totalSessions = parseInt(sessionsResult.rows[0].total_sessions);
 
         // AI usage
         const aiResult = await query(
             `SELECT ai_provider, COUNT(*) as count, SUM(tokens_used) as total_tokens
-             FROM coaching_ai_conversations
+             FROM ai_conversations
              WHERE ai_provider IS NOT NULL
              GROUP BY ai_provider`
         );
@@ -227,7 +227,7 @@ router.post('/modules',
             const { moduleKey, moduleName, description, isDefault } = req.body;
 
             const result = await query(
-                `INSERT INTO coaching_program_modules (module_key, module_name, description, is_default)
+                `INSERT INTO program_modules (module_key, module_name, description, is_default)
                  VALUES ($1, $2, $3, $4)
                  RETURNING *`,
                 [moduleKey, moduleName, description || '', isDefault || false]
