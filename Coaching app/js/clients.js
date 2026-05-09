@@ -1,6 +1,8 @@
 // Client management and individual client view
 import { $, escapeHtml } from './config.js';
 import { readStore, writeStore, ensureStore, saveClient, createNewClient } from './storage.js';
+import { api } from './api.js';
+import { normalizeClientCoachingState } from './journey-data.js';
 import { renderCockpit, saveGauges } from './gauges.js';
 import { renderDashboard } from './dashboard.js';
 import { renderBASISAssessment } from './basis-ui.js?v=2';
@@ -8,11 +10,26 @@ import { renderJourneyTracker } from './journey-ui.js';
 import { renderSpilClientPanel } from './spil-client.js';
 
 export async function openClient(clientId, options = {}) {
+    // Existence check from list store
     const store = await readStore();
-    const client = store.clients.find(c => c.id === clientId);
-    if(!client) return;
+    const listClient = store.clients.find(c => c.id === clientId);
+    if(!listClient) return;
 
-    // Ensure client has gauges initialized
+    // Always fetch the individual client record for the detail view.
+    // The list endpoint (SELECT c.* GROUP BY) may return stale/missing photo+notes;
+    // the single-row endpoint (SELECT * WHERE id = $1) is the authoritative source.
+    let client = listClient;
+    try {
+        const data = await api.getClient(clientId);
+        if (data && data.client) {
+            client = data.client;
+            normalizeClientCoachingState(client);
+        }
+    } catch (e) {
+        console.warn('openClient: individual fetch failed, rendering from list data', e.message);
+    }
+
+    // Ensure client has gauges initialized (fallback when individual fetch is unavailable)
     if(!client.gauges) {
         client.gauges = {
             fuel: 50,
