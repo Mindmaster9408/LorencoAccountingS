@@ -182,5 +182,33 @@ export const api = {
         apiRequest('/assessment-tokens', {
             method: 'POST',
             body: JSON.stringify({ clientId, clientName })
-        })
+        }),
+
+    // ── Client Profile Photos (Supabase Storage) ───────────────────────────────
+    // uploadClientPhoto: POSTs as multipart/form-data so the backend can receive
+    // the raw file buffer via multer.  Must NOT set Content-Type — the browser
+    // sets it automatically with the correct multipart boundary.
+    uploadClientPhoto: (clientId, formData) => {
+        const token = getAuthToken();
+        return fetch(`${API_BASE_URL}/clients/${clientId}/photo`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+                // No Content-Type — browser adds multipart/form-data + boundary
+            },
+            body: formData
+        }).then(async (res) => {
+            if (res.status === 401) {
+                clearAuthToken();
+                window.location.href = '/coaching/login.html';
+                throw new Error('Session expired. Please login again.');
+            }
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `Photo upload failed: ${res.status}`);
+            return data;
+        });
+    },
+
+    deleteClientPhoto: (clientId) =>
+        apiRequest(`/clients/${clientId}/photo`, { method: 'DELETE' })
 };

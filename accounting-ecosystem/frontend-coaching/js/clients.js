@@ -63,9 +63,15 @@ export async function openClient(clientId, options = {}) {
     // Update sidebar with client info
     const sidebarInfo = $('#client-sidebar-info');
     if(sidebarInfo) {
-        const photoHtml = client.photo ?
-            `<img src="${client.photo}" alt="${escapeHtml(client.name)}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto 16px; display: block; border: 3px solid #3b82f6;" />` :
-            `<div class="client-photo" style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: 700; margin: 0 auto 16px;">${(client.name || '')[0] || 'P'}</div>`;
+        // photo_signed_url = Supabase Storage signed URL (new flow)
+        // client.photo     = legacy base64 blob (backward compat for clients not yet re-uploaded)
+        const sidebarPhotoSrc = client.photo_signed_url || client.photo || null;
+        const photoHtml = sidebarPhotoSrc ?
+            `<img src="${escapeHtml(sidebarPhotoSrc)}" alt="${escapeHtml((client.name||'')[0]||'P')}"
+                  style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto 16px; display: block; border: 3px solid #3b82f6;"
+                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+             <div class="client-photo" style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: none; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: 700; margin: 0 auto 16px;">${escapeHtml((client.name||'')[0]||'P')}</div>` :
+            `<div class="client-photo" style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: 700; margin: 0 auto 16px;">${escapeHtml((client.name||'')[0]||'P')}</div>`;
 
         sidebarInfo.innerHTML = `
             <a href="#" id="back-to-tower" style="display: inline-flex; align-items: center; color: #3b82f6; text-decoration: none; font-size: 14px; white-space: nowrap;">← Back to Control Tower</a>
@@ -115,15 +121,15 @@ export async function openClient(clientId, options = {}) {
                          id="client-photo-drop-zone"
                          style="cursor: pointer; padding: 20px; border: 2px dashed #e2e8f0; border-radius: 12px; transition: all 0.3s ease;">
                         <div id="client-photo-preview-area">
-                        ${client.photo ? `
-                            <img src="${client.photo}" id="client-photo-preview" alt="Client" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
+                        ${(client.photo_signed_url || client.photo) ? `
+                            <img src="${escapeHtml(client.photo_signed_url || client.photo)}" id="client-photo-preview" alt="Client" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
                             <button type="button" class="btn-remove-photo" style="margin-top: 12px;">✕ Remove Photo</button>
                         ` : `
-                            <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${(client.name || '')[0] || 'P'}</div>
+                            <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${escapeHtml((client.name || '')[0] || 'P')}</div>
                             <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Click or drag & drop a photo here</p>
                         `}
                         </div>
-                        <input type="file" id="client-photo-input" accept="image/*" style="display: none;" />
+                        <input type="file" id="client-photo-input" accept="image/jpeg,image/jpg,image/png,image/webp" style="display: none;" />
                     </div>
                 </div>
                 <div class="form-row">
@@ -480,8 +486,16 @@ function updateSidebarPhotoEl(dataUrl, client) {
     if (dataUrl) {
         const img = document.createElement('img');
         img.src = dataUrl;
-        img.alt = client.name || '';
+        img.alt = (client.name || '')[0] || 'P';
         img.style.cssText = 'width:80px;height:80px;border-radius:50%;object-fit:cover;margin:0 auto 16px;display:block;border:3px solid #3b82f6;';
+        // Fallback to initial letter if URL expires or fails
+        img.addEventListener('error', function() {
+            const div = document.createElement('div');
+            div.className = 'client-photo';
+            div.style.cssText = 'width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;color:white;font-size:32px;font-weight:700;margin:0 auto 16px;';
+            div.textContent = (client.name || '')[0] || 'P';
+            img.replaceWith(div);
+        });
         existing.replaceWith(img);
     } else {
         const div = document.createElement('div');
@@ -497,39 +511,46 @@ function processClientPhotoFile(file, client) {
         alert('Photo is too large. Maximum size is 5MB.');
         return;
     }
-    if (!file.type.startsWith('image/')) {
-        alert('Please select a valid image file (JPG, PNG, etc.)');
+    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
+        alert('Please select a JPEG, PNG, or WebP image.');
         return;
     }
 
+    // Show immediate local preview using FileReader (client-side only, not persisted)
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const dataUrl = e.target.result;
-        console.log('[PHOTO FLOW] reader loaded base64Len=' + dataUrl.length);
+        const localDataUrl = e.target.result;
+        console.log('[PHOTO FLOW] reader loaded — showing local preview before upload');
 
-        if (dataUrl.length > 8 * 1024 * 1024) {
-            alert('Photo is too large after encoding. Please use a smaller image (under 5MB).');
-            return;
-        }
+        // 1. Immediate local preview (before upload completes)
+        updatePhotoPreviewArea(localDataUrl, client);
+        updateSidebarPhotoEl(localDataUrl, client);
 
-        // 1. Immediate preview — update DOM before API call
-        updatePhotoPreviewArea(dataUrl, client);
-        updateSidebarPhotoEl(dataUrl, client);
-        console.log('[PHOTO FLOW] preview updated');
+        // 2. Upload to Supabase Storage via multipart POST
+        const formData = new FormData();
+        formData.append('photo', file);
 
-        // 2. Save to API — minimal payload, only photo
         try {
-            console.log('[PHOTO FLOW] PUT sent hasPhoto=true');
-            const result = await api.updateClient(client.id, { photo: dataUrl });
-            const saved = result && result.client && result.client.photo;
-            console.log('[PHOTO FLOW] PUT returned hasPhoto=' + !!saved + ' photoLen=' + (saved ? saved.length : 0));
+            console.log('[PHOTO FLOW] uploading to Supabase Storage...');
+            const result = await api.uploadClientPhoto(client.id, formData);
+            console.log('[PHOTO FLOW] upload complete — photo_path=' + result.photo_path);
 
-            // 3. Update client object in closure so subsequent saves are consistent
-            client.photo = dataUrl;
+            // 3. Update client closure with the signed URL (for sidebar / future re-renders)
+            client.profile_photo_path = result.photo_path;
+            client.photo_signed_url = result.photo_signed_url || localDataUrl;
+
+            // Update preview to use signed URL (or keep local preview if no signed URL)
+            if (result.photo_signed_url) {
+                updatePhotoPreviewArea(result.photo_signed_url, client);
+                updateSidebarPhotoEl(result.photo_signed_url, client);
+            }
 
             alert('✓ Photo saved successfully!');
         } catch (err) {
-            console.error('[PHOTO FLOW] PUT failed:', err);
+            console.error('[PHOTO FLOW] upload failed:', err);
+            // Revert preview to initial letter on failure
+            updatePhotoPreviewArea(null, client);
+            updateSidebarPhotoEl(null, client);
             alert('Failed to save photo: ' + (err.message || 'Unknown error'));
         }
     };
@@ -542,8 +563,10 @@ function processClientPhotoFile(file, client) {
 
 async function doRemovePhoto(client) {
     try {
-        await api.updateClient(client.id, { photo: '' });
+        await api.deleteClientPhoto(client.id);
         client.photo = '';
+        client.photo_signed_url = null;
+        client.profile_photo_path = null;
         updatePhotoPreviewArea(null, client);
         updateSidebarPhotoEl(null, client);
         alert('✓ Photo removed.');

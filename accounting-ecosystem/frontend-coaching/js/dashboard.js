@@ -79,7 +79,15 @@ function createClientCard(client) {
     <div class="card-top" style="background:${cardTopGradient}">
       <div class="phase-badge">${phaseName}</div>
       <div class="plane-badge">✈️</div>
-      <div class="avatar">${(client.name || '')[0] || 'P'}</div>
+      ${client.photo_signed_url
+        ? `<div class="avatar" style="overflow:hidden;padding:0;" data-initial="${escapeHtml((client.name||'')[0]||'P')}">
+             <img src="${escapeHtml(client.photo_signed_url)}"
+                  class="client-card-avatar-photo"
+                  alt=""
+                  style="width:100%;height:100%;object-fit:cover;display:block;">
+           </div>`
+        : `<div class="avatar">${escapeHtml((client.name||'')[0]||'P')}</div>`
+      }
     </div>
     <div class="card-body">
       <div class="client-name">${escapeHtml(client.name)}</div>
@@ -105,7 +113,7 @@ function createClientCard(client) {
 
     card.addEventListener('click', () => {
         // Import and call openClient dynamically
-        import('./clients.js?v=9').then(module => {
+        import('./clients.js?v=10').then(module => {
             module.openClient(client.id);
         });
     });
@@ -114,6 +122,23 @@ function createClientCard(client) {
 }
 
 export function setupDashboardListeners() {
+    // Photo error fallback — if a signed URL expires during the session, revert
+    // to the initial letter avatar. Uses capture phase because 'error' does not bubble.
+    if (!document._avatarErrorListenerBound) {
+        document._avatarErrorListenerBound = true;
+        document.addEventListener('error', function(e) {
+            const img = e.target;
+            if (!img || img.tagName !== 'IMG' || !img.classList.contains('client-card-avatar-photo')) return;
+            const avatar = img.parentElement;
+            if (!avatar) return;
+            // Restore the text initial — data-initial holds the pre-escaped character
+            avatar.style.overflow = '';
+            avatar.style.padding = '';
+            avatar.removeAttribute('data-initial');
+            avatar.textContent = avatar.dataset.initial || '?';
+        }, true);
+    }
+
     // Search functionality
     const searchInput = $('#search-pilots');
     if(searchInput && !searchInput._bound) {
@@ -146,7 +171,7 @@ export function setupDashboardListeners() {
     const newPilotBtn = $('#new-pilot');
     if(newPilotBtn) {
         newPilotBtn.addEventListener('click', () => {
-            import('./clients.js?v=9').then(module => {
+            import('./clients.js?v=10').then(module => {
                 module.createNewPilot();
             });
         });
@@ -156,7 +181,7 @@ export function setupDashboardListeners() {
     const sampleBtn = $('#seed-sample');
     if(sampleBtn) {
         sampleBtn.addEventListener('click', () => {
-            import('./clients.js?v=9').then(module => {
+            import('./clients.js?v=10').then(module => {
                 module.addSampleClient();
             });
         });

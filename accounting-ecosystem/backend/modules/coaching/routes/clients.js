@@ -2,11 +2,28 @@
  * Coaching Module — Client Routes (CJS)
  */
 const express = require('express');
+const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 const { query } = require('../db');
 const { authenticateToken, requireCoach, requireClientAccess } = require('../middleware/auth');
+const photoStorage = require('../services/photo-storage');
 
 const router = express.Router();
+
+// ─── Multer configuration ─────────────────────────────────────────────────────
+// Memory storage only — no temp files written to disk.
+// OWASP: mimetype validated server-side (not just file extension).
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB hard limit
+    fileFilter(_req, file, cb) {
+        const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        if (!allowed.includes(file.mimetype)) {
+            return cb(new Error('Only JPEG, PNG, and WebP images are allowed'));
+        }
+        cb(null, true);
+    }
+});
 
 router.use(authenticateToken);
 router.use(requireCoach);
@@ -16,25 +33,70 @@ router.get('/', async (req, res) => {
   try {
     const { status } = req.query;
 
-    let queryText = `
-      SELECT c.*,
-             COUNT(DISTINCT cs.id) as session_count,
-             MAX(cs.session_date) as last_actual_session
-      FROM coaching_clients c
-      LEFT JOIN coaching_client_sessions cs ON c.id = cs.client_id
-      WHERE c.coach_id = $1
-    `;
-    const params = [req.user.id];
+    // Explicit column list — deliberately excludes the `photo` TEXT column (base64 blob)
+    // which can be several MB per client and would make the list response very large.
+    // The `photo` base64 is still available via GET /clients/:id for the detail view.
+    // profile_photo_path (Supabase Storage) is included; signed URLs are generated below.
+    // Falls back to `c.*` if migration 023 has not been run yet (graceful degradation).
+    let queryText;
+    let result;
 
-    if (status && status !== 'all') {
-      queryText += ' AND c.status = $2';
-      params.push(status);
+    const buildWhere = (paramOffset) =>
+        status && status !== 'all'
+            ? ` AND c.status = $${paramOffset + 1}`
+            : '';
+
+    const params = [req.user.id];
+    if (status && status !== 'all') params.push(status);
+
+    const whereClause = buildWhere(1);
+
+    // Try optimised explicit-column query (requires migration 023)
+    try {
+      queryText = `
+        SELECT c.id, c.coach_id, c.name, c.email, c.phone, c.preferred_lang,
+               c.status, c.dream, c.current_step, c.progress_completed, c.progress_total,
+               c.last_session, c.notes, c.exercise_data, c.journey_progress,
+               c.basis_answers, c.basis_results, c.created_at, c.updated_at, c.archived_at,
+               c.profile_photo_path,
+               (c.photo IS NOT NULL AND length(c.photo) > 0) AS has_legacy_photo,
+               COUNT(DISTINCT cs.id) AS session_count,
+               MAX(cs.session_date) AS last_actual_session
+        FROM coaching_clients c
+        LEFT JOIN coaching_client_sessions cs ON c.id = cs.client_id
+        WHERE c.coach_id = $1${whereClause}
+        GROUP BY c.id ORDER BY c.last_session DESC NULLS LAST
+      `;
+      result = await query(queryText, params);
+    } catch (colErr) {
+      if (colErr.code === '42703') {
+        // Migration 023 not yet run — fall back to c.* (includes base64 blob)
+        console.warn('[Coaching] profile_photo_path column missing — run migration 023 for optimised photo support.');
+        queryText = `
+          SELECT c.*,
+                 COUNT(DISTINCT cs.id) AS session_count,
+                 MAX(cs.session_date) AS last_actual_session
+          FROM coaching_clients c
+          LEFT JOIN coaching_client_sessions cs ON c.id = cs.client_id
+          WHERE c.coach_id = $1${whereClause}
+          GROUP BY c.id ORDER BY c.last_session DESC NULLS LAST
+        `;
+        result = await query(queryText, params);
+      } else {
+        throw colErr;
+      }
     }
 
-    queryText += ' GROUP BY c.id ORDER BY c.last_session DESC NULLS LAST';
+    // Generate signed URLs for all clients that have a Supabase Storage photo
+    const photoPaths = result.rows.map(r => r.profile_photo_path || null);
+    const signedUrlMap = await photoStorage.getSignedUrls(photoPaths).catch(() => ({}));
 
-    const result = await query(queryText, params);
-    res.json({ success: true, clients: result.rows });
+    const clients = result.rows.map(r => ({
+      ...r,
+      photo_signed_url: r.profile_photo_path ? (signedUrlMap[r.profile_photo_path] || null) : null
+    }));
+
+    res.json({ success: true, clients });
   } catch (error) {
     console.error('[Coaching] Get clients error:', error.message);
     res.status(500).json({ error: 'Failed to retrieve clients' });
@@ -50,6 +112,9 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
     if (clientResult.rows.length === 0) return res.status(404).json({ error: 'Client not found' });
 
     const client = clientResult.rows[0];
+
+    // Generate signed URL for Supabase Storage photo (if the client has one)
+    const photoSignedUrl = await photoStorage.getSignedUrl(client.profile_photo_path || null).catch(() => null);
 
     const [stepsResult, gaugesResult, sessionsResult] = await Promise.all([
       query('SELECT * FROM coaching_client_steps WHERE client_id = $1 ORDER BY step_order', [clientId]),
@@ -71,7 +136,13 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
 
     res.json({
       success: true,
-      client: { ...client, steps: stepsResult.rows, gauges, sessions: sessionsResult.rows }
+      client: {
+        ...client,
+        photo_signed_url: photoSignedUrl,
+        steps: stepsResult.rows,
+        gauges,
+        sessions: sessionsResult.rows
+      }
     });
   } catch (error) {
     console.error('[Coaching] Get client error:', error.message);
@@ -252,6 +323,96 @@ router.put('/:clientId', requireClientAccess, async (req, res) => {
   } catch (error) {
     console.error('[Coaching] Update client error:', error.message);
     res.status(500).json({ error: 'Failed to update client' });
+  }
+});
+
+// ─── Client Photo Upload ──────────────────────────────────────────────────────
+
+// POST /api/coaching/clients/:clientId/photo
+// Accepts multipart/form-data with field name "photo".
+// Validates file type and size server-side; uploads to Supabase Storage;
+// saves object path to coaching_clients.profile_photo_path.
+router.post('/:clientId/photo', requireClientAccess, (req, res, next) => {
+  // Wrap multer so we can return a structured JSON error instead of a generic 500
+  upload.single('photo')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Photo too large. Maximum size is 5MB.' });
+      }
+      return res.status(400).json({ error: err.message || 'File upload error' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No photo file provided' });
+
+    const { clientId } = req.params;
+
+    // Fetch the client to get the coach_id (for storage path) and old path (for cleanup)
+    const existing = await query(
+      'SELECT coach_id, profile_photo_path FROM coaching_clients WHERE id = $1',
+      [clientId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Client not found' });
+
+    const { coach_id: coachId, profile_photo_path: oldPath } = existing.rows[0];
+
+    // Upload new photo to Supabase Storage (namespaced by coach — tenant isolation)
+    const newPath = await photoStorage.uploadPhoto(
+      coachId, clientId, req.file.buffer, req.file.mimetype
+    );
+
+    // Delete the old photo from storage if it was at a different path (e.g. different format)
+    if (oldPath && oldPath !== newPath) {
+      await photoStorage.deletePhoto(oldPath).catch(() => {});
+    }
+
+    // Persist the storage path to the DB
+    await query(
+      'UPDATE coaching_clients SET profile_photo_path = $1, last_session = CURRENT_DATE WHERE id = $2',
+      [newPath, clientId]
+    );
+
+    // Return a signed URL so the frontend can display the photo immediately
+    const photoSignedUrl = await photoStorage.getSignedUrl(newPath).catch(() => null);
+
+    res.json({ success: true, photo_path: newPath, photo_signed_url: photoSignedUrl });
+  } catch (err) {
+    console.error('[Coaching] Photo upload error:', err.message);
+    res.status(500).json({ error: 'Failed to upload photo' });
+  }
+});
+
+// DELETE /api/coaching/clients/:clientId/photo
+// Removes the photo from Supabase Storage and clears the DB reference.
+router.delete('/:clientId/photo', requireClientAccess, async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    const existing = await query(
+      'SELECT profile_photo_path FROM coaching_clients WHERE id = $1',
+      [clientId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Client not found' });
+
+    const { profile_photo_path: storagePath } = existing.rows[0];
+
+    // Remove from Supabase Storage (best effort — don't fail if already gone)
+    if (storagePath) {
+      await photoStorage.deletePhoto(storagePath).catch(() => {});
+    }
+
+    // Clear the DB reference
+    await query(
+      'UPDATE coaching_clients SET profile_photo_path = NULL, last_session = CURRENT_DATE WHERE id = $1',
+      [clientId]
+    );
+
+    res.json({ success: true, message: 'Photo removed' });
+  } catch (err) {
+    console.error('[Coaching] Photo delete error:', err.message);
+    res.status(500).json({ error: 'Failed to remove photo' });
   }
 });
 
