@@ -6,6 +6,9 @@ import { authenticateToken, requireCoach, requireClientAccess } from '../middlew
 
 const router = express.Router();
 
+// Debug flag — set DEBUG_PHOTO_NOTES=true in Zeabur env vars to trace photo/notes on save and fetch
+const DEBUG_PHOTO_NOTES = process.env.DEBUG_PHOTO_NOTES === 'true';
+
 // All routes require authentication
 router.use(authenticateToken);
 router.use(requireCoach);
@@ -80,6 +83,11 @@ router.get('/:clientId', requireClientAccess, async (req, res) => {
         }
 
         const client = clientResult.rows[0];
+        if (DEBUG_PHOTO_NOTES) {
+            console.log('[DB GET /clients/:id] id:', clientId,
+                'notesLen:', (client.notes || '').length,
+                'hasPhoto:', !!(client.photo && client.photo !== ''));
+        }
         const stepsResult = await query(
             'SELECT * FROM client_steps WHERE client_id = $1 ORDER BY step_order',
             [clientId]
@@ -270,6 +278,11 @@ router.put('/:clientId',
                 safeCurrentStep = journeyProgress.currentStep;
             }
 
+            if (DEBUG_PHOTO_NOTES) {
+                console.log('[DB PUT /clients/:id] id:', clientId,
+                    'notesLen:', notes !== undefined ? (notes || '').length : 'absent',
+                    'hasPhoto:', photo !== undefined && photo !== null && photo !== '');
+            }
             const result = await query(
                 `UPDATE clients
                  SET name = COALESCE($1, name),
@@ -299,7 +312,12 @@ router.put('/:clientId',
             if (result.rows.length === 0) {
                 return res.status(404).json({ error: 'Client not found' });
             }
-
+            if (DEBUG_PHOTO_NOTES) {
+                const rr = result.rows[0];
+                console.log('[DB PUT /clients/:id] RETURNING id:', rr.id,
+                    'notesLen:', (rr.notes || '').length,
+                    'hasPhoto:', !!(rr.photo && rr.photo !== ''));
+            }
             res.json({
                 success: true,
                 message: 'Client updated successfully',

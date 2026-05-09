@@ -9,6 +9,11 @@ import { renderBASISAssessment } from './basis-ui.js?v=2';
 import { renderJourneyTracker } from './journey-ui.js';
 import { renderSpilClientPanel } from './spil-client.js';
 
+// Module-level reference to the currently open client.
+// Set by openClient() each time a client is rendered.
+// Allows photo/remove handlers to sync the in-memory object without re-fetching.
+let _currentClient = null;
+
 export async function openClient(clientId, options = {}) {
     // Existence check from list store
     const store = await readStore();
@@ -28,6 +33,9 @@ export async function openClient(clientId, options = {}) {
     } catch (e) {
         console.warn('openClient: individual fetch failed, rendering from list data', e.message);
     }
+
+    // Keep authoritative in-memory reference for photo/note handlers
+    _currentClient = client;
 
     // Ensure client has gauges initialized (fallback when individual fetch is unavailable)
     if(!client.gauges) {
@@ -288,6 +296,9 @@ function setupTabSwitching(header, client) {
             client.status = $('#detail-status').value.trim();
             client.notes = $('#detail-notes').value.trim();
 
+            console.log('[CLIENT DEBUG] save-details id:', client.id,
+                'notesLen:', (client.notes || '').length,
+                'hasPhoto:', !!client.photo);
             // Save to storage
             try {
                 await saveClient(client);
@@ -296,6 +307,10 @@ function setupTabSwitching(header, client) {
                 console.error('Save details error:', err);
                 return;
             }
+            // storage.js already synced: client.photo = result.client.photo, client.notes = result.client.notes
+            console.log('[CLIENT DEBUG] save-details done id:', client.id,
+                'server-notesLen:', (client.notes || '').length,
+                'server-hasPhoto:', !!client.photo);
 
             // Update sidebar info
             const sidebarInfo = $('#client-sidebar-info');
@@ -409,31 +424,45 @@ window.handleClientPhotoDragLeave = function(event) {
 };
 
 function processClientPhotoFile(file, clientId) {
+    // File size check — 5MB raw; base64 encoding adds ~37% overhead
     if (file.size > 5 * 1024 * 1024) {
-        alert('Photo file is too large. Maximum size is 5MB.');
+        alert('Photo file is too large. Maximum allowed size is 5MB. Please use a smaller image.');
         return;
     }
 
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const store = await readStore();
-        const client = store.clients.find(c => c.id === clientId);
-        if (!client) {
-            console.error('processClientPhotoFile: client not found for id', clientId, typeof clientId);
+        const base64photo = e.target.result;
+
+        // Guard against encoded size approaching the 10MB Express body limit
+        if (base64photo.length > 7 * 1024 * 1024) {
+            alert('Photo is too large after encoding (exceeds safe limit). Please use an image under 5MB.');
             return;
         }
 
-        client.photo = e.target.result;
+        console.log('[CLIENT DEBUG] photo-upload id:', clientId,
+            'base64Len:', base64photo.length, 'hasPhoto: true');
+
+        // Minimal patch — send ONLY the photo field.
+        // Avoids sending the full client object and eliminates any risk of
+        // stale list-fetched data overwriting notes, exerciseData, or journeyProgress.
         try {
-            await saveClient(client);
+            const result = await api.updateClient(clientId, { photo: base64photo });
+            if (result && result.client) {
+                // Sync the authoritative in-memory reference
+                if (_currentClient && _currentClient.id === clientId) {
+                    _currentClient.photo = result.client.photo;
+                }
+            }
         } catch (err) {
             alert('Photo save failed: ' + (err.message || 'Server error — check console.'));
             console.error('Photo save error:', err);
             return;
         }
 
-        // Reload client view
-        openClient(clientId);
+        // Await the re-render — must complete before alert fires to avoid
+        // browser blocking async callbacks while a modal is open
+        await openClient(clientId);
         alert('✓ Client photo uploaded successfully!');
     };
     reader.readAsDataURL(file);
@@ -456,20 +485,22 @@ window.removeClientPhoto = async function(clientId) {
         return;
     }
 
-    const store = await readStore();
-    const client = store.clients.find(c => c.id === clientId);
-    if (!client) return;
-
-    client.photo = '';
+    console.log('[CLIENT DEBUG] remove-photo id:', clientId);
+    // Minimal patch — send only photo: '' to clear the photo field
     try {
-        await saveClient(client);
+        const result = await api.updateClient(clientId, { photo: '' });
+        if (result && result.client !== undefined) {
+            if (_currentClient && _currentClient.id === clientId) {
+                _currentClient.photo = result.client.photo ?? '';
+            }
+        }
     } catch (err) {
         alert('Photo remove failed: ' + (err.message || 'Server error — check console.'));
         console.error('Remove photo error:', err);
         return;
     }
 
-    // Reload client view
-    openClient(clientId);
+    // Await the re-render before alert fires
+    await openClient(clientId);
     alert('✓ Client photo removed.');
 };
