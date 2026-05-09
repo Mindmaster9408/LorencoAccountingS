@@ -105,7 +105,7 @@ function createClientCard(client) {
 
     card.addEventListener('click', () => {
         // Import and call openClient dynamically
-        import('./clients.js').then(module => {
+        import('./clients.js?v=9').then(module => {
             module.openClient(client.id);
         });
     });
@@ -146,7 +146,7 @@ export function setupDashboardListeners() {
     const newPilotBtn = $('#new-pilot');
     if(newPilotBtn) {
         newPilotBtn.addEventListener('click', () => {
-            import('./clients.js').then(module => {
+            import('./clients.js?v=9').then(module => {
                 module.createNewPilot();
             });
         });
@@ -156,7 +156,7 @@ export function setupDashboardListeners() {
     const sampleBtn = $('#seed-sample');
     if(sampleBtn) {
         sampleBtn.addEventListener('click', () => {
-            import('./clients.js').then(module => {
+            import('./clients.js?v=9').then(module => {
                 module.addSampleClient();
             });
         });

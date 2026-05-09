@@ -113,18 +113,16 @@ export async function openClient(clientId, options = {}) {
                     <label>Client Photo</label>
                     <div class="client-photo-upload"
                          id="client-photo-drop-zone"
-                         ondrop="handleClientPhotoDrop(event, '${client.id}')"
-                         ondragover="handleClientPhotoDragOver(event)"
-                         ondragleave="handleClientPhotoDragLeave(event)"
-                         onclick="handleClientPhotoAreaClick(event, '${client.id}')"
                          style="cursor: pointer; padding: 20px; border: 2px dashed #e2e8f0; border-radius: 12px; transition: all 0.3s ease;">
+                        <div id="client-photo-preview-area">
                         ${client.photo ? `
                             <img src="${client.photo}" id="client-photo-preview" alt="Client" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
-                            <button type="button" class="btn-remove-photo" onclick="event.stopPropagation(); removeClientPhoto('${client.id}')" style="margin-top: 12px;">✕ Remove Photo</button>
+                            <button type="button" class="btn-remove-photo" style="margin-top: 12px;">✕ Remove Photo</button>
                         ` : `
                             <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${(client.name || '')[0] || 'P'}</div>
-                            <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Drag & drop photo here or click to browse</p>
+                            <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Click or drag & drop a photo here</p>
                         `}
+                        </div>
                         <input type="file" id="client-photo-input" accept="image/*" style="display: none;" />
                     </div>
                 </div>
@@ -202,6 +200,9 @@ export async function openClient(clientId, options = {}) {
         </div>
     `;
     detailArea.appendChild(mainContent);
+
+    // Setup photo listeners AFTER DOM is in the document
+    setupPhotoListeners(client);
 
     // Setup tab switching
     setupTabSwitching(header, client);
@@ -293,34 +294,38 @@ function setupTabSwitching(header, client) {
             client.email = $('#detail-email').value.trim();
             client.phone = $('#detail-phone').value.trim();
             client.preferred_lang = $('#detail-language').value;
-            // Only save status if it's a valid DB ENUM value
             const rawStatus = ($('#detail-status') ? $('#detail-status').value.trim() : '').toLowerCase();
             if (VALID_CLIENT_STATUSES.includes(rawStatus)) {
                 client.status = rawStatus;
             }
-            client.notes = $('#detail-notes').value.trim();
+            client.notes = $('#detail-notes').value;
+            console.log('[NOTES FLOW] save clicked notesLen=' + client.notes.length);
 
-            // Save to storage
+            // Send minimal payload — photo handled separately, COALESCE preserves it
             try {
-                await saveClient(client);
+                const result = await api.updateClient(client.id, {
+                    name: client.name,
+                    email: client.email,
+                    phone: client.phone,
+                    preferred_lang: client.preferred_lang,
+                    status: client.status,
+                    notes: client.notes
+                });
+                console.log('[NOTES FLOW] saved notesLen=' + ((result && result.client && result.client.notes) ? result.client.notes.length : 'null'));
             } catch (err) {
                 console.error('[Save Details] Failed:', err);
                 alert('Failed to save: ' + (err.message || 'Unknown error. Check your connection.'));
                 return;
             }
 
-            // Update sidebar info
+            // Update sidebar name
             const sidebarInfo = $('#client-sidebar-info');
             if (sidebarInfo) {
-                const photoDiv = sidebarInfo.querySelector('.client-photo');
                 const nameDiv = sidebarInfo.querySelector('.client-name-large');
-                if (photoDiv) photoDiv.textContent = (client.name || '')[0] || 'P';
                 if (nameDiv) nameDiv.textContent = client.name;
             }
 
-            // Refresh dashboard to show updated name
             await renderDashboard();
-
             alert('Client details saved successfully!');
         });
     }
@@ -369,124 +374,189 @@ function switchToView(viewName) {
         renderDashboard();
     }
 }
-// Client Photo Upload Functions
-window.handleClientPhotoAreaClick = function(event, clientId) {
-    // Don't trigger if clicking on remove button
-    if (event.target.classList.contains('btn-remove-photo')) return;
+// ─────────────────────────────────────────────────────────────────────────────
+// PHOTO — programmatic listeners (no inline handlers)
+// ─────────────────────────────────────────────────────────────────────────────
 
-    const fileInput = $('#client-photo-input');
-    if (!fileInput) return;
-
-    // Attach change listener fresh each time (avoids inline onchange issues)
-    fileInput.onchange = null;
-    fileInput.addEventListener('change', function handler(e) {
-        fileInput.removeEventListener('change', handler);
-        const file = e.target.files[0];
-        if (!file) return;
-        if (!file.type.startsWith('image/')) {
-            alert('Please select a valid image file.');
-            return;
-        }
-        processClientPhotoFile(file, clientId);
-    });
-    // Reset value so the same file can be re-selected
-    fileInput.value = '';
-    fileInput.click();
-};
-
-window.handleClientPhotoDrop = function(event, clientId) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const dropZone = $('#client-photo-drop-zone');
-    if (dropZone) dropZone.classList.remove('drag-over');
-
-    const file = event.dataTransfer.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-        alert('Please drop an image file (JPG, PNG, GIF, etc.)');
+function setupPhotoListeners(client) {
+    const dropZone = document.getElementById('client-photo-drop-zone');
+    const fileInput = document.getElementById('client-photo-input');
+    if (!dropZone || !fileInput) {
+        console.warn('[PHOTO] setupPhotoListeners: dropZone or fileInput not found');
         return;
     }
 
-    processClientPhotoFile(file, clientId);
-};
+    // Click drop zone → open file picker
+    // IMPORTANT: check e.target to avoid re-entry from fileInput.click() bubbling up
+    dropZone.addEventListener('click', function(e) {
+        // Ignore clicks on the remove button (handled separately below)
+        if (e.target.closest && e.target.closest('.btn-remove-photo')) return;
+        // Ignore clicks that originated from the file input itself (prevents double-trigger)
+        if (e.target === fileInput) return;
 
-window.handleClientPhotoDragOver = function(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    const dropZone = $('#client-photo-drop-zone');
-    if (dropZone) {
-        dropZone.classList.add('drag-over');
+        console.log('[PHOTO FLOW] drop zone clicked');
+        fileInput.value = ''; // Allow re-selecting the same file
+        fileInput.click();
+    });
+
+    // File selected via picker
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        console.log('[PHOTO FLOW] file selected name=' + file.name + ' size=' + file.size + ' type=' + file.type);
+        processClientPhotoFile(file, client);
+    });
+
+    // Drag over
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         dropZone.style.background = '#eff6ff';
         dropZone.style.borderColor = '#3b82f6';
-        dropZone.style.transform = 'scale(1.02)';
-    }
-};
+    });
 
-window.handleClientPhotoDragLeave = function(event) {
-    event.preventDefault();
-    const dropZone = $('#client-photo-drop-zone');
-    if (dropZone) {
-        dropZone.classList.remove('drag-over');
+    // Drag leave
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
         dropZone.style.background = '';
         dropZone.style.borderColor = '';
-        dropZone.style.transform = '';
-    }
-};
+    });
 
-function processClientPhotoFile(file, clientId) {
+    // Drop
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.style.background = '';
+        dropZone.style.borderColor = '';
+        const file = e.dataTransfer && e.dataTransfer.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            alert('Please drop an image file (JPG, PNG, etc.)');
+            return;
+        }
+        console.log('[PHOTO FLOW] file dropped name=' + file.name + ' size=' + file.size);
+        processClientPhotoFile(file, client);
+    });
+
+    // Remove photo button — may or may not exist yet; also re-attached after preview updates
+    attachRemovePhotoListener(dropZone, client);
+}
+
+function attachRemovePhotoListener(dropZone, client) {
+    const removeBtn = dropZone.querySelector('.btn-remove-photo');
+    if (!removeBtn) return;
+    removeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (!confirm('Remove this client\'s photo?')) return;
+        doRemovePhoto(client);
+    });
+}
+
+function updatePhotoPreviewArea(dataUrl, client) {
+    const previewArea = document.getElementById('client-photo-preview-area');
+    if (!previewArea) return;
+    if (dataUrl) {
+        previewArea.innerHTML = `
+            <img src="${dataUrl}" id="client-photo-preview" alt="Client"
+                 style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
+            <button type="button" class="btn-remove-photo" style="margin-top: 12px;">✕ Remove Photo</button>
+        `;
+        // Re-attach remove listener to the newly created button
+        const dropZone = document.getElementById('client-photo-drop-zone');
+        if (dropZone) attachRemovePhotoListener(dropZone, client);
+    } else {
+        previewArea.innerHTML = `
+            <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${(client.name || '')[0] || 'P'}</div>
+            <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Click or drag & drop a photo here</p>
+        `;
+    }
+}
+
+function updateSidebarPhotoEl(dataUrl, client) {
+    const sidebarInfo = document.getElementById('client-sidebar-info');
+    if (!sidebarInfo) return;
+    const existing = sidebarInfo.querySelector('img, .client-photo');
+    if (!existing) return;
+    if (dataUrl) {
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.alt = client.name || '';
+        img.style.cssText = 'width:80px;height:80px;border-radius:50%;object-fit:cover;margin:0 auto 16px;display:block;border:3px solid #3b82f6;';
+        existing.replaceWith(img);
+    } else {
+        const div = document.createElement('div');
+        div.className = 'client-photo';
+        div.style.cssText = 'width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;color:white;font-size:32px;font-weight:700;margin:0 auto 16px;';
+        div.textContent = (client.name || '')[0] || 'P';
+        existing.replaceWith(div);
+    }
+}
+
+function processClientPhotoFile(file, client) {
     if (file.size > 5 * 1024 * 1024) {
-        alert('Photo file is too large. Maximum size is 5MB.');
+        alert('Photo is too large. Maximum size is 5MB.');
+        return;
+    }
+    if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file (JPG, PNG, etc.)');
         return;
     }
 
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const base64 = e.target.result;
-        // Guard: base64-encoded string must stay under ~7MB to fit in 10MB body limit
-        if (base64.length > 7 * 1024 * 1024) {
-            alert('Photo is too large after encoding. Please use a smaller image.');
+        const dataUrl = e.target.result;
+        console.log('[PHOTO FLOW] reader loaded base64Len=' + dataUrl.length);
+
+        if (dataUrl.length > 8 * 1024 * 1024) {
+            alert('Photo is too large after encoding. Please use a smaller image (under 5MB).');
             return;
         }
+
+        // 1. Immediate preview — update DOM before API call
+        updatePhotoPreviewArea(dataUrl, client);
+        updateSidebarPhotoEl(dataUrl, client);
+        console.log('[PHOTO FLOW] preview updated');
+
+        // 2. Save to API — minimal payload, only photo
         try {
-            const numericId = parseInt(clientId, 10);
-            await api.updateClient(numericId, { photo: base64 });
-            // Reload client view to show new photo
-            await openClient(clientId);
-            alert('✓ Client photo uploaded successfully!');
+            console.log('[PHOTO FLOW] PUT sent hasPhoto=true');
+            const result = await api.updateClient(client.id, { photo: dataUrl });
+            const saved = result && result.client && result.client.photo;
+            console.log('[PHOTO FLOW] PUT returned hasPhoto=' + !!saved + ' photoLen=' + (saved ? saved.length : 0));
+
+            // 3. Update client object in closure so subsequent saves are consistent
+            client.photo = dataUrl;
+
+            alert('✓ Photo saved successfully!');
         } catch (err) {
-            console.error('[Photo Upload] Failed:', err);
+            console.error('[PHOTO FLOW] PUT failed:', err);
             alert('Failed to save photo: ' + (err.message || 'Unknown error'));
         }
+    };
+    reader.onerror = function() {
+        console.error('[PHOTO FLOW] FileReader error');
+        alert('Could not read the image file. Please try again.');
     };
     reader.readAsDataURL(file);
 }
 
-window.handleClientPhotoUpload = async function(event, clientId) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-        alert('Please select a valid image file.');
-        return;
-    }
-
-    processClientPhotoFile(file, clientId);
-};
-
-window.removeClientPhoto = async function(clientId) {
-    if (!confirm('Are you sure you want to remove this client\'s photo?')) {
-        return;
-    }
-
+async function doRemovePhoto(client) {
     try {
-        const numericId = parseInt(clientId, 10);
-        await api.updateClient(numericId, { photo: '' });
-        await openClient(clientId);
-        alert('✓ Client photo removed.');
+        await api.updateClient(client.id, { photo: '' });
+        client.photo = '';
+        updatePhotoPreviewArea(null, client);
+        updateSidebarPhotoEl(null, client);
+        alert('✓ Photo removed.');
     } catch (err) {
-        console.error('[Remove Photo] Failed:', err);
+        console.error('[PHOTO FLOW] remove failed:', err);
         alert('Failed to remove photo: ' + (err.message || 'Unknown error'));
     }
-};
+}
+
+// Legacy stubs — no longer called but kept so any stale inline handlers don't throw
+window.handleClientPhotoAreaClick = function() {};
+window.handleClientPhotoDrop = function(e) { e && e.preventDefault && e.preventDefault(); };
+window.handleClientPhotoDragOver = function(e) { e && e.preventDefault && e.preventDefault(); };
+window.handleClientPhotoDragLeave = function() {};
+window.handleClientPhotoUpload = function() {};
+window.removeClientPhoto = function() {};
