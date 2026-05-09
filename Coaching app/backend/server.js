@@ -86,6 +86,39 @@ app.all('/api/settings', (req, res) => {
     res.json({ success: true, settings: {} });
 });
 
+// --- SAFE DEBUG ROUTE (remove after diagnosis) ---
+app.get('/api/debug/db-config', (req, res) => {
+    const debugSecret = process.env.DEBUG_SECRET;
+    const requestSecret = req.query.secret || req.headers['x-debug-secret'];
+    const isAllowed = (process.env.NODE_ENV !== 'production') ||
+        (debugSecret && requestSecret === debugSecret);
+    if (!isAllowed) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+    const rawUrl = process.env.DATABASE_URL || process.env.COACHING_DATABASE_URL;
+    const envUsed = process.env.DATABASE_URL ? 'DATABASE_URL'
+        : process.env.COACHING_DATABASE_URL ? 'COACHING_DATABASE_URL'
+        : 'individual DB_* vars';
+    let host = process.env.DB_HOST || '(not set)';
+    let port = process.env.DB_PORT || 5432;
+    let database = process.env.DB_NAME || 'postgres';
+    let user = process.env.DB_USER || 'postgres';
+    let ssl = 'enabled (rejectUnauthorized: false)';
+    if (rawUrl) {
+        try {
+            const u = new URL(rawUrl);
+            host = u.hostname;
+            port = u.port || 5432;
+            database = u.pathname.replace(/^\//, '') || 'postgres';
+            user = u.username;
+        } catch (e) {
+            host = '(URL parse failed: ' + e.message + ')';
+        }
+    }
+    res.json({ envUsed, host, port, database, user, ssl });
+});
+// --- END SAFE DEBUG ROUTE ---
+
 // Serve frontend static files (parent directory = Coaching app root)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

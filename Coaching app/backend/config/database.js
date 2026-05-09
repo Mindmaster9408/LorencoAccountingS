@@ -18,6 +18,39 @@ const connectionConfig = process.env.DATABASE_URL
         ssl: { rejectUnauthorized: false },
     };
 
+// --- SAFE DIAGNOSTIC LOGGING (remove after diagnosis) ---
+(function logDbConfig() {
+    const envUsed = process.env.DATABASE_URL ? 'DATABASE_URL'
+        : process.env.COACHING_DATABASE_URL ? 'COACHING_DATABASE_URL'
+        : 'individual DB_* vars';
+    let host = process.env.DB_HOST || '(not set)';
+    let port = process.env.DB_PORT || 5432;
+    let database = process.env.DB_NAME || 'postgres';
+    let user = process.env.DB_USER || 'postgres';
+    let sslNote = 'enabled (rejectUnauthorized: false)';
+
+    const rawUrl = process.env.DATABASE_URL || process.env.COACHING_DATABASE_URL;
+    if (rawUrl) {
+        try {
+            const u = new URL(rawUrl);
+            host = u.hostname;
+            port = u.port || 5432;
+            database = u.pathname.replace(/^\//, '') || 'postgres';
+            user = u.username;
+        } catch (e) {
+            host = '(URL parse failed: ' + e.message + ')';
+        }
+    }
+
+    console.log('[DB CONFIG] using env:', envUsed);
+    console.log('[DB CONFIG] host:', host);
+    console.log('[DB CONFIG] port:', port);
+    console.log('[DB CONFIG] database:', database);
+    console.log('[DB CONFIG] user:', user);
+    console.log('[DB CONFIG] ssl:', sslNote);
+})();
+// --- END SAFE DIAGNOSTIC LOGGING ---
+
 // Create PostgreSQL connection pool
 const pool = new Pool({
     ...connectionConfig,
