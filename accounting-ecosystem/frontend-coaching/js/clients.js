@@ -426,17 +426,22 @@ function processClientPhotoFile(file, clientId) {
 
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const store = await readStore();
-        const numericId = parseInt(clientId, 10);
-        const client = store.clients.find(c => c.id === numericId);
-        if (!client) return;
-
-        client.photo = e.target.result;
-        await saveClient(client);
-
-        // Reload client view
-        openClient(clientId);
-        alert('✓ Client photo uploaded successfully!');
+        const base64 = e.target.result;
+        // Guard: base64-encoded string must stay under ~7MB to fit in 10MB body limit
+        if (base64.length > 7 * 1024 * 1024) {
+            alert('Photo is too large after encoding. Please use a smaller image.');
+            return;
+        }
+        try {
+            const numericId = parseInt(clientId, 10);
+            await api.updateClient(numericId, { photo: base64 });
+            // Reload client view to show new photo
+            await openClient(clientId);
+            alert('✓ Client photo uploaded successfully!');
+        } catch (err) {
+            console.error('[Photo Upload] Failed:', err);
+            alert('Failed to save photo: ' + (err.message || 'Unknown error'));
+        }
     };
     reader.readAsDataURL(file);
 }
@@ -458,15 +463,13 @@ window.removeClientPhoto = async function(clientId) {
         return;
     }
 
-    const store = await readStore();
-    const numericId = parseInt(clientId, 10);
-    const client = store.clients.find(c => c.id === numericId);
-    if (!client) return;
-
-    client.photo = '';
-    await saveClient(client);
-
-    // Reload client view
-    openClient(clientId);
-    alert('✓ Client photo removed.');
+    try {
+        const numericId = parseInt(clientId, 10);
+        await api.updateClient(numericId, { photo: '' });
+        await openClient(clientId);
+        alert('✓ Client photo removed.');
+    } catch (err) {
+        console.error('[Remove Photo] Failed:', err);
+        alert('Failed to remove photo: ' + (err.message || 'Unknown error'));
+    }
 };
