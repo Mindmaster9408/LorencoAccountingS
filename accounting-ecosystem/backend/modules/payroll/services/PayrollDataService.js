@@ -58,17 +58,25 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
   if (!employee.basic_salary) {
     try {
       const kvKey = `emp_payroll_${companyId}_${employeeId}`;
-      const { data: kvRow } = await supabase
+      const { data: kvRow, error: kvErr2 } = await supabase
         .from('payroll_kv_store_eco')
         .select('value')
-        .eq('company_id', companyId)
+        .eq('company_id', String(companyId))
         .eq('key', kvKey)
         .maybeSingle();
+      if (kvErr2) {
+        console.warn(`[PayrollDataService] KV salary fallback query error for emp ${employeeId}:`, kvErr2.message);
+      }
       if (kvRow && kvRow.value) {
         const kvVal = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
         if (kvVal && kvVal.basic_salary) {
+          console.log(`[PayrollDataService] KV salary fallback: emp ${employeeId} → basic_salary=${kvVal.basic_salary}`);
           employee.basic_salary = kvVal.basic_salary;
+        } else {
+          console.warn(`[PayrollDataService] KV salary fallback: found KV row for emp ${employeeId} but basic_salary is absent/zero`);
         }
+      } else {
+        console.warn(`[PayrollDataService] KV salary fallback: no KV row found for key=${kvKey}, company_id=${companyId}`);
       }
     } catch (kvErr) {
       // KV fallback is best-effort — a missing KV entry is not an error
@@ -521,6 +529,12 @@ function normalizeCalculationInput(
     description: item.payroll_items?.name || item.payroll_items?.code || 'Unknown',
     amount: item.amount || 0,
     percentage: item.percentage || 0,
+    // The engine resolves percentage-based items via `ri.is_percentage && ri.percentage_value`.
+    // DB stores these items with amount=0 and a non-zero percentage column.
+    // Derive is_percentage/percentage_value from the percentage column so the engine
+    // can correctly compute the amount as (percentage_value / 100) * basic_salary.
+    is_percentage: Number(item.percentage) > 0,
+    percentage_value: Number(item.percentage) || 0,
     type: item.item_type || 'allowance',
     is_taxable: item.payroll_items?.is_taxable !== false,
     // tax_treatment: controls whether a deduction reduces taxableGross (pre-PAYE) or net only.

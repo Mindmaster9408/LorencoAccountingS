@@ -1908,6 +1908,19 @@
                 if (!payrollData.regular_inputs) payrollData.regular_inputs = [];
                 if (payrollData.basic_salary === undefined) payrollData.basic_salary = 0;
 
+                // One-time sync: if KV has a basic_salary but the employees table may not
+                // (legacy employees whose salary was only saved to KV), push it to the DB
+                // so the backend PAYE engine always has the correct authoritative value.
+                // Awaited so calculatePayslip() below always sees the updated DB value.
+                if (payrollData.basic_salary > 0 && !window._basicSalarySynced) {
+                    window._basicSalarySynced = true;
+                    await fetch('/api/payroll/employees/' + currentEmpId + '/salary', {
+                        method: 'PUT',
+                        headers: _authHeaders(),
+                        body: JSON.stringify({ basic_salary: payrollData.basic_salary })
+                    }).catch(function() {});
+                }
+
                 // Load recurring items from DB — replaces localStorage regular_inputs
                 // for DB-backed employees. Migrates localStorage items to DB on first run.
                 await loadRecurringItemsFromDB();
@@ -2203,6 +2216,15 @@
         function saveBasicSalary() {
             payrollData.basic_salary = parseFloat(document.getElementById('editBasicValue').value) || 0;
             savePayrollData(); renderPayroll(); closeModal('editBasicModal');
+            // Persist to the employees table so the backend PAYE engine always has the correct
+            // salary — KV alone is not reliable as a backend data source.
+            fetch('/api/payroll/employees/' + currentEmpId + '/salary', {
+                method: 'PUT',
+                headers: _authHeaders(),
+                body: JSON.stringify({ basic_salary: payrollData.basic_salary })
+            }).catch(function(err) {
+                console.warn('[saveBasicSalary] DB persist failed:', err.message);
+            });
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + payrollData.basic_salary.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
 
