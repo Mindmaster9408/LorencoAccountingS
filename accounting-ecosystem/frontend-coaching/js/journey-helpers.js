@@ -422,7 +422,7 @@ window.addDeepDiveRow = function() {
     currentClient.exerciseData.deepDive.deepDiveItems.push({ question: '', answer: '' });
 
     // Re-render the exercise
-    import('./journey-exercises-r2.js').then(module => {
+    import('./journey-exercises-r2.js?v=11').then(module => {
         module.renderExercise(currentClient, 4, 'journey-container');
     });
 };
@@ -437,7 +437,7 @@ window.removeDeepDiveRow = function(index) {
     currentClient.exerciseData.deepDive.deepDiveItems.splice(index, 1);
 
     // Re-render the exercise
-    import('./journey-exercises-r2.js').then(module => {
+    import('./journey-exercises-r2.js?v=11').then(module => {
         module.renderExercise(currentClient, 4, 'journey-container');
     });
 };
@@ -559,7 +559,7 @@ window.addEcochartBlock = function() {
     currentClient.exerciseData.ecochart.blocks.push({ name: '', give: 0, take: 0 });
 
     // Re-render the exercise
-    import('./journey-exercises-r2.js').then(module => {
+    import('./journey-exercises-r2.js?v=11').then(module => {
         module.renderExercise(currentClient, 5, 'journey-container');
     });
 };
@@ -574,7 +574,7 @@ window.removeEcochartBlock = function(index) {
     currentClient.exerciseData.ecochart.blocks.splice(index, 1);
 
     // Re-render the exercise
-    import('./journey-exercises-r2.js').then(module => {
+    import('./journey-exercises-r2.js?v=11').then(module => {
         module.renderExercise(currentClient, 5, 'journey-container');
     });
 };
