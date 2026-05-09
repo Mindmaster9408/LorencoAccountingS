@@ -1,4 +1,4 @@
-// Authentication routes
+﻿// Authentication routes
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
@@ -25,7 +25,7 @@ router.post('/login',
 
             // Get user from database
             const result = await query(
-                'SELECT id, email, password_hash, first_name, last_name, role, is_active FROM users WHERE email = $1',
+                'SELECT id, email, password_hash, first_name, last_name, role, is_active FROM coaching_users WHERE email = $1',
                 [email]
             );
 
@@ -48,7 +48,7 @@ router.post('/login',
             }
 
             // Update last login
-            await query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+            await query('UPDATE coaching_users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
 
             // Generate token
             const token = generateToken(user.id, user.email, user.role);
@@ -58,15 +58,15 @@ router.post('/login',
             if (user.role === 'coach') {
                 const modulesResult = await query(
                     `SELECT pm.module_key, pm.module_name
-                     FROM coach_program_access cpa
-                     JOIN program_modules pm ON cpa.module_id = pm.id
+                     FROM coaching_coach_program_access cpa
+                     JOIN coaching_program_modules pm ON cpa.module_id = pm.id
                      WHERE cpa.coach_id = $1 AND cpa.is_enabled = true`,
                     [user.id]
                 );
                 moduleAccess = modulesResult.rows.map(m => m.module_key);
             } else if (user.role === 'admin') {
                 // Admins have access to all modules
-                const allModulesResult = await query('SELECT module_key FROM program_modules');
+                const allModulesResult = await query('SELECT module_key FROM coaching_program_modules');
                 moduleAccess = allModulesResult.rows.map(m => m.module_key);
             }
 
@@ -110,7 +110,7 @@ router.post('/register',
             const { email, password, firstName, lastName, role } = req.body;
 
             // Check if user already exists
-            const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
+            const existingUser = await query('SELECT id FROM coaching_users WHERE email = $1', [email]);
 
             if (existingUser.rows.length > 0) {
                 return res.status(409).json({ error: 'User already exists with this email' });
@@ -121,7 +121,7 @@ router.post('/register',
 
             // Create user
             const result = await query(
-                `INSERT INTO users (email, password_hash, first_name, last_name, role)
+                `INSERT INTO coaching_users (email, password_hash, first_name, last_name, role)
                  VALUES ($1, $2, $3, $4, $5)
                  RETURNING id, email, first_name, last_name, role`,
                 [email, passwordHash, firstName, lastName, role || 'coach']
@@ -132,8 +132,8 @@ router.post('/register',
             // If coach, assign default modules
             if (newUser.role === 'coach') {
                 await query(
-                    `INSERT INTO coach_program_access (coach_id, module_id, is_enabled)
-                     SELECT $1, id, true FROM program_modules WHERE is_default = true`,
+                    `INSERT INTO coaching_coach_program_access (coach_id, module_id, is_enabled)
+                     SELECT $1, id, true FROM coaching_program_modules WHERE is_default = true`,
                     [newUser.id]
                 );
             }
@@ -165,14 +165,14 @@ router.get('/me', authenticateToken, async (req, res) => {
         if (req.user.role === 'coach') {
             const modulesResult = await query(
                 `SELECT pm.module_key, pm.module_name
-                 FROM coach_program_access cpa
-                 JOIN program_modules pm ON cpa.module_id = pm.id
+                 FROM coaching_coach_program_access cpa
+                 JOIN coaching_program_modules pm ON cpa.module_id = pm.id
                  WHERE cpa.coach_id = $1 AND cpa.is_enabled = true`,
                 [req.user.id]
             );
             moduleAccess = modulesResult.rows.map(m => m.module_key);
         } else if (req.user.role === 'admin') {
-            const allModulesResult = await query('SELECT module_key FROM program_modules');
+            const allModulesResult = await query('SELECT module_key FROM coaching_program_modules');
             moduleAccess = allModulesResult.rows.map(m => m.module_key);
         }
 

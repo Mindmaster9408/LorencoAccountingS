@@ -1,4 +1,4 @@
-// AI Assistant routes
+﻿// AI Assistant routes
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticateToken, requireCoach, requireClientAccess, requireModuleAccess } from '../middleware/auth.js';
@@ -71,7 +71,7 @@ router.get('/conversations', async (req, res) => {
         const coachId = req.user.id;
 
         const result = await query(
-            `SELECT * FROM ai_conversations
+            `SELECT * FROM coaching_ai_conversations
              WHERE coach_id = $1
              ${clientId ? 'AND client_id = $2' : ''}
              ORDER BY created_at DESC

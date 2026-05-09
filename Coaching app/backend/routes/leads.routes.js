@@ -1,4 +1,4 @@
-// Leads management routes
+﻿// Leads management routes
 // Public assessment submissions arrive unauthenticated (POST).
 // Coaches read/manage their own leads (requires auth).
 import express from 'express';
@@ -27,7 +27,7 @@ async function ensureLeadsTable() {
             wants_coaching  BOOLEAN DEFAULT FALSE,
             source          TEXT DEFAULT 'public_assessment',
             status          TEXT NOT NULL DEFAULT 'new',
-            coach_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            coach_id        INTEGER REFERENCES coaching_users(id) ON DELETE SET NULL,
             created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
         )
@@ -42,7 +42,7 @@ async function ensureLeadsTable() {
         'ADD COLUMN IF NOT EXISTS wants_coaching  BOOLEAN DEFAULT FALSE',
     ];
     for (const col of newCols) {
-        await query(`ALTER TABLE leads ${col}`).catch(() => {});
+        await query(`ALTER TABLE coaching_leads ${col}`).catch(() => {});
     }
     tableReady = true;
 }
@@ -64,7 +64,7 @@ router.post('/',
             const { name, email, phone, company, preferred_lang, basisAnswers, basisResults,
                     coachingGoals, wantsCoaching, source } = req.body;
             const result = await query(
-                `INSERT INTO leads
+                `INSERT INTO coaching_leads
                     (name, email, phone, company, preferred_lang, basis_answers, basis_results,
                      coaching_goals, wants_coaching, source, status)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
@@ -100,7 +100,7 @@ router.get('/', async (req, res) => {
     try {
         await ensureLeadsTable();
         const { status } = req.query;
-        let queryText = 'SELECT * FROM leads';
+        let queryText = 'SELECT * FROM coaching_leads';
         const params = [];
         if (status) {
             queryText += ' WHERE status = $1';
@@ -121,7 +121,7 @@ router.put('/:id', async (req, res) => {
         await ensureLeadsTable();
         const { status, coach_id } = req.body;
         const result = await query(
-            `UPDATE leads SET status = COALESCE($1, status),
+            `UPDATE coaching_leads SET status = COALESCE($1, status),
                               coach_id = COALESCE($2, coach_id),
                               updated_at = now()
              WHERE id = $3 RETURNING *`,
@@ -139,7 +139,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         await ensureLeadsTable();
-        await query('DELETE FROM leads WHERE id = $1', [req.params.id]);
+        await query('DELETE FROM coaching_leads WHERE id = $1', [req.params.id]);
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /api/leads/:id error:', err.message);

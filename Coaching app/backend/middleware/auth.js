@@ -1,4 +1,4 @@
-// Authentication and authorization middleware
+﻿// Authentication and authorization middleware
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database.js';
 
@@ -17,7 +17,7 @@ export const authenticateToken = async (req, res, next) => {
 
         // Get user from database
         const result = await query(
-            'SELECT id, email, first_name, last_name, role, is_active FROM users WHERE id = $1',
+            'SELECT id, email, first_name, last_name, role, is_active FROM coaching_users WHERE id = $1',
             [decoded.userId]
         );
 
@@ -87,7 +87,7 @@ export const requireClientAccess = async (req, res, next) => {
 
         // Check if coach owns this client
         const result = await query(
-            'SELECT id FROM clients WHERE id = $1 AND coach_id = $2',
+            'SELECT id FROM coaching_clients WHERE id = $1 AND coach_id = $2',
             [clientId, req.user.id]
         );
 
@@ -114,8 +114,8 @@ export const requireModuleAccess = (moduleKey) => {
             // Check if coach has access to this module
             const result = await query(
                 `SELECT cpa.is_enabled
-                 FROM coach_program_access cpa
-                 JOIN program_modules pm ON cpa.module_id = pm.id
+                 FROM coaching_coach_program_access cpa
+                 JOIN coaching_program_modules pm ON cpa.module_id = pm.id
                  WHERE cpa.coach_id = $1 AND pm.module_key = $2 AND cpa.is_enabled = true`,
                 [req.user.id, moduleKey]
             );

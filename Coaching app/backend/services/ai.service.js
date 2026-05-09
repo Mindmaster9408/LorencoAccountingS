@@ -1,4 +1,4 @@
-// AI Service - Integrates Claude and Grok with fallback system
+﻿// AI Service - Integrates Claude and Grok with fallback system
 import Anthropic from '@anthropic-ai/sdk';
 import axios from 'axios';
 import { query } from '../config/database.js';
@@ -131,7 +131,7 @@ class AIService {
 
             // Store learning data
             await query(
-                `INSERT INTO ai_learning_data (coach_id, client_id, data_type, data_content, importance_score)
+                `INSERT INTO coaching_ai_learning_data (coach_id, client_id, data_type, data_content, importance_score)
                  VALUES ($1, $2, $3, $4, $5)`,
                 [learningData.coach_id, learningData.client_id, learningData.data_type,
                  JSON.stringify(learningData.data_content), learningData.importance_score]
@@ -216,7 +216,7 @@ class AIService {
      */
     async _getClientContext(coachId, clientId) {
         const clientResult = await query(
-            'SELECT * FROM clients WHERE id = $1 AND coach_id = $2',
+            'SELECT * FROM coaching_clients WHERE id = $1 AND coach_id = $2',
             [clientId, coachId]
         );
 
@@ -229,7 +229,7 @@ class AIService {
         // Get latest gauges
         const gaugesResult = await query(
             `SELECT DISTINCT ON (gauge_key) gauge_key, gauge_value
-             FROM client_gauges
+             FROM coaching_client_gauges
              WHERE client_id = $1
              ORDER BY gauge_key, recorded_at DESC`,
             [clientId]
@@ -237,7 +237,7 @@ class AIService {
 
         // Get recent sessions
         const sessionsResult = await query(
-            `SELECT * FROM client_sessions
+            `SELECT * FROM coaching_client_sessions
              WHERE client_id = $1
              ORDER BY session_date DESC
              LIMIT 5`,
@@ -246,7 +246,7 @@ class AIService {
 
         // Get learning data
         const learningResult = await query(
-            `SELECT * FROM ai_learning_data
+            `SELECT * FROM coaching_ai_learning_data
              WHERE client_id = $1
              ORDER BY importance_score DESC, created_at DESC
              LIMIT 10`,
@@ -266,7 +266,7 @@ class AIService {
      */
     async _getCoachingStyle(coachId) {
         const result = await query(
-            `SELECT * FROM ai_learning_data
+            `SELECT * FROM coaching_ai_learning_data
              WHERE coach_id = $1 AND data_type = 'coaching_style'
              ORDER BY created_at DESC
              LIMIT 1`,
@@ -364,7 +364,7 @@ Please provide:
             // Log user messages
             for (const msg of messages) {
                 await query(
-                    `INSERT INTO ai_conversations (coach_id, client_id, role, content, ai_provider)
+                    `INSERT INTO coaching_ai_conversations (coach_id, client_id, role, content, ai_provider)
                      VALUES ($1, $2, $3, $4, $5)`,
                     [coachId, clientId, msg.role, msg.content, null]
                 );
@@ -372,7 +372,7 @@ Please provide:
 
             // Log AI response
             await query(
-                `INSERT INTO ai_conversations (coach_id, client_id, role, content, ai_provider, tokens_used)
+                `INSERT INTO coaching_ai_conversations (coach_id, client_id, role, content, ai_provider, tokens_used)
                  VALUES ($1, $2, $3, $4, $5, $6)`,
                 [coachId, clientId, 'assistant', response.content, provider, response.tokensUsed]
             );

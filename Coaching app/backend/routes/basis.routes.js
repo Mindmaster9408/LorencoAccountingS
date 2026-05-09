@@ -1,4 +1,4 @@
-// basis.routes.js — Phase 2A: BASIS submission lifecycle
+﻿// basis.routes.js — Phase 2A: BASIS submission lifecycle
 //
 // ROUTE MAP
 // ─────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ router.get('/public/:token', async (req, res) => {
     try {
         const result = await query(
             `SELECT id, status, respondent_name, preferred_lang
-             FROM basis_submissions
+             FROM coaching_basis_submissions
              WHERE access_token = $1 AND mode = 'public_link'`,
             [token]
         );
@@ -164,7 +164,7 @@ router.put('/public/:token', async (req, res) => {
 
     try {
         const check = await query(
-            `SELECT id, status FROM basis_submissions
+            `SELECT id, status FROM coaching_basis_submissions
              WHERE access_token = $1 AND mode = 'public_link'`,
             [token]
         );
@@ -182,7 +182,7 @@ router.put('/public/:token', async (req, res) => {
         const cleanLang  = sanitiseLang(preferredLang);
 
         const result = await query(
-            `UPDATE basis_submissions
+            `UPDATE coaching_basis_submissions
              SET basis_answers      = $1,
                  basis_results      = $2,
                  status             = 'submitted',
@@ -230,7 +230,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     try {
         const result = await query(
-            `INSERT INTO basis_submissions
+            `INSERT INTO coaching_basis_submissions
                 (respondent_name, respondent_email, respondent_phone, preferred_lang,
                  mode, status, source, created_by_user_id, linked_client_id)
              VALUES ($1, $2, $3, $4, $5, 'draft', $6, $7, $8)
@@ -267,7 +267,7 @@ router.get('/', authenticateToken, async (req, res) => {
                     submitted_at, created_at, updated_at,
                     (basis_results IS NOT NULL) AS has_results,
                     (report_generated IS NOT NULL) AS has_report
-             FROM basis_submissions
+             FROM coaching_basis_submissions
              WHERE created_by_user_id = $1
              ORDER BY created_at DESC`,
             [req.user.id]
@@ -293,7 +293,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 
     try {
         const result = await query(
-            `SELECT * FROM basis_submissions
+            `SELECT * FROM coaching_basis_submissions
              WHERE id = $1 AND created_by_user_id = $2`,
             [id, req.user.id]
         );
@@ -330,7 +330,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     try {
         // Verify ownership before touching
         const check = await query(
-            `SELECT id FROM basis_submissions WHERE id = $1 AND created_by_user_id = $2`,
+            `SELECT id FROM coaching_basis_submissions WHERE id = $1 AND created_by_user_id = $2`,
             [id, req.user.id]
         );
         if (check.rows.length === 0) return res.status(404).json({ error: 'Submission not found.' });
@@ -382,7 +382,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
         params.push(id);
         const result = await query(
-            `UPDATE basis_submissions SET ${sets.join(', ')} WHERE id = $${p} RETURNING *`,
+            `UPDATE coaching_basis_submissions SET ${sets.join(', ')} WHERE id = $${p} RETURNING *`,
             params
         );
 
@@ -418,14 +418,14 @@ router.put('/:id/report-editable', authenticateToken, async (req, res) => {
 
     try {
         const check = await query(
-            `SELECT id FROM basis_submissions WHERE id = $1 AND created_by_user_id = $2`,
+            `SELECT id FROM coaching_basis_submissions WHERE id = $1 AND created_by_user_id = $2`,
             [id, req.user.id]
         );
         if (check.rows.length === 0) return res.status(404).json({ error: 'Submission not found.' });
 
         // JSONB merge operator (||) preserves untouched keys
         const result = await query(
-            `UPDATE basis_submissions
+            `UPDATE coaching_basis_submissions
              SET report_editable = report_editable || $1::jsonb, updated_at = now()
              WHERE id = $2
              RETURNING id, report_editable`,
@@ -451,7 +451,7 @@ router.post('/:id/generate-link', authenticateToken, async (req, res) => {
 
     try {
         const check = await query(
-            `SELECT id, mode, status, access_token FROM basis_submissions
+            `SELECT id, mode, status, access_token FROM coaching_basis_submissions
              WHERE id = $1 AND created_by_user_id = $2`,
             [id, req.user.id]
         );
@@ -472,7 +472,7 @@ router.post('/:id/generate-link', authenticateToken, async (req, res) => {
         const token = crypto.randomBytes(32).toString('hex');
 
         await query(
-            `UPDATE basis_submissions
+            `UPDATE coaching_basis_submissions
              SET access_token = $1, mode = 'public_link', updated_at = now()
              WHERE id = $2`,
             [token, id]
