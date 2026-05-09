@@ -87,19 +87,19 @@ export async function openClient(clientId, options = {}) {
                     <label>Client Photo</label>
                     <div class="client-photo-upload"
                          id="client-photo-drop-zone"
-                         ondrop="handleClientPhotoDrop(event, '${client.id}')"
+                         ondrop="handleClientPhotoDrop(event, ${client.id})"
                          ondragover="handleClientPhotoDragOver(event)"
                          ondragleave="handleClientPhotoDragLeave(event)"
-                         onclick="handleClientPhotoAreaClick(event, '${client.id}')"
+                         onclick="handleClientPhotoAreaClick(event, ${client.id})"
                          style="cursor: pointer; padding: 20px; border: 2px dashed #e2e8f0; border-radius: 12px; transition: all 0.3s ease;">
                         ${client.photo ? `
                             <img src="${client.photo}" id="client-photo-preview" alt="Client" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
-                            <button type="button" class="btn-remove-photo" onclick="event.stopPropagation(); removeClientPhoto('${client.id}')" style="margin-top: 12px;">✕ Remove Photo</button>
+                            <button type="button" class="btn-remove-photo" onclick="event.stopPropagation(); removeClientPhoto(${client.id})" style="margin-top: 12px;">✕ Remove Photo</button>
                         ` : `
                             <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${(client.name || '')[0] || 'P'}</div>
                             <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Drag & drop photo here or click to browse</p>
                         `}
-                        <input type="file" id="client-photo-input" accept="image/*" style="display: none;" onchange="handleClientPhotoUpload(event, '${client.id}')" />
+                        <input type="file" id="client-photo-input" accept="image/*" style="display: none;" onchange="handleClientPhotoUpload(event, ${client.id})" />
                     </div>
                 </div>
                 <div class="form-row">
@@ -272,7 +272,13 @@ function setupTabSwitching(header, client) {
             client.notes = $('#detail-notes').value.trim();
 
             // Save to storage
-            await saveClient(client);
+            try {
+                await saveClient(client);
+            } catch (err) {
+                alert('Save failed: ' + (err.message || 'Server error — check console.'));
+                console.error('Save details error:', err);
+                return;
+            }
 
             // Update sidebar info
             const sidebarInfo = $('#client-sidebar-info');
@@ -395,10 +401,19 @@ function processClientPhotoFile(file, clientId) {
     reader.onload = async function(e) {
         const store = await readStore();
         const client = store.clients.find(c => c.id === clientId);
-        if (!client) return;
+        if (!client) {
+            console.error('processClientPhotoFile: client not found for id', clientId, typeof clientId);
+            return;
+        }
 
         client.photo = e.target.result;
-        await saveClient(client);
+        try {
+            await saveClient(client);
+        } catch (err) {
+            alert('Photo save failed: ' + (err.message || 'Server error — check console.'));
+            console.error('Photo save error:', err);
+            return;
+        }
 
         // Reload client view
         openClient(clientId);
@@ -429,7 +444,13 @@ window.removeClientPhoto = async function(clientId) {
     if (!client) return;
 
     client.photo = '';
-    await saveClient(client);
+    try {
+        await saveClient(client);
+    } catch (err) {
+        alert('Photo remove failed: ' + (err.message || 'Server error — check console.'));
+        console.error('Remove photo error:', err);
+        return;
+    }
 
     // Reload client view
     openClient(clientId);

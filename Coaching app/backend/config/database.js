@@ -104,4 +104,19 @@ export const testConnection = async () => {
     }
 };
 
+// Ensure photo and notes columns exist on clients table.
+// Idempotent — ADD COLUMN IF NOT EXISTS is a no-op when the column already exists.
+// Runs on every server startup as a safety net.
+export const ensureClientPhotoNotesColumns = async () => {
+    try {
+        await pool.query(`
+            ALTER TABLE clients ADD COLUMN IF NOT EXISTS photo TEXT;
+            ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes TEXT;
+        `);
+        console.log('[DB INIT] clients.photo and clients.notes columns confirmed');
+    } catch (err) {
+        console.error('[DB INIT] Could not ensure photo/notes columns on clients:', err.message);
+    }
+};
+
 export default pool;

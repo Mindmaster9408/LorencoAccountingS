@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { testConnection } from './config/database.js';
+import { testConnection, ensureClientPhotoNotesColumns } from './config/database.js';
 
 // Import routes
 import authRoutes from './routes/auth.routes.js';
@@ -152,6 +152,9 @@ const startServer = async () => {
             console.error('Please ensure DATABASE_URL is set correctly in .env');
             process.exit(1);
         }
+
+        // Ensure photo and notes columns exist on clients table (idempotent)
+        await ensureClientPhotoNotesColumns();
 
         // Start listening
         app.listen(PORT, '0.0.0.0', () => {

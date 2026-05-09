@@ -44,7 +44,12 @@ export async function saveClient(client) {
 
         if (client.id && typeof client.id === 'number') {
             // Update existing client in Supabase
-            await api.updateClient(client.id, client);
+            const result = await api.updateClient(client.id, client);
+            // Sync photo and notes from server response (RETURNING * is source of truth)
+            if (result && result.client) {
+                client.photo = result.client.photo;
+                client.notes = result.client.notes;
+            }
         } else {
             // Create new client in Supabase
             const result = await api.createClient(client);
