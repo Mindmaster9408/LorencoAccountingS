@@ -152,7 +152,9 @@ router.put('/:clientId', requireClientAccess, async (req, res) => {
       name, email, phone, preferred_lang, dream, current_step, progress_completed,
       exercise_data, journey_progress,
       // BASIS assessment data — stored as camelCase on the client object in the frontend
-      basisAnswers, basisResults
+      basisAnswers, basisResults,
+      // Photo and notes — text fields, persisted directly
+      notes, photo
     } = req.body;
 
     // Only pass status if it is a valid ENUM value — reject silently otherwise to avoid DB error
@@ -182,10 +184,13 @@ router.put('/:clientId', requireClientAccess, async (req, res) => {
              journey_progress = COALESCE($10::jsonb, journey_progress),
              basis_answers = COALESCE($11::jsonb, basis_answers),
              basis_results = COALESCE($12::jsonb, basis_results),
+             notes = COALESCE($13, notes),
+             photo = COALESCE($14, photo),
              last_session = CURRENT_DATE
-         WHERE id = $13 RETURNING *`,
+         WHERE id = $15 RETURNING *`,
         [name, email, phone, preferred_lang, status, dream, current_step, progress_completed,
-         safeExerciseData, safeJourneyProgress, safeBasisAnswers, safeBasisResults, clientId]
+         safeExerciseData, safeJourneyProgress, safeBasisAnswers, safeBasisResults,
+         notes ?? null, photo ?? null, clientId]
       );
     } catch (innerErr) {
       if (innerErr.code === '42703') {
@@ -204,10 +209,12 @@ router.put('/:clientId', requireClientAccess, async (req, res) => {
                  progress_completed = COALESCE($8, progress_completed),
                  exercise_data = COALESCE($9::jsonb, exercise_data),
                  journey_progress = COALESCE($10::jsonb, journey_progress),
+                 notes = COALESCE($11, notes),
+                 photo = COALESCE($12, photo),
                  last_session = CURRENT_DATE
-             WHERE id = $11 RETURNING *`,
+             WHERE id = $13 RETURNING *`,
             [name, email, phone, preferred_lang, status, dream, current_step, progress_completed,
-             safeExerciseData, safeJourneyProgress, clientId]
+             safeExerciseData, safeJourneyProgress, notes ?? null, photo ?? null, clientId]
           );
         } catch (innerErr2) {
           if (innerErr2.code === '42703') {
@@ -223,9 +230,12 @@ router.put('/:clientId', requireClientAccess, async (req, res) => {
                    dream = COALESCE($6, dream),
                    current_step = COALESCE($7, current_step),
                    progress_completed = COALESCE($8, progress_completed),
+                   notes = COALESCE($9, notes),
+                   photo = COALESCE($10, photo),
                    last_session = CURRENT_DATE
-               WHERE id = $9 RETURNING *`,
-              [name, email, phone, preferred_lang, status, dream, current_step, progress_completed, clientId]
+               WHERE id = $11 RETURNING *`,
+              [name, email, phone, preferred_lang, status, dream, current_step, progress_completed,
+               notes ?? null, photo ?? null, clientId]
             );
           } else {
             throw innerErr2;
