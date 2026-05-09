@@ -17,6 +17,7 @@ import leadsRoutes from './routes/leads.routes.js';
 import kvRoutes from './routes/kv.routes.js';
 import basisRoutes from './routes/basis.routes.js';
 import spilRoutes from './routes/spil.routes.js';
+import debugRoutes from './routes/debug.routes.js';
 
 // Load environment variables
 dotenv.config();
@@ -71,6 +72,9 @@ app.use('/api/leads', leadsRoutes);
 app.use('/api/kv', kvRoutes);
 app.use('/api/basis', basisRoutes);
 app.use('/api/spil', spilRoutes);
+
+// TEMPORARY — debug endpoint, remove after diagnosis
+app.use('/api/debug', debugRoutes);
 
 // COMPATIBILITY ALIASES — temporary aliases in case any caller uses the /api/coaching/* prefix.
 // These are aliases only. Canonical paths remain /api/clients etc.
