@@ -427,7 +427,8 @@ function processClientPhotoFile(file, clientId) {
     const reader = new FileReader();
     reader.onload = async function(e) {
         const store = await readStore();
-        const client = store.clients.find(c => c.id === clientId);
+        const numericId = parseInt(clientId, 10);
+        const client = store.clients.find(c => c.id === numericId);
         if (!client) return;
 
         client.photo = e.target.result;
@@ -458,7 +459,8 @@ window.removeClientPhoto = async function(clientId) {
     }
 
     const store = await readStore();
-    const client = store.clients.find(c => c.id === clientId);
+    const numericId = parseInt(clientId, 10);
+    const client = store.clients.find(c => c.id === numericId);
     if (!client) return;
 
     client.photo = '';
