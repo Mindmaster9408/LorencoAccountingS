@@ -447,19 +447,19 @@
 
 /* Client avatar — circular, elevated, premium shadow */
 .axis-avatar {
-    width: 72px;
-    height: 72px;
+    width: 120px;
+    height: 120px;
     border-radius: 50%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: 4px solid #fff;
+    border: 5px solid #fff;
     box-shadow:
-        0 6px 20px rgba(102, 126, 234, 0.28),
-        0 2px 8px rgba(0, 0, 0, 0.10);
+        0 8px 28px rgba(102, 126, 234, 0.35),
+        0 3px 10px rgba(0, 0, 0, 0.13);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 26px;
+    font-size: 42px;
     font-weight: 700;
     flex-shrink: 0;
     overflow: hidden;
@@ -476,8 +476,13 @@
     border-radius: 50%;
 }
 
-/* Tablet: preserve overlap, just tighten spacing */
+/* Tablet: slightly smaller avatar, hide labels */
 @media (max-width: 1024px) {
+    .axis-avatar {
+        width: 96px;
+        height: 96px;
+        font-size: 34px;
+    }
     .axis-label {
         display: none;
     }
@@ -486,10 +491,10 @@
 /* Mobile: smaller avatar, shorter arrows */
 @media (max-width: 768px) {
     .axis-avatar {
-        width: 56px;
-        height: 56px;
-        font-size: 20px;
-        border-width: 3px;
+        width: 72px;
+        height: 72px;
+        font-size: 26px;
+        border-width: 4px;
     }
     .axis-label {
         display: none;
