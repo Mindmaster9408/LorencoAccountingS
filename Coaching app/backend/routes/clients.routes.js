@@ -208,7 +208,7 @@ router.put('/:clientId',
     async (req, res) => {
         try {
             const { clientId } = req.params;
-            const { name, email, phone, preferred_lang, status, dream, current_step, progress_completed, exerciseData, journeyProgress } = req.body;
+            const { name, email, phone, preferred_lang, status, dream, notes, photo, current_step, progress_completed, exerciseData, journeyProgress } = req.body;
 
             // Validate JSONB fields if provided
             if (exerciseData !== undefined && (typeof exerciseData !== 'object' || exerciseData === null)) {
@@ -278,14 +278,19 @@ router.put('/:clientId',
                      preferred_lang = COALESCE($4, preferred_lang),
                      status = COALESCE($5, status),
                      dream = COALESCE($6, dream),
-                     current_step = COALESCE($7, current_step),
-                     progress_completed = COALESCE($8, progress_completed),
-                     exercise_data = COALESCE($9::jsonb, exercise_data),
-                     journey_progress = COALESCE($10::jsonb, journey_progress),
+                     notes = COALESCE($7, notes),
+                     photo = CASE WHEN $8::text IS NOT NULL THEN $8::text ELSE photo END,
+                     current_step = COALESCE($9, current_step),
+                     progress_completed = COALESCE($10, progress_completed),
+                     exercise_data = COALESCE($11::jsonb, exercise_data),
+                     journey_progress = COALESCE($12::jsonb, journey_progress),
                      last_session = CURRENT_DATE
-                 WHERE id = $11
+                 WHERE id = $13
                  RETURNING *`,
-                [name, email, phone, preferred_lang, status, dream, safeCurrentStep, progress_completed,
+                [name, email, phone, preferred_lang, status, dream,
+                 notes !== undefined ? notes : null,
+                 photo !== undefined ? photo : null,
+                 safeCurrentStep, progress_completed,
                  exerciseData ? JSON.stringify(exerciseData) : null,
                  journeyProgress ? JSON.stringify(journeyProgress) : null,
                  clientId]
