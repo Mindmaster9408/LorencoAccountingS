@@ -457,4 +457,46 @@ router.delete('/:clientId', requireClientAccess, async (req, res) => {
   }
 });
 
+// Get BASIS assessment submitted answers (read-only coach view)
+// Protected: authenticated + coach owns this client (requireClientAccess)
+router.get('/:clientId/basis-answers', requireClientAccess, async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    const result = await query(
+      `SELECT basis_answers, basis_results, updated_at
+         FROM coaching_clients
+        WHERE id = $1`,
+      [clientId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const row = result.rows[0];
+
+    if (!row.basis_answers || Object.keys(row.basis_answers).length === 0) {
+      return res.json({
+        success: true,
+        hasSubmission: false,
+        basisAnswers: null,
+        basisResults: null,
+        submittedAt: null
+      });
+    }
+
+    return res.json({
+      success: true,
+      hasSubmission: true,
+      basisAnswers: row.basis_answers,
+      basisResults: row.basis_results,
+      submittedAt: row.updated_at
+    });
+  } catch (error) {
+    console.error('[Coaching] Get BASIS answers error:', error.message);
+    res.status(500).json({ error: 'Failed to retrieve BASIS answers' });
+  }
+});
+
 module.exports = router;

@@ -2,6 +2,8 @@
 
 import { generateBASISReport } from './basis-report-generator.js';
 import { $ } from './config.js';
+import { apiRequest } from './api.js';
+import { BASIS_QUESTIONS, SECTION_LABELS } from './basis-assessment.js';
 
 export function renderBASISReportViewer(client, containerId = 'basis-report-viewer') {
     const container = document.getElementById(containerId);
@@ -41,6 +43,9 @@ export function renderBASISReportViewer(client, containerId = 'basis-report-view
                 <button id="download-html-btn" class="btn-secondary">
                     📋 Download HTML
                 </button>
+                <button id="view-answers-btn" class="btn-secondary">
+                    🔍 View Submitted Answers
+                </button>
             </div>
 
             <div id="report-preview" class="report-preview" style="display: none;">
@@ -67,6 +72,7 @@ function attachReportListeners(client) {
     const downloadHtmlBtn = $('#download-html-btn');
     const closePreviewBtn = $('#close-preview-btn');
     const languageSelect = $('#language-select');
+    const viewAnswersBtn = $('#view-answers-btn');
 
     if (previewBtn) {
         previewBtn.addEventListener('click', () => {
@@ -96,6 +102,12 @@ function attachReportListeners(client) {
         languageSelect.addEventListener('change', (e) => {
             const language = e.target.value;
             showReportPreview(client, language);
+        });
+    }
+
+    if (viewAnswersBtn) {
+        viewAnswersBtn.addEventListener('click', () => {
+            showBasisAnswersModal(client);
         });
     }
 }
@@ -197,6 +209,180 @@ function downloadReportAsHTML(client, language = 'en') {
     } catch (error) {
         alert('Error downloading report: ' + error.message);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Read-only submitted answers modal
+// ---------------------------------------------------------------------------
+
+async function showBasisAnswersModal(client) {
+    // Remove any existing modal
+    const existing = document.getElementById('basis-answers-modal');
+    if (existing) existing.remove();
+
+    // Build loading modal immediately
+    const modal = document.createElement('div');
+    modal.id = 'basis-answers-modal';
+    modal.style.cssText = `
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: flex-start; justify-content: center;
+        background: rgba(0,0,0,0.55); padding: 24px 16px; overflow-y: auto;
+    `;
+    modal.innerHTML = `
+        <div style="
+            background: white; border-radius: 14px; width: 100%; max-width: 860px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 28px 32px; position: relative;
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #7c3aed; padding-bottom: 14px;">
+                <div>
+                    <h2 style="color: #5b21b6; margin: 0; font-size: 20px;">🔍 Submitted BASIS Answers</h2>
+                    <p style="color: #64748b; margin: 4px 0 0; font-size: 13px;">${client.name} — read-only view</p>
+                </div>
+                <button id="close-answers-modal" style="
+                    background: #f1f5f9; border: none; border-radius: 8px; padding: 8px 14px;
+                    cursor: pointer; font-size: 13px; color: #475569; font-weight: 600;
+                ">✕ Close</button>
+            </div>
+            <div id="basis-answers-body" style="text-align: center; padding: 40px 0; color: #64748b;">
+                ⏳ Loading submitted answers…
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Close button handler
+    modal.querySelector('#close-answers-modal').addEventListener('click', () => modal.remove());
+    // Backdrop click closes
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+    // Fetch fresh from backend
+    let data;
+    try {
+        data = await apiRequest(`/clients/${client.id}/basis-answers`);
+    } catch (err) {
+        const status = err.status || 0;
+        let msg = 'Unable to load submitted answers. Please try again.';
+        if (status === 403) msg = 'You do not have permission to view these answers.';
+        if (status === 404) msg = 'Client not found.';
+        document.getElementById('basis-answers-body').innerHTML = `
+            <div style="color: #dc2626; padding: 20px;">❌ ${msg}</div>`;
+        return;
+    }
+
+    if (!data.hasSubmission) {
+        document.getElementById('basis-answers-body').innerHTML = `
+            <div style="color: #64748b; padding: 20px;">
+                No submitted BASIS answers were found for this client.
+            </div>`;
+        return;
+    }
+
+    const { basisAnswers, basisResults, submittedAt } = data;
+    const sectionScores = (basisResults && basisResults.sectionScores) || {};
+    const basisOrder    = (basisResults && basisResults.basisOrder) || [];
+    const code          = basisOrder.join('-') || '—';
+
+    const SECTION_KEYS = ['BALANS', 'AKSIE', 'SORG', 'INSIG', 'STRUKTUUR'];
+
+    const submittedLabel = submittedAt
+        ? new Date(submittedAt).toLocaleString('en-ZA', {
+              year: 'numeric', month: 'short', day: 'numeric',
+              hour: '2-digit', minute: '2-digit'
+          })
+        : '—';
+
+    let html = `
+        <div style="background:#f5f3ff; border:2px solid #7c3aed; border-radius:10px; padding:16px 20px; margin-bottom:24px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px;">
+                <div><span style="font-size:11px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Client</span><br>
+                    <strong style="color:#1e293b;">${escapeHtml(client.name)}</strong></div>
+                <div><span style="font-size:11px;color:#7c3aed;font-weight:700;text-transform:uppercase;">BASIS Code</span><br>
+                    <strong style="color:#4c1d95;font-size:17px;letter-spacing:1px;">${escapeHtml(code)}</strong></div>
+                <div><span style="font-size:11px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Submitted</span><br>
+                    <strong style="color:#1e293b;">${submittedLabel}</strong></div>
+            </div>
+        </div>
+
+        <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:10px 14px; margin-bottom:20px; font-size:12px; color:#713f12;">
+            🔒 <strong>Read-only.</strong> These are the client's submitted responses — they cannot be edited here.
+        </div>
+    `;
+
+    // Section order badge
+    if (basisOrder.length > 0) {
+        html += `
+            <div style="margin-bottom:24px;">
+                <span style="font-size:12px; font-weight:700; color:#5b21b6; text-transform:uppercase; letter-spacing:0.05em;">BASIS Order:</span>
+                <span style="margin-left:10px; font-size:14px; font-weight:700; color:#4c1d95;">
+                    ${basisOrder.map((s, i) => {
+                        const score = sectionScores[s] !== undefined ? ` (${sectionScores[s].toFixed(1)})` : '';
+                        return `${i + 1}. ${SECTION_LABELS[s] || s}${score}`;
+                    }).join(' → ')}
+                </span>
+            </div>
+        `;
+    }
+
+    SECTION_KEYS.forEach(section => {
+        const questions   = BASIS_QUESTIONS[section] || [];
+        const sectionLabel = SECTION_LABELS[section] || section;
+        const score       = sectionScores[section] !== undefined ? sectionScores[section].toFixed(1) : '—';
+        const rank        = basisOrder.indexOf(section);
+        const rankTag     = rank >= 0 ? ` &nbsp;·&nbsp; Rank #${rank + 1}` : '';
+
+        html += `
+            <div style="margin-bottom:28px;">
+                <div style="background:#ede9fe; padding:10px 14px; border-radius:8px; margin-bottom:8px;
+                            display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:700; font-size:15px; color:#5b21b6;">${sectionLabel}</span>
+                    <span style="font-size:12px; color:#7c3aed; font-weight:600;">Score: ${score}/10${rankTag}</span>
+                </div>
+                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                    <thead>
+                        <tr style="background:#f5f3ff; color:#5b21b6; font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
+                            <th style="padding:7px 10px; border:1px solid #d8b4fe; width:36px; text-align:center;">#</th>
+                            <th style="padding:7px 10px; border:1px solid #d8b4fe; text-align:left;">Question</th>
+                            <th style="padding:7px 10px; border:1px solid #d8b4fe; width:70px; text-align:center;">Answer</th>
+                            <th style="padding:7px 10px; border:1px solid #d8b4fe; width:80px; text-align:center;">Adjusted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${questions.map(q => {
+                            const key = `${section}_${q.id}`;
+                            const raw = basisAnswers[key];
+                            const hasAnswer = raw !== undefined && raw !== null;
+                            const rawDisplay = hasAnswer ? raw : '—';
+                            const adjDisplay = hasAnswer ? (q.reverse ? 11 - raw : raw) : '—';
+                            const rowBg = hasAnswer ? '' : 'background:#fef9c3;';
+                            const reverseNote = q.reverse
+                                ? `<span style="font-size:10px;color:#9333ea;font-style:italic;"> (reversed)</span>`
+                                : '';
+                            const answerColor = hasAnswer ? '#7c3aed' : '#94a3b8';
+                            return `
+                                <tr style="${rowBg}">
+                                    <td style="padding:6px 10px; border:1px solid #e2e8f0; text-align:center; color:#94a3b8; font-size:12px;">${q.id}</td>
+                                    <td style="padding:6px 10px; border:1px solid #e2e8f0; color:#334155;">${escapeHtml(q.text)}${reverseNote}</td>
+                                    <td style="padding:6px 10px; border:1px solid #e2e8f0; text-align:center; font-weight:700; font-size:16px; color:${answerColor};">${rawDisplay}</td>
+                                    <td style="padding:6px 10px; border:1px solid #e2e8f0; text-align:center; font-weight:700; color:#5b21b6;">${adjDisplay}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    });
+
+    document.getElementById('basis-answers-body').innerHTML = html;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 function downloadReportAsPDF(client) {
