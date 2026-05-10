@@ -292,7 +292,7 @@ async function saveStepNotes(client, stepNum, notes) {
 async function openExercise(client, stepNum) {
     // Import exercise renderer
     const { renderExercise } = await import('./journey-exercises-r2.js?v=11');
-    const { setCurrentClient } = await import('./journey-helpers.js');
+    const { setCurrentClient } = await import('./journey-helpers.js?v=11');
 
     // Set the current client for the exercise
     setCurrentClient(client);

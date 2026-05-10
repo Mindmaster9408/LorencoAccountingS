@@ -2,7 +2,7 @@
 import { $, escapeHtml, formatDate, formatDateTime, parseStandardDate } from './config.js';
 import { saveClient } from './storage.js';
 import { JOURNEY_STEPS } from './journey-data.js';
-import { renderAIChat } from './journey-helpers.js';
+import { renderAIChat } from './journey-helpers.js?v=11';
 
 // Render specific exercise based on step number
 export function renderExercise(client, stepNumber, containerId) {
