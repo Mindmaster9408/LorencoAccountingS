@@ -1,6 +1,7 @@
 // Helper functions for journey exercises
 import { $, escapeHtml } from './config.js';
 import { saveClient } from './storage.js';
+import { BASIS_QUESTIONS, SECTION_LABELS } from './basis-assessment.js';
 
 // Global current client reference
 let currentClient = null;
@@ -133,6 +134,89 @@ I notice from the 4 Quadrant Exercise that the client has shared valuable inform
     // Save
     await saveClient(currentClient);
 };
+
+// ---------------------------------------------------------------------------
+// BASIS Answers Appendix — for coach-mode PDF only
+// ---------------------------------------------------------------------------
+
+function buildBasisAnswersHTML(client) {
+    const answers = client.basisAnswers || {};
+    const results = client.basisResults || {};
+    const sectionScores = results.sectionScores || {};
+    const basisOrder = results.basisOrder || [];
+
+    if (Object.keys(answers).length === 0) return '';
+
+    const SECTION_KEYS = ['BALANS', 'AKSIE', 'SORG', 'INSIG', 'STRUKTUUR'];
+
+    let html = `
+        <div class="basis-answers-appendix" style="margin-top: 40px; border-top: 3px solid #7c3aed; padding-top: 20px;">
+            <h2 style="color: #7c3aed; margin-bottom: 16px;">📋 BASIS Assessment — Individual Answers</h2>
+    `;
+
+    if (basisOrder.length > 0) {
+        html += `
+            <div style="background: #f5f3ff; border: 2px solid #7c3aed; border-radius: 8px; padding: 14px; margin-bottom: 24px;">
+                <strong style="color: #5b21b6; display: block; margin-bottom: 6px;">BASIS Order (Highest → Lowest Adjusted Score):</strong>
+                <div style="font-size: 15px; font-weight: 700; color: #4c1d95;">
+                    ${basisOrder.map((s, i) => {
+                        const score = sectionScores[s] !== undefined ? sectionScores[s].toFixed(1) : '—';
+                        return `${i + 1}. ${SECTION_LABELS[s] || s} (${score})`;
+                    }).join(' &rarr; ')}
+                </div>
+            </div>
+        `;
+    }
+
+    SECTION_KEYS.forEach(section => {
+        const questions = BASIS_QUESTIONS[section] || [];
+        const sectionLabel = SECTION_LABELS[section] || section;
+        const sectionScore = sectionScores[section] !== undefined ? sectionScores[section].toFixed(1) : '—';
+        const orderRank = basisOrder.indexOf(section);
+        const rankLabel = orderRank >= 0 ? ` | Rank #${orderRank + 1}` : '';
+
+        html += `
+            <div style="margin-bottom: 28px; page-break-inside: avoid;">
+                <div style="background: #ede9fe; padding: 8px 14px; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 14px; color: #5b21b6;">${sectionLabel}</span>
+                    <span style="font-size: 12px; color: #7c3aed; font-weight: 600;">Score: ${sectionScore}/10${rankLabel}</span>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="background: #f5f3ff;">
+                            <th style="text-align: center; padding: 6px 8px; border: 1px solid #d8b4fe; width: 34px; color: #5b21b6;">#</th>
+                            <th style="text-align: left; padding: 6px 8px; border: 1px solid #d8b4fe; color: #5b21b6;">Question</th>
+                            <th style="text-align: center; padding: 6px 8px; border: 1px solid #d8b4fe; width: 64px; color: #5b21b6;">Raw</th>
+                            <th style="text-align: center; padding: 6px 8px; border: 1px solid #d8b4fe; width: 74px; color: #5b21b6;">Adjusted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${questions.map(q => {
+                            const key = `${section}_${q.id}`;
+                            const raw = answers[key];
+                            const hasAnswer = raw !== undefined && raw !== null;
+                            const rawDisplay = hasAnswer ? raw : '—';
+                            const adjustedDisplay = hasAnswer ? (q.reverse ? 11 - raw : raw) : '—';
+                            const rowStyle = hasAnswer ? '' : 'background: #fef9c3;';
+                            const reverseTag = q.reverse ? ' <em style="color:#9333ea; font-style:italic;">(reversed)</em>' : '';
+                            return `
+                                <tr style="${rowStyle}">
+                                    <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: center; color: #94a3b8;">${q.id}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">${escapeHtml(q.text)}${reverseTag}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: center; font-weight: 600; color: #334155;">${rawDisplay}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: center; font-weight: 700; color: #7c3aed;">${adjustedDisplay}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    });
+
+    html += `</div>`;
+    return html;
+}
 
 // ---------------------------------------------------------------------------
 // PDF Download — shared across ALL exercise pages
@@ -367,6 +451,7 @@ window.downloadExercisePDF = function(mode) {
         <div class="pdf-meta">${modeLabel}<br>${dateStr}</div>
     </div>
     ${clone.outerHTML}
+    ${mode === 'coach' && currentClient && currentClient.basisAnswers && Object.keys(currentClient.basisAnswers).length > 0 ? buildBasisAnswersHTML(currentClient) : ''}
     <script>
         window.onload = function() { setTimeout(function() { window.print(); }, 500); };
     <\/script>
