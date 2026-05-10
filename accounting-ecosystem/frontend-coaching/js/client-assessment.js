@@ -254,16 +254,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const valid = await validateToken();
     if (!valid) return;
 
-    // Pre-fill name from token data if available
+    // If the token already has a clientName (coach-generated link), skip the
+    // info form entirely — the client is already known.
     if (tokenData && tokenData.clientName) {
         const parts = tokenData.clientName.split(' ');
-        const firstNameEl = $('#client-firstname');
-        const surnameEl   = $('#client-surname');
-        if (firstNameEl && parts.length >= 1) firstNameEl.value = parts[0];
-        if (surnameEl   && parts.length >= 2) surnameEl.value = parts.slice(1).join(' ');
+        clientData = {
+            firstName:      parts[0] || '',
+            surname:        parts.slice(1).join(' ') || '',
+            name:           tokenData.clientName,
+            email:          '',
+            phone:          '',
+            preferred_lang: 'English'
+        };
+        // Jump straight to the assessment — hide info form, show assessment
+        const infoSection = $('#client-info-section');
+        const assessmentSection = $('#assessment-section');
+        if (infoSection) infoSection.style.display = 'none';
+        if (assessmentSection) assessmentSection.style.display = 'block';
+        renderAssessment();
+    } else {
+        // Anonymous / leads path — show the info form as normal
+        setupStartButton();
     }
-
-    setupStartButton();
 });
 
 const $ = (selector) => document.querySelector(selector);
