@@ -238,10 +238,16 @@ async function showBasisAnswersModal(client) {
                     <h2 style="color: #5b21b6; margin: 0; font-size: 20px;">🔍 Submitted BASIS Answers</h2>
                     <p style="color: #64748b; margin: 4px 0 0; font-size: 13px;">${client.name} — read-only view</p>
                 </div>
-                <button id="close-answers-modal" style="
-                    background: #f1f5f9; border: none; border-radius: 8px; padding: 8px 14px;
-                    cursor: pointer; font-size: 13px; color: #475569; font-weight: 600;
-                ">✕ Close</button>
+                <div style="display:flex; gap:8px;">
+                    <button id="print-answers-btn" style="
+                        background: #7c3aed; border: none; border-radius: 8px; padding: 8px 14px;
+                        cursor: pointer; font-size: 13px; color: white; font-weight: 600;
+                    ">🖨️ Print</button>
+                    <button id="close-answers-modal" style="
+                        background: #f1f5f9; border: none; border-radius: 8px; padding: 8px 14px;
+                        cursor: pointer; font-size: 13px; color: #475569; font-weight: 600;
+                    ">✕ Close</button>
+                </div>
             </div>
             <div id="basis-answers-body" style="text-align: center; padding: 40px 0; color: #64748b;">
                 ⏳ Loading submitted answers…
@@ -254,6 +260,46 @@ async function showBasisAnswersModal(client) {
     modal.querySelector('#close-answers-modal').addEventListener('click', () => modal.remove());
     // Backdrop click closes
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+    // Print button handler — opens content in a new window and triggers print
+    modal.querySelector('#print-answers-btn').addEventListener('click', () => {
+        const bodyEl = document.getElementById('basis-answers-body');
+        if (!bodyEl || bodyEl.textContent.trim().startsWith('⏳')) return;
+        const win = window.open('', '_blank', 'width=900,height=700');
+        win.document.write(`
+            <!DOCTYPE html><html><head>
+            <title>BASIS Answers — ${escapeHtml(client.name)}</title>
+            <style>
+                body { font-family: Arial, sans-serif; color: #1e293b; margin: 24px 32px; }
+                h2 { color: #5b21b6; margin-bottom: 4px; }
+                p.sub { color: #64748b; margin-top: 0; font-size: 13px; }
+                table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
+                th { background: #ede9fe; color: #5b21b6; padding: 6px 10px; border: 1px solid #d8b4fe; text-align: left; font-size: 11px; text-transform: uppercase; }
+                td { padding: 5px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
+                .section-header { background: #ede9fe; padding: 8px 12px; border-radius: 6px; margin: 18px 0 6px;
+                    display: flex; justify-content: space-between; }
+                .section-title { font-weight: 700; color: #5b21b6; font-size: 14px; }
+                .section-score { font-size: 12px; color: #7c3aed; font-weight: 600; }
+                .summary-box { border: 2px solid #7c3aed; border-radius: 8px; padding: 14px 18px; margin-bottom: 18px; display: flex; gap: 40px; }
+                .summary-label { font-size: 10px; color: #7c3aed; font-weight: 700; text-transform: uppercase; }
+                .summary-value { font-weight: 700; color: #1e293b; margin-top: 2px; }
+                .code-value { font-size: 16px; color: #4c1d95; letter-spacing: 1px; }
+                .readonly-note { background: #fef9c3; border: 1px solid #fde047; border-radius: 6px; padding: 8px 12px;
+                    font-size: 11px; color: #713f12; margin-bottom: 16px; }
+                .answer-cell { font-weight: 700; font-size: 15px; color: #7c3aed; text-align: center; }
+                .adj-cell { font-weight: 700; color: #5b21b6; text-align: center; }
+                .num-cell { color: #94a3b8; text-align: center; font-size: 11px; }
+                .reversed { font-size: 10px; color: #9333ea; font-style: italic; }
+                @media print { body { margin: 12px 18px; } }
+            </style>
+            </head><body>
+            ${document.getElementById('basis-answers-body').innerHTML}
+            </body></html>
+        `);
+        win.document.close();
+        win.focus();
+        win.print();
+    });
 
     // Fetch fresh from backend
     let data;
