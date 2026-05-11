@@ -1100,35 +1100,45 @@
         .status-badge.closed { background: #e0e0e0; color: #616161; }
         .status-badge.alert { background: #ffebee; color: #c62828; }
 
-        /* Offline Indicator */
-        .offline-indicator {
+        /* Offline Banner — full-width bar below nav, persistent */
+        .offline-banner {
             position: fixed;
-            top: 55px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
-            color: white;
-            padding: 8px 20px;
-            border-radius: 20px;
+            top: 50px;
+            left: 0;
+            right: 0;
+            display: none;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 7px 20px;
             font-size: 13px;
             font-weight: 600;
-            z-index: 10000;
-            display: none;
-            box-shadow: 0 4px 15px rgba(255,107,107,0.4);
-            animation: pulse-offline 2s infinite;
+            color: white;
+            z-index: 9990;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            min-height: 36px;
         }
-        .offline-indicator.show { display: flex; align-items: center; gap: 8px; }
-        .offline-indicator.syncing { background: linear-gradient(135deg, #ffa726 0%, #ff9800 100%); }
-        @keyframes pulse-offline {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
-        }
-        .sync-count {
-            background: rgba(255,255,255,0.3);
-            padding: 2px 8px;
+        .offline-banner.show { display: flex; }
+        .offline-banner.state-offline { background: #c62828; }
+        .offline-banner.state-syncing { background: #1565c0; }
+        .offline-banner.state-warning { background: #e65100; }
+        .offline-banner.state-pending { background: #f57c00; }
+        .banner-msg { flex: 1; min-width: 0; }
+        /* Queue status chips inside the banner */
+        .queue-chip {
+            padding: 2px 9px;
             border-radius: 10px;
             font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
         }
+        .chip-pending  { background: rgba(255,255,255,0.25); }
+        .chip-conflict { background: rgba(200,30,30,0.55); }
+        .chip-failed   { background: rgba(120,0,0,0.65); }
+        .chip-stale    { background: rgba(0,0,0,0.35); }
+        /* Estimated stock — shown on product tiles when offline */
+        .stock-estimated { font-size: 11px; color: #f57c00; font-style: italic; margin-top: 5px; }
+        .stock-zero-est  { font-size: 11px; color: #c62828; font-weight: 700; margin-top: 5px; }
 
         .enterprise-toolbar {
             display: flex;
@@ -1214,11 +1224,11 @@
     <link rel="stylesheet" href="css/dark-theme.css">
 </head>
 <body>
-    <!-- Offline Indicator -->
-    <div id="offlineIndicator" class="offline-indicator">
-        <span id="offlineIcon">&#9888;</span>
-        <span id="offlineText">You are offline</span>
-        <span id="syncCount" class="sync-count" style="display:none;">0 pending</span>
+    <!-- Offline Banner — persistent bar, visible for offline/pending/conflict/failed/syncing states -->
+    <div id="offlineBanner" class="offline-banner">
+        <span id="bannerIcon" style="font-size:15px;flex-shrink:0;"></span>
+        <span id="bannerText" class="banner-msg"></span>
+        <span id="bannerChips" style="display:flex;gap:6px;flex-wrap:wrap;"></span>
     </div>
 
     <!-- Company Selector Screen -->
@@ -3133,6 +3143,9 @@
         let db = null;
         const DB_NAME = 'CheckoutCharliePOS';
         const DB_VERSION = 1;
+        let syncInProgress = false;   // Guard: only one sync cycle may run at a time
+        let syncDebounceTimer = null; // Debounce: network flap fires online event repeatedly
+        let syncProgress = { current: 0, total: 0 }; // Progress counter for banner display
 
         // Initialize IndexedDB
         async function initIndexedDB() {
@@ -3280,7 +3293,8 @@
 
                 const sale = {
                     ...saleData,
-                    synced: false,
+                    status: 'pending',
+                    syncAttempts: 0,
                     createdAt: new Date().toISOString(),
                     tempSaleNumber: 'OFFLINE-' + Date.now()
                 };
@@ -3288,7 +3302,7 @@
                 const request = store.add(sale);
                 request.onsuccess = () => {
                     sale.tempId = request.result;
-                    updateOfflineCount();
+                    updateOfflineBanner();
                     resolve(sale);
                 };
                 request.onerror = () => reject(request.error);
@@ -3304,126 +3318,255 @@
                 const request = store.getAll();
 
                 request.onsuccess = () => {
-                    // Filter for unsynced sales (synced === false or synced === 0)
-                    const pending = (request.result || []).filter(sale => !sale.synced);
+                    // Pending = no status set (pre-Phase-2B records) or explicitly 'pending'.
+                    // Excludes conflict_stock, conflict_session, failed — those need manual review.
+                    const pending = (request.result || []).filter(sale =>
+                        !sale.status || sale.status === 'pending'
+                    );
                     resolve(pending);
                 };
                 request.onerror = () => reject(request.error);
             });
         }
 
-        // Mark sale as synced
-        async function markSaleSynced(tempId, serverSaleId) {
+        // Delete a confirmed sale from the send queue.
+        // Called after a 200/201 from the server — the server record is the source of truth.
+        async function deleteOfflineSale(tempId) {
             if (!db) return;
             return new Promise((resolve, reject) => {
                 const tx = db.transaction('offlineSales', 'readwrite');
                 const store = tx.objectStore('offlineSales');
-                const getRequest = store.get(tempId);
+                const req = store.delete(tempId);
+                req.onsuccess = () => { updateOfflineBanner(); resolve(); };
+                req.onerror = () => reject(req.error);
+            });
+        }
 
-                getRequest.onsuccess = () => {
-                    const sale = getRequest.result;
+        // Update a queued sale's status after a sync error.
+        // status: 'conflict_stock' | 'conflict_session' | 'failed' | 'pending'
+        async function updateOfflineSaleStatus(tempId, status, extra = {}) {
+            if (!db) return;
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('offlineSales', 'readwrite');
+                const store = tx.objectStore('offlineSales');
+                const getReq = store.get(tempId);
+                getReq.onsuccess = () => {
+                    const sale = getReq.result;
                     if (sale) {
-                        sale.synced = true;
-                        sale.serverSaleId = serverSaleId;
-                        sale.syncedAt = new Date().toISOString();
+                        sale.status = status;
+                        sale.syncAttempts = (sale.syncAttempts || 0) + 1;
+                        sale.lastSyncError = extra.error || null;
+                        sale.lastSyncAt = new Date().toISOString();
                         store.put(sale);
                     }
                     resolve();
                 };
-                getRequest.onerror = () => reject(getRequest.error);
+                getReq.onerror = () => reject(getReq.error);
             });
         }
 
-        // Sync offline sales to server
+        // Sync offline sales to server.
+        // Only one cycle may run at a time (syncInProgress guard).
+        // Debounce is applied by the online event handler — do not add it here.
         async function syncOfflineSales() {
-            if (!isOnline || !token) return;
+            if (syncInProgress || !isOnline || !token) return;
+            syncInProgress = true;
 
-            const pendingSales = await getPendingOfflineSales();
-            if (pendingSales.length === 0) return;
+            let synced = 0, conflicts = 0, failed = 0;
 
-            console.log(`[Sync] Syncing ${pendingSales.length} offline sales...`);
-            updateOfflineIndicator(true, pendingSales.length);
+            try {
+                const pendingSales = await getPendingOfflineSales();
+                if (pendingSales.length === 0) return;
 
-            for (const sale of pendingSales) {
-                try {
-                    const response = await fetch(`${API_URL}/pos/sales`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            tillSessionId: sale.tillSessionId,
-                            items: sale.items,
-                            paymentMethod: sale.paymentMethod,
-                            offlineCreatedAt: sale.createdAt
-                        })
-                    });
+                console.log(`[Sync] Starting cycle: ${pendingSales.length} pending`);
+                syncProgress = { current: 0, total: pendingSales.length };
+                updateOfflineBanner();
+
+                for (const sale of pendingSales) {
+                    // Stop if we went offline mid-cycle — next online event will retry
+                    if (!isOnline) {
+                        console.log('[Sync] Went offline mid-cycle — stopping');
+                        break;
+                    }
+
+                    let response;
+                    try {
+                        response = await fetch(`${API_URL}/pos/sales`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                tillSessionId: sale.tillSessionId,
+                                items: sale.items,
+                                paymentMethod: sale.paymentMethod,
+                                offlineCreatedAt: sale.createdAt,
+                                idempotencyKey: sale.idempotencyKey
+                            })
+                        });
+                    } catch (networkErr) {
+                        // Fetch threw — we are offline; leave record as pending for next cycle
+                        console.warn(`[Sync] Network error on ${sale.tempSaleNumber}:`, networkErr.message);
+                        break;
+                    }
+
+                    syncProgress.current++;
+                    updateOfflineBanner(); // update "Syncing N of M..." without awaiting
 
                     if (response.ok) {
+                        // 200/201 — server confirmed (new or idempotent replay)
                         const result = await response.json();
-                        await markSaleSynced(sale.tempId, result.saleId);
-                        console.log(`[Sync] Sale ${sale.tempSaleNumber} synced as ${result.saleNumber}`);
+                        await deleteOfflineSale(sale.tempId);
+                        synced++;
+                        console.log(`[Sync] Confirmed: ${sale.tempSaleNumber} → server ${result.saleId}${result.wasDuplicate ? ' (replay)' : ''}`);
+
+                    } else {
+                        const body = await response.json().catch(() => ({}));
+                        const errMsg = (body.error || body.details || response.statusText || '');
+                        const errLower = errMsg.toLowerCase();
+
+                        if (response.status === 422 || response.status === 400) {
+                            if (errLower.includes('session')) {
+                                await updateOfflineSaleStatus(sale.tempId, 'conflict_session', { error: errMsg });
+                                conflicts++;
+                                console.warn(`[Sync] Session conflict: ${sale.tempSaleNumber} — ${errMsg}`);
+                            } else if (errLower.includes('stock') || errLower.includes('insufficient')) {
+                                await updateOfflineSaleStatus(sale.tempId, 'conflict_stock', { error: errMsg });
+                                conflicts++;
+                                console.warn(`[Sync] Stock conflict: ${sale.tempSaleNumber} — ${errMsg}`);
+                            } else {
+                                // Other client error — count attempt, mark failed if repeated
+                                const attempts = (sale.syncAttempts || 0) + 1;
+                                const nextStatus = attempts >= 3 ? 'failed' : 'pending';
+                                await updateOfflineSaleStatus(sale.tempId, nextStatus, { error: errMsg });
+                                if (nextStatus === 'failed') failed++;
+                                console.warn(`[Sync] ${response.status} error (attempt ${attempts}): ${sale.tempSaleNumber} — ${errMsg}`);
+                            }
+                        } else {
+                            // 5xx or unexpected — retry-eligible up to 3 attempts
+                            const attempts = (sale.syncAttempts || 0) + 1;
+                            const nextStatus = attempts >= 3 ? 'failed' : 'pending';
+                            await updateOfflineSaleStatus(sale.tempId, nextStatus, { error: errMsg });
+                            if (nextStatus === 'failed') failed++;
+                            console.warn(`[Sync] Server error ${response.status} (attempt ${attempts}): ${sale.tempSaleNumber}`);
+                        }
                     }
-                } catch (error) {
-                    console.error('[Sync] Failed to sync sale:', error);
                 }
+            } finally {
+                syncInProgress = false;
+                syncProgress   = { current: 0, total: 0 };
+                await updateOfflineBanner();
             }
 
-            updateOfflineCount();
-            showNotification('Offline sales synced successfully!', 'success');
-        }
-
-        // Update offline sale count
-        async function updateOfflineCount() {
-            const pending = await getPendingOfflineSales();
-            const countEl = document.getElementById('syncCount');
-            if (pending.length > 0) {
-                countEl.textContent = `${pending.length} pending`;
-                countEl.style.display = 'inline';
-            } else {
-                countEl.style.display = 'none';
+            // Accurate result — no blanket "success" if anything went wrong
+            if (synced > 0 && conflicts === 0 && failed === 0) {
+                showNotification(`${synced} offline sale${synced !== 1 ? 's' : ''} synced.`, 'success');
+            } else if (synced > 0) {
+                showNotification(`${synced} synced. ${conflicts > 0 ? conflicts + ' conflict. ' : ''}${failed > 0 ? failed + ' failed.' : ''}`, 'warning');
+            } else if (conflicts > 0 || failed > 0) {
+                showNotification(`Sync: ${conflicts > 0 ? conflicts + ' conflict' + (conflicts !== 1 ? 's' : '') + '. ' : ''}${failed > 0 ? failed + ' failed.' : ''}`, 'error');
             }
         }
 
-        // Update offline indicator
-        function updateOfflineIndicator(syncing = false, count = 0) {
-            const indicator = document.getElementById('offlineIndicator');
-            const icon = document.getElementById('offlineIcon');
-            const text = document.getElementById('offlineText');
+        // Single source of truth for all offline UI state.
+        // Reads isOnline, syncInProgress, syncProgress, and IndexedDB queue in one pass.
+        // Call anywhere updateOfflineIndicator or updateOfflineCount was previously called.
+        async function updateOfflineBanner() {
+            const banner  = document.getElementById('offlineBanner');
+            const iconEl  = document.getElementById('bannerIcon');
+            const textEl  = document.getElementById('bannerText');
+            const chipsEl = document.getElementById('bannerChips');
+            if (!banner) return;
+
+            // Read all queued records
+            const all = db ? await new Promise(resolve => {
+                const tx = db.transaction('offlineSales', 'readonly');
+                const req = tx.objectStore('offlineSales').getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror  = () => resolve([]);
+            }) : [];
+
+            const nPending  = all.filter(s => !s.status || s.status === 'pending').length;
+            const nConflict = all.filter(s => s.status === 'conflict_stock' || s.status === 'conflict_session').length;
+            const nFailed   = all.filter(s => s.status === 'failed').length;
+
+            // Stale queue: any pending record older than 30 minutes
+            const STALE_MS = 30 * 60 * 1000;
+            const now = Date.now();
+            const hasStalePending = all.some(s =>
+                (!s.status || s.status === 'pending') && s.createdAt &&
+                (now - new Date(s.createdAt).getTime()) > STALE_MS
+            );
+
+            // Determine banner state
+            let state = null, icon = '', text = '';
 
             if (!isOnline) {
-                indicator.classList.add('show');
-                indicator.classList.remove('syncing');
-                icon.innerHTML = '&#9888;';
-                text.textContent = 'Offline Mode - Sales will sync when online';
-            } else if (syncing) {
-                indicator.classList.add('show', 'syncing');
-                icon.innerHTML = '&#8635;';
-                text.textContent = `Syncing ${count} sales...`;
-            } else {
-                indicator.classList.remove('show', 'syncing');
+                state = 'state-offline';
+                icon  = '&#9888;';
+                text  = nPending > 0
+                    ? `Offline — ${nPending} sale${nPending !== 1 ? 's' : ''} saved locally`
+                    : 'Offline — sales will be saved locally';
+            } else if (syncInProgress) {
+                state = 'state-syncing';
+                icon  = '&#8635;';
+                const { current, total } = syncProgress;
+                text  = total > 1 ? `Syncing ${current} of ${total}...` : 'Syncing...';
+            } else if (nConflict > 0 || nFailed > 0) {
+                // Persistent warning — visible even though online
+                state = 'state-warning';
+                icon  = '&#9888;';
+                text  = (nConflict > 0 && nFailed > 0)
+                    ? 'Sync issues — notify manager'
+                    : nConflict > 0
+                    ? 'Sale conflicts need review — notify manager'
+                    : 'Failed sales need attention — notify manager';
+            } else if (nPending > 0) {
+                state = 'state-pending';
+                icon  = '&#8635;';
+                text  = `${nPending} sale${nPending !== 1 ? 's' : ''} pending sync`;
             }
+
+            if (!state) {
+                banner.className = 'offline-banner';
+                return;
+            }
+
+            const chips = [
+                nPending  > 0 ? `<span class="queue-chip chip-pending">${nPending} pending</span>`   : '',
+                nConflict > 0 ? `<span class="queue-chip chip-conflict">${nConflict} conflict</span>` : '',
+                nFailed   > 0 ? `<span class="queue-chip chip-failed">${nFailed} failed</span>`       : '',
+                hasStalePending ? `<span class="queue-chip chip-stale">queue &gt;30 min</span>`       : '',
+            ].join('');
+
+            iconEl.innerHTML     = icon;
+            textEl.textContent   = text;
+            chipsEl.innerHTML    = chips;
+            banner.className     = `offline-banner show ${state}`;
         }
 
         // Online/Offline event handlers
-        window.addEventListener('online', async () => {
+        window.addEventListener('online', () => {
             console.log('[Network] Back online');
             isOnline = true;
-            updateOfflineIndicator();
+            updateOfflineBanner();
             showNotification('Connection restored! Syncing data...', 'success');
 
-            // Sync offline sales
-            await syncOfflineSales();
-
-            // Refresh products
-            await loadProducts();
+            // Debounce: network flaps can fire the online event several times in
+            // rapid succession. Clear any pending trigger before scheduling a new one.
+            if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+            syncDebounceTimer = setTimeout(async () => {
+                syncDebounceTimer = null;
+                await syncOfflineSales();
+                await loadProducts();
+            }, 1000);
         });
 
         window.addEventListener('offline', () => {
             console.log('[Network] Gone offline');
             isOnline = false;
-            updateOfflineIndicator();
+            updateOfflineBanner();
             showNotification('You are offline. Sales will be saved locally.', 'info');
         });
 
@@ -3461,8 +3604,7 @@
         window.addEventListener('load', async () => {
             await initIndexedDB();
             isOnline = navigator.onLine;
-            updateOfflineIndicator();
-            await updateOfflineCount();
+            await updateOfflineBanner();
 
             // ── SSO Pickup from Ecosystem Dashboard ──
             const ssoSource = localStorage.getItem('sso_source');
@@ -4230,10 +4372,26 @@
                 tile.className = 'product-tile';
                 tile.onclick = () => addToCart(product);
 
+                // When offline: show locally-estimated stock with visual distinction.
+                // current_stock is decremented by offline checkout; stock_quantity is the
+                // last confirmed server value. ~N (italic amber) signals "estimate, not confirmed".
+                let stockHtml;
+                if (!isOnline) {
+                    const est = product.current_stock ?? product.stock_quantity ?? 0;
+                    if (est <= 0) {
+                        stockHtml = `<div class="stock-zero-est">Out of stock (est.)</div>`;
+                    } else {
+                        stockHtml = `<div class="stock-estimated">~${est} (est.)</div>`;
+                    }
+                } else {
+                    const qty = product.stock_quantity ?? 0;
+                    stockHtml = `<div class="product-stock">Stock: ${qty}</div>`;
+                }
+
                 tile.innerHTML = `
                     <div class="product-name">${product.product_name}</div>
                     <div class="product-price">R ${parseFloat(product.unit_price).toFixed(2)}</div>
-                    <div class="product-stock">Stock: ${product.stock_quantity}</div>
+                    ${stockHtml}
                 `;
 
                 grid.appendChild(tile);
@@ -4346,9 +4504,14 @@
 
         function addToCart(product) {
             const existing = cart.find(item => item.productId === product.id);
+            // When offline use the locally-estimated stock so the cart guard reflects
+            // sales already saved to IndexedDB that haven't been confirmed by the server.
+            const availableStock = !isOnline
+                ? (product.current_stock ?? product.stock_quantity ?? 0)
+                : (product.stock_quantity ?? 0);
 
             if (existing) {
-                if (existing.quantity < product.stock_quantity) {
+                if (existing.quantity < availableStock) {
                     existing.quantity++;
                 } else {
                     showNotification('Not enough stock', 'error');
@@ -4360,7 +4523,7 @@
                     name: product.product_name,
                     price: product.unit_price,
                     quantity: 1,
-                    maxStock: product.stock_quantity
+                    maxStock: availableStock
                 });
             }
 
@@ -4529,6 +4692,10 @@
             const totalAmount = subtotal + vatAmount;
 
             const saleData = {
+                // Generated once per checkout attempt. Persists with the
+                // IndexedDB record for offline sales and is sent on every
+                // sync retry. Prevents duplicate sales on repeated POSTs.
+                idempotencyKey: crypto.randomUUID(),
                 tillSessionId: currentSession.id,
                 items: cart.map(item => ({
                     productId: item.productId,
@@ -4548,11 +4715,14 @@
                 try {
                     const offlineSale = await saveOfflineSale(saleData);
 
-                    // Update local stock (decrease quantities)
+                    // Update local stock estimate (decrease quantities).
+                    // Initialise from stock_quantity if current_stock not yet set —
+                    // the first offline sale must start from the server's last known value.
                     for (const item of cart) {
                         const product = products.find(p => p.id === item.productId);
                         if (product) {
-                            product.current_stock = Math.max(0, (product.current_stock || 0) - item.quantity);
+                            const base = product.current_stock ?? product.stock_quantity ?? 0;
+                            product.current_stock = Math.max(0, base - item.quantity);
                         }
                     }
                     await cacheProducts(products);
@@ -4589,7 +4759,8 @@
                             quantity: item.quantity
                         })),
                         paymentMethod: selectedPayment,
-                        customerId: selectedAccountCustomerId || undefined
+                        customerId: selectedAccountCustomerId || undefined,
+                        idempotencyKey: saleData.idempotencyKey
                     })
                 });
 

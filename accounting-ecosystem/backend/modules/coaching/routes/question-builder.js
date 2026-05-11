@@ -36,6 +36,7 @@ const STANDARD_CONTEXTS = [
   { key: 'session.checkin',      label: 'Session — Check-in',       category: 'Session' },
   { key: 'session.reflection',   label: 'Session — Reflection',     category: 'Session' },
   { key: 'general',              label: 'General',                   category: 'General' },
+  { key: 'four_quadrants.dream_summary', label: 'Four Quadrants \u2014 Dream Summary', category: 'Four Quadrants' },
 ];
 
 // ─── Table self-creation ──────────────────────────────────────────────────────
@@ -309,9 +310,19 @@ router.get('/client/:clientId/context/:contextKey', async (req, res) => {
 
   try {
     const result = await query(
-      `SELECT cq.*, ccqa.id AS assignment_id, ccqa.sort_order AS assignment_sort_order
+      `SELECT cq.*,
+              ccqa.id AS assignment_id,
+              ccqa.sort_order AS assignment_sort_order,
+              ans.id AS answer_id,
+              ans.answer_text,
+              ans.answer_number,
+              ans.answer_json
        FROM coaching_client_question_assignments ccqa
        JOIN coaching_questions cq ON cq.id = ccqa.question_id
+       LEFT JOIN coaching_client_question_answers ans
+              ON ans.client_id = ccqa.client_id
+             AND ans.question_id = ccqa.question_id
+             AND ans.context_key = ccqa.context_key
        WHERE ccqa.client_id = $1 AND ccqa.context_key = $2 AND ccqa.is_active = true
        ORDER BY ccqa.sort_order ASC, cq.sort_order ASC`,
       [clientId, contextKey]
@@ -406,6 +417,31 @@ router.put('/client/:clientId/context/:contextKey/answers', async (req, res) => 
   } catch (err) {
     console.error('[coaching/question-builder] PUT .../answers', err);
     res.status(500).json({ error: 'Failed to save answers.' });
+  }
+});
+
+// DELETE /client/:clientId/context/:contextKey/assignments/:assignmentId
+// Soft-unlink: sets is_active = false. Preserves row and all answers for audit.
+router.delete('/client/:clientId/context/:contextKey/assignments/:assignmentId', async (req, res) => {
+  const clientId     = parseInt(req.params.clientId, 10);
+  const contextKey   = sanitiseStr(req.params.contextKey, 100);
+  const assignmentId = parseInt(req.params.assignmentId, 10);
+  if (isNaN(clientId) || !contextKey || isNaN(assignmentId)) {
+    return res.status(400).json({ error: 'Invalid clientId, contextKey, or assignmentId.' });
+  }
+  try {
+    const result = await query(
+      `UPDATE coaching_client_question_assignments
+       SET is_active = false
+       WHERE id = $1 AND client_id = $2 AND context_key = $3
+       RETURNING id`,
+      [assignmentId, clientId, contextKey]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Assignment not found.' });
+    res.json({ success: true, id: result.rows[0].id });
+  } catch (err) {
+    console.error('[coaching/question-builder] DELETE .../assignments/:assignmentId', err);
+    res.status(500).json({ error: 'Failed to unlink question.' });
   }
 });
 

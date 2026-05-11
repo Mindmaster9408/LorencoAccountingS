@@ -289,7 +289,7 @@ async function showBasisAnswersModal(client) {
                 .answer-cell { font-weight: 700; font-size: 15px; color: #7c3aed; text-align: center; }
                 .adj-cell { font-weight: 700; color: #5b21b6; text-align: center; }
                 .num-cell { color: #94a3b8; text-align: center; font-size: 11px; }
-                .reversed { font-size: 10px; color: #9333ea; font-style: italic; }
+                /* .reversed class intentionally hidden — not displayed to clients or coaches */
                 @media print { body { margin: 12px 18px; } }
             </style>
             </head><body>
@@ -400,9 +400,7 @@ async function showBasisAnswersModal(client) {
                             const rawDisplay = hasAnswer ? raw : '—';
                             const adjDisplay = hasAnswer ? (q.reverse ? 11 - raw : raw) : '—';
                             const rowBg = hasAnswer ? '' : 'background:#fef9c3;';
-                            const reverseNote = q.reverse
-                                ? `<span style="font-size:10px;color:#9333ea;font-style:italic;"> (reversed)</span>`
-                                : '';
+                            const reverseNote = ''; // reverse label intentionally not shown in client/coach view
                             const answerColor = hasAnswer ? '#7c3aed' : '#94a3b8';
                             return `
                                 <tr style="${rowBg}">

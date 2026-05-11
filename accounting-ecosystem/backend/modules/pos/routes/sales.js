@@ -18,6 +18,7 @@
  */
 
 const express = require('express');
+const { randomUUID } = require('crypto');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
@@ -48,6 +49,8 @@ function normaliseSaleBody(body) {
     // Frontend sends a single string paymentMethod; also accept payments array
     payment_method:  body.payment_method  ?? body.paymentMethod  ?? 'cash',
     payments:        body.payments        ?? null,
+    // Accept camelCase (frontend) or snake_case; fallback generated server-side
+    idempotency_key: body.idempotency_key ?? body.idempotencyKey ?? null,
   };
 }
 
@@ -132,7 +135,12 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       notes,
       payment_method,
       payments: paymentsFromBody,
+      idempotency_key: clientIdempotencyKey,
     } = normaliseSaleBody(req.body);
+
+    // Use client-supplied key (online checkout or offline sync replay) or
+    // generate a server-side key so every sale is idempotency-protected.
+    const idempotencyKey = clientIdempotencyKey || randomUUID();
 
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'At least one item is required' });
@@ -208,103 +216,95 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       }
     }
 
-    // ── 4. Create the sale record ─────────────────────────────────────────
     const saleNumber   = generateSaleNumber();
     const receiptNumber = saleNumber.replace('SAL-', 'RC-');
 
-    const { data: sale, error: saleError } = await supabase
-      .from('sales')
-      .insert({
-        company_id:      req.companyId,
-        sale_number:     saleNumber,
-        receipt_number:  receiptNumber,
-        user_id:         req.user.userId,
-        cashier_id:      req.user.userId,    // denormalised alias (added by migration)
-        customer_id:     customer_id || null,
-        till_session_id: till_session_id || null,
-        subtotal,
-        discount_amount: discount,
-        vat_amount:      vat_total,
-        total_amount,
-        payment_method:  payment_method || 'cash',
-        payment_status:  'completed',
-        status:          'completed',
-        notes:           notes || null,
-      })
-      .select()
-      .single();
-
-    if (saleError) return res.status(500).json({ error: saleError.message });
-
-    // ── 5. Insert sale items (only schema columns) ────────────────────────
-    const saleItems = enrichedItems.map(item => ({
-      company_id:   req.companyId,
-      sale_id:      sale.id,
-      product_id:   item.product_id,
-      product_name: item.product.product_name,  // denormalised (added by migration)
-      quantity:     item.quantity,
-      unit_price:   item.product.unit_price,
-      discount_amount: 0,
-      vat_rate:     item.product.vat_rate || 15,
-      line_total:   item.line_total,
-      total_price:  item.line_total,
-    }));
-
-    const { error: itemsError } = await supabase.from('sale_items').insert(saleItems);
-    if (itemsError) {
-      console.error('[Sales] Error inserting sale items:', itemsError.message);
-      // Sale is created — log but do not fail the whole request.
-      // The stock decrement below is still attempted.
-    }
-
-    // ── 6. Insert payment records ─────────────────────────────────────────
+    // ── 4. Build payments array for RPC ──────────────────────────────────
     let payments;
     if (paymentsFromBody && paymentsFromBody.length > 0) {
-      // Explicit split-payment array
       payments = paymentsFromBody.map(p => ({
-        company_id:     req.companyId,
-        sale_id:        sale.id,
         payment_method: p.payment_method || p.method || 'cash',
         amount:         p.amount,
         reference:      p.reference || null,
       }));
     } else {
-      // Single payment method
       payments = [{
-        company_id:     req.companyId,
-        sale_id:        sale.id,
         payment_method: payment_method || 'cash',
         amount:         total_amount,
+        reference:      null,
       }];
     }
 
-    const { error: payError } = await supabase.from('sale_payments').insert(payments);
-    if (payError) console.error('[Sales] Error inserting payments:', payError.message);
-
-    // ── 7. Decrement stock (company-scoped, with fallback) ────────────────
-    for (const item of enrichedItems) {
-      const { error: rpcErr } = await supabase.rpc('decrement_stock', {
-        p_product_id: item.product_id,
-        p_quantity:   item.quantity,
-      });
-
-      if (rpcErr) {
-        // RPC not available — manual decrement (still company-scoped via product lookup above)
-        const newQty = Math.max(0, item.product.stock_quantity - item.quantity);
-        await supabase
-          .from('products')
-          .update({ stock_quantity: newQty })
-          .eq('id', item.product_id)
-          .eq('company_id', req.companyId);
-      }
-    }
-
-    await auditFromReq(req, 'CREATE', 'sale', sale.id, {
-      module:   'pos',
-      newValue: { saleNumber, total_amount, items: enrichedItems.length },
+    // ── 5. Atomic sale creation via Supabase RPC ──────────────────────────
+    // create_sale_atomic runs INSERT sales + INSERT sale_items +
+    // INSERT sale_payments + PERFORM decrement_stock in one plpgsql
+    // transaction. Any failure (including P0001 on insufficient stock)
+    // rolls back all writes. No orphaned sale records possible.
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('create_sale_atomic', {
+      p_company_id:      req.companyId,
+      p_user_id:         req.user.userId,
+      p_sale_number:     saleNumber,
+      p_receipt_number:  receiptNumber,
+      p_till_session_id: till_session_id || null,
+      p_customer_id:     customer_id || null,
+      p_payment_method:  payment_method || 'cash',
+      p_notes:           notes || null,
+      p_subtotal:        subtotal,
+      p_discount_amount: discount,
+      p_vat_amount:      vat_total,
+      p_total_amount:    total_amount,
+      p_idempotency_key: idempotencyKey,
+      p_items:    enrichedItems.map(item => ({
+        product_id:      item.product_id,
+        product_name:    item.product.product_name,
+        quantity:        item.quantity,
+        unit_price:      item.product.unit_price,
+        vat_rate:        item.product.vat_rate || 15,
+        line_total:      item.line_total,
+        discount_amount: 0,
+      })),
+      p_payments: payments,
     });
 
-    res.status(201).json({ sale });
+    if (rpcError) {
+      const msg = (rpcError.message || '').toLowerCase();
+      if (msg.includes('insufficient stock')) {
+        return res.status(422).json({ error: 'Stock check failed', details: [rpcError.message] });
+      }
+      console.error('[Sales] create_sale_atomic failed:', rpcError);
+      return res.status(500).json({ error: 'Sale creation failed', details: rpcError.message });
+    }
+
+    // ── 6. Audit + response ───────────────────────────────────────────────
+    if (rpcResult.was_duplicate) {
+      console.log('[Sales] Duplicate sale blocked by idempotency key — returning existing sale:', rpcResult.sale_id);
+    }
+
+    // Audit only for new sales; replayed duplicates already have an audit record.
+    if (!rpcResult.was_duplicate) {
+      await auditFromReq(req, 'CREATE', 'sale', rpcResult.sale_id, {
+        module:   'pos',
+        newValue: { saleNumber, total_amount, items: enrichedItems.length },
+      });
+    }
+
+    res.status(201).json({
+      sale: {
+        id:              rpcResult.sale_id,
+        sale_number:     rpcResult.sale_number,
+        receipt_number:  rpcResult.receipt_number,
+        total_amount:    rpcResult.total_amount,
+        subtotal,
+        vat_amount:      vat_total,
+        discount_amount: discount,
+        payment_method,
+        status:          'completed',
+      },
+      saleId:       rpcResult.sale_id,
+      saleNumber:   rpcResult.sale_number,
+      totalAmount:  rpcResult.total_amount,
+      wasDuplicate: rpcResult.was_duplicate || false,
+    });
   } catch (err) {
     console.error('[Sales] Create sale error:', err);
     res.status(500).json({ error: 'Server error' });
