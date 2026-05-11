@@ -98,7 +98,8 @@ router.get('/public/:token', async (req, res) => {
 
     try {
         const result = await query(
-            `SELECT id, status, respondent_name, preferred_lang
+            `SELECT id, status, respondent_name, preferred_lang,
+                    respondent_email, respondent_phone
              FROM basis_submissions
              WHERE access_token = $1 AND mode = 'public_link'`,
             [token]
@@ -114,9 +115,11 @@ router.get('/public/:token', async (req, res) => {
         }
 
         res.json({
-            id: sub.id,
-            respondentName: sub.respondent_name,
-            preferredLang: sub.preferred_lang
+            id:              sub.id,
+            respondentName:  sub.respondent_name,
+            preferredLang:   sub.preferred_lang,
+            respondentEmail: sub.respondent_email  || null,
+            respondentPhone: sub.respondent_phone  || null
         });
     } catch (err) {
         console.error('[basis] GET /public/:token', err);

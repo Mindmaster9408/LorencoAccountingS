@@ -3,8 +3,9 @@
 //
 // Flow:
 //   1. Extract ?token=... from URL
-//   2. GET /api/basis/public/:token   — validate token, pre-fill name
-//   3. Client fills in info + answers
+//   2. GET /api/basis/public/:token   — validate token, pre-fill client data
+//   3a. Coach-generated link (full name on record) → skip info form, start directly
+//   3b. Fresh/anonymous link → client fills in info form, clicks Start Assessment
 //   4. PUT /api/basis/public/:token   — submit answers + computed results
 //
 // No localStorage used. All state server-backed.
@@ -12,12 +13,12 @@
 import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
 import { API_BASE_URL } from './api.js';
 
-const $ = (selector) => document.querySelector(selector);
+const qs = (selector) => document.querySelector(selector);
 
 // Module-level state
 let submissionId   = null;      // id returned by publicGet
 let preferredLang  = 'en';      // from token response
-let clientData     = null;      // filled in by start-assessment-btn
+let clientData     = null;      // populated by auto-skip or start-btn handler
 let basisAnswers   = {};        // flat format: { BALANS_1: 7, AKSIE_3: 4, ... }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -49,17 +50,17 @@ async function publicFetch(endpoint, options = {}) {
 // ─── Error / success display ──────────────────────────────────────────────────
 
 function showError(message) {
-    const errorSection = $('#error-section');
+    const errorSection = qs('#error-section');
     if (errorSection) {
         const p = errorSection.querySelector('.error-message p');
         if (p && message) p.textContent = message;
         errorSection.style.display = 'block';
     }
-    const clientInfo = $('#client-info-section');
+    const clientInfo = qs('#client-info-section');
     if (clientInfo) clientInfo.style.display = 'none';
 }
 
-// ─── Token validation ─────────────────────────────────────────────────────────
+// ─── Token validation + pre-fill ─────────────────────────────────────────────
 
 async function validateToken() {
     const token = getTokenFromURL();
@@ -74,13 +75,42 @@ async function validateToken() {
         submissionId  = data.id;
         preferredLang = data.preferredLang || 'en';
 
-        // Pre-fill name field if available
         if (data.respondentName) {
-            const parts     = data.respondentName.split(' ');
-            const firstEl   = $('#client-firstname');
-            const surnameEl = $('#client-surname');
-            if (firstEl   && parts.length > 0) firstEl.value   = parts[0];
-            if (surnameEl && parts.length > 1) surnameEl.value = parts.slice(1).join(' ');
+            const parts     = data.respondentName.trim().split(/\s+/);
+            const firstName = parts[0] || '';
+            const surname   = parts.slice(1).join(' ') || '';
+
+            // Pre-fill all form fields from backend data
+            const firstEl   = qs('#client-firstname');
+            const surnameEl = qs('#client-surname');
+            const emailEl   = qs('#client-email');
+            const phoneEl   = qs('#client-phone');
+            const langEl    = qs('#client-language');
+
+            if (firstEl)                         firstEl.value   = firstName;
+            if (surnameEl)                       surnameEl.value = surname;
+            if (emailEl && data.respondentEmail) emailEl.value   = data.respondentEmail;
+            if (phoneEl && data.respondentPhone) phoneEl.value   = data.respondentPhone;
+            if (langEl)                          langEl.value    = preferredLang;
+
+            // Coach-generated link: full name on record → skip info form, start directly
+            if (firstName && surname) {
+                clientData = {
+                    firstName,
+                    surname,
+                    name:           data.respondentName,
+                    email:          data.respondentEmail || null,
+                    phone:          data.respondentPhone || null,
+                    preferred_lang: preferredLang
+                };
+
+                const clientInfoSection = qs('#client-info-section');
+                const assessmentSection = qs('#assessment-section');
+                if (clientInfoSection) clientInfoSection.style.display = 'none';
+                if (assessmentSection) assessmentSection.style.display  = 'block';
+
+                renderAssessment();
+            }
         }
 
         return true;
@@ -96,14 +126,10 @@ async function validateToken() {
     }
 }
 
-
-    return true;
-}
-
 // ─── Questionnaire render ─────────────────────────────────────────────────────
 
 function renderAssessment() {
-    const container = $('#basis-assessment-container');
+    const container = qs('#basis-assessment-container');
     if (!container) return;
 
     container.innerHTML = `
@@ -161,7 +187,6 @@ function getGlobalQuestionIndex(sectionKey, localIndex) {
 
 function renderQuestion(sectionKey, localIndex, question) {
     const globalIndex = getGlobalQuestionIndex(sectionKey, localIndex);
-    // Store answers using question.id (1-based) so they match getBASISResults expectations
     const questionId  = `${sectionKey}_${question.id}`;
 
     return `
@@ -189,10 +214,8 @@ function attachEventListeners() {
             const questionId = btn.dataset.questionId;
             const value      = parseInt(btn.dataset.value, 10);
 
-            // Store in flat format: { BALANS_1: 7 }
             basisAnswers[questionId] = value;
 
-            // Update selected state for this question
             document.querySelectorAll(`.scale-btn[data-question-id="${questionId}"]`)
                     .forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
@@ -201,7 +224,7 @@ function attachEventListeners() {
         });
     });
 
-    const submitBtn = $('#submit-basis');
+    const submitBtn = qs('#submit-basis');
     if (submitBtn) submitBtn.addEventListener('click', submitAssessment);
 }
 
@@ -210,8 +233,8 @@ function updateProgress() {
     const answeredCount  = Object.keys(basisAnswers).length;
     const percentage     = Math.round((answeredCount / totalQuestions) * 100);
 
-    const fillEl = $('#basis-progress-fill');
-    const textEl = $('#basis-progress-text');
+    const fillEl = qs('#basis-progress-fill');
+    const textEl = qs('#basis-progress-text');
     if (fillEl) fillEl.style.width = `${percentage}%`;
     if (textEl) textEl.textContent = `${answeredCount} / ${totalQuestions} questions answered`;
 }
@@ -227,7 +250,8 @@ async function submitAssessment() {
         return;
     }
 
-    // Compute results using the scoring engine (flat format required)
+    // Client-side scoring kept for compatibility; backend recomputes server-side and
+    // ignores the client-provided basisResults value (see basis.routes.js PUT /public/:token).
     const basisResults = getBASISResults(basisAnswers);
 
     try {
@@ -245,8 +269,8 @@ async function submitAssessment() {
             })
         });
 
-        const assessmentSection = $('#assessment-section');
-        const successSection    = $('#success-section');
+        const assessmentSection = qs('#assessment-section');
+        const successSection    = qs('#success-section');
         if (assessmentSection) assessmentSection.style.display = 'none';
         if (successSection)    successSection.style.display    = 'block';
 
@@ -266,14 +290,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const valid = await validateToken();
     if (!valid) return;
 
-    const startBtn = $('#start-assessment-btn');
+    // Manual start button — fallback for anonymous links or incomplete pre-fill.
+    // For coach-generated links with a full name, validateToken() already auto-skips
+    // the form, so this handler will be attached but never triggered.
+    const startBtn = qs('#start-assessment-btn');
     if (startBtn) {
         startBtn.addEventListener('click', () => {
-            const firstName = ($('#client-firstname').value || '').trim();
-            const surname   = ($('#client-surname').value   || '').trim();
-            const email     = ($('#client-email').value     || '').trim();
-            const phone     = ($('#client-phone').value     || '').trim();
-            const langEl    = $('#client-language');
+            const firstName = (qs('#client-firstname').value || '').trim();
+            const surname   = (qs('#client-surname').value   || '').trim();
+            const email     = (qs('#client-email').value     || '').trim();
+            const phone     = (qs('#client-phone').value     || '').trim();
+            const langEl    = qs('#client-language');
             const language  = langEl ? langEl.value : 'en';
 
             if (!firstName || !surname) {
@@ -290,8 +317,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 preferred_lang: language || 'en'
             };
 
-            const clientInfoSection = $('#client-info-section');
-            const assessmentSection = $('#assessment-section');
+            const clientInfoSection = qs('#client-info-section');
+            const assessmentSection = qs('#assessment-section');
             if (clientInfoSection) clientInfoSection.style.display = 'none';
             if (assessmentSection) assessmentSection.style.display  = 'block';
 
