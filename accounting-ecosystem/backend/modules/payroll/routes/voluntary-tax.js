@@ -27,10 +27,10 @@ router.use(requireCompany);
  * POST /api/payroll/voluntary-tax/calculate-bonus-spread
  *
  * Given a bonus amount and number of spread periods, calculate:
- *   1. Base PAYE for the employee in the reference period (no bonus)
- *   2. PAYE for the employee WITH the bonus added as once-off income
- *   3. Incremental PAYE = difference
- *   4. Monthly spread = incremental / num_periods
+ *   1. Base monthly PAYE for the employee (no bonus) — annualPAYE ÷ 12
+ *   2. Monthly PAYE WITH the bonus added as once-off income — (annualPAYE+bonus) ÷ 12
+ *   3. Incremental annual PAYE = monthly delta × 12  (recovers the true annual figure)
+ *   4. Monthly spread = incremental annual PAYE ÷ num_periods
  *
  * Body: { employee_id, period_key, bonus_amount, num_periods }
  * Returns: { success, bonus_amount, num_periods, incremental_paye, monthly_spread_amount }
@@ -80,15 +80,20 @@ router.post(
       const bonusResult = await PayrollCalculationService.calculate(inputsWithBonus);
       const bonusPaye = bonusResult.paye_base;
 
-      const incrementalPaye      = Math.max(0, bonusPaye - basePaye);
-      const monthlySpreadAmount  = incrementalPaye / numPer;
+      // paye_base is monthly PAYE (= annualPAYE ÷ 12, computed with ytdData=null).
+      // The delta of two monthly values is annualIncrementalPAYE ÷ 12 — not the annual figure.
+      // Multiply by 12 to recover the true annual incremental tax caused by the bonus,
+      // then divide by spread months to get the correct monthly deduction amount.
+      // Without this ×12 the result would be annualIncremental ÷ (12 × numPer) — off by ×12.
+      const incrementalAnnualPaye = Math.max(0, bonusPaye - basePaye) * 12;
+      const monthlySpreadAmount   = incrementalAnnualPaye / numPer;
 
       res.json({
         success: true,
         bonus_amount:          bonusAmt,
         num_periods:           numPer,
-        incremental_paye:      Math.round(incrementalPaye     * 100) / 100,
-        monthly_spread_amount: Math.round(monthlySpreadAmount * 100) / 100
+        incremental_paye:      Math.round(incrementalAnnualPaye  * 100) / 100,
+        monthly_spread_amount: Math.round(monthlySpreadAmount    * 100) / 100
       });
     } catch (err) {
       console.error('[voluntary-tax] calculate-bonus-spread error:', err);
