@@ -1,0 +1,255 @@
+{
+  "$schema": "https://lorenco.internal/schemas/protected-module/v1",
+  "module": "paytime",
+  "displayName": "Paytime Payroll",
+  "status": "STABILITY_LOCKED",
+  "lockedSince": "2026-05-12",
+  "maintainer": "Lorenco Ecosystem",
+  "description": "Paytime is a stability-locked module. All changes require explicit authorization and a full regression gate before deployment.",
+
+  "protectedFiles": [
+    {
+      "path": "frontend-payroll/js/payroll-engine.js",
+      "level": "CRITICAL",
+      "reason": "Core calculation engine — PAYE, UIF, SDL, net pay. Any change here can silently corrupt all live payslips.",
+      "requiredTests": ["TEST-PAY-01", "TEST-PAY-02", "TEST-PAY-03", "TEST-PAY-04", "TEST-PAY-05", "TEST-PAY-06", "TEST-PAY-07", "TEST-PAY-08", "TEST-PAY-10"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "backend/modules/payroll/**",
+      "level": "CRITICAL",
+      "reason": "All payroll API endpoints — payslip generation, payrun execution, snapshot creation. Regressing these breaks payroll processing for all clients.",
+      "requiredTests": ["TEST-PAY-01", "TEST-PAY-02", "TEST-PAY-09", "TEST-PAY-10", "TEST-PAY-11", "TEST-PAY-12"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/js/data-access.js",
+      "level": "HIGH",
+      "reason": "Data access layer and KV bridge. Changing isLocalKey() or the KV routing logic risks putting payroll business data into browser storage.",
+      "requiredTests": ["TEST-PAY-13"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/js/auth.js",
+      "level": "HIGH",
+      "reason": "Payroll auth layer. AUTH.getSession() must always return {company_id, role}. Token must stay in native localStorage.",
+      "requiredTests": ["TEST-PAY-11", "TEST-PAY-13"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/js/payroll-api.js",
+      "level": "HIGH",
+      "reason": "API call layer for payroll module. Changing headers, auth token read path, or base URL breaks all payroll API calls.",
+      "requiredTests": ["TEST-PAY-01", "TEST-PAY-02"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/js/polyfills.js",
+      "level": "HIGH",
+      "reason": "Houses the safeLocalStorage KV bridge installer. Changing bridge logic risks routing payroll data to browser storage.",
+      "requiredTests": ["TEST-PAY-13"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/js/recon-service.js",
+      "level": "HIGH",
+      "reason": "PAYE reconciliation logic. Incorrect recon totals cause compliance failures and SARS filing errors.",
+      "requiredTests": ["TEST-PAY-14"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/payroll-execution.html",
+      "level": "HIGH",
+      "reason": "Execute Payroll UI — the only authorized path to creating a finalized payroll snapshot. Regressions here break finalization entirely.",
+      "requiredTests": ["TEST-PAY-02", "TEST-PAY-09", "TEST-PAY-10"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/employee-detail.html",
+      "level": "HIGH",
+      "reason": "Employee payslip view, input forms, locked period display. Must correctly read is_locked from DB snapshot, not browser storage.",
+      "requiredTests": ["TEST-PAY-09", "TEST-PAY-13"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/payruns.html",
+      "level": "HIGH",
+      "reason": "Payrun listing and period navigation. Incorrect period state display causes user confusion over locked vs open periods.",
+      "requiredTests": ["TEST-PAY-09"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "backend/shared/routes/auth.js",
+      "level": "HIGH",
+      "reason": "Shared auth — login, select-company, sso-launch. JWT must always embed companyId. Payroll company context depends on this.",
+      "requiredTests": ["TEST-PAY-11", "TEST-PAY-12"],
+      "requiresAuthorization": true,
+      "sharedModule": true
+    },
+    {
+      "path": "backend/shared/routes/companies.js",
+      "level": "HIGH",
+      "reason": "Shared company routes. Company context is foundational to multi-tenant payroll isolation.",
+      "requiredTests": ["TEST-PAY-11", "TEST-PAY-12"],
+      "requiresAuthorization": true,
+      "sharedModule": true
+    },
+    {
+      "path": "backend/middleware/auth.js",
+      "level": "HIGH",
+      "reason": "Shared auth middleware. authenticateToken sets req.companyId. requireCompany blocks null-company requests. Both are essential for multi-tenant payroll safety.",
+      "requiredTests": ["TEST-PAY-12"],
+      "requiresAuthorization": true,
+      "sharedModule": true
+    },
+    {
+      "path": "backend/config/permissions.js",
+      "level": "MEDIUM",
+      "reason": "RBAC config. PAYROLL.VIEW and PAYROLL.PROCESS must always include correct roles. Accidental role removal locks out legitimate users.",
+      "requiredTests": ["TEST-PAY-11"],
+      "requiresAuthorization": false,
+      "sharedModule": true
+    }
+  ],
+
+  "regressionTests": [
+    {
+      "id": "TEST-PAY-01",
+      "name": "Basic payslip calculation",
+      "description": "Verify PAYE, UIF, SDL deductions and net pay are calculated correctly for a standard employee with a basic salary."
+    },
+    {
+      "id": "TEST-PAY-02",
+      "name": "Execute Payroll matches payslip view",
+      "description": "Confirm the figures shown on Execute Payroll exactly match the individual payslip view for every employee in the payrun."
+    },
+    {
+      "id": "TEST-PAY-03",
+      "name": "PAYE tax bracket correctness",
+      "description": "Test PAYE calculation across multiple tax brackets to confirm correct marginal rate application and rebate deductions."
+    },
+    {
+      "id": "TEST-PAY-04",
+      "name": "UIF cap enforcement",
+      "description": "Confirm UIF is capped at the SARS-prescribed ceiling regardless of employee earnings above the cap."
+    },
+    {
+      "id": "TEST-PAY-05",
+      "name": "SDL registered vs exempt",
+      "description": "Test that SDL is applied for SDL-registered companies and correctly waived for SDL-exempt companies based on company settings."
+    },
+    {
+      "id": "TEST-PAY-06",
+      "name": "Overtime inclusion in gross and tax",
+      "description": "Confirm that overtime pay is correctly added to gross income and flows through PAYE calculation."
+    },
+    {
+      "id": "TEST-PAY-07",
+      "name": "Short time reduction cascade",
+      "description": "Test that a short time reduction correctly reduces gross income, and that the reduction cascades through PAYE, UIF, and net pay calculations."
+    },
+    {
+      "id": "TEST-PAY-08",
+      "name": "Voluntary tax override",
+      "description": "Confirm that a voluntary additional tax amount correctly adds to PAYE on the payslip without affecting gross or other deductions."
+    },
+    {
+      "id": "TEST-PAY-09",
+      "name": "Finalized snapshot immutability",
+      "description": "Verify that a finalized payroll period (is_locked=true in payroll_snapshots) cannot be recalculated, modified, or overwritten through any UI path."
+    },
+    {
+      "id": "TEST-PAY-10",
+      "name": "Payslip and Execute Payroll figures match exactly",
+      "description": "End-to-end verification that individual payslip figures and Execute Payroll batch totals are identical down to the cent."
+    },
+    {
+      "id": "TEST-PAY-11",
+      "name": "Company switching preserves correct context",
+      "description": "After switching companies, verify that all payroll data loads belong to the newly selected company — not the previous one."
+    },
+    {
+      "id": "TEST-PAY-12",
+      "name": "Multi-tenant: no cross-company data",
+      "description": "Confirm that users cannot access or modify payroll data belonging to companies they are not authorized for, even with direct API calls."
+    },
+    {
+      "id": "TEST-PAY-13",
+      "name": "No payroll data in browser storage",
+      "description": "After a full payroll workflow (load, calculate, finalize), confirm that no payroll business data (amounts, status, config) exists in localStorage or sessionStorage."
+    },
+    {
+      "id": "TEST-PAY-14",
+      "name": "PAYE recon totals match snapshot data",
+      "description": "Verify that the PAYE reconciliation report totals match the underlying payroll_snapshots data for the selected period."
+    }
+  ],
+
+  "forbiddenPatterns": [
+    {
+      "id": "FP-01",
+      "pattern": "localStorage.setItem",
+      "context": "payroll business data",
+      "description": "Writing payroll calculations, status, or config to localStorage. Business data must go to the API.",
+      "severity": "BLOCK"
+    },
+    {
+      "id": "FP-02",
+      "pattern": "sessionStorage.setItem",
+      "context": "payroll business data",
+      "description": "Writing payroll data to sessionStorage. No exceptions.",
+      "severity": "BLOCK"
+    },
+    {
+      "id": "FP-03",
+      "pattern": "safeLocalStorage.setItem",
+      "context": "payroll business data",
+      "description": "The KV bridge is not a substitute for SQL. Payroll business data must not transit through the KV bridge.",
+      "severity": "BLOCK"
+    },
+    {
+      "id": "FP-04",
+      "pattern": "is_locked",
+      "context": "read from localStorage or sessionStorage",
+      "description": "Finalization state must always be read from payroll_snapshots via the API. Reading is_locked from any browser storage is forbidden.",
+      "severity": "BLOCK"
+    },
+    {
+      "id": "FP-05",
+      "pattern": "hardcoded company ID",
+      "context": "any payroll route or function",
+      "description": "Company IDs must never be hardcoded. All company context must come from req.companyId (backend) or AUTH.getSession().company_id (frontend).",
+      "severity": "BLOCK"
+    },
+    {
+      "id": "FP-06",
+      "pattern": "recalculate locked period",
+      "context": "is_locked = true",
+      "description": "Once a payroll period is locked, its figures are immutable. No code path may recalculate or overwrite a locked snapshot.",
+      "severity": "BLOCK"
+    }
+  ],
+
+  "deploymentGates": [
+    "Change Impact Note completed before coding",
+    "All required regression tests run and passed",
+    "No browser storage added for payroll data",
+    "No hardcoded company IDs introduced",
+    "Finalized snapshot immutability preserved",
+    "Multi-tenant isolation verified",
+    "WORKING_FEATURES_REGISTRY.md checked for regressions",
+    "Super-admin company switching tested",
+    "eco_client access chain tested"
+  ],
+
+  "onlyFinalizationPath": {
+    "description": "The ONLY path that may set payroll_snapshots.is_locked = true",
+    "path": "UI Execute Payroll → POST /api/payroll/payruns → PayrollCalculationService → INSERT payroll_snapshots (is_locked: true)",
+    "forbidden": [
+      "Direct DB updates from application code",
+      "Admin override endpoints",
+      "localStorage flag mimicking locked state",
+      "Any client-side finalization logic"
+    ]
+  }
+}

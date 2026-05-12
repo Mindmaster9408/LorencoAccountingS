@@ -16,6 +16,7 @@
 6. [Implementation Readiness Standards](#6-implementation-readiness-standards)
 7. [Part C — Zeabur Deployment Rules (PERMANENT — NEVER VIOLATE)](#7-part-c--zeabur-deployment-rules)
 8. [Part D — Absolute No Browser Storage Rule (PERMANENT — HARD CODING GATE)](#8-part-d--absolute-no-browser-storage-rule)
+9. [Part E — Paytime Stability Lock (PERMANENT — GOVERNED MODULE)](#9-part-e--paytime-stability-lock)
 
 ---
 
@@ -717,6 +718,188 @@ Any of these is a production incident. Treat browser storage of business data as
 
 ---
 
+## 9. PART E — PAYTIME STABILITY LOCK
+
+> **This section is permanent and non-negotiable.**
+> Effective May 2026. Paytime is a CONTROLLED, STABLE, GOVERNED module. All changes go through the stability gate.
+
+---
+
+### RULE E1 — PAYTIME IS STABILITY-LOCKED
+
+**Paytime Payroll is a stability-locked module.**
+
+This means:
+
+- Changes to Paytime require **explicit authorization** before coding begins
+- All changes to auto-trigger files require the full **regression gate** to pass before push
+- The module may not be treated as "active development" — it is a production-critical compliance system
+
+The machine-readable protected module manifest is at:
+**`accounting-ecosystem/paytime.protected.json`**
+
+The full governance document is at:
+**`PAYTIME_STABILITY_LOCK.md`**
+
+The daily developer protocol is at:
+**`DEV_PROTOCOL.md`**
+
+---
+
+### RULE E2 — AUTO-TRIGGER FILES REQUIRE REGRESSION GATE
+
+Modifying **any** of the following files requires a full payroll regression test run before push:
+
+| File | Level |
+|---|---|
+| `frontend-payroll/js/payroll-engine.js` | CRITICAL |
+| `backend/modules/payroll/**` | CRITICAL |
+| `frontend-payroll/js/data-access.js` | HIGH |
+| `frontend-payroll/js/auth.js` | HIGH |
+| `frontend-payroll/js/payroll-api.js` | HIGH |
+| `frontend-payroll/js/polyfills.js` | HIGH |
+| `frontend-payroll/js/recon-service.js` | HIGH |
+| `frontend-payroll/payroll-execution.html` | HIGH |
+| `frontend-payroll/employee-detail.html` | HIGH |
+| `frontend-payroll/payruns.html` | HIGH |
+| `backend/shared/routes/auth.js` | HIGH (shared) |
+| `backend/shared/routes/companies.js` | HIGH (shared) |
+| `backend/middleware/auth.js` | HIGH (shared) |
+| `backend/config/permissions.js` | MEDIUM (shared) |
+
+**Claude must check this list before touching any file. If a file is on this list, write the Change Impact Note first.**
+
+---
+
+### RULE E3 — 14-TEST REGRESSION GATE (REQUIRED BEFORE PUSH)
+
+The following 14 tests must pass before pushing any change to an auto-trigger file:
+
+| Test | What It Checks |
+|---|---|
+| TEST-PAY-01 | Basic payslip calculation (PAYE, UIF, SDL, net) |
+| TEST-PAY-02 | Execute Payroll matches payslip view |
+| TEST-PAY-03 | PAYE correctness across tax brackets |
+| TEST-PAY-04 | UIF cap enforcement |
+| TEST-PAY-05 | SDL registered vs exempt (company setting) |
+| TEST-PAY-06 | Overtime inclusion in gross and tax |
+| TEST-PAY-07 | Short time reduction cascades through tax |
+| TEST-PAY-08 | Voluntary tax override adds to PAYE |
+| TEST-PAY-09 | Finalized snapshot is immutable |
+| TEST-PAY-10 | Payslip and Execute Payroll figures match exactly |
+| TEST-PAY-11 | Company switching preserves correct context |
+| TEST-PAY-12 | Multi-tenant: no cross-company data |
+| TEST-PAY-13 | No payroll data in browser storage |
+| TEST-PAY-14 | PAYE recon totals match snapshot data |
+
+Not every change requires all 14. `paytime.protected.json` lists the required tests per file. When in doubt, run all 14.
+
+---
+
+### RULE E4 — CHANGE IMPACT NOTE IS MANDATORY
+
+Before making any non-trivial change to an auto-trigger file, Claude must produce this note:
+
+```text
+CHANGE IMPACT NOTE — PAYROLL
+─────────────────────────────────────────────────────────────
+Area being changed:
+
+Files involved:
+
+Why this change is needed:
+
+Is this an explicitly authorised Paytime task?
+  [ ] Yes  [ ] No (shared/other-module with payroll side-effects)
+
+Payroll risk:
+  [ ] CRITICAL  [ ] HIGH  [ ] MEDIUM  [ ] LOW
+
+Specific payroll areas that could be affected:
+
+Regression risk:
+  [ ] High  [ ] Medium  [ ] Low
+
+Regression tests required:
+  [ ] TEST-PAY-01 through TEST-PAY-14 (mark applicable)
+
+Rollback strategy:
+
+Confirmed safe:
+  [ ] payroll-engine.js not affected
+  [ ] PayrollCalculationService.js not affected
+  [ ] Finalized snapshot read path not affected
+  [ ] Company context not affected
+  [ ] PAYE/UIF/SDL logic not affected
+─────────────────────────────────────────────────────────────
+```
+
+**Claude must not begin editing auto-trigger files until this note is complete.**
+
+---
+
+### RULE E5 — SHARED CODE IMPACT QUESTIONS
+
+When touching shared code that Paytime depends on, Claude must ask and answer these before coding:
+
+**`backend/shared/routes/auth.js`:**
+
+- Does login still return `selectedCompany` with correct `companyId`?
+- Does `select-company` still embed `companyId` in the new JWT?
+- Does `sso-launch` still correctly resolve eco_client access?
+
+**`backend/middleware/auth.js`:**
+
+- Does `authenticateToken` still set `req.companyId`?
+- Does `requireCompany` still block null-company requests?
+
+**`backend/config/permissions.js`:**
+
+- Does `PAYROLL.VIEW` still include all correct roles?
+- Does `PAYROLL.PROCESS` still correctly restrict execution?
+
+**`frontend-payroll/js/data-access.js`:**
+
+- Does `isLocalKey()` still protect `session` and `token`?
+- Is the KV bridge still NOT being used for payroll calculation inputs?
+
+---
+
+### RULE E6 — FINALIZED PAYROLL IS IMMUTABLE (HARD RULE)
+
+```text
+payroll_snapshots.is_locked = true
+        ↓
+Return snapshot figures directly
+        ↓
+DO NOT recalculate
+DO NOT modify the row
+DO NOT read locked status from browser storage
+DO NOT allow editing of locked period inputs in the UI
+```
+
+The ONLY authorized finalization path:
+**Execute Payroll → POST /api/payroll/payruns → DB snapshot (is_locked: true)**
+
+No shortcuts. No admin overrides from application code. No localStorage flags mimicking locked state.
+
+---
+
+### RULE E7 — FORBIDDEN CODE PATTERNS (HARD BLOCK)
+
+These patterns are blocked for payroll code. Claude must refuse to generate them:
+
+| Pattern | Context | Severity |
+| --- | --- | --- |
+| `localStorage.setItem(...)` | Payroll business data | BLOCK |
+| `sessionStorage.setItem(...)` | Payroll business data | BLOCK |
+| `safeLocalStorage.setItem(...)` | Payroll business data | BLOCK |
+| Reading `is_locked` from browser storage | Any | BLOCK |
+| Hardcoded company IDs | Payroll routes/functions | BLOCK |
+| Recalculating a locked period | `is_locked = true` | BLOCK |
+
+---
+
 ## RELATED DOCUMENTS
 
 | Document | Purpose |
@@ -725,6 +908,9 @@ Any of these is a production incident. Treat browser storage of business data as
 | `WORKING_FEATURES_REGISTRY.md` | Registry of confirmed working features — do not regress these |
 | `BROWSER_COMPATIBILITY_AUDIT_2026.md` | Cross-browser audit results and fix plan |
 | `docs/DATA_PERSISTENCE_POLICY.md` | Browser storage prohibition policy (absolute, no exceptions) |
+| `PAYTIME_STABILITY_LOCK.md` | Full payroll stability lock governance — protected files, regression tests, release process |
+| `DEV_PROTOCOL.md` | Daily developer change-control protocol — checklists, impact notes, emergency playbook |
+| `accounting-ecosystem/paytime.protected.json` | Machine-readable protected module manifest — required tests per file, forbidden patterns, deployment gates |
 | `SESSION_HANDOFF_*.md` | Per-session change records and handoff notes |
 
 ---
