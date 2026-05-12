@@ -2507,6 +2507,10 @@ Click OK to simulate uploading a file.`;
             // Build table
             const tbody = document.getElementById('pdfReviewBody');
             if (txns.length === 0) {
+                // Surface raw text sample to help diagnose parser failures
+                if (result.rawTextSample) {
+                    console.warn('[PDF Parser] 0 transactions. Raw text sample from extracted PDF:\n' + result.rawTextSample);
+                }
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 30px; color:#9aa0a6;">No transactions were extracted from this PDF.</td></tr>';
                 return;
             }
