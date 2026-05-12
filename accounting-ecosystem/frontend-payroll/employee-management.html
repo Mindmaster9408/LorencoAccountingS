@@ -292,6 +292,45 @@
             background: #c82333;
         }
 
+        .btn-end-service {
+            background: #fd7e14;
+            color: white;
+        }
+
+        .btn-end-service:hover {
+            background: #e06800;
+        }
+
+        .inactive-badge {
+            display: inline-block;
+            background: #dc3545;
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 6px;
+            vertical-align: middle;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .toggle-inactive-btn {
+            padding: 8px 14px;
+            border: 2px solid #6c757d;
+            border-radius: 20px;
+            background: transparent;
+            color: #6c757d;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .toggle-inactive-btn.active {
+            background: #6c757d;
+            color: white;
+        }
+
         .empty-message {
             text-align: center;
             padding: 40px;
@@ -574,6 +613,7 @@
                     <button class="filter-pill" id="pill-name" onclick="setFilterType('name')">Name</button>
                     <button class="filter-pill" id="pill-surname" onclick="setFilterType('surname')">Surname</button>
                 </div>
+                <button class="toggle-inactive-btn" id="toggle-inactive-btn" onclick="toggleShowInactive()">Show Inactive</button>
                 <span class="search-result-count" id="search-result-count"></span>
             </div>
 
@@ -702,6 +742,45 @@
         </div>
     </div>
 
+    <!-- End of Service Modal -->
+    <div id="endServiceModal" class="modal">
+        <div class="modal-content" style="max-width:480px;">
+            <div class="modal-header">
+                <h2>End of Service</h2>
+                <button type="button" class="close-btn" onclick="closeEndServiceModal()">Close</button>
+            </div>
+            <div id="endServiceError" class="error-msg" style="display:none;"></div>
+            <div style="padding:10px 0 20px;">
+                <p style="color:#555; margin-bottom:20px; line-height:1.5;">
+                    This will mark <strong id="endServiceEmpName"></strong> as inactive.
+                    All historical payslips and payroll records will be preserved.
+                    The employee will be excluded from future payroll runs.
+                </p>
+                <div class="form-group">
+                    <label style="font-weight:600;">Service End Date <span style="color:#dc3545;">*</span></label>
+                    <input type="date" id="endServiceDate" style="width:100%; padding:10px 14px; border:2px solid #eee; border-radius:8px; font-size:14px;">
+                </div>
+                <div class="form-group">
+                    <label style="font-weight:600;">Reason (optional)</label>
+                    <select id="endServiceReason" style="width:100%; padding:10px 14px; border:2px solid #eee; border-radius:8px; font-size:14px;">
+                        <option value="">— Select reason —</option>
+                        <option value="Resignation">Resignation</option>
+                        <option value="Retrenchment">Retrenchment</option>
+                        <option value="Dismissal">Dismissal</option>
+                        <option value="Contract Expired">Contract Expired</option>
+                        <option value="Retirement">Retirement</option>
+                        <option value="Death">Death</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+            <div class="action-buttons">
+                <button type="button" class="btn btn-secondary" onclick="closeEndServiceModal()">Cancel</button>
+                <button type="button" class="btn" style="background:#fd7e14;" id="endServiceConfirmBtn" onclick="confirmEndService()">Confirm End of Service</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Bulk Upload Modal -->
     <div id="bulkUploadModal" class="modal">
         <div class="modal-content" style="max-width:900px;">
@@ -770,6 +849,8 @@
     <script>
         let employees = [];
         let currentCompanyId = null;
+        let showInactive = false;
+        let endServiceTargetId = null;
 
         // Check authentication
         window.addEventListener('load', function() {
@@ -841,7 +922,7 @@
                 '<tr><td colspan="8" class="empty-message">Loading employees…</td></tr>';
 
             try {
-                employees = await DataAccess.getEmployees(currentCompanyId);
+                employees = await DataAccess.getEmployees(currentCompanyId, { includeInactive: showInactive });
             } catch(e) {
                 document.getElementById('employee-list').innerHTML =
                     '<tr><td colspan="8" class="empty-message" style="color:#dc3545;">' +
@@ -912,7 +993,7 @@
                             <td>
                                 <button class="btn-small" style="background:#667eea;color:white;" onclick="window.location.href='employee-detail.html?id=${emp.id}'">Open</button>
                                 <button class="btn-small btn-edit" onclick="editEmployee('${emp.id}')">Edit</button>
-                                <button class="btn-small btn-delete" data-permission="DELETE_EMPLOYEES" onclick="deleteEmployee('${emp.id}')">Delete</button>
+                                ${emp.is_active !== false ? `<button class="btn-small btn-end-service" data-permission="DELETE_EMPLOYEES" onclick="openEndServiceModal('${emp.id}')">End Service</button>` : '<span class="inactive-badge">Ended</span>'}
                             </td>
                         </tr>
                     `;
@@ -1135,6 +1216,63 @@
                 await loadEmployeesFromBackend();
             } catch (err) {
                 alert('Failed to deactivate employee: ' + (err.message || 'Server error'));
+            }
+        }
+
+        function toggleShowInactive() {
+            showInactive = !showInactive;
+            var btn = document.getElementById('toggle-inactive-btn');
+            btn.textContent = showInactive ? 'Hide Inactive' : 'Show Inactive';
+            btn.classList.toggle('active', showInactive);
+            loadEmployeesFromBackend();
+        }
+
+        function openEndServiceModal(id) {
+            if (!Permissions.require('DELETE_EMPLOYEES')) return;
+            var emp = employees.find(function(e) { return String(e.id) === String(id); });
+            if (!emp) return;
+            endServiceTargetId = id;
+            var empName = ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim()
+                + ' (' + (emp.employee_number || emp.employee_code || id) + ')';
+            document.getElementById('endServiceEmpName').textContent = empName;
+            // Default end date to today
+            document.getElementById('endServiceDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('endServiceReason').value = '';
+            document.getElementById('endServiceError').style.display = 'none';
+            document.getElementById('endServiceModal').classList.add('show');
+        }
+
+        function closeEndServiceModal() {
+            document.getElementById('endServiceModal').classList.remove('show');
+            endServiceTargetId = null;
+        }
+
+        async function confirmEndService() {
+            if (!endServiceTargetId) return;
+            var termDate = document.getElementById('endServiceDate').value;
+            var reason   = document.getElementById('endServiceReason').value;
+            var errEl    = document.getElementById('endServiceError');
+
+            if (!termDate) {
+                errEl.textContent = 'Please select a service end date.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            var btn = document.getElementById('endServiceConfirmBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing…';
+            errEl.style.display = 'none';
+
+            try {
+                await DataAccess.endEmployeeService(endServiceTargetId, termDate, reason || null);
+                closeEndServiceModal();
+                await loadEmployeesFromBackend();
+            } catch (err) {
+                errEl.textContent = 'Failed to end service: ' + (err.message || 'Server error');
+                errEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Confirm End of Service';
             }
         }
 

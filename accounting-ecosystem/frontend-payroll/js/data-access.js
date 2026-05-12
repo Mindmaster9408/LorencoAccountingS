@@ -149,16 +149,22 @@ var DataAccess = (function() {
 
         // === EMPLOYEES ===
 
-        getEmployees: async function(companyId) {
+        getEmployees: async function(companyId, options) {
             try {
-                const result = await GET('/employees');
+                var qs = (options && options.includeInactive) ? '?include_inactive=true' : '';
+                const result = await GET('/employees' + qs);
                 const employees = result.employees || result.data || result;
-                cacheSet('employees_' + companyId, employees);
+                // Only cache the active-only list (the default) for offline fallback
+                if (!options || !options.includeInactive) {
+                    cacheSet('employees_' + companyId, employees);
+                }
                 return employees;
             } catch(e) {
                 // Offline fallback: last successful API response (cache_ prefix stays in native localStorage)
-                var cached = cacheGet('employees_' + companyId);
-                if (cached !== null) return cached;
+                if (!options || !options.includeInactive) {
+                    var cached = cacheGet('employees_' + companyId);
+                    if (cached !== null) return cached;
+                }
                 // No cache and API failed — propagate so callers can show a real error state
                 throw e;
             }
@@ -181,6 +187,14 @@ var DataAccess = (function() {
         deactivateEmployee: async function(id) {
             await DELETE('/employees/' + id);
             return { success: true };
+        },
+
+        endEmployeeService: async function(id, termination_date, termination_reason) {
+            const result = await POST('/employees/' + id + '/end-service', {
+                termination_date,
+                termination_reason: termination_reason || null,
+            });
+            return result;
         },
 
         getEmployeeById: async function(companyId, empId) {

@@ -24,12 +24,17 @@ router.use(requireCompany);
 router.get('/', requirePermission('EMPLOYEES.VIEW'), async (req, res) => {
   try {
     const companyId = req.companyId;
-    const { status, department, search } = req.query;
+    const { status, department, search, include_inactive } = req.query;
 
     let query = supabase
       .from('employees')
       .select('*')
       .eq('company_id', companyId);
+
+    // Default: active employees only. Pass ?include_inactive=true to include terminated/inactive.
+    if (include_inactive !== 'true') {
+      query = query.eq('is_active', true);
+    }
 
     if (status && status !== 'all') {
       query = query.eq('employment_status', status);
@@ -187,13 +192,89 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
 });
 
 /**
+ * POST /api/employees/:id/end-service
+ * End of Service — marks employee inactive with a termination date and optional reason.
+ * Preserves all payroll history. Employee is excluded from future active payroll runs
+ * because GET /employees now defaults to is_active=true.
+ *
+ * Body: { termination_date, termination_reason? }
+ */
+router.post('/:id/end-service', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
+  try {
+    const empId = req.params.id;
+    const { termination_date, termination_reason } = req.body;
+
+    if (!termination_date) {
+      return res.status(400).json({ error: 'termination_date is required' });
+    }
+
+    // Verify employee belongs to this company and is currently active
+    const { data: existing, error: fetchErr } = await supabase
+      .from('employees')
+      .select('id, first_name, last_name, employee_code, is_active')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (fetchErr || !existing) return res.status(404).json({ error: 'Employee not found' });
+    if (!existing.is_active) {
+      return res.status(409).json({ error: 'Employee is already inactive' });
+    }
+
+    // Set inactive + termination date
+    const { data, error } = await supabase
+      .from('employees')
+      .update({
+        is_active:          false,
+        employment_status:  'terminated',
+        termination_date:   termination_date,
+        updated_at:         new Date().toISOString(),
+      })
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Store termination reason in employee_notes if provided
+    if (termination_reason && termination_reason.trim()) {
+      await supabase.from('employee_notes').insert({
+        company_id:  req.companyId,
+        employee_id: parseInt(empId),
+        note_type:   'termination_reason',
+        content:     termination_reason.trim(),
+        created_by:  req.user.userId,
+      });
+    }
+
+    const empName = `${existing.first_name || ''} ${existing.last_name || ''}`.trim();
+    await auditFromReq(req, 'UPDATE', 'employee', empId, {
+      action:           'end_of_service',
+      employee_code:    existing.employee_code,
+      name:             empName,
+      termination_date: termination_date,
+    });
+
+    res.json({ success: true, employee: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * DELETE /api/employees/:id (soft delete)
  */
 router.delete('/:id', requirePermission('EMPLOYEES.DELETE'), async (req, res) => {
   try {
     const { error } = await supabase
       .from('employees')
-      .update({ is_active: false, employment_status: 'terminated', updated_at: new Date().toISOString() })
+      .update({
+        is_active:         false,
+        employment_status: 'terminated',
+        termination_date:  new Date().toISOString().split('T')[0],
+        updated_at:        new Date().toISOString(),
+      })
       .eq('id', req.params.id)
       .eq('company_id', req.companyId);
 
