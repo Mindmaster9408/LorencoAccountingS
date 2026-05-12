@@ -26,8 +26,6 @@ CREATE TABLE IF NOT EXISTS vat_settings (
     code           VARCHAR(30)  NOT NULL,           -- e.g. 'standard', 'zero', 'exempt'
     name           VARCHAR(100) NOT NULL,           -- display label
     rate           NUMERIC(5,2) NOT NULL DEFAULT 0, -- 0 = exempt/zero, 15 = 15%
-    is_capital     BOOLEAN      NOT NULL DEFAULT FALSE, -- true for capital goods (standard_capital)
-    is_active      BOOLEAN      NOT NULL DEFAULT TRUE,
     effective_from DATE         NOT NULL DEFAULT '1990-01-01', -- rate applies from this date
     effective_to   DATE,                            -- NULL = currently active
     sort_order     INTEGER      NOT NULL DEFAULT 0,
@@ -36,6 +34,10 @@ CREATE TABLE IF NOT EXISTS vat_settings (
     -- Each company can only have one row per (code, effective_from) combination
     UNIQUE (company_id, code, effective_from)
 );
+
+-- Add columns that may be missing if the table was created without them
+ALTER TABLE vat_settings ADD COLUMN IF NOT EXISTS is_capital BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE vat_settings ADD COLUMN IF NOT EXISTS is_active  BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- Index for the most common query pattern: active settings for a company on a date
 CREATE INDEX IF NOT EXISTS idx_vat_settings_company
