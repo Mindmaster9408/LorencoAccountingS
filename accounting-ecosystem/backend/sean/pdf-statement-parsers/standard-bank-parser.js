@@ -3,8 +3,8 @@
  * Standard Bank PDF Statement Parser
  * ============================================================================
  * Supports two date formats:
- *   - DD Mon YY  (e.g. "27 Nov 24")  — primary for 3-month statements
- *   - YYYY/MM/DD                     — legacy format
+ *   - DD Mon YY / DD Mon YYYY  (e.g. "27 Nov 24" or "27 Nov 2024")  — primary for 3-month statements
+ *   - YYYY/MM/DD                                                     — legacy format
  *
  * Column layout: Payments | Deposits | Balance  (NOT Debit/Credit)
  *
@@ -18,8 +18,8 @@
 const BaseParser = require('./base-parser');
 
 // ─── Date patterns ────────────────────────────────────────────────────────────
-// Primary format for 3-month statements: DD Mon YY  (e.g. "27 Nov 24")
-const DATE_RE_MON = /^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2}(?:\s|$)/i;
+// Primary format for 3-month statements: DD Mon YY or DD Mon YYYY  (e.g. "27 Nov 24" or "27 Nov 2024")
+const DATE_RE_MON = /^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}(?:\s|$)/i;
 // Legacy format: YYYY/MM/DD or DD/MM/YY(YY)
 const DATE_RE_NUM = /^\d{4}\/\d{2}\/\d{2}|^\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})/;
 
@@ -81,8 +81,8 @@ class StandardBankParser extends BaseParser {
     if (header.includes('stanbic'))                         { score += 0.3;  details.stanbic = true; }
     if (/branch\s*code\s*[:\s]+05\d{4}/i.test(text))       { score += 0.1;  details.branchCode = true; }
     const yyyyCount  = (text.match(/\b\d{4}\/\d{2}\/\d{2}\b/g) || []).length;
-    const ddMonCount = (text.match(/\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2}\b/gi) || []).length;
-    if (yyyyCount > 3 || ddMonCount > 3) { score += 0.1; details.dateFormat = yyyyCount > 3 ? 'YYYY/MM/DD' : 'DD Mon YY'; }
+    const ddMonCount = (text.match(/\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}\b/gi) || []).length;
+    if (yyyyCount > 3 || ddMonCount > 3) { score += 0.1; details.dateFormat = yyyyCount > 3 ? 'YYYY/MM/DD' : 'DD Mon YY(YY)'; }
     if (/payments\s+deposits\s+balance/i.test(text)) { score += 0.15; details.columnHeader = true; }
     return { confidence: Math.min(score, 1.0), details };
   }
@@ -218,21 +218,26 @@ class StandardBankParser extends BaseParser {
   }
 
   static _extractDateStr(line) {
-    let m = line.match(/^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2})(?:\s|$)/i);
+    let m = line.match(/^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4})(?:\s|$)/i);
     if (m) return m[1];
     m = line.match(/^(\d{4}\/\d{2}\/\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/);
     if (m) return m[1];
     return null;
   }
 
-  // Handles DD Mon YY (2-digit year) + delegates everything else to BaseParser
+  // Handles DD Mon YY (2-digit year) and DD Mon YYYY (4-digit year)
   static _parseDateStr(str) {
-    const m = str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})$/i);
+    const m = str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})$/i);
     if (m) {
       const mo = MONTH_MAP[m[2].toLowerCase()];
       if (mo) {
-        const yr   = parseInt(m[3], 10);
-        const year = yr >= 50 ? `19${m[3].padStart(2, '0')}` : `20${m[3].padStart(2, '0')}`;
+        let year;
+        if (m[3].length === 4) {
+          year = m[3]; // full year — no pivot needed
+        } else {
+          const yr = parseInt(m[3], 10);
+          year = yr >= 50 ? `19${m[3].padStart(2, '0')}` : `20${m[3].padStart(2, '0')}`;
+        }
         return `${year}-${mo}-${m[1].padStart(2, '0')}`;
       }
     }
@@ -245,12 +250,12 @@ class StandardBankParser extends BaseParser {
     return Math.abs(amt);
   }
 
-  // Period extraction that also handles "From: DD Mon YY" header format
+  // Period extraction that also handles "From: DD Mon YY(YY)" header format
   static _extractPeriodSB(text) {
     const base = this.extractPeriod(text);
     if (base.from && base.to) return base;
-    const fromM = text.match(/from\s*:\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{2})/i);
-    const toM   = text.match(/to\s*:\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{2})/i);
+    const fromM = text.match(/from\s*:\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})/i);
+    const toM   = text.match(/to\s*:\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})/i);
     return {
       from: fromM ? this._parseDateStr(fromM[1]) : null,
       to:   toM   ? this._parseDateStr(toM[1])   : null

@@ -533,8 +533,76 @@ describe('StandardBankParser — real statement (DD Mon YY format)', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// E. Nedbank Parser
+// ─── Standard Bank — 4-digit year format (actual production PDF format) ───────
+// Real PDFs extracted by pdf-parse use DD Mon YYYY (e.g. "27 Nov 2024"),
+// not the 2-digit DD Mon YY used in our synthetic test above.
+
+const STDBANK_4DY_SAMPLE = `
+The Standard Bank of South Africa
+Customer Care: 0860 123 000
+Website: www.standardbank.co.za
+Account number:10 23 658 206 0
+Account holder:DRONEDOG STUDIO (PTY) LTD
+From: 26 Nov 2024
+To: 24 Feb 2025
+3 month statement
+
+Date Description Payments Deposits Balance
+STATEMENT OPENING BALANCE 0.00
+27 Nov 2024 DF CTOTS 1008
+AUTOBANK CASH DEPOSIT
+200.00 200.00
+27 Nov 2024 CASH DEPOSIT FEE - AUTOBANK
+-7.20 192.80
+11 Dec 2024 CAPITEC H RUST
+CREDIT TRANSFER
+500.00 692.80
+31 Dec 2024 MONTHLY MANAGEMENT FEE
+-4.29 688.51
+06 Jan 2025 DIAMATRIX CC
+IB PAYMENT TO
+-298.00 390.51
+14 Jan 2025 GOOGLE PHOTOD 4278*6153 12 JAN
+CHEQUE CARD PURCHASE
+-129.99 260.52
+24 Feb 2025 GOLDEN SUPERM CHEQUE CARD PURCHASE
+-45.00 215.52
+
+Statement Summary
+Payments -R477.28
+Deposits R700.00
+`;
+
+describe('StandardBankParser — 4-digit year (DD Mon YYYY, real PDF format)', () => {
+  let result;
+  beforeAll(() => { result = StandardBankParser.parse(STDBANK_4DY_SAMPLE, 'stdbank-real.pdf'); });
+
+  test('1. detects Standard Bank with 4-digit year dates', () => {
+    expect(StandardBankParser.canParse(STDBANK_4DY_SAMPLE).confidence).toBeGreaterThanOrEqual(0.7);
+  });
+
+  test('2. extracts 7 transactions', () => {
+    expect(result.transactions.length).toBe(7);
+  });
+
+  test('3. first transaction has date 2024-11-27', () => {
+    expect(result.transactions[0].date).toBe('2024-11-27');
+    expect(result.transactions[0].amount).toBe(200);
+  });
+
+  test('4. last transaction has date 2025-02-24', () => {
+    const last = result.transactions[result.transactions.length - 1];
+    expect(last.date).toBe('2025-02-24');
+    expect(last.amount).toBe(-45);
+  });
+
+  test('5. all dates are valid YYYY-MM-DD', () => {
+    result.transactions.forEach(t => {
+      expect(t.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const NEDBANK_SAMPLE = `
