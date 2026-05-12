@@ -316,6 +316,223 @@ describe('StandardBankParser.parse', () => {
   });
 });
 
+// ─── Standard Bank — real DD Mon YY format (3-month statement) ────────────────
+
+const STDBANK_REAL_SAMPLE = `
+The Standard Bank of South Africa
+Customer Care: 0860 123 000
+Account number: 10 23 658 206 0
+DRONEDOG STUDIO (PTY) LTD
+From: 26 Nov 24
+To: 24 Feb 25
+3 month statement
+
+Date Description Payments Deposits Balance
+STATEMENT OPENING BALANCE 0.00
+27 Nov 24 DF CTOTS 1008
+AUTOBANK CASH DEPOSIT
+200.00 200.00
+27 Nov 24 CASH DEPOSIT FEE - AUTOBANK
+CASH DEPOSIT FEE - AUTOBANK
+-7.20 192.80
+30 Nov 24 0000010236582060 00002 R1.00
+FEE: MYUPDATES FOR BUSINESS
+-1.00 191.80
+11 Dec 24 CAPITEC H RUST
+CREDIT TRANSFER
+500.00 691.80
+31 Dec 24 MONTHLY MANAGEMENT FEE
+MONTHLY MANAGEMENT FEE
+-4.29 687.51
+31 Dec 24 0000010236582060 00002 R1.00
+FEE: MYUPDATES FOR BUSINESS
+-1.00 686.51
+04 Jan 25 12H40 2838 4278*6153
+FEE-PIN RESET
+-15.00 671.51
+06 Jan 25 DIAMATRIX CC DRONDOG DOMA
+IB PAYMENT TO
+-298.00 373.51
+06 Jan 25 10236582060
+FEE-ELECTRONIC ACCOUNT PAYMENT
+-5.80 367.71
+06 Jan 25 DIAMATRIX CC
+FEE: PAYMENT CONFIRM - EMAIL
+-0.80 366.91
+14 Jan 25 GOOGLE PHOTOD 4278*6153 12 JAN
+CHEQUE CARD PURCHASE
+-129.99 236.92
+14 Jan 25 #INTERNATIONAL4278193242756153
+CHEQUE CARD PURCHASE
+-3.57 233.35
+15 Jan 25 GOOGLE POWERD 4278*6153 11 JAN
+CHEQUE CARD PURCHASE
+-139.99 93.36
+15 Jan 25 #INTERNATIONAL4278193242756153
+CHEQUE CARD PURCHASE
+-3.85 89.51
+
+Customer Care: 0860 123 000
+Website: www.standardbank.co.za
+Pg 2 of 3
+Transaction details Available Balance: R9.37
+Date Description Payments Deposits Balance
+
+31 Jan 25 INTFIN
+MAGTAPE CREDIT
+2,210.00 2,299.51
+31 Jan 25 MONTHLY MANAGEMENT FEE
+MONTHLY MANAGEMENT FEE
+-9.00 2,290.51
+31 Jan 25 0000010236582060 00002 R1.00
+FEE: MYUPDATES FOR BUSINESS
+-2.00 2,288.51
+01 Feb 25 N MOLEFE
+IB PAYMENT TO
+-1,800.00 488.51
+01 Feb 25 10236582060
+FEE-ELECTRONIC ACCOUNT PAYMENT
+-5.80 482.71
+01 Feb 25 N MOLEFE
+FEE: PAYMENT CONFIRM - EMAIL
+-0.80 481.91
+10 Feb 25 HR PHOTOGRAPHY - JAN
+MAGTAPE CREDIT
+2,000.00 2,481.91
+13 Feb 25 #INTERNATIONAL4278193242756153
+CHEQUE CARD PURCHASE
+-3.85 2,478.06
+13 Feb 25 GOOGLE CYBERL 4278*6153 12 FEB
+CHEQUE CARD PURCHASE
+-139.99 2,338.07
+14 Feb 25 GOOGLE CYBERL 4278*6153 13 FEB
+CHEQUE CARD PURCHASE
+-129.99 2,208.08
+14 Feb 25 #INTERNATIONAL4278193242756153
+CHEQUE CARD PURCHASE
+-3.57 2,204.51
+15 Feb 25 00006497 2025-02-15T11:03:48 4278*6153
+AUTOBANK CASH WITHDRAWAL AT
+-600.00 1,604.51
+15 Feb 25 4278*6153
+CASH WITHDRAWAL FEE
+-15.30 1,589.21
+19 Feb 25 ENGEN MIEDERP 4278*6153 19 FEB
+CHEQUE CARD PURCHASE
+-200.00 1,389.21
+20 Feb 25 ENGEN EMSLIES 4278*6153 20 FEB
+CHEQUE CARD PURCHASE
+-300.00 1,089.21
+20 Feb 25 ALABAMA SUPER 4278*6153 20 FEB
+CHEQUE CARD PURCHASE
+-89.00 1,000.21
+20 Feb 25 ATHLETICS CEN 4278*6153 19 FEB
+CHEQUE CARD PURCHASE
+-40.00 960.21
+20 Feb 25 GOLDEN SUPERM 4278*6153 19 FEB
+CHEQUE CARD PURCHASE
+-40.00 920.21
+
+Customer Care: 0860 123 000
+Website: www.standardbank.co.za
+Pg 3 of 3
+Transaction details Available Balance: R9.37
+Date Description Payments Deposits Balance
+
+21 Feb 25 C*SPAR POTCH 4278*6153 20 FEB
+CHEQUE CARD PURCHASE
+-246.72 673.49
+22 Feb 25 C*TOPS POTCH 4278*6153 21 FEB
+CHEQUE CARD PURCHASE
+-49.45 624.04
+22 Feb 25 C*SPAR POTCH 4278*6153 21 FEB
+CHEQUE CARD PURCHASE
+-29.98 594.06
+22 Feb 25 TOTAL POTCHEF 4278*6153 21 FEB
+CHEQUE CARD PURCHASE
+-28.00 566.06
+22 Feb 25 SNATZI KAF POTCHEFSTROO ZAF 22-02-2025
+OUTSTANDING CARD AUTHORISATION
+-25.00 541.06
+22 Feb 25 SASOL VANS POTCHEFSTROO ZAF 22-02-2025
+OUTSTANDING CARD AUTHORISATION
+-200.00 341.06
+24 Feb 25 YOCO *TIGHT 4278*6153 21 FEB
+CHEQUE CARD PURCHASE
+-80.00 261.06
+24 Feb 25 C*SPAR POTCH 4278*6153 21 FEB
+CHEQUE CARD PURCHASE
+-206.69 54.37
+24 Feb 25 GOLDEN SUPERM 4278*6153 21 FEB
+CHEQUE CARD PURCHASE
+-45.00 9.37
+
+Statement Summary
+Payments -R4,900.63
+Deposits R4,910.00
+`;
+
+describe('StandardBankParser — real statement (DD Mon YY format)', () => {
+  let result;
+  beforeAll(() => { result = StandardBankParser.parse(STDBANK_REAL_SAMPLE, 'stdbank-real.pdf'); });
+
+  test('1. detects this statement format', () => {
+    expect(StandardBankParser.canParse(STDBANK_REAL_SAMPLE).confidence).toBeGreaterThanOrEqual(0.5);
+  });
+
+  test('2. extracts 41 transactions', () => {
+    expect(result.transactions.length).toBe(41);
+  });
+
+  test('3. first transaction is deposit 200.00 with balance 200.00', () => {
+    const first = result.transactions[0];
+    expect(first.date).toBe('2024-11-27');
+    expect(first.amount).toBe(200);
+    expect(first.balance).toBe(200);
+  });
+
+  test('4. last transaction is payment -45.00 with balance 9.37', () => {
+    const last = result.transactions[result.transactions.length - 1];
+    expect(last.date).toBe('2025-02-24');
+    expect(last.amount).toBe(-45);
+    expect(last.balance).toBeCloseTo(9.37, 2);
+  });
+
+  test('5. total payments = 4900.63', () => {
+    const payments = result.transactions
+      .filter(t => t.amount < 0)
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    expect(payments).toBeCloseTo(4900.63, 2);
+  });
+
+  test('6. total deposits = 4910.00', () => {
+    const deposits = result.transactions
+      .filter(t => t.amount > 0)
+      .reduce((sum, t) => sum + t.amount, 0);
+    expect(deposits).toBeCloseTo(4910.00, 2);
+  });
+
+  test('7. multi-line descriptions are merged', () => {
+    const deposit = result.transactions.find(t => t.amount === 200 && t.balance === 200);
+    expect(deposit.description).toMatch(/AUTOBANK CASH DEPOSIT/i);
+    const pinReset = result.transactions.find(t => t.amount === -15 && Math.abs(t.balance - 671.51) < 0.02);
+    expect(pinReset.description).toMatch(/FEE-PIN RESET/i);
+  });
+
+  test('8. no header/footer rows become transactions', () => {
+    const badTxn = result.transactions.find(t =>
+      /customer\s+care|website|standard\s+bank\s+of\s+south|we\s+subscribe|statement\s+summary|opening\s+balance/i.test(t.description)
+    );
+    expect(badTxn).toBeUndefined();
+  });
+
+  test('9. all dates are valid YYYY-MM-DD', () => {
+    result.transactions.forEach(t => {
+      expect(t.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // E. Nedbank Parser
 // ─────────────────────────────────────────────────────────────────────────────

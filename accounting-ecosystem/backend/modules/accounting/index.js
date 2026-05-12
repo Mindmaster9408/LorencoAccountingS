@@ -78,4 +78,7 @@ router.use('/employees', require('./routes/employees'));
 router.use('/integrations', require('./routes/integrations'));
 router.use('/kv', require('./routes/kv'));
 
+// Diagnostics & repair tooling
+router.use('/diagnostics', require('./routes/diagnostics'));
+
 module.exports = router;

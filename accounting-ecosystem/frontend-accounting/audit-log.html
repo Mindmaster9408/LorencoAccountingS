@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lorenco Accounting — Audit Log</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+    }
+
+    /* ── Page layout ─────────────────────────────────────────────── */
+    .page-wrapper {
+      max-width: 1400px;
+      margin: 24px auto;
+      padding: 0 24px;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+
+    .page-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+
+    /* ── Filter card ──────────────────────────────────────────────── */
+    .filter-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+
+    .filter-card h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 16px;
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .filter-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .filter-group input,
+    .filter-group select {
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+      color: #1a1a2e;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .filter-group input:focus,
+    .filter-group select:focus {
+      border-color: #0066cc;
+    }
+
+    .filter-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .btn-primary {
+      padding: 9px 20px;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-primary:hover { background: #0055aa; }
+    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    .btn-secondary {
+      padding: 9px 20px;
+      background: white;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+
+    /* ── Results card ─────────────────────────────────────────────── */
+    .results-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .results-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .results-meta {
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    /* ── Table ────────────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead tr {
+      background: #f9fafb;
+    }
+
+    th {
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      border-bottom: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      color: #374151;
+      vertical-align: top;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tr:hover td { background: #f9fafb; }
+
+    /* ── Action type badge ───────────────────────────────────────── */
+    .action-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .action-CREATE   { background: #dcfce7; color: #166534; }
+    .action-UPDATE,
+    .action-EDIT     { background: #dbeafe; color: #1d4ed8; }
+    .action-DELETE   { background: #fee2e2; color: #991b1b; }
+    .action-POST     { background: #ede9fe; color: #6d28d9; }
+    .action-REVERSE  { background: #fef9c3; color: #854d0e; }
+    .action-LOCK     { background: #fef3c7; color: #92400e; }
+    .action-UNLOCK   { background: #fce7f3; color: #9d174d; }
+    .action-REPAIR   { background: #f0fdf4; color: #15803d; }
+    .action-VIEW     { background: #f1f5f9; color: #475569; }
+    .action-default  { background: #f3f4f6; color: #374151; }
+
+    /* ── Detail expand ────────────────────────────────────────────── */
+    .detail-btn {
+      background: none;
+      border: none;
+      color: #0066cc;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 2px 0;
+      text-decoration: underline;
+    }
+
+    .detail-panel {
+      margin-top: 6px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #374151;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .detail-panel.open { display: block; }
+
+    /* ── Pagination ────────────────────────────────────────────────── */
+    .pagination {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 14px 24px;
+      gap: 8px;
+      border-top: 1px solid #f3f4f6;
+    }
+
+    .page-btn {
+      padding: 6px 14px;
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: #374151;
+    }
+
+    .page-btn:hover:not(:disabled) { background: #f9fafb; border-color: #9ca3af; }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .page-info { font-size: 13px; color: #6b7280; }
+
+    /* ── States ────────────────────────────────────────────────────── */
+    .state-box {
+      padding: 48px 24px;
+      text-align: center;
+      color: #6b7280;
+    }
+
+    .state-box .icon { font-size: 36px; margin-bottom: 12px; }
+    .state-box p { font-size: 14px; }
+
+    /* ── Monospace cells ──────────────────────────────────────────── */
+    .mono { font-family: 'Courier New', monospace; font-size: 11px; color: #6b7280; }
+
+    /* ── Timestamp ─────────────────────────────────────────────────── */
+    .ts { font-size: 12px; white-space: nowrap; }
+
+    /* ── Error banner ─────────────────────────────────────────────── */
+    .error-banner {
+      padding: 12px 16px;
+      background: #fee2e2;
+      color: #991b1b;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h1>Audit Log</h1>
+      <p>Full forensic trail of every action across journals, bank, invoices, periods, VAT, and user events</p>
+    </div>
+  </div>
+
+  <div id="errorBanner" class="error-banner"></div>
+
+  <!-- Filter Panel -->
+  <div class="filter-card">
+    <h2>Filter Events</h2>
+    <div class="filter-grid">
+      <div class="filter-group">
+        <label>From Date</label>
+        <input type="date" id="fromDate">
+      </div>
+      <div class="filter-group">
+        <label>To Date</label>
+        <input type="date" id="toDate">
+      </div>
+      <div class="filter-group">
+        <label>Action Type</label>
+        <select id="actionType">
+          <option value="">— All Actions —</option>
+          <option value="CREATE">CREATE</option>
+          <option value="UPDATE">UPDATE</option>
+          <option value="DELETE">DELETE</option>
+          <option value="POST">POST</option>
+          <option value="REVERSE">REVERSE</option>
+          <option value="LOCK">LOCK</option>
+          <option value="UNLOCK">UNLOCK</option>
+          <option value="YEAR_END_CLOSE">YEAR_END_CLOSE</option>
+          <option value="DIAGNOSTICS_RUN">DIAGNOSTICS_RUN</option>
+          <option value="DIAGNOSTICS_REPAIR">DIAGNOSTICS_REPAIR</option>
+          <option value="BANK_IMPORT">BANK_IMPORT</option>
+          <option value="BANK_CONFIRM">BANK_CONFIRM</option>
+          <option value="BANK_RECONCILE">BANK_RECONCILE</option>
+          <option value="BANK_UNRECONCILE">BANK_UNRECONCILE</option>
+          <option value="VAT_PERIOD_CREATED">VAT_PERIOD_CREATED</option>
+          <option value="VAT_PERIOD_LOCKED">VAT_PERIOD_LOCKED</option>
+          <option value="JOURNAL_POSTED">JOURNAL_POSTED</option>
+          <option value="JOURNAL_REVERSED">JOURNAL_REVERSED</option>
+          <option value="SYSTEM_ERROR">SYSTEM_ERROR</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Entity Type</label>
+        <select id="entityType">
+          <option value="">— All Entities —</option>
+          <option value="JOURNAL">JOURNAL</option>
+          <option value="JOURNAL_LINE">JOURNAL_LINE</option>
+          <option value="ACCOUNT">ACCOUNT</option>
+          <option value="BANK_TRANSACTION">BANK_TRANSACTION</option>
+          <option value="BANK_ACCOUNT">BANK_ACCOUNT</option>
+          <option value="SUPPLIER_INVOICE">SUPPLIER_INVOICE</option>
+          <option value="CUSTOMER_INVOICE">CUSTOMER_INVOICE</option>
+          <option value="ACCOUNTING_PERIOD">ACCOUNTING_PERIOD</option>
+          <option value="YEAR_END_CLOSE_RECORD">YEAR_END_CLOSE_RECORD</option>
+          <option value="VAT_PERIOD">VAT_PERIOD</option>
+          <option value="DIAGNOSTICS">DIAGNOSTICS</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Actor Type</label>
+        <select id="actorType">
+          <option value="">— All Actors —</option>
+          <option value="USER">USER</option>
+          <option value="SYSTEM">SYSTEM</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>User ID (exact)</label>
+        <input type="text" id="userId" placeholder="e.g. 123">
+      </div>
+      <div class="filter-group">
+        <label>Entity ID (exact)</label>
+        <input type="number" id="entityId" placeholder="e.g. 456">
+      </div>
+      <div class="filter-group">
+        <label>Batch ID (UUID)</label>
+        <input type="text" id="batchId" placeholder="e.g. abc123...">
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button class="btn-primary" id="searchBtn" onclick="loadLogs(true)">Search</button>
+      <button class="btn-secondary" onclick="resetFilters()">Reset</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-card">
+    <div class="results-header">
+      <h2>Audit Events</h2>
+      <span class="results-meta" id="resultsMeta">—</span>
+    </div>
+    <div class="table-wrap">
+      <table id="logsTable">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Action</th>
+            <th>Entity</th>
+            <th>Entity ID</th>
+            <th>Actor</th>
+            <th>Description</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="logsBody">
+          <tr>
+            <td colspan="7">
+              <div class="state-box">
+                <div class="icon">🔍</div>
+                <p>Set filters above and click Search to query the audit log.</p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination" style="display:none;">
+      <button class="page-btn" id="prevBtn" onclick="prevPage()" disabled>← Previous</button>
+      <span class="page-info" id="pageInfo">Page 1</span>
+      <button class="page-btn" id="nextBtn" onclick="nextPage()">Next →</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Auth ───────────────────────────────────────────────────────────────────
+  const token = localStorage.getItem('token') || localStorage.getItem('sb-token') || localStorage.getItem('eco_token');
+  if (!token) {
+    window.location.href = '/dashboard/login.html';
+  }
+
+  function authHeaders() {
+    return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+  }
+
+  // ── XSS safety ─────────────────────────────────────────────────────────────
+  function escapeHtml(str) {
+    if (str == null) return '—';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ── Pagination state ────────────────────────────────────────────────────────
+  const PAGE_SIZE = 50;
+  let currentPage = 0;  // 0-based
+  let lastTotal   = 0;
+  let lastFilters = {};
+
+  // ── Formatting ──────────────────────────────────────────────────────────────
+  function formatTimestamp(ts) {
+    if (!ts) return '—';
+    try {
+      const d = new Date(ts);
+      return d.toLocaleString('en-ZA', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+      });
+    } catch (_) {
+      return escapeHtml(ts);
+    }
+  }
+
+  function actionBadge(action) {
+    if (!action) return '<span class="action-badge action-default">—</span>';
+    const a = String(action).toUpperCase();
+    let cls = 'action-default';
+    if (a.includes('CREATE'))    cls = 'action-CREATE';
+    else if (a.includes('UPDATE') || a.includes('EDIT') || a.includes('REPAIR')) cls = 'action-UPDATE';
+    else if (a.includes('DELETE'))   cls = 'action-DELETE';
+    else if (a.includes('POST'))     cls = 'action-POST';
+    else if (a.includes('REVERSE'))  cls = 'action-REVERSE';
+    else if (a === 'LOCK' || a.includes('LOCKED'))  cls = 'action-LOCK';
+    else if (a === 'UNLOCK')         cls = 'action-UNLOCK';
+    else if (a.includes('VIEW'))     cls = 'action-VIEW';
+    return `<span class="action-badge ${cls}">${escapeHtml(action)}</span>`;
+  }
+
+  function actorLabel(log) {
+    if (log.actor_type === 'SYSTEM') return '<span style="color:#6b7280">SYSTEM</span>';
+    const id   = log.user_id   ? escapeHtml(log.user_id)   : '';
+    const name = log.user_name ? escapeHtml(log.user_name) : '';
+    return name ? `${name}<br><span class="mono">${id}</span>` : (id || '<span class="mono">—</span>');
+  }
+
+  function detailsHtml(log, idx) {
+    const parts = {};
+    if (log.before_json) parts.before = log.before_json;
+    if (log.after_json)  parts.after  = log.after_json;
+    if (log.metadata)    parts.meta   = log.metadata;
+    if (!Object.keys(parts).length) return '—';
+    const json = JSON.stringify(parts, null, 2);
+    const safeJson = escapeHtml(json);
+    return `
+      <button class="detail-btn" onclick="toggleDetail(${idx})">Show</button>
+      <div class="detail-panel" id="detail-${idx}">${safeJson}</div>`;
+  }
+
+  function toggleDetail(idx) {
+    const panel = document.getElementById('detail-' + idx);
+    const btn   = panel.previousElementSibling;
+    if (!panel) return;
+    const isOpen = panel.classList.toggle('open');
+    btn.textContent = isOpen ? 'Hide' : 'Show';
+  }
+
+  // ── Load logs ───────────────────────────────────────────────────────────────
+  async function loadLogs(resetPage) {
+    if (resetPage) { currentPage = 0; }
+
+    const filters = {
+      fromDate:   document.getElementById('fromDate').value   || undefined,
+      toDate:     document.getElementById('toDate').value     || undefined,
+      actionType: document.getElementById('actionType').value || undefined,
+      entityType: document.getElementById('entityType').value || undefined,
+      actorType:  document.getElementById('actorType').value  || undefined,
+      userId:     document.getElementById('userId').value.trim()   || undefined,
+      entityId:   document.getElementById('entityId').value.trim() || undefined,
+      batchId:    document.getElementById('batchId').value.trim()  || undefined,
+    };
+    lastFilters = filters;
+
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v !== undefined) params.set(k, v); });
+    params.set('limit',  PAGE_SIZE);
+    params.set('offset', currentPage * PAGE_SIZE);
+
+    const searchBtn = document.getElementById('searchBtn');
+    searchBtn.disabled = true;
+    searchBtn.textContent = 'Loading…';
+    hideError();
+
+    try {
+      const resp = await fetch('/api/audit?' + params.toString(), { headers: authHeaders() });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: resp.statusText }));
+        throw new Error(err.error || 'Request failed');
+      }
+      const data = await resp.json();
+      const logs = data.logs || [];
+      lastTotal  = logs.length;  // API returns up to 'limit' rows; real total not exposed
+
+      renderLogs(logs);
+      renderMeta(logs.length);
+      renderPagination(logs.length);
+
+    } catch (err) {
+      showError('Failed to load audit log: ' + err.message);
+    } finally {
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Search';
+    }
+  }
+
+  function renderLogs(logs) {
+    const tbody = document.getElementById('logsBody');
+    if (!logs.length) {
+      tbody.innerHTML = `
+        <tr><td colspan="7">
+          <div class="state-box">
+            <div class="icon">📭</div>
+            <p>No audit events match the current filters.</p>
+          </div>
+        </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = logs.map((log, i) => `
+      <tr>
+        <td class="ts">${formatTimestamp(log.created_at)}</td>
+        <td>${actionBadge(log.action_type)}</td>
+        <td>${escapeHtml(log.entity_type)}</td>
+        <td class="mono">${log.entity_id != null ? escapeHtml(String(log.entity_id)) : '—'}</td>
+        <td>${actorLabel(log)}</td>
+        <td style="max-width:300px">${escapeHtml(log.description)}</td>
+        <td>${detailsHtml(log, i)}</td>
+      </tr>`
+    ).join('');
+  }
+
+  function renderMeta(count) {
+    const offset  = currentPage * PAGE_SIZE;
+    const from    = count === 0 ? 0 : offset + 1;
+    const to      = offset + count;
+    document.getElementById('resultsMeta').textContent =
+      count === 0 ? 'No results' : `Showing ${from}–${to}${count === PAGE_SIZE ? '+' : ''}`;
+  }
+
+  function renderPagination(count) {
+    const pag    = document.getElementById('pagination');
+    const info   = document.getElementById('pageInfo');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    pag.style.display = 'flex';
+    info.textContent  = 'Page ' + (currentPage + 1);
+    prevBtn.disabled  = currentPage === 0;
+    nextBtn.disabled  = count < PAGE_SIZE;  // if fewer than a full page, no next
+  }
+
+  function prevPage() {
+    if (currentPage > 0) { currentPage--; loadLogs(false); }
+  }
+
+  function nextPage() {
+    currentPage++;
+    loadLogs(false);
+  }
+
+  function resetFilters() {
+    document.getElementById('fromDate').value   = '';
+    document.getElementById('toDate').value     = '';
+    document.getElementById('actionType').value = '';
+    document.getElementById('entityType').value = '';
+    document.getElementById('actorType').value  = '';
+    document.getElementById('userId').value     = '';
+    document.getElementById('entityId').value   = '';
+    document.getElementById('batchId').value    = '';
+    currentPage = 0;
+    document.getElementById('logsBody').innerHTML = `
+      <tr><td colspan="7">
+        <div class="state-box">
+          <div class="icon">🔍</div>
+          <p>Set filters above and click Search to query the audit log.</p>
+        </div>
+      </td></tr>`;
+    document.getElementById('resultsMeta').textContent = '—';
+    document.getElementById('pagination').style.display = 'none';
+    hideError();
+  }
+
+  function showError(msg) {
+    const b = document.getElementById('errorBanner');
+    b.textContent = msg;
+    b.style.display = 'block';
+  }
+
+  function hideError() {
+    const b = document.getElementById('errorBanner');
+    b.style.display = 'none';
+  }
+
+  // ── Default: last 7 days ────────────────────────────────────────────────────
+  (function setDefaultDates() {
+    const today = new Date();
+    const week  = new Date(today);
+    week.setDate(week.getDate() - 7);
+    const fmt = d => d.toISOString().slice(0, 10);
+    document.getElementById('toDate').value   = fmt(today);
+    document.getElementById('fromDate').value = fmt(week);
+  })();
+</script>
+
+</body>
+</html>

@@ -117,6 +117,23 @@ router.post('/close', authenticate, requireAccountant, async (req, res) => {
 
     if (existErr) throw new Error(existErr.message);
     if (existingClose) {
+      await AuditLogger.logUserAction(
+        req,
+        'YEAR_END_CLOSE_BLOCKED',
+        'YEAR_END_CLOSE_RECORD',
+        existingClose.id,
+        null,
+        {
+          reason: 'duplicate',
+          existingRecordId: existingClose.id,
+          fromDate,
+          toDate,
+          financialYearLabel,
+          existingClosingJournalId: existingClose.closing_journal_id,
+          existingClosedAt: existingClose.closed_at,
+        },
+        `Year-end close blocked: period ${financialYearLabel} (${fromDate}–${toDate}) already closed`
+      );
       return res.status(409).json({
         error: 'Year-end close has already been completed for this period',
         existingRecord: existingClose
@@ -481,20 +498,26 @@ router.post('/opening-balances', authenticate, requireAccountant, async (req, re
     await JournalService.postJournal(journal.id, companyId, userId);
 
     // ── 4. Audit log ─────────────────────────────────────────────────────────
+    const totalDebits  = lines.reduce((s, l) => s + (parseFloat(l.debit)  || 0), 0);
+    const totalCredits = lines.reduce((s, l) => s + (parseFloat(l.credit) || 0), 0);
     await AuditLogger.logUserAction(
       req,
-      'CREATE',
+      'OPENING_BALANCE_POSTED',
       'JOURNAL',
       journal.id,
       null,
       {
-        date,
-        reference:  reference || `OB-${date}`,
+        journalId:    journal.id,
+        openingDate:  date,
+        reference:    reference || `OB-${date}`,
         description,
-        sourceType: 'opening_balance',
-        lineCount:  lines.length
+        sourceType:   'opening_balance',
+        lineCount:    lines.length,
+        totalDebits:  Math.round(totalDebits  * 100) / 100,
+        totalCredits: Math.round(totalCredits * 100) / 100,
+        accountIds:   lines.map(l => l.accountId).filter(Boolean),
       },
-      'Opening balance journal created and posted'
+      `Opening balance journal posted for ${date}`
     );
 
     res.status(201).json({

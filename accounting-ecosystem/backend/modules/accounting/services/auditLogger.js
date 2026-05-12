@@ -91,6 +91,8 @@ class AuditLogger {
       entityId,
       actorType,
       actionType,
+      userId,
+      batchId,
       fromDate,
       toDate,
       limit = 100,
@@ -99,13 +101,19 @@ class AuditLogger {
 
     let q = supabase.from('accounting_audit_log').select('*');
 
-    if (companyId) q = q.eq('company_id', companyId);
+    if (companyId)  q = q.eq('company_id', companyId);
     if (entityType) q = q.eq('entity_type', entityType);
     if (entityId)   q = q.eq('entity_id', entityId);
     if (actorType)  q = q.eq('actor_type', actorType);
     if (actionType) q = q.eq('action_type', actionType);
+    if (userId)     q = q.eq('actor_id', userId);
     if (fromDate)   q = q.gte('created_at', fromDate);
     if (toDate)     q = q.lte('created_at', toDate);
+    // batchId: search metadata->>'batchId' OR after_json->>'batchId'
+    // PostgREST JSONB text extraction uses ->> with the key name quoted in the filter string.
+    if (batchId) {
+      q = q.or(`metadata->>'batchId'.eq.${batchId},after_json->>'batchId'.eq.${batchId}`);
+    }
 
     q = q.order('created_at', { ascending: false }).range(offset, offset + limit - 1);
 

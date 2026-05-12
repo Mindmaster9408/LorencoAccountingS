@@ -23,6 +23,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
+const AuditLogger = require('../services/auditLogger');
 
 // ── SA default VAT categories ────────────────────────────────────────────────
 // code, name, rate, is_capital, is_active, effective_from, sort_order
@@ -116,6 +117,12 @@ router.post('/seed-defaults', authenticate, authorize('admin', 'accountant'), as
       inserted.push(cat.code);
     }
 
+    await AuditLogger.logUserAction(
+      req, 'VAT_DEFAULTS_SEEDED', 'VAT_SETTINGS', companyId,
+      null, { inserted, skipped },
+      'SA default VAT categories seeded'
+    );
+
     res.json({ inserted, skipped });
   } catch (err) {
     console.error('[vat-settings] POST /seed-defaults error:', err.message);
@@ -160,6 +167,13 @@ router.post('/', authenticate, authorize('admin', 'accountant'), async (req, res
       throw error;
     }
 
+    await AuditLogger.logUserAction(
+      req, 'VAT_SETTING_CREATED', 'VAT_SETTING', data.id,
+      null,
+      { code: data.code, name: data.name, rate: data.rate, is_active: data.is_active, effective_from: data.effective_from },
+      'VAT setting created'
+    );
+
     res.status(201).json({ vatSetting: data });
   } catch (err) {
     console.error('[vat-settings] POST / error:', err.message);
@@ -176,7 +190,7 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
     // Verify ownership
     const { data: existing, error: findErr } = await supabase
       .from('vat_settings')
-      .select('id, company_id, code')
+      .select('id, company_id, code, name, rate, is_active')
       .eq('id', id)
       .eq('company_id', req.user.companyId)
       .single();
@@ -214,6 +228,13 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
 
     if (error) throw error;
 
+    await AuditLogger.logUserAction(
+      req, 'VAT_SETTING_UPDATED', 'VAT_SETTING', parseInt(id),
+      { code: existing.code, name: existing.name, rate: existing.rate, is_active: existing.is_active },
+      updates,
+      'VAT setting updated'
+    );
+
     res.json({ vatSetting: data });
   } catch (err) {
     console.error('[vat-settings] PUT /:id error:', err.message);
@@ -245,6 +266,13 @@ router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
       .eq('company_id', req.user.companyId);
 
     if (error) throw error;
+
+    await AuditLogger.logUserAction(
+      req, 'VAT_SETTING_DEACTIVATED', 'VAT_SETTING', parseInt(id),
+      { code: existing.code, is_active: true },
+      { is_active: false },
+      `VAT setting deactivated: ${existing.code}`
+    );
 
     res.json({ success: true, message: `VAT setting '${existing.code}' deactivated` });
   } catch (err) {

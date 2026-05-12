@@ -4362,16 +4362,21 @@
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        closing_balance: closingBalance,
+                        // Backend reads counted_cash/counted_card/counted_other, not closing_balance
+                        counted_cash:  closingBalance,
+                        counted_card:  0,
+                        counted_other: 0,
                         notes: notes
                     })
                 });
 
                 const result = await response.json();
 
-                if (result.success) {
-                    showNotification(`Cashup completed. Variance: R ${result.variance.toFixed(2)}`, 'success');
-                    await loadPendingCashups(); // Refresh the list
+                // Endpoint returns { session: data }, not { success: true }
+                if (result.session) {
+                    const variance = parseFloat(result.session.variance || 0);
+                    showNotification(`Cashup completed. Variance: R ${variance.toFixed(2)}`, 'success');
+                    await loadPendingCashups();
                 } else {
                     showNotification(result.error || 'Failed to complete cashup', 'error');
                 }
@@ -7815,13 +7820,16 @@
                 if (res.ok) {
                     const data = await res.json();
                     const t = data.today || {};
-                    document.getElementById('kpiTodaySales').textContent = `R ${parseFloat(t.net_sales || 0).toFixed(2)}`;
-                    document.getElementById('kpiTodayTransactions').textContent = `${t.transaction_count || 0} transactions`;
-                    document.getElementById('kpiGrossProfit').textContent = `R ${parseFloat(t.gross_profit || 0).toFixed(2)}`;
-                    const margin = t.net_sales > 0 ? ((t.gross_profit / t.net_sales) * 100).toFixed(1) : '0';
-                    document.getElementById('kpiProfitMargin').textContent = `${margin}% margin`;
-                    document.getElementById('kpiAvgTransaction').textContent = `R ${parseFloat(t.avg_transaction_value || 0).toFixed(2)}`;
-                    document.getElementById('kpiAvgBasket').textContent = `${parseFloat(t.avg_basket_size || 0).toFixed(1)} items avg`;
+                    // API returns: revenue, sales_count, voided — map to correct field names
+                    document.getElementById('kpiTodaySales').textContent = `R ${parseFloat(t.revenue || 0).toFixed(2)}`;
+                    document.getElementById('kpiTodayTransactions').textContent = `${t.sales_count || 0} completed${t.voided > 0 ? ` · ${t.voided} voided` : ''}`;
+                    // Gross profit requires cost_price join — not in current API response
+                    document.getElementById('kpiGrossProfit').textContent = `—`;
+                    document.getElementById('kpiProfitMargin').textContent = `cost data required`;
+                    // Avg transaction derivable from available fields
+                    const avgTx = (t.sales_count > 0) ? (parseFloat(t.revenue) / t.sales_count) : 0;
+                    document.getElementById('kpiAvgTransaction').textContent = `R ${avgTx.toFixed(2)}`;
+                    document.getElementById('kpiAvgBasket').textContent = `—`;
                 }
             } catch (e) {
                 console.log('Dashboard load error:', e);

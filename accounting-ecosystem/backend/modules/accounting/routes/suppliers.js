@@ -19,6 +19,7 @@ const { supabase }       = require('../../../config/database');
 const JournalService     = require('../services/journalService');
 const InvoiceOcrService  = require('../../../sean/invoice-ocr-service');
 const { hasPermission }  = require('../middleware/auth');
+const AuditLogger        = require('../services/auditLogger');
 
 // ── Multer: in-memory file upload for OCR invoice scanning ────────────────────
 const invoiceUpload = multer({
@@ -263,6 +264,20 @@ router.post('/', async (req, res) => {
       .single();
     if (insErr) throw new Error(insErr.message);
 
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: req.user && req.user.id ? req.user.id : null,
+      actionType: 'SUPPLIER_CREATED',
+      entityType: 'SUPPLIER',
+      entityId: supplier.id,
+      beforeJson: null,
+      afterJson: { code: supplier.code, name: supplier.name, vatNumber: vatNumber || null },
+      reason: 'Supplier created',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.status(201).json({ supplier });
   } catch (err) {
     console.error('POST /suppliers error:', err);
@@ -306,7 +321,7 @@ router.get('/invoices', async (req, res) => {
   }
 });
 
-router.post('/invoices', async (req, res) => {
+router.post('/invoices', hasPermission('ap.manage'), async (req, res) => {
   const companyId = req.companyId;
   const {
     supplierId, invoiceNumber, reference, invoiceDate, dueDate,
@@ -505,6 +520,32 @@ router.post('/invoices', async (req, res) => {
       return { ...lineRest, account_code: acct?.code || null, account_name: acct?.name || null };
     });
 
+    // Fetch updated journal_id for audit (may have been set above)
+    const linkedJournalId = fullInv.journal_id || null;
+
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId,
+      actionType: 'SUPPLIER_INVOICE_CREATED',
+      entityType: 'SUPPLIER_INVOICE',
+      entityId: invoice.id,
+      beforeJson: null,
+      afterJson: {
+        supplierId: invoice.supplier_id,
+        supplierName,
+        invoiceNumber: invoice.invoice_number || null,
+        invoiceDate: invoice.invoice_date,
+        subtotalExVat: totals.subtotalExVat,
+        vatAmount: totals.vatAmount,
+        totalIncVat: totals.totalIncVat,
+        journalId: linkedJournalId,
+      },
+      reason: 'Supplier invoice created',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.status(201).json({
       invoice: { ...invRest, supplier_name: sup?.name || null, lines: flatLines },
     });
@@ -580,12 +621,34 @@ router.put('/invoices/:id', async (req, res) => {
       .maybeSingle();
     if (chkErr) throw new Error(chkErr.message);
     if (!existing) return res.status(404).json({ error: 'Invoice not found' });
-    if (existing.status === 'paid') return res.status(400).json({ error: 'Cannot edit a paid invoice' });
+    if (existing.status === 'paid') {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: req.user && req.user.id ? req.user.id : (req.user && req.user.userId ? req.user.userId : null),
+        actionType: 'SUPPLIER_INVOICE_EDIT_BLOCKED',
+        entityType: 'SUPPLIER_INVOICE', entityId: invoiceId,
+        beforeJson: null,
+        afterJson: { invoiceId, status: existing.status, reasonCode: 'INVOICE_PAID', reasonMessage: 'Cannot edit a paid invoice' },
+        reason: 'Supplier invoice edit blocked: invoice is paid',
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(400).json({ error: 'Cannot edit a paid invoice' });
+    }
 
     // VAT period lock guard (now works correctly — journal_id is selected above)
     if (existing.journal_id) {
       const vatLock = await JournalService.isVatPeriodLocked(existing.journal_id);
       if (vatLock.locked) {
+        await AuditLogger.log({
+          companyId,
+          actorType: 'USER', actorId: req.user && req.user.id ? req.user.id : (req.user && req.user.userId ? req.user.userId : null),
+          actionType: 'SUPPLIER_INVOICE_EDIT_BLOCKED',
+          entityType: 'SUPPLIER_INVOICE', entityId: invoiceId,
+          beforeJson: null,
+          afterJson: { invoiceId, status: existing.status, journalId: existing.journal_id, vatPeriodKey: vatLock.periodKey, reasonCode: 'VAT_PERIOD_LOCKED', reasonMessage: `Invoice is in locked VAT period ${vatLock.periodKey}` },
+          reason: `Supplier invoice edit blocked: VAT period ${vatLock.periodKey} is locked`,
+          ipAddress: req.ip, userAgent: req.get('user-agent'),
+        });
         return res.status(403).json({
           error: `Cannot edit this invoice — it is included in locked VAT period ${vatLock.periodKey}. VAT periods that have been locked cannot be changed.`,
         });
@@ -837,6 +900,37 @@ router.put('/invoices/:id', async (req, res) => {
       return { ...lineRest, account_code: acct?.code || null, account_name: acct?.name || null };
     });
 
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId,
+      actionType: needsGlCorrection ? 'SUPPLIER_INVOICE_GL_CORRECTED' : 'SUPPLIER_INVOICE_UPDATED',
+      entityType: 'SUPPLIER_INVOICE',
+      entityId: invoiceId,
+      beforeJson: {
+        invoiceDate: existing.invoice_date,
+        subtotalExVat: parseFloat(existing.subtotal_ex_vat || 0),
+        vatAmount: parseFloat(existing.vat_amount || 0),
+        totalIncVat: parseFloat(existing.total_inc_vat || 0),
+        journalId: existing.journal_id || null,
+      },
+      afterJson: {
+        invoiceDate,
+        subtotalExVat: newTotals.subtotalExVat,
+        vatAmount: newTotals.vatAmount,
+        totalIncVat: newTotals.totalIncVat,
+        journalId: newJournalId || null,
+        glCorrected: needsGlCorrection,
+        originalJournalId: needsGlCorrection ? existing.journal_id : null,
+        replacementJournalId: needsGlCorrection ? newJournalId : null,
+      },
+      reason: needsGlCorrection
+        ? `Invoice edited — GL corrected (original journal reversed, replacement posted)`
+        : 'Invoice updated (no accounting change)',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.json({
       invoice:        { ...invRest, supplier_name: sup?.name || null, lines: flatLines },
       journalCorrected: needsGlCorrection, // true when a GL reversal + replacement was performed
@@ -958,6 +1052,25 @@ router.post('/orders', async (req, res) => {
     const { error: plErr } = await supabase.from('purchase_order_lines').insert(poLineInserts);
     if (plErr) throw new Error(plErr.message);
 
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId,
+      actionType: 'PURCHASE_ORDER_CREATED',
+      entityType: 'PURCHASE_ORDER',
+      entityId: po.id,
+      beforeJson: null,
+      afterJson: {
+        poNumber: po.po_number,
+        supplierId: supplierId || null,
+        poDate,
+        totalIncVat: totals.totalIncVat,
+      },
+      reason: 'Purchase order created',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.status(201).json({ order: po });
   } catch (err) {
     console.error('POST /suppliers/orders error:', err);
@@ -1012,6 +1125,22 @@ router.put('/orders/:id/status', async (req, res) => {
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
+
+    const userId2 = req.user && req.user.userId ? req.user.userId : null;
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId2,
+      actionType: 'PURCHASE_ORDER_STATUS_CHANGED',
+      entityType: 'PURCHASE_ORDER',
+      entityId: poId,
+      beforeJson: null,
+      afterJson: { status },
+      reason: `Purchase order status changed to ${status}`,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.json({ order: po });
   } catch (err) {
     console.error('PUT /suppliers/orders/:id/status error:', err);
@@ -1170,6 +1299,34 @@ router.post('/payments', async (req, res) => {
     }
     // ── End GL Posting ────────────────────────────────────────────────────
 
+    // Re-read payment to get journal_id (updated above if GL posted)
+    const { data: paymentFull } = await supabase
+      .from('supplier_payments')
+      .select('journal_id')
+      .eq('id', payment.id)
+      .maybeSingle();
+
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId,
+      actionType: 'SUPPLIER_PAYMENT_RECORDED',
+      entityType: 'SUPPLIER_PAYMENT',
+      entityId: payment.id,
+      beforeJson: null,
+      afterJson: {
+        supplierId: parseInt(supplierId),
+        paymentDate,
+        paymentMethod: paymentMethod || 'bank_transfer',
+        amount: parseFloat(amount),
+        allocationCount: allocations ? allocations.length : 0,
+        journalId: paymentFull?.journal_id || null,
+      },
+      reason: 'Supplier payment recorded',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.status(201).json({ payment });
   } catch (err) {
     console.error('POST /suppliers/payments error:', err);
@@ -1306,7 +1463,7 @@ router.put('/:id', async (req, res) => {
     // Check supplier exists for this company
     const { data: existing, error: chkErr } = await supabase
       .from('suppliers')
-      .select('id')
+      .select('id, name')
       .eq('id', supplierId)
       .eq('company_id', companyId)
       .maybeSingle();
@@ -1340,6 +1497,21 @@ router.put('/:id', async (req, res) => {
       .select()
       .single();
     if (updErr) throw new Error(updErr.message);
+
+    const userIdPut = req.user && req.user.userId ? req.user.userId : null;
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userIdPut,
+      actionType: 'SUPPLIER_UPDATED',
+      entityType: 'SUPPLIER',
+      entityId: supplierId,
+      beforeJson: { name: existing.name },
+      afterJson: { name: name.trim(), vatNumber: vatNumber || null, isActive: isActive !== false },
+      reason: 'Supplier updated',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
 
     res.json({ supplier });
   } catch (err) {

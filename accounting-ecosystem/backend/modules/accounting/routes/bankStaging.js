@@ -125,28 +125,37 @@ router.post('/import',
  * List staged transactions for the authenticated company.
  *
  * Query params:
- *   batchId       {string}  — filter by import batch UUID
- *   bankAccountId {number}  — filter by bank account
- *   matchStatus   {string}  — UNMATCHED|TRANSFER_DETECTED|REVIEW_REQUIRED|CONFIRMED|REJECTED
- *   limit         {number}  — default 100
- *   offset        {number}  — default 0
+ *   batchId         {string}  — filter by import batch UUID
+ *   bankAccountId   {number}  — filter by bank account
+ *   matchStatus     {string}  — single status or comma-separated list
+ *                               e.g. "UNMATCHED,TRANSFER_DETECTED"
+ *   duplicateStatus {string}  — filter by duplicate_status: 'NONE'|'POSSIBLE'|'CONFIRMED'|'OVERRIDDEN'
+ *   dateFrom        {string}  — YYYY-MM-DD lower bound on transaction date
+ *   dateTo          {string}  — YYYY-MM-DD upper bound on transaction date
+ *   search          {string}  — partial match on description (case-insensitive)
+ *   limit           {number}  — default 100
+ *   offset          {number}  — default 0
  */
 router.get('/',
   authenticate,
   hasPermission('bank.view'),
   async (req, res) => {
     try {
-      const rows = await BankStagingService.listStaged(
+      const result = await BankStagingService.listStaged(
         req.user.companyId,
         {
-          batchId:       req.query.batchId,
-          bankAccountId: req.query.bankAccountId ? parseInt(req.query.bankAccountId, 10) : undefined,
-          matchStatus:   req.query.matchStatus,
-          limit:         req.query.limit,
-          offset:        req.query.offset,
+          batchId:         req.query.batchId,
+          bankAccountId:   req.query.bankAccountId ? parseInt(req.query.bankAccountId, 10) : undefined,
+          matchStatus:     req.query.matchStatus,
+          duplicateStatus: req.query.duplicateStatus,
+          dateFrom:        req.query.dateFrom,
+          dateTo:          req.query.dateTo,
+          search:          req.query.search,
+          limit:           req.query.limit,
+          offset:          req.query.offset,
         }
       );
-      return res.json({ staging: rows, count: rows.length });
+      return res.json({ staging: result.rows, count: result.rows.length, total: result.total });
     } catch (err) {
       console.error('[bankStaging/list]', err);
       return res.status(500).json({ error: err.message || 'Failed to list staged transactions' });
@@ -365,6 +374,120 @@ router.post('/transfers/:linkId/confirm',
         return res.status(409).json({ error: err.message });
       }
       return res.status(500).json({ error: err.message || 'Failed to confirm transfer' });
+    }
+  }
+);
+
+
+/**
+ * PATCH /api/accounting/bank/staging/transfers/:linkId/reject
+ * Reject a detected transfer suggestion.
+ *
+ * Does NOT delete the link — marks it as rejected for audit trail.
+ * Resets both staging rows to UNMATCHED so user can action them individually.
+ *
+ * Body (optional):
+ *   reason {string} — free-text reason for rejection
+ */
+router.patch('/transfers/:linkId/reject',
+  authenticate,
+  hasPermission('bank.import'),
+  async (req, res) => {
+    try {
+      const linkId = parseInt(req.params.linkId, 10);
+      if (isNaN(linkId)) {
+        return res.status(400).json({ error: 'Invalid transfer link ID' });
+      }
+
+      const { reason } = req.body || {};
+
+      const result = await BankStagingService.rejectTransferLink(
+        req.user.companyId,
+        linkId,
+        req.user.id,
+        reason || null
+      );
+
+      await AuditLogger.logUserAction(
+        req,
+        'REJECT_TRANSFER_LINK',
+        'BANK_TRANSFER_LINK',
+        linkId,
+        { rejected: false },
+        { rejected: true, rejection_reason: reason || null },
+        reason ? `Transfer suggestion rejected: ${reason}` : 'Transfer suggestion rejected'
+      );
+
+      return res.json(result);
+    } catch (err) {
+      console.error('[bankStaging/reject-transfer]', err);
+      if (err.message && err.message.includes('not found')) {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err.message && (err.message.includes('already confirmed') || err.message.includes('already rejected'))) {
+        return res.status(409).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message || 'Failed to reject transfer link' });
+    }
+  }
+);
+
+
+/**
+ * POST /api/accounting/bank/staging/transfers/:linkId/reverse
+ * Reverse a previously confirmed transfer.
+ *
+ * Reverses the transfer journal, deletes the bank_transactions that were
+ * created by the transfer confirmation, and resets both staging rows to
+ * UNMATCHED so the user can action them independently.
+ *
+ * Blocked if: either bank_transaction is reconciled, or has attachments.
+ *
+ * Requires bank.allocate permission (same as confirm transfer).
+ */
+router.post('/transfers/:linkId/reverse',
+  authenticate,
+  hasPermission('bank.allocate'),
+  async (req, res) => {
+    try {
+      const linkId = parseInt(req.params.linkId, 10);
+      if (isNaN(linkId)) {
+        return res.status(400).json({ error: 'Invalid transfer link ID' });
+      }
+
+      const result = await BankStagingService.reverseConfirmedTransfer(
+        req.user.companyId,
+        linkId,
+        req.user
+      );
+
+      await AuditLogger.logUserAction(
+        req,
+        'REVERSE_TRANSFER',
+        'BANK_TRANSFER_LINK',
+        linkId,
+        { confirmed: true, journal_id: result.journalId },
+        { confirmed: false, journal_id: null, reversed: true },
+        `Transfer reversed — journal ${result.journalId} reversed, bank transactions deleted`
+      );
+
+      return res.json({
+        reversed:      result.reversed,
+        journalId:     result.journalId,
+        txnIdsDeleted: result.txnIdsDeleted,
+      });
+    } catch (err) {
+      console.error('[bankStaging/reverse-transfer]', err);
+      if (err.message && err.message.includes('not found')) {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err.message && err.message.includes('not confirmed')) {
+        return res.status(409).json({ error: err.message });
+      }
+      if (err.message && (err.message.includes('reconciled') || err.message.includes('attachments'))) {
+        return res.status(422).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message || 'Failed to reverse transfer' });
     }
   }
 );

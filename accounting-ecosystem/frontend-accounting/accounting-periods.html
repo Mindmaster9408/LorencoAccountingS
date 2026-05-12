@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lorenco Accounting — Period Management</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+    }
+
+    /* ── Page layout ─────────────────────────────────────────────── */
+    .page-wrapper {
+      max-width: 1100px;
+      margin: 24px auto;
+      padding: 0 24px;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+
+    .page-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+
+    /* ── Info box ─────────────────────────────────────────────────── */
+    .info-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #1e40af;
+      line-height: 1.6;
+    }
+
+    /* ── Cards ────────────────────────────────────────────────────── */
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .card-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .card-body { padding: 24px; }
+
+    /* ── Create form ──────────────────────────────────────────────── */
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 14px;
+      align-items: flex-end;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-group input {
+      padding: 9px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+      color: #1a1a2e;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus { border-color: #0066cc; }
+
+    /* ── Buttons ──────────────────────────────────────────────────── */
+    .btn-primary {
+      padding: 9px 20px;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-primary:hover { background: #0055aa; }
+    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    .btn-danger {
+      padding: 7px 14px;
+      background: #fee2e2;
+      color: #991b1b;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-danger:hover { background: #fca5a5; }
+
+    .btn-warn {
+      padding: 7px 14px;
+      background: #fef3c7;
+      color: #92400e;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-warn:hover { background: #fde68a; }
+
+    .btn-success {
+      padding: 7px 14px;
+      background: #dcfce7;
+      color: #166534;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-success:hover { background: #bbf7d0; }
+
+    .btn-ghost {
+      padding: 7px 14px;
+      background: white;
+      color: #6b7280;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .btn-ghost:hover { background: #f9fafb; }
+
+    /* ── Table ────────────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead tr { background: #f9fafb; }
+
+    th {
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      border-bottom: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 13px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      color: #374151;
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+
+    /* ── Status badge ─────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge-open   { background: #dcfce7; color: #166534; }
+    .badge-locked { background: #fee2e2; color: #991b1b; }
+
+    /* ── Action buttons cell ──────────────────────────────────────── */
+    .action-cell { display: flex; gap: 6px; }
+
+    /* ── Empty / loading states ───────────────────────────────────── */
+    .state-box {
+      padding: 36px 24px;
+      text-align: center;
+      color: #6b7280;
+    }
+
+    .state-box .icon { font-size: 32px; margin-bottom: 10px; }
+    .state-box p { font-size: 14px; }
+
+    /* ── Notifications ────────────────────────────────────────────── */
+    .notify {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .notify-error   { background: #fee2e2; color: #991b1b; }
+    .notify-success { background: #dcfce7; color: #166534; }
+
+    /* ── Date checker ─────────────────────────────────────────────── */
+    .check-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .check-result {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      display: none;
+    }
+
+    .check-locked { background: #fee2e2; color: #991b1b; }
+    .check-open   { background: #dcfce7; color: #166534; }
+  </style>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h1>Period Management</h1>
+      <p>Create and lock accounting periods to prevent backdated journal entries</p>
+    </div>
+  </div>
+
+  <div class="info-box">
+    <strong>How it works:</strong> Locking a period blocks all write operations (journals, invoices, bank allocations) dated within that period.
+    Existing posted journals and reports are unaffected — lock is read-only enforcement, not deletion.
+    Unlocking a period requires admin access and is audit-logged.
+  </div>
+
+  <div id="notify" class="notify"></div>
+
+  <!-- Create Period -->
+  <div class="card">
+    <div class="card-header">
+      <h2>Create New Period</h2>
+    </div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>From Date</label>
+          <input type="date" id="newFromDate" required>
+        </div>
+        <div class="form-group">
+          <label>To Date</label>
+          <input type="date" id="newToDate" required>
+        </div>
+        <button class="btn-primary" id="createBtn" onclick="createPeriod()">Create Period</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Date Check -->
+  <div class="card">
+    <div class="card-header">
+      <h2>Check a Date</h2>
+    </div>
+    <div class="card-body">
+      <div class="check-row">
+        <div class="form-group">
+          <label>Date to check</label>
+          <input type="date" id="checkDate">
+        </div>
+        <button class="btn-primary" onclick="checkDate()">Check</button>
+        <div class="check-result" id="checkResult"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Periods list -->
+  <div class="card">
+    <div class="card-header">
+      <h2>Accounting Periods</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>From Date</th>
+            <th>To Date</th>
+            <th>Status</th>
+            <th>Locked By</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="periodsBody">
+          <tr>
+            <td colspan="5">
+              <div class="state-box">
+                <div class="icon">⏳</div>
+                <p>Loading periods…</p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Auth ───────────────────────────────────────────────────────────────────
+  const token = localStorage.getItem('token') || localStorage.getItem('sb-token') || localStorage.getItem('eco_token');
+  if (!token) {
+    window.location.href = '/dashboard/login.html';
+  }
+
+  function authHeaders() {
+    return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '—';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ── Notification ────────────────────────────────────────────────────────────
+  function notify(msg, type) {
+    const el = document.getElementById('notify');
+    el.textContent = msg;
+    el.className = 'notify notify-' + type;
+    el.style.display = 'block';
+    if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
+
+  function clearNotify() {
+    document.getElementById('notify').style.display = 'none';
+  }
+
+  // ── API ─────────────────────────────────────────────────────────────────────
+  async function api(method, path, body) {
+    const opts = { method, headers: authHeaders() };
+    if (body) opts.body = JSON.stringify(body);
+    const resp = await fetch('/api/periods' + path, opts);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    return data;
+  }
+
+  // ── Load periods ─────────────────────────────────────────────────────────────
+  async function loadPeriods() {
+    try {
+      const data = await api('GET', '');
+      renderPeriods(data.periods || []);
+    } catch (err) {
+      document.getElementById('periodsBody').innerHTML = `
+        <tr><td colspan="5">
+          <div class="state-box">
+            <div class="icon">⚠️</div>
+            <p>Failed to load periods: ${escapeHtml(err.message)}</p>
+          </div>
+        </td></tr>`;
+    }
+  }
+
+  function formatDate(d) {
+    if (!d) return '—';
+    try {
+      return new Date(d).toLocaleDateString('en-ZA', {
+        year: 'numeric', month: 'short', day: '2-digit'
+      });
+    } catch (_) { return escapeHtml(d); }
+  }
+
+  function renderPeriods(periods) {
+    const tbody = document.getElementById('periodsBody');
+    if (!periods.length) {
+      tbody.innerHTML = `
+        <tr><td colspan="5">
+          <div class="state-box">
+            <div class="icon">📅</div>
+            <p>No accounting periods created yet. Create one above to get started.</p>
+          </div>
+        </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = periods.map(p => {
+      const isLocked = p.is_locked;
+      const badge    = isLocked
+        ? '<span class="badge badge-locked">🔒 LOCKED</span>'
+        : '<span class="badge badge-open">🟢 OPEN</span>';
+
+      const lockedBy = p.locked_by_user_id
+        ? `<span style="font-size:12px;color:#6b7280">User ${escapeHtml(String(p.locked_by_user_id))}</span>`
+        : '—';
+
+      let actions = '';
+      if (isLocked) {
+        actions = `<button class="btn-warn" onclick="unlockPeriod(${p.id}, '${escapeHtml(p.from_date)}', '${escapeHtml(p.to_date)}')">🔓 Unlock (Admin)</button>`;
+      } else {
+        actions = `
+          <button class="btn-success" onclick="lockPeriod(${p.id}, '${escapeHtml(p.from_date)}', '${escapeHtml(p.to_date)}')">🔒 Lock</button>
+          <button class="btn-ghost" onclick="deletePeriod(${p.id}, '${escapeHtml(p.from_date)}', '${escapeHtml(p.to_date)}')">Delete</button>
+        `;
+      }
+
+      return `
+        <tr>
+          <td>${formatDate(p.from_date)}</td>
+          <td>${formatDate(p.to_date)}</td>
+          <td>${badge}</td>
+          <td>${lockedBy}</td>
+          <td><div class="action-cell">${actions}</div></td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ── Create period ────────────────────────────────────────────────────────────
+  async function createPeriod() {
+    const fromDate = document.getElementById('newFromDate').value;
+    const toDate   = document.getElementById('newToDate').value;
+    clearNotify();
+
+    if (!fromDate || !toDate) {
+      notify('From Date and To Date are required.', 'error');
+      return;
+    }
+    if (fromDate > toDate) {
+      notify('From Date must be before or equal to To Date.', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('createBtn');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+
+    try {
+      await api('POST', '', { from_date: fromDate, to_date: toDate });
+      document.getElementById('newFromDate').value = '';
+      document.getElementById('newToDate').value   = '';
+      notify(`Period ${fromDate} – ${toDate} created successfully.`, 'success');
+      await loadPeriods();
+    } catch (err) {
+      notify('Failed to create period: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Period';
+    }
+  }
+
+  // ── Lock period ──────────────────────────────────────────────────────────────
+  async function lockPeriod(id, from, to) {
+    if (!confirm(
+      `Lock period ${from} – ${to}?\n\n` +
+      'All write operations (journals, invoices, bank allocations) dated within this period will be blocked. ' +
+      'Existing data is NOT changed.'
+    )) return;
+
+    clearNotify();
+    try {
+      await api('POST', `/${id}/lock`, {});
+      notify(`Period ${from} – ${to} is now LOCKED.`, 'success');
+      await loadPeriods();
+    } catch (err) {
+      notify('Failed to lock period: ' + err.message, 'error');
+    }
+  }
+
+  // ── Unlock period ────────────────────────────────────────────────────────────
+  async function unlockPeriod(id, from, to) {
+    if (!confirm(
+      `⚠️  UNLOCK period ${from} – ${to}?\n\n` +
+      'This allows backdated entries within this period again. ' +
+      'This action requires admin access and is logged in the audit trail.\n\n' +
+      'Only unlock for error correction under controlled circumstances.'
+    )) return;
+
+    clearNotify();
+    try {
+      await api('POST', `/${id}/unlock`, {});
+      notify(`Period ${from} – ${to} has been unlocked.`, 'success');
+      await loadPeriods();
+    } catch (err) {
+      notify('Failed to unlock period: ' + err.message, 'error');
+    }
+  }
+
+  // ── Delete period ────────────────────────────────────────────────────────────
+  async function deletePeriod(id, from, to) {
+    if (!confirm(
+      `Delete period ${from} – ${to}?\n\n` +
+      'This removes the period lock-guard only. No journal data is affected. ' +
+      'The period must be open (unlocked) to delete.'
+    )) return;
+
+    clearNotify();
+    try {
+      await api('DELETE', `/${id}`, null);
+      notify(`Period ${from} – ${to} deleted.`, 'success');
+      await loadPeriods();
+    } catch (err) {
+      notify('Failed to delete period: ' + err.message, 'error');
+    }
+  }
+
+  // ── Date check ───────────────────────────────────────────────────────────────
+  async function checkDate() {
+    const date = document.getElementById('checkDate').value;
+    const res  = document.getElementById('checkResult');
+
+    if (!date) {
+      res.textContent  = 'Enter a date first.';
+      res.className    = 'check-result check-locked';
+      res.style.display = 'block';
+      return;
+    }
+
+    try {
+      const data = await api('GET', '/check?date=' + date);
+      res.textContent  = data.message;
+      res.className    = 'check-result ' + (data.locked ? 'check-locked' : 'check-open');
+      res.style.display = 'block';
+    } catch (err) {
+      res.textContent  = 'Check failed: ' + err.message;
+      res.className    = 'check-result check-locked';
+      res.style.display = 'block';
+    }
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+  loadPeriods();
+</script>
+
+</body>
+</html>

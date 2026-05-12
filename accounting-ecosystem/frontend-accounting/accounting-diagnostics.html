@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lorenco Accounting - Diagnostics</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+    }
+
+    /* ── Page content wrapper ─────────────────────────────────────────────── */
+    .page-content {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 24px;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a2332;
+    }
+
+    .page-subtitle {
+      font-size: 13px;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+
+    /* ── Controls ─────────────────────────────────────────────────────────── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .controls select, .controls input {
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #374151;
+      background: white;
+      outline: none;
+    }
+    .controls select:focus, .controls input:focus {
+      border-color: #0066cc;
+      box-shadow: 0 0 0 2px rgba(0,102,204,0.12);
+    }
+
+    .btn {
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #0066cc; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #0055aa; }
+    .btn-danger  { background: #dc2626; color: white; }
+    .btn-danger:hover:not(:disabled)  { background: #b91c1c; }
+    .btn-outline {
+      background: white;
+      color: #374151;
+      border: 1px solid #d1d5db;
+    }
+    .btn-outline:hover:not(:disabled) { background: #f3f4f6; }
+
+    /* ── Score card row ───────────────────────────────────────────────────── */
+    .score-row {
+      display: grid;
+      grid-template-columns: 200px repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .score-card {
+      background: white;
+      border-radius: 10px;
+      padding: 18px 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .score-main {
+      font-size: 36px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .score-main.green  { color: #16a34a; }
+    .score-main.amber  { color: #d97706; }
+    .score-main.red    { color: #dc2626; }
+
+    .score-label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #6b7280;
+    }
+
+    .count-main {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .count-critical { color: #dc2626; }
+    .count-high     { color: #ea580c; }
+    .count-medium   { color: #d97706; }
+    .count-low      { color: #16a34a; }
+
+    .score-card .checked-at {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 6px;
+    }
+
+    /* ── Finding status bar ───────────────────────────────────────────────── */
+    .status-bar {
+      background: white;
+      border-radius: 10px;
+      padding: 14px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .status-bar .filter-label { font-size: 13px; color: #6b7280; font-weight: 500; }
+    .filter-btn {
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1.5px solid;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: white;
+    }
+    .filter-btn.active { color: white; }
+    .filter-btn.all         { border-color: #6b7280; color: #374151; }
+    .filter-btn.all.active  { background: #6b7280; color: white; }
+    .filter-btn.critical    { border-color: #dc2626; color: #dc2626; }
+    .filter-btn.critical.active { background: #dc2626; }
+    .filter-btn.high        { border-color: #ea580c; color: #ea580c; }
+    .filter-btn.high.active { background: #ea580c; }
+    .filter-btn.medium      { border-color: #d97706; color: #d97706; }
+    .filter-btn.medium.active { background: #d97706; }
+    .filter-btn.low         { border-color: #16a34a; color: #16a34a; }
+    .filter-btn.low.active  { background: #16a34a; }
+    .filter-btn:hover:not(.active) { opacity: 0.75; }
+
+    /* ── Findings table ───────────────────────────────────────────────────── */
+    .findings-table-wrap {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      overflow: hidden;
+    }
+
+    .findings-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .findings-table th {
+      background: #f8f9fa;
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #6b7280;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .findings-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: top;
+      color: #374151;
+    }
+    .findings-table tr:last-child td { border-bottom: none; }
+    .findings-table tr:hover td { background: #f9fafb; }
+
+    .sev-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .sev-CRITICAL { background: #fee2e2; color: #991b1b; }
+    .sev-HIGH     { background: #ffedd5; color: #9a3412; }
+    .sev-MEDIUM   { background: #fef3c7; color: #92400e; }
+    .sev-LOW      { background: #dcfce7; color: #166534; }
+
+    .cat-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      background: #eff6ff;
+      color: #1d4ed8;
+      white-space: nowrap;
+    }
+
+    .finding-title { font-weight: 600; color: #1a2332; margin-bottom: 2px; }
+    .finding-detail { color: #6b7280; font-size: 12px; line-height: 1.45; }
+    .finding-id { font-family: monospace; font-size: 10px; color: #9ca3af; margin-top: 3px; }
+
+    .repair-btn {
+      padding: 5px 12px;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .repair-btn:hover { background: #0055aa; }
+
+    .no-findings {
+      padding: 48px;
+      text-align: center;
+      color: #6b7280;
+    }
+    .no-findings .icon { font-size: 40px; margin-bottom: 10px; }
+    .no-findings .text { font-size: 15px; font-weight: 600; color: #374151; }
+    .no-findings .sub  { font-size: 13px; }
+
+    /* ── Loading state ────────────────────────────────────────────────────── */
+    .loading-state {
+      padding: 64px;
+      text-align: center;
+      color: #6b7280;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #0066cc;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Empty state ──────────────────────────────────────────────────────── */
+    .empty-state {
+      background: white;
+      border-radius: 10px;
+      padding: 64px;
+      text-align: center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      color: #6b7280;
+    }
+
+    /* ── Error banner ─────────────────────────────────────────────────────── */
+    .error-banner {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      display: none;
+    }
+    .error-banner.visible { display: block; }
+
+    /* ── Modal ────────────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      display: none;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 28px;
+      width: 520px;
+      max-width: 95vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+    }
+    .modal-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1a2332;
+      margin-bottom: 8px;
+    }
+    .modal-subtitle {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .modal-finding-box {
+      background: #f8f9fa;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 18px;
+      font-size: 12px;
+      color: #374151;
+    }
+    .modal-finding-box .title { font-weight: 600; margin-bottom: 4px; }
+    .modal-finding-box .detail { color: #6b7280; font-size: 12px; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .form-input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      resize: vertical;
+    }
+    .form-input:focus { border-color: #0066cc; box-shadow: 0 0 0 2px rgba(0,102,204,0.12); }
+
+    .action-row-label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+    .action-select-group { display: flex; flex-direction: column; gap: 6px; }
+    .action-option {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 12px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .action-option input[type="radio"] { margin-top: 2px; flex-shrink: 0; }
+    .action-option:has(input:checked) { border-color: #0066cc; background: #eff6ff; }
+    .action-option-label { font-size: 13px; font-weight: 600; color: #1a2332; }
+    .action-option-desc  { font-size: 11px; color: #6b7280; margin-top: 1px; }
+
+    .extra-fields { margin-top: 14px; display: none; }
+    .extra-fields.visible { display: block; }
+
+    .warning-box {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #664d03;
+      margin-bottom: 16px;
+    }
+
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+    @media (max-width: 768px) {
+      .score-row { grid-template-columns: 1fr 1fr; }
+      .findings-table { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-content">
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">System Diagnostics</div>
+      <div class="page-subtitle">Integrity checks across journals, bank linkage, invoices, VAT, and audit trail</div>
+    </div>
+    <div class="controls">
+      <select id="categoryFilter" title="Category">
+        <option value="">All categories</option>
+        <option value="A">A — Journal Integrity</option>
+        <option value="B">B — Bank Linkage</option>
+        <option value="C">C — Invoice Linkage</option>
+        <option value="D">D — VAT Integrity</option>
+        <option value="E">E — Bank Staging</option>
+        <option value="F">F — Period / Year-End</option>
+        <option value="G">G — Audit Trail</option>
+      </select>
+      <input id="staleDays" type="number" min="1" max="3650" value="30" title="Staging stale threshold (days)" style="width:90px;" />
+      <span style="font-size:12px;color:#6b7280;">days stale</span>
+      <button id="runBtn" class="btn btn-primary" onclick="runDiagnostics()">Run Diagnostics</button>
+    </div>
+  </div>
+
+  <!-- Error banner -->
+  <div id="errorBanner" class="error-banner"></div>
+
+  <!-- Score row — hidden until first run -->
+  <div id="scoreRow" class="score-row" style="display:none;">
+    <div class="score-card">
+      <div class="score-label">Health Score</div>
+      <div id="scoreValue" class="score-main">—</div>
+      <div id="checkedAt" class="checked-at">Not yet run</div>
+    </div>
+    <div class="score-card">
+      <div class="score-label">Critical</div>
+      <div id="countCritical" class="count-main count-critical">0</div>
+    </div>
+    <div class="score-card">
+      <div class="score-label">High</div>
+      <div id="countHigh" class="count-main count-high">0</div>
+    </div>
+    <div class="score-card">
+      <div class="score-label">Medium</div>
+      <div id="countMedium" class="count-main count-medium">0</div>
+    </div>
+    <div class="score-card">
+      <div class="score-label">Low</div>
+      <div id="countLow" class="count-main count-low">0</div>
+    </div>
+  </div>
+
+  <!-- Initial empty state -->
+  <div id="emptyState" class="empty-state">
+    <div style="font-size:40px;margin-bottom:12px;">&#x1F50D;</div>
+    <div style="font-size:15px;font-weight:600;color:#374151;margin-bottom:6px;">No diagnostics run yet</div>
+    <div style="font-size:13px;">Click <strong>Run Diagnostics</strong> to check data integrity for this company.</div>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loadingState" class="loading-state" style="display:none;">
+    <div class="spinner"></div>
+    <div style="font-size:14px;font-weight:500;">Running diagnostic checks…</div>
+    <div style="font-size:12px;color:#9ca3af;margin-top:4px;">This may take a few seconds</div>
+  </div>
+
+  <!-- Findings panel — hidden until first run -->
+  <div id="findingsPanel" style="display:none;">
+    <div class="status-bar">
+      <span class="filter-label">Filter:</span>
+      <button class="filter-btn all active" onclick="setFilter('all')">All (<span id="filterCountAll">0</span>)</button>
+      <button class="filter-btn critical" onclick="setFilter('CRITICAL')">Critical (<span id="filterCountCritical">0</span>)</button>
+      <button class="filter-btn high"     onclick="setFilter('HIGH')">High (<span id="filterCountHigh">0</span>)</button>
+      <button class="filter-btn medium"   onclick="setFilter('MEDIUM')">Medium (<span id="filterCountMedium">0</span>)</button>
+      <button class="filter-btn low"      onclick="setFilter('LOW')">Low (<span id="filterCountLow">0</span>)</button>
+    </div>
+
+    <div class="findings-table-wrap">
+      <table class="findings-table">
+        <thead>
+          <tr>
+            <th style="width:90px;">Severity</th>
+            <th style="width:100px;">Category</th>
+            <th>Finding</th>
+            <th style="width:100px;">Entity</th>
+            <th style="width:90px;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="findingsBody">
+        </tbody>
+      </table>
+      <div id="noFindings" class="no-findings" style="display:none;">
+        <div class="icon">&#x2705;</div>
+        <div class="text">No findings</div>
+        <div class="sub">No issues found for the selected filter.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page-content -->
+
+<!-- ─── Repair Modal ──────────────────────────────────────────────────────── -->
+<div id="repairModal" class="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Apply Repair</div>
+    <div class="modal-subtitle">All repairs are irreversible and fully audited. Select an action and provide a reason before confirming.</div>
+
+    <div id="modalFindingBox" class="modal-finding-box"></div>
+
+    <div style="margin-bottom:14px;">
+      <div class="action-row-label">Repair Action</div>
+      <div class="action-select-group" id="actionOptions">
+        <!-- Populated by JS based on repairAction field -->
+      </div>
+    </div>
+
+    <div class="extra-fields" id="bankRelinkFields">
+      <div class="form-group">
+        <label class="form-label" for="relinkJournalId">Target Journal ID</label>
+        <input id="relinkJournalId" class="form-input" type="number" placeholder="Enter journal ID to link to" />
+      </div>
+    </div>
+
+    <div class="warning-box" id="warningBox" style="display:none;"></div>
+
+    <div class="form-group">
+      <label class="form-label" for="repairReason">Reason for repair <span style="color:#dc2626;">*</span></label>
+      <textarea id="repairReason" class="form-input" rows="3" placeholder="Describe why this repair is necessary and what was verified before applying it…"></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeRepairModal()">Cancel</button>
+      <button id="confirmRepairBtn" class="btn btn-danger" onclick="submitRepair()">Confirm Repair</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/polyfills.js"></script>
+<script>
+'use strict';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let allFindings = [];
+let currentFilter = 'all';
+let pendingRepair = null; // { finding, repairAction }
+
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
+function getToken() {
+  return localStorage.getItem('token') || localStorage.getItem('sb-token') || '';
+}
+
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + getToken(),
+  };
+}
+
+// ─── Run Diagnostics ─────────────────────────────────────────────────────────
+async function runDiagnostics() {
+  const category    = document.getElementById('categoryFilter').value;
+  const olderThan   = parseInt(document.getElementById('staleDays').value, 10) || 30;
+  const btn         = document.getElementById('runBtn');
+
+  btn.disabled = true;
+  showLoading();
+  hideError();
+
+  try {
+    let url = '/api/diagnostics?olderThanDays=' + olderThan;
+    if (category) url += '&category=' + encodeURIComponent(category);
+
+    const resp = await fetch(url, { headers: authHeaders() });
+
+    if (resp.status === 401 || resp.status === 403) {
+      showError('Access denied. You need diagnostics.view permission.');
+      return;
+    }
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      showError('Diagnostics run failed: ' + (data.error || resp.statusText));
+      return;
+    }
+
+    const data = await resp.json();
+    displayResults(data);
+
+  } catch (err) {
+    showError('Network error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    hideLoading();
+  }
+}
+
+// ─── Display results ──────────────────────────────────────────────────────────
+function displayResults(data) {
+  const { summary, findings } = data;
+  allFindings = findings || [];
+
+  // Score row
+  const scoreEl = document.getElementById('scoreValue');
+  scoreEl.textContent = summary.score;
+  scoreEl.className = 'score-main ' + (summary.score >= 80 ? 'green' : summary.score >= 50 ? 'amber' : 'red');
+
+  document.getElementById('countCritical').textContent = summary.critical;
+  document.getElementById('countHigh').textContent     = summary.high;
+  document.getElementById('countMedium').textContent   = summary.medium;
+  document.getElementById('countLow').textContent      = summary.low;
+  document.getElementById('checkedAt').textContent     = 'Checked: ' + new Date(summary.checkedAt).toLocaleString();
+
+  document.getElementById('scoreRow').style.display = '';
+  document.getElementById('emptyState').style.display = 'none';
+
+  // Filter counts
+  document.getElementById('filterCountAll').textContent      = allFindings.length;
+  document.getElementById('filterCountCritical').textContent = summary.critical;
+  document.getElementById('filterCountHigh').textContent     = summary.high;
+  document.getElementById('filterCountMedium').textContent   = summary.medium;
+  document.getElementById('filterCountLow').textContent      = summary.low;
+
+  currentFilter = 'all';
+  updateFilterButtons();
+  renderFindings();
+
+  document.getElementById('findingsPanel').style.display = '';
+}
+
+// ─── Filter ───────────────────────────────────────────────────────────────────
+function setFilter(filter) {
+  currentFilter = filter;
+  updateFilterButtons();
+  renderFindings();
+}
+
+function updateFilterButtons() {
+  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+  const map = { all: '.filter-btn.all', CRITICAL: '.filter-btn.critical', HIGH: '.filter-btn.high', MEDIUM: '.filter-btn.medium', LOW: '.filter-btn.low' };
+  const sel = map[currentFilter];
+  if (sel) document.querySelector(sel)?.classList.add('active');
+}
+
+// ─── Render findings table ────────────────────────────────────────────────────
+function renderFindings() {
+  const filtered = currentFilter === 'all'
+    ? allFindings
+    : allFindings.filter(f => f.severity === currentFilter);
+
+  const tbody = document.getElementById('findingsBody');
+  tbody.innerHTML = '';
+
+  if (filtered.length === 0) {
+    document.getElementById('noFindings').style.display = '';
+    return;
+  }
+  document.getElementById('noFindings').style.display = 'none';
+
+  for (const f of filtered) {
+    const tr = document.createElement('tr');
+
+    const catLabel = (f.categoryCode || '') + ': ' + formatCategory(f.category);
+
+    const actionBtn = f.repairAction
+      ? `<button class="repair-btn" onclick="openRepairModal('${escapeSingleQuote(f.id)}')">Repair</button>`
+      : '<span style="color:#9ca3af;font-size:12px;">—</span>';
+
+    tr.innerHTML = `
+      <td><span class="sev-badge sev-${f.severity}">${f.severity}</span></td>
+      <td><span class="cat-badge" title="${escapeHtml(f.category)}">${escapeHtml(f.categoryCode)}</span></td>
+      <td>
+        <div class="finding-title">${escapeHtml(f.title)}</div>
+        <div class="finding-detail">${escapeHtml(f.detail)}</div>
+        <div class="finding-id">${escapeHtml(f.id)}</div>
+      </td>
+      <td style="font-family:monospace;font-size:12px;color:#6b7280;">${f.entityId != null ? '#' + f.entityId + '<br><span style="font-size:10px;color:#9ca3af;">' + escapeHtml(f.entityType || '') + '</span>' : '—'}</td>
+      <td>${actionBtn}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function formatCategory(cat) {
+  if (!cat) return '';
+  return cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ─── Repair Modal ─────────────────────────────────────────────────────────────
+function openRepairModal(findingId) {
+  const finding = allFindings.find(f => f.id === findingId);
+  if (!finding) return;
+
+  pendingRepair = { finding, repairAction: finding.repairAction };
+
+  // Populate finding box
+  document.getElementById('modalFindingBox').innerHTML =
+    `<div class="title">${escapeHtml(finding.title)}</div>` +
+    `<div class="detail">${escapeHtml(finding.detail)}</div>` +
+    `<div style="font-family:monospace;font-size:10px;color:#9ca3af;margin-top:4px;">${escapeHtml(finding.id)}</div>`;
+
+  // Build action options
+  const actionsHtml = buildActionOptions(finding);
+  document.getElementById('actionOptions').innerHTML = actionsHtml;
+
+  // Show/hide extra fields
+  const bankRelinkFields = document.getElementById('bankRelinkFields');
+  bankRelinkFields.className = 'extra-fields' + (finding.repairAction === 'RELINK_BANK_TX' ? ' visible' : '');
+
+  // Warning
+  const warningBox = document.getElementById('warningBox');
+  if (finding.repairAction === 'REVERSE_DANGLING_JOURNAL') {
+    warningBox.style.display = '';
+    warningBox.textContent = 'Warning: This will post a reversal journal. The action cannot be undone. Verify the journal is genuinely dangling before proceeding.';
+  } else if (finding.repairAction === 'REASSIGN_VAT_PERIOD') {
+    warningBox.style.display = '';
+    warningBox.textContent = 'This will re-run VAT period assignment for this journal. If the company is not VAT registered, or the journal has no VAT lines, the repair will return an error.';
+  } else {
+    warningBox.style.display = 'none';
+  }
+
+  document.getElementById('repairReason').value = '';
+  document.getElementById('relinkJournalId').value = finding.journalId || '';
+
+  document.getElementById('repairModal').classList.add('open');
+}
+
+function buildActionOptions(finding) {
+  const action = finding.repairAction;
+  const options = [];
+
+  if (action === 'REASSIGN_VAT_PERIOD') {
+    options.push(['REASSIGN_VAT_PERIOD', 'Re-assign VAT Period', 'Re-runs the VAT period assignment for this posted journal using the journal\'s date and company VAT settings.']);
+  } else if (action === 'RELINK_BANK_TX') {
+    options.push(['RELINK_BANK_TX', 'Re-link Bank Transaction', 'Links this bank transaction to the specified journal ID. Only allowed when the existing link is broken (journal missing).']);
+  } else if (action === 'REVERSE_DANGLING_JOURNAL') {
+    options.push(['REVERSE_DANGLING_JOURNAL', 'Reverse Dangling Journal', 'Posts a full reversal of this journal, zeroing its effect on the ledger. The original journal remains as-is; a new reversal journal is created.']);
+  }
+
+  // Always offer Acknowledge
+  options.push(['ACKNOWLEDGE', 'Acknowledge (no data change)', 'Records an acknowledgement in the audit log with your reason. Use when you have verified the situation and no repair is needed.']);
+
+  return options.map(([val, label, desc], i) => `
+    <label class="action-option">
+      <input type="radio" name="repairAction" value="${val}" ${i === 0 ? 'checked' : ''} onchange="onActionChange(this.value)">
+      <div>
+        <div class="action-option-label">${escapeHtml(label)}</div>
+        <div class="action-option-desc">${escapeHtml(desc)}</div>
+      </div>
+    </label>
+  `).join('');
+}
+
+function onActionChange(value) {
+  pendingRepair.repairAction = value;
+  const bankRelinkFields = document.getElementById('bankRelinkFields');
+  bankRelinkFields.className = 'extra-fields' + (value === 'RELINK_BANK_TX' ? ' visible' : '');
+}
+
+function closeRepairModal() {
+  document.getElementById('repairModal').classList.remove('open');
+  pendingRepair = null;
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById('repairModal')) closeRepairModal();
+}
+
+// ─── Submit repair ────────────────────────────────────────────────────────────
+async function submitRepair() {
+  if (!pendingRepair) return;
+
+  const reason = document.getElementById('repairReason').value.trim();
+  if (!reason) {
+    alert('A reason is required for all repair actions.');
+    document.getElementById('repairReason').focus();
+    return;
+  }
+
+  const selectedActionEl = document.querySelector('input[name="repairAction"]:checked');
+  const repairAction = selectedActionEl ? selectedActionEl.value : pendingRepair.repairAction;
+
+  const body = {
+    findingId:    pendingRepair.finding.id,
+    repairAction,
+    confirm:      true,
+    reason,
+  };
+
+  // Attach entity IDs for specific actions
+  if (repairAction === 'REASSIGN_VAT_PERIOD' || repairAction === 'REVERSE_DANGLING_JOURNAL') {
+    body.journalId = pendingRepair.finding.entityId;
+  }
+  if (repairAction === 'RELINK_BANK_TX') {
+    body.bankTxnId = pendingRepair.finding.entityId;
+    body.journalId = parseInt(document.getElementById('relinkJournalId').value, 10);
+    if (!body.journalId) {
+      alert('Please enter a valid target Journal ID for the bank re-link.');
+      document.getElementById('relinkJournalId').focus();
+      return;
+    }
+  }
+
+  const btn = document.getElementById('confirmRepairBtn');
+  btn.disabled = true;
+  btn.textContent = 'Applying…';
+
+  try {
+    const resp = await fetch('/api/diagnostics/repair', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    const data = await resp.json().catch(() => ({}));
+
+    if (!resp.ok) {
+      alert('Repair failed: ' + (data.error || resp.statusText));
+      return;
+    }
+
+    closeRepairModal();
+
+    // Re-run diagnostics to refresh findings
+    await runDiagnostics();
+
+  } catch (err) {
+    alert('Network error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Confirm Repair';
+  }
+}
+
+// ─── UI helpers ───────────────────────────────────────────────────────────────
+function showLoading() {
+  document.getElementById('loadingState').style.display = '';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('findingsPanel').style.display = 'none';
+  document.getElementById('scoreRow').style.display = 'none';
+}
+function hideLoading() {
+  document.getElementById('loadingState').style.display = 'none';
+}
+function showError(msg) {
+  const el = document.getElementById('errorBanner');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+function hideError() {
+  document.getElementById('errorBanner').classList.remove('visible');
+}
+
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function escapeSingleQuote(str) {
+  return String(str || '').replace(/'/g, "\\'");
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof createNavigation === 'function') createNavigation();
+});
+</script>
+</body>
+</html>

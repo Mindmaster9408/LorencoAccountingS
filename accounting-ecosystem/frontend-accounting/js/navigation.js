@@ -115,25 +115,25 @@ function createNavigation() {
       </div>
 
 
-      <div class="nav-item ${currentPage.includes('bank') ? 'active' : ''}">
+      <div class="nav-item ${currentPage.includes('bank') || currentPage === 'bank-staging.html' ? 'active' : ''}">
         <a href="/accounting/bank.html">Banking</a>
         <div class="dropdown">
           <a href="/accounting/bank.html">Bank Transactions</a>
           <a href="/accounting/bank-reconciliation.html">Bank Reconciliation</a>
           <a href="#">Payment Processing</a>
           <a href="#">Bank Rules</a>
-          <a href="#">Import Statements</a>
+          <a href="/accounting/bank-staging.html">Import Review (Staging)</a>
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'accounts.html' || currentPage === 'journals.html' || currentPage === 'trial-balance.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'accounts.html' || currentPage === 'journals.html' || currentPage === 'trial-balance.html' || currentPage === 'accounting-periods.html' ? 'active' : ''}">
         <a href="/accounting/accounts.html">Accounts</a>
         <div class="dropdown">
           <a href="/accounting/accounts.html">Chart of Accounts</a>
           <a href="/accounting/journals.html">Journal Entries</a>
           <a href="#">Nominal Ledger</a>
           <a href="/accounting/trial-balance.html">Trial Balance</a>
-          <a href="#">Period End</a>
+          <a href="/accounting/accounting-periods.html">Period Management</a>
         </div>
       </div>
 
@@ -181,12 +181,13 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'ai-settings.html' || currentPage === 'system-health.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'ai-settings.html' || currentPage === 'system-health.html' || currentPage === 'accounting-diagnostics.html' || currentPage === 'audit-log.html' ? 'active' : ''}">
         <a href="#">Administration</a>
         <div class="dropdown">
           <div class="dropdown-header">Monitoring</div>
-          <a href="#">Audit Log</a>
+          <a href="/accounting/audit-log.html">Audit Log</a>
           <a href="/accounting/system-health.html">System Health</a>
+          <a href="/accounting/accounting-diagnostics.html">Diagnostics &amp; Repair</a>
           <a href="#">User Activity</a>
           <div class="dropdown-header">Data Management</div>
           <a href="#">Data Export</a>

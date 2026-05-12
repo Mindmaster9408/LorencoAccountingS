@@ -26,6 +26,7 @@ const { supabase } = require('../../../config/database');
 const db           = require('../config/database');       // pg pool for atomic transfers
 const JournalService = require('./journalService');
 const AuditLogger    = require('./auditLogger');
+const DuplicateDetectionService = require('./duplicateDetectionService');
 const { v4: uuidv4 } = require('uuid');
 
 // ── Transfer detection constants ─────────────────────────────────────────────
@@ -59,45 +60,80 @@ const BankStagingService = {
   // ──────────────────────────────────────────────────────────────────────────
   /**
    * Insert a batch of parsed transactions into bank_transaction_staging.
-   * Deduplicates within the batch by external_id.
-   * Existing staging rows with the same external_id (for this company) are skipped.
    *
-   * @param {number}   companyId
-   * @param {number|null} bankAccountId  — null if account not yet resolved
-   * @param {Array}    transactions      — ReviewTransaction[] from PdfStatementImportService
-   * @param {string}   importBatchId     — UUID identifying this upload session
-   * @param {string}   importSource      — 'pdf'|'image'|'csv'|'manual'
-   * @returns {{ staged: StagedRow[], skipped: number }}
+   * Deduplication (hard skip — row is NOT inserted):
+   *   • external_id already exists in staging (non-REJECTED) for this company
+   *   • external_id already exists in bank_transactions for this company
+   *
+   * Duplicate detection (soft flag — row IS inserted, marked POSSIBLE):
+   *   • amount + date (±1 day) matches an existing staging or bank_transactions row
+   *     for the same company+account when no externalId is present
+   *
+   * Requires migration 032 for duplicate detection columns
+   * (normalized_description, duplicate_status, source_file_hash).
+   * Gracefully falls back to legacy insert if those columns are absent.
+   *
+   * @param {number}        companyId
+   * @param {number|null}   bankAccountId    — null if account not yet resolved
+   * @param {Array}         transactions     — ReviewTransaction[] from PdfStatementImportService
+   * @param {string}        importBatchId    — UUID identifying this upload session
+   * @param {string}        importSource     — 'pdf'|'image'|'csv'|'manual'
+   * @param {object}        [options]
+   * @param {string|null}   [options.fileHash]  — SHA-256 of source file for batch dedup
+   * @returns {{ staged: StagedRow[], skipped: number, duplicatesSuspected: number, batchId: string }}
    */
-  async stageTransactions(companyId, bankAccountId, transactions, importBatchId, importSource = 'pdf') {
+  async stageTransactions(companyId, bankAccountId, transactions, importBatchId, importSource = 'pdf', options = {}) {
     if (!companyId)                throw new Error('companyId is required');
     if (!Array.isArray(transactions)) throw new Error('transactions must be an array');
 
+    const { fileHash = null } = options;
     const batchId = importBatchId || uuidv4();
     const source  = ['pdf','image','csv','manual','api'].includes(importSource)
       ? importSource : 'pdf';
 
     // ── 1. Collect external IDs for deduplication ─────────────────────────
+    // Check BOTH staging (non-REJECTED) AND live bank_transactions.
     const incomingExtIds = transactions
       .map(t => t.externalId || t.external_id)
       .filter(Boolean);
 
     let existingExtIds = new Set();
     if (incomingExtIds.length > 0) {
-      const { data: existing } = await supabase
+      // Check staging first
+      const { data: existingStaging } = await supabase
         .from('bank_transaction_staging')
         .select('external_id')
         .eq('company_id', companyId)
         .in('external_id', incomingExtIds)
         .not('match_status', 'eq', 'REJECTED');   // rejected rows can be re-imported
-      (existing || []).forEach(r => existingExtIds.add(r.external_id));
+      (existingStaging || []).forEach(r => existingExtIds.add(r.external_id));
+
+      // Also check live bank_transactions — a confirmed row's externalId lives here
+      const { data: existingLive } = await supabase
+        .from('bank_transactions')
+        .select('external_id')
+        .eq('company_id', companyId)
+        .in('external_id', incomingExtIds);
+      (existingLive || []).forEach(r => existingExtIds.add(r.external_id));
     }
 
-    // ── 2. Build insert rows ──────────────────────────────────────────────
-    const rows = [];
-    let skippedCount = 0;
+    // ── 2. Pre-fetch candidates for fuzzy duplicate detection ─────────────
+    // Only useful when bankAccountId is known — without it we can't scope the query.
+    const dupMap = await DuplicateDetectionService.detectTransactionDuplicates(
+      supabase,
+      companyId,
+      bankAccountId,
+      transactions,
+      batchId
+    );
 
-    for (const txn of transactions) {
+    // ── 3. Build insert rows ──────────────────────────────────────────────
+    const rows = [];
+    let skippedCount       = 0;
+    let duplicatesSuspected = 0;
+
+    for (let i = 0; i < transactions.length; i++) {
+      const txn   = transactions[i];
       const extId = txn.externalId || txn.external_id || null;
 
       if (extId && existingExtIds.has(extId)) {
@@ -111,36 +147,80 @@ const BankStagingService = {
         continue;
       }
 
+      const desc         = String(txn.description).trim();
+      const normalised   = DuplicateDetectionService.normalizeDescription(desc);
+      const dupMatch     = dupMap.get(i);
+      const dupStatus    = dupMatch ? 'POSSIBLE' : 'NONE';
+      const dupConf      = dupMatch ? dupMatch.confidence : null;
+      const dupReason    = dupMatch ? dupMatch.reason      : null;
+
+      if (dupMatch) duplicatesSuspected++;
+
       rows.push({
-        company_id:      companyId,
-        bank_account_id: bankAccountId || null,
-        date:            txn.date,
-        description:     String(txn.description).trim(),
-        amount:          parsedAmount,
-        reference:       txn.reference || null,
-        external_id:     extId,
-        balance:         txn.balance != null ? parseFloat(txn.balance) : null,
-        import_batch_id: batchId,
-        import_source:   source,
-        match_status:    'UNMATCHED',
+        company_id:              companyId,
+        bank_account_id:         bankAccountId || null,
+        date:                    txn.date,
+        description:             desc,
+        amount:                  parsedAmount,
+        reference:               txn.reference || null,
+        external_id:             extId,
+        balance:                 txn.balance != null ? parseFloat(txn.balance) : null,
+        import_batch_id:         batchId,
+        import_source:           source,
+        match_status:            'UNMATCHED',
+        normalized_description:  normalised   || null,
+        source_file_hash:        fileHash     || null,
+        duplicate_status:        dupStatus,
+        duplicate_confidence:    dupConf,
+        duplicate_reason:        dupReason,
       });
     }
 
     if (rows.length === 0) {
-      return { staged: [], skipped: skippedCount, batchId };
+      return { staged: [], skipped: skippedCount, duplicatesSuspected: 0, batchId };
     }
 
-    // ── 3. Bulk insert ────────────────────────────────────────────────────
-    const { data: inserted, error } = await supabase
+    // ── 4. Bulk insert ────────────────────────────────────────────────────
+    // Graceful fallback: if migration 032 columns are not yet present on this
+    // deployment, retry without the new fields so staging still works.
+    let inserted;
+    const { data: ins1, error: err1 } = await supabase
       .from('bank_transaction_staging')
       .insert(rows)
       .select();
 
-    if (error) throw new Error(`Staging insert failed: ${error.message}`);
+    if (err1) {
+      const isMissing032 = err1.message && (
+        err1.message.includes('normalized_description') ||
+        err1.message.includes('duplicate_status')       ||
+        err1.message.includes('source_file_hash')       ||
+        err1.message.includes('duplicate_confidence')   ||
+        err1.message.includes('duplicate_reason')
+      );
+      if (isMissing032) {
+        console.warn('[stageTransactions] Migration 032 columns not available — inserting without duplicate detection fields');
+        const legacyRows = rows.map(({
+          normalized_description, source_file_hash,
+          duplicate_status, duplicate_confidence, duplicate_reason,
+          ...rest
+        }) => rest);
+        const { data: ins2, error: err2 } = await supabase
+          .from('bank_transaction_staging')
+          .insert(legacyRows)
+          .select();
+        if (err2) throw new Error(`Staging insert failed: ${err2.message}`);
+        inserted = ins2;
+      } else {
+        throw new Error(`Staging insert failed: ${err1.message}`);
+      }
+    } else {
+      inserted = ins1;
+    }
 
     return {
-      staged:  inserted || [],
-      skipped: skippedCount,
+      staged:             inserted || [],
+      skipped:            skippedCount,
+      duplicatesSuspected,
       batchId,
     };
   },
@@ -778,29 +858,253 @@ const BankStagingService = {
    * List staged transactions for a company with optional filters.
    *
    * @param {number} companyId
-   * @param {{ batchId, bankAccountId, matchStatus, limit, offset }} filters
+   * @param {{ batchId, bankAccountId, matchStatus, dateFrom, dateTo, search, limit, offset }} filters
+   * @returns {{ rows: StagedRow[], total: number }}
    */
   async listStaged(companyId, filters = {}) {
-    const { batchId, bankAccountId, matchStatus, limit = 100, offset = 0 } = filters;
+    const {
+      batchId, bankAccountId, matchStatus, duplicateStatus,
+      dateFrom, dateTo, search,
+      limit = 100, offset = 0,
+    } = filters;
 
     let query = supabase
       .from('bank_transaction_staging')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('company_id', companyId);
 
-    if (batchId)       query = query.eq('import_batch_id', batchId);
-    if (bankAccountId) query = query.eq('bank_account_id', bankAccountId);
-    if (matchStatus)   query = query.eq('match_status', matchStatus);
+    if (batchId)        query = query.eq('import_batch_id', batchId);
+    if (bankAccountId)  query = query.eq('bank_account_id', bankAccountId);
+    if (duplicateStatus) query = query.eq('duplicate_status', duplicateStatus);
+
+    if (matchStatus) {
+      // Support comma-separated list of statuses e.g. "UNMATCHED,TRANSFER_DETECTED"
+      const statuses = matchStatus.split(',').map(s => s.trim()).filter(Boolean);
+      if (statuses.length === 1) {
+        query = query.eq('match_status', statuses[0]);
+      } else {
+        query = query.in('match_status', statuses);
+      }
+    }
+
+    if (dateFrom) query = query.gte('date', dateFrom);
+    if (dateTo)   query = query.lte('date', dateTo);
+    if (search)   query = query.ilike('description', `%${search}%`);
 
     query = query
       .order('date', { ascending: true })
       .order('id', { ascending: true })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     if (error) throw new Error(`Failed to list staged: ${error.message}`);
 
-    return data || [];
+    return { rows: data || [], total: count || 0 };
+  },
+
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // rejectTransferLink
+  // ──────────────────────────────────────────────────────────────────────────
+  /**
+   * Reject a detected transfer link — dismiss the transfer suggestion.
+   *
+   * The link is marked rejected (NOT deleted — audit trail preserved).
+   * Both staging rows are reset to UNMATCHED so the user can action them
+   * individually (confirm as normal transactions, reject entirely, etc.).
+   *
+   * @param {number} companyId
+   * @param {number} linkId
+   * @param {number} userId
+   * @param {string|null} reason   — optional free-text rejection reason
+   * @returns {{ id: number, rejected: true, reason: string|null }}
+   */
+  async rejectTransferLink(companyId, linkId, userId, reason = null) {
+    if (!companyId || !linkId) throw new Error('companyId and linkId are required');
+
+    const { data: link, error: linkErr } = await supabase
+      .from('bank_transfer_links')
+      .select('*')
+      .eq('id', linkId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (linkErr || !link) throw new Error('Transfer link not found');
+    if (link.confirmed) {
+      throw new Error('Transfer link is already confirmed — use the reverse endpoint to undo a confirmed transfer');
+    }
+    if (link.rejected) {
+      throw new Error('Transfer link is already rejected');
+    }
+
+    // Mark the link as rejected
+    const { error: updErr } = await supabase
+      .from('bank_transfer_links')
+      .update({
+        rejected:         true,
+        rejected_by:      userId,
+        rejected_at:      new Date().toISOString(),
+        rejection_reason: reason || null,
+      })
+      .eq('id', linkId)
+      .eq('company_id', companyId);
+
+    if (updErr) throw new Error(`Failed to reject transfer link: ${updErr.message}`);
+
+    // Reset both staging rows to UNMATCHED so the user can action them independently
+    const { error: stgErr } = await supabase
+      .from('bank_transaction_staging')
+      .update({ match_status: 'UNMATCHED', updated_at: new Date().toISOString() })
+      .eq('company_id', companyId)
+      .in('id', [link.staging_id_from, link.staging_id_to]);
+
+    if (stgErr) {
+      // Non-fatal: link is rejected, staging rows just weren't reset
+      console.error('[bankStagingService/rejectTransferLink] Failed to reset staging rows:', stgErr.message);
+    }
+
+    return { id: linkId, rejected: true, reason: reason || null };
+  },
+
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // reverseConfirmedTransfer
+  // ──────────────────────────────────────────────────────────────────────────
+  /**
+   * Reverse a confirmed bank transfer.
+   *
+   * Actions (in order):
+   *   1. Verify transfer link is confirmed and has a journal_id
+   *   2. Verify neither bank_transaction is reconciled
+   *   3. Verify neither bank_transaction has attachments (safety guard)
+   *   4. Reverse the journal via JournalService.reverseJournal
+   *   5. Delete both bank_transactions created by the transfer (they were
+   *      auto-created — not imported individually)
+   *   6. Reset both staging rows back to UNMATCHED
+   *   7. Update the transfer link: confirmed=false, journal_id cleared
+   *
+   * @param {number} companyId
+   * @param {number} transferLinkId
+   * @param {object} user  — { id }
+   * @returns {{ reversed: boolean, journalId: number, txnIdsDeleted: number[] }}
+   */
+  async reverseConfirmedTransfer(companyId, transferLinkId, user) {
+    if (!companyId || !transferLinkId) throw new Error('companyId and transferLinkId are required');
+
+    // ── Fetch transfer link ───────────────────────────────────────────────
+    const { data: link, error: linkErr } = await supabase
+      .from('bank_transfer_links')
+      .select('*')
+      .eq('id', transferLinkId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (linkErr || !link) throw new Error('Transfer link not found');
+    if (!link.confirmed)  throw new Error('Transfer link is not confirmed — nothing to reverse');
+    if (!link.journal_id) throw new Error('Transfer link has no journal_id — cannot reverse');
+
+    // ── Fetch bank_transactions created by this transfer ──────────────────
+    const { data: bankTxns, error: txnErr } = await supabase
+      .from('bank_transactions')
+      .select('id, status, bank_account_id')
+      .eq('company_id', companyId)
+      .eq('matched_entity_type', 'JOURNAL')
+      .eq('matched_entity_id', link.journal_id);
+
+    if (txnErr) throw new Error(`Failed to fetch bank transactions: ${txnErr.message}`);
+
+    // ── Block if reconciled ───────────────────────────────────────────────
+    for (const txn of (bankTxns || [])) {
+      if (txn.status === 'reconciled') {
+        throw new Error(
+          `Bank transaction ${txn.id} is already reconciled — cannot reverse a reconciled transfer`
+        );
+      }
+    }
+
+    // ── Block if attachments exist on any of the bank_transactions ────────
+    const txnIds = (bankTxns || []).map(t => t.id);
+    if (txnIds.length > 0) {
+      const { data: attachments } = await supabase
+        .from('bank_transaction_attachments')
+        .select('id, bank_transaction_id')
+        .eq('company_id', companyId)
+        .in('bank_transaction_id', txnIds)
+        .limit(1);
+
+      if (attachments && attachments.length > 0) {
+        throw new Error(
+          `Bank transaction ${attachments[0].bank_transaction_id} has attachments — ` +
+          `remove all attachments before reversing this transfer`
+        );
+      }
+    }
+
+    // ── Reverse the journal ───────────────────────────────────────────────
+    await JournalService.reverseJournal(
+      link.journal_id,
+      companyId,
+      user.id,
+      `Bank transfer reversed by user ${user.id} (transfer link ${transferLinkId})`
+    );
+
+    // ── Delete the bank_transactions created by this transfer ─────────────
+    if (txnIds.length > 0) {
+      const { error: delErr } = await supabase
+        .from('bank_transactions')
+        .delete()
+        .eq('company_id', companyId)
+        .in('id', txnIds);
+
+      if (delErr) {
+        throw new Error(
+          `Journal reversed but failed to delete bank_transactions: ${delErr.message}. ` +
+          `Manual cleanup required for transaction IDs: ${txnIds.join(', ')}`
+        );
+      }
+    }
+
+    // ── Reset staging rows to UNMATCHED ───────────────────────────────────
+    const { error: stgErr } = await supabase
+      .from('bank_transaction_staging')
+      .update({
+        match_status:     'UNMATCHED',
+        confirmed_txn_id: null,
+        updated_at:       new Date().toISOString(),
+      })
+      .eq('company_id', companyId)
+      .in('id', [link.staging_id_from, link.staging_id_to]);
+
+    if (stgErr) {
+      throw new Error(
+        `Journal reversed and bank_transactions deleted, but failed to reset staging rows: ` +
+        stgErr.message
+      );
+    }
+
+    // ── Update transfer link — unconfirm, clear journal_id ───────────────
+    const { error: linkUpdErr } = await supabase
+      .from('bank_transfer_links')
+      .update({
+        confirmed:    false,
+        confirmed_by: null,
+        confirmed_at: null,
+        journal_id:   null,
+      })
+      .eq('id', transferLinkId)
+      .eq('company_id', companyId);
+
+    if (linkUpdErr) {
+      throw new Error(
+        `Transfer reversed but failed to update transfer link state: ${linkUpdErr.message}`
+      );
+    }
+
+    return {
+      reversed:      true,
+      journalId:     link.journal_id,
+      txnIdsDeleted: txnIds,
+    };
   },
 };
 

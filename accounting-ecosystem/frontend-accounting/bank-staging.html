@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Accounting - Bank Import Review</title>
+    <script src="js/navigation.js"></script>
+    <script src="js/theme-guard.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+        }
+
+        /* ── Top bar ─────────────────────────────────────────────────────── */
+        .top-bar {
+            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 60px;
+            box-shadow: 0 2px 8px rgba(0,102,204,0.2);
+        }
+        .brand-section {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            gap: 20px;
+            padding: 0 25px;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 20px;
+            letter-spacing: -0.5px;
+        }
+        .logo-icon {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, #ffffff 0%, #e6f3ff 100%);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; color: #0066cc; font-size: 18px;
+        }
+        .nav-links { display: flex; gap: 0; height: 100%; }
+        .nav-link {
+            display: flex; align-items: center;
+            padding: 0 16px;
+            color: rgba(255,255,255,0.85);
+            text-decoration: none;
+            font-size: 14px; font-weight: 500;
+            transition: all 0.2s;
+            border-bottom: 3px solid transparent;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: white;
+            background: rgba(255,255,255,0.1);
+            border-bottom-color: white;
+        }
+        .right-section {
+            display: flex; align-items: center;
+            gap: 15px; padding: 0 25px;
+        }
+        .company-name {
+            font-size: 13px; font-weight: 600;
+            background: rgba(255,255,255,0.15);
+            padding: 6px 12px; border-radius: 20px;
+        }
+        .logout-btn {
+            padding: 6px 14px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: white; font-size: 13px; cursor: pointer;
+        }
+
+        /* ── Banners ─────────────────────────────────────────────────────── */
+        .banner {
+            display: none;
+            padding: 12px 24px;
+            font-size: 14px; font-weight: 500;
+        }
+        .banner.error   { background: #fce8e6; color: #c62828; border-left: 4px solid #ea4335; }
+        .banner.success { background: #e6f4ea; color: #1e7e34; border-left: 4px solid #34a853; }
+        .banner.warning { background: #fff8e1; color: #7b5a00; border-left: 4px solid #fbbc04; }
+
+        /* ── Container ───────────────────────────────────────────────────── */
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+        .page-header {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            margin-bottom: 24px;
+        }
+        .page-header h1 { font-size: 24px; font-weight: 700; color: #202124; }
+        .page-header p  { color: #5f6368; margin-top: 4px; font-size: 14px; }
+        .page-header-actions { display: flex; gap: 10px; }
+
+        /* ── Filter bar ──────────────────────────────────────────────────── */
+        .filter-bar {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: flex-end;
+        }
+        .filter-group { display: flex; flex-direction: column; gap: 4px; }
+        .filter-group label { font-size: 12px; font-weight: 600; color: #5f6368; }
+        .filter-group select,
+        .filter-group input {
+            padding: 7px 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 7px;
+            font-size: 13px;
+            color: #202124;
+            min-width: 160px;
+            background: white;
+        }
+        .filter-group input { min-width: 140px; }
+        .btn-filter {
+            padding: 8px 16px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            align-self: flex-end;
+        }
+        .btn-filter:hover { background: #0055aa; }
+        .btn-reset {
+            padding: 8px 14px;
+            background: white;
+            color: #5f6368;
+            border: 1px solid #e0e0e0;
+            border-radius: 7px;
+            font-size: 13px;
+            cursor: pointer;
+            align-self: flex-end;
+        }
+
+        /* ── Status tab pills ────────────────────────────────────────────── */
+        .status-tabs {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .status-tab {
+            padding: 7px 14px;
+            border: 1.5px solid #e0e0e0;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            background: white;
+            color: #5f6368;
+            transition: all 0.2s;
+        }
+        .status-tab:hover { border-color: #0066cc; color: #0066cc; }
+        .status-tab.active {
+            background: #0066cc;
+            border-color: #0066cc;
+            color: white;
+        }
+        .status-tab .pill-count {
+            display: inline-block;
+            margin-left: 5px;
+            padding: 1px 7px;
+            background: rgba(0,0,0,0.12);
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .status-tab.active .pill-count { background: rgba(255,255,255,0.25); }
+
+        /* ── Transfer suggestions banner ─────────────────────────────────── */
+        .transfer-banner {
+            background: linear-gradient(135deg, #e8f0fe 0%, #fff8e1 100%);
+            border: 1.5px solid #4a90d9;
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .transfer-banner-title {
+            font-weight: 700; font-size: 14px; color: #0066cc; margin-bottom: 2px;
+        }
+        .transfer-banner-sub { font-size: 13px; color: #555; }
+
+        /* ── Main card ───────────────────────────────────────────────────── */
+        .section-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .section-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .section-header h2 { font-size: 16px; font-weight: 700; color: #202124; }
+        .section-header-right { display: flex; gap: 8px; align-items: center; }
+        .result-count { font-size: 13px; color: #5f6368; }
+
+        /* ── Table ───────────────────────────────────────────────────────── */
+        .table-wrap { overflow-x: auto; }
+        table.staging-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .staging-table thead tr { background: #f8f9fa; border-bottom: 2px solid #e8eaed; }
+        .staging-table th {
+            padding: 10px 12px;
+            font-weight: 600;
+            color: #5f6368;
+            text-align: left;
+            white-space: nowrap;
+        }
+        .staging-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: middle;
+        }
+        .staging-table tr.row-rejected { opacity: 0.55; background: #fafafa; }
+        .staging-table tr.row-confirmed { background: #f0faf4; }
+        .staging-table tr.row-duplicate { background: #fffce0; }
+        .staging-table tr.row-transfer  { background: #eef4fe; }
+        .staging-table tr.row-review    { background: #fff8f0; }
+
+        .amount-in  { color: #137333; font-weight: 600; }
+        .amount-out { color: #c62828; font-weight: 600; }
+
+        /* ── Status badges ───────────────────────────────────────────────── */
+        .badge {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .badge-unmatched    { background: #e8eaed; color: #5f6368; }
+        .badge-transfer     { background: #e8f0fe; color: #1967d2; }
+        .badge-review       { background: #fff0e0; color: #c45d00; }
+        .badge-confirmed    { background: #e6f4ea; color: #137333; }
+        .badge-rejected     { background: #fce8e6; color: #c62828; }
+        .badge-duplicate    { background: #fff9c4; color: #7b5a00; border: 1px solid #f9a825; }
+
+        /* ── Action buttons ──────────────────────────────────────────────── */
+        .actions { display: flex; gap: 4px; flex-wrap: nowrap; }
+        .btn-xs {
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+        .btn-confirm {
+            background: #34a853; color: white; border-color: #34a853;
+        }
+        .btn-confirm:hover { background: #2d8a47; }
+        .btn-reject {
+            background: white; color: #ea4335; border-color: #ea4335;
+        }
+        .btn-reject:hover { background: #fce8e6; }
+        .btn-view-transfer {
+            background: white; color: #1967d2; border-color: #4a90d9;
+        }
+        .btn-view-transfer:hover { background: #e8f0fe; }
+        .btn-reverse {
+            background: white; color: #c45d00; border-color: #f29900;
+        }
+        .btn-reverse:hover { background: #fff0e0; }
+
+        /* ── Transfer pairs card ─────────────────────────────────────────── */
+        .transfer-pair-card {
+            border: 1.5px solid #4a90d9;
+            border-radius: 10px;
+            padding: 14px 18px;
+            background: #f0f7ff;
+            margin-bottom: 10px;
+        }
+        .transfer-pair-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 10px;
+        }
+        .transfer-pair-title { font-weight: 700; font-size: 14px; color: #1967d2; }
+        .transfer-pair-confidence { font-size: 12px; color: #5f6368; }
+        .transfer-pair-rows { display: flex; gap: 12px; flex-wrap: wrap; }
+        .transfer-row-box {
+            background: white;
+            border: 1px solid #c5d8f5;
+            border-radius: 8px;
+            padding: 10px 14px;
+            flex: 1;
+            min-width: 220px;
+        }
+        .transfer-row-box .label { font-size: 11px; font-weight: 700; color: #5f6368; margin-bottom: 4px; }
+        .transfer-row-box .desc  { font-size: 13px; font-weight: 600; color: #202124; }
+        .transfer-row-box .meta  { font-size: 12px; color: #5f6368; margin-top: 2px; }
+        .transfer-pair-actions {
+            display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;
+        }
+
+        /* ── Modal ───────────────────────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9000;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 28px 32px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+        }
+        .modal h2 { font-size: 18px; font-weight: 700; color: #202124; margin-bottom: 10px; }
+        .modal p  { font-size: 14px; color: #444; line-height: 1.5; margin-bottom: 16px; }
+        .modal .detail-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+        .modal .detail-box strong { color: #202124; display: block; margin-bottom: 4px; }
+        .modal textarea {
+            width: 100%; padding: 8px 10px;
+            border: 1px solid #e0e0e0; border-radius: 7px;
+            font-size: 13px; font-family: inherit;
+            resize: vertical; min-height: 60px;
+            margin-bottom: 16px;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .btn-primary {
+            padding: 9px 20px;
+            background: #0066cc; color: white;
+            border: none; border-radius: 7px;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+        }
+        .btn-primary:hover { background: #0055aa; }
+        .btn-primary.danger { background: #ea4335; }
+        .btn-primary.danger:hover { background: #c62828; }
+        .btn-primary.warning { background: #f29900; }
+        .btn-secondary {
+            padding: 9px 18px;
+            background: white; color: #5f6368;
+            border: 1px solid #e0e0e0; border-radius: 7px;
+            font-size: 14px; cursor: pointer;
+        }
+        .btn-secondary:hover { background: #f8f9fa; }
+
+        /* ── Pagination ──────────────────────────────────────────────────── */
+        .pagination {
+            display: flex; align-items: center; justify-content: flex-end;
+            gap: 8px; padding: 14px 20px; border-top: 1px solid #f0f0f0;
+        }
+        .pagination span { font-size: 13px; color: #5f6368; }
+        .page-btn {
+            padding: 5px 12px;
+            border: 1px solid #e0e0e0; border-radius: 6px;
+            background: white; font-size: 13px; cursor: pointer;
+        }
+        .page-btn:hover:not(:disabled) { border-color: #0066cc; color: #0066cc; }
+        .page-btn:disabled { opacity: 0.4; cursor: default; }
+
+        /* ── Empty state ─────────────────────────────────────────────────── */
+        .empty-state {
+            text-align: center; padding: 48px 20px; color: #9aa0a6;
+        }
+        .empty-state .icon { font-size: 40px; margin-bottom: 10px; }
+        .empty-state h3    { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+        .empty-state p     { font-size: 13px; }
+
+        /* ── Loading spinner ─────────────────────────────────────────────── */
+        .loading-row td {
+            text-align: center; padding: 32px; color: #9aa0a6; font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <!-- ── Top bar ──────────────────────────────────────────────────────── -->
+    <div class="top-bar">
+        <div class="brand-section">
+            <div class="logo">
+                <div class="logo-icon">L</div>
+                <span>Lorenco</span>
+            </div>
+            <nav class="nav-links">
+                <a href="dashboard.html" class="nav-link">Dashboard</a>
+                <a href="bank.html"      class="nav-link">Bank</a>
+                <a href="bank-staging.html" class="nav-link active">Import Review</a>
+                <a href="bank-reconciliation.html" class="nav-link">Reconcile</a>
+            </nav>
+        </div>
+        <div class="right-section">
+            <div class="company-name" id="companyName">Loading…</div>
+            <button class="logout-btn" onclick="logout()">Sign Out</button>
+        </div>
+    </div>
+
+    <!-- ── Banners ──────────────────────────────────────────────────────── -->
+    <div id="errorBanner"   class="banner error"></div>
+    <div id="successBanner" class="banner success"></div>
+    <div id="warningBanner" class="banner warning"></div>
+
+    <!-- ── Main content ─────────────────────────────────────────────────── -->
+    <div class="container">
+
+        <div class="page-header">
+            <div>
+                <h1>Bank Import Review</h1>
+                <p>Review imported bank transactions before they enter the reconciliation queue. Confirm, reject, or action transfer suggestions.</p>
+            </div>
+            <div class="page-header-actions">
+                <button class="btn-secondary" onclick="window.location.href='bank.html'">← Back to Bank</button>
+                <button class="btn-primary" onclick="window.location.href='bank-reconciliation.html'">Reconcile →</button>
+            </div>
+        </div>
+
+        <!-- ── Filter bar ─────────────────────────────────────────────── -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>Bank Account</label>
+                <select id="filterAccount" onchange="onFilterChange()">
+                    <option value="">All accounts</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Import Batch</label>
+                <select id="filterBatch" onchange="onFilterChange()">
+                    <option value="">All batches</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Date From</label>
+                <input type="date" id="filterDateFrom" onchange="onFilterChange()">
+            </div>
+            <div class="filter-group">
+                <label>Date To</label>
+                <input type="date" id="filterDateTo" onchange="onFilterChange()">
+            </div>
+            <div class="filter-group">
+                <label>Search Description</label>
+                <input type="text" id="filterSearch" placeholder="e.g. ABSA Transfer…" oninput="onSearchInput()" style="min-width:180px;">
+            </div>
+            <button class="btn-reset" onclick="resetFilters()">Reset</button>
+        </div>
+
+        <!-- ── Status tabs ─────────────────────────────────────────────── -->
+        <div class="status-tabs" id="statusTabs">
+            <button class="status-tab active" data-status="" onclick="setStatusTab('', this)">
+                All <span class="pill-count" id="countAll">0</span>
+            </button>
+            <button class="status-tab" data-status="UNMATCHED" onclick="setStatusTab('UNMATCHED', this)">
+                To Review <span class="pill-count" id="countUnmatched">0</span>
+            </button>
+            <button class="status-tab" data-status="TRANSFER_DETECTED" onclick="setStatusTab('TRANSFER_DETECTED', this)">
+                Transfer Suggested <span class="pill-count" id="countTransfer">0</span>
+            </button>
+            <button class="status-tab" data-status="REVIEW_REQUIRED" onclick="setStatusTab('REVIEW_REQUIRED', this)">
+                Needs Attention <span class="pill-count" id="countReview">0</span>
+            </button>
+            <button class="status-tab" data-status="DUPLICATE_SUSPECTED" onclick="setStatusTab('DUPLICATE_SUSPECTED', this)">
+                Possible Duplicate <span class="pill-count" id="countDuplicate">0</span>
+            </button>
+            <button class="status-tab" data-status="CONFIRMED" onclick="setStatusTab('CONFIRMED', this)">
+                Confirmed <span class="pill-count" id="countConfirmed">0</span>
+            </button>
+            <button class="status-tab" data-status="REJECTED" onclick="setStatusTab('REJECTED', this)">
+                Rejected <span class="pill-count" id="countRejected">0</span>
+            </button>
+        </div>
+
+        <!-- ── Transfer suggestions ─────────────────────────────────────── -->
+        <div id="transferSuggestionsSection" style="display:none;">
+            <div class="section-card">
+                <div class="section-header">
+                    <h2>Transfer Suggestions</h2>
+                    <span class="result-count" id="transferLinkCount">0 suggested pairs</span>
+                </div>
+                <div style="padding: 16px 20px;" id="transferLinksContainer">
+                    <!-- Transfer pair cards rendered here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Staging transactions table ───────────────────────────────── -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2>Staged Transactions</h2>
+                <div class="section-header-right">
+                    <span class="result-count" id="resultCount">Loading…</span>
+                    <button class="btn-xs btn-confirm" id="confirmAllBtn" onclick="confirmAllVisible()" style="display:none;">Confirm All Visible</button>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table class="staging-table">
+                    <thead>
+                        <tr>
+                            <th style="width:85px;">Date</th>
+                            <th>Description</th>
+                            <th style="width:90px;text-align:right;">Money In</th>
+                            <th style="width:90px;text-align:right;">Money Out</th>
+                            <th style="width:85px;">Status</th>
+                            <th style="width:60px;">Conf.</th>
+                            <th style="width:130px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stagingBody">
+                        <tr class="loading-row"><td colspan="7">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination" id="pagination">
+                <span id="pageInfo">—</span>
+                <button class="page-btn" id="prevBtn" onclick="changePage(-1)" disabled>← Prev</button>
+                <button class="page-btn" id="nextBtn" onclick="changePage(1)"  disabled>→ Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Confirm staging rows modal ──────────────────────────────────── -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal">
+            <h2>Confirm Transaction</h2>
+            <p>Move this transaction to the live bank transaction queue. It will appear as <strong>Unmatched</strong> and ready to allocate.</p>
+            <div class="detail-box" id="confirmModalDetail"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('confirmModal')">Cancel</button>
+                <button class="btn-primary"   id="confirmModalBtn" onclick="doConfirm()">Confirm Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Reject staging row modal ─────────────────────────────────────── -->
+    <div class="modal-overlay" id="rejectModal">
+        <div class="modal">
+            <h2>Reject Transaction</h2>
+            <p>Mark this staged transaction as <strong>Rejected</strong>. It will NOT be imported into your bank transactions. This action cannot be undone.</p>
+            <div class="detail-box" id="rejectModalDetail"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary"          onclick="closeModal('rejectModal')">Cancel</button>
+                <button class="btn-primary danger" id="rejectModalBtn" onclick="doReject()">Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Confirm transfer modal ────────────────────────────────────────── -->
+    <div class="modal-overlay" id="confirmTransferModal">
+        <div class="modal">
+            <h2>Confirm Bank Transfer</h2>
+            <p>This will post a <strong>Dr/Cr transfer journal</strong> to the General Ledger and move both transactions into the reconciliation queue as matched.</p>
+            <p><strong>This is a GL-posting operation. It cannot be undone without posting a counter-reversal.</strong></p>
+            <div class="detail-box" id="confirmTransferDetail"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary"                   onclick="closeModal('confirmTransferModal')">Cancel</button>
+                <button class="btn-primary" id="confirmTransferBtn" onclick="doConfirmTransfer()">Post Transfer Journal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Reject transfer modal ─────────────────────────────────────────── -->
+    <div class="modal-overlay" id="rejectTransferModal">
+        <div class="modal">
+            <h2>Reject Transfer Suggestion</h2>
+            <p>Dismiss this transfer suggestion. Both transactions will return to the <strong>To Review</strong> queue for individual actioning. The suggestion is recorded for audit trail purposes.</p>
+            <div class="detail-box" id="rejectTransferDetail"></div>
+            <label style="font-size:13px;font-weight:600;color:#5f6368;display:block;margin-bottom:6px;">Reason (optional)</label>
+            <textarea id="rejectTransferReason" placeholder="e.g. Not a transfer — two unrelated transactions"></textarea>
+            <div class="modal-actions">
+                <button class="btn-secondary"                  onclick="closeModal('rejectTransferModal')">Cancel</button>
+                <button class="btn-primary danger" id="rejectTransferBtn" onclick="doRejectTransfer()">Dismiss Transfer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Reverse confirmed transfer modal ─────────────────────────────── -->
+    <div class="modal-overlay" id="reverseTransferModal">
+        <div class="modal">
+            <h2>Reverse Confirmed Transfer</h2>
+            <p>This will <strong>reverse the transfer journal</strong> in the GL, delete both bank transactions, and return both staging rows to the review queue.</p>
+            <p style="color:#c62828;font-weight:600;">Warning: Cannot reverse if either transaction is already reconciled or has attachments.</p>
+            <div class="detail-box" id="reverseTransferDetail"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary"                     onclick="closeModal('reverseTransferModal')">Cancel</button>
+                <button class="btn-primary warning" id="reverseTransferBtn" onclick="doReverseTransfer()">Reverse Transfer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    const token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/'; }
+
+    function getAuthHeaders() {
+        return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        window.location.href = '/';
+    }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    let bankAccounts       = [];
+    let currentStatusFilter = '';   // '' = all
+    let currentPage        = 0;
+    const PAGE_SIZE        = 50;
+    let totalRows          = 0;
+    let allBatches         = [];
+
+    // Per-action pending IDs
+    let pendingConfirmId         = null;
+    let pendingRejectId          = null;
+    let pendingConfirmTransferId = null;
+    let pendingRejectTransferId  = null;
+    let pendingReverseTransferId = null;
+
+    let searchDebounceTimer = null;
+
+    // ── API helpers ───────────────────────────────────────────────────────────
+    async function apiGet(path) {
+        const res = await fetch('/api/accounting' + path, { headers: getAuthHeaders() });
+        if (!res.ok) {
+            const b = await res.json().catch(() => ({}));
+            throw new Error(b.error || `HTTP ${res.status}`);
+        }
+        return res.json();
+    }
+
+    async function apiPost(path, body) {
+        const res = await fetch('/api/accounting' + path, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const b = await res.json().catch(() => ({}));
+            throw new Error(b.error || `HTTP ${res.status}`);
+        }
+        return res.json();
+    }
+
+    async function apiPatch(path, body) {
+        const res = await fetch('/api/accounting' + path, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const b = await res.json().catch(() => ({}));
+            throw new Error(b.error || `HTTP ${res.status}`);
+        }
+        return res.json();
+    }
+
+    // ── UI helpers ────────────────────────────────────────────────────────────
+    function showBanner(type, msg) {
+        ['error','success','warning'].forEach(t => {
+            const el = document.getElementById(t + 'Banner');
+            el.textContent = ''; el.style.display = 'none';
+        });
+        const el = document.getElementById(type + 'Banner');
+        el.textContent = msg; el.style.display = 'block';
+        if (type !== 'error') setTimeout(() => { el.style.display = 'none'; }, 6000);
+    }
+
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+    function fmtCcy(amount) {
+        return 'R\u00a0' + Math.abs(parseFloat(amount || 0)).toLocaleString('en-ZA', {
+            minimumFractionDigits: 2, maximumFractionDigits: 2
+        });
+    }
+
+    function fmtDate(d) {
+        if (!d) return '—';
+        const parts = String(d).slice(0,10).split('-');
+        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return d;
+    }
+
+    function escHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function statusBadge(status) {
+        const map = {
+            'UNMATCHED':          ['badge-unmatched', 'To Review'],
+            'TRANSFER_DETECTED':  ['badge-transfer',  'Transfer Suggested'],
+            'REVIEW_REQUIRED':    ['badge-review',    'Needs Attention'],
+            'CONFIRMED':          ['badge-confirmed', 'Confirmed'],
+            'REJECTED':           ['badge-rejected',  'Rejected'],
+            'DUPLICATE_SUSPECTED':['badge-duplicate', 'Possible Duplicate'],
+        };
+        const [cls, label] = map[status] || ['badge-unmatched', status];
+        return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    function confidencePct(score) {
+        if (score == null) return '—';
+        return Math.round(parseFloat(score) * 100) + '%';
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    async function init() {
+        // Company name
+        try {
+            const data = await apiGet('/companies/current');
+            if (data.company) {
+                document.getElementById('companyName').textContent = data.company.name;
+            }
+        } catch (e) { /* non-fatal */ }
+
+        await Promise.all([loadAccounts(), loadBatches()]);
+        await loadPage();
+    }
+
+    // ── Load bank accounts ────────────────────────────────────────────────────
+    async function loadAccounts() {
+        try {
+            const data = await apiGet('/bank/accounts');
+            bankAccounts = data.bankAccounts || [];
+            const sel = document.getElementById('filterAccount');
+            bankAccounts.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.name + (a.bank_name ? ` (${a.bank_name})` : '');
+                sel.appendChild(opt);
+            });
+        } catch (e) { showBanner('error', 'Failed to load bank accounts: ' + e.message); }
+    }
+
+    // ── Load batches for filter dropdown ──────────────────────────────────────
+    async function loadBatches() {
+        try {
+            const data = await apiGet('/bank/staging/batches');
+            allBatches = data.batches || [];
+            const sel = document.getElementById('filterBatch');
+            allBatches.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b.import_batch_id;
+                const shortId = b.import_batch_id.slice(0, 8);
+                const date = b.created_at ? String(b.created_at).slice(0, 10) : '';
+                const src = b.import_source ? ` [${b.import_source}]` : '';
+                opt.textContent = `${date}${src} — ${shortId}… (${b.total} rows)`;
+                sel.appendChild(opt);
+            });
+        } catch (e) { /* non-fatal — filter still works without batch list */ }
+    }
+
+    // ── Build query string from current filter state ──────────────────────────
+    function buildQuery(offsetOverride) {
+        const parts = [];
+        const acct  = document.getElementById('filterAccount').value;
+        const batch = document.getElementById('filterBatch').value;
+        const dfrom = document.getElementById('filterDateFrom').value;
+        const dto   = document.getElementById('filterDateTo').value;
+        const srch  = document.getElementById('filterSearch').value.trim();
+
+        if (acct)                     parts.push('bankAccountId=' + encodeURIComponent(acct));
+        if (batch)                    parts.push('batchId='       + encodeURIComponent(batch));
+        if (dfrom)                    parts.push('dateFrom='      + encodeURIComponent(dfrom));
+        if (dto)                      parts.push('dateTo='        + encodeURIComponent(dto));
+        if (srch)                     parts.push('search='        + encodeURIComponent(srch));
+        if (currentStatusFilter)      parts.push('matchStatus='   + encodeURIComponent(currentStatusFilter));
+
+        const offset = offsetOverride !== undefined ? offsetOverride : currentPage * PAGE_SIZE;
+        parts.push('limit='  + PAGE_SIZE);
+        parts.push('offset=' + offset);
+
+        return parts.length ? '?' + parts.join('&') : '';
+    }
+
+    // ── Load current page of staged rows ──────────────────────────────────────
+    async function loadPage() {
+        document.getElementById('resultCount').textContent = 'Loading…';
+        document.getElementById('stagingBody').innerHTML =
+            '<tr class="loading-row"><td colspan="7">Loading…</td></tr>';
+
+        try {
+            const qs   = buildQuery();
+            const data = await apiGet('/bank/staging' + qs);
+            const rows = data.staging || [];
+            totalRows  = data.total   || rows.length;
+
+            renderTable(rows);
+            updatePagination();
+            updateCounts(rows);
+
+            // Also load transfer links if on "all" or "transfer" tab
+            if (!currentStatusFilter || currentStatusFilter === 'TRANSFER_DETECTED') {
+                await loadTransferLinks();
+            } else {
+                document.getElementById('transferSuggestionsSection').style.display = 'none';
+            }
+
+        } catch (e) {
+            showBanner('error', 'Failed to load staged transactions: ' + e.message);
+            document.getElementById('stagingBody').innerHTML =
+                '<tr class="loading-row"><td colspan="7">Failed to load. ' + escHtml(e.message) + '</td></tr>';
+        }
+    }
+
+    // ── Load transfer links ───────────────────────────────────────────────────
+    async function loadTransferLinks() {
+        try {
+            // Build a batch-specific or account-specific query
+            const acct  = document.getElementById('filterAccount').value;
+            const batch = document.getElementById('filterBatch').value;
+
+            let qs = '';
+            if (batch) {
+                const data = await apiGet('/bank/staging/batch/' + encodeURIComponent(batch));
+                renderTransferLinks(data.transferLinks || []);
+            } else {
+                // Fetch unconfirmed transfer-detected rows to find their link IDs
+                let linkQs = '?matchStatus=TRANSFER_DETECTED&limit=200';
+                if (acct) linkQs += '&bankAccountId=' + acct;
+                const data = await apiGet('/bank/staging' + linkQs);
+                // Extract unique transfer link IDs from the staging rows
+                const stagingIds = (data.staging || []).map(r => r.id);
+                if (stagingIds.length === 0) {
+                    document.getElementById('transferSuggestionsSection').style.display = 'none';
+                    return;
+                }
+                // Fetch links via batch (need batchId) — if no batch selected, skip links panel
+                document.getElementById('transferSuggestionsSection').style.display = 'none';
+                return;
+            }
+        } catch (e) { /* non-fatal */ }
+    }
+
+    function renderTransferLinks(links) {
+        const section   = document.getElementById('transferSuggestionsSection');
+        const container = document.getElementById('transferLinksContainer');
+        const countEl   = document.getElementById('transferLinkCount');
+
+        // Show only unconfirmed, unrejected links
+        const active = (links || []).filter(l => !l.confirmed && !l.rejected);
+
+        if (active.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        section.style.display = 'block';
+        countEl.textContent = active.length + ' suggested pair' + (active.length !== 1 ? 's' : '');
+
+        container.innerHTML = '';
+        active.forEach(link => {
+            container.appendChild(buildTransferCard(link));
+        });
+    }
+
+    function buildTransferCard(link) {
+        const div = document.createElement('div');
+        div.className = 'transfer-pair-card';
+        div.id = 'transfer-card-' + link.id;
+
+        const layerLabels = { 1: 'Keyword match', 2: 'Exact amount match', 3: 'Fuzzy match' };
+        const layer = layerLabels[link.detection_layer] || 'Detected';
+        const confPct = confidencePct(link.confidence);
+
+        div.innerHTML = `
+            <div class="transfer-pair-header">
+                <div class="transfer-pair-title">Suggested Transfer</div>
+                <div class="transfer-pair-confidence">${layer} · Confidence: ${confPct}</div>
+            </div>
+            <div class="transfer-pair-rows">
+                <div class="transfer-row-box" id="transfer-from-${link.id}">
+                    <div class="label">SENDING (Money Out)</div>
+                    <div class="desc">Loading…</div>
+                </div>
+                <div class="transfer-row-box" id="transfer-to-${link.id}">
+                    <div class="label">RECEIVING (Money In)</div>
+                    <div class="desc">Loading…</div>
+                </div>
+            </div>
+            <div class="transfer-pair-actions">
+                <button class="btn-xs btn-reject" onclick="openRejectTransfer(${link.id})">Dismiss Suggestion</button>
+                <button class="btn-xs btn-confirm" onclick="openConfirmTransfer(${link.id})">Confirm Transfer &amp; Post Journal</button>
+            </div>
+        `;
+
+        // Populate from/to details from staging data if available
+        loadTransferRowDetails(link);
+
+        return div;
+    }
+
+    async function loadTransferRowDetails(link) {
+        try {
+            // Fetch both staging rows
+            const [fromData, toData] = await Promise.all([
+                apiGet('/bank/staging?matchStatus=UNMATCHED,TRANSFER_DETECTED,REVIEW_REQUIRED,CONFIRMED&limit=1&offset=0').catch(() => ({ staging: [] })),
+            ]);
+            // Use cached staging rows if available
+        } catch (e) { /* non-fatal */ }
+    }
+
+    // ── Render the staging rows table ─────────────────────────────────────────
+    function renderTable(rows) {
+        const tbody = document.getElementById('stagingBody');
+
+        if (rows.length === 0) {
+            const msg = currentStatusFilter
+                ? `No ${statusLabel(currentStatusFilter)} staged transactions found.`
+                : 'No staged transactions found for the selected filters.';
+            tbody.innerHTML = `
+                <tr><td colspan="7">
+                    <div class="empty-state">
+                        <div class="icon">📋</div>
+                        <h3>No Results</h3>
+                        <p>${escHtml(msg)}</p>
+                    </div>
+                </td></tr>`;
+            document.getElementById('resultCount').textContent = '0 transactions';
+            document.getElementById('confirmAllBtn').style.display = 'none';
+            return;
+        }
+
+        const unmatchedInView = rows.filter(r =>
+            r.match_status === 'UNMATCHED' || r.match_status === 'REVIEW_REQUIRED' ||
+            r.match_status === 'DUPLICATE_SUSPECTED'
+        ).length;
+
+        document.getElementById('confirmAllBtn').style.display =
+            unmatchedInView > 1 ? '' : 'none';
+
+        document.getElementById('resultCount').textContent =
+            rows.length + ' of ' + totalRows + ' transaction' + (totalRows !== 1 ? 's' : '');
+
+        tbody.innerHTML = '';
+        rows.forEach(row => {
+            tbody.appendChild(buildRow(row));
+        });
+    }
+
+    function statusLabel(status) {
+        const map = {
+            'UNMATCHED': 'To Review', 'TRANSFER_DETECTED': 'Transfer Suggested',
+            'REVIEW_REQUIRED': 'Needs Attention', 'CONFIRMED': 'Confirmed',
+            'REJECTED': 'Rejected', 'DUPLICATE_SUSPECTED': 'Possible Duplicate',
+        };
+        return map[status] || status;
+    }
+
+    function buildRow(row) {
+        const tr = document.createElement('tr');
+        const amount = parseFloat(row.amount || 0);
+        const isIn  = amount >= 0;
+
+        const rowClasses = {
+            'REJECTED':           'row-rejected',
+            'CONFIRMED':          'row-confirmed',
+            'DUPLICATE_SUSPECTED':'row-duplicate',
+            'TRANSFER_DETECTED':  'row-transfer',
+            'REVIEW_REQUIRED':    'row-review',
+        };
+        if (rowClasses[row.match_status]) tr.classList.add(rowClasses[row.match_status]);
+
+        const moneyIn  = isIn  ? fmtCcy(amount) : '—';
+        const moneyOut = !isIn ? fmtCcy(Math.abs(amount)) : '—';
+
+        tr.innerHTML = `
+            <td>${escHtml(fmtDate(row.date))}</td>
+            <td title="${escHtml(row.description || '')}">${escHtml(row.description || '—')}</td>
+            <td style="text-align:right;" class="${isIn ? 'amount-in' : ''}">${moneyIn}</td>
+            <td style="text-align:right;" class="${!isIn ? 'amount-out' : ''}">${moneyOut}</td>
+            <td>
+                ${statusBadge(row.match_status)}
+                ${row.duplicate_status === 'POSSIBLE' ? `<span class="badge badge-warning" title="${escHtml(row.duplicate_reason || 'Possible duplicate — review before confirming')}" style="margin-left:4px;background:#f9ab00;color:#202124;font-size:10px;padding:2px 6px;border-radius:4px;cursor:help;">⚠ Possible dup.</span>` : ''}
+            </td>
+            <td style="text-align:center;">${confidencePct(row.confidence_score)}</td>
+            <td class="actions">${buildRowActions(row)}</td>
+        `;
+        return tr;
+    }
+
+    function buildRowActions(row) {
+        const id     = row.id;
+        const status = row.match_status;
+
+        if (status === 'CONFIRMED') {
+            return `<span style="font-size:11px;color:#137333;">✓ In queue</span>`;
+        }
+        if (status === 'REJECTED') {
+            return `<span style="font-size:11px;color:#9aa0a6;">Rejected</span>`;
+        }
+        if (status === 'TRANSFER_DETECTED') {
+            return `
+                <button class="btn-xs btn-view-transfer" onclick="scrollToTransferSection()">View Transfer</button>
+                <button class="btn-xs btn-reject" onclick="openRejectStagingRow(${id})">Reject</button>
+            `;
+        }
+
+        // UNMATCHED, REVIEW_REQUIRED, DUPLICATE_SUSPECTED
+        const confirmLabel = status === 'DUPLICATE_SUSPECTED' ? 'Confirm Anyway' : 'Confirm';
+        return `
+            <button class="btn-xs btn-confirm" onclick="openConfirmStagingRow(${id})">${escHtml(confirmLabel)}</button>
+            <button class="btn-xs btn-reject"  onclick="openRejectStagingRow(${id})">Reject</button>
+        `;
+    }
+
+    // ── Tab counter update ────────────────────────────────────────────────────
+    async function updateCounts(currentRows) {
+        try {
+            // Fetch count-only queries for each status
+            const acct  = document.getElementById('filterAccount').value;
+            const batch = document.getElementById('filterBatch').value;
+            let base = '?limit=0&offset=0';
+            if (acct)  base += '&bankAccountId=' + acct;
+            if (batch) base += '&batchId=' + batch;
+
+            const statuses = ['UNMATCHED','TRANSFER_DETECTED','REVIEW_REQUIRED','DUPLICATE_SUSPECTED','CONFIRMED','REJECTED'];
+            const [statusResults, possibleDupResult] = await Promise.all([
+                Promise.all(
+                    statuses.map(s => apiGet('/bank/staging' + base + '&matchStatus=' + s).catch(() => ({ total: 0 })))
+                ),
+                apiGet('/bank/staging' + base + '&duplicateStatus=POSSIBLE').catch(() => ({ total: 0 })),
+            ]);
+
+            const totals = {};
+            statuses.forEach((s, i) => { totals[s] = statusResults[i].total || 0; });
+
+            document.getElementById('countUnmatched').textContent  = totals['UNMATCHED']           || 0;
+            document.getElementById('countTransfer').textContent   = totals['TRANSFER_DETECTED']   || 0;
+            document.getElementById('countReview').textContent     = totals['REVIEW_REQUIRED']     || 0;
+            document.getElementById('countDuplicate').textContent  = totals['DUPLICATE_SUSPECTED'] || 0;
+            document.getElementById('countConfirmed').textContent  = totals['CONFIRMED']           || 0;
+            document.getElementById('countRejected').textContent   = totals['REJECTED']            || 0;
+
+            // Possible duplicates (from duplicate_status field — separate from DUPLICATE_SUSPECTED match_status)
+            const possibleDupCount = possibleDupResult.total || 0;
+            let pdEl = document.getElementById('countPossibleDup');
+            if (!pdEl) {
+                // Create the count indicator if it doesn't exist (graceful degradation)
+                pdEl = document.createElement('span');
+                pdEl.id = 'countPossibleDup';
+            }
+            // Show a warning badge at top of page if there are possible duplicates
+            let warnBanner = document.getElementById('possibleDupBanner');
+            if (possibleDupCount > 0) {
+                if (!warnBanner) {
+                    warnBanner = document.createElement('div');
+                    warnBanner.id = 'possibleDupBanner';
+                    warnBanner.style.cssText = 'background:#fef7e0;border:1px solid #f9ab00;border-radius:6px;padding:10px 16px;margin-bottom:12px;font-size:13px;';
+                    warnBanner.innerHTML = `<strong>⚠ ${possibleDupCount} possible duplicate transaction(s) detected.</strong> These are marked in the list below. Review carefully before confirming.`;
+                    const tabBar = document.querySelector('.status-tabs');
+                    if (tabBar) tabBar.parentNode.insertBefore(warnBanner, tabBar);
+                } else {
+                    warnBanner.innerHTML = `<strong>⚠ ${possibleDupCount} possible duplicate transaction(s) detected.</strong> These are marked in the list below. Review carefully before confirming.`;
+                    warnBanner.style.display = '';
+                }
+            } else if (warnBanner) {
+                warnBanner.style.display = 'none';
+            }
+
+            const grand = Object.values(totals).reduce((a, b) => a + b, 0);
+            document.getElementById('countAll').textContent = grand;
+
+        } catch (e) { /* non-fatal */ }
+    }
+
+    // ── Pagination ────────────────────────────────────────────────────────────
+    function updatePagination() {
+        const totalPages = Math.ceil(totalRows / PAGE_SIZE) || 1;
+        const start = currentPage * PAGE_SIZE + 1;
+        const end   = Math.min((currentPage + 1) * PAGE_SIZE, totalRows);
+
+        document.getElementById('pageInfo').textContent =
+            totalRows === 0 ? 'No results' : `${start}–${end} of ${totalRows}`;
+        document.getElementById('prevBtn').disabled = currentPage === 0;
+        document.getElementById('nextBtn').disabled = (currentPage + 1) >= totalPages;
+    }
+
+    function changePage(delta) {
+        currentPage = Math.max(0, currentPage + delta);
+        loadPage();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ── Filter handlers ───────────────────────────────────────────────────────
+    function onFilterChange() {
+        currentPage = 0;
+        loadPage();
+    }
+
+    function onSearchInput() {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => { currentPage = 0; loadPage(); }, 400);
+    }
+
+    function resetFilters() {
+        document.getElementById('filterAccount').value  = '';
+        document.getElementById('filterBatch').value    = '';
+        document.getElementById('filterDateFrom').value = '';
+        document.getElementById('filterDateTo').value   = '';
+        document.getElementById('filterSearch').value   = '';
+        currentStatusFilter = '';
+        currentPage = 0;
+        document.querySelectorAll('.status-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector('.status-tab[data-status=""]').classList.add('active');
+        loadPage();
+    }
+
+    function setStatusTab(status, btn) {
+        currentStatusFilter = status;
+        currentPage = 0;
+        document.querySelectorAll('.status-tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        loadPage();
+    }
+
+    function scrollToTransferSection() {
+        const sec = document.getElementById('transferSuggestionsSection');
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ── Confirm single staging row ────────────────────────────────────────────
+    let _confirmRowCache = null;
+    function openConfirmStagingRow(stagingId) {
+        pendingConfirmId = stagingId;
+
+        // Find the row in the current table for details display
+        const trs  = document.querySelectorAll('.staging-table tbody tr');
+        let desc = '—', amount = '—', date = '—';
+        // Try to extract from row data — approximate approach using DOM
+        // (we don't cache the full row objects for simplicity)
+        document.getElementById('confirmModalDetail').innerHTML =
+            `<strong>Staging ID: ${stagingId}</strong>`;
+
+        openModal('confirmModal');
+    }
+
+    async function doConfirm() {
+        if (!pendingConfirmId) return;
+        const btn = document.getElementById('confirmModalBtn');
+        btn.disabled = true; btn.textContent = 'Confirming…';
+
+        try {
+            await apiPost('/bank/staging/confirm', { stagingIds: [pendingConfirmId] });
+            closeModal('confirmModal');
+            showBanner('success', '✓ Transaction confirmed and moved to the reconciliation queue.');
+            await loadPage();
+        } catch (e) {
+            showBanner('error', 'Confirm failed: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Confirm Import';
+            pendingConfirmId = null;
+        }
+    }
+
+    // ── Reject single staging row ─────────────────────────────────────────────
+    function openRejectStagingRow(stagingId) {
+        pendingRejectId = stagingId;
+        document.getElementById('rejectModalDetail').innerHTML =
+            `<strong>Staging ID: ${stagingId}</strong>`;
+        openModal('rejectModal');
+    }
+
+    async function doReject() {
+        if (!pendingRejectId) return;
+        const btn = document.getElementById('rejectModalBtn');
+        btn.disabled = true; btn.textContent = 'Rejecting…';
+
+        try {
+            await apiPatch('/bank/staging/' + pendingRejectId + '/reject', {});
+            closeModal('rejectModal');
+            showBanner('success', '✓ Transaction rejected.');
+            await loadPage();
+        } catch (e) {
+            showBanner('error', 'Reject failed: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Reject';
+            pendingRejectId = null;
+        }
+    }
+
+    // ── Confirm all visible UNMATCHED rows ────────────────────────────────────
+    async function confirmAllVisible() {
+        const confirmed = window.confirm(
+            'This will confirm ALL currently visible "To Review", "Needs Attention", and "Possible Duplicate" transactions.\n\n' +
+            'They will be moved to the live bank transaction queue as Unmatched.\n\n' +
+            'Continue?'
+        );
+        if (!confirmed) return;
+
+        // Build a query for all UNMATCHED/REVIEW_REQUIRED/DUPLICATE_SUSPECTED rows
+        const acct  = document.getElementById('filterAccount').value;
+        const batch = document.getElementById('filterBatch').value;
+        let qs = '?matchStatus=UNMATCHED,REVIEW_REQUIRED,DUPLICATE_SUSPECTED&limit=500&offset=0';
+        if (acct)  qs += '&bankAccountId=' + acct;
+        if (batch) qs += '&batchId=' + batch;
+
+        try {
+            const data = await apiGet('/bank/staging' + qs);
+            const ids  = (data.staging || []).map(r => r.id);
+            if (ids.length === 0) {
+                showBanner('warning', 'No confirmable transactions found with current filters.');
+                return;
+            }
+            await apiPost('/bank/staging/confirm', { stagingIds: ids });
+            showBanner('success', `✓ ${ids.length} transaction(s) confirmed and moved to the reconciliation queue.`);
+            await loadPage();
+        } catch (e) {
+            showBanner('error', 'Bulk confirm failed: ' + e.message);
+        }
+    }
+
+    // ── Confirm transfer ──────────────────────────────────────────────────────
+    function openConfirmTransfer(linkId) {
+        pendingConfirmTransferId = linkId;
+        document.getElementById('confirmTransferDetail').innerHTML =
+            `<strong>Transfer Link ID: ${linkId}</strong><br>` +
+            `A debit/credit journal will be posted to the GL linking the two bank accounts.`;
+        openModal('confirmTransferModal');
+    }
+
+    async function doConfirmTransfer() {
+        if (!pendingConfirmTransferId) return;
+        const btn = document.getElementById('confirmTransferBtn');
+        btn.disabled = true; btn.textContent = 'Posting…';
+
+        try {
+            const result = await apiPost('/bank/staging/transfers/' + pendingConfirmTransferId + '/confirm', {});
+            closeModal('confirmTransferModal');
+            showBanner('success', `✓ Transfer confirmed. Journal #${result.journalId} posted.`);
+
+            const card = document.getElementById('transfer-card-' + pendingConfirmTransferId);
+            if (card) card.remove();
+
+            await loadPage();
+        } catch (e) {
+            showBanner('error', 'Transfer confirm failed: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Post Transfer Journal';
+            pendingConfirmTransferId = null;
+        }
+    }
+
+    // ── Reject transfer suggestion ────────────────────────────────────────────
+    function openRejectTransfer(linkId) {
+        pendingRejectTransferId = linkId;
+        document.getElementById('rejectTransferDetail').innerHTML =
+            `<strong>Transfer Link ID: ${linkId}</strong>`;
+        document.getElementById('rejectTransferReason').value = '';
+        openModal('rejectTransferModal');
+    }
+
+    async function doRejectTransfer() {
+        if (!pendingRejectTransferId) return;
+        const btn    = document.getElementById('rejectTransferBtn');
+        const reason = document.getElementById('rejectTransferReason').value.trim();
+        btn.disabled = true; btn.textContent = 'Dismissing…';
+
+        try {
+            await apiPatch('/bank/staging/transfers/' + pendingRejectTransferId + '/reject', { reason: reason || null });
+            closeModal('rejectTransferModal');
+            showBanner('success', '✓ Transfer suggestion dismissed. Both rows returned to review queue.');
+
+            const card = document.getElementById('transfer-card-' + pendingRejectTransferId);
+            if (card) card.remove();
+
+            await loadPage();
+        } catch (e) {
+            showBanner('error', 'Dismiss failed: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Dismiss Transfer';
+            pendingRejectTransferId = null;
+        }
+    }
+
+    // ── Reverse confirmed transfer ────────────────────────────────────────────
+    function openReverseTransfer(linkId) {
+        pendingReverseTransferId = linkId;
+        document.getElementById('reverseTransferDetail').innerHTML =
+            `<strong>Transfer Link ID: ${linkId}</strong><br>` +
+            `The GL journal will be reversed and both bank transactions will be deleted.`;
+        openModal('reverseTransferModal');
+    }
+
+    async function doReverseTransfer() {
+        if (!pendingReverseTransferId) return;
+        const btn = document.getElementById('reverseTransferBtn');
+        btn.disabled = true; btn.textContent = 'Reversing…';
+
+        try {
+            const result = await apiPost('/bank/staging/transfers/' + pendingReverseTransferId + '/reverse', {});
+            closeModal('reverseTransferModal');
+            showBanner('success',
+                `✓ Transfer reversed. Journal #${result.journalId} reversed. ` +
+                `${result.txnIdsDeleted.length} bank transaction(s) removed.`
+            );
+            await loadPage();
+        } catch (e) {
+            showBanner('error', 'Reversal failed: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Reverse Transfer';
+            pendingReverseTransferId = null;
+        }
+    }
+
+    // ── Close modal on overlay click ──────────────────────────────────────────
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.classList.remove('open');
+        });
+    });
+
+    // ── Kick off ──────────────────────────────────────────────────────────────
+    init();
+    </script>
+</body>
+</html>

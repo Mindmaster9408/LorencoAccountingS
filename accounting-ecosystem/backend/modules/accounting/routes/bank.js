@@ -3,9 +3,12 @@ const { supabase } = require('../../../config/database');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
+const BankStagingService = require('../services/bankStagingService');
+const DuplicateDetectionService = require('../services/duplicateDetectionService');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
 const PdfStatementImportService = require('../../../sean/pdf-statement-import-service');
 const ImageStatementImportService = require('../../../sean/image-statement-import-service');
 const bankLearning = require('../../../sean/bank-learning');
@@ -482,12 +485,29 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
 
 /**
  * POST /api/bank/import
- * Import bank transactions from CSV
+ * Stage bank transactions for review (ALL imports go through staging — no direct posting).
+ *
+ * This endpoint no longer inserts directly into bank_transactions.
+ * All incoming transactions are staged in bank_transaction_staging so the
+ * accountant can review, reject duplicates, and confirm before they enter the
+ * live reconciliation table.
+ *
+ * Body:
+ *   bankAccountId  {number}   — required
+ *   transactions   {Array}    — transaction objects from CSV parse or PDF parse result
+ *   importSource   {string}   — 'pdf'|'csv'|'manual' (default 'csv')
+ *   fileHash       {string}   — optional SHA-256 of source file (for batch duplicate detection)
+ *   importBatchId  {string}   — optional UUID (generated server-side if omitted)
+ *
+ * Response 201:
+ *   { requiresReview, batchId, staged, skipped, duplicatesSuspected,
+ *     transfersDetected, batchDuplicateWarning, message }
  */
 router.post('/import', authenticate, hasPermission('bank.import'), async (req, res) => {
   try {
-    const { bankAccountId, transactions, importSource } = req.body;
-    const resolvedSource = ['pdf', 'api', 'csv', 'manual'].includes(importSource) ? importSource : 'csv';
+    const { bankAccountId, transactions, importSource, fileHash, importBatchId } = req.body;
+    const resolvedSource = ['pdf', 'image', 'csv', 'manual'].includes(importSource)
+      ? importSource : 'csv';
 
     if (!bankAccountId || !transactions || !Array.isArray(transactions)) {
       return res.status(400).json({ error: 'Bank account ID and transactions array are required' });
@@ -505,112 +525,89 @@ router.post('/import', authenticate, hasPermission('bank.import'), async (req, r
       return res.status(404).json({ error: 'Bank account not found' });
     }
 
-    const skippedTransactions = [];
-
-    // ── 1. Bulk duplicate check — ONE query instead of one per row ────────────
-    // Collect all externalIds from the incoming batch that are non-empty
-    const incomingExternalIds = transactions
-      .map(t => t.externalId)
-      .filter(Boolean);
-
-    let existingExternalIdSet = new Set();
-    if (incomingExternalIds.length > 0) {
-      const { data: existingRows } = await supabase
-        .from('bank_transactions')
-        .select('external_id')
-        .eq('bank_account_id', bankAccountId)
-        .in('external_id', incomingExternalIds);
-      if (existingRows) {
-        existingRows.forEach(r => existingExternalIdSet.add(r.external_id));
+    // ── Batch-level duplicate check (file hash) ───────────────────────────────
+    // Warn (but do NOT block) if the exact same file has been staged before.
+    // Conservative rule: user must decide, we just surface the information.
+    let batchDuplicateWarning = null;
+    if (fileHash) {
+      const batchDup = await DuplicateDetectionService.detectBatchDuplicate(
+        supabase,
+        req.user.companyId,
+        fileHash,
+        bankAccountId
+      );
+      if (batchDup.isDuplicate) {
+        batchDuplicateWarning = {
+          existingBatchId: batchDup.existingBatchId,
+          reason:          batchDup.reason,
+          confidence:      batchDup.confidence,
+        };
       }
     }
 
-    // ── 2. Validate rows and split into valid / skipped ───────────────────────
-    const rowsToInsert = [];
-    transactions.forEach((txn, idx) => {
-      const rowIndex = idx + 1;
-      const { date, description, amount, reference, externalId, balance } = txn;
+    const batchId = importBatchId || uuidv4();
 
-      if (!date || !description || amount == null || isNaN(amount)) {
-        skippedTransactions.push({
-          row: rowIndex,
-          reason: 'Missing required field(s): ' +
-            [!date ? 'date' : '', !description ? 'description' : '', (amount == null || isNaN(amount)) ? 'amount' : ''].filter(Boolean).join(', '),
-          txn
-        });
-        return;
+    // ── Stage transactions (no direct bank_transactions insert) ───────────────
+    const { staged, skipped, duplicatesSuspected } = await BankStagingService.stageTransactions(
+      req.user.companyId,
+      bankAccountId,
+      transactions,
+      batchId,
+      resolvedSource,
+      { fileHash: fileHash || null }
+    );
+
+    // ── Run transfer detection on the new batch ───────────────────────────────
+    let transfersDetected = 0;
+    if (staged.length > 0) {
+      try {
+        const detection = await BankStagingService.detectTransfers(req.user.companyId, batchId);
+        transfersDetected = detection.transfersDetected || 0;
+      } catch (detErr) {
+        // Transfer detection is best-effort — don't fail the staging if it errors
+        console.warn('[bank/import] Transfer detection error (non-fatal):', detErr.message);
       }
-
-      if (externalId && existingExternalIdSet.has(externalId)) {
-        skippedTransactions.push({ row: rowIndex, reason: 'Duplicate (externalId already exists)', txn });
-        return;
-      }
-
-      rowsToInsert.push({
-        company_id:      req.user.companyId,
-        bank_account_id: bankAccountId,
-        date,
-        description,
-        amount,
-        balance:      balance != null ? balance : null,
-        reference:    reference || null,
-        external_id:  externalId || null,
-        status:       'unmatched',
-        import_source: resolvedSource
-      });
-    });
-
-    // ── 3. Bulk insert — ONE round-trip for all valid rows ────────────────────
-    let importedTransactions = [];
-    if (rowsToInsert.length > 0) {
-      let { data: inserted, error: insertErr } = await supabase
-        .from('bank_transactions')
-        .insert(rowsToInsert)
-        .select();
-
-      // Fallback: import_source column missing on older deployments
-      if (insertErr && insertErr.message && insertErr.message.includes('import_source')) {
-        console.warn('[bank/import] import_source column missing — retrying without it.');
-        const rowsWithoutSource = rowsToInsert.map(({ import_source, ...rest }) => rest);
-        ({ data: inserted, error: insertErr } = await supabase
-          .from('bank_transactions')
-          .insert(rowsWithoutSource)
-          .select());
-      }
-
-      if (insertErr) {
-        console.error('[bank/import] Bulk insert error:', insertErr);
-        return res.status(500).json({ error: 'Failed to insert transactions: ' + insertErr.message });
-      }
-
-      importedTransactions = inserted || [];
     }
 
     await AuditLogger.logUserAction(
       req,
-      'IMPORT',
-      'BANK_TRANSACTIONS',
+      'STAGE_IMPORT',
+      'BANK_TRANSACTION_STAGING',
       bankAccountId,
       null,
-      { count: importedTransactions.length, skipped: skippedTransactions.length },
-      'Bank transactions imported'
+      {
+        batchId,
+        staged:             staged.length,
+        skipped,
+        duplicatesSuspected,
+        transfersDetected,
+        importSource:       resolvedSource,
+        fileHash:           fileHash || null,
+        batchDuplicateWarning: batchDuplicateWarning ? batchDuplicateWarning.existingBatchId : null,
+      },
+      'Bank transactions staged for review'
     );
 
-    let message = 'Bank transactions imported successfully.';
-    if (skippedTransactions.length > 0) {
-      message += ` ${skippedTransactions.length} row(s) skipped.`;
-    }
+    let message = `${staged.length} transaction(s) staged for review.`;
+    if (skipped > 0) message += ` ${skipped} row(s) skipped (already imported or invalid).`;
+    if (duplicatesSuspected > 0) message += ` ${duplicatesSuspected} possible duplicate(s) flagged.`;
+    if (transfersDetected > 0) message += ` ${transfersDetected} inter-account transfer(s) detected.`;
+    message += ' Go to Bank Staging to confirm transactions.';
 
-    res.status(201).json({
+    return res.status(201).json({
+      requiresReview:       true,
+      batchId,
+      staged:               staged.length,
+      skipped,
+      duplicatesSuspected,
+      transfersDetected,
+      batchDuplicateWarning,
       message,
-      imported: importedTransactions.length,
-      transactions: importedTransactions,
-      skipped: skippedTransactions
     });
 
   } catch (error) {
-    console.error('Error importing bank transactions:', error);
-    res.status(500).json({ error: 'Failed to import bank transactions' });
+    console.error('Error staging bank transactions:', error);
+    res.status(500).json({ error: 'Failed to stage bank transactions: ' + (error.message || 'Unknown error') });
   }
 });
 
@@ -656,8 +653,13 @@ router.post('/import/pdf',
         if (check) verifiedBankAccountId = bankAccountId;
       }
 
+      // Compute file hash for batch-level duplicate detection.
+      // This is passed to the frontend and forwarded in POST /import so the
+      // staging pipeline can warn if the same file is re-imported.
+      const fileHash = DuplicateDetectionService.computeFileHash(req.file.buffer);
+
       // Pass dbClient: null — PDF parsing doesn't require db for initial parse step.
-      // Duplicate detection is handled at the confirm (POST /import) stage.
+      // Duplicate detection is handled at the staging stage.
       const result = await PdfStatementImportService.parsePdf(
         req.file.buffer,
         req.file.originalname,
@@ -671,6 +673,14 @@ router.post('/import/pdf',
           warnings: result.warnings
         });
       }
+
+      // Check if this file has been imported before (batch-level duplicate)
+      const batchDupCheck = await DuplicateDetectionService.detectBatchDuplicate(
+        supabase,
+        req.user.companyId,
+        fileHash,
+        verifiedBankAccountId
+      );
 
       await AuditLogger.logUserAction(
         req,
@@ -736,7 +746,15 @@ router.post('/import/pdf',
         }
       }
 
-      return res.json({ ...result, accountMatch });
+      return res.json({
+        ...result,
+        accountMatch,
+        fileHash,
+        batchDuplicateWarning: batchDupCheck.isDuplicate ? {
+          existingBatchId: batchDupCheck.existingBatchId,
+          reason:          batchDupCheck.reason,
+        } : null,
+      });
 
     } catch (err) {
       console.error('PDF import error:', err);
@@ -1148,6 +1166,19 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
             `[bank.allocate] VAT account ${vatAccountCode} not found for company ${req.user.companyId}. ` +
             `Posting full amount without VAT split. Check Chart of Accounts.`
           );
+          await AuditLogger.logSystemAction(
+            req.user.companyId,
+            'SYSTEM_ERROR',
+            'BANK_ALLOCATION_VAT',
+            bankTxn.id,
+            null,
+            {
+              missingVatAccountCode: vatAccountCode,
+              bankTransactionId: bankTxn.id,
+              fallback: 'full gross amount posted to allocation account without VAT split',
+            },
+            `VAT account ${vatAccountCode} not found during bank allocation — full gross posted without VAT split`
+          );
           // Replace the ex-VAT line with a full-gross line
           journalLines[journalLines.length - 1].debit  = isMoneyIn ? 0 : gross;
           journalLines[journalLines.length - 1].credit = isMoneyIn ? gross : 0;
@@ -1191,6 +1222,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         '| Reason:', validation.reason,
         '— Attempting reversal to prevent a dangling GL entry.'
       );
+      let autoReversalSucceeded = false;
       try {
         await JournalService.reverseJournal(
           journal.id,
@@ -1198,10 +1230,27 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
           req.user.id,
           `Auto-reversed: post-posting validation failed — ${validation.reason}`
         );
+        autoReversalSucceeded = true;
       } catch (revErr) {
         console.error('[bank.allocate] Reversal also failed. Journal', journal.id,
           'may be dangling in GL. Manual cleanup required.', revErr.message);
       }
+      await AuditLogger.logSystemAction(
+        req.user.companyId,
+        'SYSTEM_ERROR',
+        'BANK_ALLOCATION',
+        bankTxn.id,
+        null,
+        {
+          error: validation.reason,
+          journalId: journal.id,
+          bankTransactionId: bankTxn.id,
+          autoReversalAttempted: true,
+          autoReversalSucceeded,
+          danglingJournal: !autoReversalSucceeded,
+        },
+        `Bank allocation failed: post-posting validation error — ${validation.reason}`
+      );
       return res.status(500).json({
         error: `Allocation failed post-posting validation: ${validation.reason}. The journal has been reversed.`,
         journalId: journal.id
@@ -1229,6 +1278,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         '| Error:', updErr.message,
         '— Attempting journal reversal to prevent dangling GL entry.'
       );
+      let linkageReversalSucceeded = false;
       try {
         await JournalService.reverseJournal(
           journal.id,
@@ -1236,6 +1286,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
           req.user.id,
           `Auto-reversed: bank transaction ${bankTxn.id} linkage update failed during allocation`
         );
+        linkageReversalSucceeded = true;
         console.warn('[bank.allocate] Journal', journal.id, 'reversed after bank transaction link failure. Bank transaction remains unmatched.');
       } catch (reverseErr) {
         // Reversal also failed — GL has a dangling posted journal that needs manual cleanup.
@@ -1245,6 +1296,22 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
           reverseErr.message
         );
       }
+      await AuditLogger.logSystemAction(
+        req.user.companyId,
+        'SYSTEM_ERROR',
+        'BANK_ALLOCATION',
+        bankTxn.id,
+        null,
+        {
+          error: updErr.message,
+          journalId: journal.id,
+          bankTransactionId: bankTxn.id,
+          autoReversalAttempted: true,
+          autoReversalSucceeded: linkageReversalSucceeded,
+          danglingJournal: !linkageReversalSucceeded,
+        },
+        `Bank allocation failed: bank transaction linkage update error after GL post`
+      );
       return res.status(500).json({
         error: 'Allocation failed: the journal was posted but the bank transaction could not be linked. The journal has been reversed. Please try again.',
         journalId: journal.id

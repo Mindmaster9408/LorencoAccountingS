@@ -19,6 +19,7 @@ const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../../config/database');
 const JournalService = require('../services/journalService');
+const AuditLogger = require('../services/auditLogger');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -281,6 +282,28 @@ router.post('/', async (req, res) => {
     const { error: linesErr } = await supabase.from('customer_invoice_lines').insert(lineInserts);
     if (linesErr) throw new Error(linesErr.message);
 
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId(req),
+      actionType: 'CUSTOMER_INVOICE_CREATED',
+      entityType: 'CUSTOMER_INVOICE',
+      entityId: invoice.id,
+      beforeJson: null,
+      afterJson: {
+        customerName,
+        invoiceNumber: invoice.invoice_number,
+        invoiceDate,
+        subtotalExVat: totals.subtotalExVat,
+        vatAmount: totals.vatAmount,
+        totalIncVat: totals.totalIncVat,
+        status: 'draft',
+      },
+      reason: 'Customer invoice created',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.status(201).json({ invoice: { ...invoice, lines: processedLines } });
   } catch (err) {
     console.error('POST /customer-invoices error:', err);
@@ -309,7 +332,19 @@ router.put('/:id', async (req, res) => {
 
     if (fetchErr) throw new Error(fetchErr.message);
     if (!existing) return res.status(404).json({ error: 'Invoice not found' });
-    if (existing.status !== 'draft') return res.status(409).json({ error: 'Only draft invoices can be edited' });
+    if (existing.status !== 'draft') {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: userId(req),
+        actionType: 'CUSTOMER_INVOICE_EDIT_BLOCKED',
+        entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+        beforeJson: null,
+        afterJson: { invoiceId, status: existing.status, reasonCode: 'NOT_DRAFT', reasonMessage: 'Only draft invoices can be edited' },
+        reason: `Customer invoice edit blocked: status is ${existing.status}`,
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(409).json({ error: 'Only draft invoices can be edited' });
+    }
 
     const processedLines = (lines || []).map((l, i) => {
       const { subtotalExVat, vatAmount, totalIncVat } = calcLineVAT(
@@ -399,6 +434,30 @@ router.put('/:id', async (req, res) => {
       accounts: undefined,
     }));
 
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId(req),
+      actionType: 'CUSTOMER_INVOICE_UPDATED',
+      entityType: 'CUSTOMER_INVOICE',
+      entityId: invoiceId,
+      beforeJson: {
+        subtotalExVat: parseFloat(existing.subtotal_ex_vat || 0),
+        vatAmount: parseFloat(existing.vat_amount || 0),
+        totalIncVat: parseFloat(existing.total_inc_vat || 0),
+        invoiceDate: existing.invoice_date,
+      },
+      afterJson: {
+        subtotalExVat: totals.subtotalExVat,
+        vatAmount: totals.vatAmount,
+        totalIncVat: totals.totalIncVat,
+        invoiceDate: invoiceDate || existing.invoice_date,
+      },
+      reason: 'Customer invoice updated (draft)',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.json({ invoice: { ...updated, lines: flatLines } });
   } catch (err) {
     console.error('PUT /customer-invoices/:id error:', err);
@@ -423,7 +482,19 @@ router.post('/:id/post', async (req, res) => {
 
     if (invErr) throw new Error(invErr.message);
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
-    if (invoice.status !== 'draft') return res.status(409).json({ error: `Invoice is already ${invoice.status}` });
+    if (invoice.status !== 'draft') {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: userId(req),
+        actionType: 'CUSTOMER_INVOICE_POST_BLOCKED',
+        entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+        beforeJson: null,
+        afterJson: { invoiceId, status: invoice.status, reasonCode: 'NOT_DRAFT', reasonMessage: `Invoice is already ${invoice.status}` },
+        reason: `Customer invoice post blocked: status is ${invoice.status}`,
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(409).json({ error: `Invoice is already ${invoice.status}` });
+    }
 
     const { data: lines, error: linesErr } = await supabase
       .from('customer_invoice_lines')
@@ -498,6 +569,25 @@ router.post('/:id/post', async (req, res) => {
       console.warn(`[CustomerAR] Invoice ${invoiceId} posted to GL (journal ${glJournal.id}) but status update failed:`, updErr.message);
     }
 
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId(req),
+      actionType: 'CUSTOMER_INVOICE_POSTED',
+      entityType: 'CUSTOMER_INVOICE',
+      entityId: invoiceId,
+      beforeJson: { status: 'draft' },
+      afterJson: {
+        status: 'sent',
+        journalId: glJournal.id,
+        totalIncVat: parseFloat(invoice.total_inc_vat),
+        customerName: invoice.customer_name,
+      },
+      reason: 'Customer invoice posted to GL',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
     res.json({ message: 'Invoice posted to General Ledger', journalId: glJournal.id });
   } catch (err) {
     console.error('POST /customer-invoices/:id/post error:', err);
@@ -522,8 +612,30 @@ router.post('/:id/void', async (req, res) => {
 
     if (fetchErr) throw new Error(fetchErr.message);
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
-    if (invoice.status === 'void') return res.status(409).json({ error: 'Invoice is already voided' });
+    if (invoice.status === 'void') {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: userId(req),
+        actionType: 'CUSTOMER_INVOICE_VOID_BLOCKED',
+        entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+        beforeJson: null,
+        afterJson: { invoiceId, status: invoice.status, reasonCode: 'ALREADY_VOIDED', reasonMessage: 'Invoice is already voided' },
+        reason: 'Customer invoice void blocked: already voided',
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(409).json({ error: 'Invoice is already voided' });
+    }
     if (invoice.status === 'paid' || parseFloat(invoice.amount_paid) > 0) {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: userId(req),
+        actionType: 'CUSTOMER_INVOICE_VOID_BLOCKED',
+        entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+        beforeJson: null,
+        afterJson: { invoiceId, status: invoice.status, amountPaid: parseFloat(invoice.amount_paid || 0), reasonCode: 'HAS_PAYMENTS', reasonMessage: 'Cannot void an invoice that has payments applied' },
+        reason: 'Customer invoice void blocked: payments applied',
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
       return res.status(409).json({ error: 'Cannot void an invoice that has payments applied. Reverse the payments first.' });
     }
 
@@ -531,6 +643,16 @@ router.post('/:id/void', async (req, res) => {
     if (invoice.journal_id) {
       const vatLock = await JournalService.isVatPeriodLocked(invoice.journal_id);
       if (vatLock.locked) {
+        await AuditLogger.log({
+          companyId,
+          actorType: 'USER', actorId: userId(req),
+          actionType: 'CUSTOMER_INVOICE_VOID_BLOCKED',
+          entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+          beforeJson: null,
+          afterJson: { invoiceId, status: invoice.status, journalId: invoice.journal_id, vatPeriodKey: vatLock.periodKey, reasonCode: 'VAT_PERIOD_LOCKED', reasonMessage: `Invoice is in locked VAT period ${vatLock.periodKey}` },
+          reason: `Customer invoice void blocked: VAT period ${vatLock.periodKey} is locked`,
+          ipAddress: req.ip, userAgent: req.get('user-agent'),
+        });
         return res.status(403).json({
           error: `Cannot void this invoice — it is included in locked VAT period ${vatLock.periodKey}. VAT periods that have been locked cannot be changed.`,
         });
@@ -548,6 +670,24 @@ router.post('/:id/void', async (req, res) => {
       .eq('id', invoiceId);
 
     if (voidErr) throw new Error(voidErr.message);
+
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId(req),
+      actionType: 'CUSTOMER_INVOICE_VOIDED',
+      entityType: 'CUSTOMER_INVOICE',
+      entityId: invoiceId,
+      beforeJson: { status: invoice.status, journalId: invoice.journal_id || null },
+      afterJson: {
+        status: 'void',
+        journalReversed: !!invoice.journal_id,
+        reversedJournalId: invoice.journal_id || null,
+      },
+      reason: 'Customer invoice voided',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
 
     res.json({ message: 'Invoice voided' });
   } catch (err) {
@@ -669,6 +809,34 @@ router.post('/payments', async (req, res) => {
       console.warn(`[CustomerAR] AR account (1100) not found for company ${companyId} — GL posting skipped for payment ${payment.id}`);
     }
     // ── End GL Posting ────────────────────────────────────────────────────
+
+    // Re-read payment to get journal_id (updated above if GL posted)
+    const { data: paymentFull } = await supabase
+      .from('customer_payments')
+      .select('journal_id')
+      .eq('id', payment.id)
+      .maybeSingle();
+
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId: userId(req),
+      actionType: 'CUSTOMER_PAYMENT_RECORDED',
+      entityType: 'CUSTOMER_PAYMENT',
+      entityId: payment.id,
+      beforeJson: null,
+      afterJson: {
+        customerName,
+        paymentDate,
+        paymentMethod: paymentMethod || 'bank_transfer',
+        amount: parseFloat(amount),
+        allocationCount: allocations ? allocations.length : 0,
+        journalId: paymentFull?.journal_id || null,
+      },
+      reason: 'Customer payment recorded',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
 
     res.status(201).json({ payment });
   } catch (err) {

@@ -201,6 +201,17 @@ router.post('/:id/post', authenticate, hasPermission('journal.post'), async (req
 
   } catch (error) {
     console.error('Error posting journal:', error);
+    if (error.message && error.message.toLowerCase().includes('locked period')) {
+      await AuditLogger.logUserAction(
+        req,
+        'JOURNAL_BLOCKED_LOCKED_PERIOD',
+        'JOURNAL',
+        req.params.id,
+        null,
+        { blockedAction: 'POST', reason: error.message },
+        `Journal post blocked: ${error.message}`
+      );
+    }
     res.status(400).json({ error: error.message || 'Failed to post journal' });
   }
 });
@@ -243,6 +254,17 @@ router.post('/:id/reverse', authenticate, hasPermission('journal.reverse'), asyn
 
   } catch (error) {
     console.error('Error reversing journal:', error);
+    if (error.message && error.message.toLowerCase().includes('locked period')) {
+      await AuditLogger.logUserAction(
+        req,
+        'JOURNAL_BLOCKED_LOCKED_PERIOD',
+        'JOURNAL',
+        req.params.id,
+        null,
+        { blockedAction: 'REVERSE', reason: error.message },
+        `Journal reverse blocked: ${error.message}`
+      );
+    }
     res.status(400).json({ error: error.message || 'Failed to reverse journal' });
   }
 });
