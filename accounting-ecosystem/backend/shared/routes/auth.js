@@ -13,6 +13,7 @@ const jwt = require('jsonwebtoken');
 const { supabase } = require('../../config/database');
 const { authenticateToken, JWT_SECRET } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
+const { logPosEvent, posAuditFromReq, POS_EVENTS } = require('../../modules/pos/services/posAuditLogger');
 const { getRolePermissions } = require('../../config/permissions');
 
 const router = express.Router();
@@ -39,12 +40,32 @@ router.post('/login', async (req, res) => {
       .single();
 
     if (error || !user) {
+      logPosEvent({
+        companyId:  null,
+        userId:     null,
+        userEmail:  loginId,
+        actionType: POS_EVENTS.LOGIN_FAILED,
+        source:     'system',
+        ipAddress:  req.ip || req.connection?.remoteAddress || null,
+        userAgent:  req.headers?.['user-agent'] || null,
+        metadata:   { reason: 'user_not_found' },
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Verify password
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
+      logPosEvent({
+        companyId:  null,
+        userId:     user.id,
+        userEmail:  user.email || user.username,
+        actionType: POS_EVENTS.LOGIN_FAILED,
+        source:     'system',
+        ipAddress:  req.ip || req.connection?.remoteAddress || null,
+        userAgent:  req.headers?.['user-agent'] || null,
+        metadata:   { reason: 'invalid_password' },
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -148,6 +169,21 @@ router.post('/login', async (req, res) => {
     await auditFromReq(req, 'LOGIN', 'user', user.id, {
       module: 'shared',
       metadata: { companiesAvailable: companyList.length }
+    });
+    logPosEvent({
+      companyId:  selectedCompany?.id || null,
+      userId:     user.id,
+      userEmail:  user.email || user.username,
+      userRole:   selectedCompany?.role || null,
+      actionType: POS_EVENTS.LOGIN_SUCCESS,
+      source:     'system',
+      ipAddress:  req.ip || req.connection?.remoteAddress || null,
+      userAgent:  req.headers?.['user-agent'] || null,
+      afterSnapshot: {
+        companies_available:  companyList.length,
+        selected_company_id:  selectedCompany?.id || null,
+      },
+      metadata:   { isSuperAdmin },
     });
 
     res.json({
@@ -494,6 +530,22 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       isSuperAdmin: isSuperAdmin,
     }, JWT_SECRET, { expiresIn: '8h' });
 
+    logPosEvent({
+      companyId:  parsedCompanyId,
+      userId:     req.user.userId,
+      userEmail:  req.user.email || req.user.username,
+      userRole:   role,
+      actionType: POS_EVENTS.COMPANY_SELECTED,
+      source:     'system',
+      ipAddress:  req.ip || req.connection?.remoteAddress || null,
+      userAgent:  req.headers?.['user-agent'] || null,
+      afterSnapshot: {
+        company_id:   parsedCompanyId,
+        company_name: company.company_name,
+        role,
+      },
+    });
+
     res.json({
       success: true,
       token,
@@ -719,6 +771,7 @@ router.post('/forgot-password/reset', async (req, res) => {
  */
 router.post('/logout', authenticateToken, async (req, res) => {
   await auditFromReq(req, 'LOGOUT', 'user', req.user.userId, { module: 'shared' });
+  posAuditFromReq(req, POS_EVENTS.LOGOUT, {});
   res.json({ success: true, message: 'Logged out' });
 });
 

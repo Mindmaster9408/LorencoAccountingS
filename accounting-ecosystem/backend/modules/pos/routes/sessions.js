@@ -10,6 +10,8 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
+const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
+const { createReconSnapshot } = require('../services/posReconService');
 
 const router = express.Router();
 
@@ -131,6 +133,17 @@ router.post('/open', async (req, res) => {
       module: 'pos',
       newValue: { till_id, opening_balance }
     });
+    posAuditFromReq(req, POS_EVENTS.TILL_OPENED, {
+      tillId:        till_id,
+      tillSessionId: data.id,
+      afterSnapshot: {
+        session_id:      data.id,
+        till_id,
+        opening_balance,
+        status:          'open',
+        opened_at:       data.opened_at,
+      },
+    });
 
     res.status(201).json({ session: data });
   } catch (err) {
@@ -187,6 +200,19 @@ router.post('/:id/close', async (req, res) => {
       module: 'pos',
       metadata: { action: 'close', expected, closing_balance, variance }
     });
+    posAuditFromReq(req, POS_EVENTS.TILL_CLOSED, {
+      tillId:         session.till_id || null,
+      tillSessionId:  req.params.id,
+      beforeSnapshot: { status: 'open', opening_balance: session.opening_balance },
+      afterSnapshot:  { status: 'closed', expected_balance: expected, closing_balance, variance },
+    });
+    if (variance !== null && variance !== 0) {
+      posAuditFromReq(req, POS_EVENTS.CASH_VARIANCE_RECORDED, {
+        tillId:        session.till_id || null,
+        tillSessionId: req.params.id,
+        metadata:      { expected, closing_balance, variance, stage: 'session_close' },
+      });
+    }
 
     res.json({ session: data });
   } catch (err) {
@@ -232,6 +258,30 @@ router.post('/:id/complete-cashup', async (req, res) => {
       module: 'pos',
       metadata: { action: 'cashup', totalCounted, variance }
     });
+    posAuditFromReq(req, POS_EVENTS.CASHUP_COMPLETED, {
+      tillId:         session.till_id || null,
+      tillSessionId:  req.params.id,
+      beforeSnapshot: { status: session.status, expected_balance: session.expected_balance },
+      afterSnapshot:  { status: 'cashed_up', total_counted: totalCounted, variance, counted_cash, counted_card, counted_other },
+    });
+    if (variance !== 0) {
+      posAuditFromReq(req, POS_EVENTS.CASH_VARIANCE_RECORDED, {
+        tillId:        session.till_id || null,
+        tillSessionId: req.params.id,
+        metadata:      { expected: session.expected_balance, total_counted: totalCounted, variance, stage: 'cashup' },
+      });
+    }
+
+    // Create immutable reconciliation snapshot — fire-and-forget, never blocks response.
+    // createReconSnapshot is internally try/catch and never throws.
+    createReconSnapshot(
+      req.params.id,
+      req.companyId,
+      req.user.userId,
+      req.user.email || req.user.username,
+      'cashup',
+      { counted_cash, counted_card, counted_other, total_counted: totalCounted, variance }
+    );
 
     res.json({ session: data });
   } catch (err) {

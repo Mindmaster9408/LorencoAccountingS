@@ -16,6 +16,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
+const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 
 const router = express.Router();
 
@@ -112,6 +113,18 @@ router.post('/adjust', requirePermission('INVENTORY.ADJUST'), async (req, res) =
       oldValue:  oldQty,
       newValue:  newQty,
       metadata:  { product_name: product.product_name, reason }
+    });
+    posAuditFromReq(req, POS_EVENTS.STOCK_ADJUSTED, {
+      productId:      product_id,
+      beforeSnapshot: { stock_quantity: oldQty },
+      afterSnapshot:  { stock_quantity: newQty },
+      metadata:       {
+        product_name:     product.product_name,
+        quantity_change,
+        reason,
+        adjustment_id:    adj.id,
+        notes:            notes || null,
+      },
     });
 
     res.json({ adjustment: adj });

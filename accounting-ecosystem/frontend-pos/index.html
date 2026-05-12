@@ -739,6 +739,8 @@
         .stock-badge.ok { background: #e8f5e9; color: #2e7d32; }
         .stock-badge.low { background: #fff3e0; color: #e65100; }
         .stock-badge.out { background: #ffebee; color: #c62828; }
+        .stock-badge.negative { background: #b71c1c; color: #fff; font-weight: 700; }
+        .negative-stock { background: #fce4ec !important; }
 
         /* Sale Search Styles */
         .sale-search-section {
@@ -1139,6 +1141,36 @@
         /* Estimated stock — shown on product tiles when offline */
         .stock-estimated { font-size: 11px; color: #f57c00; font-style: italic; margin-top: 5px; }
         .stock-zero-est  { font-size: 11px; color: #c62828; font-weight: 700; margin-top: 5px; }
+        /* Negative stock — shown when allow_negative_stock_sales is enabled */
+        .stock-negative  { font-size: 11px; color: #b71c1c; font-weight: 700; margin-top: 5px; background: #ffebee; padding: 2px 5px; border-radius: 3px; }
+        .stock-zero-neg  { font-size: 11px; color: #e65100; font-weight: 600; margin-top: 5px; background: #fff3e0; padding: 2px 5px; border-radius: 3px; }
+
+        /* ── Recovery Panel (Workstream 4A) ─────────────────────────────────── */
+        .queue-item { border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px; margin-bottom: 10px; background: white; }
+        .queue-item.status-failed          { border-left: 4px solid #f44336; }
+        .queue-item.status-conflict_stock  { border-left: 4px solid #ff9800; }
+        .queue-item.status-conflict_session{ border-left: 4px solid #ff9800; }
+        .queue-item.status-pending         { border-left: 4px solid #2196f3; }
+        .queue-item.status-abandoned       { border-left: 4px solid #9e9e9e; opacity: 0.7; }
+        .queue-status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-left: 8px; }
+        .queue-status-badge.pending          { background: #e3f2fd; color: #1565c0; }
+        .queue-status-badge.failed           { background: #ffebee; color: #b71c1c; }
+        .queue-status-badge.conflict_stock,
+        .queue-status-badge.conflict_session { background: #fff3e0; color: #e65100; }
+        .queue-status-badge.abandoned        { background: #f5f5f5; color: #757575; }
+        .recovery-action-btn { padding: 5px 12px; border: none; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; margin-right: 6px; }
+        .recovery-action-btn.retry   { background: #e8f5e9; color: #2e7d32; }
+        .recovery-action-btn.abandon { background: #ffebee; color: #b71c1c; }
+        .recovery-action-btn.note    { background: #f3e5f5; color: #6a1b9a; }
+        .session-health-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .session-health-table th { text-align: left; padding: 8px 12px; background: #f5f5f5; border-bottom: 2px solid #e0e0e0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .session-health-table td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .session-health-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .session-health-badge.open         { background: #e8f5e9; color: #2e7d32; }
+        .session-health-badge.stale        { background: #fff3e0; color: #e65100; font-weight: 700; }
+        .session-health-badge.pending-cashup { background: #fce4ec; color: #880e4f; }
+        .override-reason-textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; height: 80px; font-family: inherit; font-size: 14px; resize: vertical; box-sizing: border-box; }
+        .override-reason-textarea:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 2px rgba(102,126,234,0.15); }
 
         .enterprise-toolbar {
             display: flex;
@@ -1517,6 +1549,7 @@
                 <button class="nav-tab enterprise-tab" onclick="showTab('dashboard', event)">Dashboard</button>
                 <button class="nav-tab enterprise-tab" onclick="showTab('loyalty', event)">Loyalty</button>
                 <button class="nav-tab" onclick="showTab('settings', event)">Settings</button>
+                <button class="nav-tab" onclick="showTab('recovery', event)">Recovery</button>
             </div>
             <div class="nav-right">
                 <div class="user-info">
@@ -1921,14 +1954,19 @@
                     <div style="background: #fff3e0; padding: 20px; border-radius: 10px; border-left: 5px solid #ff9800;">
                         <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Expected Cash</div>
                         <div id="cashUpExpectedCash" style="font-size: 32px; font-weight: bold; color: #e65100;">R 0.00</div>
-                        <div style="font-size: 13px; color: #666; margin-top: 5px;">Opening + Sales</div>
+                        <div style="font-size: 13px; color: #666; margin-top: 5px;">Opening + Cash sales − Cash refunds</div>
                     </div>
                     <div style="background: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #2196f3;">
                         <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Payment Breakdown</div>
                         <div id="cashUpPaymentBreakdown" style="font-size: 14px; margin-top: 10px;">
                             <div style="display: flex; justify-content: space-between; margin: 5px 0;"><span>Cash:</span><span id="cashSales">R 0.00</span></div>
                             <div style="display: flex; justify-content: space-between; margin: 5px 0;"><span>Card:</span><span id="cardSales">R 0.00</span></div>
+                            <div style="display: flex; justify-content: space-between; margin: 5px 0;"><span>EFT:</span><span id="eftSales">R 0.00</span></div>
                             <div style="display: flex; justify-content: space-between; margin: 5px 0;"><span>Account:</span><span id="accountSales">R 0.00</span></div>
+                            <div id="cashRefundsRow" style="display: none; justify-content: space-between; margin: 5px 0; border-top: 1px solid #bbdefb; padding-top: 5px; margin-top: 8px;">
+                                <span style="color: #c62828;">Cash Refunds:</span>
+                                <span id="cashRefunds" style="color: #c62828;">−R 0.00</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3118,6 +3156,53 @@
         </div>
     </div>
 
+    <!-- Recovery Layout (Workstream 4A) -->
+    <div id="recoveryLayout" class="enterprise-layout">
+        <h1>Manager Recovery</h1>
+
+        <!-- Offline Queue Panel -->
+        <div class="enterprise-section">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h3 style="margin:0;">Offline Sales Queue</h3>
+                <div style="display:flex;gap:8px;">
+                    <button class="ent-btn ent-btn-primary" onclick="retryAllRetryable()">Retry All Retryable</button>
+                    <button class="ent-btn" onclick="loadRecovery()">Refresh</button>
+                </div>
+            </div>
+            <div id="recoveryQueueContainer">
+                <p style="color:#999;text-align:center;padding:20px;">Loading queue...</p>
+            </div>
+        </div>
+
+        <!-- Session Health Panel -->
+        <div class="enterprise-section">
+            <h3 style="margin-bottom:15px;">Session Health</h3>
+            <div id="recoverySessionHealth">
+                <p style="color:#999;text-align:center;padding:20px;">Loading sessions...</p>
+            </div>
+        </div>
+
+        <!-- Supervisor Override Panel -->
+        <div class="enterprise-section">
+            <h3>Supervisor Override</h3>
+            <p style="color:#666;font-size:14px;margin-bottom:15px;">Record a supervised override action. Override reason is mandatory. All overrides create an immutable audit trail.</p>
+            <div style="max-width:560px;">
+                <select id="overrideType" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-bottom:10px;">
+                    <option value="">Select override type...</option>
+                    <option value="negative_stock_manual">Allow negative stock (manual, one-off)</option>
+                    <option value="price_override">Price override</option>
+                    <option value="session_force_close">Force close abandoned session</option>
+                    <option value="queue_item_cleared">Clear unrecoverable queue item</option>
+                    <option value="other">Other</option>
+                </select>
+                <textarea id="overrideReason" class="override-reason-textarea" placeholder="Override reason (required — describe what you are overriding and why)..."></textarea>
+                <div style="margin-top:10px;">
+                    <button class="ent-btn ent-btn-primary" onclick="confirmOverride()">Record Override</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Notification -->
     <div id="notification" class="notification"></div>
 
@@ -3138,6 +3223,11 @@
         let userRole = null;
         let userPermissions = {};
 
+        // Company stock policy — loaded from /api/pos/settings on login.
+        // Default false = strict mode (negative stock blocked). Never read from
+        // localStorage; always sourced from the API on each login.
+        let companyStockPolicy = { allowNegativeStock: false };
+
         // ========== OFFLINE-FIRST FUNCTIONALITY ==========
         let isOnline = navigator.onLine;
         let db = null;
@@ -3146,6 +3236,7 @@
         let syncInProgress = false;   // Guard: only one sync cycle may run at a time
         let syncDebounceTimer = null; // Debounce: network flap fires online event repeatedly
         let syncProgress = { current: 0, total: 0 }; // Progress counter for banner display
+        let barcodeMap = new Map();   // O(1) barcode/product_code → product lookup; rebuilt after every products load
 
         // Initialize IndexedDB
         async function initIndexedDB() {
@@ -3402,7 +3493,8 @@
                                 items: sale.items,
                                 paymentMethod: sale.paymentMethod,
                                 offlineCreatedAt: sale.createdAt,
-                                idempotencyKey: sale.idempotencyKey
+                                idempotencyKey: sale.idempotencyKey,
+                                source: 'offline_sync'
                             })
                         });
                     } catch (networkErr) {
@@ -3512,7 +3604,7 @@
                 state = 'state-syncing';
                 icon  = '&#8635;';
                 const { current, total } = syncProgress;
-                text  = total > 1 ? `Syncing ${current} of ${total}...` : 'Syncing...';
+                text  = (total > 1 && current > 0) ? `Syncing ${current} of ${total}...` : 'Syncing...';
             } else if (nConflict > 0 || nFailed > 0) {
                 // Persistent warning — visible even though online
                 state = 'state-warning';
@@ -3559,6 +3651,11 @@
             syncDebounceTimer = setTimeout(async () => {
                 syncDebounceTimer = null;
                 await syncOfflineSales();
+                // Refresh stock policy before reloading products — the policy may have
+                // changed while the device was offline (e.g. manager enabled negative
+                // stock sales from another device). loadCompanySettings() fails safe
+                // to false so a network hiccup cannot downgrade strict mode.
+                await loadCompanySettings();
                 await loadProducts();
             }, 1000);
         });
@@ -3822,6 +3919,24 @@
             }
         }
 
+        async function loadCompanySettings() {
+            try {
+                const r = await fetch(`${API_URL}/pos/settings`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (r.ok) {
+                    const d = await r.json();
+                    companyStockPolicy.allowNegativeStock = !!(d.settings?.allow_negative_stock_sales);
+                    if (companyStockPolicy.allowNegativeStock) {
+                        console.warn('[StockPolicy] Negative stock sales ENABLED for this company');
+                    }
+                }
+            } catch (e) {
+                // Default remains false — strict mode if the endpoint is unavailable.
+                console.warn('[StockPolicy] Could not load company stock policy, defaulting to strict mode:', e.message);
+            }
+        }
+
         async function completeLogin() {
             document.getElementById('userName').textContent = currentUser.fullName + (userRole ? ` (${userRole.replace('_', ' ')})` : '');
             document.getElementById('loginScreen').style.display = 'none';
@@ -3834,6 +3949,10 @@
             // company's products when the user goes offline immediately after switching clients)
             await checkAndClearStaleCaches();
 
+            // Load company settings (including stock policy) before products render
+            // so the product grid shows correct stock state from the first paint.
+            await loadCompanySettings();
+
             loadProducts();
             checkSession();
             showTab('till');
@@ -3841,8 +3960,9 @@
 
         function applyRoleBasedVisibility() {
             // Get all nav tabs
-            const reportsTab = document.querySelector('.nav-tab[onclick*="reports"]');
+            const reportsTab  = document.querySelector('.nav-tab[onclick*="reports"]');
             const settingsTab = document.querySelector('.nav-tab[onclick*="settings"]');
+            const recoveryTab = document.querySelector('.nav-tab[onclick*="recovery"]');
 
             // Hide reports for admin and cashier (they can't see profit/sales/VAT reports)
             if (userRole === 'admin' || userRole === 'cashier') {
@@ -3854,8 +3974,18 @@
                 if (settingsTab) settingsTab.classList.add('role-hidden');
             }
 
-            // Show reports for cashup only if admin
-            // (Admins CAN see cash-up reports, but not sales/profit/VAT)
+            // Hide recovery panel for all roles without backend SETTINGS.EDIT access.
+            // Must match MANAGEMENT_ROLES in backend/config/permissions.js exactly.
+            // Intermediate roles (shift_supervisor, senior_cashier, assistant_manager,
+            // leave_admin) are in SUPERVISOR_ROLES but NOT MANAGEMENT_ROLES — they would
+            // see the tab but receive 403 from every recovery endpoint.
+            const RECOVERY_ALLOWED_ROLES = [
+                'super_admin', 'business_owner', 'practice_manager', 'administrator',
+                'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin',
+            ];
+            if (!RECOVERY_ALLOWED_ROLES.includes(userRole)) {
+                if (recoveryTab) recoveryTab.classList.add('role-hidden');
+            }
         }
 
         function logoutFromCompanySelector() {
@@ -3976,6 +4106,14 @@
             }
         }
 
+        function rebuildBarcodeMap() {
+            barcodeMap = new Map();
+            for (const p of products) {
+                if (p.product_code) barcodeMap.set(p.product_code, p);
+                if (p.barcode)      barcodeMap.set(p.barcode, p);
+            }
+        }
+
         async function loadProducts() {
             try {
                 // Try to load from server if online
@@ -4009,6 +4147,7 @@
                 renderCategories();
                 displayProductsGrid(products);
                 displayProductsTable(products);
+                rebuildBarcodeMap();
             } catch (error) {
                 console.error('Error loading products:', error);
 
@@ -4024,6 +4163,7 @@
                         renderCategories();
                         displayProductsGrid(products);
                         displayProductsTable(products);
+                        rebuildBarcodeMap();
                         showNotification('Using cached products (offline mode)', 'info');
                     }
                 } catch (cacheError) {
@@ -4035,19 +4175,22 @@
         // Cash Up Functions
         let currentSessionData = null;
 
+        // Stores the expected_cash_in_drawer from the reconciliation API.
+        // calculateCashTotal() and completeCashUp() read this for variance.
+        let _reconExpectedCash = 0;
+
         async function loadCashUpSession() {
             // Load pending cashups first
             await loadPendingCashups();
 
             try {
-                // Get current session
+                // Get current open session
                 const sessionResponse = await fetch(`${API_URL}/pos/sessions/current`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const sessionResult = await sessionResponse.json();
 
                 if (!sessionResult.session) {
-                    // No active session - show message but don't error (pending cashups may still be visible)
                     document.getElementById('sessionInfo').innerHTML = `
                         <div style="text-align: center; padding: 20px;">
                             <p style="font-size: 18px; margin: 0;">No active till session</p>
@@ -4059,43 +4202,84 @@
 
                 currentSessionData = sessionResult.session;
 
-                // Get sales for this session
-                const salesResponse = await fetch(`${API_URL}/pos/sales?session_id=${currentSessionData.id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const salesResult = await salesResponse.json();
+                // ── Reconciliation API: authoritative payment breakdown ────────
+                // Uses sale_payments (not sales.payment_method) so split-payment
+                // sales are correctly counted per method. Also includes refunds.
+                let recon = null;
+                try {
+                    const reconResponse = await fetch(
+                        `${API_URL}/pos/sessions/${currentSessionData.id}/reconciliation`,
+                        { headers: { 'Authorization': `Bearer ${token}` } }
+                    );
+                    if (reconResponse.ok) recon = await reconResponse.json();
+                } catch (reconErr) {
+                    console.warn('[CashUp] Reconciliation fetch failed — falling back to session data:', reconErr.message);
+                }
 
-                // Calculate totals
-                let totalSales = 0;
-                let cashSales = 0;
-                let cardSales = 0;
-                let accountSales = 0;
-
-                salesResult.sales.forEach(sale => {
-                    totalSales += sale.total_amount;
-                    if (sale.payment_method === 'CASH') cashSales += sale.total_amount;
-                    if (sale.payment_method === 'CARD') cardSales += sale.total_amount;
-                    if (sale.payment_method === 'ACCOUNT') accountSales += sale.total_amount;
-                });
-
-                // Update UI
+                // ── Session header ────────────────────────────────────────────
                 document.getElementById('cashUpSessionId').textContent = `Till ${currentSessionData.till_id}`;
                 document.getElementById('cashUpUser').textContent = currentUser;
-                document.getElementById('cashUpOpeningBalance').textContent = `R ${parseFloat(currentSessionData.opening_balance).toFixed(2)}`;
+                document.getElementById('cashUpOpeningBalance').textContent =
+                    `R ${parseFloat(currentSessionData.opening_balance).toFixed(2)}`;
+                document.getElementById('cashUpOpenedAt').textContent =
+                    new Date(currentSessionData.opened_at).toLocaleString();
 
-                const openTime = new Date(currentSessionData.opened_at);
-                document.getElementById('cashUpOpenedAt').textContent = openTime.toLocaleString();
+                if (recon) {
+                    // ── Use authoritative reconciliation figures ──────────────
+                    const cr = recon.cash_reconciliation;
+                    const totals = recon.totals;
+                    const payments = recon.payments;
+                    const refunds = recon.refunds;
 
-                document.getElementById('cashUpTotalSales').textContent = `R ${totalSales.toFixed(2)}`;
-                document.getElementById('cashUpSalesCount').textContent = `${salesResult.sales.length} transactions`;
+                    _reconExpectedCash = cr.expected_cash_in_drawer;
 
-                const expectedCash = parseFloat(currentSessionData.opening_balance) + cashSales;
-                document.getElementById('cashUpExpectedCash').textContent = `R ${expectedCash.toFixed(2)}`;
-                document.getElementById('expectedCashAmount').textContent = `R ${expectedCash.toFixed(2)}`;
+                    document.getElementById('cashUpTotalSales').textContent =
+                        `R ${totals.gross_sales.toFixed(2)}`;
+                    document.getElementById('cashUpSalesCount').textContent =
+                        `${totals.sale_count} transaction${totals.sale_count !== 1 ? 's' : ''}` +
+                        (totals.void_count > 0 ? ` (${totals.void_count} voided)` : '');
 
-                document.getElementById('cashSales').textContent = `R ${cashSales.toFixed(2)}`;
-                document.getElementById('cardSales').textContent = `R ${cardSales.toFixed(2)}`;
-                document.getElementById('accountSales').textContent = `R ${accountSales.toFixed(2)}`;
+                    // Expected cash: opening + cash sales − cash refunds
+                    document.getElementById('cashUpExpectedCash').textContent =
+                        `R ${cr.expected_cash_in_drawer.toFixed(2)}`;
+                    document.getElementById('expectedCashAmount').textContent =
+                        `R ${cr.expected_cash_in_drawer.toFixed(2)}`;
+
+                    // Payment breakdown from sale_payments (authoritative)
+                    document.getElementById('cashSales').textContent    = `R ${payments.cash.toFixed(2)}`;
+                    document.getElementById('cardSales').textContent    = `R ${payments.card.toFixed(2)}`;
+                    document.getElementById('eftSales').textContent     = `R ${payments.eft.toFixed(2)}`;
+                    document.getElementById('accountSales').textContent = `R ${payments.account.toFixed(2)}`;
+
+                    // Show cash refunds row only when refunds exist
+                    if (refunds.cash > 0) {
+                        document.getElementById('cashRefunds').textContent = `−R ${refunds.cash.toFixed(2)}`;
+                        document.getElementById('cashRefundsRow').style.display = 'flex';
+                    } else {
+                        document.getElementById('cashRefundsRow').style.display = 'none';
+                    }
+
+                    // Warn if consistency issues were detected
+                    if (recon.consistency && !recon.consistency.is_consistent) {
+                        console.warn('[CashUp] Consistency issues detected:', recon.consistency.issues);
+                    }
+                } else {
+                    // ── Fallback: legacy calculation (recon endpoint unavailable) ─
+                    // Less accurate (no sale_payments split, no refunds), but
+                    // preserves display when the new endpoint is unreachable.
+                    const opening = parseFloat(currentSessionData.opening_balance) || 0;
+                    _reconExpectedCash = opening;   // conservative fallback
+
+                    document.getElementById('cashUpTotalSales').textContent = `R 0.00`;
+                    document.getElementById('cashUpSalesCount').textContent = `Unavailable`;
+                    document.getElementById('cashUpExpectedCash').textContent = `R ${opening.toFixed(2)}`;
+                    document.getElementById('expectedCashAmount').textContent = `R ${opening.toFixed(2)}`;
+                    document.getElementById('cashSales').textContent    = `R 0.00`;
+                    document.getElementById('cardSales').textContent    = `R 0.00`;
+                    document.getElementById('eftSales').textContent     = `R 0.00`;
+                    document.getElementById('accountSales').textContent = `R 0.00`;
+                    document.getElementById('cashRefundsRow').style.display = 'none';
+                }
 
                 // Reset denomination inputs
                 resetDenominations();
@@ -4321,7 +4505,24 @@
 
                 const result = await response.json();
 
-                if (result.success) {
+                if (result.session) {
+                    // Fire-and-forget: creates immutable recon snapshot and transitions
+                    // session status to 'cashed_up'. Session is already closed — this
+                    // enriches the record without blocking the cashier's workflow.
+                    fetch(`${API_URL}/pos/sessions/${currentSessionData.id}/complete-cashup`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            counted_cash: totalCounted,
+                            counted_card: 0,
+                            counted_other: 0,
+                            notes: notes
+                        })
+                    }).catch(err => console.warn('[CashUp] complete-cashup snapshot call failed (non-blocking):', err.message));
+
                     showNotification('Till session closed successfully', 'success');
                     currentSessionData = null;
                     showTab('till');
@@ -4365,62 +4566,70 @@
 
         function displayProductsGrid(productsToShow) {
             const grid = document.getElementById('productsGrid');
-            grid.innerHTML = '';
 
-            productsToShow.forEach(product => {
-                const tile = document.createElement('div');
-                tile.className = 'product-tile';
-                tile.onclick = () => addToCart(product);
-
+            // Single innerHTML write — no per-tile createElement or closure allocation.
+            // Click handling is via event delegation set up in DOMContentLoaded.
+            grid.innerHTML = productsToShow.map(product => {
                 // When offline: show locally-estimated stock with visual distinction.
                 // current_stock is decremented by offline checkout; stock_quantity is the
                 // last confirmed server value. ~N (italic amber) signals "estimate, not confirmed".
                 let stockHtml;
                 if (!isOnline) {
+                    // current_stock is the locally-decremented estimate (offline sales applied).
+                    // stock_quantity is the last confirmed server value.
                     const est = product.current_stock ?? product.stock_quantity ?? 0;
-                    if (est <= 0) {
+                    if (est < 0) {
+                        // Estimate has gone negative — red badge, same class as online negative stock.
+                        stockHtml = `<div class="stock-negative">~${est} (est.) ⚠</div>`;
+                    } else if (est === 0 && companyStockPolicy.allowNegativeStock) {
+                        // At zero estimate, policy allows further negative sales — amber warning.
+                        stockHtml = `<div class="stock-zero-neg">Out of stock (est., neg. allowed)</div>`;
+                    } else if (est <= 0) {
+                        // Strict mode: zero or below — existing out-of-stock estimate style.
                         stockHtml = `<div class="stock-zero-est">Out of stock (est.)</div>`;
                     } else {
                         stockHtml = `<div class="stock-estimated">~${est} (est.)</div>`;
                     }
                 } else {
                     const qty = product.stock_quantity ?? 0;
-                    stockHtml = `<div class="product-stock">Stock: ${qty}</div>`;
+                    if (qty < 0) {
+                        stockHtml = `<div class="stock-negative">Stock: ${qty} ⚠</div>`;
+                    } else if (qty === 0 && companyStockPolicy.allowNegativeStock) {
+                        stockHtml = `<div class="stock-zero-neg">Out of stock (neg. allowed)</div>`;
+                    } else {
+                        stockHtml = `<div class="product-stock">Stock: ${qty}</div>`;
+                    }
                 }
-
-                tile.innerHTML = `
+                return `<div class="product-tile" data-product-id="${product.id}">
                     <div class="product-name">${product.product_name}</div>
                     <div class="product-price">R ${parseFloat(product.unit_price).toFixed(2)}</div>
                     ${stockHtml}
-                `;
-
-                grid.appendChild(tile);
-            });
+                </div>`;
+            }).join('');
         }
 
         function displayProductsTable(productsToShow) {
             const tbody = document.getElementById('productsTableBody');
-            tbody.innerHTML = '';
-
             document.getElementById('productCount').textContent = `${productsToShow.length} Products`;
 
-            productsToShow.forEach(product => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td onclick="editProduct(${JSON.stringify(product).replace(/"/g, '&quot;')})" style="cursor:pointer;">${product.product_code}</td>
-                    <td onclick="editProduct(${JSON.stringify(product).replace(/"/g, '&quot;')})" style="cursor:pointer;">${product.product_name}</td>
-                    <td onclick="editProduct(${JSON.stringify(product).replace(/"/g, '&quot;')})" style="cursor:pointer;">${product.category || '-'}</td>
-                    <td onclick="editProduct(${JSON.stringify(product).replace(/"/g, '&quot;')})" style="cursor:pointer;">R ${parseFloat(product.unit_price).toFixed(2)}</td>
-                    <td onclick="editProduct(${JSON.stringify(product).replace(/"/g, '&quot;')})" style="cursor:pointer;">${product.stock_quantity || product.current_stock || 0}</td>
+            // Single tbody write — eliminates per-row appendChild reflows.
+            // safeJson computed once per product — eliminates 4× redundant JSON.stringify per row.
+            tbody.innerHTML = productsToShow.map(product => {
+                const safeJson = JSON.stringify(product).replace(/"/g, '&quot;');
+                return `<tr>
+                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.product_code}</td>
+                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.product_name}</td>
+                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.category || '-'}</td>
+                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">R ${parseFloat(product.unit_price).toFixed(2)}</td>
+                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.stock_quantity || product.current_stock || 0}</td>
                     <td>
                         <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;"
                             onclick="event.stopPropagation(); showProductStockModal(${product.id}, '${(product.product_name || '').replace(/'/g, "\\'")}', '${product.product_code}')">
                             Manage
                         </button>
                     </td>
-                `;
-                tbody.appendChild(row);
-            });
+                </tr>`;
+            }).join('');
         }
 
         function searchProducts() {
@@ -4434,6 +4643,19 @@
 
         // Barcode scanning
         document.addEventListener('DOMContentLoaded', function() {
+            // Product grid — single delegated click handler replaces per-tile onclick closures.
+            // Persists across grid innerHTML rewrites because it is on the grid element itself.
+            const productsGrid = document.getElementById('productsGrid');
+            if (productsGrid) {
+                productsGrid.addEventListener('click', function(e) {
+                    const tile = e.target.closest('[data-product-id]');
+                    if (!tile) return;
+                    const productId = parseInt(tile.dataset.productId, 10);
+                    const product = products.find(p => p.id === productId);
+                    if (product) addToCart(product);
+                });
+            }
+
             const barcodeInput = document.getElementById('barcodeInput');
             if (barcodeInput) {
                 let barcodeTimeout = null;
@@ -4483,7 +4705,7 @@
         });
 
         function searchByBarcode(barcode) {
-            const product = products.find(p => p.product_code === barcode);
+            const product = barcodeMap.get(barcode);
             if (product) {
                 addToCart(product);
                 document.getElementById('barcodeInput').value = '';
@@ -4513,17 +4735,33 @@
             if (existing) {
                 if (existing.quantity < availableStock) {
                     existing.quantity++;
+                } else if (companyStockPolicy.allowNegativeStock) {
+                    existing.quantity++;
+                    showNotification(
+                        `Warning: ${product.product_name} — selling into negative stock`,
+                        'error'
+                    );
                 } else {
                     showNotification('Not enough stock', 'error');
                     return;
                 }
             } else {
+                if (availableStock <= 0 && companyStockPolicy.allowNegativeStock) {
+                    showNotification(
+                        `Warning: ${product.product_name} is out of stock — negative stock sale`,
+                        'error'
+                    );
+                }
                 cart.push({
                     productId: product.id,
                     name: product.product_name,
                     price: product.unit_price,
                     quantity: 1,
-                    maxStock: availableStock
+                    // In negative-stock-allowed mode there is no frontend cap — the backend
+                    // enforces the actual decrement. Use a very large number rather than
+                    // Infinity to stay compatible with any JSON serialisation that might
+                    // happen to the cart array.
+                    maxStock: companyStockPolicy.allowNegativeStock ? 999999 : availableStock
                 });
             }
 
@@ -4769,12 +5007,30 @@
                 if (response.ok) {
                     lastSaleId = result.saleId;
 
+                    // Snapshot cart before clearing — needed for local stock decrement below.
+                    const soldItems = cart.map(item => ({ productId: item.productId, quantity: item.quantity }));
+
                     // Show sale complete modal with print option
                     showSaleCompleteModal(result);
 
                     cart = [];
                     updateCart();
-                    await loadProducts();
+
+                    // Decrement stock_quantity in memory for immediate tile/table display.
+                    // Server already committed the sale atomically — this is display-only.
+                    // loadProducts() restores server truth on next login, reconnect, or manual refresh.
+                    for (const sold of soldItems) {
+                        const product = products.find(p => p.id === sold.productId);
+                        if (product) {
+                            const base = product.stock_quantity ?? 0;
+                            product.stock_quantity = companyStockPolicy.allowNegativeStock
+                                ? base - sold.quantity
+                                : Math.max(0, base - sold.quantity);
+                        }
+                    }
+                    displayProductsGrid(products);
+                    displayProductsTable(products);
+                    rebuildBarcodeMap();
 
                     // Auto-print if enabled
                     if (autoPrintEnabled && lastSaleId) {
@@ -5112,6 +5368,7 @@
             // Hide enterprise sections
             document.getElementById('dashboardLayout').style.display = 'none';
             document.getElementById('loyaltyLayout').style.display = 'none';
+            document.getElementById('recoveryLayout').style.display = 'none';
 
             // Show appropriate section
             if (tab === 'till') {
@@ -5134,6 +5391,9 @@
             } else if (tab === 'loyalty') {
                 document.getElementById('loyaltyLayout').style.display = 'block';
                 loadLoyaltyPrograms();
+            } else if (tab === 'recovery') {
+                document.getElementById('recoveryLayout').style.display = 'block';
+                loadRecovery();
             } else {
                 alert(`${tab.charAt(0).toUpperCase() + tab.slice(1)} section - To be implemented`);
             }
@@ -6553,7 +6813,10 @@
             tbody.innerHTML = stockItems.map(item => {
                 let statusClass = 'ok';
                 let statusText = 'OK';
-                if (item.stock_quantity <= 0) {
+                if (item.stock_quantity < 0) {
+                    statusClass = 'negative';
+                    statusText = 'Negative Stock';
+                } else if (item.stock_quantity === 0) {
                     statusClass = 'out';
                     statusText = 'Out of Stock';
                 } else if (item.stock_quantity <= item.min_stock_level) {
@@ -6562,13 +6825,14 @@
                 }
 
                 const stockValue = item.stock_quantity * (item.cost_price || 0);
+                const qtyStyle = item.stock_quantity < 0 ? ' style="color:#b71c1c;font-weight:700;"' : '';
 
                 return `
-                    <tr class="${statusClass === 'out' ? 'out-of-stock' : statusClass === 'low' ? 'low-stock' : ''}">
+                    <tr class="${statusClass === 'negative' ? 'negative-stock' : statusClass === 'out' ? 'out-of-stock' : statusClass === 'low' ? 'low-stock' : ''}">
                         <td>${item.product_code}</td>
                         <td>${item.product_name}</td>
                         <td>${item.category || '-'}</td>
-                        <td>${item.stock_quantity}</td>
+                        <td${qtyStyle}>${item.stock_quantity}</td>
                         <td>${item.min_stock_level}</td>
                         <td><span class="stock-badge ${statusClass}">${statusText}</span></td>
                         <td>R ${parseFloat(item.unit_price).toFixed(2)}</td>
@@ -7187,6 +7451,7 @@
                 document.getElementById('cashUpLayout').style.display = 'none';
                 document.getElementById('dashboardLayout').style.display = 'none';
                 document.getElementById('loyaltyLayout').style.display = 'none';
+                document.getElementById('recoveryLayout').style.display = 'none';
                 stockInterface.style.display = 'block';
 
                 // Remove active from all tabs, add to stock
@@ -7205,6 +7470,339 @@
                 originalShowTab(tab, evt);
             }
         };
+
+        // ========== RECOVERY TAB JAVASCRIPT (Workstream 4A) ==========
+
+        // Read ALL records from the offline queue regardless of status.
+        async function getAllQueuedSales() {
+            if (!db) return [];
+            return new Promise(resolve => {
+                const tx = db.transaction('offlineSales', 'readonly');
+                const req = tx.objectStore('offlineSales').getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror  = () => resolve([]);
+            });
+        }
+
+        async function loadRecovery() {
+            const queueItems = await getAllQueuedSales();
+            renderQueueItems(queueItems);
+
+            try {
+                const res = await fetch(`${API_URL}/pos/recovery/sessions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    renderSessionHealth(await res.json());
+                } else {
+                    document.getElementById('recoverySessionHealth').innerHTML =
+                        '<p style="color:#f44336;text-align:center;padding:20px;">Could not load session health.</p>';
+                }
+            } catch (e) {
+                document.getElementById('recoverySessionHealth').innerHTML =
+                    '<p style="color:#f44336;text-align:center;padding:20px;">Session health unavailable — check connection.</p>';
+            }
+        }
+
+        // Escape free-text values before inserting into innerHTML to prevent
+        // stored XSS from lastSyncError (API error strings) or recoveryNote
+        // (manager prompt input).
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderQueueItems(items) {
+            const container = document.getElementById('recoveryQueueContainer');
+            if (!items.length) {
+                container.innerHTML = '<p style="color:#4caf50;text-align:center;padding:20px;font-weight:600;">Queue is empty — no pending or failed offline sales.</p>';
+                return;
+            }
+
+            const statusLabel = {
+                pending:          'Pending',
+                failed:           'Failed',
+                conflict_stock:   'Stock Conflict',
+                conflict_session: 'Session Conflict',
+                abandoned:        'Abandoned',
+            };
+
+            container.innerHTML = items.map(sale => {
+                const st          = sale.status || 'pending';
+                const label       = statusLabel[st] || st;
+                const isAbandoned = st === 'abandoned';
+                const isRetryable = !isAbandoned;
+                const canAbandon  = !isAbandoned;
+                const safeNum     = (sale.tempSaleNumber || 'Unknown').replace(/'/g, '');
+
+                return `<div class="queue-item status-${st}">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div>
+                            <strong>${escHtml(sale.tempSaleNumber || 'Unknown')}</strong>
+                            <span class="queue-status-badge ${st}">${label}</span>
+                        </div>
+                        <div style="font-size:12px;color:#999;">${sale.createdAt ? new Date(sale.createdAt).toLocaleString() : '-'}</div>
+                    </div>
+                    <div style="font-size:13px;color:#555;margin-bottom:10px;">
+                        Items: ${(sale.items || []).length}&nbsp;&nbsp;|&nbsp;&nbsp;Attempts: ${sale.syncAttempts || 0}&nbsp;&nbsp;|&nbsp;&nbsp;Payment: ${sale.paymentMethod || '-'}
+                        ${sale.lastSyncError ? `<div style="color:#f44336;margin-top:4px;">Error: ${escHtml(sale.lastSyncError)}</div>` : ''}
+                        ${sale.recoveryNote  ? `<div style="color:#6a1b9a;margin-top:4px;">Note: ${escHtml(sale.recoveryNote)}</div>`  : ''}
+                    </div>
+                    <div>
+                        ${isRetryable  ? `<button class="recovery-action-btn retry"   onclick="retryQueueItem(${sale.tempId})">Retry</button>` : ''}
+                        ${canAbandon   ? `<button class="recovery-action-btn abandon" onclick="promptAbandonItem(${sale.tempId}, '${safeNum}')">Mark Unrecoverable</button>` : ''}
+                        ${!isAbandoned ? `<button class="recovery-action-btn note"    onclick="promptAddNote(${sale.tempId}, '${safeNum}')">Add Note</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function retryQueueItem(tempId) {
+            const all  = await getAllQueuedSales();
+            const sale = all.find(s => s.tempId === tempId);
+            if (!sale) return;
+
+            fetch(`${API_URL}/pos/recovery/queue/retry`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    temp_sale_number: sale.tempSaleNumber,
+                    item_count:       (sale.items || []).length,
+                    previous_status:  sale.status,
+                    sync_attempts:    sale.syncAttempts || 0,
+                })
+            }).catch(() => {});
+
+            // Reset item — clear attempt count so the sync cycle gives fresh tries
+            if (db) {
+                await new Promise(resolve => {
+                    const tx  = db.transaction('offlineSales', 'readwrite');
+                    const req = tx.objectStore('offlineSales').get(tempId);
+                    req.onsuccess = () => {
+                        const item = req.result;
+                        if (item) {
+                            item.status        = 'pending';
+                            item.syncAttempts  = 0;
+                            item.lastSyncError = null;
+                            item.managerRetryAt = new Date().toISOString();
+                            tx.objectStore('offlineSales').put(item);
+                        }
+                        resolve();
+                    };
+                    req.onerror = () => resolve();
+                });
+            }
+
+            showNotification('Queued for retry — syncing now...', 'info');
+            await syncOfflineSales();
+            await loadRecovery();
+        }
+
+        async function retryAllRetryable() {
+            const all       = await getAllQueuedSales();
+            const retryable = all.filter(s => s.status !== 'abandoned');
+            if (!retryable.length) {
+                showNotification('No retryable items in queue.', 'info');
+                return;
+            }
+
+            fetch(`${API_URL}/pos/recovery/queue/retry`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    temp_sale_number: `BULK (${retryable.length} items)`,
+                    item_count:       retryable.length,
+                    previous_status:  'mixed',
+                    sync_attempts:    0,
+                })
+            }).catch(() => {});
+
+            for (const sale of retryable) {
+                if (!db) continue;
+                await new Promise(resolve => {
+                    const tx  = db.transaction('offlineSales', 'readwrite');
+                    const req = tx.objectStore('offlineSales').get(sale.tempId);
+                    req.onsuccess = () => {
+                        const item = req.result;
+                        if (item) {
+                            item.status        = 'pending';
+                            item.syncAttempts  = 0;
+                            item.lastSyncError = null;
+                            item.managerRetryAt = new Date().toISOString();
+                            tx.objectStore('offlineSales').put(item);
+                        }
+                        resolve();
+                    };
+                    req.onerror = () => resolve();
+                });
+            }
+
+            showNotification(`Retrying ${retryable.length} item${retryable.length !== 1 ? 's' : ''}...`, 'info');
+            await syncOfflineSales();
+            await loadRecovery();
+        }
+
+        function promptAbandonItem(tempId, safeNum) {
+            const reason = prompt(`Mark "${safeNum}" as permanently unrecoverable?\n\nEnter reason (required):`);
+            if (reason === null) return;
+            if (!reason.trim()) { showNotification('Reason is required to mark an item unrecoverable.', 'error'); return; }
+            markQueueItemAbandoned(tempId, safeNum, reason.trim());
+        }
+
+        async function markQueueItemAbandoned(tempId, safeNum, reason) {
+            const all     = await getAllQueuedSales();
+            const current = all.find(s => s.tempId === tempId);
+
+            await fetch(`${API_URL}/pos/recovery/queue/abandon`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    temp_sale_number: safeNum,
+                    item_count:       current ? (current.items || []).length : null,
+                    previous_status:  current?.status || 'unknown',
+                    reason,
+                })
+            }).catch(() => {});
+
+            if (db) {
+                await new Promise(resolve => {
+                    const tx  = db.transaction('offlineSales', 'readwrite');
+                    const req = tx.objectStore('offlineSales').get(tempId);
+                    req.onsuccess = () => {
+                        const item = req.result;
+                        if (item) {
+                            item.status       = 'abandoned';
+                            item.abandonedAt  = new Date().toISOString();
+                            item.recoveryNote = reason;
+                            tx.objectStore('offlineSales').put(item);
+                        }
+                        resolve();
+                    };
+                    req.onerror = () => resolve();
+                });
+            }
+
+            showNotification(`${safeNum} marked as unrecoverable.`, 'info');
+            await loadRecovery();
+            updateOfflineBanner();
+        }
+
+        function promptAddNote(tempId, safeNum) {
+            const note = prompt(`Add recovery note to "${safeNum}":`);
+            if (note === null) return;
+            if (!note.trim()) { showNotification('Note cannot be empty.', 'error'); return; }
+            addQueueNote(tempId, safeNum, note.trim());
+        }
+
+        async function addQueueNote(tempId, safeNum, note) {
+            fetch(`${API_URL}/pos/recovery/queue/note`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ temp_sale_number: safeNum, note })
+            }).catch(() => {});
+
+            if (db) {
+                await new Promise(resolve => {
+                    const tx  = db.transaction('offlineSales', 'readwrite');
+                    const req = tx.objectStore('offlineSales').get(tempId);
+                    req.onsuccess = () => {
+                        const item = req.result;
+                        if (item) {
+                            item.recoveryNote   = note;
+                            item.recoveryNoteAt = new Date().toISOString();
+                            tx.objectStore('offlineSales').put(item);
+                        }
+                        resolve();
+                    };
+                    req.onerror = () => resolve();
+                });
+            }
+
+            showNotification('Recovery note saved.', 'success');
+            await loadRecovery();
+        }
+
+        function renderSessionHealth(data) {
+            const container    = document.getElementById('recoverySessionHealth');
+            const open         = data.open         || [];
+            const stale        = data.stale        || [];
+            const pendingCashup = data.pending_cashup || [];
+
+            if (!open.length && !stale.length && !pendingCashup.length) {
+                container.innerHTML = '<p style="color:#4caf50;text-align:center;padding:20px;font-weight:600;">All sessions healthy — no open, stale, or uncashed sessions.</p>';
+                return;
+            }
+
+            let html = `<table class="session-health-table">
+                <thead><tr>
+                    <th>Session</th><th>Till</th><th>Opened By</th><th>Opened At</th><th>Status</th><th>Age</th>
+                </tr></thead><tbody>`;
+
+            for (const s of stale) {
+                html += `<tr>
+                    <td>#${s.id}</td>
+                    <td>${s.tills?.till_name || '-'}</td>
+                    <td>${s.users?.full_name || s.users?.username || '-'}</td>
+                    <td>${new Date(s.opened_at).toLocaleString()}</td>
+                    <td><span class="session-health-badge stale">Stale / Abandoned</span></td>
+                    <td>${s.age_hours}h</td>
+                </tr>`;
+            }
+            for (const s of open) {
+                html += `<tr>
+                    <td>#${s.id}</td>
+                    <td>${s.tills?.till_name || '-'}</td>
+                    <td>${s.users?.full_name || s.users?.username || '-'}</td>
+                    <td>${new Date(s.opened_at).toLocaleString()}</td>
+                    <td><span class="session-health-badge open">Open</span></td>
+                    <td>${s.age_hours}h</td>
+                </tr>`;
+            }
+            for (const s of pendingCashup) {
+                html += `<tr>
+                    <td>#${s.id}</td>
+                    <td>${s.tills?.till_name || '-'}</td>
+                    <td>${s.users?.full_name || s.users?.username || '-'}</td>
+                    <td>${new Date(s.opened_at).toLocaleString()}</td>
+                    <td><span class="session-health-badge pending-cashup">Pending Cash-Up</span></td>
+                    <td>${s.closed_age_hours !== null ? s.closed_age_hours + 'h since close' : '-'}</td>
+                </tr>`;
+            }
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function confirmOverride() {
+            const type   = document.getElementById('overrideType').value;
+            const reason = document.getElementById('overrideReason').value.trim();
+
+            if (!type)   { showNotification('Select an override type.', 'error'); return; }
+            if (!reason) { showNotification('Override reason is required.', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/recovery/override`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ override_type: type, reason })
+                });
+
+                if (res.ok) {
+                    showNotification('Override recorded in audit trail.', 'success');
+                    document.getElementById('overrideType').value   = '';
+                    document.getElementById('overrideReason').value = '';
+                } else {
+                    const d = await res.json().catch(() => ({}));
+                    showNotification(d.error || 'Failed to record override.', 'error');
+                }
+            } catch (e) {
+                showNotification('Override recording failed — check connection.', 'error');
+            }
+        }
 
         // ========== ENTERPRISE TAB JAVASCRIPT ==========
 

@@ -22,6 +22,8 @@ const { randomUUID } = require('crypto');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
+const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
+const { getStockPolicy } = require('../services/stockPolicyCache');
 
 const router = express.Router();
 
@@ -51,6 +53,8 @@ function normaliseSaleBody(body) {
     payments:        body.payments        ?? null,
     // Accept camelCase (frontend) or snake_case; fallback generated server-side
     idempotency_key: body.idempotency_key ?? body.idempotencyKey ?? null,
+    // 'offline_sync' when sent by syncOfflineSales(); 'online' for real-time checkout
+    source:          body.source || 'online',
   };
 }
 
@@ -136,6 +140,7 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       payment_method,
       payments: paymentsFromBody,
       idempotency_key: clientIdempotencyKey,
+      source,
     } = normaliseSaleBody(req.body);
 
     // Use client-supplied key (online checkout or offline sync replay) or
@@ -170,20 +175,62 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
     const productMap = {};
     for (const p of (productRows || [])) productMap[p.id] = p;
 
-    // ── 2. Stock pre-check — reject if any item is insufficient ──────────
+    // ── 2a. Company stock policy — 60-second server-side cache ──────────────
+    // DB remains authoritative; cache refreshes on every TTL expiry or miss.
+    const allowNegativeStock = await getStockPolicy(req.companyId, supabase);
+
+    // ── 2b. Stock pre-check ────────────────────────────────────────────────
+    // Strict mode (allowNegativeStock = false): any insufficient item → 422.
+    // Negative-stock mode (allowNegativeStock = true): insufficient items are
+    // audited as warnings but the sale continues. The RPC enforces the same
+    // flag atomically so the application layer cannot override the DB logic.
     const stockErrors = [];
+    const negativeStockItems = [];
+
     for (const item of normItems) {
       const prod = productMap[item.product_id];
       if (!prod) {
         stockErrors.push(`Product ${item.product_id} not found`);
       } else if (prod.stock_quantity < item.quantity) {
-        stockErrors.push(
-          `Insufficient stock for "${prod.product_name}": have ${prod.stock_quantity}, need ${item.quantity}`
-        );
+        if (!allowNegativeStock) {
+          stockErrors.push(
+            `Insufficient stock for "${prod.product_name}": have ${prod.stock_quantity}, need ${item.quantity}`
+          );
+        } else {
+          // Will go negative — track for audit; sale is allowed.
+          negativeStockItems.push({
+            product_id:   prod.id,
+            product_name: prod.product_name,
+            current_stock: prod.stock_quantity,
+            requested:    item.quantity,
+            will_reach:   prod.stock_quantity - item.quantity,
+          });
+        }
       }
     }
+
     if (stockErrors.length > 0) {
+      posAuditFromReq(req, POS_EVENTS.SALE_STOCK_FAILED, {
+        tillSessionId: till_session_id,
+        source,
+        metadata: { stock_errors: stockErrors, item_count: normItems.length },
+      });
       return res.status(422).json({ error: 'Stock check failed', details: stockErrors });
+    }
+
+    // Log each item that will drive stock negative before proceeding.
+    for (const neg of negativeStockItems) {
+      posAuditFromReq(req, POS_EVENTS.NEGATIVE_STOCK_SALE_ALLOWED, {
+        productId:     neg.product_id,
+        tillSessionId: till_session_id,
+        source,
+        metadata: {
+          product_name:  neg.product_name,
+          current_stock: neg.current_stock,
+          quantity_sold: neg.requested,
+          projected_stock: neg.will_reach,
+        },
+      });
     }
 
     // ── 3. Calculate totals using DB prices (cannot be spoofed) ──────────
@@ -237,23 +284,24 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
 
     // ── 5. Atomic sale creation via Supabase RPC ──────────────────────────
     // create_sale_atomic runs INSERT sales + INSERT sale_items +
-    // INSERT sale_payments + PERFORM decrement_stock in one plpgsql
+    // INSERT sale_payments + PERFORM decrement_stock_v2 in one plpgsql
     // transaction. Any failure (including P0001 on insufficient stock)
     // rolls back all writes. No orphaned sale records possible.
     const { data: rpcResult, error: rpcError } = await supabase.rpc('create_sale_atomic', {
-      p_company_id:      req.companyId,
-      p_user_id:         req.user.userId,
-      p_sale_number:     saleNumber,
-      p_receipt_number:  receiptNumber,
-      p_till_session_id: till_session_id || null,
-      p_customer_id:     customer_id || null,
-      p_payment_method:  payment_method || 'cash',
-      p_notes:           notes || null,
-      p_subtotal:        subtotal,
-      p_discount_amount: discount,
-      p_vat_amount:      vat_total,
-      p_total_amount:    total_amount,
-      p_idempotency_key: idempotencyKey,
+      p_company_id:           req.companyId,
+      p_user_id:              req.user.userId,
+      p_sale_number:          saleNumber,
+      p_receipt_number:       receiptNumber,
+      p_till_session_id:      till_session_id || null,
+      p_customer_id:          customer_id || null,
+      p_payment_method:       payment_method || 'cash',
+      p_notes:                notes || null,
+      p_subtotal:             subtotal,
+      p_discount_amount:      discount,
+      p_vat_amount:           vat_total,
+      p_total_amount:         total_amount,
+      p_idempotency_key:      idempotencyKey,
+      p_allow_negative_stock: allowNegativeStock,
       p_items:    enrichedItems.map(item => ({
         product_id:      item.product_id,
         product_name:    item.product.product_name,
@@ -269,8 +317,18 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
     if (rpcError) {
       const msg = (rpcError.message || '').toLowerCase();
       if (msg.includes('insufficient stock')) {
+        posAuditFromReq(req, POS_EVENTS.SALE_STOCK_FAILED, {
+          tillSessionId: till_session_id,
+          source,
+          metadata: { rpc_error: rpcError.message, stage: 'atomic_rpc' },
+        });
         return res.status(422).json({ error: 'Stock check failed', details: [rpcError.message] });
       }
+      posAuditFromReq(req, POS_EVENTS.SALE_RPC_FAILED, {
+        tillSessionId: till_session_id,
+        source,
+        metadata: { rpc_error: rpcError.message },
+      });
       console.error('[Sales] create_sale_atomic failed:', rpcError);
       return res.status(500).json({ error: 'Sale creation failed', details: rpcError.message });
     }
@@ -278,6 +336,13 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
     // ── 6. Audit + response ───────────────────────────────────────────────
     if (rpcResult.was_duplicate) {
       console.log('[Sales] Duplicate sale blocked by idempotency key — returning existing sale:', rpcResult.sale_id);
+      posAuditFromReq(req, POS_EVENTS.SALE_REPLAYED, {
+        saleId:        rpcResult.sale_id,
+        tillSessionId: till_session_id,
+        source,
+        afterSnapshot: { sale_id: rpcResult.sale_id, sale_number: rpcResult.sale_number },
+        metadata:      { idempotency_key: idempotencyKey },
+      });
     }
 
     // Audit only for new sales; replayed duplicates already have an audit record.
@@ -286,6 +351,38 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
         module:   'pos',
         newValue: { saleNumber, total_amount, items: enrichedItems.length },
       });
+      posAuditFromReq(req, POS_EVENTS.SALE_CREATED, {
+        saleId:        rpcResult.sale_id,
+        tillSessionId: till_session_id,
+        source,
+        afterSnapshot: {
+          sale_id:        rpcResult.sale_id,
+          sale_number:    saleNumber,
+          receipt_number: receiptNumber,
+          total_amount,
+          item_count:     enrichedItems.length,
+          payment_method: payment_method || 'cash',
+        },
+      });
+
+      // Log NEGATIVE_STOCK_CREATED for each item whose stock went below zero.
+      // negativeStockItems were identified in the pre-check; will_reach is the
+      // projected post-sale stock level. Fire-and-forget.
+      for (const neg of negativeStockItems) {
+        posAuditFromReq(req, POS_EVENTS.NEGATIVE_STOCK_CREATED, {
+          saleId:        rpcResult.sale_id,
+          productId:     neg.product_id,
+          tillSessionId: till_session_id,
+          source,
+          metadata: {
+            product_name:  neg.product_name,
+            stock_before:  neg.current_stock,
+            quantity_sold: neg.requested,
+            stock_after:   neg.will_reach,
+            sale_number:   saleNumber,
+          },
+        });
+      }
     }
 
     res.status(201).json({
@@ -354,6 +451,13 @@ router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
         original_amount: old.total_amount,
         reason,
       },
+    });
+    posAuditFromReq(req, POS_EVENTS.SALE_VOIDED, {
+      saleId:         req.params.id,
+      tillSessionId:  old.till_session_id || null,
+      beforeSnapshot: { status: old.status, total_amount: old.total_amount, receipt_number: old.receipt_number },
+      afterSnapshot:  { status: 'voided', void_reason: reason },
+      metadata:       { reason },
     });
 
     res.json({ sale: data });
@@ -434,6 +538,13 @@ router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => 
     await auditFromReq(req, 'RETURN', 'sale', sale.id, {
       module:   'pos',
       metadata: { refund_amount: refundAmount, refund_method, reason },
+    });
+    posAuditFromReq(req, POS_EVENTS.SALE_RETURNED, {
+      saleId:         sale.id,
+      tillSessionId:  sale.till_session_id || null,
+      beforeSnapshot: { status: sale.status, total_amount: sale.total_amount },
+      afterSnapshot:  { refund_amount: refundAmount, refund_method, items_returned: itemsToReturn.length },
+      metadata:       { reason, return_id: ret.id },
     });
 
     res.status(201).json({ return: ret });

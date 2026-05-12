@@ -24,6 +24,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
+const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 
 const router = express.Router();
 
@@ -55,6 +56,10 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
 
+    // Private cache: browser may serve the product list for up to 60 s without
+    // re-fetching, then revalidate in the background for 30 s more.
+    // Applies to GET only — POST/PUT/DELETE are not cached.
+    res.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=30');
     res.json({ products: data || [] });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -132,6 +137,10 @@ router.post('/', requirePermission('PRODUCTS.CREATE'), async (req, res) => {
       module: 'pos',
       newValue: { product_name, unit_price, barcode }
     });
+    posAuditFromReq(req, POS_EVENTS.PRODUCT_CREATED, {
+      productId:     data.id,
+      afterSnapshot: { product_id: data.id, product_name, product_code: data.product_code, unit_price, stock_quantity: data.stock_quantity },
+    });
 
     res.status(201).json({ product: data });
   } catch (err) {
@@ -188,6 +197,11 @@ router.put('/:id', requirePermission('PRODUCTS.EDIT'), async (req, res) => {
         newValue: updates.unit_price,
         metadata: { product_name: old.product_name }
       });
+      posAuditFromReq(req, POS_EVENTS.PRODUCT_PRICE_CHANGED, {
+        productId:      id,
+        beforeSnapshot: { field: 'unit_price', value: old.unit_price, product_name: old.product_name },
+        afterSnapshot:  { field: 'unit_price', value: updates.unit_price },
+      });
     }
     if (updates.cost_price !== undefined && old.cost_price !== updates.cost_price) {
       await auditFromReq(req, 'PRICE_CHANGE', 'product', id, {
@@ -197,12 +211,23 @@ router.put('/:id', requirePermission('PRODUCTS.EDIT'), async (req, res) => {
         newValue: updates.cost_price,
         metadata: { product_name: old.product_name }
       });
+      posAuditFromReq(req, POS_EVENTS.PRODUCT_PRICE_CHANGED, {
+        productId:      id,
+        beforeSnapshot: { field: 'cost_price', value: old.cost_price, product_name: old.product_name },
+        afterSnapshot:  { field: 'cost_price', value: updates.cost_price },
+      });
     }
 
     await auditFromReq(req, 'UPDATE', 'product', id, {
       module: 'pos',
       oldValue: old,
       newValue: data
+    });
+    posAuditFromReq(req, POS_EVENTS.PRODUCT_UPDATED, {
+      productId:      id,
+      beforeSnapshot: { product_name: old.product_name, unit_price: old.unit_price, is_active: old.is_active },
+      afterSnapshot:  { product_name: data.product_name, unit_price: data.unit_price, is_active: data.is_active },
+      metadata:       { fields_changed: Object.keys(updates).filter(k => k !== 'updated_at') },
     });
 
     res.json({ product: data });
@@ -289,6 +314,11 @@ router.delete('/:id', requirePermission('PRODUCTS.DELETE'), async (req, res) => 
     if (error) return res.status(500).json({ error: error.message });
 
     await auditFromReq(req, 'DELETE', 'product', req.params.id, { module: 'pos' });
+    posAuditFromReq(req, POS_EVENTS.PRODUCT_DEACTIVATED, {
+      productId:      req.params.id,
+      beforeSnapshot: { is_active: true },
+      afterSnapshot:  { is_active: false },
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

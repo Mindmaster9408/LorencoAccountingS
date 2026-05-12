@@ -87,24 +87,37 @@ router.get('/search', async (req, res) => {
 /**
  * GET /api/companies/:id
  * Super admins can fetch any company. Regular users can only fetch companies
- * they are linked to via user_company_access.
+ * they are linked to via user_company_access OR whose companyId is already
+ * embedded in their JWT (i.e. they were authorised via login / select-company /
+ * sso-launch — which covers the eco_clients access chain as well).
  */
 router.get('/:id', async (req, res) => {
   try {
     const companyId = parseInt(req.params.id);
 
-    // Non-super-admins must have a user_company_access row for this company
+    // Non-super-admins: verify authorisation.
     if (!req.user.isSuperAdmin) {
-      const { data: access } = await supabase
-        .from('user_company_access')
-        .select('id')
-        .eq('user_id', req.user.userId)
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .limit(1);
+      // Fast path — the JWT was already issued for this specific company (via
+      // login, select-company, or sso-launch). All three endpoints perform full
+      // authorisation before signing the token, so matching companyId in the
+      // JWT is sufficient proof of access (covers eco_clients chain too).
+      const jwtCompanyId = req.companyId ? parseInt(req.companyId) : null;
+      const jwtCoversThisCompany = jwtCompanyId === companyId;
 
-      if (!access || access.length === 0) {
-        return res.status(403).json({ error: 'Access denied' });
+      if (!jwtCoversThisCompany) {
+        // Slow path — user is requesting a company that is not their current
+        // active JWT company; fall back to direct user_company_access check.
+        const { data: access } = await supabase
+          .from('user_company_access')
+          .select('id')
+          .eq('user_id', req.user.userId)
+          .eq('company_id', companyId)
+          .eq('is_active', true)
+          .limit(1);
+
+        if (!access || access.length === 0) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
       }
     }
 

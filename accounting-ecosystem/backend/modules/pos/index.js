@@ -5,16 +5,19 @@
  */
 
 const express = require('express');
-const productsRoutes   = require('./routes/products');
-const salesRoutes      = require('./routes/sales');
-const customersRoutes  = require('./routes/customers');
-const categoriesRoutes = require('./routes/categories');
-const inventoryRoutes  = require('./routes/inventory');
-const sessionsRoutes   = require('./routes/sessions');
-const tillsRoutes      = require('./routes/tills');
-const kvRoutes         = require('./routes/kv');
-const discountsRoutes  = require('./routes/discounts');
-const loyaltyRoutes    = require('./routes/loyalty');
+const productsRoutes       = require('./routes/products');
+const salesRoutes          = require('./routes/sales');
+const customersRoutes      = require('./routes/customers');
+const categoriesRoutes     = require('./routes/categories');
+const inventoryRoutes      = require('./routes/inventory');
+const sessionsRoutes       = require('./routes/sessions');
+const reconciliationRoutes = require('./routes/reconciliation');
+const tillsRoutes          = require('./routes/tills');
+const kvRoutes             = require('./routes/kv');
+const discountsRoutes      = require('./routes/discounts');
+const loyaltyRoutes        = require('./routes/loyalty');
+const settingsRoutes       = require('./routes/settings');
+const recoveryRoutes       = require('./routes/recovery');
 
 const router = express.Router();
 
@@ -27,10 +30,15 @@ router.use('/customers',  customersRoutes);
 router.use('/categories', categoriesRoutes);
 router.use('/inventory',  inventoryRoutes);
 router.use('/sessions',   sessionsRoutes);
+// Reconciliation routes — mounted after sessionsRoutes so session handlers take
+// priority; /sessions/:id/reconciliation and /snapshot fall through to this router.
+router.use('/sessions',   reconciliationRoutes);
 router.use('/tills',      tillsRoutes);
 router.use('/till',       tillsRoutes);   // alias used by some frontend calls
 router.use('/discounts',  discountsRoutes);
 router.use('/loyalty',    loyaltyRoutes);
+router.use('/settings',   settingsRoutes);
+router.use('/recovery',   recoveryRoutes);
 
 // Health check for POS module
 router.get('/status', (req, res) => {

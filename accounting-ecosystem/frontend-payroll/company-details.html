@@ -470,11 +470,16 @@
             }
         }
 
-        function switchToCompany(companyId) {
-            const session = AUTH.getSession();
-            session.company_id = companyId;
-            safeLocalStorage.setItem('session', JSON.stringify(session));
-            location.reload();
+        async function switchToCompany(companyId) {
+            // Must refresh the JWT (not just localStorage) so that subsequent
+            // API calls carry the correct company context — particularly for
+            // eco-client companies that have no user_company_access row.
+            const result = await AUTH.selectCompany(companyId);
+            if (result.success) {
+                location.reload();
+            } else {
+                alert('Failed to switch company: ' + (result.message || 'Access denied'));
+            }
         }
 
         function handleLogout() {

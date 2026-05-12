@@ -9,6 +9,7 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
 const { requireCompany } = require('../../../middleware/auth');
+const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 
 const router = express.Router();
 
@@ -80,6 +81,12 @@ router.post('/print/:saleId', async (req, res) => {
       .select('company_name, trading_name, vat_number, contact_phone, address')
       .eq('id', req.companyId)
       .single();
+
+    posAuditFromReq(req, POS_EVENTS.RECEIPT_PRINTED, {
+      saleId:        sale.id,
+      tillSessionId: sale.till_session_id || null,
+      afterSnapshot: { sale_id: sale.id, receipt_number: sale.receipt_number, total_amount: sale.total_amount },
+    });
 
     res.json({
       success: true,
