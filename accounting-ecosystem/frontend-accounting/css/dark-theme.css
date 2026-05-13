@@ -718,6 +718,66 @@ a:hover {
     background: rgba(255,255,255,0.15);
     border-radius: 4px;
 }
+
+/* ── Bank Staging Page (bank-staging.html) ───────────────────────────────────── */
+/* Problem: inline styles use light backgrounds (#fafafa, #f0faf4, etc.)          */
+/* Dark theme forces td color=white with !important → white text on white bg.     */
+/* Fix: replace all light row tints with dark semi-transparent equivalents.       */
+.staging-table thead tr {
+    background: rgba(255,255,255,0.06) !important;
+}
+.staging-table th {
+    color: var(--text-secondary) !important;
+    background: rgba(255,255,255,0.06) !important;
+}
+.staging-table td {
+    border-bottom-color: var(--border) !important;
+    color: var(--text) !important;
+}
+/* Row tints — dark mode equivalents of the light-mode row colours */
+.staging-table tr.row-rejected  { opacity: 0.55; background: rgba(234, 67, 53, 0.10) !important; }
+.staging-table tr.row-confirmed { background: rgba(52, 168, 83, 0.10) !important; }
+.staging-table tr.row-duplicate { background: rgba(249, 168, 37, 0.10) !important; }
+.staging-table tr.row-transfer  { background: rgba(25, 103, 210, 0.10) !important; }
+.staging-table tr.row-review    { background: rgba(196, 93, 0, 0.10) !important; }
+/* Status badges — replace light pastel fills with dark semi-transparent fills */
+.badge-unmatched { background: rgba(255,255,255,0.12) !important; color: rgba(255,255,255,0.75) !important; }
+.badge-transfer  { background: rgba(25,103,210,0.25) !important;  color: #7baaf7 !important; }
+.badge-review    { background: rgba(196,93,0,0.25) !important;    color: #ffb74d !important; }
+.badge-confirmed { background: rgba(52,168,83,0.25) !important;   color: #81c995 !important; }
+.badge-rejected  { background: rgba(234,67,53,0.25) !important;   color: #f28b82 !important; }
+.badge-duplicate { background: rgba(249,168,37,0.25) !important;  color: #fdd663 !important; }
+/* Amount colours — lighten for legibility on dark background */
+.amount-in  { color: #81c995 !important; }
+.amount-out { color: #f28b82 !important; }
+/* Reject button — white background is jarring in dark mode */
+.btn-reject {
+    background: transparent !important;
+    color: #f28b82 !important;
+    border-color: #f28b82 !important;
+}
+.btn-reject:hover {
+    background: rgba(234,67,53,0.15) !important;
+}
+/* Status tabs (To Review / Confirmed / Rejected pills) */
+.status-tab {
+    background: var(--surface) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--border) !important;
+}
+.status-tab.active {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+    border-color: var(--accent) !important;
+}
+/* Import panel / header area */
+.import-header,
+.staging-header,
+.page-header-bar {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
 
 /* ── Suppliers / Customers Page Fixes ───────────────────────────────────────── */
