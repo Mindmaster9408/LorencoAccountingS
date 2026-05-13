@@ -12,7 +12,7 @@ const router = express.Router();
  */
 router.get('/', authenticate, hasPermission('journal.view'), async (req, res) => {
   try {
-    const { status, sourceType, fromDate, toDate, limit = 100, offset = 0 } = req.query;
+    const { status, sourceType, scope, fromDate, toDate, limit = 100, offset = 0 } = req.query;
 
     let query = supabase
       .from('journals')
@@ -22,10 +22,21 @@ router.get('/', authenticate, hasPermission('journal.view'), async (req, res) =>
       .order('id', { ascending: false })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
-    if (status)     query = query.eq('status', status);
-    if (sourceType) query = query.eq('source_type', sourceType);
-    if (fromDate)   query = query.gte('date', fromDate);
-    if (toDate)     query = query.lte('date', toDate);
+    if (status) query = query.eq('status', status);
+
+    // scope filter: 'manual' = accountant-created only; 'system' = non-manual only; 'all'/absent = all journals
+    // When scope is set it takes precedence over the individual sourceType param.
+    if (scope === 'manual') {
+      query = query.or('source_type.is.null,source_type.eq.manual');
+    } else if (scope === 'system') {
+      query = query.not('source_type', 'is', null).neq('source_type', 'manual');
+    } else if (sourceType) {
+      // No scope set — allow individual sourceType filter (backward compat)
+      query = query.eq('source_type', sourceType);
+    }
+
+    if (fromDate) query = query.gte('date', fromDate);
+    if (toDate)   query = query.lte('date', toDate);
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);

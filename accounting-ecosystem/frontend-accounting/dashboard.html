@@ -458,7 +458,7 @@
         </div>
         
         <div class="section">
-            <h2>Recent Journals</h2>
+            <h2>Recent Manual Journals</h2>
             <table id="recentJournals">
                 <thead>
                     <tr>
@@ -564,8 +564,8 @@
                     document.getElementById('aiPending').textContent = '0';
                 }
                 
-                // Load recent journals
-                const recentRes = await fetchWithAuth(`${API_URL}/journals?limit=5`);
+                // Load recent manual journals (system-generated journals excluded — visible in GL/reports)
+                const recentRes = await fetchWithAuth(`${API_URL}/journals?scope=manual&limit=5`);
                 const recentData = await recentRes.json();
                 
                 const tbody = document.querySelector('#recentJournals tbody');

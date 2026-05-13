@@ -35,7 +35,14 @@
         .badge-posted { background: #e8f5e9; color: #2e7d32; }
         .badge-draft { background: #fff3e0; color: #e65100; }
         .badge-reversed { background: #fce4ec; color: #c62828; }
-        .source-badge { background: #e3f2fd; color: #1565c0; font-size: 10px; padding: 2px 8px; border-radius: 8px; }
+        .source-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+        .source-badge.src-manual      { background: #e8f5e9; color: #2e7d32; }
+        .source-badge.src-bank        { background: #e3f2fd; color: #1565c0; }
+        .source-badge.src-bank-transfer { background: #e3f2fd; color: #1565c0; }
+        .source-badge.src-supplier    { background: #fff3e0; color: #e65100; }
+        .source-badge.src-customer    { background: #f3e5f5; color: #6a1b9a; }
+        .source-badge.src-system      { background: #fce4ec; color: #880e4f; }
+        .source-badge.src-default     { background: #f5f5f5; color: #555; }
         .action-btn { padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; font-size: 11px; font-weight: 600; color: #333; margin-right: 4px; }
         .action-btn:hover { background: #f0f0f0; }
         .action-btn.edit { color: #0066cc; border-color: #0066cc; }
@@ -113,12 +120,10 @@
             <option value="draft">Draft</option>
             <option value="reversed">Reversed</option>
         </select>
-        <select id="filterSource" onchange="loadJournals()">
-            <option value="">All Sources</option>
-            <option value="manual">Manual</option>
-            <option value="bank">Bank</option>
-            <option value="pos">POS</option>
-            <option value="payroll">Payroll</option>
+        <select id="filterScope" onchange="loadJournals()">
+            <option value="manual" selected>Manual Journals</option>
+            <option value="system">System Journals</option>
+            <option value="all">All Journals</option>
         </select>
         <input type="date" id="filterFrom" placeholder="From date" onchange="loadJournals()">
         <input type="date" id="filterTo" placeholder="To date" onchange="loadJournals()">
@@ -215,6 +220,26 @@
         return h;
     }
     function fmt(n) { return 'R ' + Math.abs(parseFloat(n) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+    const SOURCE_LABELS = {
+        manual:            ['Manual',           'src-manual'],
+        bank:              ['Bank Allocation',  'src-bank'],
+        bank_transfer:     ['Bank Transfer',    'src-bank-transfer'],
+        supplier_invoice:  ['Supplier Invoice', 'src-supplier'],
+        supplier_payment:  ['Supplier Payment', 'src-supplier'],
+        customer_invoice:  ['Customer Invoice', 'src-customer'],
+        customer_payment:  ['Customer Payment', 'src-customer'],
+        opening_balance:   ['Opening Balance',  'src-system'],
+        year_end_close:    ['Year-End Close',   'src-system'],
+        pos_reconciliation:['POS Recon',        'src-system'],
+        integration:       ['Integration',      'src-system'],
+        reversal:          ['Reversal',         'src-system'],
+    };
+    function sourceBadge(st) {
+        const [label, cls] = SOURCE_LABELS[st] || [st || 'Manual', 'src-default'];
+        return `<span class="source-badge ${cls}">${label}</span>`;
+    }
+
     function showError(msg) {
         const el = document.getElementById('errorBanner');
         el.textContent = msg;
@@ -284,15 +309,15 @@
 
         const params = new URLSearchParams();
         const status = document.getElementById('filterStatus').value;
-        const source = document.getElementById('filterSource').value;
+        const scope  = document.getElementById('filterScope').value;
         const from   = document.getElementById('filterFrom').value;
         const to     = document.getElementById('filterTo').value;
         const search = document.getElementById('searchJournals').value.trim();
 
-        if (status) params.append('status', status);
-        if (source) params.append('sourceType', source);
-        if (from)   params.append('fromDate', from);
-        if (to)     params.append('toDate', to);
+        if (status)           params.append('status', status);
+        if (scope && scope !== 'all') params.append('scope', scope);
+        if (from)             params.append('fromDate', from);
+        if (to)               params.append('toDate', to);
         params.append('limit', '200');
 
         try {
@@ -349,7 +374,7 @@
                 <td style="text-align:right">${debit ? fmt(debit) : '—'}</td>
                 <td style="text-align:right">${credit ? fmt(credit) : '—'}</td>
                 <td><span class="badge badge-${j.status}">${j.status}</span></td>
-                <td><span class="source-badge">${j.source_type || 'manual'}</span></td>
+                <td>${sourceBadge(j.source_type)}</td>
                 <td>${actions.join('')}</td>
             </tr>`;
         }).join('');
