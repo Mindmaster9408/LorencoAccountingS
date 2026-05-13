@@ -558,8 +558,8 @@
         .transactions-table th:nth-child(8)  { width: 155px; }   /* Account */
         .transactions-table th:nth-child(9)  { width: 84px;  }   /* Status */
         .transactions-table th:nth-child(10) { width: 60px;  }   /* Files */
-        .transactions-table th:nth-child(11) { width: 62px;  }   /* Actions */
-        .transactions-table th:nth-child(12) { width: 50px;  }   /* AI */
+        .transactions-table th:nth-child(11) { width: 110px; }   /* Actions */
+        .transactions-table th:nth-child(12) { }                  /* AI — fills remaining width */
 
         /* Column resize handle */
         .col-resize-handle {
@@ -913,8 +913,10 @@
             background: #28a745;
         }
 
-        /* ── Transaction attachment column: hidden (import modal unaffected — uses .upload-area, not .upload-link) ── */
-        .transactions-table .txn-attachment-cell { display: none; }
+        /* ── Attachment column: hide paperclip anchor only; file-count button stays visible ── */
+        .transactions-table .txn-attachment-cell .upload-link { display: none; }
+        /* ── Status column: hidden; Flip button moved to Actions column ── */
+        .transactions-table .txn-status-cell { display: none; }
         
         .ai-btn {
             padding: 6px 14px;
@@ -1738,7 +1740,7 @@
                         <th>Balance<span class="col-resize-handle"></span></th>
                         <th>Transaction Type<span class="col-resize-handle"></span></th>
                         <th>Account<span class="col-resize-handle"></span></th>
-                        <th>Status<span class="col-resize-handle"></span></th>
+                        <th class="txn-status-cell">Status<span class="col-resize-handle"></span></th>
                         <th class="txn-attachment-cell">Files<span class="col-resize-handle"></span></th>
                         <th>Actions<span class="col-resize-handle"></span></th>
                         <th id="aiHeader">AI</th>
@@ -1779,7 +1781,7 @@
                                 <option value="">Select Account...</option>
                             </select>
                         </td>
-                        <td>
+                        <td class="txn-status-cell">
                             <span class="status-badge status-unmatched" style="font-size:10px; padding:3px 8px;">Unmatched</span>
                         </td>
                         <td colspan="3" style="text-align:left; padding-left:8px;">
@@ -2178,16 +2180,15 @@ Click OK to simulate uploading a file.`;
                 <td><span style="font-size:12px;color:#555;">${acctName ? escapeHtml(acctName) : '<span style="color:#9aa0a6">—</span>'}</span></td>`;
                     })()
                 }
-                <td>
+                <td class="txn-status-cell">
                     ${statusBadgeHtml(txn.status)}
-                    ${txn.status === 'unmatched' ? `<br><button class="action-btn" onclick="flipTransaction('${txn.id}')" style="margin-top:4px;font-size:11px;padding:2px 6px;background:#6c757d;color:#fff;" title="Swap Money In ↔ Money Out (fix import direction)">↕ Flip</button>` : ''}
                 </td>
                 <td class="txn-attachment-cell">
                     <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:12px;">&#128196; <span id="attachCount${txn.id}">0</span></button>
                 </td>
                 <td style="white-space:nowrap;">
                     ${txn.status === 'unmatched'
-                        ? `<button class="action-btn allocate-btn" id="allocBtn${txn.id}" onclick="allocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#34a853,#2d8a47);color:#fff;">Allocate</button>`
+                        ? `<button class="action-btn allocate-btn" id="allocBtn${txn.id}" onclick="allocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#34a853,#2d8a47);color:#fff;">Allocate</button><button class="action-btn" onclick="flipTransaction('${txn.id}')" style="margin-left:4px;font-size:11px;padding:2px 6px;background:#6c757d;color:#fff;" title="Swap Money In ↔ Money Out (fix import direction)">↕ Flip</button>`
                         : txn.status === 'matched'
                             ? `<button class="action-btn" onclick="unallocateTransaction('${txn.id}')" style="background:linear-gradient(135deg,#ea4335,#c62828);color:#fff;" title="Undo allocation &amp; reverse journal">Undo</button>`
                             : `<button class="action-btn" onclick="unreconcileTransaction('${txn.id}')" style="background:linear-gradient(135deg,#ff9800,#e65100);color:#fff;" title="Move back to matched">Undo Reconcile</button>`
@@ -4534,7 +4535,7 @@ Click OK to simulate uploading a file.`;
                 +     accountOptHtml
                 +   '</select>'
                 + '</td>'
-                + '<td><span class="status-badge status-unmatched">Unmatched</span></td>'
+                + '<td class="txn-status-cell"><span class="status-badge status-unmatched">Unmatched</span></td>'
                 + '<td class="txn-attachment-cell">'
                 +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents">&#128206;</a>'
                 +   '<button class="action-btn" onclick="showAttachments(\'' + id + '\')" style="padding:4px 8px; font-size:11px;">&#128196;<span id="attachCount' + id + '">0</span></button>'
