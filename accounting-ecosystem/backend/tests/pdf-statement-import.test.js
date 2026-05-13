@@ -899,6 +899,189 @@ describe('CapitecParser.parse', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// F2. Capitec Parser — real Business Account statement (VENGTELBRECHT ENTERPRIZES)
+// ─────────────────────────────────────────────────────────────────────────────
+// Statement format: DD/MM/YY (2-digit year), space thousands separator,
+// dual-date columns (Post Date + Trans. Date), +/- signed amounts,
+// Fees column on some rows (3 tokens: fee + amount + balance).
+
+const CAPITEC_BUSINESS_SAMPLE = `
+Capitec Bank
+Business Account Statement
+VENGTELBRECHT ENTERPRIZES (PTY)LTD
+Account No. 1052534830
+Statement No. 00011 Page: 1
+Balance brought forward +37 180.25
+Interest Rate @ 0.000
+03/06/25 01/06/25 POS Local Purchase 0000000000003693 Afrihost.com 4 Cape Town AUTH ID115312 -1 345.00 +35 835.25
+02/06/25 02/06/25 Outward EFT Heatwave Firefusion To 62105439336 250655 -2.00 -5 000.00 +30 833.25
+02/06/25 02/06/25 Backdated S/Debit Flashing Flashibg -1.00 -380.00 +29 850.25
+02/06/25 02/06/25 Inward EFT Credit Martin Rautenbach In 0102 +2 900.00 +32 649.25
+02/06/25 02/06/25 Inward EFT Credit INV-0082 QU-0099 +11 378.74 +47 002.49
+02/06/25 02/06/25 Deposit Transfer SCH Construction Wena16 Braai To 1053318308 -900.00 +35 734.75
+05/06/25 05/06/25 ATM Withdrawal -10.00 -600.00 +32 565.41
+09/06/25 09/06/25 ******006073** ** MJ Quality FPB Services -6.00 -1 000.00 +49 363.02
+14/06/25 14/06/25 ******006012** ** PayShapReceived QU-0140 8 Williams +1 820.00 +69 961.07
+17/06/25 17/06/25 RTC Deposit Qu-0135 Muller +30 000.00 +104 961.51
+21/06/25 21/06/25 Ret Cr Transfer Samuel Thela +18 800.00 +118 851.38
+29/06/25 28/06/25 International POS Pu 0000000000007177 bookwore.com HongKong AUTH ID 419809 SRC AMT: -2.86 -143.11 +48 331.10
+30/06/25 30/06/25 Monthly Service Fee -50.00 +69 661.73
+30/06/25 30/06/25 Notification Fee -81.55 +69 580.18
+30/06/25 30/06/25 Inward EFT Credit JOHAN NIEHAUS +25 000.00 +69 711.73
+Fee Total: -384.41
+VAT @ 15.00% VAT Total: -50.06
+`;
+
+describe('CapitecParser.parse — Business Account real statement', () => {
+  let result;
+  beforeAll(() => { result = CapitecParser.parse(CAPITEC_BUSINESS_SAMPLE, 'capitec-business.pdf'); });
+
+  // Detection
+  test('canParse returns confidence >= 0.6 for Business Account header', () => {
+    expect(CapitecParser.canParse(CAPITEC_BUSINESS_SAMPLE).confidence).toBeGreaterThanOrEqual(0.6);
+  });
+
+  // Header extraction
+  test('extracts account number 1052534830', () => {
+    expect(result.accountNumber).toBe('1052534830');
+  });
+
+  // Dual-date: transaction date uses Trans. Date (second column), not Post Date
+  test('POS Purchase uses Trans. Date (01/06/25), not Post Date (03/06/25)', () => {
+    const t = result.transactions.find(t => t.description.includes('Afrihost'));
+    expect(t).toBeDefined();
+    expect(t.date).toBe('2025-06-01');
+  });
+
+  // Debit — POS Purchase, no fee column (2-token: amount + balance)
+  test('POS Purchase Afrihost.com is negative', () => {
+    const t = result.transactions.find(t => t.description.includes('Afrihost'));
+    expect(t.amount).toBe(-1345);
+  });
+
+  // Debit — Outward EFT with fee column (3-token: fee + amount + balance)
+  test('Outward EFT Heatwave Firefusion amount = -5000 (fee column excluded)', () => {
+    const t = result.transactions.find(t => t.description.includes('Heatwave Firefusion'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-5000);
+  });
+
+  // Debit — Backdated S/Debit with fee (3-token)
+  test('Backdated S/Debit Flashing Flashibg amount = -380', () => {
+    const t = result.transactions.find(t => t.description.includes('Flashing Flashibg'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-380);
+  });
+
+  // Credit — Inward EFT (+ prefix, no fee, 2-token)
+  test('Inward EFT Credit Martin Rautenbach amount = +2900', () => {
+    const t = result.transactions.find(t => t.description.includes('Martin Rautenbach In 0102'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(2900);
+  });
+
+  // Credit — larger Inward EFT (+ prefix, no fee)
+  test('Inward EFT Credit INV-0082 amount = +11378.74', () => {
+    const t = result.transactions.find(t => t.description.includes('INV-0082'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(11378.74, 2);
+  });
+
+  // Debit — Deposit Transfer (no fee, 2-token)
+  test('Deposit Transfer SCH Construction amount = -900', () => {
+    const t = result.transactions.find(t => t.description.includes('SCH Construction'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-900);
+  });
+
+  // Debit — ATM Withdrawal with fee (3-token)
+  test('ATM Withdrawal amount = -600 (fee -10 excluded)', () => {
+    const t = result.transactions.find(t => t.description.includes('ATM Withdrawal'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-600);
+  });
+
+  // Debit — masked card ******006073** with fee (3-token)
+  test('Masked card debit ******006073 MJ Quality amount = -1000', () => {
+    const t = result.transactions.find(t => t.description.includes('MJ Quality FPB Services') &&
+      t.description.includes('006073'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-1000);
+  });
+
+  // Credit — PayShap received via masked card ******006012** (2-token)
+  test('PayShap received ******006012 amount = +1820', () => {
+    const t = result.transactions.find(t => t.description.includes('PayShapReceived'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(1820);
+  });
+
+  // Credit — RTC Deposit large amount (2-token)
+  test('RTC Deposit Muller amount = +30000', () => {
+    const t = result.transactions.find(t => t.description.includes('Muller'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(30000);
+  });
+
+  // Credit — Ret Cr Transfer (2-token)
+  test('Ret Cr Transfer Samuel Thela amount = +18800', () => {
+    const t = result.transactions.find(t => t.description.includes('Samuel Thela'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(18800);
+  });
+
+  // Debit — International POS: 3 tokens (foreign fee + amount + balance)
+  test('International POS bookwore.com amount = -143.11 (foreign fee -2.86 excluded)', () => {
+    const t = result.transactions.find(t => t.description.includes('bookwore'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-143.11, 2);
+  });
+
+  // Debit — Monthly Service Fee (previously skipped by 'service fee' keyword — now included)
+  test('Monthly Service Fee amount = -50 (not skipped)', () => {
+    const t = result.transactions.find(t => t.description.includes('Monthly Service Fee'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-50);
+  });
+
+  // Debit — Notification Fee (2-token)
+  test('Notification Fee amount = -81.55', () => {
+    const t = result.transactions.find(t => t.description.includes('Notification Fee'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-81.55, 2);
+  });
+
+  // Credit — large EFT with no fee
+  test('Inward EFT Credit JOHAN NIEHAUS amount = +25000', () => {
+    const t = result.transactions.find(t => t.description.includes('JOHAN NIEHAUS'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(25000);
+  });
+
+  // Dates: all ISO YYYY-MM-DD within 2025
+  test('all transaction dates are ISO YYYY-MM-DD within 2025', () => {
+    result.transactions.forEach(t => {
+      expect(t.date).toMatch(/^2025-\d{2}-\d{2}$/);
+    });
+  });
+
+  // Balance brought forward and Fee Total / VAT Total rows are excluded
+  test('Fee Total and VAT Total summary rows are excluded from transactions', () => {
+    const hasFeeTotal = result.transactions.some(t =>
+      t.description && t.description.toLowerCase().includes('fee total'));
+    const hasVatTotal = result.transactions.some(t =>
+      t.description && t.description.toLowerCase().includes('vat total'));
+    expect(hasFeeTotal).toBe(false);
+    expect(hasVatTotal).toBe(false);
+  });
+
+  // Total transaction count
+  test('extracts exactly 15 transactions', () => {
+    expect(result.transactions.length).toBe(15);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // G. Generic Parser
 // ─────────────────────────────────────────────────────────────────────────────
 

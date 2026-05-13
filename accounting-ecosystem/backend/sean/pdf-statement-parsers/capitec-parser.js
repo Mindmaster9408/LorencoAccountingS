@@ -13,14 +13,16 @@
 const BaseParser = require('./base-parser');
 
 const DATE_ISO_RE  = /^\d{4}-\d{2}-\d{2}/;
-const DATE_DDMM_RE = /^\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})/;
+// Prefer 4-digit year first (prevents DD/MM/25 matching as DD/MM/2 with 2-digit group)
+const DATE_DDMM_RE = /^\d{1,2}\/\d{1,2}\/(?:\d{4}|\d{2})/;
 const DATE_RE = new RegExp(`^(?:${DATE_ISO_RE.source}|${DATE_DDMM_RE.source})`);
 
-const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
+// [+-]? captures explicit + prefix on credits/balances (e.g. +2 900.00, +35 835.25)
+const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[+-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
 
 const SKIP_KEYWORDS = [
   'opening balance', 'closing balance', 'balance brought',
-  'balance carried', 'total', 'subtotal', 'service fee'
+  'balance carried', 'fee total', 'vat total'
 ];
 
 const CREDIT_RE = /\b(?:received|deposit|salary|credit|transfer\s+in|payment\s+from|refund|reversal|cashback)\b/i;
@@ -40,7 +42,7 @@ class CapitecParser extends BaseParser {
     const details = {};
     if (header.includes('capitec bank'))  { score += 0.7; details.fullName = true; }
     else if (header.includes('capitec')) { score += 0.5;  details.name = true; }
-    if (/470010/.test(text))             { score += 0.2;  details.branchCode = true; }
+    if (/450105|470010/.test(text))      { score += 0.2;  details.branchCode = true; }
     const isoCount = (text.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []).length;
     if (isoCount > 3) { score += 0.15; details.dateFormat = 'YYYY-MM-DD'; }
     return { confidence: Math.min(score, 1.0), details };
@@ -51,7 +53,11 @@ class CapitecParser extends BaseParser {
     result.accountNumber   = this.extractAccountNumber(text);
     result.statementPeriod = this.extractPeriod(text);
 
-    const lines = this.joinContinuationLines(this.toLines(text), l => DATE_RE.test(l));
+    // Summary footer lines (Fee Total, VAT Total) must be treated as line-starts
+    // so joinContinuationLines does NOT append them to the preceding transaction.
+    const SUMMARY_LINE_RE = /\b(?:fee|vat)\s+total\b/i;
+    const isStart = l => DATE_RE.test(l) || SUMMARY_LINE_RE.test(l);
+    const lines = this.joinContinuationLines(this.toLines(text), isStart);
     let prevBalance = null;
 
     for (const line of lines) {
@@ -86,11 +92,23 @@ class CapitecParser extends BaseParser {
   }
 
   static _parseLine(line, prevBalance) {
-    const dateMatch = line.match(/^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/);
+    // Prefer 4-digit year to avoid DD/MM/25 matching as DD/MM/2 (2-digit year)
+    const dateMatch = line.match(/^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{4}|\d{2}))/);
     if (!dateMatch) return null;
     const date = this.parseDate(dateMatch[1]);
     if (!date) return null;
-    const rest = line.slice(dateMatch[0].length).trim();
+    let rest = line.slice(dateMatch[0].length).trim();
+
+    // Handle dual-date columns (Capitec Business Account: Post Date + Trans. Date).
+    // If rest begins with another DD/MM/YY date, strip it and use as the
+    // transaction date (Trans. Date is more accurate than Post Date for accounting).
+    let txnDate = date;
+    const secondDateMatch = rest.match(/^(\d{1,2}\/\d{1,2}\/(?:\d{4}|\d{2}))\s+/);
+    if (secondDateMatch) {
+      const parsed2 = this.parseDate(secondDateMatch[1]);
+      if (parsed2) txnDate = parsed2;
+      rest = rest.slice(secondDateMatch[0].length);
+    }
 
     AMT_TOKEN_RE.lastIndex = 0;
     const tokens = [];
@@ -107,11 +125,13 @@ class CapitecParser extends BaseParser {
     if (afterLast) description = (description + ' ' + afterLast).trim();
 
     const balance = tokens[tokens.length - 1].value;
-    // Capitec uses single signed amount — the second-to-last IS the signed amount
+    // The second-to-last token is always the Amount column value.
+    // For rows with a Fees column (3+ tokens), Amount = tokens[-2], Fee = tokens[-3].
+    // For rows without a Fees column (2 tokens), Amount = tokens[-2] (same rule).
     const rawAmt = tokens[tokens.length - 2].value;
 
-    // Capitec's own PDFs already embed the sign (-235.00 for debits)
-    // so we trust parseAmount result directly; fall back to balance delta
+    // Real Capitec Business statements embed explicit signs (+/-).
+    // Trust parseAmount result directly; fall back to balance delta for unsigned values.
     let amount = rawAmt;
     if (rawAmt > 0 && prevBalance !== null) {
       const delta = balance - prevBalance;
@@ -123,7 +143,7 @@ class CapitecParser extends BaseParser {
       if (CREDIT_RE.test(description)) amount =  Math.abs(rawAmt);
     }
 
-    return { date, description, reference: null, amount, balance, rawLine: line };
+    return { date: txnDate, description, reference: null, amount, balance, rawLine: line };
   }
 
   static _lastAmt(line) {
