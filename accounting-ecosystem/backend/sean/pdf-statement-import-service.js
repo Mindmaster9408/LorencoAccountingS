@@ -182,6 +182,9 @@ class PdfStatementImportService {
     if (parseResult.transactions.length === 0) {
       const sample = text.slice(0, 800).replace(/\n/g, ' ↵ ');
       console.warn(`[PDF Import] 0 transactions extracted by ${selection.parser.PARSER_ID}. Raw text sample:\n${sample}`);
+    } else if (parseResult.transactions.length < 10) {
+      const sample = text.slice(0, 1500).replace(/\n/g, ' ↵ ');
+      console.warn(`[PDF Import] Only ${parseResult.transactions.length} transactions extracted by ${selection.parser.PARSER_ID}. Raw text sample:\n${sample}`);
     }
 
     // ─── STEP D: Validate and enrich transactions ────────────────────────────
@@ -220,10 +223,10 @@ class PdfStatementImportService {
       importedAt: new Date().toISOString()
     };
 
-    // Include a raw text sample when 0 transactions extracted — diagnostic aid
+    // Include a raw text sample when few/no transactions extracted — diagnostic aid
     // for identifying layout issues without having to read server logs.
-    if (reviewTransactions.length === 0) {
-      result.rawTextSample = text.slice(0, 600);
+    if (reviewTransactions.length < 10) {
+      result.rawTextSample = text.slice(0, 2500);
     }
 
     return result;

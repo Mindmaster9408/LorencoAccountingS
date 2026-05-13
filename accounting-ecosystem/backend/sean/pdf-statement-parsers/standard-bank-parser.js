@@ -99,7 +99,11 @@ class StandardBankParser extends BaseParser {
     let prevBalance = null;
     for (const block of blocks) {
       const txn = this._parseBlock(block, prevBalance);
-      if (!txn) { result.skippedLines++; continue; }
+      if (!txn) {
+        result.skippedLines++;
+        result.warnings.push(`[skip] No txn from block: ${block[0].slice(0, 120)}`);
+        continue;
+      }
       if (txn.balance !== null) prevBalance = txn.balance;
       const warns = this.validateTransaction(txn);
       if (warns.length === 0) {
