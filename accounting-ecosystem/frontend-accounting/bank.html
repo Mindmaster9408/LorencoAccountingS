@@ -912,6 +912,9 @@
         .upload-link.has-files .file-count {
             background: #28a745;
         }
+
+        /* ── Transaction attachment column: hidden (import modal unaffected — uses .upload-area, not .upload-link) ── */
+        .transactions-table .txn-attachment-cell { display: none; }
         
         .ai-btn {
             padding: 6px 14px;
@@ -1736,7 +1739,7 @@
                         <th>Transaction Type<span class="col-resize-handle"></span></th>
                         <th>Account<span class="col-resize-handle"></span></th>
                         <th>Status<span class="col-resize-handle"></span></th>
-                        <th style="display:none;">Files<span class="col-resize-handle"></span></th>
+                        <th class="txn-attachment-cell">Files<span class="col-resize-handle"></span></th>
                         <th>Actions<span class="col-resize-handle"></span></th>
                         <th id="aiHeader">AI</th>
                     </tr>
@@ -2179,7 +2182,7 @@ Click OK to simulate uploading a file.`;
                     ${statusBadgeHtml(txn.status)}
                     ${txn.status === 'unmatched' ? `<br><button class="action-btn" onclick="flipTransaction('${txn.id}')" style="margin-top:4px;font-size:11px;padding:2px 6px;background:#6c757d;color:#fff;" title="Swap Money In ↔ Money Out (fix import direction)">↕ Flip</button>` : ''}
                 </td>
-                <td style="display:none;">
+                <td class="txn-attachment-cell">
                     <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:12px;">&#128196; <span id="attachCount${txn.id}">0</span></button>
                 </td>
                 <td style="white-space:nowrap;">
@@ -4532,7 +4535,7 @@ Click OK to simulate uploading a file.`;
                 +   '</select>'
                 + '</td>'
                 + '<td><span class="status-badge status-unmatched">Unmatched</span></td>'
-                + '<td style="display:none;">'
+                + '<td class="txn-attachment-cell">'
                 +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents">&#128206;</a>'
                 +   '<button class="action-btn" onclick="showAttachments(\'' + id + '\')" style="padding:4px 8px; font-size:11px;">&#128196;<span id="attachCount' + id + '">0</span></button>'
                 + '</td>'
