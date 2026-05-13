@@ -1059,7 +1059,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     const { lines, description } = req.body;
 
     if (!lines || !Array.isArray(lines)) {
-      return res.status(400).json({ error: 'Lines array is required' });
+      return res.status(400).json({ success: false, error: 'Lines array is required', errorCode: 'MISSING_LINES' });
     }
 
     // Get bank transaction with linked bank account ledger_account_id
@@ -1071,11 +1071,11 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       .single();
 
     if (txnErr || !bankTxn) {
-      return res.status(404).json({ error: 'Bank transaction not found' });
+      return res.status(404).json({ success: false, error: 'Bank transaction not found', errorCode: 'TRANSACTION_NOT_FOUND' });
     }
 
     if (bankTxn.status !== 'unmatched') {
-      return res.status(409).json({ error: 'Transaction already allocated' });
+      return res.status(409).json({ success: false, error: 'Transaction already allocated', errorCode: 'ALREADY_ALLOCATED', details: { status: bankTxn.status } });
     }
 
     // Flatten the ledger_account_id from the nested bank_accounts relation
@@ -1083,7 +1083,11 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     const bankAccountName = bankTxn.bank_accounts?.name;
 
     if (!ledgerAccountId) {
-      return res.status(400).json({ error: 'Bank account has no linked ledger account' });
+      return res.status(400).json({
+        success: false,
+        error: 'Bank account has no linked ledger account. Go to Bank Accounts, edit this account and select a Ledger Account.',
+        errorCode: 'MISSING_LEDGER_ACCOUNT'
+      });
     }
 
     // Build journal lines (bank account + user-specified allocations)
@@ -1162,8 +1166,9 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         } else {
           // VAT account not found in COA — fall back to posting full gross to allocation account
           // Log warning so accountant is alerted
+          const missingVatCode = isMoneyIn ? '2300' : '1400';
           console.warn(
-            `[bank.allocate] VAT account ${vatAccountCode} not found for company ${req.user.companyId}. ` +
+            `[bank.allocate] VAT account ${missingVatCode} not found for company ${req.user.companyId}. ` +
             `Posting full amount without VAT split. Check Chart of Accounts.`
           );
           await AuditLogger.logSystemAction(
@@ -1173,11 +1178,11 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
             bankTxn.id,
             null,
             {
-              missingVatAccountCode: vatAccountCode,
+              missingVatAccountCode: missingVatCode,
               bankTransactionId: bankTxn.id,
               fallback: 'full gross amount posted to allocation account without VAT split',
             },
-            `VAT account ${vatAccountCode} not found during bank allocation — full gross posted without VAT split`
+            `VAT account ${missingVatCode} not found during bank allocation — full gross posted without VAT split`
           );
           // Replace the ex-VAT line with a full-gross line
           journalLines[journalLines.length - 1].debit  = isMoneyIn ? 0 : gross;
@@ -1207,7 +1212,29 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     });
 
     // Post the journal — guarantees journal.status = 'posted' on success.
-    await JournalService.postJournal(journal.id, req.user.companyId, req.user.id);
+    // If posting fails the journal is still in 'draft' — clean it up to prevent
+    // orphaned GL entries and return a structured error the accountant can act on.
+    try {
+      await JournalService.postJournal(journal.id, req.user.companyId, req.user.id);
+    } catch (postErr) {
+      console.error('[bank.allocate] postJournal failed for journal', journal.id,
+        ':', postErr.message, '— deleting orphaned draft journal.');
+      try {
+        await supabase.from('journal_lines').delete().eq('journal_id', journal.id);
+        await supabase.from('journals').delete().eq('id', journal.id)
+          .eq('company_id', req.user.companyId);
+        console.log('[bank.allocate] Orphaned draft journal', journal.id, 'deleted.');
+      } catch (cleanupErr) {
+        console.error('[bank.allocate] Draft journal cleanup failed. Journal', journal.id,
+          'is orphaned at status=draft. Manual cleanup required.', cleanupErr.message);
+      }
+      return res.status(400).json({
+        success: false,
+        error: `Allocation failed: could not post journal to the General Ledger. ${postErr.message}`,
+        errorCode: 'JOURNAL_POST_FAILED',
+        details: { journalId: journal.id, reason: postErr.message }
+      });
+    }
 
     // ── Post-posting safety validation ───────────────────────────────────────
     // Re-read the journal fresh from the DB and confirm every accounting
@@ -1367,8 +1394,12 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     });
 
   } catch (error) {
-    console.error('Error allocating bank transaction:', error);
-    res.status(400).json({ error: error.message || 'Failed to allocate bank transaction' });
+    console.error('[bank.allocate] Unhandled error:', error);
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Failed to allocate bank transaction',
+      errorCode: error.errorCode || 'ALLOCATION_FAILED'
+    });
   }
 });
 

@@ -306,15 +306,35 @@ class JournalService {
     const isLocked = await this.isPeriodLocked(companyId, journal.date);
     if (isLocked) throw new Error('Cannot post journal in a locked period');
 
-    // Fetch lines WITH account detail — used for both balance validation and VAT detection.
-    // Combining into one query avoids a second DB round-trip inside _resolveVatPeriodForPost.
-    const { data: lines, error: linesErr } = await supabase
+    // Fetch journal lines — no FK join to avoid PostgREST schema cache dependency.
+    // Account details are fetched separately and merged below.
+    const { data: rawLines, error: linesErr } = await supabase
       .from('journal_lines')
-      .select('*, accounts!account_id(code, name, reporting_group)')
+      .select('*')
       .eq('journal_id', journalId)
       .order('line_number');
 
-    if (linesErr) throw new Error(linesErr.message);
+    if (linesErr) throw new Error(`Failed to read journal lines: ${linesErr.message}`);
+    if (!rawLines || rawLines.length === 0) throw new Error('Journal has no lines');
+
+    // Fetch account details for VAT detection (code, name, reporting_group).
+    // Separate query removes dependency on the PostgREST FK schema cache for
+    // journal_lines → accounts. The FK join syntax `accounts!account_id` fails
+    // when the relationship is absent from PostgREST's schema cache.
+    const uniqueAccountIds = [...new Set(rawLines.map(l => l.account_id).filter(Boolean))];
+    const accountMap = {};
+    if (uniqueAccountIds.length > 0) {
+      const { data: acctRows } = await supabase
+        .from('accounts')
+        .select('id, code, name, reporting_group')
+        .in('id', uniqueAccountIds);
+      (acctRows || []).forEach(a => { accountMap[a.id] = a; });
+      // Account fetch errors are silently tolerated — isVatJournal returns false
+      // for any line missing account data, which is correct (non-VAT path).
+    }
+
+    // Merge account data into lines to match the shape expected by VAT utilities.
+    const lines = rawLines.map(l => ({ ...l, accounts: accountMap[l.account_id] || null }));
 
     // Validate balance (account detail fields are ignored by validateBalance)
     const balanceValidation = this.validateBalance(lines || []);

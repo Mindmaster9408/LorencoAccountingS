@@ -3638,7 +3638,21 @@ Click OK to simulate uploading a file.`;
                     })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                if (!res.ok) {
+                    // Build a clear, actionable error message for the accountant.
+                    let msg = data.error || ('HTTP ' + res.status);
+                    // For specific known error codes, translate to a human-readable action.
+                    if (data.errorCode === 'MISSING_LEDGER_ACCOUNT') {
+                        msg = 'This bank account has no linked General Ledger account.\n\nTo fix:\n1. Scroll up to the bank account cards at the top\n2. Click "Edit" on the account\n3. Select a Ledger Account (e.g. 1020 — Bank Account)\n4. Save, then try again.';
+                    } else if (data.errorCode === 'ALREADY_ALLOCATED') {
+                        msg = 'This transaction is already allocated (status: ' + (data.details && data.details.status || 'matched') + ').\n\nRefresh the page to see the current state.';
+                    } else if (data.errorCode === 'JOURNAL_POST_FAILED') {
+                        msg = 'The journal could not be posted to the General Ledger.\n\nReason: ' + (data.details && data.details.reason || msg);
+                    } else if (data.details && data.details.reason) {
+                        msg += '\n\nReason: ' + data.details.reason;
+                    }
+                    throw new Error(msg);
+                }
 
                 // Journal is posted atomically by the backend — no separate post step needed.
                 const journalRef = data.journal ? data.journal.reference : '—';
@@ -4185,8 +4199,7 @@ Click OK to simulate uploading a file.`;
         }
         
         function bulkMatch() {
-            const count = document.querySelectorAll('.transactions-table tbody .checkbox:checked').length;
-            alert(`Match ${count} selected transactions`);
+            alert('Bulk matching is not yet available.\n\nTo allocate transactions, use the individual "Allocate" button on each transaction row.');
         }
 
         async function bulkReconcile() {
