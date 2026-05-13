@@ -3647,9 +3647,10 @@ Click OK to simulate uploading a file.`;
                 delete transactionAllocations[id];
                 saveAllocationsToStorage();
 
-                // Reload to show the updated status and Undo button
+                // Reload then switch to Reviewed tab so user can find and reconcile the matched transaction
                 await loadTransactions();
-                alert(`Transaction allocated!\n\nJournal Reference: ${journalRef}\n\nThe journal has been posted and will appear in your reports.`);
+                switchTab('reviewed', null);
+                alert(`Transaction allocated!\n\nJournal Reference: ${journalRef}\n\nThe journal has been posted and will appear in your reports.\n\nYou are now in the Reviewed tab. Select the transaction and click Reconcile to complete the process.`);
 
             } catch (error) {
                 alert('Error posting allocation: ' + error.message);
@@ -4603,6 +4604,9 @@ Click OK to simulate uploading a file.`;
         let currentTab = 'new';
 
         function isReviewed(txn) {
+            // Primary check: use server-authoritative status field (set by allocation backend)
+            if (txn.status === 'matched' || txn.status === 'reconciled') return true;
+            // Backward-compat fallbacks for older transactions using legacy fields
             return txn.is_reconciled ||
                    (txn.allocated_account_id !== null && txn.allocated_account_id !== undefined);
         }
