@@ -2,6 +2,7 @@
 import { $, escapeHtml, formatDate, formatDateTime, parseStandardDate } from './config.js';
 import { createNewClient, saveClient } from './storage.js';
 import { apiRequest } from './api.js';
+import { renderBASISReportViewer } from './basis-report-ui.js';
 
 // ── Cloud helpers — all leads data lives in the backend (never localStorage) ─
 
@@ -96,6 +97,7 @@ function createLeadCard(lead) {
     const basisSource = lead.basis_results || lead.basisResults;
     const basisOrder = (basisSource && basisSource.basisOrder) ? basisSource.basisOrder : [];
     const basisCode = basisOrder.join(' ') || '—';
+    const hasBasis = basisOrder.length > 0;
 
     return `
         <div class="${cardClasses.join(' ')}" data-lead-id="${lead.id}">
@@ -116,6 +118,7 @@ function createLeadCard(lead) {
             </div>
             <div class="lead-basis">
                 <strong>BASIS Profile:</strong> <span class="lead-basis-code">${basisCode}</span>
+                ${hasBasis ? `<button class="btn-view-basis" onclick="viewLeadBasis('${lead.id}')">📊 View Report</button>` : ''}
             </div>
             ${(lead.coaching_goals || lead.coachingGoals) ? `
                 <div class="lead-goals">
@@ -154,6 +157,13 @@ window.convertToClient = async function(leadId) {
         client.preferred_lang = lead.preferred_lang || 'English';
         client.status = 'Active - New Client from Lead';
         client.notes = 'Converted from public lead on ' + formatDate(new Date(), 'ZA');
+        // Transfer BASIS assessment data from lead
+        if (lead.basis_answers || lead.basisAnswers) {
+            client.basisAnswers = lead.basis_answers || lead.basisAnswers;
+        }
+        if (lead.basis_results || lead.basisResults) {
+            client.basisResults = lead.basis_results || lead.basisResults;
+        }
         await saveClient(client);
 
         await updateLead(leadId, { status: 'converted' });
@@ -181,6 +191,48 @@ window.copyPublicLink = function() {
         document.execCommand('copy');
         alert('Public assessment link copied to clipboard!');
     }
+};
+
+window.viewLeadBasis = async function(leadId) {
+    const leads = await fetchLeads();
+    const lead = leads.find(l => String(l.id) === String(leadId));
+    if (!lead) return;
+
+    const basisAnswers = lead.basis_answers || lead.basisAnswers || {};
+    const basisResults = lead.basis_results || lead.basisResults;
+    if (!basisResults) {
+        alert('No BASIS results available for this lead.');
+        return;
+    }
+
+    // Inject modal if not already present
+    let overlay = document.getElementById('lead-basis-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'lead-basis-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 20px;';
+        overlay.innerHTML = `
+            <div style="background:#fff;border-radius:12px;width:100%;max-width:960px;padding:24px 28px;position:relative;margin:auto;">
+                <button onclick="closeLeadBasis()" style="position:absolute;top:14px;right:18px;background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;">&times;</button>
+                <div id="lead-basis-modal-content"></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    } else {
+        overlay.style.display = 'flex';
+    }
+
+    const fakeClient = {
+        name: lead.name,
+        basisAnswers: basisAnswers,
+        basisResults: basisResults
+    };
+    renderBASISReportViewer(fakeClient, 'lead-basis-modal-content');
+};
+
+window.closeLeadBasis = function() {
+    const overlay = document.getElementById('lead-basis-overlay');
+    if (overlay) overlay.style.display = 'none';
 };
 
 export function setupLeadsListeners() {

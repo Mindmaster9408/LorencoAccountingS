@@ -118,6 +118,10 @@
     padding: 16px;
     background: #f8fafc;
     border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .lead-basis-code {
@@ -126,6 +130,21 @@
     font-weight: 700;
     color: #667eea;
     letter-spacing: 2px;
+}
+
+.btn-view-basis {
+    padding: 4px 12px;
+    background: #ede9fe;
+    color: #6d28d9;
+    border: 1px solid #c4b5fd;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.btn-view-basis:hover {
+    background: #ddd6fe;
 }
 
 .lead-goals {
