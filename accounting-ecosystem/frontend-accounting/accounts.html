@@ -140,7 +140,10 @@
 
         <div class="form-group">
             <label>Account Code *</label>
-            <input type="text" id="accCode" placeholder="e.g. 6100">
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="accCode" placeholder="e.g. 6100" style="flex:1;">
+                <button type="button" class="btn-secondary" id="genCodeBtn" onclick="generateCode()" style="white-space:nowrap;padding:8px 12px;font-size:13px;">Generate</button>
+            </div>
         </div>
         <div class="form-group">
             <label>Account Name *</label>
@@ -275,12 +278,60 @@
         }).join('');
     }
 
+    // ── Account code ranges per type (standard SA COA convention) ────────────
+    const CODE_RANGES = {
+        asset:     { min: 1000, max: 1999 },
+        liability: { min: 2000, max: 2999 },
+        equity:    { min: 3000, max: 3999 },
+        income:    { min: 4000, max: 4999 },
+        expense:   { min: 6000, max: 6999 }
+    };
+
+    function generateCode() {
+        const type  = document.getElementById('accType').value;
+        const range = CODE_RANGES[type];
+        if (!range) return;
+
+        // Collect numeric codes already used by accounts of this type (or any type — codes are unique)
+        const usedCodes = new Set(
+            allAccounts
+                .map(a => parseInt(a.code, 10))
+                .filter(n => !isNaN(n))
+        );
+
+        // Find highest code currently in this type's range
+        const codesInRange = allAccounts
+            .map(a => parseInt(a.code, 10))
+            .filter(n => !isNaN(n) && n >= range.min && n <= range.max);
+
+        let next;
+        if (codesInRange.length === 0) {
+            next = range.min;
+        } else {
+            next = Math.max(...codesInRange) + 10;
+        }
+
+        // Skip any code already in use (could be from a different type)
+        while (usedCodes.has(next) && next <= range.max) next += 10;
+
+        if (next > range.max) {
+            // Range exhausted — increment by 1 to find a gap
+            next = range.min;
+            while (usedCodes.has(next) && next <= range.max) next += 1;
+        }
+
+        if (next <= range.max) {
+            document.getElementById('accCode').value = String(next);
+        }
+    }
+
     // ── Create Modal ──────────────────────────────────────────────────────────
     function showCreateModal() {
         editingId = null;
         document.getElementById('modalTitle').textContent    = 'New Account';
         document.getElementById('accCode').value             = '';
         document.getElementById('accCode').readOnly          = false;
+        document.getElementById('genCodeBtn').style.display  = '';
         document.getElementById('accName').value             = '';
         document.getElementById('accType').value             = 'expense';
         document.getElementById('accType').disabled          = false;
@@ -289,7 +340,17 @@
         document.getElementById('modalError').style.display  = 'none';
         document.getElementById('saveAccountBtn').textContent = 'Save Account';
         document.getElementById('accountModal').classList.add('show');
+        // Auto-fill a suggested code immediately
+        generateCode();
     }
+
+    // Re-generate suggestion when type changes (only if user hasn't typed a custom code)
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('accType').addEventListener('change', () => {
+            if (editingId) return;        // editing — code is locked
+            generateCode();              // always refresh suggestion on type change
+        });
+    });
 
     // ── Edit Modal ────────────────────────────────────────────────────────────
     function showEditModal(id) {
@@ -300,6 +361,7 @@
         document.getElementById('modalTitle').textContent   = 'Edit Account';
         document.getElementById('accCode').value            = acc.code;
         document.getElementById('accCode').readOnly         = true;
+        document.getElementById('genCodeBtn').style.display = 'none';
         document.getElementById('accName').value            = acc.name;
         document.getElementById('accType').value            = acc.type;
         document.getElementById('accType').disabled         = true;
