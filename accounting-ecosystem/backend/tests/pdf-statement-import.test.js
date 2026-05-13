@@ -710,6 +710,150 @@ describe('NedbankParser.parse', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E2. Nedbank Parser — real eConfirm statement (Bakmeester, Feb–Mar 2025)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NEDBANK_ECONFIRM_SAMPLE = `
+Nedbank
+eConfirm 2025-03-14
+Reg No 1951/000009/06
+
+Account: 1151848921
+Period: 11/02/2025 - 11/03/2025
+
+12/02/2025 Opening balance 8,440.27
+000091 12/02/2025 Notification Fee: E-mail 0.50 * 8,439.77
+21/02/2025 Pennygrow 30,000.00 38,439.77
+25/02/2025 VAT 28/01-24/02 = R12.24 0.00 38,439.77
+25/02/2025 SERVICE FEE 28/01 - 24/02 7.80 * 38,431.97
+25/02/2025 MAINTENANCE FEE 75.00 * 38,356.97
+26/02/2025 Turkstra Bakkery 20,000.00 58,356.97
+26/02/2025 Turkstra Bakkery 10,000.00 68,356.97
+26/02/2025 Christo Pretorius 19,712.00 48,644.97
+26/02/2025 Ellen Moorcroft 19,712.00 28,932.97
+26/02/2025 Kitsbetaling fooi 100.00 * 28,832.97
+27/02/2025 Anni Mari Pretorius 19,271.00 9,561.97
+27/02/2025 Kitsbetaling fooi 50.00 * 9,511.97
+28/02/2025 0087999451 7.80 2,418.79 7,093.18
+01/03/2025 Notification Fee: E-mail 0.50 * 7,092.68
+05/03/2025 Lorenco Accounting 7.80 2,585.31 4,507.37
+06/03/2025 Pennygrow 10,000.00 14,507.37
+06/03/2025 Notification Fee: SMS 0.50 * 14,506.87
+08/03/2025 Turkstra Bakkery 5,000.00 19,506.87
+08/03/2025 0088272613 7.80 13,343.44 6,163.43
+10/03/2025 Anni Mari Pretorius13tjek 5,000.00 1,163.43
+000092 10/03/2025 Notification Fee: E-mail 0.50 * 1,162.93
+10/03/2025 Kitsbetaling fooi 50.00 * 1,112.93
+Closing balance 1,112.93
+`;
+
+describe('NedbankParser.parse — eConfirm real statement', () => {
+  let result;
+  beforeAll(() => { result = NedbankParser.parse(NEDBANK_ECONFIRM_SAMPLE, 'nedbank-bakmeester.pdf'); });
+
+  test('canParse recognises Nedbank eConfirm statement', () => {
+    const r = NedbankParser.canParse(NEDBANK_ECONFIRM_SAMPLE, 'nedbank-bakmeester.pdf');
+    expect(r.confidence).toBeGreaterThanOrEqual(0.6);
+  });
+
+  test('account number extracted correctly', () => {
+    expect(result.accountNumber).toBe('1151848921');
+  });
+
+  test('credit transaction (Pennygrow Feb) is positive', () => {
+    const t = result.transactions.find(t => t.description.includes('Pennygrow') && t.date === '2025-02-21');
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(30000);
+  });
+
+  test('debit transaction (Christo Pretorius) is negative', () => {
+    const t = result.transactions.find(t => t.description.includes('Christo Pretorius'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-19712);
+  });
+
+  test('fee-only row (MAINTENANCE FEE) is negative', () => {
+    const t = result.transactions.find(t => t.description.includes('MAINTENANCE FEE'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-75);
+  });
+
+  test('fee-only row (SERVICE FEE) is negative', () => {
+    const t = result.transactions.find(t => t.description.includes('SERVICE FEE'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-7.80, 1);
+  });
+
+  test('fee+debit combined row — Lorenco Accounting uses net debit as amount', () => {
+    const t = result.transactions.find(t => t.description.includes('Lorenco Accounting'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-2585.31, 1);
+  });
+
+  test('fee+debit combined row — 0087999451', () => {
+    const t = result.transactions.find(t => t.description.includes('0087999451'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-2418.79, 1);
+  });
+
+  test('fee+debit combined row — 0088272613', () => {
+    const t = result.transactions.find(t => t.description.includes('0088272613'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-13343.44, 1);
+  });
+
+  test('tran-list-no prefix row (000091) parsed with correct date and amount', () => {
+    const t = result.transactions.find(t => t.description.includes('Notification Fee: E-mail') && t.date === '2025-02-12');
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-0.50, 2);
+  });
+
+  test('tran-list-no prefix row (000092) parsed with correct date and amount', () => {
+    const t = result.transactions.find(t => t.description.includes('Notification Fee: E-mail') && t.date === '2025-03-10');
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-0.50, 2);
+  });
+
+  test('VAT annotation line (zero debit) is excluded from transactions', () => {
+    const vatLines = result.transactions.filter(t => t.description && t.description.toUpperCase().startsWith('VAT'));
+    expect(vatLines.length).toBe(0);
+  });
+
+  test('two Turkstra Bakkery credits on 26/02 are both parsed as positive', () => {
+    const bakkery = result.transactions.filter(t => t.description.includes('Turkstra Bakkery') && t.date === '2025-02-26');
+    expect(bakkery.length).toBe(2);
+    bakkery.forEach(t => expect(t.amount).toBeGreaterThan(0));
+  });
+
+  test('description with embedded digits (Anni Mari Pretorius13tjek) parses correctly', () => {
+    const t = result.transactions.find(t => t.description.includes('Pretorius13tjek'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-5000, 0);
+  });
+
+  test('all dates are in ISO YYYY-MM-DD format', () => {
+    result.transactions.forEach(t => {
+      expect(t.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+
+  test('all dates fall within the statement period (Feb–Mar 2025)', () => {
+    result.transactions.forEach(t => {
+      expect(t.date).toMatch(/^2025-0[23]-/);
+    });
+  });
+
+  test('total transaction count is 21 (VAT annotation excluded)', () => {
+    expect(result.transactions.length).toBe(21);
+  });
+
+  test('closing balance cross-check: opening + credits + debits = 1,112.93', () => {
+    const net = result.transactions.reduce((s, t) => s + t.amount, 0);
+    expect(8440.27 + net).toBeCloseTo(1112.93, 1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // F. Capitec Parser
 // ─────────────────────────────────────────────────────────────────────────────
 

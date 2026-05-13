@@ -12,8 +12,15 @@
 
 const BaseParser = require('./base-parser');
 
-const DATE_RE = /^\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})/;
-const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
+// Prefer 4-digit year first — prevents DD/MM/2025 matching as DD/MM/20 (2-digit year)
+const DATE_RE = /^\d{1,2}\/\d{1,2}\/(?:\d{4}|\d{2})/;
+// Strict amount token regex:
+// - Thousands separators (comma or space) require exactly 3-digit groups to avoid
+//   false matches like "02 7.80" or "0087999451 7.80" being consumed as one token.
+// Strict amount token regex — comma-only thousands separators prevent false matches
+// like "02 7.80" or "0087999451 7.80" being consumed as a single token.
+// \d+ handles any integer length (including 8000.00 without separators).
+const AMT_TOKEN_RE = /(?:R\s*)?(?:\(\d+(?:,\d{3})*\.\d{2}\)|[-]?\s*\d+(?:,\d{3})*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
 
 const SKIP_KEYWORDS = [
   'opening balance', 'closing balance', 'balance brought',
@@ -41,17 +48,29 @@ class NedbankParser extends BaseParser {
     return { confidence: Math.min(score, 1.0), details };
   }
 
+  // Nedbank eConfirm format has optional "Tran list no" column before the date:
+  // e.g.  "000091 12/02/2025 Notification Fee: E-mail 0.50 8,439.77"
+  static _TRAN_NO_RE = /^\d{4,6}\s+(?=\d{1,2}\/\d{1,2}\/)/;
+
   static parse(text, filename = '') {
     const result = this.emptyResult(this.BANK_NAME, this.PARSER_ID);
     result.accountNumber   = this.extractAccountNumber(text);
     result.statementPeriod = this.extractPeriod(text);
 
-    const lines = this.joinContinuationLines(this.toLines(text), l => DATE_RE.test(l));
+    // isStart recognises: date lines, tran-list-no prefixed lines, and balance
+    // summary lines (so "Closing balance" is never appended to the last tx)
+    const BALANCE_LINE_RE = /\b(?:opening|closing)\s+balance\b/i;
+    const isStart = l => DATE_RE.test(l) || this._TRAN_NO_RE.test(l) || BALANCE_LINE_RE.test(l);
+    const lines = this.joinContinuationLines(this.toLines(text), isStart);
     let prevBalance = null;
 
-    for (const line of lines) {
+    for (let line of lines) {
       if (this.isPageNoise(line)) continue;
-      if (!DATE_RE.test(line))    continue;
+
+      // Strip optional tran-list-no prefix so date is at position 0
+      line = line.replace(this._TRAN_NO_RE, '');
+
+      if (!DATE_RE.test(line)) continue;
 
       const lower = line.toLowerCase();
       if (SKIP_KEYWORDS.some(k => lower.includes(k))) {
@@ -64,6 +83,9 @@ class NedbankParser extends BaseParser {
       const txn = this._parseLine(line, prevBalance);
       if (!txn) { result.skippedLines++; continue; }
       if (txn.balance !== null) prevBalance = txn.balance;
+
+      // Skip zero-amount annotation rows (e.g. VAT note lines like "VAT 28/01-24/02 = R12.24 0.00")
+      if (txn.amount === 0) { result.skippedLines++; continue; }
 
       const warns = this.validateTransaction(txn);
       if (warns.length === 0) {
@@ -81,7 +103,7 @@ class NedbankParser extends BaseParser {
   }
 
   static _parseLine(line, prevBalance) {
-    const dateMatch = line.match(/^(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/);
+    const dateMatch = line.match(/^(\d{1,2}\/\d{1,2}\/(?:\d{4}|\d{2}))/);
     if (!dateMatch) return null;
     const date = this.parseDate(dateMatch[1]);
     if (!date) return null;
