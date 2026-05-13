@@ -284,6 +284,56 @@ router.post('/confirm',
 
 
 /**
+ * PATCH /api/accounting/bank/staging/:id
+ * Edit a staged transaction's date, description, and/or amount.
+ * Blocked if the row is already CONFIRMED.
+ */
+router.patch('/:id',
+  authenticate,
+  hasPermission('bank.import'),
+  async (req, res) => {
+    try {
+      const stagingId = parseInt(req.params.id, 10);
+      if (isNaN(stagingId)) {
+        return res.status(400).json({ error: 'Invalid staging ID' });
+      }
+
+      const { date, description, amount } = req.body;
+      const result = await BankStagingService.updateStaged(
+        req.user.companyId,
+        stagingId,
+        { date, description, amount }
+      );
+
+      await AuditLogger.logUserAction(
+        req,
+        'EDIT_STAGING',
+        'BANK_TRANSACTION_STAGING',
+        stagingId,
+        null,
+        { date, description, amount },
+        'Staged bank transaction edited'
+      );
+
+      return res.json(result);
+    } catch (err) {
+      console.error('[bankStaging/update]', err);
+      if (err.message && err.message.includes('not found')) {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err.message && err.message.includes('already been confirmed')) {
+        return res.status(409).json({ error: err.message });
+      }
+      if (err.message && err.message.includes('Invalid') || err.message && err.message.includes('empty') || err.message && err.message.includes('No fields')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message || 'Failed to update staging row' });
+    }
+  }
+);
+
+
+/**
  * PATCH /api/accounting/bank/staging/:id/reject
  * Reject a staged transaction — marks it as REJECTED, will not be imported.
  */

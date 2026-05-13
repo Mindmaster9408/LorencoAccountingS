@@ -612,15 +612,28 @@
         </div>
     </div>
 
-    <!-- ── Restore rejected staging row modal ───────────────────────────── -->
-    <div class="modal-overlay" id="restoreModal">
+    <!-- ── Edit staging row modal ────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="editStagingModal">
         <div class="modal">
-            <h2>Restore Rejected Transaction</h2>
-            <p>This will move the transaction back to <strong>To Review</strong> so it can be confirmed and imported.</p>
-            <div class="detail-box" id="restoreModalDetail"></div>
+            <h2>Edit Transaction</h2>
+            <p>Correct the date, description, or amount before confirming this transaction.</p>
+            <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
+                <div>
+                    <label style="font-size:13px;font-weight:600;color:#5f6368;display:block;margin-bottom:4px;">Date</label>
+                    <input type="date" id="editStagingDate" style="width:100%;padding:8px 10px;border:1px solid #e0e0e0;border-radius:7px;font-size:14px;font-family:inherit;">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;color:#5f6368;display:block;margin-bottom:4px;">Description</label>
+                    <input type="text" id="editStagingDesc" style="width:100%;padding:8px 10px;border:1px solid #e0e0e0;border-radius:7px;font-size:14px;font-family:inherit;" maxlength="500">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;color:#5f6368;display:block;margin-bottom:4px;">Amount <span style="font-weight:400;color:#9aa0a6;">(negative = money out)</span></label>
+                    <input type="number" id="editStagingAmount" step="0.01" style="width:100%;padding:8px 10px;border:1px solid #e0e0e0;border-radius:7px;font-size:14px;font-family:inherit;">
+                </div>
+            </div>
             <div class="modal-actions">
-                <button class="btn-secondary" onclick="closeModal('restoreModal')">Cancel</button>
-                <button class="btn-primary" id="restoreModalBtn" onclick="doRestore()">Restore to Review</button>
+                <button class="btn-secondary" onclick="closeModal('editStagingModal')">Cancel</button>
+                <button class="btn-primary" id="editStagingBtn" onclick="doEditStaging()">Save Changes</button>
             </div>
         </div>
     </div>
@@ -660,6 +673,7 @@
     const PAGE_SIZE        = 50;
     let totalRows          = 0;
     let allBatches         = [];
+    let _rowCache          = {};    // id → row object, for Edit pre-fill
 
     // Per-action pending IDs
     let pendingConfirmId         = null;
@@ -667,6 +681,7 @@
     let pendingConfirmTransferId = null;
     let pendingRejectTransferId  = null;
     let pendingReverseTransferId = null;
+    let pendingEditId            = null;
 
     let searchDebounceTimer = null;
 
@@ -985,7 +1000,9 @@
             rows.length + ' of ' + totalRows + ' transaction' + (totalRows !== 1 ? 's' : '');
 
         tbody.innerHTML = '';
+        _rowCache = {};
         rows.forEach(row => {
+            _rowCache[row.id] = row;
             tbody.appendChild(buildRow(row));
         });
     }
@@ -1039,11 +1056,15 @@
             return `<span style="font-size:11px;color:#137333;">✓ In queue</span>`;
         }
         if (status === 'REJECTED') {
-            return `<button class="btn-xs btn-reverse" onclick="openRestoreStagingRow(${id})" title="Restore so this transaction can be confirmed and imported">Restore</button>`;
+            return `
+                <button class="btn-xs btn-view-transfer" onclick="openEditStagingRow(${id})" title="Edit details">Edit</button>
+                <button class="btn-xs btn-reverse" onclick="openRestoreStagingRow(${id})" title="Restore so this transaction can be confirmed and imported">Restore</button>
+            `;
         }
         if (status === 'TRANSFER_DETECTED') {
             return `
                 <button class="btn-xs btn-view-transfer" onclick="scrollToTransferSection()">View Transfer</button>
+                <button class="btn-xs btn-view-transfer" onclick="openEditStagingRow(${id})" title="Edit details">Edit</button>
                 <button class="btn-xs btn-reject" onclick="openRejectStagingRow(${id})">Reject</button>
             `;
         }
@@ -1052,6 +1073,7 @@
         const confirmLabel = status === 'DUPLICATE_SUSPECTED' ? 'Confirm Anyway' : 'Confirm';
         return `
             <button class="btn-xs btn-confirm" onclick="openConfirmStagingRow(${id})">${escHtml(confirmLabel)}</button>
+            <button class="btn-xs btn-view-transfer" onclick="openEditStagingRow(${id})" title="Edit details">Edit</button>
             <button class="btn-xs btn-reject"  onclick="openRejectStagingRow(${id})">Reject</button>
         `;
     }
@@ -1230,6 +1252,48 @@
         } finally {
             btn.disabled = false; btn.textContent = 'Restore to Review';
             pendingRestoreId = null;
+        }
+    }
+
+    // ── Edit staging row ──────────────────────────────────────────────────────
+    function openEditStagingRow(stagingId) {
+        pendingEditId = stagingId;
+        const row = _rowCache[stagingId];
+
+        // Pre-fill fields from cached row data
+        const dateVal = row && row.date ? String(row.date).slice(0, 10) : '';
+        document.getElementById('editStagingDate').value   = dateVal;
+        document.getElementById('editStagingDesc').value   = row ? (row.description || '') : '';
+        document.getElementById('editStagingAmount').value = row ? (row.amount || '') : '';
+
+        openModal('editStagingModal');
+    }
+
+    async function doEditStaging() {
+        if (!pendingEditId) return;
+        const btn = document.getElementById('editStagingBtn');
+        btn.disabled = true; btn.textContent = 'Saving…';
+
+        const date        = document.getElementById('editStagingDate').value.trim();
+        const description = document.getElementById('editStagingDesc').value.trim();
+        const amountRaw   = document.getElementById('editStagingAmount').value.trim();
+        const amount      = amountRaw !== '' ? parseFloat(amountRaw) : undefined;
+
+        const body = {};
+        if (date)        body.date        = date;
+        if (description) body.description = description;
+        if (amount !== undefined && !isNaN(amount)) body.amount = amount;
+
+        try {
+            await apiPatch('/bank/staging/' + pendingEditId, body);
+            closeModal('editStagingModal');
+            showBanner('success', '✓ Transaction updated.');
+            await loadPage();
+        } catch (e) {
+            showBanner('error', 'Save failed: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Save Changes';
+            pendingEditId = null;
         }
     }
 

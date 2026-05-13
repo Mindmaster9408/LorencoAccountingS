@@ -532,6 +532,60 @@ const BankStagingService = {
    * @param {number} stagingId
    * @returns {{ id: number, match_status: 'REJECTED' }}
    */
+  // ──────────────────────────────────────────────────────────────────────────
+  // updateStaged
+  // ──────────────────────────────────────────────────────────────────────────
+  /**
+   * Update editable fields on a staging row (date, description, amount).
+   * Blocked on CONFIRMED rows — those are already in bank_transactions.
+   *
+   * @param {number} companyId
+   * @param {number} stagingId
+   * @param {{ date?: string, description?: string, amount?: number }} fields
+   * @returns {object} updated row
+   */
+  async updateStaged(companyId, stagingId, fields) {
+    const { data: row, error: fetchErr } = await supabase
+      .from('bank_transaction_staging')
+      .select('id, match_status')
+      .eq('id', stagingId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (fetchErr || !row) throw new Error('Staging row not found');
+    if (row.match_status === 'CONFIRMED') {
+      throw new Error('Cannot edit a row that has already been confirmed and imported');
+    }
+
+    const updates = {};
+    if (fields.date !== undefined) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fields.date)) throw new Error('Invalid date format — use YYYY-MM-DD');
+      updates.date = fields.date;
+    }
+    if (fields.description !== undefined) {
+      if (!String(fields.description).trim()) throw new Error('Description cannot be empty');
+      updates.description = String(fields.description).trim();
+    }
+    if (fields.amount !== undefined) {
+      const amt = parseFloat(fields.amount);
+      if (isNaN(amt)) throw new Error('Invalid amount');
+      updates.amount = amt;
+    }
+    if (Object.keys(updates).length === 0) throw new Error('No fields to update');
+
+    const { data: updated, error } = await supabase
+      .from('bank_transaction_staging')
+      .update(updates)
+      .eq('id', stagingId)
+      .eq('company_id', companyId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update: ${error.message}`);
+    return updated;
+  },
+
+
   async rejectStaged(companyId, stagingId) {
     const { data: row, error: fetchErr } = await supabase
       .from('bank_transaction_staging')
