@@ -60,10 +60,9 @@ function authenticate(req, res, next) {
     user.id = user.userId;
   }
 
-  // Map companyId (ECO also sets req.companyId)
-  if (!user.companyId && req.companyId) {
-    user.companyId = req.companyId;
-  }
+  // Always sync req.companyId → user.companyId so that admin X-Company-Id
+  // overrides (set on req.companyId by global auth.js) flow through correctly.
+  user.companyId = req.companyId || user.companyId;
 
   // Map role to Lorenco's role system
   user.role = mapRole(user.role);

@@ -748,69 +748,7 @@
 
     <script>
         // Sample customer data
-        let customers = [
-            {
-                id: 1,
-                name: 'ABC Corporation',
-                contactPerson: 'John Smith',
-                email: 'john@abccorp.com',
-                phone: '021-555-0001',
-                outstanding: 15750.00,
-                creditLimit: 50000.00,
-                status: 'Active',
-                regNumber: '2010/123456/07',
-                website: 'www.abccorp.com',
-                address: '123 Business Park',
-                city: 'Cape Town',
-                state: 'Western Cape',
-                postalCode: '8001',
-                country: 'South Africa',
-                paymentTerms: 30,
-                accountNumber: 'CUST001',
-                taxNumber: '9876543210'
-            },
-            {
-                id: 2,
-                name: 'XYZ Enterprises',
-                contactPerson: 'Sarah Johnson',
-                email: 'sarah@xyz.co.za',
-                phone: '011-555-0002',
-                outstanding: 8420.50,
-                creditLimit: 25000.00,
-                status: 'Active',
-                regNumber: '2015/987654/07',
-                website: 'www.xyz.co.za',
-                address: '456 Industrial Ave',
-                city: 'Johannesburg',
-                state: 'Gauteng',
-                postalCode: '2000',
-                country: 'South Africa',
-                paymentTerms: 30,
-                accountNumber: 'CUST002',
-                taxNumber: '1234567890'
-            },
-            {
-                id: 3,
-                name: 'Tech Solutions Ltd',
-                contactPerson: 'Mike Davis',
-                email: 'mike@techsolutions.com',
-                phone: '031-555-0003',
-                outstanding: 0.00,
-                creditLimit: 100000.00,
-                status: 'Active',
-                regNumber: '2018/456789/07',
-                website: 'www.techsolutions.com',
-                address: '789 Tech Hub',
-                city: 'Durban',
-                state: 'KwaZulu-Natal',
-                postalCode: '4001',
-                country: 'South Africa',
-                paymentTerms: 60,
-                accountNumber: 'CUST003',
-                taxNumber: '5555555555'
-            }
-        ];
-
+        let customers = [];
         let editingCustomerId = null;
 
         // Load customers on page load
@@ -818,10 +756,52 @@
             loadCustomers();
         });
 
-        function loadCustomers() {
+        async function loadCustomers() {
+            const tbody = document.getElementById('customerTableBody');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">Loading customers...</td></tr>';
+            try {
+                const token = localStorage.getItem('token');
+                const res = await fetch('/api/accounting/pos/customers?limit=500', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                customers = (data.customers || []).map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    contactPerson: c.contact_person || '',
+                    email: c.email || '',
+                    phone: c.phone || c.contact_number || '',
+                    outstanding: parseFloat(c.current_balance) || 0,
+                    creditLimit: parseFloat(c.credit_limit) || 0,
+                    status: c.is_active !== false ? 'Active' : 'Inactive',
+                    regNumber: '',
+                    website: '',
+                    notes: '',
+                    address: c.address_line_1 || '',
+                    city: c.city || '',
+                    state: '',
+                    postalCode: c.postal_code || '',
+                    country: 'South Africa',
+                    paymentTerms: 30,
+                    accountNumber: c.customer_number || '',
+                    taxNumber: ''
+                }));
+            } catch (err) {
+                console.error('[customer-list] load error:', err);
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#e53e3e;padding:20px">Failed to load customers. Please refresh the page.</td></tr>';
+                return;
+            }
+            renderCustomers();
+        }
+
+        function renderCustomers() {
             const tbody = document.getElementById('customerTableBody');
             tbody.innerHTML = '';
-
+            if (customers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">No customers found for this company</td></tr>';
+                return;
+            }
             customers.forEach(customer => {
                 const row = `
                     <tr>
@@ -957,7 +937,7 @@
                 customers.push(customer);
             }
 
-            loadCustomers();
+            renderCustomers();
             closeCustomerModal();
         }
 
