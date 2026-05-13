@@ -1711,7 +1711,7 @@
             <div class="bulk-actions" id="bulkActions">
                 <span><strong id="selectedCount">0</strong> transactions selected</span>
                 <!-- Mark as Reviewed removed: "Reviewed" tab is server-authoritative (allocated or reconciled) -->
-                <button class="action-btn" onclick="bulkMatch()">Match Selected</button>
+                <button class="action-btn" onclick="bulkAllocate()">Allocate Selected</button>
                 <button class="action-btn" onclick="bulkReconcile()">Reconcile Selected</button>
                 <button class="action-btn" onclick="bulkDelete()">Delete Selected</button>
             </div>
@@ -1736,7 +1736,7 @@
                         <th>Transaction Type<span class="col-resize-handle"></span></th>
                         <th>Account<span class="col-resize-handle"></span></th>
                         <th>Status<span class="col-resize-handle"></span></th>
-                        <th>Files<span class="col-resize-handle"></span></th>
+                        <th style="display:none;">Files<span class="col-resize-handle"></span></th>
                         <th>Actions<span class="col-resize-handle"></span></th>
                         <th id="aiHeader">AI</th>
                     </tr>
@@ -2167,7 +2167,7 @@ Click OK to simulate uploading a file.`;
                     ${statusBadgeHtml(txn.status)}
                     ${txn.status === 'unmatched' ? `<br><button class="action-btn" onclick="flipTransaction('${txn.id}')" style="margin-top:4px;font-size:11px;padding:2px 6px;background:#6c757d;color:#fff;" title="Swap Money In ↔ Money Out (fix import direction)">↕ Flip</button>` : ''}
                 </td>
-                <td style="white-space:nowrap;">
+                <td style="display:none;">
                     <a class="upload-link" href="#" onclick="openUploadModal('${txn.id}'); return false;" title="Upload documents">&#128206;</a><button class="action-btn" onclick="showAttachments('${txn.id}')" style="padding:4px 8px; font-size:12px;">&#128196; <span id="attachCount${txn.id}">0</span></button>
                 </td>
                 <td style="white-space:nowrap;">
@@ -4198,8 +4198,125 @@ Click OK to simulate uploading a file.`;
             alert(`Sean AI has learned from your correction!\n\nType: ${type}\nAccount: ${accountText}\nReason: "${explanation}"\n\nSean will use this knowledge for similar transactions in the future.`);
         }
         
-        function bulkMatch() {
-            alert('Bulk matching is not yet available.\n\nTo allocate transactions, use the individual "Allocate" button on each transaction row.');
+        async function bulkAllocate() {
+            const checked = document.querySelectorAll('.transactions-table tbody .checkbox:checked');
+            if (!checked.length) {
+                alert('Select at least one transaction first.');
+                return;
+            }
+
+            // Collect IDs from parent <tr data-txn-id>
+            const ids = Array.from(checked)
+                .map(cb => cb.closest('tr') && cb.closest('tr').getAttribute('data-txn-id'))
+                .filter(Boolean);
+
+            if (!ids.length) return;
+
+            // ── Validate each row has type + account ready ────────────────────
+            const toProcess = [];
+            const skipped   = [];
+
+            for (const id of ids) {
+                const allocation = transactionAllocations[id];
+                const txnData    = getTransactionData(id);
+
+                if (!txnData) {
+                    skipped.push({ id, date: '?', desc: id, reason: 'transaction data not found' });
+                    continue;
+                }
+
+                if (!allocation || !allocation.accountCode) {
+                    skipped.push({ id, date: txnData.date, desc: txnData.description, reason: 'no account selected' });
+                    continue;
+                }
+
+                // Resolve accountId if stale
+                if (!allocation.accountId && allocation.accountCode) {
+                    const found = (window._allLedgerAccounts || []).find(a => a.code === allocation.accountCode);
+                    if (found) {
+                        allocation.accountId = found.id;
+                        transactionAllocations[id].accountId = found.id;
+                        saveAllocationsToStorage();
+                    }
+                }
+
+                if (!allocation.accountId) {
+                    skipped.push({ id, date: txnData.date, desc: txnData.description, reason: 'account not found in chart of accounts — refresh and try again' });
+                    continue;
+                }
+
+                // Pre-flight: bank account must have a linked ledger account
+                const bankAcct = bankAccountsData.find(b => b.id === txnData.bank_account_id);
+                if (bankAcct && !bankAcct.ledger_account_id) {
+                    skipped.push({ id, date: txnData.date, desc: txnData.description, reason: 'bank account has no linked ledger account (edit the account to set one)' });
+                    continue;
+                }
+
+                toProcess.push({ id, txnData, allocation });
+            }
+
+            if (!toProcess.length) {
+                const reasons = skipped.map(s => `  • ${s.date} ${s.desc}: ${s.reason}`).join('\n');
+                alert(`No transactions are ready to allocate.\n\nSkipped ${skipped.length}:\n${reasons}`);
+                return;
+            }
+
+            const skipNote = skipped.length > 0 ? `\n(${skipped.length} row(s) will be skipped — missing account or bank account setup)` : '';
+            if (!confirm(`Allocate ${toProcess.length} transaction(s)?${skipNote}`)) return;
+
+            // ── Allocate sequentially — same route as row-level Allocate ─────
+            // Sean learning fires asynchronously inside /allocate for each call.
+            const succeeded = [];
+            const failed    = [...skipped]; // skipped rows already count as failed
+
+            for (const { id, txnData, allocation } of toProcess) {
+                try {
+                    // NOTE: VAT is intentionally excluded from bulk allocation.
+                    // VAT-bearing lines must be allocated individually using the
+                    // row-level Allocate button where the VAT selector is visible.
+                    // FOLLOW-UP: Bank amounts are VAT-inclusive; a future VAT split step
+                    // must separate ex-VAT amount to the expense/income account from
+                    // VAT input/output amounts so reports show ex-VAT figures.
+                    const allocationLine = {
+                        accountId: allocation.accountId,
+                        amount:    Math.abs(txnData.amount)
+                    };
+
+                    const res  = await fetch(`/api/accounting/bank/transactions/${id}/allocate`, {
+                        method:  'POST',
+                        headers: getAuthHeaders(),
+                        body:    JSON.stringify({ lines: [allocationLine], description: txnData.description })
+                    });
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        let errMsg = data.error || ('HTTP ' + res.status);
+                        if (data.errorCode === 'MISSING_LEDGER_ACCOUNT') errMsg = 'bank account has no linked ledger account';
+                        else if (data.errorCode === 'ALREADY_ALLOCATED')    errMsg = 'already allocated';
+                        else if (data.errorCode === 'JOURNAL_POST_FAILED')  errMsg = (data.details && data.details.reason) || errMsg;
+                        failed.push({ date: txnData.date, desc: txnData.description, reason: errMsg });
+                    } else {
+                        // Clear pending allocation from local storage — now committed in DB
+                        delete transactionAllocations[id];
+                        saveAllocationsToStorage();
+                        succeeded.push(id);
+                    }
+                } catch (err) {
+                    failed.push({ date: txnData.date, desc: txnData.description, reason: err.message });
+                }
+            }
+
+            // ── Reload then switch tab ────────────────────────────────────────
+            await loadTransactions();
+            if (succeeded.length > 0) switchTab('reviewed', null);
+
+            // ── Summary ───────────────────────────────────────────────────────
+            let summary = `Allocated ${succeeded.length} transaction(s).`;
+            if (failed.length > 0) {
+                summary += `\nFailed / Skipped ${failed.length}:`;
+                failed.forEach(f => { summary += `\n  • ${f.date} ${f.desc}: ${f.reason}`; });
+            }
+            alert(summary);
         }
 
         async function bulkReconcile() {
@@ -4402,7 +4519,7 @@ Click OK to simulate uploading a file.`;
                 +   '</select>'
                 + '</td>'
                 + '<td><span class="status-badge status-unmatched">Unmatched</span></td>'
-                + '<td style="white-space:nowrap;">'
+                + '<td style="display:none;">'
                 +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents">&#128206;</a>'
                 +   '<button class="action-btn" onclick="showAttachments(\'' + id + '\')" style="padding:4px 8px; font-size:11px;">&#128196;<span id="attachCount' + id + '">0</span></button>'
                 + '</td>'
