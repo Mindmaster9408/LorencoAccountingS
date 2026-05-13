@@ -599,6 +599,32 @@
         </div>
     </div>
 
+    <!-- ── Restore rejected staging row modal ──────────────────────────────── -->
+    <div class="modal-overlay" id="restoreModal">
+        <div class="modal">
+            <h2>Restore Rejected Transaction</h2>
+            <p>This will move the transaction back to <strong>To Review</strong> so it can be confirmed and imported.</p>
+            <div class="detail-box" id="restoreModalDetail"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('restoreModal')">Cancel</button>
+                <button class="btn-primary" id="restoreModalBtn" onclick="doRestore()">Restore to Review</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Restore rejected staging row modal ───────────────────────────── -->
+    <div class="modal-overlay" id="restoreModal">
+        <div class="modal">
+            <h2>Restore Rejected Transaction</h2>
+            <p>This will move the transaction back to <strong>To Review</strong> so it can be confirmed and imported.</p>
+            <div class="detail-box" id="restoreModalDetail"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('restoreModal')">Cancel</button>
+                <button class="btn-primary" id="restoreModalBtn" onclick="doRestore()">Restore to Review</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ── Reverse confirmed transfer modal ─────────────────────────────── -->
     <div class="modal-overlay" id="reverseTransferModal">
         <div class="modal">
@@ -1013,7 +1039,7 @@
             return `<span style="font-size:11px;color:#137333;">✓ In queue</span>`;
         }
         if (status === 'REJECTED') {
-            return `<span style="font-size:11px;color:#9aa0a6;">Rejected</span>`;
+            return `<button class="btn-xs btn-reverse" onclick="openRestoreStagingRow(${id})" title="Restore so this transaction can be confirmed and imported">Restore</button>`;
         }
         if (status === 'TRANSFER_DETECTED') {
             return `
@@ -1176,6 +1202,34 @@
         } finally {
             btn.disabled = false; btn.textContent = 'Confirm Import';
             pendingConfirmId = null;
+        }
+    }
+
+    // ── Restore rejected staging row ──────────────────────────────────────────
+    let pendingRestoreId = null;
+
+    function openRestoreStagingRow(stagingId) {
+        pendingRestoreId = stagingId;
+        document.getElementById('restoreModalDetail').innerHTML =
+            `<strong>Staging ID: ${stagingId}</strong><br>The transaction will return to the "To Review" queue and can then be confirmed for import.`;
+        openModal('restoreModal');
+    }
+
+    async function doRestore() {
+        if (!pendingRestoreId) return;
+        const btn = document.getElementById('restoreModalBtn');
+        btn.disabled = true; btn.textContent = 'Restoring…';
+
+        try {
+            await apiPatch('/bank/staging/' + pendingRestoreId + '/restore', {});
+            closeModal('restoreModal');
+            showBanner('success', '✓ Transaction restored to the review queue.');
+            await loadPage();
+        } catch (e) {
+            showBanner('error', 'Restore failed: ' + e.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Restore to Review';
+            pendingRestoreId = null;
         }
     }
 

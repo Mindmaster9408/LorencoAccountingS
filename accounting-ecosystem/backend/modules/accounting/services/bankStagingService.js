@@ -558,6 +558,41 @@ const BankStagingService = {
 
 
   // ──────────────────────────────────────────────────────────────────────────
+  // restoreStaged
+  // ──────────────────────────────────────────────────────────────────────────
+  /**
+   * Restore a REJECTED staging row back to UNMATCHED so it can be confirmed.
+   *
+   * @param {number} companyId
+   * @param {number} stagingId
+   * @returns {{ id: number, match_status: 'UNMATCHED' }}
+   */
+  async restoreStaged(companyId, stagingId) {
+    const { data: row, error: fetchErr } = await supabase
+      .from('bank_transaction_staging')
+      .select('id, match_status')
+      .eq('id', stagingId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (fetchErr || !row) throw new Error('Staging row not found');
+    if (row.match_status !== 'REJECTED') {
+      throw new Error('Only REJECTED rows can be restored');
+    }
+
+    const { error } = await supabase
+      .from('bank_transaction_staging')
+      .update({ match_status: 'UNMATCHED' })
+      .eq('id', stagingId)
+      .eq('company_id', companyId);
+
+    if (error) throw new Error(`Failed to restore: ${error.message}`);
+
+    return { id: stagingId, match_status: 'UNMATCHED' };
+  },
+
+
+  // ──────────────────────────────────────────────────────────────────────────
   // confirmTransfer
   // ──────────────────────────────────────────────────────────────────────────
   /**

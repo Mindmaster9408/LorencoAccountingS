@@ -325,6 +325,47 @@ router.patch('/:id/reject',
 
 
 /**
+ * PATCH /api/accounting/bank/staging/:id/restore
+ * Restore a REJECTED staged transaction back to UNMATCHED so it can be confirmed.
+ */
+router.patch('/:id/restore',
+  authenticate,
+  hasPermission('bank.import'),
+  async (req, res) => {
+    try {
+      const stagingId = parseInt(req.params.id, 10);
+      if (isNaN(stagingId)) {
+        return res.status(400).json({ error: 'Invalid staging ID' });
+      }
+
+      const result = await BankStagingService.restoreStaged(req.user.companyId, stagingId);
+
+      await AuditLogger.logUserAction(
+        req,
+        'RESTORE_STAGING',
+        'BANK_TRANSACTION_STAGING',
+        stagingId,
+        { match_status: 'REJECTED' },
+        { match_status: 'UNMATCHED' },
+        'Rejected staged bank transaction restored to review queue'
+      );
+
+      return res.json(result);
+    } catch (err) {
+      console.error('[bankStaging/restore]', err);
+      if (err.message && err.message.includes('not found')) {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err.message && err.message.includes('Only REJECTED')) {
+        return res.status(409).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message || 'Failed to restore staging row' });
+    }
+  }
+);
+
+
+/**
  * POST /api/accounting/bank/staging/transfers/:linkId/confirm
  * Confirm a detected transfer pair.
  *
