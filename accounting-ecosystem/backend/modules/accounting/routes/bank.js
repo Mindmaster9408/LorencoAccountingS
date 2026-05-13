@@ -1056,7 +1056,7 @@ async function _validatePostedAllocationJournal(companyId, journalId, bankTxn, l
  */
 router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
   try {
-    const { lines, description } = req.body;
+    const { lines, description, allocationType } = req.body;
 
     if (!lines || !Array.isArray(lines)) {
       return res.status(400).json({ success: false, error: 'Lines array is required', errorCode: 'MISSING_LINES' });
@@ -1284,14 +1284,33 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       });
     }
 
-    // Mark transaction as matched
+    // Resolve the primary allocation account name for display in the Reviewed tab.
+    // Use lines[0].accountId (the first user-specified line — the expense/income account).
+    let allocatedAccountId   = null;
+    let allocatedAccountName = null;
+    if (lines && lines.length > 0 && lines[0].accountId) {
+      allocatedAccountId = lines[0].accountId;
+      const { data: acctRow } = await supabase
+        .from('accounts')
+        .select('name')
+        .eq('id', lines[0].accountId)
+        .eq('company_id', req.user.companyId)
+        .maybeSingle();
+      allocatedAccountName = acctRow?.name || null;
+    }
+
+    // Mark transaction as matched — persist display fields so the Reviewed tab
+    // can show the allocation type and account without a journal_lines JOIN.
     const { error: updErr } = await supabase
       .from('bank_transactions')
       .update({
         status: 'matched',
         matched_entity_type: 'JOURNAL',
         matched_entity_id: journal.id,
-        matched_by_user_id: req.user.id
+        matched_by_user_id: req.user.id,
+        allocated_account_id:   allocatedAccountId,
+        allocation_type:        allocationType || null,
+        allocated_account_name: allocatedAccountName
       })
       .eq('id', bankTxn.id);
 
@@ -1450,15 +1469,18 @@ router.delete('/transactions/:id/allocate', authenticate, hasPermission('bank.al
       }
     }
 
-    // Reset transaction to unmatched
+    // Reset transaction to unmatched — clear all allocation display fields
     await supabase
       .from('bank_transactions')
       .update({
         status: 'unmatched',
-        matched_entity_type: null,
-        matched_entity_id: null,
-        matched_by_user_id: null,
-        reconciled_at: null
+        matched_entity_type:    null,
+        matched_entity_id:      null,
+        matched_by_user_id:     null,
+        reconciled_at:          null,
+        allocated_account_id:   null,
+        allocation_type:        null,
+        allocated_account_name: null
       })
       .eq('id', bankTxn.id);
 

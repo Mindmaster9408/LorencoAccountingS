@@ -687,6 +687,13 @@ async function ensureAccountingSchema(pool) {
     // ── 24b. Add import_source to bank_transactions (safe on existing tables) ───
     await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS import_source VARCHAR(20) DEFAULT 'manual'`);
 
+    // ── 24c. Add allocation display columns to bank_transactions ──────────────
+    // These store what account and type the transaction was allocated to so
+    // the Reviewed tab can show the details without a JOIN to journal_lines.
+    await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS allocated_account_id INTEGER REFERENCES accounts(id)`);
+    await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS allocation_type VARCHAR(50)`);
+    await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS allocated_account_name TEXT`);
+
     // ── 25. Customer AR Tables ─────────────────────────────────────────────────
 
     await client.query(`

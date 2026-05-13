@@ -2143,8 +2143,9 @@ Click OK to simulate uploading a file.`;
                 ${moneyInCell}
                 ${moneyOutCell}
                 <td>${bal}</td>
-                <td>
-                    <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
+                ${txn.status === 'unmatched'
+                    ? `<td>
+                    <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')">
                         <option value="">Select Type…</option>
                         <option value="customer">Customer Payment</option>
                         <option value="supplier">Supplier Payment</option>
@@ -2154,15 +2155,26 @@ Click OK to simulate uploading a file.`;
                     </select>
                 </td>
                 <td>
-                    <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
+                    <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')">
                         <option value="">Select Account…</option>
                     </select>
                     <div id="vatSelectWrap_${txn.id}" style="display:none;margin-top:4px;">
-                        <select id="vatSelect_${txn.id}" class="allocation-select" style="font-size:11px;color:#555;" ${txn.status !== 'unmatched' ? 'disabled' : ''}>
+                        <select id="vatSelect_${txn.id}" class="allocation-select" style="font-size:11px;color:#555;">
                             <option value="">No VAT</option>
                         </select>
                     </div>
-                </td>
+                </td>`
+                    : (() => {
+                        const typeLabels = { customer: 'Customer Payment', supplier: 'Supplier Payment', transfer: 'Transfer', vat: 'VAT Payment', account: 'Account' };
+                        const typeLabel  = txn.allocation_type ? (typeLabels[txn.allocation_type] || txn.allocation_type) : '—';
+                        const acctName   = txn.allocated_account_name
+                            || ((txn.allocated_account_id && window._allLedgerAccounts)
+                                ? (window._allLedgerAccounts.find(a => a.id === txn.allocated_account_id) || {}).name || null
+                                : null);
+                        return `<td><span style="font-size:12px;color:#555;">${escapeHtml(typeLabel)}</span></td>
+                <td><span style="font-size:12px;color:#555;">${acctName ? escapeHtml(acctName) : '<span style="color:#9aa0a6">—</span>'}</span></td>`;
+                    })()
+                }
                 <td>
                     ${statusBadgeHtml(txn.status)}
                     ${txn.status === 'unmatched' ? `<br><button class="action-btn" onclick="flipTransaction('${txn.id}')" style="margin-top:4px;font-size:11px;padding:2px 6px;background:#6c757d;color:#fff;" title="Swap Money In ↔ Money Out (fix import direction)">↕ Flip</button>` : ''}
@@ -3634,7 +3646,8 @@ Click OK to simulate uploading a file.`;
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
                         lines: [allocationLine],
-                        description: txnData.description
+                        description: txnData.description,
+                        allocationType: allocation.type || null
                     })
                 });
                 const data = await res.json();
@@ -4285,7 +4298,7 @@ Click OK to simulate uploading a file.`;
                     const res  = await fetch(`/api/accounting/bank/transactions/${id}/allocate`, {
                         method:  'POST',
                         headers: getAuthHeaders(),
-                        body:    JSON.stringify({ lines: [allocationLine], description: txnData.description })
+                        body:    JSON.stringify({ lines: [allocationLine], description: txnData.description, allocationType: allocation.type || null })
                     });
                     const data = await res.json();
 
