@@ -603,6 +603,75 @@ describe('StandardBankParser — 4-digit year (DD Mon YYYY, real PDF format)', (
   });
 });
 
+// ─── Standard Bank — production PDF format (date concatenated with description) ─
+// Real pdf-parse extraction merges date column and description column with no space.
+// "27 Nov 24DF CTOTS 1008 AUTOBANK CASH DEPOSIT200.00200.00" is one extracted line.
+// Also tests: generation date (24/02/2025) must NOT start a block; merged column
+// header (DateDescriptionPaymentsDepositsBalance) must be filtered.
+
+const STDBANK_CONCAT_SAMPLE = `The Standard Bank of South Africa
+Account number:05 1001 234 5
+Account holder:ACME (PTY) LTD
+From: 27 Nov 2024
+To: 24 Feb 2025
+3 month statement
+24/02/2025
+051001 Pg 1 of3
+DateDescriptionPaymentsDepositsBalance
+27 Nov 24DF CTOTS 1008 AUTOBANK CASH DEPOSIT200.00200.00
+27 Nov 24CASH DEPOSIT FEE - AUTOBANK-7.20192.80
+11 Dec 24CAPITEC H RUST CREDIT TRANSFER500.00692.80
+31 Dec 24MONTHLY MANAGEMENT FEE-4.29688.51
+24/02/2025
+051001 Pg 2 of3
+DateDescriptionPaymentsDepositsBalance
+06 Jan 25DIAMATRIX CC IB PAYMENT TO-298.00390.51
+14 Jan 25GOOGLE PHOTOD 4278*6153 12 JAN CHEQUE CARD PURCHASE-129.99260.52
+20 Feb 25GOLDEN SUPERM 427846153 18 FEB CHEQUE CARD PURCHASE-45.00215.52
+
+Statement Summary
+Payments -R477.28
+Deposits R700.00
+`;
+
+describe('StandardBankParser \u2014 production concat format (date+desc no space)', () => {
+  let result;
+  beforeAll(() => { result = StandardBankParser.parse(STDBANK_CONCAT_SAMPLE, 'stdbank-prod.pdf'); });
+
+  test('1. detects Standard Bank', () => {
+    expect(StandardBankParser.canParse(STDBANK_CONCAT_SAMPLE).confidence).toBeGreaterThanOrEqual(0.7);
+  });
+
+  test('2. extracts 7 transactions (not 2 or 3)', () => {
+    expect(result.transactions.length).toBe(7);
+  });
+
+  test('3. first transaction date is 2024-11-27', () => {
+    expect(result.transactions[0].date).toBe('2024-11-27');
+  });
+
+  test('4. first transaction amount is +200 (deposit)', () => {
+    expect(result.transactions[0].amount).toBe(200);
+  });
+
+  test('5. CASH DEPOSIT FEE is -7.20', () => {
+    const fee = result.transactions.find(t => t.description.includes('CASH DEPOSIT FEE'));
+    expect(fee).toBeDefined();
+    expect(fee.amount).toBe(-7.20);
+  });
+
+  test('6. generation date 24/02/2025 does NOT appear as a transaction', () => {
+    const gen = result.transactions.find(t => t.date === '2025-02-24' && t.description === '');
+    expect(gen).toBeUndefined();
+  });
+
+  test('7. last transaction date is 2025-02-20', () => {
+    const last = result.transactions[result.transactions.length - 1];
+    expect(last.date).toBe('2025-02-20');
+    expect(last.amount).toBe(-45);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const NEDBANK_SAMPLE = `

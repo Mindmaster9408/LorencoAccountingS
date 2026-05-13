@@ -19,9 +19,10 @@ const BaseParser = require('./base-parser');
 
 // ─── Date patterns ────────────────────────────────────────────────────────────
 // Primary format for 3-month statements: DD Mon YY or DD Mon YYYY  (e.g. "27 Nov 24" or "27 Nov 2024")
-const DATE_RE_MON = /^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}(?:\s|$)/i;
-// Legacy format: YYYY/MM/DD or DD/MM/YY(YY)
-const DATE_RE_NUM = /^\d{4}\/\d{2}\/\d{2}|^\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})/;
+// NOTE: no trailing (?:\s|$) — real PDFs concatenate date+description with no space (e.g. "27 Nov 24DF CTOTS")
+const DATE_RE_MON = /^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}/i;
+// Legacy format: YYYY/MM/DD only — DD/MM/YYYY removed because it matches print/generation dates
+const DATE_RE_NUM = /^\d{4}\/\d{2}\/\d{2}/;
 
 // Amount token — handles comma/space thousands, brackets, minus, DR/CR suffix, R prefix
 const AMT_TOKEN_RE = /(?:R\s*)?(?:\([\d]+(?:[,\s]\d{3})*\.\d{2}\)|[-]?\s*\d[\d,\s]*\.\d{2})\s*(?:[Dd][Rb]?|[Cc][Rr])?/g;
@@ -44,13 +45,14 @@ const BLOCK_NOISE_RE = [
   /^website\s*:\s*www\./i,
   /^the\s+standard\s+bank\s+of\s+south\s+africa/i,
   /^we\s+subscribe\s+to\s+the\s+code/i,
-  /^pg\s+\d+\s+of\s+\d+/i,
+  /^pg\s+\d+\s+of\s*\d+/i,                // "Pg 1 of 3" — with space
+  /^\d+\s+pg\s+\d+\s+of\s*\d+/i,          // "051001 Pg 1 of3" — account number prefix + no space before page count
   /^transaction\s+details/i,
   /^available\s+balance\s*:/i,
   /^account\s+(?:number|holder|name|type)/i,
   /^product\s+name/i,
   /^statement\s+opening\s+balance/i,
-  /^date\s+description\s+payments/i,
+  /^date\s*description\s*payments/i,        // handles both spaced and merged ("DateDescriptionPayments")
   /^3\s+month\s+statement/i,
   /^from\s*:\s/i,
   /^to\s*:\s/i,
@@ -222,7 +224,8 @@ class StandardBankParser extends BaseParser {
   }
 
   static _extractDateStr(line) {
-    let m = line.match(/^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4})(?:\s|$)/i);
+    // No trailing (?:\s|$) — real PDFs may concatenate date+description with no space
+    let m = line.match(/^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4})/i);
     if (m) return m[1];
     m = line.match(/^(\d{4}\/\d{2}\/\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))/);
     if (m) return m[1];
