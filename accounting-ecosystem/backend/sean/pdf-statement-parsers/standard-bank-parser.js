@@ -56,6 +56,8 @@ const BLOCK_NOISE_RE = [
   /^3\s+month\s+statement/i,
   /^from\s*:\s/i,
   /^to\s*:\s/i,
+  /^please\s+verify\s+all\s+transactions/i,  // footer disclaimer
+  /^notify\s+(?:the\s+)?bank\s+as\s+soon/i,  // footer disclaimer line 2 (if split)
 ];
 
 // Section end — everything after "Statement Summary" is not a transaction
@@ -169,7 +171,9 @@ class StandardBankParser extends BaseParser {
     const dateEnd    = dateStr.length;
     const firstTail  = firstLine.slice(dateEnd).trim();
     const continuations = block.slice(1).map(l => l.trim()).filter(Boolean);
-    const combined   = [firstTail, ...continuations].join(' ').trim();
+    // Strip footer disclaimer that pdf-parse sometimes appends inline to the last transaction
+    const combined   = [firstTail, ...continuations].join(' ').trim()
+      .replace(/\s*please\s+verify\s+all\s+transactions\s+reflected.*/i, '').trim();
 
     AMT_TOKEN_RE.lastIndex = 0;
     const tokens = [];
