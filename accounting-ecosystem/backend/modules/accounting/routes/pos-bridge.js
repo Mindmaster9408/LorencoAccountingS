@@ -588,4 +588,229 @@ router.get('/customers/:id/sales', authenticate, hasPermission('pos.view'), asyn
   }
 });
 
+// ─── POST /api/accounting/pos/customers ──────────────────────────────────────
+/**
+ * Create a new customer scoped to the selected company.
+ * company_id is always taken from the authenticated session — never from body.
+ *
+ * Body fields: name (required), customer_number, contact_person, phone, email,
+ *   address_line_1, city, province, postal_code, credit_limit, notes,
+ *   tax_reference, id_number, customer_type, is_active
+ *
+ * Returns: { customer }
+ */
+router.post('/customers', authenticate, hasPermission('pos.manage'), async (req, res) => {
+  try {
+    const companyId = req.companyId || req.user?.companyId;
+    if (!companyId) {
+      return res.status(400).json({ error: 'COMPANY_CONTEXT_REQUIRED' });
+    }
+
+    const {
+      name,
+      customer_number,
+      contact_person,
+      phone,
+      email,
+      address_line_1,
+      city,
+      province,
+      postal_code,
+      credit_limit,
+      notes,
+      tax_reference,
+      id_number,
+      customer_type,
+      is_active,
+    } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Customer name is required' });
+    }
+
+    const insertPayload = {
+      company_id:      companyId,
+      name:            name.trim(),
+      customer_number: customer_number || null,
+      contact_person:  contact_person  || null,
+      phone:           phone           || null,
+      email:           email           || null,
+      address_line_1:  address_line_1  || null,
+      city:            city            || null,
+      province:        province        || null,
+      postal_code:     postal_code     || null,
+      credit_limit:    parseFloat(credit_limit) || 0,
+      notes:           notes           || null,
+      tax_reference:   tax_reference   || null,
+      id_number:       id_number       || null,
+      customer_type:   customer_type   || 'Cash Sale Customer',
+      is_active:       is_active !== false,
+      updated_at:      new Date().toISOString(),
+    };
+
+    const { data: created, error: insertError } = await supabase
+      .from('customers')
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (insertError) throw new Error(insertError.message);
+
+    await AuditLogger.logUserAction(
+      req, 'CUSTOMER_CREATED', 'CUSTOMER', created.id,
+      null,
+      { name: created.name, customer_number: created.customer_number, companyId },
+      'Customer created via accounting customer list'
+    );
+
+    res.status(201).json({ customer: created });
+  } catch (err) {
+    console.error('[pos-bridge] POST /customers error:', err);
+    res.status(500).json({ error: 'Failed to create customer' });
+  }
+});
+
+// ─── PUT /api/accounting/pos/customers/:id ────────────────────────────────────
+/**
+ * Update an existing customer.
+ * Only updates the customer if it belongs to the selected company — no
+ * cross-company updates possible. company_id cannot be changed.
+ *
+ * Returns: { customer }
+ */
+router.put('/customers/:id', authenticate, hasPermission('pos.manage'), async (req, res) => {
+  try {
+    const companyId = req.companyId || req.user?.companyId;
+    if (!companyId) {
+      return res.status(400).json({ error: 'COMPANY_CONTEXT_REQUIRED' });
+    }
+
+    const customerId = parseInt(req.params.id, 10);
+    if (!customerId) return res.status(400).json({ error: 'Invalid customer id' });
+
+    // Fetch existing — enforces company scope
+    const { data: existing, error: fetchError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', customerId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (fetchError) throw new Error(fetchError.message);
+    if (!existing) return res.status(404).json({ error: 'Customer not found' });
+
+    const {
+      name,
+      customer_number,
+      contact_person,
+      phone,
+      email,
+      address_line_1,
+      city,
+      province,
+      postal_code,
+      credit_limit,
+      notes,
+      tax_reference,
+      id_number,
+      customer_type,
+      is_active,
+    } = req.body;
+
+    if (name !== undefined && !name.trim()) {
+      return res.status(400).json({ error: 'Customer name cannot be empty' });
+    }
+
+    const updatePayload = { updated_at: new Date().toISOString() };
+    if (name            !== undefined) updatePayload.name            = name.trim();
+    if (customer_number !== undefined) updatePayload.customer_number = customer_number || null;
+    if (contact_person  !== undefined) updatePayload.contact_person  = contact_person  || null;
+    if (phone           !== undefined) updatePayload.phone           = phone           || null;
+    if (email           !== undefined) updatePayload.email           = email           || null;
+    if (address_line_1  !== undefined) updatePayload.address_line_1  = address_line_1  || null;
+    if (city            !== undefined) updatePayload.city            = city            || null;
+    if (province        !== undefined) updatePayload.province        = province        || null;
+    if (postal_code     !== undefined) updatePayload.postal_code     = postal_code     || null;
+    if (credit_limit    !== undefined) updatePayload.credit_limit    = parseFloat(credit_limit) || 0;
+    if (notes           !== undefined) updatePayload.notes           = notes           || null;
+    if (tax_reference   !== undefined) updatePayload.tax_reference   = tax_reference   || null;
+    if (id_number       !== undefined) updatePayload.id_number       = id_number       || null;
+    if (customer_type   !== undefined) updatePayload.customer_type   = customer_type   || null;
+    if (is_active       !== undefined) updatePayload.is_active       = is_active !== false;
+
+    const { data: updated, error: updateError } = await supabase
+      .from('customers')
+      .update(updatePayload)
+      .eq('id', customerId)
+      .eq('company_id', companyId)
+      .select()
+      .single();
+
+    if (updateError) throw new Error(updateError.message);
+
+    await AuditLogger.logUserAction(
+      req, 'CUSTOMER_UPDATED', 'CUSTOMER', customerId,
+      { name: existing.name, email: existing.email, is_active: existing.is_active },
+      updatePayload,
+      'Customer updated via accounting customer list'
+    );
+
+    res.json({ customer: updated });
+  } catch (err) {
+    console.error('[pos-bridge] PUT /customers/:id error:', err);
+    res.status(500).json({ error: 'Failed to update customer' });
+  }
+});
+
+// ─── DELETE /api/accounting/pos/customers/:id ─────────────────────────────────
+/**
+ * Soft-deactivate a customer (is_active = false).
+ * Company-scoped — returns 404 for customers belonging to other companies.
+ * Hard delete is NOT performed because customers may have sales history.
+ *
+ * Returns: { message, customerId }
+ */
+router.delete('/customers/:id', authenticate, hasPermission('pos.manage'), async (req, res) => {
+  try {
+    const companyId = req.companyId || req.user?.companyId;
+    if (!companyId) {
+      return res.status(400).json({ error: 'COMPANY_CONTEXT_REQUIRED' });
+    }
+
+    const customerId = parseInt(req.params.id, 10);
+    if (!customerId) return res.status(400).json({ error: 'Invalid customer id' });
+
+    // Verify ownership before deactivating
+    const { data: existing, error: fetchError } = await supabase
+      .from('customers')
+      .select('id, name, is_active')
+      .eq('id', customerId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (fetchError) throw new Error(fetchError.message);
+    if (!existing) return res.status(404).json({ error: 'Customer not found' });
+
+    const { error: deactivateError } = await supabase
+      .from('customers')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', customerId)
+      .eq('company_id', companyId);
+
+    if (deactivateError) throw new Error(deactivateError.message);
+
+    await AuditLogger.logUserAction(
+      req, 'CUSTOMER_DEACTIVATED', 'CUSTOMER', customerId,
+      { name: existing.name, is_active: existing.is_active },
+      { is_active: false },
+      'Customer deactivated via accounting customer list'
+    );
+
+    res.json({ message: 'Customer deactivated', customerId });
+  } catch (err) {
+    console.error('[pos-bridge] DELETE /customers/:id error:', err);
+    res.status(500).json({ error: 'Failed to deactivate customer' });
+  }
+});
+
 module.exports = router;

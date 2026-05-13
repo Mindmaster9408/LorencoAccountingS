@@ -146,6 +146,7 @@ const PERMISSIONS = {
 
   // POS bridge (read POS data + cash/card reconciliation from accounting)
   'pos.view':      ['admin', 'accountant', 'bookkeeper', 'viewer'],
+  'pos.manage':    ['admin', 'accountant', 'bookkeeper'],
   'pos.reconcile': ['admin', 'accountant'],
 
   // Accounts Payable / Supplier invoices

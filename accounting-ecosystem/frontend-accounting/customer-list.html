@@ -434,6 +434,17 @@
             border-color: #0066cc;
             color: #0066cc;
         }
+
+        .action-btn-danger {
+            border-color: #e53e3e;
+            color: #e53e3e;
+        }
+
+        .action-btn-danger:hover {
+            background: #fff5f5;
+            border-color: #c53030;
+            color: #c53030;
+        }
         
         /* Modal Styles */
         .modal {
@@ -816,6 +827,7 @@
                             <div class="actions">
                                 <button class="action-btn" onclick="editCustomer(${customer.id})">Edit</button>
                                 <button class="action-btn" onclick="viewCustomer(${customer.id})">View</button>
+                                <button class="action-btn action-btn-danger" onclick="deleteCustomer(${customer.id}, '${customer.name.replace(/'/g, "\\'")}')">Deactivate</button>
                             </div>
                         </td>
                     </tr>
@@ -900,45 +912,82 @@
             document.getElementById('status').value = 'Active';
         }
 
-        function saveCustomer() {
-            const customer = {
-                name: document.getElementById('customerName').value,
-                regNumber: document.getElementById('regNumber').value,
-                contactPerson: document.getElementById('contactPerson').value,
-                phone: document.getElementById('phone').value,
-                email: document.getElementById('email').value,
-                website: document.getElementById('website').value,
-                notes: document.getElementById('notes').value,
-                address: document.getElementById('address').value,
-                city: document.getElementById('city').value,
-                state: document.getElementById('state').value,
-                postalCode: document.getElementById('postalCode').value,
-                country: document.getElementById('country').value,
-                creditLimit: parseFloat(document.getElementById('creditLimit').value) || 0,
-                paymentTerms: parseInt(document.getElementById('paymentTerms').value) || 30,
-                accountNumber: document.getElementById('accountNumber').value,
-                taxNumber: document.getElementById('taxNumber').value,
-                status: document.getElementById('status').value
-            };
-
-            if (!customer.name) {
+        async function saveCustomer() {
+            const name = document.getElementById('customerName').value.trim();
+            if (!name) {
                 alert('Please enter a customer name');
                 return;
             }
 
-            if (editingCustomerId) {
-                // Update existing
-                const index = customers.findIndex(c => c.id === editingCustomerId);
-                customers[index] = { ...customers[index], ...customer };
-            } else {
-                // Add new
-                customer.id = Math.max(...customers.map(c => c.id), 0) + 1;
-                customer.outstanding = 0;
-                customers.push(customer);
-            }
+            const payload = {
+                name,
+                id_number:      document.getElementById('regNumber').value.trim()      || null,
+                contact_person: document.getElementById('contactPerson').value.trim()  || null,
+                phone:          document.getElementById('phone').value.trim()          || null,
+                email:          document.getElementById('email').value.trim()          || null,
+                notes:          document.getElementById('notes').value.trim()          || null,
+                address_line_1: document.getElementById('address').value.trim()        || null,
+                city:           document.getElementById('city').value.trim()           || null,
+                province:       document.getElementById('state').value.trim()          || null,
+                postal_code:    document.getElementById('postalCode').value.trim()     || null,
+                credit_limit:   parseFloat(document.getElementById('creditLimit').value) || 0,
+                customer_number:document.getElementById('accountNumber').value.trim()  || null,
+                tax_reference:  document.getElementById('taxNumber').value.trim()      || null,
+                is_active:      document.getElementById('status').value === 'Active',
+            };
 
-            renderCustomers();
-            closeCustomerModal();
+            const token   = localStorage.getItem('token');
+            const isEdit  = !!editingCustomerId;
+            const url     = isEdit
+                ? '/api/accounting/pos/customers/' + editingCustomerId
+                : '/api/accounting/pos/customers';
+            const method  = isEdit ? 'PUT' : 'POST';
+
+            const saveBtn = document.querySelector('#customerModal .btn-primary');
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
+            try {
+                const res = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert('Error: ' + (data.error || 'Failed to save customer'));
+                    return;
+                }
+                closeCustomerModal();
+                await loadCustomers();
+            } catch (err) {
+                console.error('[customer-list] save error:', err);
+                alert('Network error — please try again.');
+            } finally {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Customer'; }
+            }
+        }
+
+        async function deleteCustomer(id, name) {
+            if (!confirm('Deactivate customer "' + name + '"?\n\nThey will no longer appear in the active customer list.')) return;
+            const token = localStorage.getItem('token');
+            try {
+                const res = await fetch('/api/accounting/pos/customers/' + id, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert('Error: ' + (data.error || 'Failed to deactivate customer'));
+                    return;
+                }
+                await loadCustomers();
+            } catch (err) {
+                console.error('[customer-list] delete error:', err);
+                alert('Network error — please try again.');
+            }
         }
 
         function switchTab(event, tabId) {
