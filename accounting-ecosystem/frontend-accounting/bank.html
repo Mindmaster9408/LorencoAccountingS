@@ -4188,9 +4188,48 @@ Click OK to simulate uploading a file.`;
             alert(`Match ${count} selected transactions`);
         }
 
-        function bulkReconcile() {
-            const count = document.querySelectorAll('.transactions-table tbody .checkbox:checked').length;
-            alert(`Reconcile ${count} selected transactions`);
+        async function bulkReconcile() {
+            const checked = document.querySelectorAll('.transactions-table tbody .checkbox:checked');
+            if (!checked.length) return;
+
+            // Collect numeric IDs from the parent <tr data-txn-id>
+            const ids = Array.from(checked)
+                .map(cb => cb.closest('tr') && cb.closest('tr').getAttribute('data-txn-id'))
+                .filter(Boolean)
+                .map(id => parseInt(id, 10))
+                .filter(n => !isNaN(n));
+
+            if (!ids.length) return;
+
+            if (!confirm(`Reconcile ${ids.length} selected transaction(s)?\n\nOnly transactions with status "matched" (already allocated) can be reconciled.`)) return;
+
+            try {
+                const resp = await fetch('/api/accounting/bank/reconcile', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ transactionIds: ids })
+                });
+                const data = await resp.json();
+
+                if (resp.status === 422) {
+                    const reasons = (data.invalidTransactions || [])
+                        .map(t => `  • ${t.reason}`)
+                        .join('\n');
+                    alert(`Cannot reconcile — ${data.error}\n\n${reasons}`);
+                    return;
+                }
+
+                if (!resp.ok) {
+                    alert(`Reconcile failed: ${data.error || 'Unknown error'}`);
+                    return;
+                }
+
+                // Refresh — reconciled transactions will move to the Reviewed tab automatically
+                await loadTransactions();
+            } catch (err) {
+                alert('Reconcile failed: ' + err.message);
+                console.error('bulkReconcile error:', err);
+            }
         }
 
         // ===================================
