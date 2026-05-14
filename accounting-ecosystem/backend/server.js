@@ -655,10 +655,11 @@ async function start() {
     await ensureDefaultCompany();
 
     // 3. Seed master admin if no users exist; always ensure additional users exist
-    const { seedMasterAdmin, seedAdditionalUsers, forceResetMasterAdmin } = require('./config/seed');
+    const { seedMasterAdmin, seedAdditionalUsers, forceResetMasterAdmin, ensureUserRoles } = require('./config/seed');
     await forceResetMasterAdmin(supabase); // no-op unless FORCE_RESET_ADMIN=true
     await seedMasterAdmin(supabase);
     await seedAdditionalUsers(supabase);
+    await ensureUserRoles(supabase);     // idempotent — enforces role/apps_access on existing users
 
     // 4. Auto-migrate accounting tables (runs on every startup, safe — uses IF NOT EXISTS)
     if (accountingRoutes) {

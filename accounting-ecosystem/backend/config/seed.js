@@ -123,14 +123,27 @@ async function seedMasterAdmin(supabase) {
  * Safe to call on every startup — skips if user already exists.
  */
 async function seedAdditionalUsers(supabase) {
+  // apps_access = all apps EXCEPT coaching (coaching is ruanvlog-only)
+  const NO_COACHING = ['pos', 'payroll', 'accounting', 'sean', 'inventory', 'practice'];
+
   const additionalUsers = [
     {
       username: 'mj@lorenco.co.za',
       email: 'mj@lorenco.co.za',
       full_name: 'MJ van Loggerenberg',
       password: 'mJmR@9423$',
-      role: 'business_owner',
-      is_super_admin: false
+      role: 'super_admin',
+      is_super_admin: true,
+      apps_access: NO_COACHING
+    },
+    {
+      username: 'antonjvr@lorenco.co.za',
+      email: 'antonjvr@lorenco.co.za',
+      full_name: 'Anton van Rensburg',
+      password: 'Lorenco@Anton2026',
+      role: 'super_admin',
+      is_super_admin: true,
+      apps_access: NO_COACHING
     }
   ];
 
@@ -188,7 +201,8 @@ async function seedAdditionalUsers(supabase) {
             company_id: company.id,
             role: u.role,
             is_primary: true,
-            is_active: true
+            is_active: true,
+            apps_access: u.apps_access || null
           });
 
         if (!linkError) {
@@ -201,6 +215,74 @@ async function seedAdditionalUsers(supabase) {
       }
     } catch (err) {
       console.error(`  ❌ Error seeding user ${u.email}:`, err.message);
+    }
+  }
+}
+
+/**
+ * Ensure existing users have the correct role/is_super_admin/apps_access.
+ * Runs on every startup — idempotent, only updates where values differ.
+ * This handles users already in DB who need their role upgraded.
+ */
+async function ensureUserRoles(supabase) {
+  const NO_COACHING = ['pos', 'payroll', 'accounting', 'sean', 'inventory', 'practice'];
+
+  // Users that must always have these settings (enforced on every startup)
+  const enforced = [
+    {
+      email: 'mj@lorenco.co.za',
+      role: 'super_admin',
+      is_super_admin: true,
+      apps_access: NO_COACHING
+    },
+    {
+      email: 'antonjvr@lorenco.co.za',
+      role: 'super_admin',
+      is_super_admin: true,
+      apps_access: NO_COACHING
+    }
+  ];
+
+  for (const target of enforced) {
+    try {
+      // Find user
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, role, is_super_admin')
+        .eq('email', target.email)
+        .maybeSingle();
+
+      if (!user) {
+        // Not yet created — seedAdditionalUsers will handle it
+        continue;
+      }
+
+      // Update users table if role/is_super_admin is wrong
+      if (user.role !== target.role || user.is_super_admin !== target.is_super_admin) {
+        const { error: uErr } = await supabase
+          .from('users')
+          .update({ role: target.role, is_super_admin: target.is_super_admin })
+          .eq('id', user.id);
+        if (uErr) {
+          console.error(`  ❌ ensureUserRoles: Failed to update ${target.email}:`, uErr.message);
+        } else {
+          console.log(`  ✅ ensureUserRoles: ${target.email} promoted to ${target.role}`);
+        }
+      }
+
+      // Update user_company_access for all their company links
+      const { error: aErr } = await supabase
+        .from('user_company_access')
+        .update({ role: target.role, apps_access: target.apps_access })
+        .eq('user_id', user.id);
+
+      if (aErr) {
+        console.error(`  ❌ ensureUserRoles: Failed to update access for ${target.email}:`, aErr.message);
+      } else {
+        console.log(`  ✅ ensureUserRoles: ${target.email} access updated (no coaching)`);
+      }
+    } catch (err) {
+      console.error(`  ❌ ensureUserRoles error for ${target.email}:`, err.message);
     }
   }
 }
@@ -258,4 +340,4 @@ async function forceResetMasterAdmin(supabase) {
   }
 }
 
-module.exports = { seedMasterAdmin, seedAdditionalUsers, forceResetMasterAdmin };
+module.exports = { seedMasterAdmin, seedAdditionalUsers, forceResetMasterAdmin, ensureUserRoles };

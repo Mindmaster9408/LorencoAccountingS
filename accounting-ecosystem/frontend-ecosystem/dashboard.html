@@ -2048,8 +2048,12 @@
                 // SEAN AI is only visible to super admins
                 if (app.key === 'sean' && !isSuperAdmin) return '';
 
-                // Check per-app access: if user has a restriction, enforce it
-                const userCanAccess = isSuperAdmin || !userAppsAccess || userAppsAccess.includes(app.key);
+                // Check per-app access: if user has a restriction, enforce it.
+                // Coaching is the ONLY exception to the super-admin bypass — even super admins
+                // must have coaching in their apps_access (or null apps_access) to see it.
+                const userCanAccess = (app.key === 'coaching')
+                    ? (!userAppsAccess || userAppsAccess.includes('coaching'))
+                    : (isSuperAdmin || !userAppsAccess || userAppsAccess.includes(app.key));
 
                 // App is active if the company has it in modules_enabled AND user can access it
                 const isActive = userCanAccess && (isSuperAdmin || companyModules.includes(app.key));
