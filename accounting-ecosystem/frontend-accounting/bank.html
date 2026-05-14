@@ -556,10 +556,11 @@
         .transactions-table th:nth-child(6)  { width: 90px;  }   /* Balance */
         .transactions-table th:nth-child(7)  { width: 140px; }   /* Transaction Type */
         .transactions-table th:nth-child(8)  { width: 155px; }   /* Account */
-        .transactions-table th:nth-child(9)  { width: 84px;  }   /* Status */
-        .transactions-table th:nth-child(10) { width: 60px;  }   /* Files */
-        .transactions-table th:nth-child(11) { width: 110px; }   /* Actions */
-        .transactions-table th:nth-child(12) { }                  /* AI — fills remaining width */
+        .transactions-table th:nth-child(9)  { width: 130px; }   /* VAT Type */
+        .transactions-table th:nth-child(10) { width: 84px;  }   /* Status (hidden) */
+        .transactions-table th:nth-child(11) { width: 60px;  }   /* Files */
+        .transactions-table th:nth-child(12) { width: 110px; }   /* Actions */
+        .transactions-table th:nth-child(13) { }                  /* AI — fills remaining width */
 
         /* Column resize handle */
         .col-resize-handle {
@@ -1740,6 +1741,7 @@
                         <th>Balance<span class="col-resize-handle"></span></th>
                         <th>Transaction Type<span class="col-resize-handle"></span></th>
                         <th>Account<span class="col-resize-handle"></span></th>
+                        <th>VAT Type<span class="col-resize-handle"></span></th>
                         <th class="txn-status-cell">Status<span class="col-resize-handle"></span></th>
                         <th class="txn-attachment-cell">Files<span class="col-resize-handle"></span></th>
                         <th>Actions<span class="col-resize-handle"></span></th>
@@ -1781,6 +1783,7 @@
                                 <option value="">Select Account...</option>
                             </select>
                         </td>
+                        <td style="color:#aaa; text-align:center; font-size:12px;">—</td>
                         <td class="txn-status-cell">
                             <span class="status-badge status-unmatched" style="font-size:10px; padding:3px 8px;">Unmatched</span>
                         </td>
@@ -2163,11 +2166,12 @@ Click OK to simulate uploading a file.`;
                     <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')">
                         <option value="">Select Account…</option>
                     </select>
-                    <div id="vatSelectWrap_${txn.id}" style="display:none;margin-top:4px;">
-                        <select id="vatSelect_${txn.id}" class="allocation-select" style="font-size:11px;color:#555;">
-                            <option value="">No VAT</option>
-                        </select>
-                    </div>
+                </td>
+                <td id="vatCell_${txn.id}" style="vertical-align:middle;">
+                    <select id="vatSelect_${txn.id}" class="allocation-select" style="display:none;">
+                        <option value="">No VAT</option>
+                    </select>
+                    <span id="vatNoApply_${txn.id}" style="color:#9aa0a6;font-size:12px;">—</span>
                 </td>`
                     : (() => {
                         const typeLabels = { customer: 'Customer Payment', supplier: 'Supplier Payment', transfer: 'Transfer', vat: 'VAT Payment', account: 'Account' };
@@ -2176,8 +2180,13 @@ Click OK to simulate uploading a file.`;
                             || ((txn.allocated_account_id && window._allLedgerAccounts)
                                 ? (window._allLedgerAccounts.find(a => a.id === txn.allocated_account_id) || {}).name || null
                                 : null);
+                        const vatSetting = txn.vat_setting_id
+                            ? (window._vatSettings || []).find(vs => vs.id === txn.vat_setting_id)
+                            : null;
+                        const vatLabel   = vatSetting ? vatSetting.name : '—';
                         return `<td><span style="font-size:12px;color:#555;">${escapeHtml(typeLabel)}</span></td>
-                <td><span style="font-size:12px;color:#555;">${acctName ? escapeHtml(acctName) : '<span style="color:#9aa0a6">—</span>'}</span></td>`;
+                <td><span style="font-size:12px;color:#555;">${acctName ? escapeHtml(acctName) : '<span style="color:#9aa0a6">—</span>'}</span></td>
+                <td><span style="font-size:12px;color:#555;">${escapeHtml(vatLabel)}</span></td>`;
                     })()
                 }
                 <td class="txn-status-cell">
@@ -2201,7 +2210,7 @@ Click OK to simulate uploading a file.`;
                 </td>
             </tr>
             <tr class="ai-suggestion-row" id="aiRow${txn.id}">
-                <td colspan="12">
+                <td colspan="13">
                     <div class="ai-suggestion-content">
                         <div class="ai-suggestion-header">&#129302; Sean AI Analysis</div>
                         <div class="ai-decision"><em>Click to analyze…</em></div>
@@ -2223,7 +2232,7 @@ Click OK to simulate uploading a file.`;
 
             if (!slice.length) {
                 tbody.insertAdjacentHTML('beforeend',
-                    '<tr><td colspan="12" style="text-align:center;padding:40px;color:#5f6368;">No transactions on this page.</td></tr>');
+                    '<tr><td colspan="13" style="text-align:center;padding:40px;color:#5f6368;">No transactions on this page.</td></tr>');
             } else {
                 tbody.insertAdjacentHTML('beforeend', slice.map(txnRowHtml).join(''));
                 restoreAllocationsToUI();
@@ -2272,7 +2281,7 @@ Click OK to simulate uploading a file.`;
             // Clear non-entry rows and show loading state
             Array.from(tbody.querySelectorAll('tr:not(#manualEntryRow)')).forEach(r => r.remove());
             tbody.insertAdjacentHTML('beforeend',
-                '<tr id="txnLoadingRow"><td colspan="12" style="text-align:center;padding:30px;color:#5f6368;font-style:italic;">Loading transactions…</td></tr>');
+                '<tr id="txnLoadingRow"><td colspan="13" style="text-align:center;padding:30px;color:#5f6368;font-style:italic;">Loading transactions…</td></tr>');
 
             try {
                 const params = new URLSearchParams();
@@ -2308,7 +2317,7 @@ Click OK to simulate uploading a file.`;
 
                 if (!_allTxnData.length) {
                     tbody.insertAdjacentHTML('beforeend',
-                        '<tr id="noTxnRow"><td colspan="12" style="text-align:center;padding:40px;color:#5f6368;">No transactions found for the selected filters.</td></tr>');
+                        '<tr id="noTxnRow"><td colspan="13" style="text-align:center;padding:40px;color:#5f6368;">No transactions found for the selected filters.</td></tr>');
                     document.getElementById('paginationBar').innerHTML = '';
                     return;
                 }
@@ -2328,7 +2337,7 @@ Click OK to simulate uploading a file.`;
                 console.error('loadTransactions error:', err);
                 document.getElementById('txnLoadingRow')?.remove();
                 tbody.insertAdjacentHTML('beforeend',
-                    '<tr><td colspan="12" style="text-align:center;padding:30px;color:#ea4335;">Failed to load transactions. Please refresh the page.</td></tr>');
+                    '<tr><td colspan="13" style="text-align:center;padding:30px;color:#ea4335;">Failed to load transactions. Please refresh the page.</td></tr>');
             }
         }
         
@@ -3478,13 +3487,13 @@ Click OK to simulate uploading a file.`;
 
             // Show VAT dropdown only for ACCOUNT type on VAT-registered companies.
             // CUSTOMER and SUPPLIER payments must NOT carry VAT here — invoice already handles it.
-            const vatWrap = document.getElementById('vatSelectWrap_' + id);
-            if (vatWrap) {
-                const showVat = type === 'account' && window._companyIsVatRegistered;
-                vatWrap.style.display = showVat ? '' : 'none';
-                if (showVat) {
-                    populateVatSelect(id);
-                }
+            const vatSel  = document.getElementById('vatSelect_' + id);
+            const vatNoApply = document.getElementById('vatNoApply_' + id);
+            const showVat = type === 'account' && window._companyIsVatRegistered;
+            if (vatSel)     vatSel.style.display     = showVat ? '' : 'none';
+            if (vatNoApply) vatNoApply.style.display  = showVat ? 'none' : '';
+            if (showVat) {
+                populateVatSelect(id);
             }
         }
 
@@ -3497,6 +3506,12 @@ Click OK to simulate uploading a file.`;
                 html += `<option value="${vs.id}">${vs.name}</option>`;
             });
             sel.innerHTML = html;
+            // Wire onchange to update the allocation map
+            sel.onchange = function() {
+                if (!transactionAllocations[id]) transactionAllocations[id] = {};
+                transactionAllocations[id].vatSettingId = this.value ? parseInt(this.value, 10) : null;
+                saveAllocationsToStorage();
+            };
         }
 
         function updateAccountOptions(row, type, id) {
@@ -3709,15 +3724,16 @@ Click OK to simulate uploading a file.`;
                 updateAccountOptions(row, saved.type, txnId);
 
                 // Restore VAT selector visibility + value
-                const vatWrap = document.getElementById('vatSelectWrap_' + txnId);
-                if (vatWrap) {
+                const vatSel     = document.getElementById('vatSelect_' + txnId);
+                const vatNoApply = document.getElementById('vatNoApply_' + txnId);
+                if (vatSel) {
                     const showVat = saved.type === 'account' && window._companyIsVatRegistered;
-                    vatWrap.style.display = showVat ? '' : 'none';
+                    vatSel.style.display     = showVat ? '' : 'none';
+                    if (vatNoApply) vatNoApply.style.display = showVat ? 'none' : '';
                     if (showVat) {
                         populateVatSelect(txnId);
                         if (saved.vatSettingId) {
-                            const vatSel = document.getElementById('vatSelect_' + txnId);
-                            if (vatSel) vatSel.value = String(saved.vatSettingId);
+                            vatSel.value = String(saved.vatSettingId);
                         }
                     }
                 }
@@ -4535,6 +4551,10 @@ Click OK to simulate uploading a file.`;
                 +     accountOptHtml
                 +   '</select>'
                 + '</td>'
+                + '<td id="vatCell_' + id + '">'
+                +   '<select id="vatSelect_' + id + '" class="allocation-select" style="display:none;"></select>'
+                +   '<span id="vatNoApply_' + id + '" style="color:#9aa0a6;font-size:12px;">\u2014</span>'
+                + '</td>'
                 + '<td class="txn-status-cell"><span class="status-badge status-unmatched">Unmatched</span></td>'
                 + '<td class="txn-attachment-cell">'
                 +   '<a class="upload-link" href="#" onclick="openUploadModal(\'' + id + '\'); return false;" title="Upload documents">&#128206;</a>'
@@ -4548,7 +4568,7 @@ Click OK to simulate uploading a file.`;
                 + '</td>'
                 + '</tr>'
                 + '<tr class="ai-suggestion-row" id="aiRow' + id + '">'
-                + '<td colspan="12">'
+                + '<td colspan="13">'
                 +   '<div class="ai-suggestion-content">'
                 +     '<div class="ai-suggestion-header">\uD83E\uDD16 Sean AI Analysis</div>'
                 +     '<div class="ai-decision"><em>Click to analyze\u2026</em></div>'

@@ -694,6 +694,11 @@ async function ensureAccountingSchema(pool) {
     await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS allocation_type VARCHAR(50)`);
     await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS allocated_account_name TEXT`);
 
+    // ── 24d. Add VAT setting reference to bank_transactions ───────────────────
+    // Persists which VAT setting was applied during allocation so the Reviewed
+    // tab can display the VAT treatment without a journal_lines JOIN.
+    await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS vat_setting_id INTEGER REFERENCES vat_settings(id)`);
+
     // ── 25. Customer AR Tables ─────────────────────────────────────────────────
 
     await client.query(`

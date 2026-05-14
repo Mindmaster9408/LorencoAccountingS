@@ -167,7 +167,8 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'company.html' || currentPage === 'contacts.html' ? 'active' : ''}">
+      <!-- Company menu hidden — company-level settings accessed via ecosystem company selector -->
+      <div class="nav-item" style="display:none;">
         <a href="/accounting/company.html">Company</a>
         <div class="dropdown">
           <a href="/accounting/company.html">Company Profile</a>

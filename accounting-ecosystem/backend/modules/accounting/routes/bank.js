@@ -1300,7 +1300,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     }
 
     // Mark transaction as matched — persist display fields so the Reviewed tab
-    // can show the allocation type and account without a journal_lines JOIN.
+    // can show the allocation type, account, and VAT setting without a journal_lines JOIN.
     const { error: updErr } = await supabase
       .from('bank_transactions')
       .update({
@@ -1310,7 +1310,8 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         matched_by_user_id: req.user.id,
         allocated_account_id:   allocatedAccountId,
         allocation_type:        allocationType || null,
-        allocated_account_name: allocatedAccountName
+        allocated_account_name: allocatedAccountName,
+        vat_setting_id:         (lines[0]?.vatSettingId) ? parseInt(lines[0].vatSettingId, 10) : null
       })
       .eq('id', bankTxn.id);
 
@@ -1480,7 +1481,8 @@ router.delete('/transactions/:id/allocate', authenticate, hasPermission('bank.al
         reconciled_at:          null,
         allocated_account_id:   null,
         allocation_type:        null,
-        allocated_account_name: null
+        allocated_account_name: null,
+        vat_setting_id:         null
       })
       .eq('id', bankTxn.id);
 
