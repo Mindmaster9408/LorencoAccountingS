@@ -167,8 +167,7 @@ function createNavigation() {
         </div>
       </div>
 
-      <!-- Company menu hidden — company-level settings accessed via ecosystem company selector -->
-      <div class="nav-item" style="display:none;">
+      <div class="nav-item">
         <a href="/accounting/company.html">Company</a>
         <div class="dropdown">
           <a href="/accounting/company.html">Company Profile</a>
