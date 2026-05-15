@@ -84,30 +84,42 @@ router.get('/active', authenticate, async (req, res) => {
 
     let active = await fetchActive();
 
-    // Always fetch company VAT registration flag — returned in response so the
-    // frontend can correctly gate the VAT dropdown regardless of whether
-    // vat_settings rows exist yet.
-    const { data: company } = await supabase
-      .from('companies')
-      .select('is_vat_registered')
-      .eq('id', companyId)
-      .maybeSingle();
-
-    const isVatRegistered = company ? !!company.is_vat_registered : false;
+    // Read company VAT registration flag.
+    // Isolated in its own try/catch — a failure here must never 500 the endpoint.
+    // Fallback: treat as registered if settings already exist (backward compat).
+    let isVatRegistered = active.length > 0;
+    try {
+      if (companyId) {
+        const { data: company, error: companyErr } = await supabase
+          .from('companies')
+          .select('is_vat_registered')
+          .eq('id', companyId)
+          .maybeSingle();
+        if (!companyErr && company !== null && company !== undefined) {
+          isVatRegistered = !!company.is_vat_registered;
+        }
+      }
+    } catch (compErr) {
+      console.warn('[vat-settings] Could not read is_vat_registered for company', companyId, '—', compErr.message);
+    }
 
     // Auto-seed SA defaults on first access for any VAT-registered company
     if (active.length === 0 && isVatRegistered) {
       console.log(`[vat-settings] Auto-seeding SA VAT defaults for company ${companyId}`);
       for (const cat of SA_DEFAULT_VAT_CATEGORIES) {
-        const { data: existing } = await supabase
-          .from('vat_settings')
-          .select('id')
-          .eq('company_id', companyId)
-          .eq('code', cat.code)
-          .eq('effective_from', cat.effective_from)
-          .maybeSingle();
-        if (!existing) {
-          await supabase.from('vat_settings').insert({ ...cat, company_id: companyId });
+        try {
+          const { data: existing } = await supabase
+            .from('vat_settings')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('code', cat.code)
+            .eq('effective_from', cat.effective_from)
+            .maybeSingle();
+          if (!existing) {
+            await supabase.from('vat_settings').insert({ ...cat, company_id: companyId });
+          }
+        } catch (seedErr) {
+          console.warn('[vat-settings] Seed error for', cat.code, '—', seedErr.message);
         }
       }
       // Re-fetch after seeding
