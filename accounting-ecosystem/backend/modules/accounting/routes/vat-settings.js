@@ -60,25 +60,56 @@ router.get('/', authenticate, async (req, res) => {
 // Returns only active settings whose effective_from <= asOfDate and
 // (effective_to IS NULL OR effective_to >= asOfDate).
 // Defaults to today.
+//
+// Auto-seed behaviour: if the company is VAT-registered (companies.is_vat_registered = true)
+// but has no vat_settings rows yet, the SA defaults are seeded automatically on the first
+// call to this endpoint. This removes the manual "seed defaults" step that was previously
+// required before VAT dropdowns would appear in the bank allocation UI.
 router.get('/active', authenticate, async (req, res) => {
   try {
-    const asOfDate = req.query.date || new Date().toISOString().slice(0, 10);
+    const asOfDate    = req.query.date || new Date().toISOString().slice(0, 10);
+    const companyId   = req.user.companyId;
 
-    let query = supabase
-      .from('vat_settings')
-      .select('id, code, name, rate, is_capital, effective_from, effective_to, sort_order')
-      .eq('company_id', req.user.companyId)
-      .eq('is_active', true)
-      .lte('effective_from', asOfDate)
-      .order('sort_order');
+    const fetchActive = async () => {
+      const { data, error } = await supabase
+        .from('vat_settings')
+        .select('id, code, name, rate, is_capital, effective_from, effective_to, sort_order')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .lte('effective_from', asOfDate)
+        .order('sort_order');
+      if (error) throw error;
+      return (data || []).filter(s => !s.effective_to || s.effective_to >= asOfDate);
+    };
 
-    const { data, error } = await query;
-    if (error) throw error;
+    let active = await fetchActive();
 
-    // Filter out settings whose effective_to has passed
-    const active = (data || []).filter(s =>
-      !s.effective_to || s.effective_to >= asOfDate
-    );
+    // Auto-seed SA defaults on first access for any VAT-registered company
+    if (active.length === 0) {
+      const { data: company } = await supabase
+        .from('companies')
+        .select('is_vat_registered')
+        .eq('id', companyId)
+        .maybeSingle();
+
+      if (company && company.is_vat_registered) {
+        console.log(`[vat-settings] Auto-seeding SA VAT defaults for company ${companyId}`);
+        for (const cat of SA_DEFAULT_VAT_CATEGORIES) {
+          const { data: existing } = await supabase
+            .from('vat_settings')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('code', cat.code)
+            .eq('effective_from', cat.effective_from)
+            .maybeSingle();
+          if (!existing) {
+            await supabase.from('vat_settings').insert({ ...cat, company_id: companyId });
+          }
+        }
+        // Re-fetch after seeding
+        active = await fetchActive();
+      }
+    }
 
     res.json({ vatSettings: active });
   } catch (err) {
