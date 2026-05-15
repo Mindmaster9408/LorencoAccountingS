@@ -3846,7 +3846,10 @@ Click OK to simulate uploading a file.`;
                 if (!res.ok) return;
                 const data = await res.json();
                 window._vatSettings = data.vatSettings || [];
-                window._companyIsVatRegistered = window._vatSettings.length > 0;
+                // Use the explicit isVatRegistered flag from the company record.
+                // Fall back to vatSettings.length > 0 for backward compatibility
+                // with older API responses that don't include the flag.
+                window._companyIsVatRegistered = !!(data.isVatRegistered || window._vatSettings.length > 0);
             } catch (e) {
                 // Non-fatal — VAT features simply won't appear
                 console.warn('[bank] Could not load VAT settings:', e.message);

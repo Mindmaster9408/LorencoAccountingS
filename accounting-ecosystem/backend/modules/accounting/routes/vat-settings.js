@@ -84,34 +84,37 @@ router.get('/active', authenticate, async (req, res) => {
 
     let active = await fetchActive();
 
-    // Auto-seed SA defaults on first access for any VAT-registered company
-    if (active.length === 0) {
-      const { data: company } = await supabase
-        .from('companies')
-        .select('is_vat_registered')
-        .eq('id', companyId)
-        .maybeSingle();
+    // Always fetch company VAT registration flag — returned in response so the
+    // frontend can correctly gate the VAT dropdown regardless of whether
+    // vat_settings rows exist yet.
+    const { data: company } = await supabase
+      .from('companies')
+      .select('is_vat_registered')
+      .eq('id', companyId)
+      .maybeSingle();
 
-      if (company && company.is_vat_registered) {
-        console.log(`[vat-settings] Auto-seeding SA VAT defaults for company ${companyId}`);
-        for (const cat of SA_DEFAULT_VAT_CATEGORIES) {
-          const { data: existing } = await supabase
-            .from('vat_settings')
-            .select('id')
-            .eq('company_id', companyId)
-            .eq('code', cat.code)
-            .eq('effective_from', cat.effective_from)
-            .maybeSingle();
-          if (!existing) {
-            await supabase.from('vat_settings').insert({ ...cat, company_id: companyId });
-          }
+    const isVatRegistered = company ? !!company.is_vat_registered : false;
+
+    // Auto-seed SA defaults on first access for any VAT-registered company
+    if (active.length === 0 && isVatRegistered) {
+      console.log(`[vat-settings] Auto-seeding SA VAT defaults for company ${companyId}`);
+      for (const cat of SA_DEFAULT_VAT_CATEGORIES) {
+        const { data: existing } = await supabase
+          .from('vat_settings')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('code', cat.code)
+          .eq('effective_from', cat.effective_from)
+          .maybeSingle();
+        if (!existing) {
+          await supabase.from('vat_settings').insert({ ...cat, company_id: companyId });
         }
-        // Re-fetch after seeding
-        active = await fetchActive();
       }
+      // Re-fetch after seeding
+      active = await fetchActive();
     }
 
-    res.json({ vatSettings: active });
+    res.json({ vatSettings: active, isVatRegistered });
   } catch (err) {
     console.error('[vat-settings] GET /active error:', err.message);
     res.status(500).json({ error: 'Failed to fetch active VAT settings', detail: err.message });
