@@ -104,18 +104,19 @@ router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeMod
     const { basic_salary, hourly_rate, payment_frequency } = req.body;
     console.log('[DIAG /salary] empId:', req.params.id, 'companyId:', req.companyId, 'basic_salary received:', basic_salary);
 
-    const { data: old } = await supabase
+    const { data: old, error: oldErr } = await supabase
       .from('employees')
       .select('id, classification, basic_salary, hourly_rate, payment_frequency')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
-      .single();
+      .maybeSingle();
 
-    console.log('[DIAG /salary] DB lookup result:', old ? ('found, old basic_salary=' + old.basic_salary) : 'NOT FOUND (null)');
+    console.log('[DIAG /salary] DB lookup result:', old ? ('found, old basic_salary=' + old.basic_salary) : ('NOT FOUND — error: ' + (oldErr ? oldErr.code + ' ' + oldErr.message : 'null')));
     if (!old) {
       const { data: diagEmp } = await supabase.from('employees').select('id, company_id, basic_salary').eq('id', req.params.id).maybeSingle();
       console.log('[DIAG /salary] employee without company filter:', diagEmp ? JSON.stringify(diagEmp) : 'DOES NOT EXIST IN DB AT ALL');
-      return res.status(404).json({ error: 'Employee not found', _diag: { sentCompanyId: req.companyId, actualCompanyId: diagEmp ? diagEmp.company_id : null } });
+      console.log('[DIAG /salary] typeof companyId:', typeof req.companyId, 'value:', JSON.stringify(req.companyId));
+      return res.status(404).json({ error: 'Employee not found', _diag: { sentCompanyId: req.companyId, sentCompanyIdType: typeof req.companyId, actualCompanyId: diagEmp ? diagEmp.company_id : null, actualCompanyIdType: diagEmp ? typeof diagEmp.company_id : null, supabaseError: oldErr ? oldErr.code + ': ' + oldErr.message : null } });
     }
 
     const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, old);
