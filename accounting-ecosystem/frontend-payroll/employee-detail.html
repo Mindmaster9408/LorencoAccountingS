@@ -2300,22 +2300,32 @@
         }
         async function saveBasicSalary() {
             var val = parseFloat(document.getElementById('editBasicValue').value) || 0;
-            payrollData.basic_salary = val;
-            savePayrollData(); renderPayroll(); closeModal('editBasicModal');
-            // Persist to DB (employees.basic_salary) — canonical source for backend calculations.
-            // savePayrollData() also writes via KV as a fallback, but the DB column is authoritative.
+            var empId = _supabaseEmpId || currentEmpId;
+            if (!empId || !/^\d+$/.test(String(empId))) {
+                alert('Cannot save — employee ID not yet resolved. Please wait a moment and try again.');
+                return;
+            }
+            // DB save FIRST — employees.basic_salary is the authoritative source for backend
+            // calculations. Modal stays open on failure so user knows the save did not succeed.
             try {
-                var empId = _supabaseEmpId || currentEmpId;
-                var token = safeLocalStorage.getItem('token');
-                var r = await fetch(window.location.origin + '/api/payroll/employees/' + empId + '/salary', {
+                var r = await fetch('/api/payroll/employees/' + empId + '/salary', {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    headers: _authHeaders(),
                     body: JSON.stringify({ basic_salary: val })
                 });
-                if (!r.ok) console.warn('[saveBasicSalary] DB write returned HTTP', r.status);
+                if (!r.ok) {
+                    var errBody = await r.json().catch(function() { return {}; });
+                    alert('Basic salary not saved (HTTP ' + r.status + '): ' + (errBody.error || 'Server error. Please try again.'));
+                    return;
+                }
             } catch(e) {
-                console.warn('[saveBasicSalary] DB write failed:', e.message);
+                alert('Network error saving basic salary: ' + e.message);
+                return;
             }
+            // DB confirmed — update in-memory state and re-render
+            payrollData.basic_salary = val;
+            renderPayroll();
+            closeModal('editBasicModal');
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + val.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
 
