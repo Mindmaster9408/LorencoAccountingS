@@ -668,7 +668,10 @@
                     </div>
                     <div class="form-group">
                         <label>ID Number</label>
-                        <input type="text" id="id_number" maxlength="13">
+                        <input type="text" id="id_number" maxlength="13" oninput="onIdNumberChange()">
+                        <div id="modal-dob-display" style="display:none; margin-top:5px; font-size:0.82rem; color:#667eea;">
+                            Date of Birth: <strong id="modal-dob-value"></strong>
+                        </div>
                     </div>
                     <div class="form-group">
                         <!-- RE-ACTIVATE: change label back to class="required" and restore required attribute on input -->
@@ -958,14 +961,32 @@
             const filtered = employees.filter(emp => {
                 if (!term) return true;
                 if (currentFilterType === 'number') {
-                    return (emp.employee_number || '').toLowerCase().includes(term);
+                    return (emp.employee_number || emp.employee_code || '').trim().toLowerCase().includes(term);
                 } else if (currentFilterType === 'name') {
-                    return (emp.first_name || '').toLowerCase().includes(term);
+                    return (emp.first_name || '').trim().toLowerCase().includes(term);
                 } else {
-                    return (emp.last_name || '').toLowerCase().includes(term);
+                    return (emp.last_name || '').trim().toLowerCase().includes(term);
                 }
             });
             displayEmployees(filtered);
+        }
+
+        function onIdNumberChange() {
+            var val = (document.getElementById('id_number').value || '').trim();
+            var dobDisplay = document.getElementById('modal-dob-display');
+            var dobValue   = document.getElementById('modal-dob-value');
+            if (val.length >= 6) {
+                var yy = val.substring(0, 2);
+                var mm = parseInt(val.substring(2, 4), 10);
+                var dd = parseInt(val.substring(4, 6), 10);
+                if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+                    var year = parseInt(yy, 10) > 30 ? '19' + yy : '20' + yy;
+                    dobValue.textContent = String(dd).padStart(2,'0') + '/' + String(mm).padStart(2,'0') + '/' + year;
+                    dobDisplay.style.display = 'block';
+                    return;
+                }
+            }
+            dobDisplay.style.display = 'none';
         }
 
         function displayEmployees(list) {
@@ -1015,6 +1036,7 @@
             document.getElementById('modalTitle').textContent = 'Add New Employee';
             document.getElementById('employeeForm').reset();
             document.getElementById('employeeId').value = '';
+            document.getElementById('modal-dob-display').style.display = 'none';
             document.getElementById('employeeModal').classList.add('show');
         }
 
@@ -1033,6 +1055,7 @@
                 document.getElementById('first_name').value = emp.first_name || '';
                 document.getElementById('last_name').value = emp.last_name || '';
                 document.getElementById('id_number').value = emp.id_number || '';
+                onIdNumberChange();
                 document.getElementById('tax_number').value = emp.tax_number || '';
                 document.getElementById('email').value = emp.email || '';
                 document.getElementById('phone').value = emp.phone || '';

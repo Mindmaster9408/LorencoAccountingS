@@ -85,18 +85,41 @@
             align-items: center;
             gap: 14px;
         }
-        .topbar-logo {
-            width: 36px; height: 36px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 18px;
-            transform: rotate(-5deg);
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: inherit;
         }
-        .topbar-title {
-            font-size: 1.15rem;
+        .topbar-brand-img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+        .topbar-brand-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1;
+        }
+        .topbar-brand-name {
+            font-size: 0.88rem;
+            font-weight: 800;
+            letter-spacing: 3px;
+            color: #ffffff;
+            text-transform: uppercase;
+        }
+        .topbar-brand-sub {
+            font-size: 0.52rem;
             font-weight: 700;
-            letter-spacing: -0.3px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            background: linear-gradient(90deg, #FF6BEA 0%, #9A7CFF 50%, #33B8FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 3px;
         }
         .topbar-right {
             display: flex;
@@ -882,6 +905,8 @@
             .apps-grid { grid-template-columns: 1fr; }
             .stats-row { grid-template-columns: 1fr 1fr; }
             .topbar { padding: 0 16px; }
+            .topbar-brand-sub { display: none; }
+            .topbar-brand-name { letter-spacing: 2px; }
         }
     </style>
     <script src="js/polyfills.js"></script>
@@ -898,8 +923,13 @@
     <!-- Top Bar -->
     <div class="topbar">
         <div class="topbar-left">
-            <div class="topbar-logo">&#9670;</div>
-            <span class="topbar-title">Lorenco Ecosystem</span>
+            <a class="topbar-brand" href="/dashboard">
+                <img src="/dashboard/lorenco-logo-exact-reference.png" alt="Lorenco" class="topbar-brand-img">
+                <div class="topbar-brand-text">
+                    <span class="topbar-brand-name">LORENCO</span>
+                    <span class="topbar-brand-sub">ECOSYSTEM</span>
+                </div>
+            </a>
             <span id="practiceNameBadge" onclick="openPracticeModal()" style="
                 display: none;
                 padding: 3px 12px;

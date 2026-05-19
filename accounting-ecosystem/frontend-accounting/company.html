@@ -2,7 +2,7 @@
 <html lang="en" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
 <head>
   <meta charset="UTF-8">
-  <title>Company Management - Lorenco Accounting</title>
+  <title>Company Profile - Lorenco Accounting</title>
   <script src="js/navigation.js"></script>
     <script src="js/theme-guard.js"></script>
   <script src="js/polyfills.js"></script>
@@ -217,8 +217,8 @@
 <body>
   <div class="content">
     <div class="page-header">
-      <h1>Company Management</h1>
-      <p>Manage your company profile, settings, and switch between companies</p>
+      <h1>Company Profile</h1>
+      <p>Legal and tax identity for the selected company</p>
     </div>
 
     <div id="alertContainer"></div>
@@ -439,11 +439,11 @@
 
     <div class="button-row">
       <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset</button>
-      <button type="button" class="btn btn-success" onclick="saveCompany()">Save Company Settings</button>
+      <button type="button" class="btn btn-success" onclick="saveCompany()">Save Profile</button>
     </div>
 
     <!-- Teach Sean Section -->
-    <div id="teach-sean" class="teach-sean-section">
+    <div id="teach-sean" class="teach-sean-section" style="display:none;">
       <h2>
         Teach Sean
         <span class="ai-badge">AI Assistant</span>
@@ -504,7 +504,7 @@
     </div>
 
     <!-- Divisions Section -->
-    <div class="divisions-section">
+    <div class="divisions-section" style="display:none;">
       <h2>
         Business Divisions
         <span class="div-badge">Segment Reporting</span>
@@ -522,7 +522,7 @@
     </div>
 
     <!-- Integrations Section -->
-    <div class="integrations-section">
+    <div class="integrations-section" style="display:none;">
       <h2>
         Integrations
         <span class="integration-badge">Connect Apps</span>
@@ -722,10 +722,7 @@
     let seanKnowledge = [];
 
     async function init() {
-      await loadCompanies();
       loadCurrentCompany();
-      loadSeanKnowledge();
-      loadDivisions();
     }
 
     async function loadCompanies() {
@@ -860,13 +857,10 @@
       const activeCompanyId = parseInt(localStorage.getItem('activeCompanyId'))
                            || parseInt(localStorage.getItem('selectedCompanyId'))
                            || null;
-      currentCompany = (activeCompanyId && companies.find(c => c.id === activeCompanyId)) || companies[0] || null;
-      if (currentCompany) {
-        // Seed activeCompanyId so saveCompany() can find it (needed after SSO login)
-        if (!localStorage.getItem('activeCompanyId')) {
-          localStorage.setItem('activeCompanyId', currentCompany.id);
-        }
-        loadCompanyDetails(currentCompany.id);
+      if (activeCompanyId) {
+        loadCompanyDetails(activeCompanyId);
+      } else {
+        showAlert('No company selected. Please select a company from the top navigation.', 'error');
       }
     }
 
@@ -922,14 +916,7 @@
         });
 
         if (res.ok) {
-          showAlert('Company settings saved successfully!', 'success');
-          // Update company name in list
-          const idx = companies.findIndex(c => c.id === companyId);
-          if (idx !== -1) {
-            companies[idx].name = data.name;
-            companies[idx].regNumber = data.regNumber;
-            renderCompanyList();
-          }
+          showAlert('Company profile saved successfully!', 'success');
         } else {
           throw new Error('Failed to save');
         }
@@ -1455,13 +1442,6 @@
         window._integrationCallbacks[integrationName] = callback;
         return { success: true, message: 'Callback registered' };
       }
-    };
-
-    // Update init to load integrations
-    const originalInit = init;
-    init = async function() {
-      await originalInit();
-      loadIntegrations();
     };
 
     // Initialize

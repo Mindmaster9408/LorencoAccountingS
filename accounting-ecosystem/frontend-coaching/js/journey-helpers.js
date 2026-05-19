@@ -2,7 +2,6 @@
 import { $, escapeHtml } from './config.js';
 import { saveClient } from './storage.js';
 import { BASIS_QUESTIONS, SECTION_LABELS } from './basis-assessment.js';
-import { api } from './api.js';
 
 // Global current client reference
 let currentClient = null;
@@ -199,7 +198,7 @@ function buildBasisAnswersHTML(client) {
                             const rawDisplay = hasAnswer ? raw : '—';
                             const adjustedDisplay = hasAnswer ? (q.reverse ? 11 - raw : raw) : '—';
                             const rowStyle = hasAnswer ? '' : 'background: #fef9c3;';
-                            const reverseTag = ''; // reverse label intentionally not shown in client/coach view
+                            const reverseTag = q.reverse ? ' <em style="color:#9333ea; font-style:italic;">(reversed)</em>' : '';
                             return `
                                 <tr style="${rowStyle}">
                                     <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: center; color: #94a3b8;">${q.id}</td>
@@ -748,7 +747,7 @@ window.addDeepDiveRow = function() {
     currentClient.exerciseData.deepDive.deepDiveItems.push({ question: '', answer: '' });
 
     // Re-render the exercise
-    import('./journey-exercises-r2.js?v=12').then(module => {
+    import('./journey-exercises-r2.js?v=11').then(module => {
         module.renderExercise(currentClient, 4, 'journey-container');
     });
 };
@@ -763,7 +762,7 @@ window.removeDeepDiveRow = function(index) {
     currentClient.exerciseData.deepDive.deepDiveItems.splice(index, 1);
 
     // Re-render the exercise
-    import('./journey-exercises-r2.js?v=12').then(module => {
+    import('./journey-exercises-r2.js?v=11').then(module => {
         module.renderExercise(currentClient, 4, 'journey-container');
     });
 };
@@ -885,7 +884,7 @@ window.addEcochartBlock = function() {
     currentClient.exerciseData.ecochart.blocks.push({ name: '', give: 0, take: 0 });
 
     // Re-render the exercise
-    import('./journey-exercises-r2.js?v=12').then(module => {
+    import('./journey-exercises-r2.js?v=11').then(module => {
         module.renderExercise(currentClient, 5, 'journey-container');
     });
 };
@@ -900,7 +899,7 @@ window.removeEcochartBlock = function(index) {
     currentClient.exerciseData.ecochart.blocks.splice(index, 1);
 
     // Re-render the exercise
-    import('./journey-exercises-r2.js?v=12').then(module => {
+    import('./journey-exercises-r2.js?v=11').then(module => {
         module.renderExercise(currentClient, 5, 'journey-container');
     });
 };
@@ -1448,207 +1447,5 @@ window.sendAIMessageMLNP = async function() {
     // Clear input and save
     input.value = '';
     await saveClient(currentClient);
-};
-
-// ─── Question Linker: 4 Quadrant Dream Summary section ───────────────────────
-// Handles "Coaching Questions" zone — coach links questions from Question Builder.
-// Business data (answers) stored in DB only — NO localStorage.
-
-const FQ_CONTEXT_KEY = 'four_quadrants.dream_summary';
-let _linkerClientId = null;
-let _linkerAllQuestions = [];
-let _linkerSelected = new Set();
-
-export async function loadLinkedQuestionsSection(client) {
-    if (!client || !client.id) return;
-    _linkerClientId = client.id;
-
-    const openBtn = document.getElementById('btn-open-qlinker');
-    if (openBtn) openBtn.addEventListener('click', window.openQuestionLinker);
-
-    const closeBtn = document.getElementById('qlinker-close');
-    if (closeBtn) closeBtn.addEventListener('click', window.closeQuestionLinker);
-
-    const cancelBtn = document.getElementById('qlinker-cancel-btn');
-    if (cancelBtn) cancelBtn.addEventListener('click', window.closeQuestionLinker);
-
-    const overlay = document.getElementById('qlinker-overlay');
-    if (overlay) {
-        overlay.addEventListener('click', e => {
-            if (e.target.id === 'qlinker-overlay') window.closeQuestionLinker();
-        });
-    }
-
-    const addBtn = document.getElementById('qlinker-add-btn');
-    if (addBtn) addBtn.addEventListener('click', window.addLinkedQuestions);
-
-    await _renderLinkedQuestionsList(client.id);
-}
-
-async function _renderLinkedQuestionsList(clientId) {
-    const container = document.getElementById('linked-questions-list');
-    if (!container) return;
-    container.innerHTML = '<p class="linked-q-loading">Loading\u2026</p>';
-    try {
-        const questions = await api.questionBuilder.getClientContextQuestions(clientId, FQ_CONTEXT_KEY);
-        if (!questions || questions.length === 0) {
-            container.innerHTML = '<p class="linked-q-empty">No questions linked yet. Click <strong>+ Add Question</strong> to add questions from the Question Builder.</p>';
-            return;
-        }
-        container.innerHTML = questions.map(q => `
-            <div class="linked-q-item" data-assignment-id="${q.assignment_id}">
-                <div class="linked-q-item-header">
-                    ${q.category ? `<span class="linked-q-badge">${escapeHtml(q.category)}</span>` : ''}
-                    <button class="linked-q-remove-btn" onclick="removeLinkedQuestion(${q.assignment_id})" title="Remove question">&#x2715;</button>
-                </div>
-                <div class="linked-q-text">${escapeHtml(q.question_text)}</div>
-                ${q.help_text ? `<div class="linked-q-hint">${escapeHtml(q.help_text)}</div>` : ''}
-                <textarea class="linked-q-answer" id="linked-q-answer-${q.assignment_id}"
-                    data-assignment-id="${q.assignment_id}" data-question-id="${q.id}"
-                    placeholder="Enter answer..." rows="3">${escapeHtml(q.answer_text || '')}</textarea>
-                <button class="linked-q-save-answer-btn"
-                    onclick="saveLinkedAnswer(${q.assignment_id}, ${q.id})">Save Answer</button>
-            </div>
-        `).join('');
-    } catch (err) {
-        console.error('[linkedQuestions] Failed to load:', err);
-        container.innerHTML = '<p class="linked-q-error">Failed to load questions. Please try again.</p>';
-    }
-}
-
-function _renderLinkerList() {
-    const listEl = document.getElementById('qlinker-list');
-    if (!listEl) return;
-    const searchTerm = (document.getElementById('qlinker-search')?.value || '').toLowerCase().trim();
-    const catFilter = document.getElementById('qlinker-filter-cat')?.value || '';
-    let filtered = _linkerAllQuestions;
-    if (searchTerm) {
-        filtered = filtered.filter(q =>
-            q.question_text.toLowerCase().includes(searchTerm) ||
-            (q.category || '').toLowerCase().includes(searchTerm)
-        );
-    }
-    if (catFilter) filtered = filtered.filter(q => q.category === catFilter);
-    if (filtered.length === 0) {
-        listEl.innerHTML = '<p class="qlinker-empty">No questions found.</p>';
-        return;
-    }
-    listEl.innerHTML = filtered.map(q => `
-        <label class="qlinker-item ${_linkerSelected.has(q.id) ? 'qlinker-item-selected' : ''}">
-            <input type="checkbox" class="qlinker-check" value="${q.id}"
-                ${_linkerSelected.has(q.id) ? 'checked' : ''}
-                onchange="toggleLinkerQuestion(${q.id}, this.checked)" />
-            <div class="qlinker-item-body">
-                <div class="qlinker-item-text">${escapeHtml(q.question_text)}</div>
-                ${q.category ? `<span class="qlinker-item-cat">${escapeHtml(q.category)}</span>` : ''}
-            </div>
-        </label>
-    `).join('');
-}
-
-function _updateLinkerAddButton() {
-    const addBtn = document.getElementById('qlinker-add-btn');
-    const countEl = document.getElementById('qlinker-selected-count');
-    const count = _linkerSelected.size;
-    if (addBtn) addBtn.disabled = count === 0;
-    if (countEl) countEl.textContent = count === 0 ? '0 selected' : `${count} selected`;
-}
-
-window.openQuestionLinker = async function() {
-    const overlay = document.getElementById('qlinker-overlay');
-    if (!overlay) return;
-    _linkerSelected.clear();
-    overlay.classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
-    const listEl = document.getElementById('qlinker-list');
-    if (listEl) listEl.innerHTML = '<p class="qlinker-list-loading">Loading questions\u2026</p>';
-    try {
-        _linkerAllQuestions = await api.questionBuilder.listQuestions({ active: 'true' });
-        _renderLinkerList();
-    } catch (err) {
-        console.error('[questionLinker] Failed to load questions:', err);
-        if (listEl) listEl.innerHTML = '<p class="qlinker-list-error">Failed to load questions. Please try again.</p>';
-    }
-    _updateLinkerAddButton();
-};
-
-window.closeQuestionLinker = function() {
-    const overlay = document.getElementById('qlinker-overlay');
-    if (overlay) overlay.classList.add('hidden');
-    document.body.style.overflow = '';
-};
-
-window.toggleLinkerQuestion = function(questionId, checked) {
-    if (checked) {
-        _linkerSelected.add(questionId);
-    } else {
-        _linkerSelected.delete(questionId);
-    }
-    const checkbox = document.querySelector(`.qlinker-check[value="${questionId}"]`);
-    if (checkbox) {
-        const item = checkbox.closest('.qlinker-item');
-        if (item) item.classList.toggle('qlinker-item-selected', checked);
-    }
-    _updateLinkerAddButton();
-};
-
-window.filterLinkerList = function() {
-    _renderLinkerList();
-    _updateLinkerAddButton();
-};
-
-window.addLinkedQuestions = async function() {
-    if (!_linkerClientId || _linkerSelected.size === 0) return;
-    const addBtn = document.getElementById('qlinker-add-btn');
-    if (addBtn) { addBtn.disabled = true; addBtn.textContent = 'Adding\u2026'; }
-    try {
-        await api.questionBuilder.assignClientQuestions(
-            _linkerClientId,
-            FQ_CONTEXT_KEY,
-            Array.from(_linkerSelected)
-        );
-        window.closeQuestionLinker();
-        await _renderLinkedQuestionsList(_linkerClientId);
-    } catch (err) {
-        console.error('[questionLinker] Failed to assign questions:', err);
-        alert('Failed to link questions. Please try again.');
-    } finally {
-        if (addBtn) { addBtn.disabled = false; addBtn.textContent = 'Add Selected'; }
-    }
-};
-
-window.removeLinkedQuestion = async function(assignmentId) {
-    if (!_linkerClientId) return;
-    if (!confirm('Remove this question from the Coaching Questions section?\nThe original question and any saved answers are preserved.')) return;
-    try {
-        await api.questionBuilder.unassignClientQuestion(_linkerClientId, FQ_CONTEXT_KEY, assignmentId);
-        await _renderLinkedQuestionsList(_linkerClientId);
-    } catch (err) {
-        console.error('[linkedQuestions] Failed to remove question:', err);
-        alert('Failed to remove question. Please try again.');
-    }
-};
-
-window.saveLinkedAnswer = async function(assignmentId, questionId) {
-    if (!_linkerClientId) return;
-    const textarea = document.getElementById(`linked-q-answer-${assignmentId}`);
-    if (!textarea) return;
-    const saveBtn = document.querySelector(`.linked-q-item[data-assignment-id="${assignmentId}"] .linked-q-save-answer-btn`);
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving\u2026'; }
-    try {
-        await api.questionBuilder.saveClientQuestionAnswers(
-            _linkerClientId,
-            FQ_CONTEXT_KEY,
-            [{ questionId, answerText: textarea.value }]
-        );
-        if (saveBtn) { saveBtn.textContent = '\u2713 Saved'; }
-        setTimeout(() => {
-            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Answer'; }
-        }, 1500);
-    } catch (err) {
-        console.error('[linkedQuestions] Failed to save answer:', err);
-        alert('Failed to save answer. Please try again.');
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Answer'; }
-    }
 };
 

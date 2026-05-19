@@ -10,8 +10,7 @@ import { renderJourneyTracker } from './journey-ui.js';
 
 export async function openClient(clientId, options = {}) {
     const store = await readStore();
-    const numericClientId = typeof clientId === 'string' ? parseInt(clientId, 10) : clientId;
-    let client = store.clients.find(c => c.id === numericClientId);
+    let client = store.clients.find(c => c.id === clientId);
     if(!client) return;
 
     // Load full client detail (steps, gauges, sessions) from backend
@@ -63,15 +62,9 @@ export async function openClient(clientId, options = {}) {
     // Update sidebar with client info
     const sidebarInfo = $('#client-sidebar-info');
     if(sidebarInfo) {
-        // photo_signed_url = Supabase Storage signed URL (new flow)
-        // client.photo     = legacy base64 blob (backward compat for clients not yet re-uploaded)
-        const sidebarPhotoSrc = client.photo_signed_url || client.photo || null;
-        const photoHtml = sidebarPhotoSrc ?
-            `<img src="${escapeHtml(sidebarPhotoSrc)}" alt="${escapeHtml((client.name||'')[0]||'P')}"
-                  style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto 16px; display: block; border: 3px solid #3b82f6;"
-                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-             <div class="client-photo" style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: none; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: 700; margin: 0 auto 16px;">${escapeHtml((client.name||'')[0]||'P')}</div>` :
-            `<div class="client-photo" style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: 700; margin: 0 auto 16px;">${escapeHtml((client.name||'')[0]||'P')}</div>`;
+        const photoHtml = client.photo ?
+            `<img src="${client.photo}" alt="${escapeHtml(client.name)}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto 16px; display: block; border: 3px solid #3b82f6;" />` :
+            `<div class="client-photo" style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 32px; font-weight: 700; margin: 0 auto 16px;">${(client.name || '')[0] || 'P'}</div>`;
 
         sidebarInfo.innerHTML = `
             <a href="#" id="back-to-tower" style="display: inline-flex; align-items: center; color: #3b82f6; text-decoration: none; font-size: 14px; white-space: nowrap;">← Back to Control Tower</a>
@@ -119,17 +112,19 @@ export async function openClient(clientId, options = {}) {
                     <label>Client Photo</label>
                     <div class="client-photo-upload"
                          id="client-photo-drop-zone"
+                         ondrop="handleClientPhotoDrop(event, '${client.id}')"
+                         ondragover="handleClientPhotoDragOver(event)"
+                         ondragleave="handleClientPhotoDragLeave(event)"
+                         onclick="handleClientPhotoAreaClick(event, '${client.id}')"
                          style="cursor: pointer; padding: 20px; border: 2px dashed #e2e8f0; border-radius: 12px; transition: all 0.3s ease;">
-                        <div id="client-photo-preview-area">
-                        ${(client.photo_signed_url || client.photo) ? `
-                            <img src="${escapeHtml(client.photo_signed_url || client.photo)}" id="client-photo-preview" alt="Client" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
-                            <button type="button" class="btn-remove-photo" style="margin-top: 12px;">✕ Remove Photo</button>
+                        ${client.photo ? `
+                            <img src="${client.photo}" id="client-photo-preview" alt="Client" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
+                            <button type="button" class="btn-remove-photo" onclick="event.stopPropagation(); removeClientPhoto('${client.id}')" style="margin-top: 12px;">✕ Remove Photo</button>
                         ` : `
-                            <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${escapeHtml((client.name || '')[0] || 'P')}</div>
-                            <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Click or drag & drop a photo here</p>
+                            <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${(client.name || '')[0] || 'P'}</div>
+                            <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Drag & drop photo here or click to browse</p>
                         `}
-                        </div>
-                        <input type="file" id="client-photo-input" accept="image/jpeg,image/jpg,image/png,image/webp" style="display: none;" />
+                        <input type="file" id="client-photo-input" accept="image/*" style="display: none;" onchange="handleClientPhotoUpload(event, '${client.id}')" />
                     </div>
                 </div>
                 <div class="form-row">
@@ -206,9 +201,6 @@ export async function openClient(clientId, options = {}) {
         </div>
     `;
     detailArea.appendChild(mainContent);
-
-    // Setup photo listeners AFTER DOM is in the document
-    setupPhotoListeners(client);
 
     // Setup tab switching
     setupTabSwitching(header, client);
@@ -300,38 +292,34 @@ function setupTabSwitching(header, client) {
             client.email = $('#detail-email').value.trim();
             client.phone = $('#detail-phone').value.trim();
             client.preferred_lang = $('#detail-language').value;
+            // Only save status if it's a valid DB ENUM value
             const rawStatus = ($('#detail-status') ? $('#detail-status').value.trim() : '').toLowerCase();
             if (VALID_CLIENT_STATUSES.includes(rawStatus)) {
                 client.status = rawStatus;
             }
-            client.notes = $('#detail-notes').value;
-            console.log('[NOTES FLOW] save clicked notesLen=' + client.notes.length);
+            client.notes = $('#detail-notes').value.trim();
 
-            // Send minimal payload — photo handled separately, COALESCE preserves it
+            // Save to storage
             try {
-                const result = await api.updateClient(client.id, {
-                    name: client.name,
-                    email: client.email,
-                    phone: client.phone,
-                    preferred_lang: client.preferred_lang,
-                    status: client.status,
-                    notes: client.notes
-                });
-                console.log('[NOTES FLOW] saved notesLen=' + ((result && result.client && result.client.notes) ? result.client.notes.length : 'null'));
+                await saveClient(client);
             } catch (err) {
                 console.error('[Save Details] Failed:', err);
                 alert('Failed to save: ' + (err.message || 'Unknown error. Check your connection.'));
                 return;
             }
 
-            // Update sidebar name
+            // Update sidebar info
             const sidebarInfo = $('#client-sidebar-info');
             if (sidebarInfo) {
+                const photoDiv = sidebarInfo.querySelector('.client-photo');
                 const nameDiv = sidebarInfo.querySelector('.client-name-large');
+                if (photoDiv) photoDiv.textContent = (client.name || '')[0] || 'P';
                 if (nameDiv) nameDiv.textContent = client.name;
             }
 
+            // Refresh dashboard to show updated name
             await renderDashboard();
+
             alert('Client details saved successfully!');
         });
     }
@@ -380,206 +368,103 @@ function switchToView(viewName) {
         renderDashboard();
     }
 }
-// ─────────────────────────────────────────────────────────────────────────────
-// PHOTO — programmatic listeners (no inline handlers)
-// ─────────────────────────────────────────────────────────────────────────────
+// Client Photo Upload Functions
+window.handleClientPhotoAreaClick = function(event, clientId) {
+    // Don't trigger if clicking on remove button
+    if (event.target.classList.contains('btn-remove-photo')) return;
 
-function setupPhotoListeners(client) {
-    const dropZone = document.getElementById('client-photo-drop-zone');
-    const fileInput = document.getElementById('client-photo-input');
-    if (!dropZone || !fileInput) {
-        console.warn('[PHOTO] setupPhotoListeners: dropZone or fileInput not found');
+    const fileInput = $('#client-photo-input');
+    if (fileInput) fileInput.click();
+};
+
+window.handleClientPhotoDrop = function(event, clientId) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const dropZone = $('#client-photo-drop-zone');
+    if (dropZone) dropZone.classList.remove('drag-over');
+
+    const file = event.dataTransfer.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+        alert('Please drop an image file (JPG, PNG, GIF, etc.)');
         return;
     }
 
-    // Click drop zone → open file picker
-    // IMPORTANT: check e.target to avoid re-entry from fileInput.click() bubbling up
-    dropZone.addEventListener('click', function(e) {
-        // Ignore clicks on the remove button (handled separately below)
-        if (e.target.closest && e.target.closest('.btn-remove-photo')) return;
-        // Ignore clicks that originated from the file input itself (prevents double-trigger)
-        if (e.target === fileInput) return;
+    processClientPhotoFile(file, clientId);
+};
 
-        console.log('[PHOTO FLOW] drop zone clicked');
-        fileInput.value = ''; // Allow re-selecting the same file
-        fileInput.click();
-    });
-
-    // File selected via picker
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        console.log('[PHOTO FLOW] file selected name=' + file.name + ' size=' + file.size + ' type=' + file.type);
-        processClientPhotoFile(file, client);
-    });
-
-    // Drag over
-    dropZone.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
+window.handleClientPhotoDragOver = function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const dropZone = $('#client-photo-drop-zone');
+    if (dropZone) {
+        dropZone.classList.add('drag-over');
         dropZone.style.background = '#eff6ff';
         dropZone.style.borderColor = '#3b82f6';
-    });
+        dropZone.style.transform = 'scale(1.02)';
+    }
+};
 
-    // Drag leave
-    dropZone.addEventListener('dragleave', function(e) {
-        e.preventDefault();
+window.handleClientPhotoDragLeave = function(event) {
+    event.preventDefault();
+    const dropZone = $('#client-photo-drop-zone');
+    if (dropZone) {
+        dropZone.classList.remove('drag-over');
         dropZone.style.background = '';
         dropZone.style.borderColor = '';
-    });
-
-    // Drop
-    dropZone.addEventListener('drop', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        dropZone.style.background = '';
-        dropZone.style.borderColor = '';
-        const file = e.dataTransfer && e.dataTransfer.files[0];
-        if (!file) return;
-        if (!file.type.startsWith('image/')) {
-            alert('Please drop an image file (JPG, PNG, etc.)');
-            return;
-        }
-        console.log('[PHOTO FLOW] file dropped name=' + file.name + ' size=' + file.size);
-        processClientPhotoFile(file, client);
-    });
-
-    // Remove photo button — may or may not exist yet; also re-attached after preview updates
-    attachRemovePhotoListener(dropZone, client);
-}
-
-function attachRemovePhotoListener(dropZone, client) {
-    const removeBtn = dropZone.querySelector('.btn-remove-photo');
-    if (!removeBtn) return;
-    removeBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (!confirm('Remove this client\'s photo?')) return;
-        doRemovePhoto(client);
-    });
-}
-
-function updatePhotoPreviewArea(dataUrl, client) {
-    const previewArea = document.getElementById('client-photo-preview-area');
-    if (!previewArea) return;
-    if (dataUrl) {
-        previewArea.innerHTML = `
-            <img src="${dataUrl}" id="client-photo-preview" alt="Client"
-                 style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
-            <button type="button" class="btn-remove-photo" style="margin-top: 12px;">✕ Remove Photo</button>
-        `;
-        // Re-attach remove listener to the newly created button
-        const dropZone = document.getElementById('client-photo-drop-zone');
-        if (dropZone) attachRemovePhotoListener(dropZone, client);
-    } else {
-        previewArea.innerHTML = `
-            <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${(client.name || '')[0] || 'P'}</div>
-            <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Click or drag & drop a photo here</p>
-        `;
+        dropZone.style.transform = '';
     }
-}
+};
 
-function updateSidebarPhotoEl(dataUrl, client) {
-    const sidebarInfo = document.getElementById('client-sidebar-info');
-    if (!sidebarInfo) return;
-    const existing = sidebarInfo.querySelector('img, .client-photo');
-    if (!existing) return;
-    if (dataUrl) {
-        const img = document.createElement('img');
-        img.src = dataUrl;
-        img.alt = (client.name || '')[0] || 'P';
-        img.style.cssText = 'width:80px;height:80px;border-radius:50%;object-fit:cover;margin:0 auto 16px;display:block;border:3px solid #3b82f6;';
-        // Fallback to initial letter if URL expires or fails
-        img.addEventListener('error', function() {
-            const div = document.createElement('div');
-            div.className = 'client-photo';
-            div.style.cssText = 'width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;color:white;font-size:32px;font-weight:700;margin:0 auto 16px;';
-            div.textContent = (client.name || '')[0] || 'P';
-            img.replaceWith(div);
-        });
-        existing.replaceWith(img);
-    } else {
-        const div = document.createElement('div');
-        div.className = 'client-photo';
-        div.style.cssText = 'width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;color:white;font-size:32px;font-weight:700;margin:0 auto 16px;';
-        div.textContent = (client.name || '')[0] || 'P';
-        existing.replaceWith(div);
-    }
-}
-
-function processClientPhotoFile(file, client) {
+function processClientPhotoFile(file, clientId) {
     if (file.size > 5 * 1024 * 1024) {
-        alert('Photo is too large. Maximum size is 5MB.');
-        return;
-    }
-    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
-        alert('Please select a JPEG, PNG, or WebP image.');
+        alert('Photo file is too large. Maximum size is 5MB.');
         return;
     }
 
-    // Show immediate local preview using FileReader (client-side only, not persisted)
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const localDataUrl = e.target.result;
-        console.log('[PHOTO FLOW] reader loaded — showing local preview before upload');
+        const store = await readStore();
+        const client = store.clients.find(c => c.id === clientId);
+        if (!client) return;
 
-        // 1. Immediate local preview (before upload completes)
-        updatePhotoPreviewArea(localDataUrl, client);
-        updateSidebarPhotoEl(localDataUrl, client);
+        client.photo = e.target.result;
+        await saveClient(client);
 
-        // 2. Upload to Supabase Storage via multipart POST
-        const formData = new FormData();
-        formData.append('photo', file);
-
-        try {
-            console.log('[PHOTO FLOW] uploading to Supabase Storage...');
-            const result = await api.uploadClientPhoto(client.id, formData);
-            console.log('[PHOTO FLOW] upload complete — photo_path=' + result.photo_path);
-
-            // 3. Update client closure with the signed URL (for sidebar / future re-renders)
-            client.profile_photo_path = result.photo_path;
-            client.photo_signed_url = result.photo_signed_url || localDataUrl;
-
-            // Update preview to use signed URL (or keep local preview if no signed URL)
-            if (result.photo_signed_url) {
-                updatePhotoPreviewArea(result.photo_signed_url, client);
-                updateSidebarPhotoEl(result.photo_signed_url, client);
-            }
-
-            alert('✓ Photo saved successfully!');
-        } catch (err) {
-            console.error('[PHOTO FLOW] upload failed:', err);
-            // Revert preview to initial letter on failure
-            updatePhotoPreviewArea(null, client);
-            updateSidebarPhotoEl(null, client);
-            alert('Failed to save photo: ' + (err.message || 'Unknown error'));
-        }
-    };
-    reader.onerror = function() {
-        console.error('[PHOTO FLOW] FileReader error');
-        alert('Could not read the image file. Please try again.');
+        // Reload client view
+        openClient(clientId);
+        alert('✓ Client photo uploaded successfully!');
     };
     reader.readAsDataURL(file);
 }
 
-async function doRemovePhoto(client) {
-    try {
-        await api.deleteClientPhoto(client.id);
-        client.photo = '';
-        client.photo_signed_url = null;
-        client.profile_photo_path = null;
-        updatePhotoPreviewArea(null, client);
-        updateSidebarPhotoEl(null, client);
-        alert('✓ Photo removed.');
-    } catch (err) {
-        console.error('[PHOTO FLOW] remove failed:', err);
-        alert('Failed to remove photo: ' + (err.message || 'Unknown error'));
-    }
-}
+window.handleClientPhotoUpload = async function(event, clientId) {
+    const file = event.target.files[0];
+    if (!file) return;
 
-// Legacy stubs — no longer called but kept so any stale inline handlers don't throw
-window.handleClientPhotoAreaClick = function() {};
-window.handleClientPhotoDrop = function(e) { e && e.preventDefault && e.preventDefault(); };
-window.handleClientPhotoDragOver = function(e) { e && e.preventDefault && e.preventDefault(); };
-window.handleClientPhotoDragLeave = function() {};
-window.handleClientPhotoUpload = function() {};
-window.removeClientPhoto = function() {};
+    if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file.');
+        return;
+    }
+
+    processClientPhotoFile(file, clientId);
+};
+
+window.removeClientPhoto = async function(clientId) {
+    if (!confirm('Are you sure you want to remove this client\'s photo?')) {
+        return;
+    }
+
+    const store = await readStore();
+    const client = store.clients.find(c => c.id === clientId);
+    if (!client) return;
+
+    client.photo = '';
+    await saveClient(client);
+
+    // Reload client view
+    openClient(clientId);
+    alert('✓ Client photo removed.');
+};

@@ -2,7 +2,6 @@
 import { JOURNEY_STEPS, $, $all, escapeHtml } from './config.js';
 import { readStore, isPast } from './storage.js';
 import { JOURNEY_STEPS as JOURNEY_DATA, getJourneyProgress } from './journey-data.js';
-import { api } from './api.js';
 
 export async function renderDashboard() {
     const store = await readStore();
@@ -108,65 +107,9 @@ function createClientCard(client) {
         <div class="g-badge">Engine ${Math.round((client.gauges && client.gauges.engine) || 0)}%</div>
       </div>
       <div class="progress-bar"><i style="width:${percentComplete}%"></i></div>
-      <button class="get-alink-btn" style="margin-top:10px;width:100%;padding:7px 0;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">🔗 Assessment Link</button>
     </div>
     <div class="card-footer">Last update: ${escapeHtml(client.last_session || '—')}</div>
-    <div class="card-assessment-link" id="alink-${escapeHtml(client.id)}" style="display:none; padding:8px 12px; background:#f0f9ff; border-top:1px solid #bae6fd;">
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input type="text" readonly style="flex:1;font-size:12px;padding:6px 8px;border:1px solid #bae6fd;border-radius:6px;font-family:monospace;" value="" />
-        <button class="copy-alink-btn" style="font-size:12px;padding:6px 12px;background:#0369a1;color:#fff;border:none;border-radius:6px;cursor:pointer;">Copy</button>
-      </div>
-    </div>
   `;
-
-    // Assessment link button — stop propagation so it doesn't open the client
-    const linkBtn = card.querySelector('.get-alink-btn');
-    if (linkBtn) {
-        linkBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const linkBox = card.querySelector('.card-assessment-link');
-            const linkInput = linkBox && linkBox.querySelector('input');
-            // If already generated, just toggle visibility
-            if (linkInput && linkInput.value) {
-                linkBox.style.display = linkBox.style.display === 'none' ? 'block' : 'none';
-                return;
-            }
-            const originalText = linkBtn.textContent;
-            linkBtn.textContent = '...';
-            linkBtn.disabled = true;
-            try {
-                const result = await api.createAssessmentToken(client.id, client.name);
-                const base = window.location.origin + '/coaching/';
-                const url = `${base}client-assessment.html?token=${result.token}`;
-                if (linkInput) linkInput.value = url;
-                if (linkBox) linkBox.style.display = 'block';
-                linkBtn.textContent = '🔗 Link';
-            } catch (err) {
-                alert('Could not generate link: ' + (err.message || 'Server error'));
-                linkBtn.textContent = originalText;
-            } finally {
-                linkBtn.disabled = false;
-            }
-        });
-    }
-
-    // Copy button
-    const copyBtn = card.querySelector('.copy-alink-btn');
-    if (copyBtn) {
-        copyBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const input = card.querySelector('.card-assessment-link input');
-            if (!input || !input.value) return;
-            navigator.clipboard.writeText(input.value).then(() => {
-                const orig = copyBtn.textContent;
-                copyBtn.textContent = '✓ Copied!';
-                setTimeout(() => { copyBtn.textContent = orig; }, 2000);
-            }).catch(() => {
-                input.select();
-                document.execCommand('copy');
-            });
-        });
-    }
 
     card.addEventListener('click', () => {
         // Import and call openClient dynamically

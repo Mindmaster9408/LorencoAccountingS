@@ -256,11 +256,6 @@ export const api = {
             apiRequest(`/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}/answers`, {
                 method: 'PUT',
                 body: JSON.stringify({ answers })
-            }),
-
-        unassignClientQuestion: (clientId, contextKey, assignmentId) =>
-            apiRequest(`/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}/assignments/${assignmentId}`, {
-                method: 'DELETE'
             })
     }
 };

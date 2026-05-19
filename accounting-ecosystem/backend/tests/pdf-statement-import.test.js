@@ -854,6 +854,195 @@ describe('NedbankParser.parse — eConfirm real statement', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E2. NedbankParser — Afrikaans Geldmark (Walkerpark EDMS BPK, March 2023)
+// ─────────────────────────────────────────────────────────────────────────────
+// This fixture exercises the Afrikaans eConfirm (Geldmark) layout:
+//   - Afrikaans column headers (Tran-lys-nr / Datum / Beskrywing / Geld / Debiete / Krediete / Saldo)
+//   - "Beginsaldo" / "Eindsaldo" balance lines (no English "Opening/Closing balance")
+//   - Afrikaans summary labels (Fondse ontvang/Krediete, Fondse gebruik/Debiete)
+//   - "Rekeningnommer" for account number
+//   - "Tydperk van staat:" for statement period
+//   - BTW zero-amount annotation row that must be excluded with a warning
+//   - "Eindsaldo" at end of table (undated) — must NOT be appended to last transaction
+//
+// Known bugs this suite was written to prevent regressing:
+//   BUG-GELDMARK-01: prevBalance null at first transaction → wrong sign (+10000 for J Turkstra 2)
+//   BUG-GELDMARK-02: Eindsaldo appended to last transaction → +214602.17 for SMS fee of -1.00
+
+const NEDBANK_GELDMARK_SAMPLE = `
+Nedbank
+Geldmark
+Rekeningnommer 1004831919
+Tydperk van staat: 28/02/2023 - 31/03/2023
+Fondse ontvang/Krediete R11,145.72
+Fondse gebruik/Debiete R88,691.47
+Beginsaldo R292,147.92
+Eindsaldo R214,602.17
+Tran-lys-nr Datum Beskrywing Geld (R) Debiete (R) Krediete (R) Saldo (R)
+01/03/2023 Beginsaldo 292,147.92
+000184 01/03/2023 J Turkstra 2 10,000.00 282,147.92
+01/03/2023 G Turkstra 10,000.00 272,147.92
+01/03/2023 T Coetzee 10,000.00 262,147.92
+02/03/2023 Empire furniture 10,000.00 272,147.92
+02/03/2023 Kennisgewingskoste SMS 1.00 * 272,146.92
+10/03/2023 JB Marks 7668 13,309.78 258,837.14
+10/03/2023 JB Marks 38393 7,799.86 251,037.28
+10/03/2023 JB Marks 38385 2.20 28.63 251,008.65
+28/03/2023 RENTE 24/02 - 27/03 1,145.72 252,154.37
+28/03/2023 BTW 24/02-27/03 = R0.42 0.00 252,154.37
+28/03/2023 DIENSGELD 2.20 * 252,152.17
+29/03/2023 0075928346 7,500.00 244,652.17
+30/03/2023 G Turkstra 10,000.00 234,652.17
+30/03/2023 T Coetzee 10,000.00 224,652.17
+30/03/2023 J Turkstra 2 10,000.00 214,652.17
+30/03/2023 Kitsbetaling fooi 49.00 * 214,603.17
+31/03/2023 Kennisgewingskoste SMS 1.00 * 214,602.17
+Eindsaldo 214,602.17
+sien geld anders
+`;
+
+describe('NedbankParser.parse — Geldmark Afrikaans real statement (Walkerpark 2023)', () => {
+  let result;
+  beforeAll(() => {
+    result = NedbankParser.parse(NEDBANK_GELDMARK_SAMPLE, 'walkerpark-2023-03.pdf');
+  });
+
+  // ── canParse ───────────────────────────────────────────────────────────────
+
+  test('canParse detects Afrikaans Geldmark statement with confidence >= 0.6', () => {
+    const r = NedbankParser.canParse(NEDBANK_GELDMARK_SAMPLE, 'walkerpark-2023-03.pdf');
+    expect(r.confidence).toBeGreaterThanOrEqual(0.6);
+    expect(r.details).toMatchObject({ name: true, tranLysNr: true });
+  });
+
+  // ── Transaction count ──────────────────────────────────────────────────────
+
+  test('extracts exactly 16 transactions (BTW zero-amount row correctly excluded)', () => {
+    // BTW row has amount 0.00 — parser skips it with a warning.
+    // Beginsaldo and Eindsaldo are balance lines, not transactions.
+    expect(result.transactions.length).toBe(16);
+  });
+
+  // ── BUG-GELDMARK-01 regression: first transaction sign ───────────────────
+
+  test('BUG-GELDMARK-01 regression: first transaction (J Turkstra 2) is a DEBIT (-10000)', () => {
+    // Before fix: prevBalance was null for first tx → _sign() returned +10000
+    const t = result.transactions[0];
+    expect(t.description).toMatch(/J Turkstra 2/i);
+    expect(t.date).toBe('2023-03-01');
+    expect(t.amount).toBe(-10000);
+    expect(t.balance).toBeCloseTo(282147.92, 2);
+  });
+
+  // ── BUG-GELDMARK-02 regression: last transaction amount ──────────────────
+
+  test('BUG-GELDMARK-02 regression: last SMS fee (31/03) amount is -1.00, not +214602.17', () => {
+    // Before fix: "Eindsaldo 214,602.17" was appended to last tx line → +214602.17
+    const last = result.transactions[result.transactions.length - 1];
+    expect(last.date).toBe('2023-03-31');
+    expect(last.description).toMatch(/Kennisgewingskoste SMS/i);
+    expect(last.amount).toBe(-1);
+    expect(last.balance).toBeCloseTo(214602.17, 2);
+  });
+
+  // ── Direction tests for key rows ─────────────────────────────────────────
+
+  test('Empire furniture (02/03) is a CREDIT (+10000)', () => {
+    const t = result.transactions.find(tx => tx.description.includes('Empire furniture'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(10000);
+  });
+
+  test('RENTE 24/02 - 27/03 is a CREDIT (+1145.72)', () => {
+    const t = result.transactions.find(tx => tx.description.includes('RENTE'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(1145.72, 2);
+  });
+
+  test('DIENSGELD is a DEBIT (-2.20)', () => {
+    const t = result.transactions.find(tx => tx.description.includes('DIENSGELD'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBeCloseTo(-2.20, 2);
+  });
+
+  test('Kitsbetaling fooi is a DEBIT (-49.00)', () => {
+    const t = result.transactions.find(tx => tx.description.includes('Kitsbetaling fooi'));
+    expect(t).toBeDefined();
+    expect(t.amount).toBe(-49);
+  });
+
+  // ── Balance / totals ──────────────────────────────────────────────────────
+
+  test('closing balance of last transaction matches Eindsaldo (214602.17)', () => {
+    const last = result.transactions[result.transactions.length - 1];
+    expect(last.balance).toBeCloseTo(214602.17, 2);
+  });
+
+  test('total debits match stated Fondse gebruik/Debiete (88691.47)', () => {
+    const totalDebits = result.transactions
+      .filter(t => t.amount < 0)
+      .reduce((s, t) => s + Math.abs(t.amount), 0);
+    expect(totalDebits).toBeCloseTo(88691.47, 2);
+  });
+
+  test('total credits match stated Fondse ontvang/Krediete (11145.72)', () => {
+    const totalCredits = result.transactions
+      .filter(t => t.amount > 0)
+      .reduce((s, t) => s + t.amount, 0);
+    expect(totalCredits).toBeCloseTo(11145.72, 2);
+  });
+
+  // ── Metadata ─────────────────────────────────────────────────────────────
+
+  test('account number extracted from Rekeningnommer (1004831919)', () => {
+    expect(result.accountNumber).toBe('1004831919');
+  });
+
+  test('statement period extracted from Tydperk van staat (2023-02-28 to 2023-03-31)', () => {
+    expect(result.statementPeriod.from).toBe('2023-02-28');
+    expect(result.statementPeriod.to).toBe('2023-03-31');
+  });
+
+  // ── Balance lines excluded from transactions ──────────────────────────────
+
+  test('no Beginsaldo or Eindsaldo rows appear in transactions array', () => {
+    const balanceRows = result.transactions.filter(
+      t => /beginsaldo|eindsaldo/i.test(t.description || '')
+    );
+    expect(balanceRows.length).toBe(0);
+  });
+
+  // ── Zero-amount annotation excluded with warning ───────────────────────────
+
+  test('BTW zero-amount annotation row is excluded and produces a warning', () => {
+    const btwTx = result.transactions.filter(t => /btw/i.test(t.description || ''));
+    expect(btwTx.length).toBe(0);
+    const btwWarn = result.warnings.some(w => /btw/i.test(w) && /zero/i.test(w));
+    expect(btwWarn).toBe(true);
+  });
+
+  // ── Parser isolation: other bank parsers must not claim this statement ─────
+
+  test('ABSA canParse does not claim confidence >= 0.6 for Geldmark text', () => {
+    const AbsaParser = require('../sean/pdf-statement-parsers/absa-parser');
+    const r = AbsaParser.canParse(NEDBANK_GELDMARK_SAMPLE, 'walkerpark-2023-03.pdf');
+    expect(r.confidence).toBeLessThan(0.6);
+  });
+
+  test('FNB canParse does not claim confidence >= 0.6 for Geldmark text', () => {
+    const FnbParser = require('../sean/pdf-statement-parsers/fnb-parser');
+    const r = FnbParser.canParse(NEDBANK_GELDMARK_SAMPLE, 'walkerpark-2023-03.pdf');
+    expect(r.confidence).toBeLessThan(0.6);
+  });
+
+  test('Standard Bank canParse does not claim confidence >= 0.6 for Geldmark text', () => {
+    const SbParser = require('../sean/pdf-statement-parsers/standard-bank-parser');
+    const r = SbParser.canParse(NEDBANK_GELDMARK_SAMPLE, 'walkerpark-2023-03.pdf');
+    expect(r.confidence).toBeLessThan(0.6);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // F. Capitec Parser
 // ─────────────────────────────────────────────────────────────────────────────
 

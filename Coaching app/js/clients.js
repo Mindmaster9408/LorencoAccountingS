@@ -1,43 +1,18 @@
 // Client management and individual client view
 import { $, escapeHtml } from './config.js';
 import { readStore, writeStore, ensureStore, saveClient, createNewClient } from './storage.js';
-import { api } from './api.js';
-import { normalizeClientCoachingState } from './journey-data.js';
 import { renderCockpit, saveGauges } from './gauges.js';
 import { renderDashboard } from './dashboard.js';
 import { renderBASISAssessment } from './basis-ui.js?v=2';
 import { renderJourneyTracker } from './journey-ui.js';
 import { renderSpilClientPanel } from './spil-client.js';
 
-// Module-level reference to the currently open client.
-// Set by openClient() each time a client is rendered.
-// Allows photo/remove handlers to sync the in-memory object without re-fetching.
-let _currentClient = null;
-
 export async function openClient(clientId, options = {}) {
-    // Existence check from list store
     const store = await readStore();
-    const listClient = store.clients.find(c => c.id === clientId);
-    if(!listClient) return;
+    const client = store.clients.find(c => c.id === clientId);
+    if(!client) return;
 
-    // Always fetch the individual client record for the detail view.
-    // The list endpoint (SELECT c.* GROUP BY) may return stale/missing photo+notes;
-    // the single-row endpoint (SELECT * WHERE id = $1) is the authoritative source.
-    let client = listClient;
-    try {
-        const data = await api.getClient(clientId);
-        if (data && data.client) {
-            client = data.client;
-            normalizeClientCoachingState(client);
-        }
-    } catch (e) {
-        console.warn('openClient: individual fetch failed, rendering from list data', e.message);
-    }
-
-    // Keep authoritative in-memory reference for photo/note handlers
-    _currentClient = client;
-
-    // Ensure client has gauges initialized (fallback when individual fetch is unavailable)
+    // Ensure client has gauges initialized
     if(!client.gauges) {
         client.gauges = {
             fuel: 50,
@@ -112,19 +87,19 @@ export async function openClient(clientId, options = {}) {
                     <label>Client Photo</label>
                     <div class="client-photo-upload"
                          id="client-photo-drop-zone"
-                         ondrop="handleClientPhotoDrop(event, ${client.id})"
+                         ondrop="handleClientPhotoDrop(event, '${client.id}')"
                          ondragover="handleClientPhotoDragOver(event)"
                          ondragleave="handleClientPhotoDragLeave(event)"
-                         onclick="handleClientPhotoAreaClick(event, ${client.id})"
+                         onclick="handleClientPhotoAreaClick(event, '${client.id}')"
                          style="cursor: pointer; padding: 20px; border: 2px dashed #e2e8f0; border-radius: 12px; transition: all 0.3s ease;">
                         ${client.photo ? `
                             <img src="${client.photo}" id="client-photo-preview" alt="Client" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 12px auto; display: block; border: 3px solid #3b82f6;" />
-                            <button type="button" class="btn-remove-photo" onclick="event.stopPropagation(); removeClientPhoto(${client.id})" style="margin-top: 12px;">✕ Remove Photo</button>
+                            <button type="button" class="btn-remove-photo" onclick="event.stopPropagation(); removeClientPhoto('${client.id}')" style="margin-top: 12px;">✕ Remove Photo</button>
                         ` : `
                             <div id="client-photo-preview" style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 48px; margin: 12px auto;">${(client.name || '')[0] || 'P'}</div>
                             <p style="color: #94a3b8; margin-top: 12px; font-size: 14px;">Drag & drop photo here or click to browse</p>
                         `}
-                        <input type="file" id="client-photo-input" accept="image/*" style="display: none;" onchange="handleClientPhotoUpload(event, ${client.id})" />
+                        <input type="file" id="client-photo-input" accept="image/*" style="display: none;" onchange="handleClientPhotoUpload(event, '${client.id}')" />
                     </div>
                 </div>
                 <div class="form-row">
@@ -296,21 +271,8 @@ function setupTabSwitching(header, client) {
             client.status = $('#detail-status').value.trim();
             client.notes = $('#detail-notes').value.trim();
 
-            console.log('[CLIENT DEBUG] save-details id:', client.id,
-                'notesLen:', (client.notes || '').length,
-                'hasPhoto:', !!client.photo);
             // Save to storage
-            try {
-                await saveClient(client);
-            } catch (err) {
-                alert('Save failed: ' + (err.message || 'Server error — check console.'));
-                console.error('Save details error:', err);
-                return;
-            }
-            // storage.js already synced: client.photo = result.client.photo, client.notes = result.client.notes
-            console.log('[CLIENT DEBUG] save-details done id:', client.id,
-                'server-notesLen:', (client.notes || '').length,
-                'server-hasPhoto:', !!client.photo);
+            await saveClient(client);
 
             // Update sidebar info
             const sidebarInfo = $('#client-sidebar-info');
@@ -424,45 +386,22 @@ window.handleClientPhotoDragLeave = function(event) {
 };
 
 function processClientPhotoFile(file, clientId) {
-    // File size check — 5MB raw; base64 encoding adds ~37% overhead
     if (file.size > 5 * 1024 * 1024) {
-        alert('Photo file is too large. Maximum allowed size is 5MB. Please use a smaller image.');
+        alert('Photo file is too large. Maximum size is 5MB.');
         return;
     }
 
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const base64photo = e.target.result;
+        const store = await readStore();
+        const client = store.clients.find(c => c.id === clientId);
+        if (!client) return;
 
-        // Guard against encoded size approaching the 10MB Express body limit
-        if (base64photo.length > 7 * 1024 * 1024) {
-            alert('Photo is too large after encoding (exceeds safe limit). Please use an image under 5MB.');
-            return;
-        }
+        client.photo = e.target.result;
+        await saveClient(client);
 
-        console.log('[CLIENT DEBUG] photo-upload id:', clientId,
-            'base64Len:', base64photo.length, 'hasPhoto: true');
-
-        // Minimal patch — send ONLY the photo field.
-        // Avoids sending the full client object and eliminates any risk of
-        // stale list-fetched data overwriting notes, exerciseData, or journeyProgress.
-        try {
-            const result = await api.updateClient(clientId, { photo: base64photo });
-            if (result && result.client) {
-                // Sync the authoritative in-memory reference
-                if (_currentClient && _currentClient.id === clientId) {
-                    _currentClient.photo = result.client.photo;
-                }
-            }
-        } catch (err) {
-            alert('Photo save failed: ' + (err.message || 'Server error — check console.'));
-            console.error('Photo save error:', err);
-            return;
-        }
-
-        // Await the re-render — must complete before alert fires to avoid
-        // browser blocking async callbacks while a modal is open
-        await openClient(clientId);
+        // Reload client view
+        openClient(clientId);
         alert('✓ Client photo uploaded successfully!');
     };
     reader.readAsDataURL(file);
@@ -485,22 +424,14 @@ window.removeClientPhoto = async function(clientId) {
         return;
     }
 
-    console.log('[CLIENT DEBUG] remove-photo id:', clientId);
-    // Minimal patch — send only photo: '' to clear the photo field
-    try {
-        const result = await api.updateClient(clientId, { photo: '' });
-        if (result && result.client !== undefined) {
-            if (_currentClient && _currentClient.id === clientId) {
-                _currentClient.photo = result.client.photo ?? '';
-            }
-        }
-    } catch (err) {
-        alert('Photo remove failed: ' + (err.message || 'Server error — check console.'));
-        console.error('Remove photo error:', err);
-        return;
-    }
+    const store = await readStore();
+    const client = store.clients.find(c => c.id === clientId);
+    if (!client) return;
 
-    // Await the re-render before alert fires
-    await openClient(clientId);
+    client.photo = '';
+    await saveClient(client);
+
+    // Reload client view
+    openClient(clientId);
     alert('✓ Client photo removed.');
 };

@@ -2,8 +2,6 @@
 // All token validation and result storage uses the backend API (no localStorage).
 import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
 
-console.log('[CA] Module loaded — v20260511-001');
-
 const $ = (selector) => document.querySelector(selector);
 const API_BASE = '/api/coaching/assessment-tokens';
 
@@ -44,9 +42,7 @@ async function publicFetch(url, options = {}) {
 // ── Token validation ─────────────────────────────────────────────────────────
 
 async function validateToken() {
-    console.log('[CA] validateToken called');
     const token = getTokenFromURL();
-    console.log('[CA] Token from URL:', token ? token.slice(0, 12) + '...' : '(none)');
     if (!token) {
         showError();
         return false;
@@ -55,7 +51,6 @@ async function validateToken() {
     try {
         const result = await publicFetch(`${API_BASE}/${encodeURIComponent(token)}`);
         tokenData = result.tokenData;   // { clientId, clientName }
-        console.log('[CA] validateToken success — clientName:', tokenData ? tokenData.clientName : '(no tokenData)');
         return true;
     } catch (err) {
         if (err.message === 'Assessment already completed') {
@@ -72,16 +67,10 @@ async function validateToken() {
 // ── Client info form ─────────────────────────────────────────────────────────
 
 function setupStartButton() {
-    console.log('[CA] setupStartButton called');
     const btn = $('#start-assessment-btn');
-    if (!btn) {
-        console.error('[CA] ERROR: #start-assessment-btn not found in DOM');
-        return;
-    }
-    console.log('[CA] Start button found — attaching click handler');
+    if (!btn) return;
 
     btn.addEventListener('click', () => {
-        console.log('[CA] Start Assessment button clicked');
         const firstName = $('#client-firstname').value.trim();
         const surname   = $('#client-surname').value.trim();
         const email     = ($('#client-email')  || {}).value || '';
@@ -112,12 +101,8 @@ function setupStartButton() {
 // ── Assessment rendering ─────────────────────────────────────────────────────
 
 function renderAssessment() {
-    console.log('[CA] renderAssessment called');
     const container = $('#basis-assessment-container');
-    if (!container) {
-        console.error('[CA] ERROR: #basis-assessment-container not found');
-        return;
-    }
+    if (!container) return;
 
     container.innerHTML = `
         <div class="basis-assessment">
@@ -265,48 +250,30 @@ async function submitAssessment() {
 
 // ── Initialisation ───────────────────────────────────────────────────────────
 
-async function initAssessment() {
-    console.log('[CA] DOMContentLoaded fired — starting init');
-    try {
-        const valid = await validateToken();
-        console.log('[CA] validateToken returned:', valid);
-        if (!valid) return;
+document.addEventListener('DOMContentLoaded', async () => {
+    const valid = await validateToken();
+    if (!valid) return;
 
-        // If the token already has a clientName (coach-generated link), skip the
-        // info form entirely — the client is already known.
-        if (tokenData && tokenData.clientName) {
-            console.log('[CA] Coach-generated link — skipping info form, rendering assessment');
-            const parts = tokenData.clientName.split(' ');
-            clientData = {
-                firstName:      parts[0] || '',
-                surname:        parts.slice(1).join(' ') || '',
-                name:           tokenData.clientName,
-                email:          '',
-                phone:          '',
-                preferred_lang: 'English'
-            };
-            // Jump straight to the assessment — hide info form, show assessment
-            const infoSection = $('#client-info-section');
-            const assessmentSection = $('#assessment-section');
-            if (infoSection) infoSection.style.display = 'none';
-            if (assessmentSection) assessmentSection.style.display = 'block';
-            renderAssessment();
-        } else {
-            // Anonymous / leads path — show the info form as normal
-            console.log('[CA] Anonymous link — showing info form, setting up start button');
-            setupStartButton();
-        }
-    } catch (err) {
-        console.error('[CA] UNCAUGHT ERROR in initAssessment:', err);
-        showError();
+    // If the token already has a clientName (coach-generated link), skip the
+    // info form entirely — the client is already known.
+    if (tokenData && tokenData.clientName) {
+        const parts = tokenData.clientName.split(' ');
+        clientData = {
+            firstName:      parts[0] || '',
+            surname:        parts.slice(1).join(' ') || '',
+            name:           tokenData.clientName,
+            email:          '',
+            phone:          '',
+            preferred_lang: 'English'
+        };
+        // Jump straight to the assessment — hide info form, show assessment
+        const infoSection = $('#client-info-section');
+        const assessmentSection = $('#assessment-section');
+        if (infoSection) infoSection.style.display = 'none';
+        if (assessmentSection) assessmentSection.style.display = 'block';
+        renderAssessment();
+    } else {
+        // Anonymous / leads path — show the info form as normal
+        setupStartButton();
     }
-}
-
-// ES modules are deferred — DOMContentLoaded may already have fired by execution
-// time in some edge cases. Guard against both timings.
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initAssessment);
-} else {
-    console.log('[CA] DOM already ready — running init immediately');
-    initAssessment();
-}
+});

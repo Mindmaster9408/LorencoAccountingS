@@ -12,7 +12,9 @@
     "install:backend": "cd backend && npm install",
     "postinstall": "cd backend && npm install"
   },
-  "dependencies": {},
   "author": "Lorenco",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^30.4.2"
+  }
 }

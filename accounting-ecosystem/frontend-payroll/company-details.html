@@ -139,7 +139,8 @@
                 <div class="detail-section">
                     <div class="detail-section-title">Tax & Statutory</div>
                     <div class="detail-item"><div class="detail-label">PAYE Reference Number</div><div class="detail-value" id="d-paye-ref">-</div></div>
-                    <div class="detail-item"><div class="detail-label">UIF Reference Number</div><div class="detail-value" id="d-uif-ref">-</div></div>
+                    <div class="detail-item"><div class="detail-label">SARS UIF Reference Number</div><div class="detail-value" id="d-uif-ref">-</div></div>
+                    <div class="detail-item"><div class="detail-label">Labour UIF Number</div><div class="detail-value" id="d-labour-uif">-</div></div>
                     <div class="detail-item"><div class="detail-label">SDL Reference Number</div><div class="detail-value" id="d-sdl-ref">-</div></div>
                     <div class="detail-item"><div class="detail-label">COID Reference Number</div><div class="detail-value" id="d-coid-ref">-</div></div>
                     <div class="detail-item"><div class="detail-label">Income Tax Number</div><div class="detail-value" id="d-tax-number">-</div></div>
@@ -277,7 +278,8 @@
                 <div class="form-section-title">Tax & Statutory</div>
                 <div class="form-grid">
                     <div class="form-group"><label>PAYE Reference Number</label><input type="text" id="f-paye-ref" placeholder="e.g. 7123456789"></div>
-                    <div class="form-group"><label>UIF Reference Number</label><input type="text" id="f-uif-ref" placeholder="e.g. U123456789"></div>
+                    <div class="form-group"><label>SARS UIF Reference Number</label><input type="text" id="f-uif-ref" placeholder="e.g. U123456789"></div>
+                    <div class="form-group"><label>Labour UIF Number</label><input type="text" id="f-labour-uif" placeholder="Dept. of Labour UIF ref"></div>
                     <div class="form-group"><label>SDL Reference Number</label><input type="text" id="f-sdl-ref" placeholder="e.g. L123456789"></div>
                     <div class="form-group"><label>COID Reference Number</label><input type="text" id="f-coid-ref" placeholder="Compensation Fund ref"></div>
                     <div class="form-group"><label>Income Tax Number</label><input type="text" id="f-tax-number" placeholder="e.g. 9123456789"></div>
@@ -508,6 +510,7 @@
                 // Tax & Statutory
                 paye_ref:       raw.paye_reference_number || '',
                 uif_ref:        raw.uif_reference_number || '',
+                labour_uif:     raw.labour_uif_number || '',
                 sdl_ref:        raw.sdl_reference_number || '',
                 coid_ref:       raw.coid_reference_number || '',
                 tax_number:     raw.income_tax_number || '',
@@ -572,6 +575,7 @@
                 ['d-year-end', companyData.year_end],
                 ['d-paye-ref', companyData.paye_ref],
                 ['d-uif-ref', companyData.uif_ref],
+                ['d-labour-uif', companyData.labour_uif],
                 ['d-sdl-ref', companyData.sdl_ref],
                 ['d-coid-ref', companyData.coid_ref],
                 ['d-tax-number', companyData.tax_number],
@@ -641,6 +645,7 @@
             document.getElementById('f-year-end').value = companyData.year_end || '';
             document.getElementById('f-paye-ref').value = companyData.paye_ref || '';
             document.getElementById('f-uif-ref').value = companyData.uif_ref || '';
+            document.getElementById('f-labour-uif').value = companyData.labour_uif || '';
             document.getElementById('f-sdl-ref').value = companyData.sdl_ref || '';
             document.getElementById('f-coid-ref').value = companyData.coid_ref || '';
             document.getElementById('f-tax-number').value = companyData.tax_number || '';
@@ -700,6 +705,7 @@
             companyData.year_end = document.getElementById('f-year-end').value;
             companyData.paye_ref = document.getElementById('f-paye-ref').value.trim();
             companyData.uif_ref = document.getElementById('f-uif-ref').value.trim();
+            companyData.labour_uif = document.getElementById('f-labour-uif').value.trim();
             companyData.sdl_ref = document.getElementById('f-sdl-ref').value.trim();
             companyData.coid_ref = document.getElementById('f-coid-ref').value.trim();
             companyData.tax_number = document.getElementById('f-tax-number').value.trim();
@@ -748,6 +754,7 @@
                 // Tax & Statutory
                 paye_reference_number: companyData.paye_ref,
                 uif_reference_number:  companyData.uif_ref,
+                labour_uif_number:     companyData.labour_uif,
                 sdl_reference_number:  companyData.sdl_ref,
                 coid_reference_number: companyData.coid_ref,
                 income_tax_number:     companyData.tax_number,

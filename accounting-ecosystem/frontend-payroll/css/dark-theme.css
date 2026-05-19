@@ -1447,7 +1447,8 @@ button[style*="background: #999"] {
 /* Panels are shown via JS style.display; ensure light grey bg is overridden   */
 #volTaxPanelFixed,
 #volTaxPanelVariable,
-#volTaxPanelSpread {
+#volTaxPanelSpread,
+#volTaxPanelTarget {
     background: rgba(255,255,255,0.06) !important;
     border-color: var(--border) !important;
     color: var(--text) !important;
@@ -1455,9 +1456,11 @@ button[style*="background: #999"] {
 #volTaxPanelFixed label,
 #volTaxPanelVariable label,
 #volTaxPanelSpread label,
+#volTaxPanelTarget label,
 #volTaxPanelFixed span,
 #volTaxPanelVariable span,
-#volTaxPanelSpread span {
+#volTaxPanelSpread span,
+#volTaxPanelTarget span {
     color: var(--text-secondary) !important;
 }
 /* Variable note inside regular amount pane */

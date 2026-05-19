@@ -3,178 +3,287 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - Lorenco Accounting</title>
+    <title>Company Settings - Lorenco Accounting</title>
     <script src="js/navigation.js"></script>
     <script src="js/theme-guard.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f8f9fa;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 40px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        
-        h1 {
-            color: #202124;
-            margin-bottom: 30px;
-        }
-        
-        .setting-item {
-            padding: 20px;
-            border: 1px solid #e8eaed;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .setting-info h3 {
-            color: #202124;
-            font-size: 16px;
-            margin-bottom: 5px;
-        }
-        
-        .setting-info p {
-            color: #9aa0a6;
-            font-size: 13px;
-        }
-        
-        .toggle-switch {
-            position: relative;
-            width: 60px;
-            height: 30px;
-            background: #ccc;
-            border-radius: 15px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        
-        .toggle-switch.active {
-            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
-        }
-        
-        .toggle-switch::after {
-            content: '';
-            position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 24px;
-            height: 24px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.3s;
-        }
-        
-        .toggle-switch.active::after {
-            transform: translateX(30px);
-        }
-        
-        .btn-back {
-            display: inline-block;
-            padding: 10px 20px;
-            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            margin-top: 20px;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; }
+
+        .content { padding: 20px; max-width: 900px; margin: 0 auto; }
+
+        .page-header { background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .page-header h1 { font-size: 22px; color: #333; margin-bottom: 5px; }
+        .page-header p { color: #666; font-size: 13px; }
+        .page-header .company-badge { display: inline-block; background: #e8f0fe; color: #0066cc; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-top: 6px; }
+
+        .settings-card { background: #fff; padding: 24px; margin-bottom: 16px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .settings-card h2 { font-size: 16px; color: #333; margin-bottom: 4px; font-weight: 600; }
+        .settings-card .card-desc { font-size: 12px; color: #888; margin-bottom: 18px; }
+
+        .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #f0f0f0; }
+        .setting-row:last-of-type { border-bottom: none; }
+        .setting-label { font-size: 14px; color: #333; font-weight: 500; }
+        .setting-desc { font-size: 12px; color: #888; margin-top: 2px; }
+
+        .toggle-switch { position: relative; width: 52px; height: 26px; background: #ccc; border-radius: 13px; cursor: pointer; transition: background 0.3s; flex-shrink: 0; }
+        .toggle-switch.active { background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%); }
+        .toggle-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: transform 0.3s; }
+        .toggle-switch.active::after { transform: translateX(26px); }
+
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 13px; font-weight: 500; color: #555; margin-bottom: 4px; }
+        .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: #fff; }
+        .form-group input:focus, .form-group select:focus { border-color: #0066cc; outline: none; }
+
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+        .btn-save { padding: 9px 22px; background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%); color: #fff; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+        .btn-save:hover { opacity: 0.9; }
+
+        .alert { padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 12px; }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-error { background: #f8d7da; color: #721c24; }
+
+        .coming-soon-badge { display: inline-block; font-size: 10px; font-weight: 600; background: #fff3cd; color: #856404; padding: 2px 7px; border-radius: 8px; margin-left: 8px; vertical-align: middle; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <script src="js/polyfills.js"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>⚙️ Settings</h1>
-        
-        <div class="setting-item">
-            <div class="setting-info">
-                <h3>🤖 Sean AI</h3>
-                <p>Enable AI-powered transaction categorization and suggestions</p>
-            </div>
-            <div class="toggle-switch" id="seanAIToggle" onclick="toggleSeanAI()"></div>
+    <div class="content">
+        <div class="page-header">
+            <h1>Company Settings</h1>
+            <p>Operational behaviour and preferences for the selected company</p>
+            <span class="company-badge" id="companyBadge">Loading...</span>
         </div>
-        
-        <div class="setting-item">
-            <div class="setting-info">
-                <h3>🔔 Notifications</h3>
-                <p>Receive notifications for important events</p>
+
+        <div id="alertContainer"></div>
+
+        <!-- Interface & Automation -->
+        <div class="settings-card">
+            <h2>Interface &amp; Automation</h2>
+            <div class="card-desc">Control the behaviour of AI features and interface preferences</div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">🤖 Sean AI</div>
+                    <div class="setting-desc">Enable AI-powered transaction categorisation and suggestions on the bank page</div>
+                </div>
+                <div class="toggle-switch" id="seanAIToggle" onclick="toggleSeanAI()"></div>
             </div>
-            <div class="toggle-switch" id="notificationsToggle" onclick="toggleNotifications()"></div>
-        </div>
-        
-        <div class="setting-item">
-            <div class="setting-info">
-                <h3>🌙 Dark Mode</h3>
-                <p>Switch to dark theme (Coming soon)</p>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">🔔 Notifications</div>
+                    <div class="setting-desc">Receive notifications for important events and alerts</div>
+                </div>
+                <div class="toggle-switch" id="notificationsToggle" onclick="toggleNotifications()"></div>
             </div>
-            <div class="toggle-switch"></div>
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">🌙 Dark Mode <span class="coming-soon-badge">Coming Soon</span></div>
+                    <div class="setting-desc">Switch to a dark theme across the entire application</div>
+                </div>
+                <div class="toggle-switch" id="darkModeToggle"></div>
+            </div>
         </div>
-        
-        <a href="dashboard.html" class="btn-back">← Back to Dashboard</a>
+
+        <!-- Business Defaults -->
+        <div class="settings-card">
+            <h2>Business Defaults</h2>
+            <div class="card-desc">Default values applied when creating new documents and transactions</div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Default Currency</label>
+                    <select id="defaultCurrency">
+                        <option value="ZAR">ZAR — South African Rand</option>
+                        <option value="USD">USD — US Dollar</option>
+                        <option value="EUR">EUR — Euro</option>
+                        <option value="GBP">GBP — British Pound</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date Format</label>
+                    <select id="dateFormat">
+                        <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                        <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                        <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Invoice Prefix</label>
+                    <input type="text" id="invoicePrefix" placeholder="e.g. INV" maxlength="10">
+                </div>
+                <div class="form-group">
+                    <label>Default Payment Terms (days)</label>
+                    <select id="defaultPaymentTerms">
+                        <option value="0">Due on receipt</option>
+                        <option value="7">7 days</option>
+                        <option value="14">14 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="60">60 days</option>
+                        <option value="90">90 days</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Default VAT Treatment</label>
+                    <select id="defaultVatTreatment">
+                        <option value="inclusive">Tax Inclusive</option>
+                        <option value="exclusive">Tax Exclusive</option>
+                        <option value="exempt">Exempt</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Bank Import: Default Match Confidence</label>
+                    <select id="bankImportConfidence">
+                        <option value="high">High only (safest)</option>
+                        <option value="medium" selected>Medium and above</option>
+                        <option value="low">All suggestions</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-save" onclick="saveDefaults()">Save Defaults</button>
+        </div>
+
+        <!-- Report Display -->
+        <div class="settings-card">
+            <h2>Report Display</h2>
+            <div class="card-desc">Control how financial reports are presented</div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Number Format</label>
+                    <select id="numberFormat">
+                        <option value="1 234 567.89">1 234 567.89 (space thousands)</option>
+                        <option value="1,234,567.89" selected>1,234,567.89 (comma thousands)</option>
+                        <option value="1.234.567,89">1.234.567,89 (dot thousands)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Negative Number Style</label>
+                    <select id="negativeStyle">
+                        <option value="minus" selected>-1 234.00</option>
+                        <option value="brackets">(1 234.00)</option>
+                        <option value="red">Red colour</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-save" onclick="saveReportPrefs()">Save Report Preferences</button>
+        </div>
     </div>
-    
+
     <script>
-        // Load settings - default Sean AI to true for demo
+        const companyId = parseInt(localStorage.getItem('activeCompanyId'))
+                       || parseInt(localStorage.getItem('selectedCompanyId'))
+                       || null;
+
+        // ── Company badge ─────────────────────────────────────────────────────
+        function loadCompanyName() {
+            if (!companyId) {
+                document.getElementById('companyBadge').textContent = 'No company selected';
+                return;
+            }
+            const token = localStorage.getItem('token');
+            fetch('/api/accounting/company/' + companyId, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data && data.name) {
+                    document.getElementById('companyBadge').textContent = data.name;
+                }
+            })
+            .catch(() => {});
+        }
+
+        // ── Settings storage key scoped per company ───────────────────────────
+        function settingsKey(name) {
+            return 'settings_' + (companyId || 'global') + '_' + name;
+        }
+
+        // ── Interface toggles (Sean AI, Notifications) ────────────────────────
         const seanAIEnabled = localStorage.getItem('seanAIEnabled') !== 'false';
-        const notificationsEnabled = localStorage.getItem('notificationsEnabled') === 'true';
-        
-        // Set default value
         if (localStorage.getItem('seanAIEnabled') === null) {
             localStorage.setItem('seanAIEnabled', 'true');
         }
-        
-        if (seanAIEnabled) {
-            document.getElementById('seanAIToggle').classList.add('active');
-        }
-        
-        if (notificationsEnabled) {
-            document.getElementById('notificationsToggle').classList.add('active');
-        }
-        
+        const notificationsEnabled = localStorage.getItem('notificationsEnabled') === 'true';
+
+        if (seanAIEnabled) document.getElementById('seanAIToggle').classList.add('active');
+        if (notificationsEnabled) document.getElementById('notificationsToggle').classList.add('active');
+
         function toggleSeanAI() {
             const toggle = document.getElementById('seanAIToggle');
             const isActive = toggle.classList.contains('active');
-            
-            if (isActive) {
-                toggle.classList.remove('active');
-                localStorage.setItem('seanAIEnabled', 'false');
-                alert('Sean AI disabled. The AI column will be hidden from bank transactions. Refresh the bank transactions page to see the change.');
-            } else {
-                toggle.classList.add('active');
-                localStorage.setItem('seanAIEnabled', 'true');
-                alert('Sean AI enabled! You will now see AI suggestions in bank transactions. Refresh the bank transactions page to see the change.');
-            }
+            toggle.classList.toggle('active');
+            localStorage.setItem('seanAIEnabled', isActive ? 'false' : 'true');
+            showAlert(isActive ? 'Sean AI disabled. Refresh bank page to apply.' : 'Sean AI enabled. Refresh bank page to apply.', 'success');
         }
-        
+
         function toggleNotifications() {
             const toggle = document.getElementById('notificationsToggle');
             const isActive = toggle.classList.contains('active');
-            
-            if (isActive) {
-                toggle.classList.remove('active');
-                localStorage.setItem('notificationsEnabled', 'false');
-                alert('Notifications disabled.');
-            } else {
-                toggle.classList.add('active');
-                localStorage.setItem('notificationsEnabled', 'true');
-                alert('Notifications enabled.');
-            }
+            toggle.classList.toggle('active');
+            localStorage.setItem('notificationsEnabled', isActive ? 'false' : 'true');
+            showAlert(isActive ? 'Notifications disabled.' : 'Notifications enabled.', 'success');
         }
+
+        // ── Business Defaults ─────────────────────────────────────────────────
+        function loadDefaults() {
+            const currency    = localStorage.getItem(settingsKey('currency'))    || 'ZAR';
+            const dateFormat  = localStorage.getItem(settingsKey('dateFormat'))  || 'DD/MM/YYYY';
+            const invPrefix   = localStorage.getItem(settingsKey('invoicePrefix')) || 'INV';
+            const payTerms    = localStorage.getItem(settingsKey('paymentTerms')) || '30';
+            const vatTreat    = localStorage.getItem(settingsKey('vatTreatment')) || 'inclusive';
+            const bankConf    = localStorage.getItem(settingsKey('bankConfidence')) || 'medium';
+
+            document.getElementById('defaultCurrency').value   = currency;
+            document.getElementById('dateFormat').value        = dateFormat;
+            document.getElementById('invoicePrefix').value     = invPrefix;
+            document.getElementById('defaultPaymentTerms').value = payTerms;
+            document.getElementById('defaultVatTreatment').value = vatTreat;
+            document.getElementById('bankImportConfidence').value = bankConf;
+        }
+
+        function saveDefaults() {
+            localStorage.setItem(settingsKey('currency'),       document.getElementById('defaultCurrency').value);
+            localStorage.setItem(settingsKey('dateFormat'),     document.getElementById('dateFormat').value);
+            localStorage.setItem(settingsKey('invoicePrefix'),  document.getElementById('invoicePrefix').value);
+            localStorage.setItem(settingsKey('paymentTerms'),   document.getElementById('defaultPaymentTerms').value);
+            localStorage.setItem(settingsKey('vatTreatment'),   document.getElementById('defaultVatTreatment').value);
+            localStorage.setItem(settingsKey('bankConfidence'), document.getElementById('bankImportConfidence').value);
+            showAlert('Business defaults saved.', 'success');
+        }
+
+        // ── Report Preferences ────────────────────────────────────────────────
+        function loadReportPrefs() {
+            const numFormat  = localStorage.getItem(settingsKey('numberFormat'))  || '1,234,567.89';
+            const negStyle   = localStorage.getItem(settingsKey('negativeStyle')) || 'minus';
+            document.getElementById('numberFormat').value  = numFormat;
+            document.getElementById('negativeStyle').value = negStyle;
+        }
+
+        function saveReportPrefs() {
+            localStorage.setItem(settingsKey('numberFormat'),  document.getElementById('numberFormat').value);
+            localStorage.setItem(settingsKey('negativeStyle'), document.getElementById('negativeStyle').value);
+            showAlert('Report preferences saved.', 'success');
+        }
+
+        // ── Alert helper ──────────────────────────────────────────────────────
+        function showAlert(message, type) {
+            const container = document.getElementById('alertContainer');
+            container.innerHTML = '<div class="alert alert-' + type + '">' + message + '</div>';
+            setTimeout(() => { container.innerHTML = ''; }, 4000);
+        }
+
+        // ── Init ──────────────────────────────────────────────────────────────
+        loadCompanyName();
+        loadDefaults();
+        loadReportPrefs();
     </script>
 </body>
 </html>

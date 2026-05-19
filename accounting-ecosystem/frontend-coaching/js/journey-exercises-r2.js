@@ -2,7 +2,7 @@
 import { $, escapeHtml, formatDate, formatDateTime, parseStandardDate } from './config.js';
 import { saveClient } from './storage.js';
 import { JOURNEY_STEPS } from './journey-data.js';
-import { renderAIChat, loadLinkedQuestionsSection } from './journey-helpers.js?v=12';
+import { renderAIChat } from './journey-helpers.js?v=11';
 
 // Render specific exercise based on step number
 export function renderExercise(client, stepNumber, containerId) {
@@ -194,47 +194,6 @@ function render4QuadrantExercise(client, container) {
                 >${escapeHtml(data.dreamSummary)}</textarea>
             </div>
 
-            <!-- Linked Questions from Question Builder -->
-            <div class="linked-questions-zone" id="linked-questions-zone">
-                <div class="linked-questions-zone-header">
-                    <h3 class="linked-questions-zone-title">Coaching Questions</h3>
-                    <button class="btn-link-question" id="btn-open-qlinker">+ Add Question</button>
-                </div>
-                <div id="linked-questions-list" class="linked-questions-list">
-                    <p class="linked-q-loading">Loading&hellip;</p>
-                </div>
-            </div>
-
-            <!-- Question Linker Modal -->
-            <div id="qlinker-overlay" class="qlinker-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="qlinker-title">
-                <div class="qlinker-panel">
-                    <div class="qlinker-header">
-                        <h3 id="qlinker-title">Link Question from Question Builder</h3>
-                        <button id="qlinker-close" class="qlinker-close-btn" title="Close" aria-label="Close">&#x2715;</button>
-                    </div>
-                    <div class="qlinker-filters">
-                        <input id="qlinker-search" type="text" placeholder="Search questions&hellip;"
-                               class="qlinker-search" autocomplete="off" oninput="filterLinkerList()" />
-                        <select id="qlinker-filter-cat" class="qlinker-filter-cat" onchange="filterLinkerList()">
-                            <option value="">All categories</option>
-                            <option value="General">General</option>
-                            <option value="Four Quadrants">Four Quadrants</option>
-                            <option value="PGF">PGF</option>
-                            <option value="Session">Session</option>
-                            <option value="Reflection">Reflection</option>
-                        </select>
-                    </div>
-                    <div id="qlinker-list" class="qlinker-list">
-                        <p class="qlinker-list-loading">Loading questions&hellip;</p>
-                    </div>
-                    <div class="qlinker-footer">
-                        <span id="qlinker-selected-count" class="qlinker-selected-count">0 selected</span>
-                        <button type="button" id="qlinker-cancel-btn" class="btn-secondary">Cancel</button>
-                        <button type="button" id="qlinker-add-btn" class="btn-primary" disabled>Add Selected</button>
-                    </div>
-                </div>
-            </div>
-
             <!-- Our 1% -->
             <div class="our-one-percent-section">
                 <h3>Our 1% — What will the client do before the next session?</h3>
@@ -346,9 +305,6 @@ function render4QuadrantExercise(client, container) {
             </div>
         </div>
     `;
-
-    // Load linked questions from Question Builder (Dream Summary section)
-    loadLinkedQuestionsSection(client);
 
     // Render AI chat if exists
     if (data.aiCoachNotes) {
