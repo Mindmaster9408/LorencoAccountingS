@@ -112,7 +112,11 @@ router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeMod
       .single();
 
     console.log('[DIAG /salary] DB lookup result:', old ? ('found, old basic_salary=' + old.basic_salary) : 'NOT FOUND (null)');
-    if (!old) return res.status(404).json({ error: 'Employee not found' });
+    if (!old) {
+      const { data: diagEmp } = await supabase.from('employees').select('id, company_id, basic_salary').eq('id', req.params.id).maybeSingle();
+      console.log('[DIAG /salary] employee without company filter:', diagEmp ? JSON.stringify(diagEmp) : 'DOES NOT EXIST IN DB AT ALL');
+      return res.status(404).json({ error: 'Employee not found', _diag: { sentCompanyId: req.companyId, actualCompanyId: diagEmp ? diagEmp.company_id : null } });
+    }
 
     const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, old);
     if (!visible) return res.status(403).json({ error: 'Access denied — employee not in your visible scope' });
