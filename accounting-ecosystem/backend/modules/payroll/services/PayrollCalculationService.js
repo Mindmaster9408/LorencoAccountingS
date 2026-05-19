@@ -110,10 +110,26 @@ async function calculate(normalizedInputs, options = {}) {
   }
 
   try {
-    // Determine calculation method based on options
+    // Auto-detect pro-rata only when the employee's start/end date falls WITHIN
+    // the current period.  A start_date before the period means the employee was
+    // already employed for the full month (factor = 1 — no pro-rata needed).
+    // A start_date after the period end is almost always a data-entry error (e.g.
+    // 2028 instead of 2018) and would produce factor = 0, zeroing basic_salary.
+    // Explicit options.startDate / options.endDate always override (UI-triggered).
+    function _dateWithinPeriod(dateStr, periodKey) {
+      if (!dateStr || !periodKey) return false;
+      const parts = periodKey.split('-').map(Number);
+      const pStart = new Date(parts[0], parts[1] - 1, 1);
+      const pEnd   = new Date(parts[0], parts[1], 0);
+      const d      = new Date(dateStr);
+      return d >= pStart && d <= pEnd;
+    }
+    const autoProRata =
+      _dateWithinPeriod(normalizedInputs.start_date, normalizedInputs.period) ||
+      _dateWithinPeriod(normalizedInputs.end_date,   normalizedInputs.period);
     const useProRata =
       options.useProRata !== false &&
-      (options.startDate || options.endDate || normalizedInputs.start_date);
+      (options.startDate || options.endDate || autoProRata);
 
     // Build period-aware tax tables from admin KV config (Node.js backend cannot use localStorage).
     // Null means "use engine defaults" — backward compatible with all existing callers.
