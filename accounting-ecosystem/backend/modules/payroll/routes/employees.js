@@ -102,6 +102,7 @@ router.get('/:id', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payr
 router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
     const { basic_salary, hourly_rate, payment_frequency } = req.body;
+    console.log('[DIAG /salary] empId:', req.params.id, 'companyId:', req.companyId, 'basic_salary received:', basic_salary);
 
     const { data: old } = await supabase
       .from('employees')
@@ -110,6 +111,7 @@ router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeMod
       .eq('company_id', req.companyId)
       .single();
 
+    console.log('[DIAG /salary] DB lookup result:', old ? ('found, old basic_salary=' + old.basic_salary) : 'NOT FOUND (null)');
     if (!old) return res.status(404).json({ error: 'Employee not found' });
 
     const visible = await canViewEmployee(req.user.role, req.user.userId, req.companyId, old);
