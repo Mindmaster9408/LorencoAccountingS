@@ -119,6 +119,11 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     supabase
   );
 
+  // Step 6b: Fetch YTD data from prior locked snapshots in the same SA tax year.
+  // Returns null if: first month of tax year, no prior locked snapshots exist,
+  // PAYE_YTD_ENABLED=false, or any DB error — all of which fall back to monthly method.
+  const ytdData = await fetchYtdData(companyId, employeeId, periodKey, supabase);
+
   // Step 7: Normalize into engine input format
   const normalizedInput = normalizeCalculationInput(
     employee,
@@ -130,7 +135,123 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     companyRegistrationFlags
   );
 
+  // Attach YTD data (set after normalizeCalculationInput which defaults this to null)
+  normalizedInput.ytdData = ytdData;
+
   return normalizedInput;
+}
+
+/**
+ * Fetch YTD (year-to-date) data from prior finalized snapshots for an employee.
+ *
+ * Returns the accumulated periodic taxable gross, once-off taxable gross, and PAYE
+ * already withheld across all LOCKED snapshots in the same SA tax year that precede
+ * the current period.  This is the authoritative input to calculateMonthlyPAYE_YTD().
+ *
+ * YTD source rules (in order):
+ *   1. payroll_snapshots where same company_id, same employee_id, same tax year,
+ *      period_key < current period, is_locked = true.
+ *   2. If no locked prior snapshots exist → returns null (caller uses monthly method).
+ *
+ * Disable feature-wide by setting PAYE_YTD_ENABLED=false in the environment.
+ *
+ * @param {number} companyId
+ * @param {number} employeeId
+ * @param {string} periodKey - Current period 'YYYY-MM'
+ * @param {object} supabase
+ * @returns {Promise<object|null>} ytdData for engine, or null to use monthly method
+ */
+async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
+    // Feature flag — set PAYE_YTD_ENABLED=false in Zeabur env to revert to
+    // monthly annualization without a code deployment.
+    if (process.env.PAYE_YTD_ENABLED === 'false') return null;
+
+    // Get all prior periods in the same SA tax year (never includes current period).
+    // Returns [] for March (month 1 of tax year) — no prior periods possible.
+    const priorPeriods = PayrollEngine.getTaxYearPriorPeriods(periodKey);
+    if (!priorPeriods.length) return null;
+
+    let snapshots;
+    try {
+        const { data, error } = await supabase
+            .from('payroll_snapshots')
+            .select('period_key, calculation_output')
+            .eq('company_id', companyId)
+            .eq('employee_id', employeeId)
+            .eq('is_locked', true)
+            .in('period_key', priorPeriods)
+            .order('period_key', { ascending: true });
+
+        if (error) {
+            console.warn('[PayrollDataService] fetchYtdData: DB error, falling back to monthly method:', error.message);
+            return null;
+        }
+        snapshots = data;
+    } catch (ex) {
+        console.warn('[PayrollDataService] fetchYtdData: exception, falling back to monthly method:', ex.message);
+        return null;
+    }
+
+    if (!snapshots || snapshots.length === 0) return null;
+
+    // Aggregate YTD totals from locked snapshots only.
+    let ytdPeriodicTaxableGross = 0;
+    let ytdOnceOffTaxableGross  = 0;
+    let ytdPAYE                 = 0;
+    const periods = [];
+
+    for (const snap of snapshots) {
+        const out = snap.calculation_output || {};
+
+        // periodicTaxableGross was added as an engine output field alongside migration 018.
+        // Fall back to taxableGross for older snapshots that predate that field — this
+        // slightly overstates the periodic portion (conservative, never understates PAYE).
+        const periodicTaxable = typeof out.periodicTaxableGross === 'number'
+            ? out.periodicTaxableGross
+            : (typeof out.taxableGross === 'number' ? out.taxableGross : 0);
+        const onceOffTaxable  = typeof out.onceOffTaxableGross === 'number'
+            ? out.onceOffTaxableGross : 0;
+
+        // Use final PAYE (includes voluntary adjustments) — this is the actual amount
+        // withheld from the employee's pay and remitted to SARS.  Using paye_base here
+        // would understate YTD withholding and cause over-withholding in the current month.
+        const payeWithheld = typeof out.paye === 'number' ? out.paye : 0;
+
+        ytdPeriodicTaxableGross += periodicTaxable;
+        ytdOnceOffTaxableGross  += onceOffTaxable;
+        ytdPAYE                 += payeWithheld;
+
+        periods.push({
+            period_key:           snap.period_key,
+            periodicTaxableGross: periodicTaxable,
+            onceOffTaxableGross:  onceOffTaxable,
+            paye:                 payeWithheld
+        });
+    }
+
+    const taxYear        = PayrollEngine.getTaxYearForPeriod(periodKey);
+    const monthInTaxYear = PayrollEngine.getMonthInTaxYear(periodKey);
+
+    console.log(
+        `[PayrollDataService] YTD: empId=${employeeId} period=${periodKey}` +
+        ` taxYear=${taxYear} monthInTaxYear=${monthInTaxYear}` +
+        ` priorSnapshots=${snapshots.length}` +
+        ` ytdPeriodicTaxable=${ytdPeriodicTaxableGross}` +
+        ` ytdOnceOff=${ytdOnceOffTaxableGross}` +
+        ` ytdPAYE=${ytdPAYE}`
+    );
+
+    return {
+        tax_year:                  taxYear,
+        current_period:            periodKey,
+        current_month_in_tax_year: monthInTaxYear,
+        prior_periods_count:       snapshots.length,
+        ytdPeriodicTaxableGross,
+        ytdOnceOffTaxableGross,
+        ytdPAYE,
+        source:                    'locked_snapshots',
+        periods
+    };
 }
 
 /**
@@ -592,8 +713,10 @@ function normalizeCalculationInput(
     // wrong SA tax year tables for the first month of the new tax year.
     period: period.period_key,
 
-    // === YTD Data (if using SARS method) ===
-    ytdData: null // Set by caller if needed for YTD tax calc
+    // === YTD Data (SARS cumulative method) ===
+    // Populated by fetchCalculationInputs() from prior locked snapshots.
+    // null here is overridden by the caller after normalizeCalculationInput returns.
+    ytdData: null
 
     // === Metadata (not used by engine, but useful for audit trail) ===
     // employeeId: employee.id,
@@ -655,6 +778,7 @@ function formatPeriodKey(startDate) {
 
 module.exports = {
   fetchCalculationInputs,
+  fetchYtdData,
   fetchPeriod,
   fetchEmployee,
   fetchWorkSchedule,

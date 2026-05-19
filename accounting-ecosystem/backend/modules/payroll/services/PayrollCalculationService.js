@@ -181,6 +181,7 @@ async function calculate(normalizedInputs, options = {}) {
     }
 
     // Add service-level metadata (DO NOT mutate engine output fields)
+    const _ytd = normalizedInputs.ytdData;
     result._meta = {
       calculatedAt: new Date().toISOString(),
       engineVersion: PayrollEngine.ENGINE_VERSION,
@@ -192,7 +193,15 @@ async function calculate(normalizedInputs, options = {}) {
       // Derived from period_key by the engine's getTaxYearForPeriod().
       resolvedTaxYear: normalizedInputs.period
         ? PayrollEngine.getTaxYearForPeriod(normalizedInputs.period)
-        : PayrollEngine.TAX_YEAR
+        : PayrollEngine.TAX_YEAR,
+      // YTD PAYE method transparency — stored in snapshot for audit and payslip display.
+      // ytdMethod identifies which PAYE formula was active for this period.
+      // Payslip narrative should use this field to explain to the employee why their
+      // PAYE may differ from simple (current salary × 12 ÷ 12) annualization.
+      ytdMethod:            _ytd ? 'cumulative_ytd'     : 'monthly_annualization',
+      ytdSource:            _ytd ? (_ytd.source || 'locked_snapshots') : 'none',
+      ytdTaxYear:           _ytd ? (_ytd.tax_year || null)             : null,
+      ytdPriorPeriodsCount: _ytd ? (_ytd.prior_periods_count || 0)     : 0
     };
 
     return result;
