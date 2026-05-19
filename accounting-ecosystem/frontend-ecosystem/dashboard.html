@@ -20,9 +20,49 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            background: #090d18;
             min-height: 100vh;
             color: var(--text);
+        }
+
+        /* ── Animated space background (matches login page) ─────────────── */
+        #bgCanvas {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .bg-glow {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            pointer-events: none;
+            z-index: 0;
+            animation: glowPulse 8s ease-in-out infinite;
+        }
+        .bg-glow.g1 {
+            width: 560px; height: 560px;
+            top: -120px; left: -140px;
+            background: rgba(91, 61, 245, 0.22);
+            animation-delay: 0s;
+        }
+        .bg-glow.g2 {
+            width: 500px; height: 500px;
+            bottom: -100px; right: -120px;
+            background: rgba(61, 165, 255, 0.18);
+            animation-delay: -4s;
+        }
+        .bg-glow.g3 {
+            width: 360px; height: 360px;
+            top: 40%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(91, 61, 245, 0.08);
+            animation-delay: -2s;
+        }
+        @keyframes glowPulse {
+            0%, 100% { opacity: 0.7; transform: scale(1); }
+            50%       { opacity: 1;   transform: scale(1.06); }
         }
 
         /* ── Top Bar ──────────────────────────────────────────── */
@@ -112,6 +152,8 @@
             max-width: 1200px;
             margin: 0 auto;
             padding: 40px 28px;
+            position: relative;
+            z-index: 1;
         }
 
         .welcome {
@@ -846,6 +888,12 @@
     <script src="js/update-check.js"></script>
 </head>
 <body>
+
+    <!-- Animated space background (matches login page) -->
+    <div class="bg-glow g1"></div>
+    <div class="bg-glow g2"></div>
+    <div class="bg-glow g3"></div>
+    <canvas id="bgCanvas"></canvas>
 
     <!-- Top Bar -->
     <div class="topbar">
@@ -4488,6 +4536,50 @@
 
         // ── Start ──
         init();
+    </script>
+
+    <script>
+        /* ── Particle canvas background ── */
+        (function initParticles() {
+            const canvas = document.getElementById('bgCanvas');
+            const ctx    = canvas.getContext('2d');
+            let W, H, particles = [];
+
+            function resize() {
+                W = canvas.width  = window.innerWidth;
+                H = canvas.height = window.innerHeight;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            const COUNT = 55;
+            for (let i = 0; i < COUNT; i++) {
+                particles.push({
+                    x:  Math.random() * 1400,
+                    y:  Math.random() * 900,
+                    r:  Math.random() * 1.4 + 0.4,
+                    dx: (Math.random() - 0.5) * 0.22,
+                    dy: (Math.random() - 0.5) * 0.22,
+                    o:  Math.random() * 0.4 + 0.08
+                });
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, W, H);
+                particles.forEach(p => {
+                    p.x += p.dx; p.y += p.dy;
+                    if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+                    if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(168, 184, 255, ${p.o})`;
+                    ctx.fill();
+                });
+                requestAnimationFrame(draw);
+            }
+            draw();
+        })();
     </script>
 </body>
 </html>
