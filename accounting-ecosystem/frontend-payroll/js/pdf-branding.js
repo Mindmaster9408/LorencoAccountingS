@@ -6,7 +6,8 @@
 const PDFBranding = {
 
     // ---- Generate Single Branded Payslip ----
-    generatePayslipPDF: function(employee, period, calculation, companyId) {
+    // narrativeOptions (optional): { enabled: bool, placement: 'bottom'|'backpage', text: string }
+    generatePayslipPDF: function(employee, period, calculation, companyId, narrativeOptions) {
         var jspdf = window.jspdf;
         if (!jspdf) { alert('jsPDF library not loaded.'); return; }
         var doc = new jspdf.jsPDF();
@@ -14,6 +15,15 @@ const PDFBranding = {
         var company = AUTH.getCompanyById(companyId);
 
         this.addPayslipPage(doc, employee, period, calculation, details, company);
+
+        if (narrativeOptions && narrativeOptions.enabled && narrativeOptions.text) {
+            if (narrativeOptions.placement === 'backpage') {
+                doc.addPage();
+                this._addNarrativePage(doc, narrativeOptions.text);
+            } else {
+                this._addNarrativeBottom(doc, narrativeOptions.text);
+            }
+        }
 
         doc.save('Payslip_' + employee.employee_number + '_' + period + '.pdf');
     },
@@ -334,6 +344,39 @@ const PDFBranding = {
         // Bottom bar
         doc.setFillColor(102, 126, 234);
         doc.rect(0, y + 8, pageWidth, 5, 'F');
+    },
+
+    // ---- Narrative Helpers ----
+
+    _addNarrativePage: function(doc, text) {
+        var margin = 14;
+        var pageWidth = 210;
+        var y = 20;
+        doc.setFontSize(12);
+        doc.setTextColor(102, 126, 234);
+        doc.setFont(undefined, 'bold');
+        doc.text('Payslip Explanation', margin, y);
+        y += 10;
+        doc.setFontSize(9);
+        doc.setTextColor(60, 60, 60);
+        doc.setFont(undefined, 'normal');
+        var lines = doc.splitTextToSize(text, pageWidth - margin * 2);
+        lines.forEach(function(line) { doc.text(line, margin, y); y += 5; });
+    },
+
+    _addNarrativeBottom: function(doc, text) {
+        var margin = 14;
+        var pageWidth = 210;
+        var pageHeight = 297;
+        var y = pageHeight - 52;
+        doc.setFontSize(7);
+        doc.setTextColor(100, 100, 100);
+        doc.setFont(undefined, 'bold');
+        doc.text('Payslip Explanation', margin, y);
+        y += 4;
+        doc.setFont(undefined, 'normal');
+        var lines = doc.splitTextToSize(text, pageWidth - margin * 2);
+        lines.slice(0, 7).forEach(function(line) { doc.text(line, margin, y); y += 3.5; });
     },
 
     // ---- Helpers ----

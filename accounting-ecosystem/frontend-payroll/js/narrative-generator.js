@@ -12,7 +12,7 @@ const NarrativeGenerator = {
             summary: this.generateSummary(currentCalc),
             comparison: this.generateComparison(currentCalc, previousCalc, payrollData, period),
             breakdown: this.generateBreakdown(currentCalc, payrollData, period),
-            taxExplanation: this.generateTaxExplanation(currentCalc, period),
+            taxExplanation: this.generateTaxExplanation(employee, currentCalc, period),
             conclusion: this.generateConclusion(currentCalc, employee),
             timestamp: new Date().toISOString()
         };
@@ -251,29 +251,28 @@ const NarrativeGenerator = {
     // NO frontend PayrollEngine calls. NO hardcoded tax defaults. NO bracket lookups.
     // All tax fields (primary_rebate_annual, marginal_rate, marginal_bracket, uif_monthly_cap,
     // tax_year) are populated by the backend engine using the active Supabase KV tax tables.
-    generateTaxExplanation: function(calc, period) {
+    // Age is derived from the SA ID number for descriptive purposes only — no tax recalculation.
+    generateTaxExplanation: function(employee, calc, period) {
         var annualGross = calc.gross * 12;
 
         // All values come directly from the backend calculation result.
-        // The backend engine resolves: global KV config -> company KV config -> engine defaults.
-        // Frontend never participates in this resolution.
-        var primaryRebateAnnual = calc.primary_rebate_annual || (calc.rebate ? calc.rebate * 12 : 0);
-        var uifCap              = calc.uif_monthly_cap || 177.12;
-        var marginalRate        = calc.marginal_rate   || '';
-        var marginalBracket     = calc.marginal_bracket || '';
+        // calc.rebate = total monthly rebate applied by the backend (all applicable: primary + secondary + tertiary).
+        // calc.primary_rebate_annual = primary rebate only (when backend sends it explicitly).
+        var totalRebateAnnual = calc.rebate ? Math.round(calc.rebate * 12 * 100) / 100 : (calc.primary_rebate_annual || 0);
+        var uifCap            = calc.uif_monthly_cap || 177.12;
+        var marginalRate      = calc.marginal_rate   || '';
+        var marginalBracket   = calc.marginal_bracket || '';
 
         // TRACE D — confirm backend display fields are flowing through correctly.
-        // After fix: primary_rebate_annual should equal global KV PRIMARY_REBATE (e.g. 17820).
         console.log('[narrative-generator TRACE D] Tax explanation source (backend calc):', JSON.stringify({
             primary_rebate_annual:   calc.primary_rebate_annual,
             rebate_monthly:          calc.rebate,
-            rebate_annual_derived:   calc.rebate ? Math.round(calc.rebate * 12 * 100) / 100 : null,
+            totalRebateAnnual_used:  totalRebateAnnual,
             marginal_rate:           calc.marginal_rate,
             marginal_bracket:        calc.marginal_bracket,
             uif_monthly_cap:         calc.uif_monthly_cap,
             tax_year:                calc.tax_year,
-            taxBeforeRebate_monthly: calc.taxBeforeRebate,
-            primaryRebateAnnual_used: primaryRebateAnnual
+            taxBeforeRebate_monthly: calc.taxBeforeRebate
         }));
 
         var text = 'Based on your monthly gross of ' + this.formatMoney(calc.gross) +
@@ -281,13 +280,45 @@ const NarrativeGenerator = {
         if (marginalRate && marginalBracket) {
             text += 'Your marginal tax rate is ' + marginalRate + ' (bracket: ' + marginalBracket + '). ';
         }
-        if (primaryRebateAnnual > 0) {
-            text += 'A primary rebate of ' + this.formatMoney(primaryRebateAnnual) + ' is applied annually, reducing your effective tax. ';
+
+        if (totalRebateAnnual > 0) {
+            // Derive age from SA ID number (display-only — not used in any calculation).
+            var age = this._getAgeFromId(employee && employee.id_number ? employee.id_number : null);
+            if (age !== null && age >= 75) {
+                text += 'You qualify for all three SARS tax rebates: the primary rebate (all taxpayers), ' +
+                    'the secondary rebate (age 65 and older), and the tertiary rebate (age 75 and older). ' +
+                    'Together these total ' + this.formatMoney(totalRebateAnnual) + ' annually, reducing your effective tax. ';
+            } else if (age !== null && age >= 65) {
+                text += 'You qualify for the primary rebate (all taxpayers) and the secondary rebate (age 65 and older). ' +
+                    'Together these total ' + this.formatMoney(totalRebateAnnual) + ' annually, reducing your effective tax. ';
+            } else {
+                text += 'A primary rebate of ' + this.formatMoney(totalRebateAnnual) + ' is applied annually, reducing your effective tax. ';
+            }
         }
+
         text += 'Your UIF contribution is 1% of gross' +
             (calc.uif >= uifCap ? ', capped at the maximum of ' + this.formatMoney(uifCap) + ' per month' : '') + '.';
 
         return text;
+    },
+
+    // Derives age in years from a South African ID number (YYMMDDXXXXXXX).
+    // Returns null if the ID is invalid or too short. Year cutoff: YY > 30 → 19xx, else 20xx.
+    // Used for narrative description only — never for tax calculation.
+    _getAgeFromId: function(idNumber) {
+        if (!idNumber || idNumber.length < 6) return null;
+        try {
+            var yy = parseInt(idNumber.substring(0, 2), 10);
+            var mm = parseInt(idNumber.substring(2, 4), 10);
+            var dd = parseInt(idNumber.substring(4, 6), 10);
+            if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+            var year = yy > 30 ? 1900 + yy : 2000 + yy;
+            var today = new Date();
+            var age = today.getFullYear() - year;
+            var monthDiff = (today.getMonth() + 1) - mm;
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dd)) age--;
+            return (age >= 0 && age <= 130) ? age : null;
+        } catch(e) { return null; }
     },
 
     // ---- Conclusion ----

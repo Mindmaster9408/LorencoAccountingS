@@ -1161,6 +1161,9 @@
         // authoritative numbers as the payslip summary panel.
         var _lastBackendCalc = null;
         var _lastNarrative = null;
+        // DB-authoritative lock state: true when payroll_snapshots.is_locked = true for current employee+period.
+        // Set by calculatePayslip() from the backend response. Drives updatePayslipUI() and _requireNotLocked().
+        var _isDbLocked = false;
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
@@ -1876,111 +1879,38 @@
         function getMultiRateKey() { return 'emp_multi_rate_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod; }
         function getLeaveKey() { return 'emp_leave_' + currentCompanyId + '_' + currentEmpId; }
         function getNotesKey() { return 'emp_notes_' + currentCompanyId + '_' + currentEmpId; }
-        function getPayslipStatusKey() { return 'emp_payslip_status_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod; }
-
         // ========== PAYSLIP STATUS ==========
-        function getPayslipStatus() {
-            const stored = safeLocalStorage.getItem(getPayslipStatusKey());
-            return stored ? JSON.parse(stored) : { status: 'draft' };
-        }
-
-        function isPayrunLockedForPeriod() {
-            const payruns = JSON.parse(safeLocalStorage.getItem('payruns_' + currentCompanyId) || '[]');
-            return payruns.find(pr => pr.period === currentPeriod && (pr.status === 'finalized' || pr.status === 'paid'));
-        }
-
-        function isPayslipLocked() {
-            if (isPayrunLockedForPeriod()) return true;
-            var ps = getPayslipStatus();
-            return !!(ps && ps.status === 'finalized');
-        }
+        // Lock state is DB-authoritative: payroll_snapshots.is_locked = true (set by Execute Payroll).
+        // _isDbLocked is set by calculatePayslip() from the backend response locked flag.
+        // There is NO individual per-payslip finalise on this page.
+        // The only finalisation path is: Execute Payroll \u2192 DB snapshot lock.
 
         function _requireNotLocked() {
-            if (isPayrunLockedForPeriod()) {
-                alert('This period is locked by a finalized pay run. Use Request Unlock to make changes.');
-                return false;
-            }
-            var ps = getPayslipStatus();
-            if (ps && ps.status === 'finalized') {
-                alert('This payslip is finalized. Click "\u21A9 Unfinalize" to make changes.');
+            if (_isDbLocked) {
+                alert('This period is locked by a finalised pay run. Use Request Unlock to make changes.');
                 return false;
             }
             return true;
         }
 
         function updatePayslipUI() {
-            const psStatus = getPayslipStatus();
-            const lockedRun = isPayrunLockedForPeriod();
             const statusBar = document.getElementById('payslipStatusBar');
             const btnArea = document.getElementById('finalizeBtn');
             const content = document.getElementById('payrollContent');
-
             content.classList.remove('locked-overlay');
-
-            // Buttons injected into the status bar sit outside #payrollContent and are never covered by the overlay
             var viewBtns = '<div style="display:flex; gap:10px; margin-top:10px;">' +
                 '<button class="btn" style="flex:1;" onclick="calculatePayslip().then(previewPayslip)">👁 View Payslip</button>' +
                 '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>' +
                 '</div>';
-
-            if (lockedRun && psStatus.status === 'finalized') {
-                // Pay run exists AND payslip finalized = fully locked
-                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>' + viewBtns;
+            if (_isDbLocked) {
+                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — This period has been finalised via Execute Payroll. Manager authorisation required to make changes.</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
                 content.classList.add('locked-overlay');
-            } else if (psStatus.status === 'finalized') {
-                // Finalized but no pay run yet = can unfinalize freely
-                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + formatDate(parseStandardDate(psStatus.finalized_date), 'ZA') + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
-                btnArea.innerHTML = '<button class="btn-unfinalize" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
-                content.classList.add('locked-overlay');
             } else {
-                // Draft
-                statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 Draft — Finalize this payslip to include it in a pay run.</div>';
-                btnArea.innerHTML = '<button class="btn-finalize" onclick="finalizePayslip()">✓ Finalize Payslip</button>';
+                statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 Draft — Enter inputs, then calculate. Finalise via Execute Payroll.</div>';
+                btnArea.innerHTML = '';
             }
             Permissions.enforceUI();
-        }
-
-        async function finalizePayslip() {
-            if (!Permissions.require('FINALIZE_PAYSLIP')) return;
-            // Auto-calculate before finalizing and capture result to freeze values
-            var calc = await calculatePayslip();
-            // Capture full itemized data before confirming — so preview/PDF stay correct after lock
-            var fullData = getPayslipData();
-            const session = AUTH.getSession();
-            if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '? It will be locked for editing.')) return;
-            const status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
-            safeLocalStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
-            // Save frozen snapshot — includes itemized allowances/deductions so preview/PDF never recalculate
-            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-            safeLocalStorage.setItem(histKey, JSON.stringify({
-                basic_salary: payrollData.basic_salary || 0,
-                gross: calc.gross, taxableGross: calc.taxableGross || calc.gross,
-                periodicTaxableGross: calc.periodicTaxableGross || 0,
-                onceOffTaxableGross:  calc.onceOffTaxableGross  || 0,
-                paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
-                deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
-                net: calc.net, source: 'finalized',
-                finalized_date: status.finalized_date, finalized_by: status.finalized_by,
-                overtimeAmount: calc.overtimeAmount || 0,
-                shortTimeAmount: calc.shortTimeAmount || 0,
-                medicalCredit: calc.medicalCredit || 0,
-                // Full itemized lists — used by preview/PDF to avoid recalculation
-                allowances: fullData.calc.allowances || [],
-                deductionsList: fullData.calc.deductionsList || []
-            }));
-            AuditTrail.logFinalize(currentCompanyId, 'payslip', 'Finalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
-            updatePayslipUI();
-        }
-
-        function unfinalizePayslip() {
-            if (!Permissions.require('UNFINALIZE_PAYSLIP')) return;
-            if (!confirm('Unfinalize this payslip? It will be editable again.')) return;
-            safeLocalStorage.removeItem(getPayslipStatusKey());
-            // Remove the frozen snapshot so values recalculate live
-            safeLocalStorage.removeItem('emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod);
-            AuditTrail.logUnfinalize(currentCompanyId, 'payslip', 'Unfinalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
-            updatePayslipUI();
         }
 
         function requestManagerAuth() {
@@ -2079,6 +2009,8 @@
 
                 renderPayroll();
                 updatePayslipUI();
+                // Auto-calculate on load: populates Payroll Summary and sets _isDbLocked from DB
+                calculatePayslip().catch(function(e) { console.warn('[loadPayrollData] auto-calculate failed:', e.message); });
             } catch(e) {
                 console.error('Error loading payroll data:', e);
                 setTimeout(function() {
@@ -2366,10 +2298,25 @@
             document.getElementById('editBasicValue').value = payrollData.basic_salary || '';
             document.getElementById('editBasicModal').classList.add('show');
         }
-        function saveBasicSalary() {
-            payrollData.basic_salary = parseFloat(document.getElementById('editBasicValue').value) || 0;
+        async function saveBasicSalary() {
+            var val = parseFloat(document.getElementById('editBasicValue').value) || 0;
+            payrollData.basic_salary = val;
             savePayrollData(); renderPayroll(); closeModal('editBasicModal');
-            AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + payrollData.basic_salary.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+            // Persist to DB (employees.basic_salary) — canonical source for backend calculations.
+            // savePayrollData() also writes via KV as a fallback, but the DB column is authoritative.
+            try {
+                var empId = _supabaseEmpId || currentEmpId;
+                var token = safeLocalStorage.getItem('token');
+                var r = await fetch(window.location.origin + '/api/payroll/employees/' + empId + '/salary', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ basic_salary: val })
+                });
+                if (!r.ok) console.warn('[saveBasicSalary] DB write returned HTTP', r.status);
+            } catch(e) {
+                console.warn('[saveBasicSalary] DB write failed:', e.message);
+            }
+            AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + val.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
 
         function editVariableAmount(id) {
@@ -2951,6 +2898,8 @@
                     if (calc && calcResult.data.snapshot && calcResult.data.snapshot.basic_salary != null) {
                         calc._snapshotBasicSalary = calcResult.data.snapshot.basic_salary;
                     }
+                    // DB-authoritative lock state: backend returns locked:true when payroll_snapshots.is_locked = true
+                    _isDbLocked = !!(calcResult.data.locked);
                 } else if (calcResult.data && calcResult.data.error) {
                     console.error('[calculatePayslip] backend error:', calcResult.data.error);
                 }
@@ -3018,6 +2967,7 @@
             document.getElementById('explanationControl').style.display = 'block';
             // Cache for synchronous getPayslipData() (PDF/preview)
             _lastBackendCalc = calc;
+            updatePayslipUI();
             return calc;
         }
 

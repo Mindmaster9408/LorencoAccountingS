@@ -58,25 +58,17 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
   if (!employee.basic_salary) {
     try {
       const kvKey = `emp_payroll_${companyId}_${employeeId}`;
-      const { data: kvRow, error: kvErr2 } = await supabase
+      const { data: kvRow } = await supabase
         .from('payroll_kv_store_eco')
         .select('value')
-        .eq('company_id', String(companyId))
+        .eq('company_id', companyId)
         .eq('key', kvKey)
         .maybeSingle();
-      if (kvErr2) {
-        console.warn(`[PayrollDataService] KV salary fallback query error for emp ${employeeId}:`, kvErr2.message);
-      }
       if (kvRow && kvRow.value) {
         const kvVal = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
         if (kvVal && kvVal.basic_salary) {
-          console.log(`[PayrollDataService] KV salary fallback: emp ${employeeId} → basic_salary=${kvVal.basic_salary}`);
           employee.basic_salary = kvVal.basic_salary;
-        } else {
-          console.warn(`[PayrollDataService] KV salary fallback: found KV row for emp ${employeeId} but basic_salary is absent/zero`);
         }
-      } else {
-        console.warn(`[PayrollDataService] KV salary fallback: no KV row found for key=${kvKey}, company_id=${companyId}`);
       }
     } catch (kvErr) {
       // KV fallback is best-effort — a missing KV entry is not an error
@@ -97,11 +89,12 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     supabase
   );
 
-  // Step 4b: Fetch company SDL/UIF registration flags and employee UIF exemption in parallel.
-  const [companyRegistrationFlags, employeeUifExempt] = await Promise.all([
-    fetchCompanyRegistrationFlags(companyId, supabase),
-    fetchUifExempt(companyId, employeeId, supabase)
-  ]);
+  // Step 4b: Fetch company SDL/UIF registration flags from companies table.
+  // These control whether SDL/UIF are calculated (true = calculate, false = 0).
+  const companyRegistrationFlags = await fetchCompanyRegistrationFlags(
+    companyId,
+    supabase
+  );
 
   // Step 5: Fetch recurring payroll items for this employee
   const recurringItems = await fetchRecurringPayrollItems(
@@ -126,8 +119,7 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     recurringItems,
     periodInputs,
     period,
-    companyRegistrationFlags,
-    employeeUifExempt
+    companyRegistrationFlags
   );
 
   return normalizedInput;
@@ -384,26 +376,6 @@ async function fetchCompanyRegistrationFlags(companyId, supabase) {
 }
 
 /**
- * Fetch employee-level UIF exemption flag from employee_payroll_setup.
- * Returns false (not exempt) by default — safe for employees with no setup row.
- */
-async function fetchUifExempt(companyId, employeeId, supabase) {
-  const { data, error } = await supabase
-    .from('employee_payroll_setup')
-    .select('uif_exempt')
-    .eq('company_id', companyId)
-    .eq('employee_id', employeeId)
-    .maybeSingle();
-
-  if (error) {
-    console.warn('[PayrollDataService] fetchUifExempt: query error, defaulting to not exempt.', error.code);
-    return false;
-  }
-
-  return data?.uif_exempt === true;
-}
-
-/**
  * Fetch recurring payroll items assigned to employee.
  * E.g., commission, allowances, deductions, etc.
  */
@@ -510,8 +482,7 @@ function normalizeCalculationInput(
   recurringItems,
   periodInputs,
   period,
-  companyRegistrationFlags,
-  employeeUifExempt
+  companyRegistrationFlags
 ) {
   // Calculate age at the END of the SA tax year (28/29 Feb) — SARS requires rebate tier
   // to be determined at year-end, not at today's date or the current pay period date.
@@ -529,12 +500,6 @@ function normalizeCalculationInput(
     description: item.payroll_items?.name || item.payroll_items?.code || 'Unknown',
     amount: item.amount || 0,
     percentage: item.percentage || 0,
-    // The engine resolves percentage-based items via `ri.is_percentage && ri.percentage_value`.
-    // DB stores these items with amount=0 and a non-zero percentage column.
-    // Derive is_percentage/percentage_value from the percentage column so the engine
-    // can correctly compute the amount as (percentage_value / 100) * basic_salary.
-    is_percentage: Number(item.percentage) > 0,
-    percentage_value: Number(item.percentage) || 0,
     type: item.item_type || 'allowance',
     is_taxable: item.payroll_items?.is_taxable !== false,
     // tax_treatment: controls whether a deduction reduces taxableGross (pre-PAYE) or net only.
@@ -603,9 +568,6 @@ function normalizeCalculationInput(
       // Defaults to true for backward compatibility if flags not yet in DB.
       sdl_registered: companyRegistrationFlags ? companyRegistrationFlags.sdl_registered !== false : true,
       uif_registered: companyRegistrationFlags ? companyRegistrationFlags.uif_registered !== false : true,
-      // Employee-level UIF exemption from employee_payroll_setup.uif_exempt.
-      // true = this specific employee is exempt from UIF regardless of company registration.
-      uif_exempt: employeeUifExempt === true,
       // Voluntary tax over-deduction config from the employee's saved record.
       // Normalised here so that both /api/payroll/calculate (single-employee preview)
       // and /api/payroll/run (Execute Payroll) receive the same config automatically.
@@ -690,7 +652,6 @@ module.exports = {
   fetchWorkSchedule,
   fetchCompanyPayrollSettings,
   fetchCompanyRegistrationFlags,
-  fetchUifExempt,
   fetchRecurringPayrollItems,
   fetchPeriodInputs
 };
