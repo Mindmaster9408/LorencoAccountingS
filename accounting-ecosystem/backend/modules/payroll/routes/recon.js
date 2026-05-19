@@ -250,7 +250,7 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
           basic:         inp.basic_salary,
           overtime:      out.overtimeAmount,
           shorttime:     out.shortTimeAmount,
-          voluntary_tax: out.voluntary_overdeduction,
+          voluntary_tax: (out.voluntary_paye_adjustment !== undefined ? out.voluntary_paye_adjustment : out.voluntary_overdeduction),
           deductions:    out.deductions
         }
       );

@@ -243,6 +243,22 @@
         @supports not ((position: sticky) or (position: -webkit-sticky)) {
             .sidebar { position: static; top: auto; }
         }
+
+        /* ---- Payslip explanation toggle switch ---- */
+        .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc; border-radius: 24px; transition: 0.3s;
+        }
+        .toggle-slider:before {
+            position: absolute; content: ""; height: 18px; width: 18px;
+            left: 3px; bottom: 3px; background-color: white;
+            border-radius: 50%; transition: 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background-color: #667eea; }
+        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/mobile-responsive.css">
@@ -380,11 +396,11 @@
                 </div>
 
                 <!-- PAYROLL SUMMARY -->
-                    <!-- Voluntary Tax Over-Deduction Config -->
+                    <!-- Voluntary PAYE Adjustment Config -->
                     <div class="section" style="margin-bottom: 18px;">
-                        <div class="section-title">Voluntary Tax Over-Deduction</div>
-                        <div style="font-size:12px; color:#b85c00; background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:7px 10px; margin-bottom:10px;">
-                            ⚠ This increases PAYE paid to SARS — it is <strong>not</strong> a standard deduction. Multiple entries are supported. Each appears separately on the payslip.
+                        <div class="section-title">Voluntary PAYE Adjustment</div>
+                        <div style="font-size:12px; color:#5c3317; background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:7px 10px; margin-bottom:10px;">
+                            ⚠ Adjustments change the PAYE paid to SARS — not a standard deduction. Increases add extra PAYE; reductions lower PAYE (a reason is required). Multiple entries supported; each appears separately on the payslip.
                         </div>
 
                         <!-- Active entries list -->
@@ -396,29 +412,70 @@
                             <button type="button" id="volTaxTabFixed"    class="btn btn-sm" onclick="switchVolTaxTab('fixed')"        style="font-size:12px;">Fixed Monthly</button>
                             <button type="button" id="volTaxTabVariable" class="btn btn-sm" onclick="switchVolTaxTab('variable')"     style="font-size:12px;">Variable (Period)</button>
                             <button type="button" id="volTaxTabSpread"   class="btn btn-sm" onclick="switchVolTaxTab('bonus_spread')" style="font-size:12px;">Bonus Spread</button>
+                            <button type="button" id="volTaxTabTarget"   class="btn btn-sm" onclick="switchVolTaxTab('target_paye')"  style="font-size:12px;">Target PAYE Amount</button>
                         </div>
 
                         <!-- Scenario 1: Fixed Monthly -->
-                        <div id="volTaxPanelFixed" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
-                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">Extra PAYE per month:</label>
-                            <span style="font-size:13px;">R</span>
-                            <input type="number" id="volFixedAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
-                            <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('fixed')" style="font-size:12px;">Add Entry</button>
-                            <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
+                        <div id="volTaxPanelFixed" style="display:none; flex-direction:column; gap:8px; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
+                            <!-- Direction toggle -->
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:12px; font-weight:600; color:#555;">Direction:</span>
+                                <button type="button" id="volFixedDirBtnIncrease" onclick="volSetDir('fixed','increase')" style="font-size:11px; padding:3px 12px; border-radius:12px; border:1px solid #28a745; background:#28a745; color:white; cursor:pointer; font-weight:600;">▲ Increase PAYE</button>
+                                <button type="button" id="volFixedDirBtnReduce"   onclick="volSetDir('fixed','reduce')"   style="font-size:11px; padding:3px 12px; border-radius:12px; border:1px solid #999; background:white; color:#666; cursor:pointer; font-weight:600;">▼ Reduce PAYE</button>
+                                <input type="hidden" id="volFixedDirection" value="increase">
+                            </div>
+                            <!-- Amount -->
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <label style="margin-bottom:0; font-size:13px; font-weight:600;">Amount per month:</label>
+                                <span style="font-size:13px;">R</span>
+                                <input type="number" id="volFixedAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
+                            </div>
+                            <!-- Description -->
+                            <div>
+                                <input type="text" id="volFixedDescription" style="width:100%; border:1px solid #ccc; border-radius:4px; padding:5px 8px; font-size:12px;" placeholder="Optional note">
+                            </div>
+                            <!-- Reduction warning -->
+                            <div id="volFixedReduceWarn" style="display:none; font-size:11px; color:#b71c1c; background:#ffebee; border:1px solid #ef9a9a; border-radius:4px; padding:5px 8px;">
+                                ⚠ Reducing PAYE may under-deduct tax owed to SARS. A reason is required and will appear on the payslip audit trail.
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('fixed')" style="font-size:12px;">Add Entry</button>
+                                <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
+                            </div>
                         </div>
 
                         <!-- Scenario 2: Variable (current period only) -->
-                        <div id="volTaxPanelVariable" style="display:none; gap:10px; align-items:center; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
-                            <label style="margin-bottom:0; font-size:13px; font-weight:600;">Extra PAYE for period:</label>
-                            <input type="month" id="volVariablePeriod" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
-                            <span style="font-size:13px;">R</span>
-                            <input type="number" id="volVariableAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
-                            <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('variable')" style="font-size:12px;">Add Entry</button>
-                            <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
-                            <div style="width:100%; font-size:11px; color:#888; margin-top:4px;">Applies <strong>only</strong> to the selected period. Does not carry forward.</div>
+                        <div id="volTaxPanelVariable" style="display:none; flex-direction:column; gap:8px; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
+                            <!-- Direction toggle -->
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:12px; font-weight:600; color:#555;">Direction:</span>
+                                <button type="button" id="volVariableDirBtnIncrease" onclick="volSetDir('variable','increase')" style="font-size:11px; padding:3px 12px; border-radius:12px; border:1px solid #28a745; background:#28a745; color:white; cursor:pointer; font-weight:600;">▲ Increase PAYE</button>
+                                <button type="button" id="volVariableDirBtnReduce"   onclick="volSetDir('variable','reduce')"   style="font-size:11px; padding:3px 12px; border-radius:12px; border:1px solid #999; background:white; color:#666; cursor:pointer; font-weight:600;">▼ Reduce PAYE</button>
+                                <input type="hidden" id="volVariableDirection" value="increase">
+                            </div>
+                            <!-- Period + Amount -->
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <label style="margin-bottom:0; font-size:13px; font-weight:600;">Period:</label>
+                                <input type="month" id="volVariablePeriod" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
+                                <span style="font-size:13px;">R</span>
+                                <input type="number" id="volVariableAmount" min="0" step="0.01" style="width:110px;" placeholder="0.00">
+                            </div>
+                            <!-- Description -->
+                            <div>
+                                <input type="text" id="volVariableDescription" style="width:100%; border:1px solid #ccc; border-radius:4px; padding:5px 8px; font-size:12px;" placeholder="Optional note">
+                            </div>
+                            <!-- Reduction warning -->
+                            <div id="volVariableReduceWarn" style="display:none; font-size:11px; color:#b71c1c; background:#ffebee; border:1px solid #ef9a9a; border-radius:4px; padding:5px 8px;">
+                                ⚠ Reducing PAYE may under-deduct tax owed to SARS. A reason is required and will appear on the payslip audit trail.
+                            </div>
+                            <div style="font-size:11px; color:#888;">Applies <strong>only</strong> to the selected period. Does not carry forward.</div>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('variable')" style="font-size:12px;">Add Entry</button>
+                                <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
+                            </div>
                         </div>
 
-                        <!-- Scenario 3: Bonus Spread — backend calculates incremental PAYE -->
+                        <!-- Scenario 3: Bonus Spread — backend calculates incremental PAYE (always increase) -->
                         <div id="volTaxPanelSpread" style="display:none; gap:10px; align-items:flex-start; flex-wrap:wrap; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
                             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; width:100%;">
                                 <label style="margin-bottom:0; font-size:13px; font-weight:600;">Bonus amount:</label>
@@ -443,6 +500,28 @@
                             </div>
                             <div id="volSpreadCalcNotice" style="width:100%; font-size:11px; color:#888; margin-top:4px;">Backend calculates the incremental PAYE from the bonus, then spreads it evenly across the selected periods.</div>
                         </div>
+
+                        <!-- Scenario 4: Target PAYE Amount -->
+                        <div id="volTaxPanelTarget" style="display:none; flex-direction:column; gap:8px; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
+                            <div style="font-size:12px; color:#5c2d91; background:#ede7f6; border:1px solid #ce93d8; border-radius:4px; padding:6px 8px;">
+                                ℹ Enter the desired final PAYE. The adjustment is computed as <strong>target − system PAYE</strong> at payslip time. If target is lower than system PAYE the adjustment will be negative.
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <label style="margin-bottom:0; font-size:13px; font-weight:600;">Target final PAYE:</label>
+                                <span style="font-size:13px;">R</span>
+                                <input type="number" id="volTargetPaye" min="0" step="0.01" style="width:130px;" placeholder="0.00">
+                            </div>
+                            <div>
+                                <input type="text" id="volTargetDescription" style="width:100%; border:1px solid #ccc; border-radius:4px; padding:5px 8px; font-size:12px;" placeholder="Reason for target PAYE (required)">
+                            </div>
+                            <div style="font-size:11px; color:#b71c1c; background:#ffebee; border:1px solid #ef9a9a; border-radius:4px; padding:5px 8px;">
+                                ⚠ A target PAYE lower than system-calculated PAYE constitutes a PAYE reduction. This must be approved by the relevant accountant.
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('target_paye')" style="font-size:12px;">Add Entry</button>
+                                <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
+                            </div>
+                        </div>
                     </div>
                 <div class="card" style="margin-top: 20px; background: linear-gradient(135deg, #f0f4ff 0%, #e8eaf6 100%);">
                     <h3>💰 Payroll Summary</h3>
@@ -462,6 +541,26 @@
                         <button class="btn btn-success" style="flex: 1;" onclick="downloadPayslipPDF()">Download PDF</button>
                     </div>
                     <div id="negativeNetWarning" style="display: none; margin-top: 10px; padding: 12px 20px; background: #f8d7da; color: #721c24; border-radius: 8px; border-left: 4px solid #dc3545; font-weight: 600;">⚠ NEGATIVE NET PAY — Deductions exceed gross salary. Please review inputs before finalizing.</div>
+
+                    <!-- Payslip explanation toggle (shown after payslip is calculated) -->
+                    <div id="explanationControl" style="display:none; margin-top:12px; padding:12px 16px; background:#f0f4ff; border-radius:8px; border:1px solid #e0e6ff;">
+                        <div style="display:flex; align-items:center; justify-content:space-between;">
+                            <span style="font-weight:600; color:#555; font-size:0.88rem;">Include Payslip Explanation in PDF</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="includeExplanationToggle" onchange="onExplanationToggleChange()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div id="explanationPlacementOpts" style="display:none; margin-top:10px; font-size:0.85rem; color:#555;">
+                            Placement:&nbsp;
+                            <label style="cursor:pointer; margin-right:14px;">
+                                <input type="radio" name="explanationPlacement" value="bottom" checked> Bottom of Payslip
+                            </label>
+                            <label style="cursor:pointer;">
+                                <input type="radio" name="explanationPlacement" value="backpage"> Back Page
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- PAYSLIP NARRATIVE -->
@@ -1061,6 +1160,7 @@
         // getPayslipData() (synchronous) for PDF/preview so it always uses the same
         // authoritative numbers as the payslip summary panel.
         var _lastBackendCalc = null;
+        var _lastNarrative = null;
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
@@ -1776,50 +1876,111 @@
         function getMultiRateKey() { return 'emp_multi_rate_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod; }
         function getLeaveKey() { return 'emp_leave_' + currentCompanyId + '_' + currentEmpId; }
         function getNotesKey() { return 'emp_notes_' + currentCompanyId + '_' + currentEmpId; }
-        // ========== PAYSLIP LOCKED STATE \u2014 DB SNAPSHOT ONLY ==========
-        // Lock status is read exclusively from the backend payroll_snapshots.is_locked flag,
-        // returned by POST /api/payroll/calculate when the period is finalized.
-        // The old localStorage-based individual finalize path has been removed.
-        // Finalization is only possible through Execute Payroll \u2192 Finalize.
+        function getPayslipStatusKey() { return 'emp_payslip_status_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod; }
+
+        // ========== PAYSLIP STATUS ==========
+        function getPayslipStatus() {
+            const stored = safeLocalStorage.getItem(getPayslipStatusKey());
+            return stored ? JSON.parse(stored) : { status: 'draft' };
+        }
+
         function isPayrunLockedForPeriod() {
-            return !!(window._lastBackendCalc && window._lastBackendCalc._isLockedSnapshot);
+            const payruns = JSON.parse(safeLocalStorage.getItem('payruns_' + currentCompanyId) || '[]');
+            return payruns.find(pr => pr.period === currentPeriod && (pr.status === 'finalized' || pr.status === 'paid'));
         }
 
         function isPayslipLocked() {
-            return isPayrunLockedForPeriod();
+            if (isPayrunLockedForPeriod()) return true;
+            var ps = getPayslipStatus();
+            return !!(ps && ps.status === 'finalized');
         }
 
         function _requireNotLocked() {
             if (isPayrunLockedForPeriod()) {
-                alert('This period is locked by a finalized pay run. Use Execute Payroll to manage finalized payslips.');
+                alert('This period is locked by a finalized pay run. Use Request Unlock to make changes.');
+                return false;
+            }
+            var ps = getPayslipStatus();
+            if (ps && ps.status === 'finalized') {
+                alert('This payslip is finalized. Click "\u21A9 Unfinalize" to make changes.');
                 return false;
             }
             return true;
         }
 
-        function updatePayslipUI(isLocked) {
-            var locked = !!isLocked;
-            var statusBar = document.getElementById('payslipStatusBar');
-            var btnArea = document.getElementById('finalizeBtn');
-            var content = document.getElementById('payrollContent');
-            if (!statusBar || !content) return;
+        function updatePayslipUI() {
+            const psStatus = getPayslipStatus();
+            const lockedRun = isPayrunLockedForPeriod();
+            const statusBar = document.getElementById('payslipStatusBar');
+            const btnArea = document.getElementById('finalizeBtn');
+            const content = document.getElementById('payrollContent');
 
             content.classList.remove('locked-overlay');
 
-            var viewBtns = '<div style="display:flex; gap:10px; margin-top:10px;">'
-                + '<button class="btn" style="flex:1;" onclick="calculatePayslip().then(previewPayslip)">👁 View Payslip</button>'
-                + '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>'
-                + '</div>';
+            // Buttons injected into the status bar sit outside #payrollContent and are never covered by the overlay
+            var viewBtns = '<div style="display:flex; gap:10px; margin-top:10px;">' +
+                '<button class="btn" style="flex:1;" onclick="calculatePayslip().then(previewPayslip)">👁 View Payslip</button>' +
+                '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>' +
+                '</div>';
 
-            if (locked) {
-                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Finalized — Locked by a finalized pay run. Manage via Execute Payroll.</div>' + viewBtns;
-                if (btnArea) btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
+            if (lockedRun && psStatus.status === 'finalized') {
+                // Pay run exists AND payslip finalized = fully locked
+                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — Pay run (' + lockedRun.status + ') exists for this period. Manager authorization required to make changes.</div>' + viewBtns;
+                btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
+                content.classList.add('locked-overlay');
+            } else if (psStatus.status === 'finalized') {
+                // Finalized but no pay run yet = can unfinalize freely
+                statusBar.innerHTML = '<div class="payslip-status-bar finalized">✅ Payslip finalized on ' + formatDate(parseStandardDate(psStatus.finalized_date), 'ZA') + ' by ' + (psStatus.finalized_by || 'System') + '</div>' + viewBtns;
+                btnArea.innerHTML = '<button class="btn-unfinalize" onclick="unfinalizePayslip()">↩ Unfinalize</button>';
                 content.classList.add('locked-overlay');
             } else {
-                statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 Draft — Run through Execute Payroll to finalize.</div>';
-                if (btnArea) btnArea.innerHTML = '';
+                // Draft
+                statusBar.innerHTML = '<div class="payslip-status-bar draft">📝 Draft — Finalize this payslip to include it in a pay run.</div>';
+                btnArea.innerHTML = '<button class="btn-finalize" onclick="finalizePayslip()">✓ Finalize Payslip</button>';
             }
             Permissions.enforceUI();
+        }
+
+        async function finalizePayslip() {
+            if (!Permissions.require('FINALIZE_PAYSLIP')) return;
+            // Auto-calculate before finalizing and capture result to freeze values
+            var calc = await calculatePayslip();
+            // Capture full itemized data before confirming — so preview/PDF stay correct after lock
+            var fullData = getPayslipData();
+            const session = AUTH.getSession();
+            if (!confirm('Finalize this payslip for ' + formatPeriodLabel(currentPeriod) + '? It will be locked for editing.')) return;
+            const status = { status: 'finalized', finalized_date: new Date().toISOString(), finalized_by: session.name || session.email };
+            safeLocalStorage.setItem(getPayslipStatusKey(), JSON.stringify(status));
+            // Save frozen snapshot — includes itemized allowances/deductions so preview/PDF never recalculate
+            var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+            safeLocalStorage.setItem(histKey, JSON.stringify({
+                basic_salary: payrollData.basic_salary || 0,
+                gross: calc.gross, taxableGross: calc.taxableGross || calc.gross,
+                periodicTaxableGross: calc.periodicTaxableGross || 0,
+                onceOffTaxableGross:  calc.onceOffTaxableGross  || 0,
+                paye: calc.paye, uif: calc.uif, sdl: calc.sdl,
+                deductions: [{ description: 'Total Deductions', amount: calc.deductions }],
+                net: calc.net, source: 'finalized',
+                finalized_date: status.finalized_date, finalized_by: status.finalized_by,
+                overtimeAmount: calc.overtimeAmount || 0,
+                shortTimeAmount: calc.shortTimeAmount || 0,
+                medicalCredit: calc.medicalCredit || 0,
+                // Full itemized lists — used by preview/PDF to avoid recalculation
+                allowances: fullData.calc.allowances || [],
+                deductionsList: fullData.calc.deductionsList || []
+            }));
+            AuditTrail.logFinalize(currentCompanyId, 'payslip', 'Finalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
+            updatePayslipUI();
+        }
+
+        function unfinalizePayslip() {
+            if (!Permissions.require('UNFINALIZE_PAYSLIP')) return;
+            if (!confirm('Unfinalize this payslip? It will be editable again.')) return;
+            safeLocalStorage.removeItem(getPayslipStatusKey());
+            // Remove the frozen snapshot so values recalculate live
+            safeLocalStorage.removeItem('emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod);
+            AuditTrail.logUnfinalize(currentCompanyId, 'payslip', 'Unfinalized payslip for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId) + ' - ' + formatPeriodLabel(currentPeriod));
+            updatePayslipUI();
         }
 
         function requestManagerAuth() {
@@ -1866,8 +2027,8 @@
                 // Success — server has removed the finalization state
                 const authorizedByName = (unlockData.unlockedBy && unlockData.unlockedBy.authorizedByName) || email;
                 closeModal('managerAuthModal');
-                updatePayslipUI(false);  // immediate feedback — reload will confirm via DB
-                loadPayrollData();       // reload so payroll inputs are live again
+                loadPayrollData();   // reload so payroll inputs are live again
+                updatePayslipUI();
                 if (typeof showSaveToast === 'function') {
                     showSaveToast('Payslip unlocked by ' + authorizedByName, 'warning', 4000);
                 } else {
@@ -1908,19 +2069,6 @@
                 if (!payrollData.regular_inputs) payrollData.regular_inputs = [];
                 if (payrollData.basic_salary === undefined) payrollData.basic_salary = 0;
 
-                // One-time sync: if KV has a basic_salary but the employees table may not
-                // (legacy employees whose salary was only saved to KV), push it to the DB
-                // so the backend PAYE engine always has the correct authoritative value.
-                // Awaited so calculatePayslip() below always sees the updated DB value.
-                if (payrollData.basic_salary > 0 && !window._basicSalarySynced) {
-                    window._basicSalarySynced = true;
-                    await fetch('/api/payroll/employees/' + currentEmpId + '/salary', {
-                        method: 'PUT',
-                        headers: _authHeaders(),
-                        body: JSON.stringify({ basic_salary: payrollData.basic_salary })
-                    }).catch(function() {});
-                }
-
                 // Load recurring items from DB — replaces localStorage regular_inputs
                 // for DB-backed employees. Migrates localStorage items to DB on first run.
                 await loadRecurringItemsFromDB();
@@ -1931,10 +2079,6 @@
 
                 renderPayroll();
                 updatePayslipUI();
-                // Auto-calculate to determine locked state from DB snapshot.
-                // updatePayslipUI() above shows draft by default; calculatePayslip()
-                // will call updatePayslipUI(true/false) with the authoritative DB state.
-                calculatePayslip().catch(function(e) { console.warn('[loadPayrollData] auto-calc failed:', e); });
             } catch(e) {
                 console.error('Error loading payroll data:', e);
                 setTimeout(function() {
@@ -2118,9 +2262,18 @@
                     payrollData.regular_inputs = [];
                 }
                 
-                // Show current employee basic salary. For finalized periods, calculatePayslip()
-                // will overwrite this element with the frozen DB snapshot value after it resolves.
+                // Show frozen basic salary for finalized periods
+                var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+                var frozen = safeLocalStorage.getItem(histKey);
                 var displaySalary = payrollData.basic_salary || 0;
+                if (frozen) { 
+                    try { 
+                        var snap = JSON.parse(frozen); 
+                        if (snap && snap.basic_salary !== undefined) displaySalary = snap.basic_salary; 
+                    } catch(e) { 
+                        console.warn('Error parsing frozen data:', e); 
+                    } 
+                }
                 
                 var basicSalaryEl = document.getElementById('basicSalary');
                 if (basicSalaryEl) {
@@ -2216,15 +2369,6 @@
         function saveBasicSalary() {
             payrollData.basic_salary = parseFloat(document.getElementById('editBasicValue').value) || 0;
             savePayrollData(); renderPayroll(); closeModal('editBasicModal');
-            // Persist to the employees table so the backend PAYE engine always has the correct
-            // salary — KV alone is not reliable as a backend data source.
-            fetch('/api/payroll/employees/' + currentEmpId + '/salary', {
-                method: 'PUT',
-                headers: _authHeaders(),
-                body: JSON.stringify({ basic_salary: payrollData.basic_salary })
-            }).catch(function(err) {
-                console.warn('[saveBasicSalary] DB persist failed:', err.message);
-            });
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + payrollData.basic_salary.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
 
@@ -2807,16 +2951,6 @@
                     if (calc && calcResult.data.snapshot && calcResult.data.snapshot.basic_salary != null) {
                         calc._snapshotBasicSalary = calcResult.data.snapshot.basic_salary;
                     }
-                    // Store locked-snapshot flag and frozen line items so getPayslipData()
-                    // can use the immutable snapshot allowances/deductions instead of
-                    // live DB items — preventing post-finalization item changes leaking
-                    // into historical payslip display.
-                    if (calc && calcResult.data.locked) {
-                        calc._isLockedSnapshot = true;
-                    }
-                    if (calc && calcResult.data.snapshot && Array.isArray(calcResult.data.snapshot.payslip_line_items)) {
-                        calc._snapshotLineItems = calcResult.data.snapshot.payslip_line_items;
-                    }
                 } else if (calcResult.data && calcResult.data.error) {
                     console.error('[calculatePayslip] backend error:', calcResult.data.error);
                 }
@@ -2879,54 +3013,22 @@
             // can read calc.primary_rebate_annual, calc.marginal_rate etc.
             await generateNarrative(calc.gross, calc.paye, calc.uif, calc.deductions, calc.net, calc);
 
-            // Show payslip action buttons
+            // Show payslip action buttons and explanation toggle
             document.getElementById('payslipActions').style.display = 'flex';
+            document.getElementById('explanationControl').style.display = 'block';
             // Cache for synchronous getPayslipData() (PDF/preview)
             _lastBackendCalc = calc;
-            // For finalized periods: update basic salary display with the frozen value from
-            // the DB snapshot. renderPayroll() runs before this and uses the live cross-period
-            // payrollData.basic_salary which may be from a different period.
-            if (calc && calc._isLockedSnapshot && calc._snapshotBasicSalary != null) {
-                var _bsEl = document.getElementById('basicSalary');
-                if (_bsEl) _bsEl.textContent = formatMoney(calc._snapshotBasicSalary);
-            }
-            // Sync the locked-state UI — DB snapshot is the only source of truth
-            updatePayslipUI(!!(calc && calc._isLockedSnapshot));
-
-            // Re-sync Payroll Summary with display-correct values.
-            // The raw backend calc.gross excludes allowances (it is the taxable-income gross).
-            // getPayslipData() adds allowances to produce the full earnings total shown on the payslip.
-            // We patch gross, UIF (recomputed from full gross), and net here so the summary
-            // matches the payslip exactly.
-            try {
-                var _pd = getPayslipData();
-                var _pc = _pd.calc;
-                var _dGross = parseFloat(_pc.basicSalary || 0);
-                (_pc.allowances || []).forEach(function(a) { _dGross += parseFloat(a.amount) || 0; });
-                _dGross += parseFloat(_pc.overtimeAmount || 0);
-                _dGross -= parseFloat(_pc.shortTimeAmount || 0);
-                _dGross = Math.round(_dGross * 100) / 100;
-                var _dDeductions = (_pc.deductionsList || []).reduce(function(s, d) { return s + (parseFloat(d.amount) || 0); }, 0);
-                var _dNet = Math.round((_dGross - parseFloat(_pc.paye || 0) - parseFloat(_pc.uif || 0) - _dDeductions) * 100) / 100;
-                document.getElementById('totalGross').textContent = formatMoney(_dGross);
-                document.getElementById('totalUIF').textContent = formatMoney(_pc.uif || 0);
-                document.getElementById('totalDeductions').textContent = formatMoney(_dDeductions);
-                var _netEl2 = document.getElementById('totalNet');
-                _netEl2.textContent = formatMoney(_dNet);
-                _netEl2.style.color = _dNet < 0 ? '#dc3545' : '#28a745';
-                var _warnEl2 = document.getElementById('negativeNetWarning');
-                if (_warnEl2) _warnEl2.style.display = _dNet < 0 ? 'block' : 'none';
-            } catch(e) { console.warn('[calculatePayslip] summary sync:', e); }
-
             return calc;
         }
 
         // ========== PAYSLIP PREVIEW & PDF EXPORT ==========
         function getPayslipData() {
             // Authoritative numbers come from _lastBackendCalc (set by calculatePayslip()).
-            // Authoritative numbers come from _lastBackendCalc (set by calculatePayslip()).
-            // For finalized periods, the backend returns the immutable locked snapshot directly.
-            // payroll_snapshots is the only finalization truth — no localStorage fallback.
+            // The emp_historical_... KV blob fallback has been removed — it was written
+            // by the old frontend engine with incorrect tax tables (pre-2026/2027 fix).
+            //
+            // Itemized allowances/deductions lists are built from the KV input data
+            // (display-only for PDF) and are combined with the backend totals.
 
             var backedCalc = _lastBackendCalc;
 
@@ -2937,56 +3039,32 @@
             var multiRate    = _periodInputsCache.multiRate;
             var shortTime    = _periodInputsCache.shortTime;
 
-            // ── SALARY SOURCE ──────────────────────────────────────────────────
-            // For DB locked snapshots: use the frozen basic_salary from calculation_input.
-            // For draft periods: use the current live employee salary.
+            // Use the locked snapshot's basic salary when available (_snapshotBasicSalary is set
+            // from snapshot.basic_salary in calculatePayslip). Falls back to live payrollData only
+            // for draft/uncalculated periods where no snapshot exists.
             var _lockedBasicSalary = (backedCalc && backedCalc._snapshotBasicSalary != null)
                 ? backedCalc._snapshotBasicSalary
                 : (payrollData.basic_salary || 0);
             var _basicSalForPct = _lockedBasicSalary;
-
-            // ── ALLOWANCES ─────────────────────────────────────────────────────
             var allowances = [];
-            if (backedCalc && backedCalc._isLockedSnapshot && Array.isArray(backedCalc._snapshotLineItems)) {
-                // DB locked snapshot: use frozen recurring items from snapshot
-                backedCalc._snapshotLineItems.forEach(function(item) {
-                    if (item.type !== 'deduction') allowances.push({ description: item.description || item.type, amount: Number(item.amount) || 0 });
-                });
-                currentInputs.forEach(function(ci) {
-                    var ciType = ci.item_type || ci.type;
-                    if (ciType !== 'deduction') allowances.push({ description: ci.description || ciType, amount: ci.amount });
-                });
-            } else {
-                // Draft: use current live items
-                (payrollData.regular_inputs || []).forEach(function(ri) {
-                    var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
-                    if (ri.type !== 'deduction') allowances.push({ description: ri.description || ri.type, amount: amount });
-                });
-                currentInputs.forEach(function(ci) {
-                    var ciType = ci.item_type || ci.type;
-                    if (ciType !== 'deduction') allowances.push({ description: ci.description || ciType, amount: ci.amount });
-                });
-            }
+            (payrollData.regular_inputs || []).forEach(function(ri) {
+                var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
+                if (ri.type !== 'deduction') allowances.push({ description: ri.description || ri.type, amount: amount });
+            });
+            currentInputs.forEach(function(ci) {
+                var ciType = ci.item_type || ci.type;
+                if (ciType !== 'deduction') allowances.push({ description: ci.description || ciType, amount: ci.amount });
+            });
 
             var deductionsList = [];
-            if (backedCalc && backedCalc._isLockedSnapshot && Array.isArray(backedCalc._snapshotLineItems)) {
-                backedCalc._snapshotLineItems.forEach(function(item) {
-                    if (item.type === 'deduction') deductionsList.push({ description: item.description || 'Deduction', amount: Number(item.amount) || 0 });
-                });
-                currentInputs.forEach(function(ci) {
-                    var ciType = ci.item_type || ci.type;
-                    if (ciType === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
-                });
-            } else {
-                (payrollData.regular_inputs || []).forEach(function(ri) {
-                    var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
-                    if (ri.type === 'deduction') deductionsList.push({ description: ri.description || 'Deduction', amount: amount });
-                });
-                currentInputs.forEach(function(ci) {
-                    var ciType = ci.item_type || ci.type;
-                    if (ciType === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
-                });
-            }
+            (payrollData.regular_inputs || []).forEach(function(ri) {
+                var amount = ri.is_percentage ? PayrollEngine.r2((ri.percentage_value / 100) * _basicSalForPct) : ri.amount;
+                if (ri.type === 'deduction') deductionsList.push({ description: ri.description || 'Deduction', amount: amount });
+            });
+            currentInputs.forEach(function(ci) {
+                var ciType = ci.item_type || ci.type;
+                if (ciType === 'deduction') deductionsList.push({ description: ci.description || 'Deduction', amount: ci.amount });
+            });
 
             // Compute display-only overtime/short-time amounts from server-backed cache
             var hourlyRate = PayrollEngine.calcHourlyRate(_lockedBasicSalary, _workingDaysData, _workScheduleHoursPerDay);
@@ -3027,25 +3105,18 @@
                 allowances.push({ description: 'Paid at Different Rate', amount: multiRateAmount });
             }
 
-            // Frozen-period flag: DB locked snapshot only
-            var _isFrozenPeriod = !!(backedCalc && backedCalc._isLockedSnapshot);
-
             // Build the calc object: authoritative numbers from backend, display lists from KV
             var calc = backedCalc ? Object.assign({}, backedCalc) : {
                 gross: 0, taxableGross: 0, paye: 0, uif: 0, sdl: 0,
                 deductions: 0, net: 0, medicalCredit: 0, negativeNetPay: false,
                 overtimeAmount: overtimeAmount, shortTimeAmount: shortTimeAmount
             };
-
             calc.basicSalary = _lockedBasicSalary;
             calc.allowances = allowances;
             calc.deductionsList = deductionsList;
-            // For draft periods only: fall back to locally computed overtime/short-time if backend
-            // didn't return them. Frozen periods already have correct values from the DB snapshot.
-            if (!_isFrozenPeriod) {
-                if (!calc.overtimeAmount)  calc.overtimeAmount  = overtimeAmount;
-                if (!calc.shortTimeAmount) calc.shortTimeAmount = shortTimeAmount;
-            }
+            // Only override overtime/shortTime display amounts from KV if backend didn't return them
+            if (!calc.overtimeAmount) calc.overtimeAmount = overtimeAmount;
+            if (!calc.shortTimeAmount) calc.shortTimeAmount = shortTimeAmount;
             calc.totalDeductions = calc.deductions;
 
             // Rates & Quantities data (for payslip display and PDF)
@@ -3054,15 +3125,11 @@
             calc.ratesEntries      = ratesEntries;
 
             // Recompute UIF from the correct display gross so the payslip is internally consistent.
-            // The backend may have calculated UIF on a different gross (e.g. allowances added after
-            // the last Execute Payroll run). We recompute here for display: 1% up to the SA ceiling.
-            // EXCEPTIONS that keep UIF = 0:
-            //   - Finalized (locked) snapshots — frozen value is authoritative.
-            //   - Backend returned 0 AND employee is a director or the company is not UIF-registered
-            //     (detected by checking backedCalc flags from the snapshot).
-            // For all other draft periods: always recompute so UIF matches the displayed earnings.
-            var _uifIntentionallyZero = !!(backedCalc && (backedCalc.is_director || backedCalc.uif_exempt));
-            if (!_isFrozenPeriod && !_uifIntentionallyZero) {
+            // The backend may have calculated UIF on a lower gross if some allowances exist only in
+            // localStorage (not yet in the employee_payroll_items DB table). We recompute here for
+            // display purposes only: 1% of gross up to the SA UIF monthly remuneration ceiling.
+            // Only override when UIF applies (calc.uif > 0 from the engine).
+            if ((calc.uif || 0) > 0) {
                 var displayGrossForUif = parseFloat(calc.basicSalary || 0);
                 (allowances || []).forEach(function(a) { displayGrossForUif += parseFloat(a.amount) || 0; });
                 displayGrossForUif += parseFloat(calc.overtimeAmount || 0);
@@ -3172,10 +3239,18 @@
             html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
             html += '<span>PAYE (Income Tax)</span><span>' + formatMoney(calc.paye_base) + '</span></div>';
 
-            // Voluntary Tax Over-Deduction (separate line — field snake_case from engine)
-            if (calc.voluntary_overdeduction && calc.voluntary_overdeduction > 0) {
-                html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; color:#b85c00;">';
-                html += '<span style="padding-left:12px;">↳ Voluntary Tax Extra</span><span>' + formatMoney(calc.voluntary_overdeduction) + '</span></div>';
+            // Voluntary PAYE Adjustment (signed — positive = increase, negative = reduction)
+            var _volAdj = calc.voluntary_paye_adjustment || 0;
+            if (_volAdj !== 0) {
+                var _volLabel = _volAdj > 0 ? '↳ Voluntary PAYE Increase' : '↳ PAYE Reduction';
+                var _volColor = _volAdj > 0 ? '#b85c00' : '#1565c0';
+                var _volSign  = _volAdj > 0 ? '+' : '−';
+                html += '<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px; color:' + _volColor + ';">';
+                html += '<span style="padding-left:12px;">' + _volLabel + '</span>';
+                html += '<span>' + _volSign + formatMoney(Math.abs(_volAdj)) + '</span></div>';
+                // Final PAYE summary line
+                html += '<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px; font-weight:700; border-top:1px dashed #ccc;">';
+                html += '<span style="padding-left:12px;">↳ Final PAYE</span><span>' + formatMoney(calc.paye) + '</span></div>';
             }
             // UIF
             html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
@@ -3248,28 +3323,29 @@
         }
 
         // ============================================================
-        // VOLUNTARY TAX OVER-DEDUCTION — Multi-entry UI
+        // VOLUNTARY PAYE ADJUSTMENT — Multi-entry UI
         // ============================================================
         // In-memory list synced to SQL on every change. No localStorage.
+        // Supports: increase, reduce, target_paye, bonus_spread.
 
         var _volTaxEntries = [];
 
         function switchVolTaxTab(type) {
-            ['Fixed','Variable','Spread'].forEach(function(t) {
+            ['Fixed','Variable','Spread','Target'].forEach(function(t) {
                 var el = document.getElementById('volTaxPanel' + t);
                 if (el) el.style.display = 'none';
             });
-            ['volTaxTabFixed','volTaxTabVariable','volTaxTabSpread'].forEach(function(id) {
+            ['volTaxTabFixed','volTaxTabVariable','volTaxTabSpread','volTaxTabTarget'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el) { el.style.background = ''; el.style.color = ''; }
             });
             if (!type) return;
-            var panelMap = { fixed: 'Fixed', variable: 'Variable', bonus_spread: 'Spread' };
+            var panelMap = { fixed: 'Fixed', variable: 'Variable', bonus_spread: 'Spread', target_paye: 'Target' };
             if (panelMap[type]) {
                 var panel = document.getElementById('volTaxPanel' + panelMap[type]);
                 if (panel) panel.style.display = 'flex';
             }
-            var tabMap = { fixed: 'volTaxTabFixed', variable: 'volTaxTabVariable', bonus_spread: 'volTaxTabSpread' };
+            var tabMap = { fixed: 'volTaxTabFixed', variable: 'volTaxTabVariable', bonus_spread: 'volTaxTabSpread', target_paye: 'volTaxTabTarget' };
             if (tabMap[type]) {
                 var btn = document.getElementById(tabMap[type]);
                 if (btn) { btn.style.background = '#667eea'; btn.style.color = 'white'; }
@@ -3280,26 +3356,58 @@
             }
         }
 
+        // Toggle direction (increase/reduce) on Fixed or Variable panels
+        function volSetDir(panelType, direction) {
+            var prefix = panelType === 'fixed' ? 'Fixed' : (panelType === 'variable' ? 'Variable' : '');
+            if (!prefix) return;
+            var hidden  = document.getElementById('vol' + prefix + 'Direction');
+            var btnInc  = document.getElementById('vol' + prefix + 'DirBtnIncrease');
+            var btnRed  = document.getElementById('vol' + prefix + 'DirBtnReduce');
+            var warn    = document.getElementById('vol' + prefix + 'ReduceWarn');
+            var desc    = document.getElementById('vol' + prefix + 'Description');
+            if (hidden) hidden.value = direction;
+            if (btnInc) {
+                btnInc.style.background   = direction === 'increase' ? '#28a745' : 'white';
+                btnInc.style.color        = direction === 'increase' ? 'white'   : '#28a745';
+                btnInc.style.borderColor  = '#28a745';
+            }
+            if (btnRed) {
+                btnRed.style.background   = direction === 'reduce' ? '#1565c0' : 'white';
+                btnRed.style.color        = direction === 'reduce' ? 'white'   : '#1565c0';
+                btnRed.style.borderColor  = direction === 'reduce' ? '#1565c0' : '#999';
+            }
+            if (warn) warn.style.display = direction === 'reduce' ? 'block' : 'none';
+            if (desc) desc.placeholder   = direction === 'reduce' ? 'Reason for PAYE reduction (required)' : 'Optional note';
+        }
+
         function renderVolTaxEntries() {
             var list = document.getElementById('volTaxEntriesList');
             if (!list) return;
             if (!_volTaxEntries.length) {
-                list.innerHTML = '<div style="color:#999; font-size:12px; margin-bottom:4px;">No voluntary tax entries configured.</div>';
+                list.innerHTML = '<div style="color:#999; font-size:12px; margin-bottom:4px;">No voluntary PAYE adjustment entries configured.</div>';
                 return;
             }
             list.innerHTML = _volTaxEntries.map(function(entry) {
+                var isReduce = entry.direction === 'reduce';
+                var isTarget = entry.type === 'target_paye';
+                var bgColor     = isTarget ? '#ede7f6' : (isReduce ? '#e3f2fd' : '#e8f5e9');
+                var borderColor = isTarget ? '#7b1fa2' : (isReduce ? '#1565c0' : '#28a745');
+                var textColor   = isTarget ? '#5c2d91' : (isReduce ? '#1565c0' : '#2e7d32');
                 var label = '';
                 if (entry.type === 'fixed') {
-                    label = 'Fixed: R' + (parseFloat(entry.fixed_amount) || 0).toFixed(2) + ' extra PAYE per month';
+                    label = (isReduce ? '▼ Reduce PAYE' : '▲ Increase PAYE') + ' — Fixed: R' + (parseFloat(entry.fixed_amount) || 0).toFixed(2) + '/month';
                 } else if (entry.type === 'variable') {
-                    label = 'Variable: R' + (parseFloat(entry.variable_amount) || 0).toFixed(2) + ' for period ' + (entry.period || '');
+                    label = (isReduce ? '▼ Reduce PAYE' : '▲ Increase PAYE') + ' — Variable: R' + (parseFloat(entry.variable_amount) || 0).toFixed(2) + ' for ' + (entry.period || '');
                 } else if (entry.type === 'bonus_spread') {
-                    label = 'Bonus Spread: R' + (parseFloat(entry.monthly_spread_amount) || 0).toFixed(2) + '/month ' + (entry.start_period || '') + ' to ' + (entry.end_period || '');
+                    label = '▲ Bonus Spread: R' + (parseFloat(entry.monthly_spread_amount) || 0).toFixed(2) + '/month ' + (entry.start_period || '') + ' to ' + (entry.end_period || '');
                     if (entry.reference) label += ' — ' + entry.reference;
+                } else if (entry.type === 'target_paye') {
+                    label = '◎ Target PAYE: R' + (parseFloat(entry.target_paye) || 0).toFixed(2) + ' (adjustment computed at payslip time)';
                 }
+                if (entry.description) label += ' — <em>' + entry.description + '</em>';
                 var eid = (entry.id || '').replace(/'/g, "\\'");
-                return '<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:#e8f5e9; border-radius:4px; border-left:3px solid #28a745; margin-bottom:5px; font-size:12px;">' +
-                    '<span style="color:#2e7d32;">✓ ' + label + '</span>' +
+                return '<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:' + bgColor + '; border-radius:4px; border-left:3px solid ' + borderColor + '; margin-bottom:5px; font-size:12px;">' +
+                    '<span style="color:' + textColor + ';">✓ ' + label + '</span>' +
                     '<button type="button" onclick="removeVolTaxEntry(\'' + eid + '\')" title="Remove this entry" style="border:none; background:none; color:#dc3545; cursor:pointer; font-size:15px; padding:0 4px; line-height:1;">&times;</button>' +
                     '</div>';
             }).join('');
@@ -3310,17 +3418,27 @@
             if (type === 'fixed') {
                 var amt = parseFloat(document.getElementById('volFixedAmount').value) || 0;
                 if (!amt) { showToast('Enter a fixed amount', 'error'); return; }
-                entry.type = 'fixed';
-                entry.fixed_amount = amt;
+                var dir  = (document.getElementById('volFixedDirection').value) || 'increase';
+                var desc = (document.getElementById('volFixedDescription').value || '').trim();
+                if (dir === 'reduce' && !desc) { showToast('A reason is required when reducing PAYE', 'error'); return; }
+                entry.type = 'fixed'; entry.direction = dir; entry.fixed_amount = amt;
+                if (desc) entry.description = desc;
                 document.getElementById('volFixedAmount').value = '';
+                document.getElementById('volFixedDescription').value = '';
+                volSetDir('fixed', 'increase');
             } else if (type === 'variable') {
                 var varAmt    = parseFloat(document.getElementById('volVariableAmount').value) || 0;
                 var varPeriod = document.getElementById('volVariablePeriod').value;
                 if (!varAmt || !varPeriod) { showToast('Enter amount and period', 'error'); return; }
-                entry.type = 'variable';
-                entry.variable_amount = varAmt;
-                entry.period = varPeriod;
+                var varDir  = (document.getElementById('volVariableDirection').value) || 'increase';
+                var varDesc = (document.getElementById('volVariableDescription').value || '').trim();
+                if (varDir === 'reduce' && !varDesc) { showToast('A reason is required when reducing PAYE', 'error'); return; }
+                entry.type = 'variable'; entry.direction = varDir;
+                entry.variable_amount = varAmt; entry.period = varPeriod;
+                if (varDesc) entry.description = varDesc;
                 document.getElementById('volVariableAmount').value = '';
+                document.getElementById('volVariableDescription').value = '';
+                volSetDir('variable', 'increase');
             } else if (type === 'bonus_spread') {
                 var monthlyEl = document.getElementById('volSpreadMonthly');
                 var monthly   = monthlyEl ? parseFloat(monthlyEl.textContent) || 0 : 0;
@@ -3328,14 +3446,20 @@
                 var sEnd      = document.getElementById('volSpreadEnd').value;
                 var bonusAmt  = parseFloat(document.getElementById('volBonusAmount').value) || 0;
                 if (!monthly || !sStart || !sEnd) { showToast('Click Calculate PAYE first', 'error'); return; }
-                entry.type = 'bonus_spread';
-                entry.bonus_amount = bonusAmt;
-                entry.monthly_spread_amount = monthly;
-                entry.start_period = sStart;
-                entry.end_period   = sEnd;
-                entry.reference    = (document.getElementById('volSpreadRef').value || '').trim();
+                entry.type = 'bonus_spread'; entry.direction = 'increase';
+                entry.bonus_amount = bonusAmt; entry.monthly_spread_amount = monthly;
+                entry.start_period = sStart; entry.end_period = sEnd;
+                entry.reference = (document.getElementById('volSpreadRef').value || '').trim();
                 document.getElementById('volBonusAmount').value = '';
                 document.getElementById('volSpreadRef').value = '';
+            } else if (type === 'target_paye') {
+                var targetAmt = parseFloat(document.getElementById('volTargetPaye').value);
+                if (isNaN(targetAmt) || targetAmt < 0) { showToast('Enter a valid target PAYE amount (minimum R0)', 'error'); return; }
+                var targetDesc = (document.getElementById('volTargetDescription').value || '').trim();
+                if (!targetDesc) { showToast('A reason is required for target PAYE adjustments', 'error'); return; }
+                entry.type = 'target_paye'; entry.target_paye = targetAmt; entry.description = targetDesc;
+                document.getElementById('volTargetPaye').value = '';
+                document.getElementById('volTargetDescription').value = '';
             } else {
                 return;
             }
@@ -3425,9 +3549,28 @@
 
         // ============================================================
 
+        function onExplanationToggleChange() {
+            var on = document.getElementById('includeExplanationToggle').checked;
+            document.getElementById('explanationPlacementOpts').style.display = on ? 'block' : 'none';
+        }
+
+        function _getExplanationNarrativeOptions() {
+            var toggle = document.getElementById('includeExplanationToggle');
+            if (!toggle || !toggle.checked || !_lastNarrative) return null;
+            var placement = 'bottom';
+            var radios = document.querySelectorAll('input[name="explanationPlacement"]');
+            radios.forEach(function(r) { if (r.checked) placement = r.value; });
+            return {
+                enabled: true,
+                placement: placement,
+                text: NarrativeGenerator.formatAsText(_lastNarrative)
+            };
+        }
+
         function downloadPayslipPDF() {
             var data = getPayslipData();
-            PDFBranding.generatePayslipPDF(data.employee, data.period, data.calc, data.companyId);
+            var narrativeOptions = _getExplanationNarrativeOptions();
+            PDFBranding.generatePayslipPDF(data.employee, data.period, data.calc, data.companyId, narrativeOptions);
             AuditTrail.logExport(currentCompanyId, 'payslip', 'Exported payslip PDF for ' + currentEmployee.first_name + ' ' + currentEmployee.last_name + ' - ' + formatPeriodLabel(currentPeriod));
         }
 
@@ -3470,6 +3613,7 @@
 
             var narrative = NarrativeGenerator.generate(currentEmployee, currentPeriod, currentCalc, prevCalc, payrollData);
             NarrativeGenerator.save(currentCompanyId, currentEmpId, currentPeriod, narrative);
+            _lastNarrative = narrative;
 
             var html = NarrativeGenerator.formatAsHTML(narrative);
             document.getElementById('narrativeHTML').innerHTML = html;

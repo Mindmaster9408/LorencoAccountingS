@@ -646,7 +646,7 @@ const PayrollEngine = {
      * @param {string} [period] - Pay period 'YYYY-MM' — auto-selects correct tax year tables
      * @param {Object} [ytdData] - YTD totals { ytdTaxableGross, ytdPAYE }; when provided the
      *                             SARS run-to-date method is used for more accurate PAYE.
-     * @returns {Object} { gross, taxableGross, paye, paye_base, voluntary_overdeduction, uif, sdl, deductions, net, negativeNetPay, medicalCredit, overtimeAmount, shortTimeAmount }
+     * @returns {Object} { gross, taxableGross, paye, paye_base, voluntary_paye_adjustment, voluntary_overdeduction, uif, sdl, deductions, net, negativeNetPay, medicalCredit, overtimeAmount, shortTimeAmount }
      */
     calculateFromData: function(payrollData, currentInputs, overtime, multiRate, shortTime, employeeOptions, period, ytdData, taxOverride) {
         // Select the correct tax tables for the period (auto-applies historical brackets).
@@ -815,51 +815,54 @@ const PayrollEngine = {
         // Employee-level UIF exemption (stored in employee_payroll_setup.uif_exempt).
         if (employeeOptions && employeeOptions.uif_exempt === true) { uif = 0; }
 
-        // === VOLUNTARY TAX OVER-DEDUCTION ===
-        // Three supported scenarios: fixed, variable (current period only), bonus_spread (period range).
-        // Config passed in employeeOptions.voluntaryTaxConfig.
-        // Supports single config object (legacy) OR multi-config object keyed by type (new format).
-        // Multiple types can be active simultaneously — amounts are summed.
-        // Only adds to PAYE — never affects UIF or SDL.
-        var voluntaryOverDeduction = 0;
+        // === VOLUNTARY PAYE ADJUSTMENT ===
+        // Supports signed adjustments: direction 'increase' (default) adds to PAYE,
+        // direction 'reduce' subtracts. Types: fixed, variable, bonus_spread, target_paye.
+        // target_paye: adjustment = target_paye - paye_base (computed at runtime).
+        // Multiple entries summed. Final PAYE floored at zero. UIF/SDL unaffected.
+        // Backward compat: entries without direction field treated as 'increase'.
+        var voluntaryPayeAdjustment = 0;
         var voluntaryConfigData = employeeOptions && employeeOptions.voluntaryTaxConfig;
         if (voluntaryConfigData) {
             // Normalise to an array of config entries
             var _volConfigs;
             if (Array.isArray(voluntaryConfigData)) {
-                // Array format
                 _volConfigs = voluntaryConfigData;
             } else if (voluntaryConfigData.type) {
                 // Legacy: single config object with a .type property
                 _volConfigs = [voluntaryConfigData];
             } else {
-                // New multi-config: plain object keyed by type e.g. { fixed: {...}, bonus_spread: {...} }
+                // Multi-config: plain object keyed by type
                 _volConfigs = Object.values(voluntaryConfigData);
             }
             for (var _vi = 0; _vi < _volConfigs.length; _vi++) {
                 var voluntaryConfig = _volConfigs[_vi];
                 if (!voluntaryConfig || !voluntaryConfig.type) continue;
+                // direction 'reduce' negates the amount; default (absent or 'increase') is positive
+                var _volSign = (voluntaryConfig.direction === 'reduce') ? -1 : 1;
                 if (voluntaryConfig.type === 'fixed') {
-                    // Scenario 1: Fixed monthly extra tax — applies every period
-                    voluntaryOverDeduction += parseFloat(voluntaryConfig.fixed_amount) || 0;
+                    voluntaryPayeAdjustment += _volSign * (parseFloat(voluntaryConfig.fixed_amount) || 0);
                 } else if (voluntaryConfig.type === 'variable') {
-                    // Scenario 2: Variable/manual — applies only if config.period matches current period
                     if (voluntaryConfig.period === period) {
-                        voluntaryOverDeduction += parseFloat(voluntaryConfig.variable_amount) || 0;
+                        voluntaryPayeAdjustment += _volSign * (parseFloat(voluntaryConfig.variable_amount) || 0);
                     }
                 } else if (voluntaryConfig.type === 'bonus_spread') {
-                    // Scenario 3: Bonus spread — applies for a range of periods (start_period to end_period)
                     var spreadStart = voluntaryConfig.start_period || '';
                     var spreadEnd   = voluntaryConfig.end_period   || '';
                     if (spreadStart && spreadEnd && period >= spreadStart && period <= spreadEnd) {
-                        voluntaryOverDeduction += parseFloat(voluntaryConfig.monthly_spread_amount) || 0;
+                        voluntaryPayeAdjustment += _volSign * (parseFloat(voluntaryConfig.monthly_spread_amount) || 0);
+                    }
+                } else if (voluntaryConfig.type === 'target_paye') {
+                    // adjustment = desired final PAYE − current engine PAYE (computed at runtime)
+                    var _targetPaye = parseFloat(voluntaryConfig.target_paye);
+                    if (!isNaN(_targetPaye) && _targetPaye >= 0) {
+                        voluntaryPayeAdjustment += (_targetPaye - paye);
                     }
                 }
             }
         }
-        voluntaryOverDeduction = Math.max(0, voluntaryOverDeduction);
-        // Add voluntary over-deduction to PAYE only (not to UIF/SDL)
-        var payeWithVoluntary = paye + voluntaryOverDeduction;
+        // Final PAYE is floored at zero; the raw adjustment may be negative for reductions
+        var payeWithVoluntary = Math.max(paye + voluntaryPayeAdjustment, 0);
         var net = gross - payeWithVoluntary - uif - deductions;
         var negativeNetPay = net < 0;
 
@@ -899,7 +902,10 @@ const PayrollEngine = {
             taxableGross: PayrollEngine.r2(taxableGross),
             paye: PayrollEngine.r2(payeWithVoluntary),
             paye_base: PayrollEngine.r2(paye),
-            voluntary_overdeduction: PayrollEngine.r2(voluntaryOverDeduction),
+            // voluntary_paye_adjustment: signed total (negative = reduction, positive = increase)
+            voluntary_paye_adjustment: PayrollEngine.r2(voluntaryPayeAdjustment),
+            // voluntary_overdeduction: backward-compat alias — positive-only for legacy display code
+            voluntary_overdeduction: PayrollEngine.r2(Math.max(voluntaryPayeAdjustment, 0)),
             uif: uif,
             sdl: sdl,
             deductions: PayrollEngine.r2(deductions),

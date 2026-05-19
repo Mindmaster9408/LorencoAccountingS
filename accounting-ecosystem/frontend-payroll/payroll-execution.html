@@ -1043,7 +1043,7 @@
         document.getElementById('results-totals-bar').innerHTML =
             '<div class="totals-cell"><div class="totals-label">Gross</div><div class="totals-value gross">' + fmt(totals.gross) + '</div></div>' +
             '<div class="totals-cell"><div class="totals-label">PAYE</div><div class="totals-value paye">' + fmt(totals.paye) + '</div></div>' +
-            '<div class="totals-cell"><div class="totals-label">UIF</div><div class="totals-value uif">' + fmt(totals.uif) + '</div></div>' +
+            '<div class="totals-cell"><div class="totals-label">UIF (Total)</div><div class="totals-value uif">' + fmt((totals.uif || 0) * 2) + '</div></div>' +
             '<div class="totals-cell"><div class="totals-label">SDL</div><div class="totals-value sdl">' + fmt(totals.sdl) + '</div></div>' +
             '<div class="totals-cell"><div class="totals-label">Net Pay</div><div class="totals-value net">' + fmt(totals.net) + '</div></div>';
 
@@ -1338,7 +1338,7 @@
         html += '<div class="run-meta-grid">' +
             '<div class="run-meta-cell"><div class="run-meta-label">Total Gross</div><div class="run-meta-value" style="color:#2196f3;">' + fmt(totalGross) + '</div></div>' +
             '<div class="run-meta-cell"><div class="run-meta-label">Total PAYE</div><div class="run-meta-value" style="color:#dc3545;">' + fmt(totalPaye) + '</div></div>' +
-            '<div class="run-meta-cell"><div class="run-meta-label">Total UIF</div><div class="run-meta-value" style="color:#ff9800;">' + fmt(totalUif) + '</div></div>' +
+            '<div class="run-meta-cell"><div class="run-meta-label">Total UIF (Emp+Empl)</div><div class="run-meta-value" style="color:#ff9800;">' + fmt(totalUif * 2) + '</div></div>' +
             '<div class="run-meta-cell"><div class="run-meta-label">Total Net Pay</div><div class="run-meta-value" style="color:#28a745;">' + fmt(totalNet) + '</div></div>' +
         '</div>';
 
@@ -1449,12 +1449,16 @@
 
         // ── DEDUCTIONS ──
         html += '<div class="payslip-section-label">Statutory Deductions</div>';
-        html += payslipLine('PAYE (Income Tax)', -(out.paye || 0), 'deduction-line');
+        html += payslipLine('PAYE (Income Tax)', -(out.paye_base || out.paye || 0), 'deduction-line');
         html += payslipLine('UIF (Employee)', -(out.uif  || 0), 'deduction-line');
         html += payslipLine('SDL (Employer)', -(out.sdl  || 0), 'deduction-line');
 
-        var volTax = Number(out.voluntary_overdeduction || 0);
-        if (volTax > 0) html += payslipLine('Voluntary Tax', -volTax, 'deduction-line');
+        var volAdj = Number(out.voluntary_paye_adjustment || 0);
+        if (volAdj !== 0) {
+            var volAdjLabel = volAdj > 0 ? 'Voluntary PAYE Increase' : 'PAYE Reduction';
+            html += payslipLine(volAdjLabel, -volAdj, 'deduction-line');
+            html += payslipLine('Final PAYE', -(out.paye || 0), 'deduction-line');
+        }
 
         var medCredit = Number(out.medicalCredit || 0);
         if (medCredit > 0) html += payslipLine('Medical Aid Credit', medCredit, '');
