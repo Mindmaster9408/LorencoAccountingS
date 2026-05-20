@@ -88,6 +88,12 @@
         .user-info { font-size: 0.85rem; color: var(--text-muted); }
         .btn-logout { background: none; border: 1px solid var(--border); padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; cursor: pointer; color: var(--text-muted); }
         .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+        .btn-back-eco {
+            background: none; border: 1px solid var(--border); padding: 6px 14px; border-radius: 8px;
+            font-size: 0.8rem; font-weight: 500; color: var(--text-muted); text-decoration: none;
+            display: inline-flex; align-items: center; transition: all 0.2s;
+        }
+        .btn-back-eco:hover { border-color: var(--primary); color: var(--primary-dark); background: var(--primary-light); }
 
         /* ─── Navigation Tabs ───────────────────────────────────── */
         .nav-tabs {
@@ -255,6 +261,7 @@
             <h2>SEAN AI</h2>
         </div>
         <div class="topbar-right">
+            <a class="btn-back-eco" href="/dashboard/">&#8592; Back to Ecosystem</a>
             <span class="user-info" id="userInfo"></span>
             <button class="btn-logout" onclick="logout()">Sign Out</button>
         </div>

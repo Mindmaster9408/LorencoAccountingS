@@ -1,11 +1,47 @@
 // Public BASIS assessment for lead generation
-import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
+import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults, cleanQuestionText } from './basis-assessment.js';
+import { API_BASE_URL } from './api.js';
 
 const $ = (selector) => document.querySelector(selector);
 
 let leadData = null;
 let basisAnswers = {};
 let wantsCoachingInfo = false;
+
+// Campaign resolved from ?campaign=<slug> on page load.
+// Identifies which coach's link was used so submissions can be attributed.
+let resolvedCampaignId = null;
+
+// ─── Campaign slug resolution ──────────────────────────────────────────────
+
+async function resolveCampaignFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get('campaign');
+    if (!slug) return; // No campaign param — anonymous submission, coach_id will be null
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/campaigns/public/${encodeURIComponent(slug)}`);
+        if (!response.ok) {
+            // Campaign inactive (410) or not found (404) — still allow submission,
+            // just without campaign attribution.
+            console.warn('[public-assessment] Campaign not found or inactive:', slug);
+            return;
+        }
+        const campaign = await response.json();
+        resolvedCampaignId = campaign.id;
+
+        // Optionally show the campaign name in the page header
+        const nameEl = $('#campaign-name');
+        if (nameEl && campaign.name) nameEl.textContent = campaign.name;
+    } catch (err) {
+        console.warn('[public-assessment] Could not resolve campaign:', err.message);
+    }
+}
+
+// Kick off campaign resolution immediately — non-blocking
+resolveCampaignFromURL();
+
+// ─── Registration form ─────────────────────────────────────────────────────
 
 // Start assessment button
 if ($('#start-public-assessment-btn')) $('#start-public-assessment-btn').addEventListener('click', () => {
@@ -115,13 +151,14 @@ function renderAllSections() {
 
 function renderQuestion(section, index, question) {
     const globalIndex = getGlobalQuestionIndex(section, index);
-    const isReverse = question.reverse ? ' <span class="reverse-tag">REVERSE</span>' : '';
+    // Note: question.reverse is used only by the scoring engine.
+    // It must NEVER be shown to clients as a visual label.
 
     return `
         <div class="basis-question">
             <div class="question-header">
                 <span class="question-number">${globalIndex + 1}.</span>
-                <span class="question-text">${question.text}${isReverse}</span>
+                <span class="question-text">${cleanQuestionText(question.text)}</span>
             </div>
             <div class="question-scale">
                 ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => `
@@ -207,7 +244,7 @@ async function submitAssessment() {
         return;
     }
 
-    // Calculate results
+    // Calculate results (client-side display only — server will recompute independently)
     const results = getBASISResults(basisAnswers);
 
     // Add coaching interest data
@@ -218,23 +255,31 @@ async function submitAssessment() {
         leadData.wantsCoaching = false;
     }
 
-    // Create lead record
-    const lead = {
-        id: 'lead_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-        ...leadData,
-        basisAnswers,
-        basisResults: results,
-        completedAt: new Date().toISOString(),
-        status: wantsCoachingInfo ? 'interested' : 'completed',
-        contacted: false
-    };
+    // Convert nested answer format  {SECTION: {index: value}}
+    // to flat format               {SECTION_1: value}
+    // so the server scoring engine can process it correctly.
+    const flatAnswers = {};
+    for (const [sectionKey, sectionAnswers] of Object.entries(basisAnswers)) {
+        for (const [indexStr, value] of Object.entries(sectionAnswers)) {
+            const questionNumber = parseInt(indexStr, 10) + 1;
+            flatAnswers[`${sectionKey}_${questionNumber}`] = value;
+        }
+    }
 
     // Save lead to server (cloud — no localStorage)
+    // campaignId attributes this submission to the correct coach via the campaign slug.
+    // basisResults is sent for display purposes only — the server recomputes it.
     try {
         await fetch('/api/leads', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(lead)
+            body: JSON.stringify({
+                ...leadData,
+                basisAnswers:  flatAnswers,
+                basisResults:  results,    // server ignores this and recomputes server-side
+                completedAt:   new Date().toISOString(),
+                campaignId:    resolvedCampaignId
+            })
         });
     } catch (e) {
         console.warn('Could not save lead to server:', e.message);

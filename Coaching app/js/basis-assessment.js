@@ -89,6 +89,15 @@ export const BASIS_QUESTIONS = {
     ]
 };
 
+// ─── Display helper ─────────────────────────────────────────────────────────
+// Strips any internal scoring markers from question text before display.
+// Applied at ALL render/display points — scoring logic is never affected.
+export function cleanQuestionText(questionText) {
+    return String(questionText || '')
+        .replace(/\s*\(reversed\)\s*/gi, '')
+        .trim();
+}
+
 // Scoring functions
 export function calculateAdjustedScore(rawAnswer, isReverse) {
     if (isReverse) {

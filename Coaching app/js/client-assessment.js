@@ -10,7 +10,7 @@
 //
 // No localStorage used. All state server-backed.
 
-import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
+import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults, cleanQuestionText } from './basis-assessment.js';
 import { API_BASE_URL } from './api.js';
 
 const qs = (selector) => document.querySelector(selector);
@@ -193,7 +193,7 @@ function renderQuestion(sectionKey, localIndex, question) {
         <div class="basis-question">
             <div class="question-header">
                 <span class="question-number">${globalIndex + 1}.</span>
-                <span class="question-text">${question.text}</span>
+                <span class="question-text">${cleanQuestionText(question.text)}</span>
             </div>
             <div class="question-scale">
                 ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => `

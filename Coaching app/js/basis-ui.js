@@ -1,6 +1,6 @@
 // BASIS Assessment UI
 import { $, escapeHtml } from './config.js';
-import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults } from './basis-assessment.js';
+import { BASIS_QUESTIONS, SECTION_LABELS, getBASISResults, cleanQuestionText } from './basis-assessment.js';
 import { saveClient } from './storage.js';
 import { api } from './api.js';
 
@@ -196,7 +196,7 @@ function renderSectionQuestions(sectionKey, client) {
             <div class="basis-question">
                 <div class="question-header">
                     <span class="question-number">${index + 1}.</span>
-                    <span class="question-text">${escapeHtml(question.text)}</span>
+                    <span class="question-text">${escapeHtml(cleanQuestionText(question.text))}</span>
                 </div>
                 <div class="question-scale">
                     ${renderScaleButtons(questionId, currentAnswer)}

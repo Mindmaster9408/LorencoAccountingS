@@ -18,7 +18,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { query } from '../config/database.js';
-import { authenticateToken } from '../middleware/auth.middleware.js';
+import { authenticateToken } from '../middleware/auth.js';
 import {
     scoreBasisAnswers,
     toLegacyBasisResults,

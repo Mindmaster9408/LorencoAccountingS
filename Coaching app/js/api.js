@@ -274,5 +274,41 @@ export const api = {
             apiRequest(`/coaching/question-builder/client/${clientId}/context/${encodeURIComponent(contextKey)}/assignments/${assignmentId}`, {
                 method: 'DELETE'
             })
+    },
+
+    // Leads (public assessment submissions)
+    leads: {
+        list: (status, campaignId) => {
+            const qs = new URLSearchParams();
+            if (status)     qs.set('status',     status);
+            if (campaignId) qs.set('campaignId', String(campaignId));
+            const q = qs.toString() ? '?' + qs.toString() : '';
+            return apiRequest(`/leads${q}`);
+        },
+        get: (id) => apiRequest(`/leads/${id}`),
+        update: (id, data) =>
+            apiRequest(`/leads/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            }),
+        delete: (id) =>
+            apiRequest(`/leads/${id}`, { method: 'DELETE' })
+    },
+
+    // Public assessment campaigns
+    campaigns: {
+        list: () => apiRequest('/campaigns'),
+        create: (data) =>
+            apiRequest('/campaigns', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            }),
+        toggle: (id) =>
+            apiRequest(`/campaigns/${id}/toggle`, { method: 'PATCH' }),
+        delete: (id) =>
+            apiRequest(`/campaigns/${id}`, { method: 'DELETE' }),
+        // Public — resolves slug for the public assessment page (no auth required)
+        publicGet: (slug) =>
+            publicApiRequest(`/campaigns/public/${encodeURIComponent(slug)}`)
     }
 };

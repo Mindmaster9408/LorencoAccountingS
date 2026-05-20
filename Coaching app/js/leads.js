@@ -2,12 +2,13 @@
 import { $, escapeHtml } from './config.js';
 import { createNewClient, saveClient, readStore } from './storage.js';
 import { api } from './api.js';
+import { BASIS_QUESTIONS, SECTION_LABELS, cleanQuestionText } from './basis-assessment.js';
 
 // ── Cloud helpers — all leads data lives in the backend (never localStorage) ─
 
-async function fetchLeads() {
+async function fetchLeads(status) {
     try {
-        const data = await api.request('GET', '/leads');
+        const data = await api.leads.list(status);
         return data.leads || [];
     } catch (e) {
         console.warn('Could not fetch leads from server:', e.message);
@@ -15,21 +16,18 @@ async function fetchLeads() {
     }
 }
 
-async function saveLead(leadData) {
-    return api.request('POST', '/leads', leadData);
-}
-
 async function updateLead(id, changes) {
-    return api.request('PUT', '/leads/' + id, changes);
+    return api.leads.update(id, changes);
 }
 
 async function deleteLead_api(id) {
-    return api.request('DELETE', '/leads/' + id);
+    return api.leads.delete(id);
 }
 
 export function renderLeads() {
     updateLeadsStats();
     renderLeadsList();
+    renderCampaigns();
 }
 
 async function updateLeadsStats() {
@@ -129,6 +127,7 @@ function createLeadCard(lead) {
                 </div>
             ` : ''}
             <div class="lead-actions">
+                <button class="btn-secondary" onclick="viewLeadAnswers(${lead.id})">📋 View Answers</button>
                 ${!isContacted && !isConverted ? `<button class="btn-contact" onclick="markAsContacted('${lead.id}')">✓ Mark as Contacted</button>` : ''}
                 ${!isConverted ? `<button class="btn-convert" onclick="convertToClient('${lead.id}')">⭐ Convert to Client</button>` : ''}
                 <button class="btn-delete" onclick="deleteLead('${lead.id}')">🗑️ Delete</button>
@@ -189,7 +188,159 @@ window.copyPublicLink = function() {
     }
 };
 
+// ── View Lead Answers modal ──────────────────────────────────────────────────
+
+window.viewLeadAnswers = async function(leadId) {
+    let lead;
+    try {
+        const data = await api.leads.get(leadId);
+        lead = data.lead;
+    } catch (e) {
+        alert('Could not load lead answers: ' + e.message);
+        return;
+    }
+
+    const answers = lead.basis_answers;
+    if (!answers || Object.keys(answers).length === 0) {
+        alert('No assessment answers recorded for this lead.');
+        return;
+    }
+
+    // Build HTML showing each section with question text and value
+    let html = `<div class="answers-modal-header">
+        <h3>${escapeHtml(lead.name)}</h3>
+        <p>${escapeHtml(lead.email || '')} &mdash; ${new Date(lead.created_at).toLocaleDateString()}</p>
+    </div>`;
+
+    for (const [sectionKey, questions] of Object.entries(BASIS_QUESTIONS)) {
+        const sectionLabel = SECTION_LABELS[sectionKey] || sectionKey;
+        html += `<div class="answers-section"><h4>${escapeHtml(sectionLabel)}</h4><ol>`;
+        questions.forEach((question, idx) => {
+            const flatKey = `${sectionKey}_${question.id}`;
+            const val = answers[flatKey] !== undefined ? answers[flatKey] : '—';
+            html += `<li><span class="q-text">${escapeHtml(cleanQuestionText(question.text))}</span>
+                         <span class="q-value">${escapeHtml(String(val))}/10</span></li>`;
+        });
+        html += `</ol></div>`;
+    }
+
+    // Show in modal — use existing modal infrastructure if available, otherwise create one
+    let modal = $('#lead-answers-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'lead-answers-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content answers-modal">
+                <button class="modal-close" onclick="document.getElementById('lead-answers-modal').style.display='none'">✕</button>
+                <div id="lead-answers-body"></div>
+            </div>`;
+        document.body.appendChild(modal);
+    }
+    document.getElementById('lead-answers-body').innerHTML = html;
+    modal.style.display = 'flex';
+};
+
+// ── Campaign management ──────────────────────────────────────────────────────
+
+export async function renderCampaigns() {
+    const container = $('#campaigns-list');
+    if (!container) return;
+
+    let campaigns = [];
+    try {
+        campaigns = await api.campaigns.list();
+    } catch (e) {
+        container.innerHTML = '<p class="error-text">Could not load campaigns.</p>';
+        return;
+    }
+
+    if (!campaigns.length) {
+        container.innerHTML = '<p class="campaigns-empty">No public assessment links yet. Create one above.</p>';
+        return;
+    }
+
+    const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '') + 'public-assessment.html';
+
+    container.innerHTML = campaigns.map(c => {
+        const shareUrl = `${baseUrl}?campaign=${c.slug}`;
+        const isActive = c.is_active;
+        return `
+            <div class="campaign-row ${isActive ? '' : 'campaign-inactive'}">
+                <div class="campaign-info">
+                    <div class="campaign-name">${escapeHtml(c.name)}</div>
+                    <div class="campaign-meta">
+                        ${c.submission_count} submission${c.submission_count !== 1 ? 's' : ''}
+                        &mdash; ${isActive ? '<span class="status-active">Active</span>' : '<span class="status-inactive">Inactive</span>'}
+                    </div>
+                    <div class="campaign-url">
+                        <input type="text" readonly value="${escapeHtml(shareUrl)}" class="share-url-input">
+                        <button class="btn-copy-small" onclick="copyCampaignLink('${escapeHtml(shareUrl)}')">Copy</button>
+                    </div>
+                </div>
+                <div class="campaign-actions">
+                    <button class="btn-toggle-campaign" onclick="toggleCampaign(${c.id})">
+                        ${isActive ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                    <button class="btn-delete-campaign" onclick="deleteCampaign(${c.id})">Delete</button>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+window.copyCampaignLink = function(url) {
+    navigator.clipboard.writeText(url).then(() => {
+        alert('Link copied to clipboard!');
+    }).catch(() => {
+        prompt('Copy this link:', url);
+    });
+};
+
+window.toggleCampaign = async function(id) {
+    try {
+        await api.campaigns.toggle(id);
+        renderCampaigns();
+    } catch (e) {
+        alert('Could not toggle campaign: ' + e.message);
+    }
+};
+
+window.deleteCampaign = async function(id) {
+    const confirmed = confirm('Delete this campaign link? Existing submissions will be kept, but the link will stop working.');
+    if (!confirmed) return;
+    try {
+        await api.campaigns.delete(id);
+        renderCampaigns();
+        renderLeads(); // refresh lead counts
+    } catch (e) {
+        alert('Could not delete campaign: ' + e.message);
+    }
+};
+
+export function setupCampaignsListeners() {
+    const createBtn = $('#create-campaign-btn');
+    if (createBtn) {
+        createBtn.addEventListener('click', async () => {
+            const nameInput = $('#new-campaign-name');
+            const name = nameInput ? nameInput.value.trim() : '';
+            if (!name) {
+                alert('Please enter a name for this campaign link.');
+                return;
+            }
+            try {
+                await api.campaigns.create({ name });
+                if (nameInput) nameInput.value = '';
+                renderCampaigns();
+            } catch (e) {
+                alert('Could not create campaign: ' + e.message);
+            }
+        });
+    }
+}
+
 export function setupLeadsListeners() {
+    setupCampaignsListeners();
+
     // Tab filters
     document.querySelectorAll('.leads-filters .tab').forEach(tab => {
         tab.addEventListener('click', () => {

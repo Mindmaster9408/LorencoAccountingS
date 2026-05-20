@@ -398,7 +398,7 @@ router.get('/transactions', async (req, res) => {
     if (unallocated === 'true') filters.unallocated = true;
     if (category) filters.category = category;
 
-    let txns = dataStore.getBankTransactions(companyId, filters);
+    let txns = await dataStore.getBankTransactions(companyId, filters);
     if (limit) txns = txns.slice(0, parseInt(limit));
 
     res.json({
