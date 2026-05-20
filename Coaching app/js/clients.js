@@ -291,16 +291,26 @@ function setupTabSwitching(header, client) {
     }
 }
 
-export function createNewPilot() {
+export async function createNewPilot() {
     const name = prompt('Enter pilot name:');
-    if(!name) return;
-    
+    if (!name) return;
+
     const client = createNewClient(name);
-    saveClient(client);
-    renderDashboard();
-    
-    // Open the new client
-    setTimeout(() => openClient(client.id), 100);
+    try {
+        // Await save so client.id is set by the DB before we try to open the client.
+        // Previously this was fire-and-forget, causing openClient to be called with
+        // client.id === null (race condition against the remote API response).
+        await saveClient(client);
+    } catch (error) {
+        console.error('[createNewPilot] Failed to create client:', error);
+        alert('Failed to create client. Please try again.');
+        return;
+    }
+
+    await renderDashboard();
+
+    // client.id is now the DB-assigned integer — no setTimeout needed
+    openClient(client.id);
 }
 
 export function addSampleClient() {
@@ -394,14 +404,22 @@ function processClientPhotoFile(file, clientId) {
     const reader = new FileReader();
     reader.onload = async function(e) {
         const store = await readStore();
-        const client = store.clients.find(c => c.id === clientId);
-        if (!client) return;
+        // clientId arrives as a string from HTML inline event attributes (e.g. onclick="..., '42')").
+        // DB IDs from PostgreSQL are integers. Strict === comparison would always fail (42 === '42' → false).
+        // Coerce to number so the find works correctly for all clients.
+        const numericId = Number(clientId);
+        const client = store.clients.find(c => c.id === numericId);
+        if (!client) {
+            console.error('[Photo Upload] Client not found — id:', clientId, '(parsed:', numericId, ')');
+            alert('Photo upload failed: client not found. Please refresh the page and try again.');
+            return;
+        }
 
         client.photo = e.target.result;
         await saveClient(client);
 
         // Reload client view
-        openClient(clientId);
+        openClient(numericId);
         alert('✓ Client photo uploaded successfully!');
     };
     reader.readAsDataURL(file);
@@ -425,13 +443,15 @@ window.removeClientPhoto = async function(clientId) {
     }
 
     const store = await readStore();
-    const client = store.clients.find(c => c.id === clientId);
+    // Same type coercion as processClientPhotoFile — clientId is a string from HTML attributes.
+    const numericId = Number(clientId);
+    const client = store.clients.find(c => c.id === numericId);
     if (!client) return;
 
     client.photo = '';
     await saveClient(client);
 
     // Reload client view
-    openClient(clientId);
+    openClient(numericId);
     alert('✓ Client photo removed.');
 };
