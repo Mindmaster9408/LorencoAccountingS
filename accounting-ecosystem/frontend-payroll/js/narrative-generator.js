@@ -253,7 +253,9 @@ const NarrativeGenerator = {
     // tax_year) are populated by the backend engine using the active Supabase KV tax tables.
     // Age is derived from the SA ID number for descriptive purposes only — no tax recalculation.
     generateTaxExplanation: function(employee, calc, period) {
-        var annualGross = calc.gross * 12;
+        var meta          = calc._meta || null;
+        var ytdMethod     = meta ? (meta.ytdMethod || '') : '';
+        var isYtdAverage  = ytdMethod === 'average_taxable_ytd';
 
         // All values come directly from the backend calculation result.
         // calc.rebate = total monthly rebate applied by the backend (all applicable: primary + secondary + tertiary).
@@ -272,11 +274,34 @@ const NarrativeGenerator = {
             marginal_bracket:        calc.marginal_bracket,
             uif_monthly_cap:         calc.uif_monthly_cap,
             tax_year:                calc.tax_year,
-            taxBeforeRebate_monthly: calc.taxBeforeRebate
+            taxBeforeRebate_monthly: calc.taxBeforeRebate,
+            ytdMethod:               ytdMethod
         }));
 
-        var text = 'Based on your monthly gross of ' + this.formatMoney(calc.gross) +
-            ', your annualized income is ' + this.formatMoney(annualGross) + '. ';
+        var text;
+
+        if (isYtdAverage && meta) {
+            // YTD average taxable income method — use backend _meta fields directly.
+            // DO NOT use gross × 12; that is only correct for monthly annualization.
+            var priorTaxable    = meta.ytdPriorTaxableGross     || 0;
+            var currentTaxable  = meta.ytdCurrentTaxableGross   || 0;
+            var toDateTaxable   = meta.ytdTaxableGrossToDate     != null ? meta.ytdTaxableGrossToDate : (priorTaxable + currentTaxable);
+            var avgMonthly      = meta.ytdAverageMonthlyTaxable  || 0;
+            var projectedAnnual = meta.ytdProjectedAnnualTaxable || 0;
+
+            text = 'PAYE was calculated using year-to-date average taxable income. ' +
+                'Prior finalized taxable income: ' + this.formatMoney(priorTaxable) + '. ' +
+                'Current month taxable income: ' + this.formatMoney(currentTaxable) + '. ' +
+                'Taxable income to date: ' + this.formatMoney(toDateTaxable) + '. ' +
+                'Average monthly taxable income: ' + this.formatMoney(avgMonthly) + '. ' +
+                'Projected annual taxable income: ' + this.formatMoney(projectedAnnual) + '. ';
+        } else {
+            // Monthly annualization (no prior YTD data available).
+            var annualGross = calc.gross * 12;
+            text = 'Based on your monthly gross of ' + this.formatMoney(calc.gross) +
+                ', your annualized income is ' + this.formatMoney(annualGross) + '. ';
+        }
+
         if (marginalRate && marginalBracket) {
             text += 'Your marginal tax rate is ' + marginalRate + ' (bracket: ' + marginalBracket + '). ';
         }

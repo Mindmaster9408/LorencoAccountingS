@@ -208,6 +208,7 @@ async function calculate(normalizedInputs, options = {}) {
       ytdCurrentMonthNumber:    _ytdCalc ? _ytdCalc.currentMonthNumber       : null,
       ytdPriorTaxableGross:     _ytdCalc ? _ytdCalc.priorTaxableGross        : null,
       ytdCurrentTaxableGross:   _ytdCalc ? _ytdCalc.currentTaxableGross      : null,
+      ytdTaxableGrossToDate:    _ytdCalc ? _ytdCalc.taxableGrossToDate       : null,
       ytdAverageMonthlyTaxable: _ytdCalc ? _ytdCalc.averageMonthlyTaxable    : null,
       ytdProjectedAnnualTaxable:_ytdCalc ? _ytdCalc.projectedAnnualTaxable   : null,
       ytdPriorPAYEPaid:         _ytdCalc ? _ytdCalc.priorPAYEPaid            : null,
