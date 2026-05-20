@@ -212,33 +212,43 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
         const onceOffTaxable  = typeof out.onceOffTaxableGross === 'number'
             ? out.onceOffTaxableGross : 0;
 
-        // Use final PAYE (includes voluntary adjustments) — this is the actual amount
-        // withheld from the employee's pay and remitted to SARS.  Using paye_base here
-        // would understate YTD withholding and cause over-withholding in the current month.
-        const payeWithheld = typeof out.paye === 'number' ? out.paye : 0;
+        // Use paye_base (statutory PAYE before voluntary adjustments) for YTD accumulation.
+        // The YTD formula in calculateMonthlyPAYE_YTD() computes a STATUTORY liability.
+        // ytdPAYE must be on the same basis — statutory only — so the subtraction is
+        // apples-to-apples.  Voluntary additions in prior months have already been
+        // correctly deducted from those months' net pay; including them here would
+        // over-credit prior periods and zero out the current month's statutory PAYE.
+        // Fall back to paye only for old snapshots that pre-date the paye_base field.
+        const payeBase     = (typeof out.paye_base === 'number' && out.paye_base >= 0)
+            ? out.paye_base
+            : (typeof out.paye === 'number' ? out.paye : 0);
+        const payeFinal    = typeof out.paye === 'number' ? out.paye : 0;
 
         ytdPeriodicTaxableGross += periodicTaxable;
         ytdOnceOffTaxableGross  += onceOffTaxable;
-        ytdPAYE                 += payeWithheld;
+        ytdPAYE                 += payeBase;
 
         periods.push({
             period_key:           snap.period_key,
             periodicTaxableGross: periodicTaxable,
             onceOffTaxableGross:  onceOffTaxable,
-            paye:                 payeWithheld
+            paye_base:            payeBase,
+            paye:                 payeFinal
         });
     }
 
     const taxYear        = PayrollEngine.getTaxYearForPeriod(periodKey);
     const monthInTaxYear = PayrollEngine.getMonthInTaxYear(periodKey);
 
+    const ytdPAYEFinal = periods.reduce((s, p) => s + p.paye, 0);
     console.log(
         `[PayrollDataService] YTD: empId=${employeeId} period=${periodKey}` +
         ` taxYear=${taxYear} monthInTaxYear=${monthInTaxYear}` +
         ` priorSnapshots=${snapshots.length}` +
         ` ytdPeriodicTaxable=${ytdPeriodicTaxableGross}` +
         ` ytdOnceOff=${ytdOnceOffTaxableGross}` +
-        ` ytdPAYE=${ytdPAYE}`
+        ` ytdPAYE_base(statutory)=${ytdPAYE}` +
+        ` ytdPAYE_total(incl.voluntary)=${ytdPAYEFinal}`
     );
 
     return {
