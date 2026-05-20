@@ -323,11 +323,12 @@
             <!-- Pay Schedule Assignment -->
             <div class="card" style="margin-bottom:16px; padding:14px 18px;">
                 <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-                    <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         <span style="font-weight:600; color:#555; font-size:0.9em;">Pay Schedule:</span>
                         <select id="emp-pay-schedule-select" style="padding:6px 10px; border:2px solid #ddd; border-radius:6px; font-size:0.9em; min-width:200px;" onchange="onPayScheduleSelectChange()">
                             <option value="">— Loading... —</option>
                         </select>
+                        <button onclick="openQuickAddPaySchedule()" title="Add a new pay schedule" style="padding:5px 10px; border:2px solid #667eea; border-radius:6px; background:#667eea; color:white; font-size:0.82em; font-weight:600; cursor:pointer; flex-shrink:0; white-space:nowrap; line-height:1.4;">+ Add</button>
                         <span id="emp-pay-schedule-changed-dot" style="display:none; width:8px; height:8px; background:#f0a500; border-radius:50%;"></span>
                     </div>
                     <button id="emp-pay-schedule-save-btn" class="btn btn-primary btn-sm" style="display:none;" onclick="saveEmployeePaySchedule()">Save Schedule</button>
@@ -4070,6 +4071,116 @@
                 saveBtn.disabled = false; saveBtn.textContent = 'Save Schedule';
             }
         }
+
+        // ========== QUICK-ADD PAY SCHEDULE ==========
+        // Lets user create a schedule without leaving the employee screen.
+        // Uses the same POST /api/payroll/pay-schedules endpoint as Company Details.
+        // Schedules saved here appear in Company Details — there is one source of truth.
+
+        function openQuickAddPaySchedule() {
+            document.getElementById('qa-sched-name').value = '';
+            document.getElementById('qa-sched-freq').value = 'monthly';
+            document.getElementById('qa-sched-monthly-day').value = '25';
+            document.getElementById('qa-sched-last-day').checked = false;
+            document.getElementById('qa-sched-weekly-day').value = '5';
+            document.getElementById('qa-sched-error').style.display = 'none';
+            document.getElementById('qa-sched-error').textContent = '';
+            toggleQaSchedDayFields('monthly');
+            document.getElementById('qaSchedModal').style.display = 'flex';
+            setTimeout(function() { document.getElementById('qa-sched-name').focus(); }, 50);
+        }
+
+        function closeQuickAddPaySchedule() {
+            document.getElementById('qaSchedModal').style.display = 'none';
+        }
+
+        function toggleQaSchedDayFields(freq) {
+            document.getElementById('qa-sched-row-monthly').style.display = freq === 'monthly' ? '' : 'none';
+            document.getElementById('qa-sched-row-weekly').style.display  = freq === 'monthly' ? 'none' : '';
+        }
+
+        async function saveQuickAddPaySchedule() {
+            var name    = document.getElementById('qa-sched-name').value.trim();
+            var freq    = document.getElementById('qa-sched-freq').value;
+            var errEl   = document.getElementById('qa-sched-error');
+            var saveBtn = document.getElementById('qa-sched-save-btn');
+
+            errEl.style.display = 'none';
+            if (!name) {
+                errEl.textContent = 'Schedule name is required.';
+                errEl.style.display = '';
+                return;
+            }
+            if (!freq) {
+                errEl.textContent = 'Please select a frequency.';
+                errEl.style.display = '';
+                return;
+            }
+
+            var payload = { schedule_name: name, frequency_type: freq };
+            if (freq === 'monthly') {
+                payload.is_last_day_of_month = document.getElementById('qa-sched-last-day').checked;
+                payload.monthly_day = parseInt(document.getElementById('qa-sched-monthly-day').value) || 25;
+            } else {
+                payload.weekly_day = parseInt(document.getElementById('qa-sched-weekly-day').value);
+            }
+
+            saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+            try {
+                var token = safeLocalStorage.getItem('token');
+                var createRes = await fetch('/api/payroll/pay-schedules', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify(payload)
+                });
+                var createData = await createRes.json();
+                if (!createRes.ok) {
+                    errEl.textContent = createData.error || 'Failed to save schedule.';
+                    errEl.style.display = '';
+                    return;
+                }
+
+                // Schedule created — close modal and refresh dropdown
+                closeQuickAddPaySchedule();
+                var newId = createData.schedule && createData.schedule.id ? String(createData.schedule.id) : null;
+                await loadEmpPaySchedules(); // rebuilds dropdown from DB
+
+                if (newId) {
+                    // Select the new schedule in the dropdown
+                    var sel = document.getElementById('emp-pay-schedule-select');
+                    if (sel) sel.value = newId;
+
+                    // Auto-assign the employee immediately if employee is resolved
+                    var empId = _supabaseEmpId || currentEmpId;
+                    if (empId && /^\d+$/.test(String(empId))) {
+                        var assignRes = await fetch('/api/payroll/employees/' + empId + '/pay-schedule', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                            body: JSON.stringify({ pay_schedule_id: parseInt(newId) })
+                        });
+                        if (assignRes.ok) {
+                            // Assignment saved — clear dirty state
+                            _originalPayScheduleId = newId;
+                            if (currentEmployee) currentEmployee.pay_schedule_id = parseInt(newId);
+                            document.getElementById('emp-pay-schedule-save-btn').style.display = 'none';
+                            document.getElementById('emp-pay-schedule-changed-dot').style.display = 'none';
+                        } else {
+                            // Schedule exists; assignment failed — keep dirty state so user can retry
+                            onPayScheduleSelectChange();
+                            alert('Schedule "' + name + '" was created. Employee assignment failed — press Save Schedule to retry.');
+                        }
+                    } else {
+                        // Employee ID not yet resolved — keep dirty state
+                        onPayScheduleSelectChange();
+                    }
+                }
+            } catch(e) {
+                errEl.textContent = 'Network error. Please try again.';
+                errEl.style.display = '';
+            } finally {
+                saveBtn.disabled = false; saveBtn.textContent = 'Save Schedule';
+            }
+        }
     </script>
     <script src="js/narrative-generator.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -4096,6 +4207,57 @@
             </div>
         </div>
     </div>
+    <!-- Quick-Add Pay Schedule Modal -->
+    <!-- Same backend endpoint as Company Details (POST /api/payroll/pay-schedules).     -->
+    <!-- All DOM IDs prefixed qa-sched-* to avoid collision with company-details.html.  -->
+    <div id="qaSchedModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:15px; padding:30px; max-width:460px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="color:#667eea; margin:0;">Add Pay Schedule</h2>
+                <span style="font-size:1.5rem; cursor:pointer; color:#999;" onclick="closeQuickAddPaySchedule()">&times;</span>
+            </div>
+            <div id="qa-sched-error" style="display:none; background:#fee; color:#c33; padding:10px 14px; border-radius:8px; margin-bottom:15px; border-left:4px solid #c33; font-size:0.9em;"></div>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-weight:600; color:#333; margin-bottom:5px;">Schedule Name *</label>
+                <input type="text" id="qa-sched-name" placeholder="e.g. Monthly Staff, Weekly Wages" style="width:100%; padding:12px; border:2px solid #eee; border-radius:8px; font-size:1rem; box-sizing:border-box;">
+            </div>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-weight:600; color:#333; margin-bottom:5px;">Pay Frequency *</label>
+                <select id="qa-sched-freq" onchange="toggleQaSchedDayFields(this.value)" style="width:100%; padding:12px; border:2px solid #eee; border-radius:8px; font-size:1rem;">
+                    <option value="monthly">Monthly</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="bi_weekly">Bi-weekly (every 2 weeks)</option>
+                </select>
+            </div>
+            <div id="qa-sched-row-monthly">
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-weight:600; color:#333; margin-bottom:5px;">Pay Day of Month</label>
+                    <input type="number" id="qa-sched-monthly-day" min="1" max="31" value="25" style="width:120px; padding:10px; border:2px solid #eee; border-radius:8px; font-size:1rem;">
+                    <span style="margin-left:12px; color:#666; font-size:0.9em;">or</span>
+                    <label style="margin-left:12px; font-size:0.9em; color:#333;">
+                        <input type="checkbox" id="qa-sched-last-day" style="margin-right:4px;">Last day of month
+                    </label>
+                </div>
+            </div>
+            <div id="qa-sched-row-weekly" style="display:none; margin-bottom:15px;">
+                <label style="display:block; font-weight:600; color:#333; margin-bottom:5px;">Pay Day of Week</label>
+                <select id="qa-sched-weekly-day" style="width:100%; padding:12px; border:2px solid #eee; border-radius:8px; font-size:1rem;">
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5" selected>Friday</option>
+                    <option value="6">Saturday</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="closeQuickAddPaySchedule()" style="flex:1; padding:12px; background:#999; color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Cancel</button>
+                <button id="qa-sched-save-btn" onclick="saveQuickAddPaySchedule()" style="flex:1; padding:12px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Save Schedule</button>
+            </div>
+        </div>
+    </div>
+
     <nav class="mobile-bottom-nav">
         <a href="company-dashboard.html" class="mobile-nav-item"><span class="mobile-nav-icon">&#128202;</span><span class="mobile-nav-label">Dashboard</span></a>
         <a href="employee-management.html" class="mobile-nav-item"><span class="mobile-nav-icon">&#128101;</span><span class="mobile-nav-label">Employees</span></a>
