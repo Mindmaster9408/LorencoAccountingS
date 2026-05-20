@@ -1164,6 +1164,9 @@
         // DB-authoritative lock state: true when payroll_snapshots.is_locked = true for current employee+period.
         // Set by calculatePayslip() from the backend response. Drives updatePayslipUI() and _requireNotLocked().
         var _isDbLocked = false;
+        // Frozen inputs from locked snapshot — set by calculatePayslip() when locked:true.
+        // Used by renderPayroll() to display finalized salary/allowances instead of live payrollData.
+        var _lockedSnapshotInputs = null;
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
@@ -1991,6 +1994,7 @@
                 currentPeriod = periodSelect.value;
                 // Clear cached backend calc when period changes — prevents stale PDF/preview
                 _lastBackendCalc = null;
+                _lockedSnapshotInputs = null;
                 const stored = safeLocalStorage.getItem(getPayrollKey());
                 payrollData = stored ? JSON.parse(stored) : { basic_salary: 0, regular_inputs: [] };
 
@@ -2194,17 +2198,23 @@
                     payrollData.regular_inputs = [];
                 }
                 
-                // Show frozen basic salary for finalized periods
-                var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-                var frozen = safeLocalStorage.getItem(histKey);
-                var displaySalary = payrollData.basic_salary || 0;
-                if (frozen) { 
-                    try { 
-                        var snap = JSON.parse(frozen); 
-                        if (snap && snap.basic_salary !== undefined) displaySalary = snap.basic_salary; 
-                    } catch(e) { 
-                        console.warn('Error parsing frozen data:', e); 
-                    } 
+                // For locked periods: use snapshot's frozen basic salary (authoritative from payroll_snapshots).
+                // For draft periods: use live payrollData (with KV-frozen fallback).
+                var displaySalary;
+                if (_isDbLocked && _lockedSnapshotInputs) {
+                    displaySalary = _lockedSnapshotInputs.basic_salary || 0;
+                } else {
+                    var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
+                    var frozen = safeLocalStorage.getItem(histKey);
+                    displaySalary = payrollData.basic_salary || 0;
+                    if (frozen) {
+                        try {
+                            var snap = JSON.parse(frozen);
+                            if (snap && snap.basic_salary !== undefined) displaySalary = snap.basic_salary;
+                        } catch(e) {
+                            console.warn('Error parsing frozen data:', e);
+                        }
+                    }
                 }
                 
                 var basicSalaryEl = document.getElementById('basicSalary');
@@ -2220,17 +2230,28 @@
 
                 // Regular inputs
                 const riList = document.getElementById('regularInputsList');
-                if (riList && Array.isArray(payrollData.regular_inputs)) {
-                    riList.innerHTML = payrollData.regular_inputs.map(ri => {
+                if (riList) {
+                    // For locked periods: source from frozen snapshot; for draft: from live payrollData.
+                    var riSource = (_isDbLocked && _lockedSnapshotInputs)
+                        ? _lockedSnapshotInputs.regular_inputs
+                        : (Array.isArray(payrollData.regular_inputs) ? payrollData.regular_inputs : []);
+                    var riBasicSal = (_isDbLocked && _lockedSnapshotInputs)
+                        ? (_lockedSnapshotInputs.basic_salary || 0)
+                        : (payrollData.basic_salary || 0);
+                    riList.innerHTML = riSource.map(ri => {
                 const color = ri.type === 'deduction' ? '#dc3545' : '#28a745';
                 const prefix = ri.type === 'deduction' ? '- ' : '+ ';
-                if (ri.is_percentage) {
-                    var pctAmt = PayrollEngine ? PayrollEngine.r2((ri.percentage_value / 100) * (payrollData.basic_salary || 0)) : 0;
+                // Support frontend shape (is_percentage/percentage_value) and
+                // backend normalized shape (percentage field > 0)
+                var isPct = ri.is_percentage || (ri.percentage > 0);
+                var pctVal = ri.is_percentage ? (ri.percentage_value || 0) : (ri.percentage || 0);
+                if (isPct) {
+                    var pctAmt = PayrollEngine ? PayrollEngine.r2((pctVal / 100) * riBasicSal) : 0;
                     return '<div class="salary-item">'
-                        + '<span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span> <span style="font-size:10px; color:#10b981;" title="' + ri.percentage_value + '% of basic salary — auto-calculated">📐 ' + ri.percentage_value + '%</span></span>'
+                        + '<span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span> <span style="font-size:10px; color:#10b981;" title="' + pctVal + '% of basic salary — auto-calculated">📐 ' + pctVal + '%</span></span>'
                         + '<span style="display:flex; align-items:center; gap:5px;">'
                         + '<span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(pctAmt) + '</span>'
-                        + '<button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button>'
+                        + (_isDbLocked ? '' : '<button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button>')
                         + '</span></div>';
                 }
                 if (ri.is_variable) {
@@ -2238,11 +2259,12 @@
                         + '<span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span> <span style="font-size:10px; color:#f0a500;" title="Variable — click to edit">🔄</span></span>'
                         + '<span style="display:flex; align-items:center; gap:5px;">'
                         + '<span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ri.amount) + '</span>'
-                        + '<button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button>'
+                        + (_isDbLocked ? '' : '<button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button>')
                         + '</span></div>';
                 }
-                return '<div class="salary-item editable"><span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span></span><span><span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ri.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button></span></div>';
+                return '<div class="salary-item editable"><span class="salary-label">' + ri.description + ' <span style="color:' + color + '; font-size:11px;">(' + ri.type + ')</span></span><span><span class="salary-value" style="color:' + color + ';">' + prefix + formatMoney(ri.amount) + '</span>' + (_isDbLocked ? '' : '<button class="delete-btn" onclick="event.stopPropagation(); deleteRegularInput(\'' + ri.id + '\')">x</button>') + '</span></div>';
             }).join('');
+                }
 
             // Current inputs — read from backend cache (not KV)
             const ciList = document.getElementById('currentInputsList');
@@ -2916,6 +2938,16 @@
                     }
                     // DB-authoritative lock state: backend returns locked:true when payroll_snapshots.is_locked = true
                     _isDbLocked = !!(calcResult.data.locked);
+                    // When locked, capture frozen inputs from snapshot for renderPayroll() display.
+                    // payslip_line_items = calculation_input.regular_inputs (frozen at finalization).
+                    if (_isDbLocked && calcResult.data.snapshot) {
+                        _lockedSnapshotInputs = {
+                            basic_salary: calcResult.data.snapshot.basic_salary != null
+                                ? calcResult.data.snapshot.basic_salary : 0,
+                            regular_inputs: Array.isArray(calcResult.data.snapshot.payslip_line_items)
+                                ? calcResult.data.snapshot.payslip_line_items : []
+                        };
+                    }
                 } else if (calcResult.data && calcResult.data.error) {
                     console.error('[calculatePayslip] backend error:', calcResult.data.error);
                 }
@@ -2984,6 +3016,12 @@
             // Cache for synchronous getPayslipData() (PDF/preview)
             _lastBackendCalc = calc;
             updatePayslipUI();
+            // Re-render inputs panel now that _isDbLocked and _lockedSnapshotInputs are set.
+            // Initial renderPayroll() ran before calculatePayslip() completed, so locked
+            // snapshot data was not yet available. This second render populates it.
+            if (_isDbLocked) {
+                renderPayroll();
+            }
             return calc;
         }
 
