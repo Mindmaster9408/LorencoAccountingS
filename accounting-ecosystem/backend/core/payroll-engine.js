@@ -524,34 +524,7 @@ const PayrollEngine = {
         var ytdLiability = (annualPAYE * monthInTaxYear / 12) - (monthlyMed * monthInTaxYear);
 
         // Current month PAYE = what still needs to be withheld (never negative)
-        var finalPAYE = this.r2(Math.max(ytdLiability - ytdPAYE, 0));
-
-        // [DIAG-YTD] Temporary diagnostic — remove after confirming production fix
-        console.log('[DIAG-YTD calculateMonthlyPAYE_YTD]', JSON.stringify({
-            inputs: {
-                currentPeriodicGross: currentPeriodicGross,
-                currentOnceOffGross:  currentOnceOffGross,
-                ytdPeriodicGross:     ytdPeriodicGross,
-                ytdOnceOffGross:      ytdOnceOffGross,
-                ytdPAYE:              ytdPAYE,
-                monthInTaxYear:       monthInTaxYear,
-                age:                  options.age,
-                medicalMembers:       options.medicalMembers
-            },
-            intermediates: {
-                accumulatedPeriodic:  accumulatedPeriodic,
-                totalOnceOff:         totalOnceOff,
-                annualEquivalent:     annualEquivalent,
-                annualPAYE:           annualPAYE,
-                monthlyMed:           monthlyMed,
-                ytdLiability:         ytdLiability,
-                ytdPAYE_subtracted:   ytdPAYE,
-                beforeClamp:          ytdLiability - ytdPAYE,
-                finalPAYE:            finalPAYE
-            }
-        }));
-
-        return finalPAYE;
+        return this.r2(Math.max(ytdLiability - ytdPAYE, 0));
     },
 
     /**
@@ -812,26 +785,61 @@ const PayrollEngine = {
 
         var opts = employeeOptions || {};
         var paye;
+        var _ytdCalc = null;
         if (ytdData && period) {
             var monthInTaxYear = PayrollEngine.getMonthInTaxYear(period);
-            // [DIAG-YTD] Temporary diagnostic — remove after confirming production fix
-            console.log('[DIAG-YTD engine dispatch]', JSON.stringify({
-                period:              period,
-                monthInTaxYear:      monthInTaxYear,
-                periodicTaxable:     periodicTaxable,
-                onceOffTaxable:      onceOffTaxable,
-                ytdData:             ytdData
-            }));
-            paye = PayrollEngine.calculateMonthlyPAYE_YTD(
-                periodicTaxable,
-                onceOffTaxable,
-                ytdData.ytdPeriodicTaxableGross || ytdData.ytdTaxableGross || 0,
-                ytdData.ytdOnceOffTaxableGross  || 0,
-                ytdData.ytdPAYE        || 0,
-                monthInTaxYear,
-                opts,
-                tables
-            );
+
+            // Resolve prior taxable gross and prior PAYE from whichever ytdData shape is present.
+            // New shape (average_taxable_ytd): prior_taxable_gross, prior_paye_paid
+            // Old shape (cumulative_ytd):      ytdPeriodicTaxableGross + ytdOnceOffTaxableGross, ytdPAYE
+            var _ytdCurrentTaxable = periodicTaxable + onceOffTaxable;
+            var _ytdPriorTaxable   = ytdData.prior_taxable_gross !== undefined
+                ? ytdData.prior_taxable_gross
+                : ((ytdData.ytdPeriodicTaxableGross || 0) + (ytdData.ytdOnceOffTaxableGross || 0));
+            var _ytdPriorPAYE      = ytdData.prior_paye_paid !== undefined
+                ? ytdData.prior_paye_paid
+                : (ytdData.ytdPAYE || 0);
+
+            // Average taxable method (default when ytdData.method !== 'cumulative_ytd'):
+            // All taxable income to date is averaged over elapsed months and projected to annual.
+            // This prevents a single high-salary month from dominating the annual projection.
+            if (ytdData.method !== 'cumulative_ytd') {
+                var _totalTaxable  = _ytdPriorTaxable + _ytdCurrentTaxable;
+                var _avgMonthly    = monthInTaxYear > 0 ? _totalTaxable / monthInTaxYear : _ytdCurrentTaxable;
+                var _projAnnual    = _avgMonthly * 12;
+                var _annualPAYE    = PayrollEngine.calculateAnnualPAYE(_projAnnual, opts.age, tables);
+                var _monthlyMed    = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
+                var _cumTaxDue     = (_annualPAYE * monthInTaxYear / 12) - (_monthlyMed * monthInTaxYear);
+                paye = PayrollEngine.r2(Math.max(_cumTaxDue - _ytdPriorPAYE, 0));
+                _ytdCalc = {
+                    method:                 'average_taxable_ytd',
+                    currentMonthNumber:     monthInTaxYear,
+                    priorTaxableGross:      PayrollEngine.r2(_ytdPriorTaxable),
+                    currentTaxableGross:    PayrollEngine.r2(_ytdCurrentTaxable),
+                    taxableGrossToDate:     PayrollEngine.r2(_totalTaxable),
+                    averageMonthlyTaxable:  PayrollEngine.r2(_avgMonthly),
+                    projectedAnnualTaxable: PayrollEngine.r2(_projAnnual),
+                    annualPAYE:             PayrollEngine.r2(_annualPAYE),
+                    monthlyMedCredit:       _monthlyMed,
+                    cumulativeTaxDueToDate: PayrollEngine.r2(_cumTaxDue),
+                    priorPAYEPaid:          PayrollEngine.r2(_ytdPriorPAYE),
+                    currentBasePAYE:        paye
+                };
+            } else {
+                // Cumulative projection fallback — active when ytdData.method = 'cumulative_ytd'
+                // (set by PAYE_YTD_METHOD=cumulative env var in PayrollDataService).
+                // Periodic income is projected × 12/months; once-off is added as lump sum.
+                var _ytdPeriodic = ytdData.prior_periodic_taxable_gross !== undefined
+                    ? ytdData.prior_periodic_taxable_gross : _ytdPriorTaxable;
+                var _ytdOnceOff  = ytdData.prior_once_off_taxable_gross !== undefined
+                    ? ytdData.prior_once_off_taxable_gross : 0;
+                paye = PayrollEngine.calculateMonthlyPAYE_YTD(
+                    periodicTaxable, onceOffTaxable,
+                    _ytdPeriodic, _ytdOnceOff, _ytdPriorPAYE,
+                    monthInTaxYear, opts, tables
+                );
+                _ytdCalc = { method: 'cumulative_ytd', currentMonthNumber: monthInTaxYear };
+            }
         } else {
             paye = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, onceOffTaxable, opts, tables);
         }
@@ -978,7 +986,11 @@ const PayrollEngine = {
             // Exemption flags — included so the frontend can detect intentional UIF = 0
             // and avoid incorrectly recomputing UIF from display gross for exempt employees.
             is_director:  !!(employeeOptions && employeeOptions.is_director),
-            uif_exempt:   !!(employeeOptions && employeeOptions.uif_exempt)
+            uif_exempt:   !!(employeeOptions && employeeOptions.uif_exempt),
+            // YTD calculation intermediates — populated when YTD method is active, null otherwise.
+            // Consumed by PayrollCalculationService to populate _meta transparency fields.
+            // Never null-checked downstream — callers must guard on this field being null.
+            _ytdCalc:     _ytdCalc
         };
     },
 

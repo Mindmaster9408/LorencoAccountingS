@@ -162,9 +162,13 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
  * @returns {Promise<object|null>} ytdData for engine, or null to use monthly method
  */
 async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
-    // Feature flag — set PAYE_YTD_ENABLED=false in Zeabur env to revert to
-    // monthly annualization without a code deployment.
+    // Feature flags:
+    //   PAYE_YTD_ENABLED=false   → disable YTD entirely; fall back to monthly annualization.
+    //   PAYE_YTD_METHOD=average_taxable (default) → YTD average taxable gross method.
+    //   PAYE_YTD_METHOD=cumulative               → old cumulative projection method.
     if (process.env.PAYE_YTD_ENABLED === 'false') return null;
+    const _ytdMethodEnv  = process.env.PAYE_YTD_METHOD || 'average_taxable';
+    const _methodName    = _ytdMethodEnv === 'cumulative' ? 'cumulative_ytd' : 'average_taxable_ytd';
 
     // Get all prior periods in the same SA tax year (never includes current period).
     // Returns [] for March (month 1 of tax year) — no prior periods possible.
@@ -240,26 +244,33 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
     const taxYear        = PayrollEngine.getTaxYearForPeriod(periodKey);
     const monthInTaxYear = PayrollEngine.getMonthInTaxYear(periodKey);
 
-    const ytdPAYEFinal = periods.reduce((s, p) => s + p.paye, 0);
+    const priorTaxableGross = PayrollEngine.r2(ytdPeriodicTaxableGross + ytdOnceOffTaxableGross);
+    const ytdPAYEFinal      = periods.reduce((s, p) => s + p.paye, 0);
     console.log(
-        `[PayrollDataService] YTD: empId=${employeeId} period=${periodKey}` +
+        `[PayrollDataService] YTD(${_methodName}): empId=${employeeId} period=${periodKey}` +
         ` taxYear=${taxYear} monthInTaxYear=${monthInTaxYear}` +
         ` priorSnapshots=${snapshots.length}` +
-        ` ytdPeriodicTaxable=${ytdPeriodicTaxableGross}` +
-        ` ytdOnceOff=${ytdOnceOffTaxableGross}` +
-        ` ytdPAYE_base(statutory)=${ytdPAYE}` +
-        ` ytdPAYE_total(incl.voluntary)=${ytdPAYEFinal}`
+        ` priorTaxableGross=${priorTaxableGross}` +
+        ` priorPAYEPaid(statutory)=${ytdPAYE}` +
+        ` priorPAYEPaid(incl.voluntary)=${ytdPAYEFinal}`
     );
 
     return {
-        tax_year:                  taxYear,
-        current_period:            periodKey,
-        current_month_in_tax_year: monthInTaxYear,
-        prior_periods_count:       snapshots.length,
-        ytdPeriodicTaxableGross,
-        ytdOnceOffTaxableGross,
-        ytdPAYE,
-        source:                    'locked_snapshots',
+        // Method identifier — read by engine dispatch to select formula.
+        // average_taxable_ytd: (priorTotal + currentTotal) / months × 12
+        // cumulative_ytd:      priorPeriodic × 12/months + priorOnceOff (legacy)
+        method:                      _methodName,
+        tax_year:                    taxYear,
+        current_period:              periodKey,
+        current_month_in_tax_year:   monthInTaxYear,
+        prior_periods_count:         snapshots.length,
+        // Semantic field names — these are what the engine dispatch reads for the average method
+        prior_taxable_gross:         priorTaxableGross,
+        prior_paye_paid:             ytdPAYE,            // paye_base sum (statutory, never voluntary)
+        // Split fields kept for the cumulative fallback path
+        prior_periodic_taxable_gross: ytdPeriodicTaxableGross,
+        prior_once_off_taxable_gross: ytdOnceOffTaxableGross,
+        source:                      'locked_snapshots',
         periods
     };
 }

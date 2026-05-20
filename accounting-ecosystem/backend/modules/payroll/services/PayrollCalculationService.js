@@ -181,7 +181,8 @@ async function calculate(normalizedInputs, options = {}) {
     }
 
     // Add service-level metadata (DO NOT mutate engine output fields)
-    const _ytd = normalizedInputs.ytdData;
+    const _ytd     = normalizedInputs.ytdData;
+    const _ytdCalc = result._ytdCalc || null;   // intermediate values from engine dispatch
     result._meta = {
       calculatedAt: new Date().toISOString(),
       engineVersion: PayrollEngine.ENGINE_VERSION,
@@ -190,18 +191,27 @@ async function calculate(normalizedInputs, options = {}) {
       startDate: options.startDate || normalizedInputs.start_date || null,
       endDate: options.endDate || normalizedInputs.end_date || null,
       // Resolved SA tax year for this period — stored in snapshot for audit trail.
-      // Derived from period_key by the engine's getTaxYearForPeriod().
       resolvedTaxYear: normalizedInputs.period
         ? PayrollEngine.getTaxYearForPeriod(normalizedInputs.period)
         : PayrollEngine.TAX_YEAR,
       // YTD PAYE method transparency — stored in snapshot for audit and payslip display.
-      // ytdMethod identifies which PAYE formula was active for this period.
-      // Payslip narrative should use this field to explain to the employee why their
-      // PAYE may differ from simple (current salary × 12 ÷ 12) annualization.
-      ytdMethod:            _ytd ? 'cumulative_ytd'     : 'monthly_annualization',
-      ytdSource:            _ytd ? (_ytd.source || 'locked_snapshots') : 'none',
-      ytdTaxYear:           _ytd ? (_ytd.tax_year || null)             : null,
-      ytdPriorPeriodsCount: _ytd ? (_ytd.prior_periods_count || 0)     : 0
+      // ytdMethod identifies which PAYE formula was active for this period:
+      //   'average_taxable_ytd'   — all taxable to date / elapsed months × 12  (default)
+      //   'cumulative_ytd'        — periodic projected × 12/months + once-off  (legacy)
+      //   'monthly_annualization' — no YTD data; current month × 12
+      ytdMethod:                _ytdCalc ? _ytdCalc.method : 'monthly_annualization',
+      ytdSource:                _ytd ? (_ytd.source || 'locked_snapshots')   : 'none',
+      ytdTaxYear:               _ytd ? (_ytd.tax_year || null)               : null,
+      ytdPriorPeriodsCount:     _ytd ? (_ytd.prior_periods_count || 0)       : 0,
+      // Full YTD calculation intermediates — null when monthly annualization is used.
+      // Store these in the snapshot so payslip and audit can show the full formula path.
+      ytdCurrentMonthNumber:    _ytdCalc ? _ytdCalc.currentMonthNumber       : null,
+      ytdPriorTaxableGross:     _ytdCalc ? _ytdCalc.priorTaxableGross        : null,
+      ytdCurrentTaxableGross:   _ytdCalc ? _ytdCalc.currentTaxableGross      : null,
+      ytdAverageMonthlyTaxable: _ytdCalc ? _ytdCalc.averageMonthlyTaxable    : null,
+      ytdProjectedAnnualTaxable:_ytdCalc ? _ytdCalc.projectedAnnualTaxable   : null,
+      ytdPriorPAYEPaid:         _ytdCalc ? _ytdCalc.priorPAYEPaid            : null,
+      ytdCumulativeTaxDueToDate:_ytdCalc ? _ytdCalc.cumulativeTaxDueToDate   : null
     };
 
     return result;
