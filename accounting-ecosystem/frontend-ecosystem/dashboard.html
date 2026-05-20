@@ -2233,6 +2233,15 @@
 
                 if (!res.ok) {
                     const err = await res.json();
+                    // Session expired — token was rejected by the server. Redirect to login.
+                    if (res.status === 401 || res.status === 403) {
+                        overlay.classList.remove('show');
+                        localStorage.removeItem('eco_token');
+                        localStorage.removeItem('eco_user');
+                        alert('Your session has expired. Please log in again.');
+                        window.location.href = '/login';
+                        return;
+                    }
                     throw new Error(err.error || 'SSO launch failed');
                 }
 
@@ -2304,6 +2313,14 @@
 
                 if (!res.ok) {
                     const err = await res.json();
+                    if (res.status === 401 || res.status === 403 && err.error && err.error.toLowerCase().includes('token')) {
+                        overlay.classList.remove('show');
+                        localStorage.removeItem('eco_token');
+                        localStorage.removeItem('eco_user');
+                        alert('Your session has expired. Please log in again.');
+                        window.location.href = '/login';
+                        return;
+                    }
                     throw new Error(err.error || 'Launch failed');
                 }
 
