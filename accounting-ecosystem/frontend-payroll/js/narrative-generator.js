@@ -286,13 +286,19 @@ const NarrativeGenerator = {
             // Per-item projection type method — each income stream projected by its classification.
             var ptPrior     = meta.ytdPriorTaxableGross    || 0;
             var ptCurrent   = meta.ytdCurrentTaxableGross  || 0;
-            var ptToDate    = meta.ytdTaxableGrossToDate   != null ? meta.ytdTaxableGrossToDate : (ptPrior + ptCurrent);
             var ptFixed     = meta.ytdCurrentFixed         || 0;
             var ptVariable  = meta.ytdCurrentVariable      || 0;
             var ptOnceOff   = meta.ytdCurrentOnceOff       || 0;
             var ptVarAvg    = meta.ytdVariableAvgMonthly   || 0;
             var ptProjected = meta.ytdProjectedAnnualTaxable || 0;
             var ptRemaining = meta.ytdRemainingMonths      || 0;
+            var ptMonthNum  = meta.ytdCurrentMonthNumber   || 0;
+            var ptAnnualPAYE     = meta.ytdAnnualPAYE          || 0;
+            var ptMedCredit      = meta.ytdMonthlyMedCredit    || 0;
+            var ptCumTaxDue      = meta.ytdCumulativeTaxDueToDate || 0;
+            var ptPriorPAYEPaid  = meta.ytdPriorPAYEPaid       || 0;
+            var ptMarginalRate   = meta.ytdProjectionMarginalRate    || '';
+            var ptMarginalBracket = meta.ytdProjectionMarginalBracket || '';
 
             text = 'PAYE was calculated using the projection-type method. ' +
                 'Prior finalized taxable income: ' + this.formatMoney(ptPrior) + '. ' +
@@ -309,6 +315,22 @@ const NarrativeGenerator = {
                 text += 'Once-off income: ' + this.formatMoney(ptOnceOff) + ' (included once only). ';
             }
             text += 'Projected annual taxable income: ' + this.formatMoney(ptProjected) + '. ';
+            if (ptMarginalRate && ptMarginalBracket) {
+                text += 'Marginal tax rate: ' + ptMarginalRate + ' (bracket: ' + ptMarginalBracket + '). ';
+            }
+            // Show full tax derivation so the prior-PAYE deduction is transparent
+            if (ptAnnualPAYE > 0 && ptMonthNum > 0) {
+                text += 'Annual tax on projected income: ' + this.formatMoney(ptAnnualPAYE) + '. ';
+                text += 'Pro-rated for month ' + ptMonthNum + ' of 12';
+                if (ptMedCredit > 0) {
+                    text += ' less medical credit (' + this.formatMoney(ptMedCredit) + '/month × ' + ptMonthNum + ')';
+                }
+                text += ' = cumulative tax due to date: ' + this.formatMoney(ptCumTaxDue) + '. ';
+                if (ptPriorPAYEPaid > 0) {
+                    text += 'Less prior PAYE paid in locked months: ' + this.formatMoney(ptPriorPAYEPaid) + '. ';
+                }
+                text += 'PAYE this month: ' + this.formatMoney(ptCumTaxDue - ptPriorPAYEPaid) + '. ';
+            }
 
         } else if (isYtdAverage && meta) {
             // YTD average taxable income method — use backend _meta fields directly.
@@ -318,6 +340,13 @@ const NarrativeGenerator = {
             var toDateTaxable   = meta.ytdTaxableGrossToDate     != null ? meta.ytdTaxableGrossToDate : (priorTaxable + currentTaxable);
             var avgMonthly      = meta.ytdAverageMonthlyTaxable  || 0;
             var projectedAnnual = meta.ytdProjectedAnnualTaxable || 0;
+            var avgMonthNum     = meta.ytdCurrentMonthNumber     || 0;
+            var avgAnnualPAYE   = meta.ytdAnnualPAYE             || 0;
+            var avgMedCredit    = meta.ytdMonthlyMedCredit       || 0;
+            var avgCumTaxDue    = meta.ytdCumulativeTaxDueToDate || 0;
+            var avgPriorPAYE    = meta.ytdPriorPAYEPaid          || 0;
+            var avgMargRate     = meta.ytdProjectionMarginalRate    || '';
+            var avgMargBracket  = meta.ytdProjectionMarginalBracket || '';
 
             text = 'PAYE was calculated using year-to-date average taxable income. ' +
                 'Prior finalized taxable income: ' + this.formatMoney(priorTaxable) + '. ' +
@@ -325,6 +354,21 @@ const NarrativeGenerator = {
                 'Taxable income to date: ' + this.formatMoney(toDateTaxable) + '. ' +
                 'Average monthly taxable income: ' + this.formatMoney(avgMonthly) + '. ' +
                 'Projected annual taxable income: ' + this.formatMoney(projectedAnnual) + '. ';
+            if (avgMargRate && avgMargBracket) {
+                text += 'Marginal tax rate: ' + avgMargRate + ' (bracket: ' + avgMargBracket + '). ';
+            }
+            if (avgAnnualPAYE > 0 && avgMonthNum > 0) {
+                text += 'Annual tax on projected income: ' + this.formatMoney(avgAnnualPAYE) + '. ';
+                text += 'Pro-rated for month ' + avgMonthNum + ' of 12';
+                if (avgMedCredit > 0) {
+                    text += ' less medical credit (' + this.formatMoney(avgMedCredit) + '/month × ' + avgMonthNum + ')';
+                }
+                text += ' = cumulative tax due to date: ' + this.formatMoney(avgCumTaxDue) + '. ';
+                if (avgPriorPAYE > 0) {
+                    text += 'Less prior PAYE paid in locked months: ' + this.formatMoney(avgPriorPAYE) + '. ';
+                }
+                text += 'PAYE this month: ' + this.formatMoney(avgCumTaxDue - avgPriorPAYE) + '. ';
+            }
         } else {
             // Monthly annualization (no prior YTD data available).
             var annualGross = calc.gross * 12;

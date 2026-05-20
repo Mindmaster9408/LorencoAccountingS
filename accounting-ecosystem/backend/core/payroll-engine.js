@@ -789,6 +789,27 @@ const PayrollEngine = {
         if (ytdData && period) {
             var monthInTaxYear = PayrollEngine.getMonthInTaxYear(period);
 
+            // Helper: look up the marginal bracket for a given annual income using the active tables.
+            // Returns { rate: '36%', bracket: 'R488,701 - R641,400' } or empty strings if no match.
+            // Used to show the bracket based on the YTD projected annual rather than gross × 12.
+            var _ytdGetBracket = function(annualIncome) {
+                var _br = tables.BRACKETS;
+                if (!_br || !_br.length) return { rate: '', bracket: '' };
+                for (var _i = 0; _i < _br.length; _i++) {
+                    var _b = _br[_i];
+                    var _bMax = (_b.max === null || _b.max === undefined) ? Infinity : _b.max;
+                    if (annualIncome <= _bMax) {
+                        var _rate = Math.round(_b.rate * 100) + '%';
+                        var _minFmt = _b.min === 0 ? 'R0' : 'R' + _b.min.toLocaleString('en-ZA');
+                        var _bkt = _bMax === Infinity
+                            ? ('Above R' + (_i > 0 ? _br[_i - 1].max : _b.min).toLocaleString('en-ZA'))
+                            : (_minFmt + ' - R' + _bMax.toLocaleString('en-ZA'));
+                        return { rate: _rate, bracket: _bkt };
+                    }
+                }
+                return { rate: '', bracket: '' };
+            };
+
             // Resolve prior taxable gross and prior PAYE from whichever ytdData shape is present.
             // New shape (average_taxable_ytd): prior_taxable_gross, prior_paye_paid
             // Old shape (cumulative_ytd):      ytdPeriodicTaxableGross + ytdOnceOffTaxableGross, ytdPAYE
@@ -853,25 +874,28 @@ const PayrollEngine = {
                 var _monthlyMed    = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
                 var _cumTaxDue     = (_annualPAYE * monthInTaxYear / 12) - (_monthlyMed * monthInTaxYear);
                 paye = PayrollEngine.r2(Math.max(_cumTaxDue - _ytdPriorPAYE, 0));
+                var _ptBracket = _ytdGetBracket(_projAnnual);
                 _ytdCalc = {
-                    method:                 'projection_type_ytd',
-                    currentMonthNumber:     monthInTaxYear,
-                    remainingMonths:        _remainingMonths,
-                    priorTaxableGross:      PayrollEngine.r2(_ytdPriorTaxable),
-                    currentTaxableGross:    PayrollEngine.r2(periodicTaxable + onceOffTaxable),
-                    taxableGrossToDate:     PayrollEngine.r2(_ytdPriorTaxable + periodicTaxable + onceOffTaxable),
-                    currentFixedTaxable:    PayrollEngine.r2(_ptFixed),
-                    currentVariableTaxable: PayrollEngine.r2(_ptVariable),
-                    currentOnceOffTaxable:  PayrollEngine.r2(_ptOnceOff),
-                    priorVariableProxy:     PayrollEngine.r2(_priorVariableProxy),
-                    variableTaxableToDate:  PayrollEngine.r2(_variableToDate),
-                    variableAvgMonthly:     PayrollEngine.r2(_variableAvgMonthly),
-                    projectedAnnualTaxable: _projAnnual,
-                    annualPAYE:             PayrollEngine.r2(_annualPAYE),
-                    monthlyMedCredit:       _monthlyMed,
-                    cumulativeTaxDueToDate: PayrollEngine.r2(_cumTaxDue),
-                    priorPAYEPaid:          PayrollEngine.r2(_ytdPriorPAYE),
-                    currentBasePAYE:        paye
+                    method:                    'projection_type_ytd',
+                    currentMonthNumber:        monthInTaxYear,
+                    remainingMonths:           _remainingMonths,
+                    priorTaxableGross:         PayrollEngine.r2(_ytdPriorTaxable),
+                    currentTaxableGross:       PayrollEngine.r2(periodicTaxable + onceOffTaxable),
+                    taxableGrossToDate:        PayrollEngine.r2(_ytdPriorTaxable + periodicTaxable + onceOffTaxable),
+                    currentFixedTaxable:       PayrollEngine.r2(_ptFixed),
+                    currentVariableTaxable:    PayrollEngine.r2(_ptVariable),
+                    currentOnceOffTaxable:     PayrollEngine.r2(_ptOnceOff),
+                    priorVariableProxy:        PayrollEngine.r2(_priorVariableProxy),
+                    variableTaxableToDate:     PayrollEngine.r2(_variableToDate),
+                    variableAvgMonthly:        PayrollEngine.r2(_variableAvgMonthly),
+                    projectedAnnualTaxable:    _projAnnual,
+                    annualPAYE:                PayrollEngine.r2(_annualPAYE),
+                    monthlyMedCredit:          _monthlyMed,
+                    cumulativeTaxDueToDate:    PayrollEngine.r2(_cumTaxDue),
+                    priorPAYEPaid:             PayrollEngine.r2(_ytdPriorPAYE),
+                    currentBasePAYE:           paye,
+                    projectionMarginalRate:    _ptBracket.rate,
+                    projectionMarginalBracket: _ptBracket.bracket
                 };
 
             // Average taxable method (default when ytdData.method !== 'cumulative_ytd'):
@@ -885,19 +909,22 @@ const PayrollEngine = {
                 var _monthlyMed    = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
                 var _cumTaxDue     = (_annualPAYE * monthInTaxYear / 12) - (_monthlyMed * monthInTaxYear);
                 paye = PayrollEngine.r2(Math.max(_cumTaxDue - _ytdPriorPAYE, 0));
+                var _avgBracket = _ytdGetBracket(_projAnnual);
                 _ytdCalc = {
-                    method:                 'average_taxable_ytd',
-                    currentMonthNumber:     monthInTaxYear,
-                    priorTaxableGross:      PayrollEngine.r2(_ytdPriorTaxable),
-                    currentTaxableGross:    PayrollEngine.r2(_ytdCurrentTaxable),
-                    taxableGrossToDate:     PayrollEngine.r2(_totalTaxable),
-                    averageMonthlyTaxable:  PayrollEngine.r2(_avgMonthly),
-                    projectedAnnualTaxable: PayrollEngine.r2(_projAnnual),
-                    annualPAYE:             PayrollEngine.r2(_annualPAYE),
-                    monthlyMedCredit:       _monthlyMed,
-                    cumulativeTaxDueToDate: PayrollEngine.r2(_cumTaxDue),
-                    priorPAYEPaid:          PayrollEngine.r2(_ytdPriorPAYE),
-                    currentBasePAYE:        paye
+                    method:                    'average_taxable_ytd',
+                    currentMonthNumber:        monthInTaxYear,
+                    priorTaxableGross:         PayrollEngine.r2(_ytdPriorTaxable),
+                    currentTaxableGross:       PayrollEngine.r2(_ytdCurrentTaxable),
+                    taxableGrossToDate:        PayrollEngine.r2(_totalTaxable),
+                    averageMonthlyTaxable:     PayrollEngine.r2(_avgMonthly),
+                    projectedAnnualTaxable:    PayrollEngine.r2(_projAnnual),
+                    annualPAYE:                PayrollEngine.r2(_annualPAYE),
+                    monthlyMedCredit:          _monthlyMed,
+                    cumulativeTaxDueToDate:    PayrollEngine.r2(_cumTaxDue),
+                    priorPAYEPaid:             PayrollEngine.r2(_ytdPriorPAYE),
+                    currentBasePAYE:           paye,
+                    projectionMarginalRate:    _avgBracket.rate,
+                    projectionMarginalBracket: _avgBracket.bracket
                 };
             } else {
                 // Cumulative projection fallback — active when ytdData.method = 'cumulative_ytd'

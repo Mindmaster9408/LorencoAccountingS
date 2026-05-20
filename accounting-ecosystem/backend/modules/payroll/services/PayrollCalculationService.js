@@ -219,7 +219,12 @@ async function calculate(normalizedInputs, options = {}) {
       ytdCurrentVariable:       _ytdCalc ? (_ytdCalc.currentVariableTaxable ?? null) : null,
       ytdCurrentOnceOff:        _ytdCalc ? (_ytdCalc.currentOnceOffTaxable  ?? null) : null,
       ytdVariableTaxableToDate: _ytdCalc ? (_ytdCalc.variableTaxableToDate  ?? null) : null,
-      ytdVariableAvgMonthly:    _ytdCalc ? (_ytdCalc.variableAvgMonthly     ?? null) : null
+      ytdVariableAvgMonthly:    _ytdCalc ? (_ytdCalc.variableAvgMonthly     ?? null) : null,
+      // Tax transparency fields — shared by average_taxable_ytd and projection_type_ytd
+      ytdAnnualPAYE:                _ytdCalc ? (_ytdCalc.annualPAYE                ?? null) : null,
+      ytdMonthlyMedCredit:          _ytdCalc ? (_ytdCalc.monthlyMedCredit          ?? null) : null,
+      ytdProjectionMarginalRate:    _ytdCalc ? (_ytdCalc.projectionMarginalRate    ?? null) : null,
+      ytdProjectionMarginalBracket: _ytdCalc ? (_ytdCalc.projectionMarginalBracket ?? null) : null
     };
 
     return result;
