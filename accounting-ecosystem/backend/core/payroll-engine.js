@@ -524,7 +524,34 @@ const PayrollEngine = {
         var ytdLiability = (annualPAYE * monthInTaxYear / 12) - (monthlyMed * monthInTaxYear);
 
         // Current month PAYE = what still needs to be withheld (never negative)
-        return this.r2(Math.max(ytdLiability - ytdPAYE, 0));
+        var finalPAYE = this.r2(Math.max(ytdLiability - ytdPAYE, 0));
+
+        // [DIAG-YTD] Temporary diagnostic — remove after confirming production fix
+        console.log('[DIAG-YTD calculateMonthlyPAYE_YTD]', JSON.stringify({
+            inputs: {
+                currentPeriodicGross: currentPeriodicGross,
+                currentOnceOffGross:  currentOnceOffGross,
+                ytdPeriodicGross:     ytdPeriodicGross,
+                ytdOnceOffGross:      ytdOnceOffGross,
+                ytdPAYE:              ytdPAYE,
+                monthInTaxYear:       monthInTaxYear,
+                age:                  options.age,
+                medicalMembers:       options.medicalMembers
+            },
+            intermediates: {
+                accumulatedPeriodic:  accumulatedPeriodic,
+                totalOnceOff:         totalOnceOff,
+                annualEquivalent:     annualEquivalent,
+                annualPAYE:           annualPAYE,
+                monthlyMed:           monthlyMed,
+                ytdLiability:         ytdLiability,
+                ytdPAYE_subtracted:   ytdPAYE,
+                beforeClamp:          ytdLiability - ytdPAYE,
+                finalPAYE:            finalPAYE
+            }
+        }));
+
+        return finalPAYE;
     },
 
     /**
@@ -787,6 +814,14 @@ const PayrollEngine = {
         var paye;
         if (ytdData && period) {
             var monthInTaxYear = PayrollEngine.getMonthInTaxYear(period);
+            // [DIAG-YTD] Temporary diagnostic — remove after confirming production fix
+            console.log('[DIAG-YTD engine dispatch]', JSON.stringify({
+                period:              period,
+                monthInTaxYear:      monthInTaxYear,
+                periodicTaxable:     periodicTaxable,
+                onceOffTaxable:      onceOffTaxable,
+                ytdData:             ytdData
+            }));
             paye = PayrollEngine.calculateMonthlyPAYE_YTD(
                 periodicTaxable,
                 onceOffTaxable,
