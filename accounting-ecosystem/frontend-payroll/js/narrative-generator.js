@@ -302,7 +302,11 @@ const NarrativeGenerator = {
                 ', your annualized income is ' + this.formatMoney(annualGross) + '. ';
         }
 
-        if (marginalRate && marginalBracket) {
+        // marginal_rate/marginal_bracket from the engine are computed from gross × 12 (monthly
+        // annualization) for display purposes. When YTD average is the active method, those fields
+        // refer to a different projected income than ytdProjectedAnnualTaxable — showing both
+        // would imply contradictory projected incomes. Suppress the bracket line for YTD average.
+        if (!isYtdAverage && marginalRate && marginalBracket) {
             text += 'Your marginal tax rate is ' + marginalRate + ' (bracket: ' + marginalBracket + '). ';
         }
 
