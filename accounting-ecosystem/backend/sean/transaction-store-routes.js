@@ -408,6 +408,89 @@ router.post('/:id/edit', requireSuperAdmin, async (req, res) => {
     }
 });
 
+// ─── PATCH /:id/draft — Save Draft without approving ─────────────────────────
+//
+// Saves the reviewer's in-progress edits (draft_payload, draft_notes) to the
+// database WITHOUT changing the item's status, WITHOUT touching the global
+// library, and WITHOUT triggering any sync.
+//
+// GOVERNANCE (CLAUDE.md Part B — Rule B6/B9):
+//   SAVE ≠ APPROVE. This endpoint is a safe, non-destructive staging area.
+//   - status remains 'pending' after every call
+//   - proposed_value and payload are NOT modified
+//   - No sync of any kind is triggered
+//   - No Paytime tables are touched
+//   - Every call is logged to sean_sync_log with action='payroll_item_learning_draft_saved'
+//
+// Body: { draftPayload?: {...}, draftNotes?: string }  — all fields optional
+// Auth: requireSuperAdmin (same as all other review actions)
+
+router.patch('/:id/draft', requireSuperAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+
+        const { draftPayload, draftNotes } = req.body;
+
+        // Fetch the item first — verify it exists and is still pending
+        const { data: item, error: fetchErr } = await supabase
+            .from('sean_transaction_store')
+            .select('id, status, company_id, proposed_field, draft_payload, draft_notes')
+            .eq('id', id)
+            .single();
+
+        if (fetchErr || !item) return res.status(404).json({ error: 'Store item not found' });
+        if (item.status !== 'pending') {
+            return res.status(409).json({
+                error: `Cannot save draft — item is already '${item.status}'. Only pending items can be edited.`
+            });
+        }
+
+        const now    = new Date().toISOString();
+        const editor = req.user?.email || req.user?.userId || 'superadmin';
+
+        // Build update: only overwrite fields that were actually provided
+        const updateFields = {
+            last_edited_by: editor,
+            last_edited_at: now,
+            updated_at:     now
+        };
+        if (draftPayload  != null) updateFields.draft_payload = draftPayload;
+        if (draftNotes    != null) updateFields.draft_notes   = String(draftNotes);
+
+        const { data: updated, error: updateErr } = await supabase
+            .from('sean_transaction_store')
+            .update(updateFields)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (updateErr) throw new Error(updateErr.message);
+
+        // Audit log — every draft save is recorded
+        await supabase
+            .from('sean_sync_log')
+            .insert({
+                store_id:          id,
+                target_company_id: item.company_id,
+                action:            'payroll_item_learning_draft_saved',
+                field_written:     item.proposed_field || null,
+                value_written:     draftPayload ? JSON.stringify(draftPayload).slice(0, 255) : null,
+                authorized_by:     editor,
+                notes:             draftNotes || 'Draft saved by reviewer (no approval)'
+            });
+
+        res.json({
+            success: true,
+            message: 'Draft saved. Item remains pending — no sync performed.',
+            item:    updated
+        });
+    } catch (err) {
+        console.error('[SEAN Store] /draft error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── POST /:id/sync — Re-run sync for an already approved item ───────────────
 //
 // Useful if new companies were added after the initial approval.

@@ -275,6 +275,7 @@
         <button class="nav-tab" data-tab="calculator" onclick="switchTab('calculator')">🧮 Calculator</button>
         <button class="nav-tab" data-tab="knowledge" onclick="switchTab('knowledge')">📚 Codex</button>
         <button class="nav-tab" data-tab="categories" onclick="switchTab('categories')">🏷️ Categories</button>
+        <button class="nav-tab" data-tab="coaching" onclick="switchTab('coaching')">🧘 Coaching</button>
     </div>
 
     <div class="content">
@@ -513,6 +514,114 @@
     </div>
 </div>
 
+<!-- ═══════ EDIT DRAFT MODAL (Paytime Payroll Item Learning Queue) ═══════ -->
+<!--
+    GOVERNANCE (CLAUDE.md Part B — Rule B6/B9):
+    "Save Draft" writes only to sean_transaction_store.draft_payload in the DB.
+    It does NOT approve, does NOT sync, does NOT touch Paytime tables.
+    "Approve & Sync" is a separate, explicitly confirmed action.
+-->
+<div class="modal-overlay" id="editDraftModal">
+    <div class="modal" style="max-width:620px;">
+
+        <!-- Header row with status badge -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <h3 style="margin:0;">✏️ Edit Payroll Item</h3>
+            <span id="editDraftStatusBadge"
+                  style="font-size:0.77rem;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:0.02em;"></span>
+        </div>
+
+        <!-- Item identity (read-only) -->
+        <div id="editDraftMeta"
+             style="font-size:0.82rem;color:var(--text-muted);padding:9px 12px;background:#f8fafc;border-radius:6px;margin-bottom:14px;line-height:1.6;">
+        </div>
+
+        <!-- Governance notice -->
+        <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;padding:9px 12px;font-size:0.82rem;color:#4c1d95;margin-bottom:16px;">
+            ⚠️ <strong>Save Draft does not approve or sync this item.</strong>
+            Use "Approve &amp; Sync" only when you are ready to apply this globally.
+        </div>
+
+        <!-- IRP5 Code -->
+        <div style="margin-bottom:13px;">
+            <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:5px;">
+                IRP5 Code <span style="color:var(--text-muted);font-weight:400;">(SARS — 4–6 digits)</span>
+            </label>
+            <input type="text" id="editDraftIrp5Code" maxlength="6" placeholder="e.g. 3801"
+                   style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;
+                          font-size:1rem;font-family:monospace;box-sizing:border-box;" />
+            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:3px;">
+                Required for Approve &amp; Sync. Leave blank to save draft without a code.
+            </div>
+        </div>
+
+        <!-- Item Type -->
+        <div style="margin-bottom:13px;">
+            <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:5px;">Item Type</label>
+            <select id="editDraftItemType"
+                    style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;
+                           font-size:0.9rem;box-sizing:border-box;">
+                <option value="">— not set —</option>
+                <option value="earnings">Earnings</option>
+                <option value="deduction">Deduction</option>
+                <option value="statutory">Statutory</option>
+                <option value="allowance">Allowance</option>
+                <option value="reimbursement">Reimbursement</option>
+                <option value="fringe_benefit">Fringe Benefit</option>
+            </select>
+        </div>
+
+        <!-- Tax / statutory flags -->
+        <div style="margin-bottom:14px;">
+            <div style="font-size:0.82rem;font-weight:600;margin-bottom:8px;">Tax &amp; Statutory</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer;">
+                    <input type="checkbox" id="editDraftIsTaxable" style="width:15px;height:15px;" />
+                    <span>Taxable</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer;">
+                    <input type="checkbox" id="editDraftAffectsUIF" style="width:15px;height:15px;" />
+                    <span>Affects UIF</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer;">
+                    <input type="checkbox" id="editDraftAffectsSDL" style="width:15px;height:15px;" />
+                    <span>Affects SDL</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer;">
+                    <input type="checkbox" id="editDraftIsPreTax" style="width:15px;height:15px;" />
+                    <span>Pre-tax deduction</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Reviewer notes (internal) -->
+        <div style="margin-bottom:16px;">
+            <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:5px;">
+                Reviewer Notes <span style="color:var(--text-muted);font-weight:400;">(internal — not synced)</span>
+            </label>
+            <textarea id="editDraftNotes" rows="3" placeholder="Internal review notes…"
+                      style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;
+                             font-size:0.85rem;resize:vertical;box-sizing:border-box;"></textarea>
+        </div>
+
+        <!-- Last-saved indicator -->
+        <div id="editDraftLastSaved"
+             style="font-size:0.75rem;color:var(--text-muted);margin-bottom:14px;display:none;
+                    padding:6px 10px;background:#f1f5f9;border-radius:5px;"></div>
+
+        <!-- Actions -->
+        <div class="modal-actions" style="gap:8px;flex-wrap:wrap;padding-top:4px;">
+            <button class="btn btn-outline btn-sm" onclick="closeEditDraftModal()">Cancel</button>
+            <button class="btn btn-outline btn-sm" id="editDraftApproveBtn"
+                    style="color:#15803d;border-color:#15803d;"
+                    onclick="approveFromDraftModal()">✅ Approve &amp; Sync</button>
+            <button class="btn btn-primary btn-sm" id="editDraftSaveBtn"
+                    onclick="saveDraft()">💾 Save Draft</button>
+        </div>
+
+    </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════════════════════
 // STATE
@@ -523,6 +632,10 @@ let user = null;
 let allCategories = [];
 let allTransactions = [];
 let currentTxnId = null;
+
+// Edit Draft modal state — set by editStoreItem(), cleared by closeEditDraftModal()
+let _editDraftItemId = null;
+let _editDraftItem   = null;
 
 // ═══════════════════════════════════════════════════════════
 // AUTH
@@ -1166,30 +1279,208 @@ async function discardStoreItem(id) {
 }
 
 function editStoreItem(id, itemRaw) {
+    // Open the full Edit Draft modal instead of a prompt() dialog.
+    // GOVERNANCE: Opening the modal does NOT approve or sync anything.
     const item = typeof itemRaw === 'string' ? JSON.parse(itemRaw) : itemRaw;
-    const currentValue = item.proposed_value || '';
-    const newValue = prompt(
-        'Edit the IRP5 code for "' + item.item_name + '" before approving globally.\n\nCurrent: ' + currentValue + '\n\nEnter correct SARS IRP5 code (4–6 digits):',
-        currentValue
-    );
-    if (newValue === null) return;
-    if (!newValue.trim() || !/^\d{4,6}$/.test(newValue.trim())) {
-        alert('Invalid IRP5 code. Must be 4–6 digits.');
+    _editDraftItemId = id;
+    _editDraftItem   = item;
+
+    // Effective payload: draft_payload takes precedence (reviewer's in-progress edits)
+    const draft   = item.draft_payload || {};
+    const payload = item.payload       || {};
+    const merged  = Object.assign({}, payload, draft);
+
+    // Populate identity line
+    const metaEl = document.getElementById('editDraftMeta');
+    if (metaEl) {
+        metaEl.innerHTML =
+            '<strong>' + escHtml(item.item_name || '—') + '</strong>' +
+            ' &nbsp;·&nbsp; Company: <strong>' + escHtml(String(item.company_id)) + '</strong>' +
+            ' &nbsp;·&nbsp; App: <strong>' + escHtml(item.source_app || '—') + '</strong>' +
+            ' &nbsp;·&nbsp; Change: <strong>' + escHtml(item.change_type || 'create') + '</strong>';
+    }
+
+    // Status badge
+    const badgeEl = document.getElementById('editDraftStatusBadge');
+    if (badgeEl) {
+        const statusStyles = {
+            pending:   { bg: '#fef3c7', color: '#92400e', label: 'PENDING' },
+            approved:  { bg: '#dcfce7', color: '#15803d', label: 'APPROVED' },
+            discarded: { bg: '#f1f5f9', color: '#64748b', label: 'DISCARDED' }
+        };
+        const s = statusStyles[item.status] || statusStyles.pending;
+        badgeEl.style.background = s.bg;
+        badgeEl.style.color = s.color;
+        badgeEl.textContent = s.label;
+    }
+
+    // Populate form from merged payload (draft takes precedence)
+    const irp5El = document.getElementById('editDraftIrp5Code');
+    if (irp5El) irp5El.value = merged.irp5_code || item.proposed_value || '';
+
+    const typeEl = document.getElementById('editDraftItemType');
+    if (typeEl) typeEl.value = merged.item_type || '';
+
+    const setCheckbox = (elId, val) => {
+        const el = document.getElementById(elId);
+        if (el) el.checked = !!val;
+    };
+    setCheckbox('editDraftIsTaxable', merged.is_taxable);
+    setCheckbox('editDraftAffectsUIF', merged.affects_uif);
+    setCheckbox('editDraftAffectsSDL', merged.affects_sdl);
+    setCheckbox('editDraftIsPreTax',   merged.is_pre_tax_deduction);
+
+    const notesEl = document.getElementById('editDraftNotes');
+    if (notesEl) notesEl.value = item.draft_notes || '';
+
+    // Last-saved indicator
+    const lastEl = document.getElementById('editDraftLastSaved');
+    if (lastEl) {
+        if (item.last_edited_at) {
+            lastEl.style.display = 'block';
+            lastEl.textContent = 'Last draft saved: ' +
+                new Date(item.last_edited_at).toLocaleString() +
+                (item.last_edited_by ? ' by ' + item.last_edited_by : '');
+        } else {
+            lastEl.style.display = 'none';
+        }
+    }
+
+    // Reset button states
+    const saveBtn = document.getElementById('editDraftSaveBtn');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save Draft'; }
+    const apprBtn = document.getElementById('editDraftApproveBtn');
+    if (apprBtn) { apprBtn.disabled = false; apprBtn.textContent = '✅ Approve & Sync'; }
+
+    document.getElementById('editDraftModal').classList.add('show');
+}
+
+function closeEditDraftModal() {
+    document.getElementById('editDraftModal').classList.remove('show');
+    _editDraftItemId = null;
+    _editDraftItem   = null;
+}
+
+// ─── Save Draft — persists edits to DB, does NOT approve or sync ─────────────
+//
+// GOVERNANCE (CLAUDE.md Part B — Rule B6/B9):
+//   This function calls PATCH /api/sean/store/:id/draft only.
+//   It must never call approveStoreItem(), /approve, /edit, or /sync.
+//   Status remains 'pending'. No Paytime tables are touched.
+
+async function saveDraft() {
+    if (!_editDraftItemId) return;
+    const saveBtn = document.getElementById('editDraftSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    try {
+        const irp5  = document.getElementById('editDraftIrp5Code').value.trim();
+        const type  = document.getElementById('editDraftItemType').value;
+        const notes = document.getElementById('editDraftNotes').value.trim();
+
+        // Build draft payload from existing payload, overwritten with form values
+        const draftPayload = Object.assign({}, (_editDraftItem && _editDraftItem.payload) || {});
+        if (irp5) draftPayload.irp5_code = irp5;
+        if (type) draftPayload.item_type  = type;
+        draftPayload.is_taxable           = document.getElementById('editDraftIsTaxable').checked;
+        draftPayload.affects_uif          = document.getElementById('editDraftAffectsUIF').checked;
+        draftPayload.affects_sdl          = document.getElementById('editDraftAffectsSDL').checked;
+        draftPayload.is_pre_tax_deduction = document.getElementById('editDraftIsPreTax').checked;
+
+        const data = await api('/sean/store/' + _editDraftItemId + '/draft', {
+            method: 'PATCH',
+            body: JSON.stringify({
+                draftPayload,
+                draftNotes: notes || null
+            })
+        });
+
+        // Update local item reference so the modal re-displays correctly if reopened
+        if (data.item) _editDraftItem = data.item;
+
+        // Refresh last-saved indicator without closing the modal
+        const lastEl = document.getElementById('editDraftLastSaved');
+        if (lastEl && data.item && data.item.last_edited_at) {
+            lastEl.style.display = 'block';
+            lastEl.textContent = 'Last draft saved: ' +
+                new Date(data.item.last_edited_at).toLocaleString() +
+                (data.item.last_edited_by ? ' by ' + data.item.last_edited_by : '');
+        }
+
+        if (saveBtn) {
+            saveBtn.disabled  = false;
+            saveBtn.textContent = '✓ Saved';
+            setTimeout(() => { if (saveBtn) saveBtn.textContent = '💾 Save Draft'; }, 2500);
+        }
+
+        // Refresh the pending queue and counters in the background
+        loadLearningPatterns();
+
+    } catch (err) {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save Draft'; }
+        alert('Error saving draft: ' + err.message);
+    }
+}
+
+// ─── Approve from Draft Modal — edit + approve in one step ───────────────────
+//
+// Collects the current modal form values, then calls POST /edit (which edits
+// the payload and immediately approves + syncs globally).
+// IRP5 code is required here because it is required for sync.
+//
+// GOVERNANCE: this function calls /edit (not /draft). The modal's "Save Draft"
+// button and this "Approve & Sync" button are deliberately separate.
+
+async function approveFromDraftModal() {
+    if (!_editDraftItemId) return;
+    const irp5 = document.getElementById('editDraftIrp5Code').value.trim();
+    if (!irp5 || !/^\d{4,6}$/.test(irp5)) {
+        alert('IRP5 code is required for approval.\nMust be 4–6 digits (e.g. 3801).');
         return;
     }
-    const payload = Object.assign({}, item.payload || {}, { irp5_code: newValue.trim() });
-    api('/sean/store/' + id + '/edit', {
-        method: 'POST',
-        body: JSON.stringify({
-            editedPayload: payload,
-            proposedValue: newValue.trim(),
-            notes: 'Edited by super admin: ' + currentValue + ' → ' + newValue.trim()
-        })
-    }).then(data => {
-        alert('✅ Edited and approved globally!\n\nIRP5 code: ' + newValue.trim() + '\n\n' + ((data.sync || {}).note || ''));
+    const itemName = (_editDraftItem && _editDraftItem.item_name) ? _editDraftItem.item_name : 'this item';
+    if (!confirm(
+        'Approve & Sync globally?\n\n' +
+        'Item: ' + itemName + '\n' +
+        'IRP5 code: ' + irp5 + '\n\n' +
+        'This will apply to all Paytime clients where the field is currently blank.\n' +
+        'Clients with an existing code are never overwritten.'
+    )) return;
+
+    const apprBtn = document.getElementById('editDraftApproveBtn');
+    if (apprBtn) { apprBtn.disabled = true; apprBtn.textContent = 'Approving…'; }
+
+    try {
+        const type  = document.getElementById('editDraftItemType').value;
+        const notes = document.getElementById('editDraftNotes').value.trim();
+
+        const editedPayload = Object.assign({}, (_editDraftItem && _editDraftItem.payload) || {});
+        editedPayload.irp5_code            = irp5;
+        if (type) editedPayload.item_type  = type;
+        editedPayload.is_taxable           = document.getElementById('editDraftIsTaxable').checked;
+        editedPayload.affects_uif          = document.getElementById('editDraftAffectsUIF').checked;
+        editedPayload.affects_sdl          = document.getElementById('editDraftAffectsSDL').checked;
+        editedPayload.is_pre_tax_deduction = document.getElementById('editDraftIsPreTax').checked;
+
+        const data = await api('/sean/store/' + _editDraftItemId + '/edit', {
+            method: 'POST',
+            body: JSON.stringify({
+                editedPayload,
+                proposedValue: irp5,
+                notes: notes || ('Approved via edit modal — IRP5: ' + irp5)
+            })
+        });
+
+        alert('✅ Approved & synced!\n\nIRP5 code: ' + irp5 + '\n\n' + ((data.sync || {}).note || ''));
+        closeEditDraftModal();
         loadLearningPatterns();
-    }).catch(err => alert('Error: ' + err.message));
+
+    } catch (err) {
+        if (apprBtn) { apprBtn.disabled = false; apprBtn.textContent = '✅ Approve & Sync'; }
+        alert('Error: ' + err.message);
+    }
 }
+
 
 async function loadStoreGlobalLibrary() {
     const listEl = document.getElementById('storeLibraryList');

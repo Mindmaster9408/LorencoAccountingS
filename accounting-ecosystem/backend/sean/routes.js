@@ -733,6 +733,13 @@ router.use('/paytime', irp5Routes);
 const transactionStoreRoutes = require('./transaction-store-routes');
 router.use('/store', transactionStoreRoutes);
 
+// ─── Mount SEAN Coaching Routes ───────────────────────────────────────────────
+// Company-scoped coaching case store + rule-based pattern engine.
+// Full path: /api/sean/coaching/...
+// Migration: backend/config/migrations/023_sean_coaching_cases.sql
+const coachingRoutes = require('./coaching-routes');
+router.use('/coaching', coachingRoutes);
+
 // ═══════════════════════════════════════════════════════════════════════════
 // BANK LEARNING API — Ecosystem apps registry + allocation learning
 // ═══════════════════════════════════════════════════════════════════════════

@@ -22,6 +22,7 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
+const { isGlobalPayrollAuthority } = require('../../../shared/utils/globalAuthority');
 
 const router = express.Router();
 const TABLE = 'payroll_kv_store_eco';
@@ -158,19 +159,35 @@ router.get('/global/:key', requirePermission('PAYROLL.VIEW'), async (req, res) =
 });
 
 // ── PUT /api/payroll/kv/global/:key  →  upsert an ecosystem-wide default ─────
-// Requires super_admin or business_owner role.
+// Requires ALL of:
+//   1. super_admin role — business_owner cannot publish global payroll standards
+//   2. req.companyId must be the designated global payroll authority company
+//      (companies.is_global_payroll_authority = true, set by migration 022)
+//
 // Writes with the sentinel company_id = '__global__' so all companies without
-// a company-specific override will fall through to this value.
-// Used by the Tax Configuration UI in the managing-practice (Infinite Legacy)
-// account to propagate standard tax tables to all clients.
+// a company-specific override fall through to this value at calculation time.
 router.put('/global/:key', async (req, res) => {
+    // Gate 1: must be super_admin. business_owner is intentionally excluded —
+    // only the managing practice (global authority) may publish ecosystem-wide standards.
     const userRole = req.user && req.user.role;
-    if (!['super_admin', 'business_owner'].includes(userRole)) {
+    if (userRole !== 'super_admin') {
         return res.status(403).json({
-            error: 'Insufficient permissions to write global ecosystem defaults',
-            required: 'super_admin or business_owner'
+            error: 'Publishing global payroll standards requires super_admin role',
+            required: 'super_admin'
         });
     }
+
+    // Gate 2: company context must be the designated global payroll authority.
+    // This is a DB-authoritative check — no hardcoded company IDs or names.
+    const isAuthority = await isGlobalPayrollAuthority(req.companyId);
+    if (!isAuthority) {
+        return res.status(403).json({
+            error: 'Global payroll standards may only be published from the global payroll authority company context',
+            hint: 'Switch your company context to The Infinite Legacy to publish global standards',
+            currentCompanyId: req.companyId
+        });
+    }
+
     try {
         const key = req.params.key;
         let val = req.body.value;
@@ -186,7 +203,7 @@ router.put('/global/:key', async (req, res) => {
             );
 
         if (error) throw error;
-        console.log(`[payroll/kv] Global key '${key}' updated by user role '${userRole}'.`);
+        console.log(`[payroll/kv] Global key '${key}' published by super_admin from authority company ${req.companyId}.`);
         res.json({ ok: true });
     } catch (err) {
         console.error('PUT /api/payroll/kv/global/:key error:', err.message);
