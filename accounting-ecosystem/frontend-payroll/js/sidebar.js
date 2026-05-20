@@ -13,6 +13,10 @@
 (function () {
     'use strict';
 
+    // Stabilization: hide Switch Company panel due to cross-tenant display issue.
+    // Restore by setting to true — no other code change needed.
+    var SHOW_PAYTIME_SWITCH_COMPANY = false;
+
     var SIDEBAR_ITEMS = [
         { label: '📊 Dashboard',           href: 'company-dashboard.html' },
         { label: '👥 Employees',           href: 'employee-management.html' },
@@ -47,7 +51,7 @@
             '                <div class="sidebar-section-title">Navigation</div>',
             navLinks,
             '            </div>',
-            '            <div class="company-carousel">',
+            '            <div class="company-carousel" style="' + (SHOW_PAYTIME_SWITCH_COMPANY ? '' : 'display:none') + '">',
             '                <div class="carousel-title">Switch Company</div>',
             '                <div class="carousel-container">',
             '                    <div class="carousel-companies" id="companies-carousel"></div>',
