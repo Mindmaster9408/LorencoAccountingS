@@ -72,7 +72,7 @@
             backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border);
             padding: 0 28px;
-            height: 60px;
+            height: 64px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -88,15 +88,16 @@
         .topbar-brand {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             text-decoration: none;
             color: inherit;
         }
         .topbar-brand-img {
-            width: 32px;
-            height: 32px;
+            width: 48px;
+            height: 48px;
             object-fit: contain;
             flex-shrink: 0;
+            filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.40));
         }
         .topbar-brand-text {
             display: flex;
@@ -104,16 +105,16 @@
             line-height: 1;
         }
         .topbar-brand-name {
-            font-size: 0.88rem;
+            font-size: 0.95rem;
             font-weight: 800;
             letter-spacing: 3px;
             color: #ffffff;
             text-transform: uppercase;
         }
         .topbar-brand-sub {
-            font-size: 0.52rem;
+            font-size: 0.6rem;
             font-weight: 700;
-            letter-spacing: 4px;
+            letter-spacing: 3.5px;
             text-transform: uppercase;
             background: linear-gradient(90deg, #FF6BEA 0%, #9A7CFF 50%, #33B8FF 100%);
             -webkit-background-clip: text;
@@ -905,8 +906,9 @@
             .apps-grid { grid-template-columns: 1fr; }
             .stats-row { grid-template-columns: 1fr 1fr; }
             .topbar { padding: 0 16px; }
+            .topbar-brand-img { width: 34px; height: 34px; }
             .topbar-brand-sub { display: none; }
-            .topbar-brand-name { letter-spacing: 2px; }
+            .topbar-brand-name { font-size: 0.88rem; letter-spacing: 2px; }
         }
     </style>
     <script src="js/polyfills.js"></script>
