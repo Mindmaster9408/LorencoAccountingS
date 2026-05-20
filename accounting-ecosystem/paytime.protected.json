@@ -4,6 +4,9 @@
   "displayName": "Paytime Payroll",
   "status": "STABILITY_LOCKED",
   "lockedSince": "2026-05-12",
+  "lastLockedAt": "2026-05-20",
+  "lastLockedCommit": "b6e800a690cbefb6ceb976888492793239ec5479",
+  "lastLockedTag": "paytime-stable-2026-05-20",
   "maintainer": "Lorenco Ecosystem",
   "description": "Paytime is a stability-locked module. All changes require explicit authorization and a full regression gate before deployment.",
 
