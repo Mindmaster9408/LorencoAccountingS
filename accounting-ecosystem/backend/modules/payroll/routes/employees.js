@@ -102,7 +102,6 @@ router.get('/:id', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payr
 router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
     const { basic_salary, hourly_rate, payment_frequency } = req.body;
-    console.log('[DIAG /salary] empId:', req.params.id, 'companyId:', req.companyId, 'basic_salary received:', basic_salary);
 
     const { data: old, error: oldErr } = await supabase
       .from('employees')

@@ -51,13 +51,10 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
   if (!employee) {
     throw new Error(`Employee not found: ${employeeId}`);
   }
-  console.log(`[DIAG PayrollDataService] companyId:${companyId} empId:${employeeId} DB basic_salary:${employee.basic_salary}`);
-
   // Step 2b: If basic_salary is missing from the employees table, fall back to the
   // KV store (key: emp_payroll_{companyId}_{employeeId}). The frontend employee-detail
   // page writes payroll setup (including basic_salary) there via polyfills.js.
   if (!employee.basic_salary) {
-    console.log(`[DIAG PayrollDataService] basic_salary missing in DB — trying KV fallback key emp_payroll_${companyId}_${employeeId}`);
     try {
       const kvKey = `emp_payroll_${companyId}_${employeeId}`;
       const { data: kvRow } = await supabase
@@ -70,19 +67,13 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
         const kvVal = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
         if (kvVal && kvVal.basic_salary) {
           employee.basic_salary = kvVal.basic_salary;
-          console.log(`[DIAG PayrollDataService] KV fallback found basic_salary:${employee.basic_salary}`);
-        } else {
-          console.log(`[DIAG PayrollDataService] KV row found but no basic_salary in value:`, JSON.stringify(kvVal));
         }
-      } else {
-        console.log(`[DIAG PayrollDataService] KV row not found for key emp_payroll_${companyId}_${employeeId}`);
       }
     } catch (kvErr) {
       // KV fallback is best-effort — a missing KV entry is not an error
       console.warn(`[PayrollDataService] KV salary fallback failed for emp ${employeeId}:`, kvErr.message);
     }
   }
-  console.log(`[DIAG PayrollDataService] final basic_salary going to normalizeCalculationInput:${employee.basic_salary}`);
 
   // Step 3: Fetch employee's work schedule
   const workSchedule = await fetchWorkSchedule(

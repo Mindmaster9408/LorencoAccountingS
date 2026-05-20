@@ -2005,6 +2005,13 @@
                 if (!payrollData.regular_inputs) payrollData.regular_inputs = [];
                 if (payrollData.basic_salary === undefined) payrollData.basic_salary = 0;
 
+                // DB is authoritative for basic_salary. currentEmployee is populated from
+                // the backend API before loadPayrollData() is ever called, so this always
+                // reflects the persisted value — even after a salary change on another device.
+                if (currentEmployee && currentEmployee.basic_salary != null) {
+                    payrollData.basic_salary = parseFloat(currentEmployee.basic_salary) || 0;
+                }
+
                 // Load recurring items from DB — replaces localStorage regular_inputs
                 // for DB-backed employees. Migrates localStorage items to DB on first run.
                 await loadRecurringItemsFromDB();
@@ -2201,22 +2208,12 @@
                 }
                 
                 // For locked periods: use snapshot's frozen basic salary (authoritative from payroll_snapshots).
-                // For draft periods: use live payrollData (with KV-frozen fallback).
+                // For draft periods: payrollData.basic_salary is DB-authoritative (set in loadPayrollData).
                 var displaySalary;
                 if (_isDbLocked && _lockedSnapshotInputs) {
                     displaySalary = _lockedSnapshotInputs.basic_salary || 0;
                 } else {
-                    var histKey = 'emp_historical_' + currentCompanyId + '_' + currentEmpId + '_' + currentPeriod;
-                    var frozen = safeLocalStorage.getItem(histKey);
                     displaySalary = payrollData.basic_salary || 0;
-                    if (frozen) {
-                        try {
-                            var snap = JSON.parse(frozen);
-                            if (snap && snap.basic_salary !== undefined) displaySalary = snap.basic_salary;
-                        } catch(e) {
-                            console.warn('Error parsing frozen data:', e);
-                        }
-                    }
                 }
                 
                 var basicSalaryEl = document.getElementById('basicSalary');
@@ -2324,7 +2321,6 @@
         async function saveBasicSalary() {
             var val = parseFloat(document.getElementById('editBasicValue').value) || 0;
             var empId = _supabaseEmpId || currentEmpId;
-            console.log('[DIAG saveBasicSalary] val:', val, 'empId:', empId, 'currentCompanyId:', currentCompanyId, 'headers:', JSON.stringify(_authHeaders()));
             if (!empId || !/^\d+$/.test(String(empId))) {
                 alert('Cannot save — employee ID not yet resolved. Please wait a moment and try again.');
                 return;
@@ -2338,12 +2334,10 @@
                     body: JSON.stringify({ basic_salary: val })
                 });
                 var rBody = await r.json().catch(function() { return {}; });
-                console.log('[DIAG saveBasicSalary] HTTP', r.status, JSON.stringify(rBody));
                 if (!r.ok) {
                     alert('Basic salary not saved (HTTP ' + r.status + '): ' + (rBody.error || 'Server error. Please try again.'));
                     return;
                 }
-                console.log('[DIAG saveBasicSalary] DB confirmed basic_salary =', rBody.employee && rBody.employee.basic_salary);
             } catch(e) {
                 alert('Network error saving basic salary: ' + e.message);
                 return;
@@ -2914,7 +2908,6 @@
 
             // Always use the resolved Supabase integer ID for backend calls.
             var empIdForCalc = _supabaseEmpId || currentEmpId;
-            console.log('[DIAG calculatePayslip] empIdForCalc:', empIdForCalc, 'currentPeriod:', currentPeriod, 'currentCompanyId:', currentCompanyId);
 
             // Always call the live backend calculate endpoint.
             // The endpoint itself returns the locked immutable snapshot for finalized
@@ -2925,8 +2918,6 @@
             //   2. The calculate endpoint already handles the finalized-snapshot guard.
             try {
                 var calcResult = await PayrollAPI.calculate(empIdForCalc, currentPeriod);
-                console.log('[DIAG calculatePayslip] calcResult.ok:', calcResult.ok, 'status:', calcResult.status);
-                console.log('[DIAG calculatePayslip] calcResult.data:', JSON.stringify(calcResult.data && { success: calcResult.data.success, locked: calcResult.data.locked, gross: calcResult.data.data && calcResult.data.data.gross, snapshot_basic_salary: calcResult.data.snapshot && calcResult.data.snapshot.basic_salary, snapshot_gross: calcResult.data.snapshot && calcResult.data.snapshot.calculation_output && calcResult.data.snapshot.calculation_output.gross }));
                 if (calcResult.ok && calcResult.data && calcResult.data.success) {
                     // POST calculate returns { success, data: {...13 locked fields...}, snapshot: { calculation_output: {...all fields...} } }
                     // Prefer snapshot.calculation_output — it includes display fields

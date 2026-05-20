@@ -152,7 +152,6 @@ router.post(
       }
 
       // STEP 2: Fetch and normalize calculation inputs
-      console.log(`[DIAG calculate] companyId:${req.companyId} empId:${empId} period_key:${period_key}`);
       let normalizedInputs;
       try {
         normalizedInputs = await PayrollDataService.fetchCalculationInputs(
@@ -161,7 +160,6 @@ router.post(
           period_key,
           supabase
         );
-        console.log(`[DIAG calculate] normalizedInputs.basic_salary:${normalizedInputs && normalizedInputs.basic_salary}`);
       } catch (err) {
         if (err.message.includes('Period not found')) {
           return res.status(404).json({
