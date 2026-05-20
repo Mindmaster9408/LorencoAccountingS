@@ -163,12 +163,15 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
  */
 async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
     // Feature flags:
-    //   PAYE_YTD_ENABLED=false   → disable YTD entirely; fall back to monthly annualization.
+    //   PAYE_YTD_ENABLED=false        → disable YTD entirely; fall back to monthly annualization.
     //   PAYE_YTD_METHOD=average_taxable (default) → YTD average taxable gross method.
-    //   PAYE_YTD_METHOD=cumulative               → old cumulative projection method.
+    //   PAYE_YTD_METHOD=cumulative               → old cumulative projection method (legacy).
+    //   PAYE_YTD_METHOD=projection_type          → per-item type classification method.
     if (process.env.PAYE_YTD_ENABLED === 'false') return null;
     const _ytdMethodEnv  = process.env.PAYE_YTD_METHOD || 'average_taxable';
-    const _methodName    = _ytdMethodEnv === 'cumulative' ? 'cumulative_ytd' : 'average_taxable_ytd';
+    const _methodName    = _ytdMethodEnv === 'cumulative'        ? 'cumulative_ytd'
+                         : _ytdMethodEnv === 'projection_type'   ? 'projection_type_ytd'
+                         : 'average_taxable_ytd';
 
     // Get all prior periods in the same SA tax year (never includes current period).
     // Returns [] for March (month 1 of tax year) — no prior periods possible.
@@ -536,7 +539,7 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
     .from('employee_payroll_items')
     .select(
       `id, payroll_item_id, amount, percentage, item_type,
-       payroll_items(code, name, item_category, is_taxable, tax_treatment)`
+       payroll_items(code, name, item_category, is_taxable, tax_treatment, paye_projection_type)`
     )
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
@@ -654,7 +657,10 @@ function normalizeCalculationInput(
     is_taxable: item.payroll_items?.is_taxable !== false,
     // tax_treatment: controls whether a deduction reduces taxableGross (pre-PAYE) or net only.
     // Defaults to 'net_only' for backward compatibility with items that predate migration 018.
-    tax_treatment: item.payroll_items?.tax_treatment || 'net_only'
+    tax_treatment: item.payroll_items?.tax_treatment || 'net_only',
+    // paye_projection_type: how this item is classified in the projection_type_ytd method.
+    // Defaults to 'VARIABLE_AVERAGE' — the conservative safe default for unclassified items.
+    paye_projection_type: item.payroll_items?.paye_projection_type || 'VARIABLE_AVERAGE'
   }));
 
   // Normalize period inputs (one-off items)

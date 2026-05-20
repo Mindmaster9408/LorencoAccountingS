@@ -1150,6 +1150,7 @@
         var _currentItemIsVariable = false;
         var _currentItemIsPercentage = false;
         var _currentItemPercentageValue = 0;
+        var _currentItemProjectionType = 'VARIABLE_AVERAGE'; // paye_projection_type for current item selection
         let currentPeriod = '';
         // Period-specific inputs loaded from backend (overtime, short-time, current inputs).
         // Populated by loadPeriodInputs() on every period load/change.
@@ -2491,6 +2492,7 @@
             _currentItemIsVariable = false;
             _currentItemIsPercentage = false;
             _currentItemPercentageValue = 0;
+            _currentItemProjectionType = 'VARIABLE_AVERAGE';
             var listEl = document.getElementById('regularItemsList');
             var hidden = getHiddenPayrollItems();
             var alreadyAdded = (payrollData.regular_inputs || []).map(function(r) { return r.description; });
@@ -2532,6 +2534,7 @@
             var customItems = getCustomPayrollItems();
             var configItem = customItems.find(function(ci) { return ci.item_name === name; });
             _currentItemIsVariable = _currentItemIsPercentage ? false : (configItem ? !!configItem.is_variable : false);
+            _currentItemProjectionType = (configItem && configItem.paye_projection_type) ? configItem.paye_projection_type : 'VARIABLE_AVERAGE';
 
             var noteEl = document.getElementById('regularVariableNote');
             var labelEl = document.getElementById('regularAmountLabel');
@@ -2608,13 +2611,14 @@
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            employee_id:      currentEmpId,
-                            description:      desc,
-                            item_type:        type,
-                            amount:           _currentItemIsPercentage ? 0 : amount,
-                            is_percentage:    _currentItemIsPercentage,
-                            percentage_value: _currentItemIsPercentage ? _currentItemPercentageValue : 0,
-                            is_variable:      _currentItemIsVariable
+                            employee_id:          currentEmpId,
+                            description:          desc,
+                            item_type:            type,
+                            amount:               _currentItemIsPercentage ? 0 : amount,
+                            is_percentage:        _currentItemIsPercentage,
+                            percentage_value:     _currentItemIsPercentage ? _currentItemPercentageValue : 0,
+                            is_variable:          _currentItemIsVariable,
+                            paye_projection_type: _currentItemProjectionType
                         })
                     });
                     if (r.ok) {

@@ -787,6 +787,17 @@
                         <small style="color:#666;">Pre-tax deductions (pension fund, RA, etc.) reduce PAYE taxable income per SARS rules. Use &ldquo;Normal Deduction&rdquo; for medical aid employee portion, garnishees, and similar.</small>
                     </div>
 
+                    <!-- PAYE Projection Type — controls YTD PAYE projection formula (earnings only) -->
+                    <div id="payeProjectionGroup" class="form-group" style="margin-bottom:20px;">
+                        <label>PAYE Projection Type <span style="color:#dc3545;">*</span></label>
+                        <select id="payeProjectionType" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-size:0.95rem;">
+                            <option value="VARIABLE_AVERAGE">Variable / Average — use YTD average × 12 (commission, bonus, shift allowance)</option>
+                            <option value="FIXED_RECURRING">Fixed Recurring — project current amount forward (basic salary, fixed allowance, travel allowance)</option>
+                            <option value="ONCE_OFF">Once-Off — include actual amount only, never annualise (annual bonus, signing bonus)</option>
+                        </select>
+                        <small style="color:#666;">Tells the YTD PAYE engine how to project this income for the annual tax estimate. <strong>Fixed Recurring</strong>: same amount every month, project current value forward. <strong>Variable / Average</strong>: fluctuates monthly, use running average. <strong>Once-Off</strong>: happens once this year, never projected forward.</small>
+                    </div>
+
                     <!-- Pay Run Frequency -->
                     <div class="form-group" style="margin-bottom:20px;">
                         <label>Show this item in *</label>
@@ -1294,6 +1305,7 @@
             document.getElementById('itemName').value = name;
             document.getElementById('itemCode').value = name.replace(/[^A-Z0-9]/gi, '_').toUpperCase().substring(0, 12);
             document.getElementById('taxTreatment').value = 'net_only';
+            document.getElementById('payeProjectionType').value = 'VARIABLE_AVERAGE';
             document.getElementById('modalError').style.display = 'none';
             selectBehaviour('fixed');
             updateTaxTreatmentVisibility(type);
@@ -1306,6 +1318,7 @@
             document.getElementById('itemId').value = '';
             document.getElementById('itemType').value = type;
             document.getElementById('taxTreatment').value = 'net_only';
+            document.getElementById('payeProjectionType').value = 'VARIABLE_AVERAGE';
             document.getElementById('modalError').style.display = 'none';
             selectBehaviour('fixed');
             updateTaxTreatmentVisibility(type);
@@ -1334,6 +1347,7 @@
             document.getElementById('isTaxable').value = item.is_taxable ? '1' : '0';
             document.getElementById('affectsUif').value = item.affects_uif ? '1' : '0';
             document.getElementById('taxTreatment').value = item.tax_treatment || 'net_only';
+            document.getElementById('payeProjectionType').value = item.paye_projection_type || 'VARIABLE_AVERAGE';
             document.getElementById('itemFrequency').value = item.frequency || 'regular';
             document.getElementById('modalError').style.display = 'none';
             selectBehaviour(item.is_variable ? 'variable' : 'fixed');
@@ -1386,6 +1400,9 @@
         function updateTaxTreatmentVisibility(type) {
             const group = document.getElementById('taxTreatmentGroup');
             if (group) group.style.display = (type === 'deduction') ? 'block' : 'none';
+            // Projection type only applies to earning items (deductions have no PAYE projection)
+            const projGroup = document.getElementById('payeProjectionGroup');
+            if (projGroup) projGroup.style.display = (type === 'deduction') ? 'none' : 'block';
         }
 
         function saveItem(event) {
@@ -1415,7 +1432,10 @@
                 frequency: document.getElementById('itemFrequency').value || 'regular',
                 tax_treatment: document.getElementById('itemType').value === 'deduction'
                     ? (document.getElementById('taxTreatment').value || 'net_only')
-                    : 'net_only'
+                    : 'net_only',
+                paye_projection_type: document.getElementById('itemType').value !== 'deduction'
+                    ? (document.getElementById('payeProjectionType').value || 'VARIABLE_AVERAGE')
+                    : 'VARIABLE_AVERAGE'
             };
 
             // IRP5 code is required

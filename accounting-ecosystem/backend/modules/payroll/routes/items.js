@@ -64,7 +64,7 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
  */
 router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
-    const { code, name, item_type, is_taxable, is_recurring, default_amount, description, irp5_code, category, tax_treatment } = req.body;
+    const { code, name, item_type, is_taxable, is_recurring, default_amount, description, irp5_code, category, tax_treatment, paye_projection_type } = req.body;
 
     if (!code || !name || !item_type) {
       return res.status(400).json({ error: 'code, name, and item_type are required' });
@@ -81,18 +81,25 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       return res.status(400).json({ error: `Invalid tax_treatment: "${tax_treatment}". Must be net_only or pre_tax.` });
     }
 
+    // Validate paye_projection_type
+    const allowedProjectionTypes = ['FIXED_RECURRING', 'VARIABLE_AVERAGE', 'ONCE_OFF'];
+    if (paye_projection_type !== undefined && !allowedProjectionTypes.includes(paye_projection_type)) {
+      return res.status(400).json({ error: `Invalid paye_projection_type: "${paye_projection_type}". Must be FIXED_RECURRING, VARIABLE_AVERAGE, or ONCE_OFF.` });
+    }
+
     const insertPayload = {
-      company_id:     req.companyId,
+      company_id:           req.companyId,
       code,
       name,
       item_type,
-      is_taxable:     is_taxable !== false,
-      is_recurring:   is_recurring || false,
-      default_amount: default_amount || 0,
+      is_taxable:           is_taxable !== false,
+      is_recurring:         is_recurring || false,
+      default_amount:       default_amount || 0,
       description,
-      is_active:      true,
+      is_active:            true,
       // tax_treatment: only store for deductions; default net_only for all others
-      tax_treatment:  (item_type === 'deduction' && tax_treatment) ? tax_treatment : 'net_only'
+      tax_treatment:        (item_type === 'deduction' && tax_treatment) ? tax_treatment : 'net_only',
+      paye_projection_type: allowedProjectionTypes.includes(paye_projection_type) ? paye_projection_type : 'VARIABLE_AVERAGE'
     };
 
     if (irp5_code) {
@@ -147,6 +154,15 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
         return res.status(400).json({ error: `Invalid tax_treatment: "${req.body.tax_treatment}". Must be net_only or pre_tax.` });
       }
       updates.tax_treatment = req.body.tax_treatment;
+    }
+
+    // Handle paye_projection_type — validate against allowed values
+    if (req.body.paye_projection_type !== undefined) {
+      const allowedProjectionTypes = ['FIXED_RECURRING', 'VARIABLE_AVERAGE', 'ONCE_OFF'];
+      if (!allowedProjectionTypes.includes(req.body.paye_projection_type)) {
+        return res.status(400).json({ error: `Invalid paye_projection_type: "${req.body.paye_projection_type}". Must be FIXED_RECURRING, VARIABLE_AVERAGE, or ONCE_OFF.` });
+      }
+      updates.paye_projection_type = req.body.paye_projection_type;
     }
 
     // Handle irp5_code change separately — needs IRP5 code validation + Sean event
@@ -254,7 +270,7 @@ router.get('/employee', requirePermission('PAYROLL.VIEW'), async (req, res) => {
  */
 router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
-    const { employee_id, description, item_type, amount, is_percentage, percentage_value, is_variable, is_taxable } = req.body;
+    const { employee_id, description, item_type, amount, is_percentage, percentage_value, is_variable, is_taxable, paye_projection_type } = req.body;
 
     if (!employee_id || !description || !item_type) {
       return res.status(400).json({ error: 'employee_id, description, and item_type are required' });
@@ -262,6 +278,10 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
     if (!/^\d+$/.test(String(employee_id))) {
       return res.status(400).json({ error: 'employee_id must be an integer' });
     }
+
+    // Validate paye_projection_type — default VARIABLE_AVERAGE (conservative safe default)
+    const allowedProjectionTypes = ['FIXED_RECURRING', 'VARIABLE_AVERAGE', 'ONCE_OFF'];
+    const resolvedProjectionType = allowedProjectionTypes.includes(paye_projection_type) ? paye_projection_type : 'VARIABLE_AVERAGE';
 
     // Map frontend item_type ('allowance', 'income', 'benefit', 'other', 'deduction')
     // to DB item_type ('earning', 'deduction', 'company_contribution')
@@ -278,6 +298,15 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
 
     if (existingMaster) {
       masterItemId = existingMaster.id;
+      // Update paye_projection_type if the caller specifies it — ensures changes in
+      // payroll-items.html config propagate to the SQL record on the next assignment.
+      if (paye_projection_type && allowedProjectionTypes.includes(paye_projection_type)) {
+        await supabase
+          .from('payroll_items')
+          .update({ paye_projection_type: resolvedProjectionType })
+          .eq('id', existingMaster.id)
+          .eq('company_id', req.companyId);
+      }
     } else {
       // Generate a URL-safe code from the description
       const baseCode = description.toLowerCase()
@@ -289,13 +318,14 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
         return supabase
           .from('payroll_items')
           .insert({
-            company_id:    req.companyId,
+            company_id:           req.companyId,
             code,
-            name:          description,
-            item_type:     dbItemType,
-            item_category: item_type,
-            is_taxable:    is_taxable !== false,
-            is_recurring:  true
+            name:                 description,
+            item_type:            dbItemType,
+            item_category:        item_type,
+            is_taxable:           is_taxable !== false,
+            is_recurring:         true,
+            paye_projection_type: resolvedProjectionType
           })
           .select('id')
           .single();

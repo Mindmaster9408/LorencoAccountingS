@@ -212,7 +212,14 @@ async function calculate(normalizedInputs, options = {}) {
       ytdAverageMonthlyTaxable: _ytdCalc ? _ytdCalc.averageMonthlyTaxable    : null,
       ytdProjectedAnnualTaxable:_ytdCalc ? _ytdCalc.projectedAnnualTaxable   : null,
       ytdPriorPAYEPaid:         _ytdCalc ? _ytdCalc.priorPAYEPaid            : null,
-      ytdCumulativeTaxDueToDate:_ytdCalc ? _ytdCalc.cumulativeTaxDueToDate   : null
+      ytdCumulativeTaxDueToDate:_ytdCalc ? _ytdCalc.cumulativeTaxDueToDate   : null,
+      // projection_type_ytd specific fields (null for other methods)
+      ytdRemainingMonths:       _ytdCalc ? (_ytdCalc.remainingMonths        ?? null) : null,
+      ytdCurrentFixed:          _ytdCalc ? (_ytdCalc.currentFixedTaxable    ?? null) : null,
+      ytdCurrentVariable:       _ytdCalc ? (_ytdCalc.currentVariableTaxable ?? null) : null,
+      ytdCurrentOnceOff:        _ytdCalc ? (_ytdCalc.currentOnceOffTaxable  ?? null) : null,
+      ytdVariableTaxableToDate: _ytdCalc ? (_ytdCalc.variableTaxableToDate  ?? null) : null,
+      ytdVariableAvgMonthly:    _ytdCalc ? (_ytdCalc.variableAvgMonthly     ?? null) : null
     };
 
     return result;

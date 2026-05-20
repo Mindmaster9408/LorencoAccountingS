@@ -800,10 +800,84 @@ const PayrollEngine = {
                 ? ytdData.prior_paye_paid
                 : (ytdData.ytdPAYE || 0);
 
+            // Per-item projection type method:
+            // Each income stream is classified as FIXED_RECURRING, VARIABLE_AVERAGE, or ONCE_OFF
+            // and projected differently. Activated when ytdData.method === 'projection_type_ytd'
+            // (set by PAYE_YTD_METHOD=projection_type in PayrollDataService).
+            if (ytdData.method === 'projection_type_ytd') {
+                var _remainingMonths = 13 - monthInTaxYear; // includes current month
+
+                // Classify current month income.
+                // Basic salary → FIXED. Overtime → VARIABLE. Period inputs → ONCE_OFF.
+                // Regular recurring items use their paye_projection_type field (default VARIABLE_AVERAGE).
+                var _ptFixed    = 0;
+                var _ptVariable = 0;
+                var _ptOnceOff  = 0;
+
+                // Basic salary: FIXED. Apply short-time and pre-tax deductions to the fixed base
+                // (pension/RA reduces salary, not variable items — this is the correct apportionment).
+                var _basicAfterAdj = Math.max((payrollData.basic_salary || 0) - shortTimeAmount - preTaxDeductions, 0);
+                _ptFixed += _basicAfterAdj;
+
+                // Classify taxable regular inputs by paye_projection_type
+                resolvedRegularInputs.forEach(function(ri) {
+                    if (ri.type === 'deduction' || ri.is_taxable === false) return;
+                    var amt = parseFloat(ri.amount) || 0;
+                    var projType = ri.paye_projection_type || 'VARIABLE_AVERAGE';
+                    if      (projType === 'FIXED_RECURRING') { _ptFixed    += amt; }
+                    else if (projType === 'ONCE_OFF')        { _ptOnceOff  += amt; }
+                    else                                      { _ptVariable += amt; }
+                });
+
+                // Overtime: always VARIABLE (move from onceOffTaxable → variable bucket)
+                _ptVariable += overtimeAmount;
+
+                // Remaining onceOffTaxable (period-specific inputs, multi-rate): ONCE_OFF
+                _ptOnceOff += Math.max(onceOffTaxable - overtimeAmount, 0);
+
+                // Variable accumulation — use prior_once_off_taxable_gross as proxy for prior
+                // variable income (overtime + period inputs stored there in snapshots).
+                // NOTE: snapshot schema doesn't store a fixed/variable split for recurring items;
+                // this is the best available approximation without a schema change.
+                var _priorVariableProxy = ytdData.prior_once_off_taxable_gross || 0;
+                var _variableToDate     = _priorVariableProxy + _ptVariable;
+                var _variableAvgMonthly = monthInTaxYear > 0 ? _variableToDate / monthInTaxYear : _ptVariable;
+
+                var _projAnnual    = PayrollEngine.r2(
+                    _ytdPriorTaxable              // prior periods: all actual taxable (already happened)
+                  + (_ptFixed * _remainingMonths) // project current fixed for remaining months (incl. current)
+                  + (_variableAvgMonthly * 12)    // full-year variable estimate (YTD average × 12)
+                  + _ptOnceOff                    // current month once-off: counted once only
+                );
+                var _annualPAYE    = PayrollEngine.calculateAnnualPAYE(_projAnnual, opts.age, tables);
+                var _monthlyMed    = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
+                var _cumTaxDue     = (_annualPAYE * monthInTaxYear / 12) - (_monthlyMed * monthInTaxYear);
+                paye = PayrollEngine.r2(Math.max(_cumTaxDue - _ytdPriorPAYE, 0));
+                _ytdCalc = {
+                    method:                 'projection_type_ytd',
+                    currentMonthNumber:     monthInTaxYear,
+                    remainingMonths:        _remainingMonths,
+                    priorTaxableGross:      PayrollEngine.r2(_ytdPriorTaxable),
+                    currentTaxableGross:    PayrollEngine.r2(periodicTaxable + onceOffTaxable),
+                    taxableGrossToDate:     PayrollEngine.r2(_ytdPriorTaxable + periodicTaxable + onceOffTaxable),
+                    currentFixedTaxable:    PayrollEngine.r2(_ptFixed),
+                    currentVariableTaxable: PayrollEngine.r2(_ptVariable),
+                    currentOnceOffTaxable:  PayrollEngine.r2(_ptOnceOff),
+                    priorVariableProxy:     PayrollEngine.r2(_priorVariableProxy),
+                    variableTaxableToDate:  PayrollEngine.r2(_variableToDate),
+                    variableAvgMonthly:     PayrollEngine.r2(_variableAvgMonthly),
+                    projectedAnnualTaxable: _projAnnual,
+                    annualPAYE:             PayrollEngine.r2(_annualPAYE),
+                    monthlyMedCredit:       _monthlyMed,
+                    cumulativeTaxDueToDate: PayrollEngine.r2(_cumTaxDue),
+                    priorPAYEPaid:          PayrollEngine.r2(_ytdPriorPAYE),
+                    currentBasePAYE:        paye
+                };
+
             // Average taxable method (default when ytdData.method !== 'cumulative_ytd'):
             // All taxable income to date is averaged over elapsed months and projected to annual.
             // This prevents a single high-salary month from dominating the annual projection.
-            if (ytdData.method !== 'cumulative_ytd') {
+            } else if (ytdData.method !== 'cumulative_ytd') {
                 var _totalTaxable  = _ytdPriorTaxable + _ytdCurrentTaxable;
                 var _avgMonthly    = monthInTaxYear > 0 ? _totalTaxable / monthInTaxYear : _ytdCurrentTaxable;
                 var _projAnnual    = _avgMonthly * 12;

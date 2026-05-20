@@ -253,9 +253,11 @@ const NarrativeGenerator = {
     // tax_year) are populated by the backend engine using the active Supabase KV tax tables.
     // Age is derived from the SA ID number for descriptive purposes only — no tax recalculation.
     generateTaxExplanation: function(employee, calc, period) {
-        var meta          = calc._meta || null;
-        var ytdMethod     = meta ? (meta.ytdMethod || '') : '';
-        var isYtdAverage  = ytdMethod === 'average_taxable_ytd';
+        var meta              = calc._meta || null;
+        var ytdMethod         = meta ? (meta.ytdMethod || '') : '';
+        var isYtdAverage      = ytdMethod === 'average_taxable_ytd';
+        var isProjectionType  = ytdMethod === 'projection_type_ytd';
+        var isYtdMethod       = isYtdAverage || isProjectionType;
 
         // All values come directly from the backend calculation result.
         // calc.rebate = total monthly rebate applied by the backend (all applicable: primary + secondary + tertiary).
@@ -280,7 +282,35 @@ const NarrativeGenerator = {
 
         var text;
 
-        if (isYtdAverage && meta) {
+        if (isProjectionType && meta) {
+            // Per-item projection type method — each income stream projected by its classification.
+            var ptPrior     = meta.ytdPriorTaxableGross    || 0;
+            var ptCurrent   = meta.ytdCurrentTaxableGross  || 0;
+            var ptToDate    = meta.ytdTaxableGrossToDate   != null ? meta.ytdTaxableGrossToDate : (ptPrior + ptCurrent);
+            var ptFixed     = meta.ytdCurrentFixed         || 0;
+            var ptVariable  = meta.ytdCurrentVariable      || 0;
+            var ptOnceOff   = meta.ytdCurrentOnceOff       || 0;
+            var ptVarAvg    = meta.ytdVariableAvgMonthly   || 0;
+            var ptProjected = meta.ytdProjectedAnnualTaxable || 0;
+            var ptRemaining = meta.ytdRemainingMonths      || 0;
+
+            text = 'PAYE was calculated using the projection-type method. ' +
+                'Prior finalized taxable income: ' + this.formatMoney(ptPrior) + '. ' +
+                'Current month taxable income: ' + this.formatMoney(ptCurrent) + '. ';
+            if (ptFixed > 0) {
+                text += 'Fixed recurring income this month: ' + this.formatMoney(ptFixed) +
+                    ' × ' + ptRemaining + ' remaining months = ' + this.formatMoney(ptFixed * ptRemaining) + '. ';
+            }
+            if (ptVariable > 0) {
+                text += 'Variable income (YTD average): ' + this.formatMoney(ptVarAvg) + '/month × 12 = ' +
+                    this.formatMoney(ptVarAvg * 12) + '. ';
+            }
+            if (ptOnceOff > 0) {
+                text += 'Once-off income: ' + this.formatMoney(ptOnceOff) + ' (included once only). ';
+            }
+            text += 'Projected annual taxable income: ' + this.formatMoney(ptProjected) + '. ';
+
+        } else if (isYtdAverage && meta) {
             // YTD average taxable income method — use backend _meta fields directly.
             // DO NOT use gross × 12; that is only correct for monthly annualization.
             var priorTaxable    = meta.ytdPriorTaxableGross     || 0;
@@ -303,10 +333,9 @@ const NarrativeGenerator = {
         }
 
         // marginal_rate/marginal_bracket from the engine are computed from gross × 12 (monthly
-        // annualization) for display purposes. When YTD average is the active method, those fields
-        // refer to a different projected income than ytdProjectedAnnualTaxable — showing both
-        // would imply contradictory projected incomes. Suppress the bracket line for YTD average.
-        if (!isYtdAverage && marginalRate && marginalBracket) {
+        // annualization). When any YTD method is active, those fields refer to a different projected
+        // income — showing both would imply contradictory projected incomes.
+        if (!isYtdMethod && marginalRate && marginalBracket) {
             text += 'Your marginal tax rate is ' + marginalRate + ' (bracket: ' + marginalBracket + '). ';
         }
 
