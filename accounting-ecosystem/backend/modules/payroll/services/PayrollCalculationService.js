@@ -224,7 +224,11 @@ async function calculate(normalizedInputs, options = {}) {
       ytdAnnualPAYE:                _ytdCalc ? (_ytdCalc.annualPAYE                ?? null) : null,
       ytdMonthlyMedCredit:          _ytdCalc ? (_ytdCalc.monthlyMedCredit          ?? null) : null,
       ytdProjectionMarginalRate:    _ytdCalc ? (_ytdCalc.projectionMarginalRate    ?? null) : null,
-      ytdProjectionMarginalBracket: _ytdCalc ? (_ytdCalc.projectionMarginalBracket ?? null) : null
+      ytdProjectionMarginalBracket: _ytdCalc ? (_ytdCalc.projectionMarginalBracket ?? null) : null,
+      // Spreading formula intermediates (projection_type_ytd only — null for other methods)
+      ytdAnnualTaxNetMedCredit:     _ytdCalc ? (_ytdCalc.annualTaxNetMedCredit     ?? null) : null,
+      ytdPriorTotalPAYEPaid:        _ytdCalc ? (_ytdCalc.priorTotalPAYEPaid        ?? null) : null,
+      ytdRemainingTax:              _ytdCalc ? (_ytdCalc.remainingTax              ?? null) : null
     };
 
     return result;

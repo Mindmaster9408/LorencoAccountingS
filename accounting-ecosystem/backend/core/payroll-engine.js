@@ -872,8 +872,14 @@ const PayrollEngine = {
                 );
                 var _annualPAYE    = PayrollEngine.calculateAnnualPAYE(_projAnnual, opts.age, tables);
                 var _monthlyMed    = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
-                var _cumTaxDue     = (_annualPAYE * monthInTaxYear / 12) - (_monthlyMed * monthInTaxYear);
-                paye = PayrollEngine.r2(Math.max(_cumTaxDue - _ytdPriorPAYE, 0));
+                // Spreading formula: (annualTax_net_of_medCredit - priorTotalPAYEPaid_incl_voluntary) / remainingMonths.
+                // prior_total_paye_paid = sum of paye (incl. voluntary) from locked snapshots.
+                // Falls back to prior_paye_paid (statutory only) for snapshots that predate this field.
+                var _priorTotalPAYEPaid = ytdData.prior_total_paye_paid !== undefined
+                    ? ytdData.prior_total_paye_paid : _ytdPriorPAYE;
+                var _annualTaxNetMed = PayrollEngine.r2(_annualPAYE - (_monthlyMed * 12));
+                var _remainingTax    = PayrollEngine.r2(Math.max(_annualTaxNetMed - _priorTotalPAYEPaid, 0));
+                paye = PayrollEngine.r2(_remainingTax / _remainingMonths);
                 var _ptBracket = _ytdGetBracket(_projAnnual);
                 _ytdCalc = {
                     method:                    'projection_type_ytd',
@@ -891,7 +897,9 @@ const PayrollEngine = {
                     projectedAnnualTaxable:    _projAnnual,
                     annualPAYE:                PayrollEngine.r2(_annualPAYE),
                     monthlyMedCredit:          _monthlyMed,
-                    cumulativeTaxDueToDate:    PayrollEngine.r2(_cumTaxDue),
+                    annualTaxNetMedCredit:     _annualTaxNetMed,
+                    priorTotalPAYEPaid:        PayrollEngine.r2(_priorTotalPAYEPaid),
+                    remainingTax:              _remainingTax,
                     priorPAYEPaid:             PayrollEngine.r2(_ytdPriorPAYE),
                     currentBasePAYE:           paye,
                     projectionMarginalRate:    _ptBracket.rate,

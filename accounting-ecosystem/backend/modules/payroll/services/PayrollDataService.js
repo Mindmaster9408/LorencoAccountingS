@@ -270,6 +270,9 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
         // Semantic field names — these are what the engine dispatch reads for the average method
         prior_taxable_gross:         priorTaxableGross,
         prior_paye_paid:             ytdPAYE,            // paye_base sum (statutory, never voluntary)
+        // Total PAYE collected including voluntary over-deductions — used by projection_type_ytd
+        // spreading formula: (annualTax - priorTotalPaid) / remainingMonths.
+        prior_total_paye_paid:       PayrollEngine.r2(ytdPAYEFinal),
         // Split fields kept for the cumulative fallback path
         prior_periodic_taxable_gross: ytdPeriodicTaxableGross,
         prior_once_off_taxable_gross: ytdOnceOffTaxableGross,

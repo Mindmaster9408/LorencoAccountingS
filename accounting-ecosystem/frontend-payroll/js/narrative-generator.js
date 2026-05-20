@@ -284,19 +284,19 @@ const NarrativeGenerator = {
 
         if (isProjectionType && meta) {
             // Per-item projection type method — each income stream projected by its classification.
-            var ptPrior     = meta.ytdPriorTaxableGross    || 0;
-            var ptCurrent   = meta.ytdCurrentTaxableGross  || 0;
-            var ptFixed     = meta.ytdCurrentFixed         || 0;
-            var ptVariable  = meta.ytdCurrentVariable      || 0;
-            var ptOnceOff   = meta.ytdCurrentOnceOff       || 0;
-            var ptVarAvg    = meta.ytdVariableAvgMonthly   || 0;
-            var ptProjected = meta.ytdProjectedAnnualTaxable || 0;
-            var ptRemaining = meta.ytdRemainingMonths      || 0;
-            var ptMonthNum  = meta.ytdCurrentMonthNumber   || 0;
-            var ptAnnualPAYE     = meta.ytdAnnualPAYE          || 0;
-            var ptMedCredit      = meta.ytdMonthlyMedCredit    || 0;
-            var ptCumTaxDue      = meta.ytdCumulativeTaxDueToDate || 0;
-            var ptPriorPAYEPaid  = meta.ytdPriorPAYEPaid       || 0;
+            var ptPrior          = meta.ytdPriorTaxableGross       || 0;
+            var ptCurrent        = meta.ytdCurrentTaxableGross     || 0;
+            var ptFixed          = meta.ytdCurrentFixed            || 0;
+            var ptVariable       = meta.ytdCurrentVariable         || 0;
+            var ptOnceOff        = meta.ytdCurrentOnceOff          || 0;
+            var ptVarAvg         = meta.ytdVariableAvgMonthly      || 0;
+            var ptProjected      = meta.ytdProjectedAnnualTaxable  || 0;
+            var ptRemaining      = meta.ytdRemainingMonths         || 0;
+            var ptAnnualPAYE     = meta.ytdAnnualPAYE              || 0;
+            var ptMedCredit      = meta.ytdMonthlyMedCredit        || 0;
+            var ptNetMedCredit   = (meta.ytdAnnualTaxNetMedCredit  != null) ? meta.ytdAnnualTaxNetMedCredit : 0;
+            var ptPriorTotal     = (meta.ytdPriorTotalPAYEPaid     != null) ? meta.ytdPriorTotalPAYEPaid    : 0;
+            var ptRemainingTax   = (meta.ytdRemainingTax           != null) ? meta.ytdRemainingTax          : 0;
             var ptMarginalRate   = meta.ytdProjectionMarginalRate    || '';
             var ptMarginalBracket = meta.ytdProjectionMarginalBracket || '';
 
@@ -318,18 +318,18 @@ const NarrativeGenerator = {
             if (ptMarginalRate && ptMarginalBracket) {
                 text += 'Marginal tax rate: ' + ptMarginalRate + ' (bracket: ' + ptMarginalBracket + '). ';
             }
-            // Show full tax derivation so the prior-PAYE deduction is transparent
-            if (ptAnnualPAYE > 0 && ptMonthNum > 0) {
+            // Show full spreading formula: annual tax → less annual med credit → less prior total paid → / remaining months
+            if (ptAnnualPAYE > 0 && ptRemaining > 0) {
                 text += 'Annual tax on projected income: ' + this.formatMoney(ptAnnualPAYE) + '. ';
-                text += 'Pro-rated for month ' + ptMonthNum + ' of 12';
                 if (ptMedCredit > 0) {
-                    text += ' less medical credit (' + this.formatMoney(ptMedCredit) + '/month × ' + ptMonthNum + ')';
+                    text += 'Less annual medical credit (' + this.formatMoney(ptMedCredit) + '/month × 12 = ' +
+                        this.formatMoney(ptMedCredit * 12) + '): net annual PAYE = ' + this.formatMoney(ptNetMedCredit) + '. ';
                 }
-                text += ' = cumulative tax due to date: ' + this.formatMoney(ptCumTaxDue) + '. ';
-                if (ptPriorPAYEPaid > 0) {
-                    text += 'Less prior PAYE paid in locked months: ' + this.formatMoney(ptPriorPAYEPaid) + '. ';
+                if (ptPriorTotal > 0) {
+                    text += 'Less prior PAYE paid (incl. voluntary over-deductions): ' + this.formatMoney(ptPriorTotal) + '. ';
                 }
-                text += 'PAYE this month: ' + this.formatMoney(ptCumTaxDue - ptPriorPAYEPaid) + '. ';
+                text += 'Remaining PAYE to spread over ' + ptRemaining + ' months: ' + this.formatMoney(ptRemainingTax) + '. ';
+                text += 'PAYE this month: ' + this.formatMoney(ptRemaining > 0 ? ptRemainingTax / ptRemaining : 0) + '. ';
             }
 
         } else if (isYtdAverage && meta) {
