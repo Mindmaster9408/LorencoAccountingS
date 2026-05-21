@@ -514,6 +514,94 @@ async function coachingAppFetch(path, opts = {}) {
     return body;
 }
 
+// =============================================================================
+// COACHING APP DATA HELPERS
+// =============================================================================
+// Non-fatal helpers — each returns null/[] on any error so a missing data
+// source never blocks the rest of the context load.
+
+const QB_CONTEXT_KEYS = [
+    'general', 'session.checkin', 'session.reflection',
+    'pgf.present', 'pgf.gap', 'pgf.future',
+    'four_quadrants.goals', 'four_quadrants.fears', 'four_quadrants.dream_summary'
+];
+
+// Fetch the latest BASIS submission linked to a coaching client.
+async function fetchClientBasisData(clientId) {
+    try {
+        const list    = await coachingAppFetch('/api/basis');
+        const matches = (Array.isArray(list) ? list : [])
+            .filter(s => s.linked_client_id === clientId);
+        if (matches.length === 0) return null;
+        const pick = matches.find(s => s.status === 'reviewed' || s.status === 'submitted')
+            || matches[0];
+        if (!pick || !pick.has_results) return null;
+        return await coachingAppFetch(`/api/basis/${pick.id}`);
+    } catch { return null; }
+}
+
+// Fetch the latest SPIL profile linked to a coaching client.
+async function fetchClientSpilData(clientId) {
+    try {
+        const list    = await coachingAppFetch('/api/spil');
+        const matches = (Array.isArray(list) ? list : [])
+            .filter(p => p.linked_client_id === clientId);
+        if (matches.length === 0) return null;
+        const pick = matches.find(p => p.has_results) || matches[0];
+        if (!pick) return null;
+        return await coachingAppFetch(`/api/spil/${pick.id}`);
+    } catch { return null; }
+}
+
+// Fetch answered questionnaire items across all known context keys.
+async function fetchClientQuestionnaireData(clientId) {
+    const answers = [];
+    await Promise.all(QB_CONTEXT_KEYS.map(key =>
+        coachingAppFetch(`/api/coaching/question-builder/client/${clientId}/context/${key}`)
+            .then(rows => {
+                (Array.isArray(rows) ? rows : []).forEach(q => {
+                    const ansVal = q.answer_text
+                        || (q.answer_number != null ? String(q.answer_number) : null)
+                        || (q.answer_json ? JSON.stringify(q.answer_json) : null);
+                    if (ansVal) {
+                        answers.push({
+                            question:   q.question_text,
+                            answer:     ansVal,
+                            section:    key,
+                            category:   q.category    || null,
+                            type:       q.question_type,
+                            answeredAt: q.answered_at || null
+                        });
+                    }
+                });
+            })
+            .catch(() => {})
+    ));
+    return answers;
+}
+
+// Normalize a raw basis_submissions row into a safe, structured object.
+function normalizeBasis(raw) {
+    if (!raw || !raw.basis_results) return null;
+    const results = typeof raw.basis_results === 'string'
+        ? JSON.parse(raw.basis_results) : raw.basis_results;
+    const reportEditable = raw.report_editable
+        ? (typeof raw.report_editable === 'string'
+            ? JSON.parse(raw.report_editable) : raw.report_editable)
+        : null;
+    return { sections: results, status: raw.status || null, submittedAt: raw.submitted_at || null, reportSummary: reportEditable };
+}
+
+// Normalize a raw spil_profiles row into a safe, structured object.
+function normalizeSpil(raw) {
+    if (!raw || !raw.scores) return null;
+    return {
+        code:    raw.spil_code || null,
+        scores:  typeof raw.scores  === 'string' ? JSON.parse(raw.scores)  : raw.scores,
+        ranking: typeof raw.ranking === 'string' ? JSON.parse(raw.ranking) : raw.ranking
+    };
+}
+
 // ─── GET /api/sean/coaching/clients/search ────────────────────────────────────
 // Search coaching clients by name (min 2 chars). Returns up to 10 matches.
 // MUST be declared before /clients/:clientId/* to prevent Express matching
@@ -632,7 +720,7 @@ router.get('/clients/:clientId/latest-session', requireCoachingAccess, async (re
 });
 
 // ─── GET /api/sean/coaching/clients/:clientId/full-profile ────────────────────
-// Full coaching profile: all steps, gauges, last 5 sessions.
+// Full coaching profile: steps, gauges, last 5 sessions, BASIS, SPIL.
 router.get('/clients/:clientId/full-profile', requireCoachingAccess, async (req, res) => {
     const companyId = getCompanyId(req);
     const userId    = req.user?.email || req.user?.id || null;
@@ -640,22 +728,30 @@ router.get('/clients/:clientId/full-profile', requireCoachingAccess, async (req,
     if (isNaN(clientId)) return res.status(400).json({ error: 'Invalid clientId' });
 
     try {
-        const data = await coachingAppFetch(`/api/clients/${clientId}`);
-        const c    = data.client;
+        const [clientResp, basisRaw, spilRaw] = await Promise.all([
+            coachingAppFetch(`/api/clients/${clientId}`),
+            fetchClientBasisData(clientId).catch(() => null),
+            fetchClientSpilData(clientId).catch(() => null)
+        ]);
+
+        const c = clientResp.client;
         if (!c) return res.status(404).json({ error: 'Client not found' });
 
-        auditLog({ companyId, userId, action: 'coaching_full_profile_fetched', metadata: { clientId } });
+        const basis = normalizeBasis(basisRaw);
+        const spil  = normalizeSpil(spilRaw);
+
+        auditLog({ companyId, userId, action: 'coaching_full_profile_fetched', metadata: { clientId, hasBasis: !!basis, hasSpil: !!spil } });
 
         res.json({
             ok: true,
             profile: {
                 id:           c.id,
                 name:         c.name,
-                email:        c.email   || null,
+                email:        c.email    || null,
                 status:       c.status,
-                dream:        c.dream   || null,
+                dream:        c.dream    || null,
                 currentStep:  c.current_step,
-                gauges:       c.gauges  || {},
+                gauges:       c.gauges   || {},
                 preferredLang: c.preferred_lang,
                 lastSession:  c.last_session || null,
                 steps: (c.steps || []).map(s => ({
@@ -673,6 +769,14 @@ router.get('/clients/:clientId/full-profile', requireCoachingAccess, async (req,
                     moodBefore:  s.mood_before,
                     moodAfter:   s.mood_after
                 }))
+            },
+            basis,
+            spil,
+            availability: {
+                basis:    !!basis,
+                spil:     !!spil,
+                sessions: (c.sessions || []).length > 0,
+                gauges:   Object.keys(c.gauges || {}).length > 0
             }
         });
     } catch (err) {
@@ -787,7 +891,8 @@ router.post('/client-chat', requireCoachingAccess, async (req, res) => {
 
 // ─── POST /api/sean/coaching/session-prep/:clientId ───────────────────────────
 // Generate a structured session preparation summary: current step, gauge
-// highlights, outstanding action items from the last session.
+// highlights, outstanding action items from the last session, BASIS data,
+// and questionnaire answers.
 router.post('/session-prep/:clientId', requireCoachingAccess, async (req, res) => {
     const companyId = getCompanyId(req);
     const userId    = req.user?.email || req.user?.id || null;
@@ -810,8 +915,13 @@ router.post('/session-prep/:clientId', requireCoachingAccess, async (req, res) =
     };
 
     try {
-        const data   = await coachingAppFetch(`/api/clients/${clientId}`);
-        const c      = data.client;
+        const [clientResp, basisRaw, questionnaireAnswers] = await Promise.all([
+            coachingAppFetch(`/api/clients/${clientId}`),
+            fetchClientBasisData(clientId).catch(() => null),
+            fetchClientQuestionnaireData(clientId).catch(() => [])
+        ]);
+
+        const c = clientResp.client;
         if (!c) return res.status(404).json({ error: 'Client not found' });
 
         const gauges  = c.gauges || {};
@@ -826,7 +936,9 @@ router.post('/session-prep/:clientId', requireCoachingAccess, async (req, res) =
             return acc;
         }, { concerns: [], strengths: [] });
 
-        auditLog({ companyId, userId, action: 'coaching_session_prep_generated', metadata: { clientId } });
+        const basis = normalizeBasis(basisRaw);
+
+        auditLog({ companyId, userId, action: 'coaching_session_prep_generated', metadata: { clientId, hasBasis: !!basis, questionnaireCount: (questionnaireAnswers || []).length } });
 
         res.json({
             ok:   true,
@@ -844,6 +956,14 @@ router.post('/session-prep/:clientId', requireCoachingAccess, async (req, res) =
                     keyInsights: latest.key_insights || [],
                     actionItems: latest.action_items || []
                 } : null
+            },
+            basis,
+            questionnaire: (questionnaireAnswers || []).length > 0 ? questionnaireAnswers : null,
+            availability: {
+                basis:         !!basis,
+                questionnaire: (questionnaireAnswers || []).length > 0,
+                sessions:      !!(c.sessions && c.sessions.length > 0),
+                gauges:        Object.keys(gauges).length > 0
             }
         });
     } catch (err) {
@@ -851,6 +971,93 @@ router.post('/session-prep/:clientId', requireCoachingAccess, async (req, res) =
         if (err.status === 404) return res.status(404).json({ error: 'Client not found' });
         console.error('[coaching-routes] POST /session-prep:', err.message);
         res.status(500).json({ error: 'Session prep failed' });
+    }
+});
+
+// ─── GET /api/sean/coaching/clients/:clientId/rich-context ────────────────────
+// Full normalized coaching context: client + BASIS + SPIL + questionnaire +
+// sessions + gauges, with per-section availability flags.
+// Used for client-mode chat enrichment and the coaching availability badge.
+router.get('/clients/:clientId/rich-context', requireCoachingAccess, async (req, res) => {
+    const companyId = getCompanyId(req);
+    const userId    = req.user?.email || req.user?.id || null;
+    const clientId  = parseInt(req.params.clientId, 10);
+    if (isNaN(clientId)) return res.status(400).json({ error: 'Invalid clientId' });
+
+    try {
+        const [clientResp, basisRaw, spilRaw, questionnaireAnswers] = await Promise.all([
+            coachingAppFetch(`/api/clients/${clientId}`),
+            fetchClientBasisData(clientId).catch(() => null),
+            fetchClientSpilData(clientId).catch(() => null),
+            fetchClientQuestionnaireData(clientId).catch(() => [])
+        ]);
+
+        const c = clientResp.client;
+        if (!c) return res.status(404).json({ error: 'Client not found' });
+
+        const basis    = normalizeBasis(basisRaw);
+        const spil     = normalizeSpil(spilRaw);
+        const qAnswers = questionnaireAnswers || [];
+        const latest   = (c.sessions || [])[0] || null;
+
+        const availability = {
+            client:        true,
+            basis:         !!basis,
+            spil:          !!spil,
+            questionnaire: qAnswers.length > 0,
+            sessions:      (c.sessions || []).length > 0,
+            gauges:        Object.keys(c.gauges || {}).length > 0
+        };
+
+        auditLog({ companyId, userId, action: 'coaching_client_context_viewed', metadata: { clientId, availability } });
+
+        res.json({
+            ok: true,
+            context: {
+                client: {
+                    id:           c.id,
+                    name:         c.name,
+                    email:        c.email  || null,
+                    phone:        c.phone  || null,
+                    status:       c.status,
+                    dream:        c.dream  || null,
+                    currentStep:  c.current_step,
+                    preferredLang: c.preferred_lang || 'af'
+                },
+                basis,
+                spil,
+                questionnaire: qAnswers.length > 0 ? qAnswers : null,
+                sessions: {
+                    latest: latest ? {
+                        date:        latest.session_date,
+                        duration:    latest.duration_minutes,
+                        summary:     latest.summary || null,
+                        keyInsights: latest.key_insights || [],
+                        actionItems: latest.action_items || [],
+                        moodBefore:  latest.mood_before,
+                        moodAfter:   latest.mood_after
+                    } : null,
+                    previous: (c.sessions || []).slice(1, 3).map(s => ({
+                        date:        s.session_date,
+                        summary:     s.summary || null,
+                        actionItems: s.action_items || []
+                    }))
+                },
+                gauges: c.gauges || {},
+                steps: (c.steps || []).map(s => ({
+                    id:        s.step_id,
+                    name:      s.step_name,
+                    order:     s.step_order,
+                    completed: s.completed
+                })),
+                availability
+            }
+        });
+    } catch (err) {
+        if (err.code === 'NOT_CONFIGURED') return res.status(503).json({ error: err.message, code: err.code });
+        if (err.status === 404) return res.status(404).json({ error: 'Client not found' });
+        console.error('[coaching-routes] GET /clients/:id/rich-context:', err.message);
+        res.status(500).json({ error: 'Failed to load client context' });
     }
 });
 

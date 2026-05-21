@@ -539,6 +539,7 @@
                         x Verwyder
                     </button>
                 </div>
+                <div id="coachingAvailabilityRow" style="display:none;padding:5px 14px 2px;font-size:0.78rem;color:var(--text-muted);"></div>
             </div>
 
             <!-- Section C: Chat Interface -->
@@ -1939,12 +1940,40 @@ function selectCoachingClient(id, name, currentStep, lastSession) {
     var input = document.getElementById('coachingInput');
     if (input) input.placeholder = 'Gesels oor ' + name + '...';
     clearCoachingActionPanel();
+    loadClientAvailability(id);
+}
+
+async function loadClientAvailability(clientId) {
+    var row = document.getElementById('coachingAvailabilityRow');
+    if (!row) return;
+    row.style.display = 'block';
+    row.textContent = 'Laai data-beskikbaarheid...';
+    try {
+        var data = await api('/sean/coaching/clients/' + clientId + '/rich-context');
+        var av   = (data.context || {}).availability || {};
+        var badges = [
+            { label: 'BASIS',       ok: av.basis },
+            { label: 'SPIL',        ok: av.spil },
+            { label: 'Sessies',     ok: av.sessions },
+            { label: 'Vraelyste',   ok: av.questionnaire },
+            { label: 'Meters',      ok: av.gauges }
+        ].map(function(b) {
+            var color  = b.ok ? '#059669' : '#9ca3af';
+            var symbol = b.ok ? '✓' : '—';
+            return '<span style="margin-right:10px;color:' + color + ';">' + symbol + ' ' + b.label + '</span>';
+        }).join('');
+        row.innerHTML = 'Data: ' + badges;
+    } catch (err) {
+        row.textContent = '';
+    }
 }
 
 function clearCoachingClient() {
     _coachingClient = null;
     document.getElementById('coachingSelectedClient').style.display = 'none';
     document.getElementById('coachingQuickActions').style.display   = 'none';
+    var avRow = document.getElementById('coachingAvailabilityRow');
+    if (avRow) { avRow.style.display = 'none'; avRow.innerHTML = ''; }
     var indicator = document.getElementById('coachingModeIndicator');
     indicator.textContent    = 'Klient';
     indicator.style.background = 'var(--primary-light)';
@@ -2002,6 +2031,7 @@ async function runSessionPrep() {
     try {
         var data = await api('/sean/coaching/session-prep/' + _coachingClient.id, { method: 'POST', body: '{}' });
         var p    = data.prep;
+        var av   = data.availability || {};
         var gaugeHtml  = _renderGaugeHighlights(p.gaugeHighlights);
         var actionList = p.latestSession && p.latestSession.actionItems.length
             ? '<div style="margin-top:6px;"><strong>Aksies:</strong><ul style="margin:4px 0 0;padding-left:18px;">' +
@@ -2012,6 +2042,43 @@ async function runSessionPrep() {
               '<strong>Laaste sessie (' + (p.latestSession.date || '?') + '):</strong>' +
               '<p style="margin:6px 0 0;">' + escHtml(p.latestSession.summary || '---') + '</p>' + actionList + '</div>'
             : '<p style="font-size:0.85rem;color:var(--text-muted);">Geen sessies gekapteer nie.</p>';
+
+        var basisHtml = '';
+        if (data.basis) {
+            var sections = data.basis.sections || {};
+            var sectionRows = Object.entries(sections).map(function(entry) {
+                var name = entry[0]; var sec = entry[1];
+                var pct   = typeof sec === 'object' ? (sec.sum || Math.round((sec.score || 0) * 10)) : sec;
+                var level = typeof sec === 'object' ? sec.level : '';
+                var color = level === 'high' ? '#059669' : level === 'medium' ? '#d97706' : '#dc2626';
+                return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">' +
+                    '<span style="width:90px;font-size:0.8rem;font-weight:600;">' + escHtml(name) + '</span>' +
+                    '<div style="flex:1;height:7px;background:#e5e7eb;border-radius:4px;">' +
+                    '<div style="width:' + Math.min(100, pct || 0) + '%;height:100%;background:' + color + ';border-radius:4px;"></div></div>' +
+                    '<span style="width:36px;font-size:0.78rem;text-align:right;color:' + color + ';">' + (pct || 0) + '%</span></div>';
+            }).join('');
+            basisHtml = '<div style="margin-top:12px;padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;">' +
+                '<strong style="font-size:0.85rem;">BASIS Profiel</strong>' +
+                '<div style="margin-top:8px;">' + sectionRows + '</div></div>';
+        } else if (av.basis === false) {
+            basisHtml = '<div style="margin-top:10px;font-size:0.82rem;color:#9ca3af;">BASIS: Nie beskikbaar nie</div>';
+        }
+
+        var questionnaireHtml = '';
+        if (data.questionnaire && data.questionnaire.length) {
+            var qRows = data.questionnaire.slice(0, 5).map(function(q) {
+                return '<div style="padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:0.82rem;">' +
+                    '<div style="font-weight:600;color:var(--text-muted);">' + escHtml(q.section) + '</div>' +
+                    '<div>' + escHtml(q.question) + '</div>' +
+                    '<div style="color:var(--primary-dark);margin-top:2px;">» ' + escHtml(q.answer) + '</div></div>';
+            }).join('');
+            questionnaireHtml = '<div style="margin-top:12px;">' +
+                '<strong style="font-size:0.85rem;">Vraelys (' + data.questionnaire.length + ' antwoorde)</strong>' +
+                '<div style="margin-top:6px;">' + qRows + '</div></div>';
+        } else if (av.questionnaire === false) {
+            questionnaireHtml = '<div style="margin-top:10px;font-size:0.82rem;color:#9ca3af;">Vraelys: Nie beskikbaar nie</div>';
+        }
+
         panel.innerHTML =
             '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
@@ -2020,7 +2087,7 @@ async function runSessionPrep() {
             '<div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">Stap ' + p.currentStep + ': <strong>' + escHtml(p.stepName) + '</strong>' +
             ' · ' + p.completedSteps + '/' + p.totalSteps + ' stappe voltooi' +
             (p.dream ? ' · Droom: ' + escHtml(p.dream) : '') + '</div>' +
-            gaugeHtml + sessionHtml + '</div>';
+            gaugeHtml + sessionHtml + basisHtml + questionnaireHtml + '</div>';
     } catch (err) {
         panel.innerHTML = '<div style="padding:10px;font-size:0.85rem;color:#ef4444;">Kon nie voorberei nie: ' + escHtml(err.message) + '</div>';
     }
@@ -2070,6 +2137,8 @@ async function loadFullProfile() {
     try {
         var data = await api('/sean/coaching/clients/' + _coachingClient.id + '/full-profile');
         var p    = data.profile;
+        var av   = data.availability || {};
+
         var gaugeRows = Object.entries(p.gauges || {}).map(function(entry) {
             var k = entry[0]; var v = entry[1];
             var pct   = Math.min(100, Math.max(0, parseInt(v) || 0));
@@ -2080,6 +2149,7 @@ async function loadFullProfile() {
                 '<div style="width:' + pct + '%;height:100%;background:' + color + ';border-radius:4px;"></div></div>' +
                 '<span style="width:28px;font-size:0.78rem;text-align:right;">' + pct + '</span></div>';
         }).join('');
+
         var completedSteps = (p.steps || []).filter(function(s){ return s.completed; });
         var sessionRows = p.sessions.length
             ? '<h5 style="font-size:0.85rem;font-weight:600;margin:14px 0 8px;">Onlangse Sessies</h5>' +
@@ -2088,6 +2158,45 @@ async function loadFullProfile() {
                     '<strong>' + (s.date || '?') + '</strong>: ' + escHtml(s.summary || '---') + '</div>';
               }).join('')
             : '';
+
+        var basisHtml = '';
+        if (data.basis) {
+            var b = data.basis;
+            var sectionRows = Object.entries(b.sections || {}).map(function(entry) {
+                var name = entry[0]; var sec = entry[1];
+                var pct   = typeof sec === 'object' ? (sec.sum || Math.round((sec.score || 0) * 10)) : sec;
+                var level = typeof sec === 'object' ? sec.level : '';
+                var color = level === 'high' ? '#059669' : level === 'medium' ? '#d97706' : '#dc2626';
+                return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">' +
+                    '<span style="width:90px;font-size:0.8rem;font-weight:600;">' + escHtml(name) + '</span>' +
+                    '<div style="flex:1;height:7px;background:#e5e7eb;border-radius:4px;">' +
+                    '<div style="width:' + Math.min(100, pct || 0) + '%;height:100%;background:' + color + ';border-radius:4px;"></div></div>' +
+                    '<span style="width:36px;font-size:0.78rem;text-align:right;color:' + color + ';">' + (pct || 0) + '%</span></div>';
+            }).join('');
+            var reportText = b.reportSummary ? JSON.stringify(b.reportSummary).substring(0, 200) : '';
+            basisHtml = '<h5 style="font-size:0.85rem;font-weight:600;margin:14px 0 8px;">BASIS Profiel</h5>' +
+                '<div style="padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;">' +
+                sectionRows +
+                (reportText ? '<div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);">' + escHtml(reportText) + '...</div>' : '') +
+                '</div>';
+        } else {
+            basisHtml = '<h5 style="font-size:0.85rem;font-weight:600;margin:14px 0 4px;">BASIS Profiel</h5>' +
+                '<div style="font-size:0.82rem;color:#9ca3af;">Nie beskikbaar nie</div>';
+        }
+
+        var spilHtml = '';
+        if (data.spil) {
+            var sp = data.spil;
+            var ranking = Array.isArray(sp.ranking) ? sp.ranking.join(' › ') : '';
+            spilHtml = '<h5 style="font-size:0.85rem;font-weight:600;margin:14px 0 8px;">SPIL Profiel</h5>' +
+                '<div style="padding:10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:0.85rem;">' +
+                (sp.code ? '<div style="font-weight:600;margin-bottom:6px;">' + escHtml(sp.code) + '</div>' : '') +
+                (ranking ? '<div style="color:var(--text-muted);">Rangorde: ' + escHtml(ranking) + '</div>' : '') + '</div>';
+        } else {
+            spilHtml = '<h5 style="font-size:0.85rem;font-weight:600;margin:14px 0 4px;">SPIL Profiel</h5>' +
+                '<div style="font-size:0.82rem;color:#9ca3af;">Nie beskikbaar nie</div>';
+        }
+
         panel.innerHTML =
             '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
@@ -2096,7 +2205,8 @@ async function loadFullProfile() {
             '<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">' +
             escHtml(p.email || '---') + ' · Stap ' + p.currentStep + ' · ' + escHtml(p.status || '---') +
             (p.dream ? '<br><em>Droom: ' + escHtml(p.dream) + '</em>' : '') + '</div>' +
-            '<h5 style="font-size:0.85rem;font-weight:600;margin:0 0 8px;">Meters</h5>' + gaugeRows +
+            '<h5 style="font-size:0.85rem;font-weight:600;margin:0 0 8px;">Meters (1% Aanwysers)</h5>' + gaugeRows +
+            basisHtml + spilHtml +
             '<h5 style="font-size:0.85rem;font-weight:600;margin:14px 0 4px;">Reis</h5>' +
             '<div style="font-size:0.82rem;">' + completedSteps.length + ' van ' + (p.steps || []).length + ' stappe voltooi</div>' +
             sessionRows + '</div>';
