@@ -44,6 +44,9 @@
         return [
             '<div class="sidebar">',
             '            <div class="sidebar-header">',
+            '                <div style="text-align:center;padding:0 0 14px;">',
+            '                    <img src="/payroll/assets/branding/paytime/paytime-logo-full.png" alt="Lorenco Paytime" style="width:130px;height:auto;object-fit:contain;filter:drop-shadow(0 0 10px rgba(102,126,234,0.55));" onerror="this.style.display=\'none\'">',
+            '                </div>',
             '                <div class="sidebar-title">Menu</div>',
             '                <div class="sidebar-company-name" id="sidebar-company-name" style="color:#667eea;font-size:1.2rem;font-weight:bold;"></div>',
             '            </div>',
