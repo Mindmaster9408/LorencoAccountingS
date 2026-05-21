@@ -174,6 +174,14 @@ async function handleStaticRequest(request) {
   }
 }
 
+// ── Audit-sensitive endpoints that must NEVER be queued or cached ──────────
+// These are irreversible state-changing actions. If offline, they must fail
+// immediately with a clear error — not be silently queued and replayed later.
+const NETWORK_ONLY_MUTATIONS = [
+  '/api/payroll/reverse',   // Reversal is permanent — requires live backend confirmation
+  '/api/payroll/finalize',  // Finalization locks snapshots — must never replay offline
+];
+
 // ── Network-first for API GET; cache fallback; queue writes offline ────────
 async function handleApiRequest(request) {
   const url = new URL(request.url);
@@ -194,11 +202,30 @@ async function handleApiRequest(request) {
     }
   }
 
-  // Mutations (POST / PUT / PATCH / DELETE) — try network, queue if offline
+  // Network-only mutations — never queue, never cache, never replay
+  if (NETWORK_ONLY_MUTATIONS.includes(url.pathname)) {
+    try {
+      return await fetch(request);
+    } catch {
+      const labels = {
+        '/api/payroll/reverse':  'Payroll reversal requires an online connection.',
+        '/api/payroll/finalize': 'Payroll finalisation requires an online connection.',
+      };
+      const msg = labels[url.pathname] || 'This action requires an online connection.';
+      return new Response(JSON.stringify({ success: false, error: msg }), {
+        status:  503,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  // Remaining mutations (POST / PUT / PATCH / DELETE) — try network, queue if offline.
+  // Pre-clone the request BEFORE fetch consumes the body so queueRequest can read it.
+  const requestForQueue = request.clone();
   try {
     return await fetch(request);
   } catch {
-    await queueRequest(request);
+    await queueRequest(requestForQueue);
     return new Response(JSON.stringify({
       queued:  true,
       offline: true,
