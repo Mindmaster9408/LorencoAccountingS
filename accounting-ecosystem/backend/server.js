@@ -698,6 +698,14 @@ async function start() {
     } catch (migErr) {
       console.warn('  ⚠️  Feature flags schema migration skipped:', migErr.message);
     }
+
+    // 4e. Sean coaching schema probe — warns if coaching tables or has_coaching_access column missing
+    try {
+      const { ensureSeanSchema } = require('./config/sean-schema');
+      await ensureSeanSchema(supabase);
+    } catch (migErr) {
+      console.warn('  ⚠️  Sean coaching schema probe failed:', migErr.message);
+    }
   }
 
   // 4. Display module status
