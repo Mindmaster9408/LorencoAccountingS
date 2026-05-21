@@ -1689,6 +1689,8 @@
                             Low Stock Only
                         </label>
                         <button class="btn btn-primary" onclick="showStockTakeModal()">Stock Take</button>
+                        <button class="btn btn-secondary" onclick="showReceiveStockModal()">Receive Stock</button>
+                        <button class="btn btn-secondary" onclick="showTransferModal()">Record Transfer</button>
                         <button class="btn btn-secondary" onclick="showStockAdjustModal()">Adjust Stock</button>
                     </div>
                 </div>
@@ -1770,11 +1772,9 @@
                     <div class="form-group">
                         <label>Adjustment Type</label>
                         <select id="adjustType">
-                            <option value="add">Add Stock</option>
-                            <option value="remove">Remove Stock</option>
-                            <option value="set">Set Stock Level</option>
-                            <option value="damage">Damaged/Broken</option>
-                            <option value="theft">Theft/Loss</option>
+                            <option value="add">Add Stock (+)</option>
+                            <option value="remove">Remove Stock (−)</option>
+                            <option value="set">Set to Exact Level</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -1782,13 +1782,156 @@
                         <input type="number" id="adjustQuantity" min="0" value="0">
                     </div>
                     <div class="form-group">
-                        <label>Reason</label>
-                        <textarea id="adjustReason" rows="2" placeholder="Enter reason for adjustment..."></textarea>
+                        <label>Reason *</label>
+                        <select id="adjustReason">
+                            <option value="">Select reason...</option>
+                            <option value="damaged">Damaged / Broken</option>
+                            <option value="expired">Expired / Spoilage</option>
+                            <option value="shrinkage">Theft / Shrinkage</option>
+                            <option value="supplier_correction">Supplier Correction</option>
+                            <option value="opening_correction">Opening Count Correction</option>
+                            <option value="stock_take_variance">Stock Take Variance</option>
+                            <option value="transfer_to_floor">Transfer to Floor</option>
+                            <option value="transfer_from_floor">Transfer from Floor</option>
+                            <option value="manual_correction">Manual Correction</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Notes (optional)</label>
+                        <input type="text" id="adjustNotes" placeholder="Additional detail...">
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeStockAdjust()">Cancel</button>
                     <button class="btn btn-primary" onclick="submitStockAdjust()">Adjust Stock</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stock Take Modal -->
+        <div id="stockTakeModal" class="modal-overlay">
+            <div class="modal" style="max-width:820px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2>Stock Take</h2>
+                    <button class="close-btn" onclick="closeStockTake()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 140px);overflow-y:auto;">
+                    <div class="form-group">
+                        <label>Notes (optional)</label>
+                        <input type="text" id="stockTakeNotes" placeholder="e.g. Monthly count, spot check..." style="width:100%;">
+                    </div>
+                    <p style="font-size:13px;color:#888;margin-bottom:10px;">Enter the counted quantity for each product. Leave blank to skip.</p>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:8px;text-align:left;">Product</th>
+                                <th style="padding:8px;text-align:right;">System Qty</th>
+                                <th style="padding:8px;text-align:center;width:110px;">Counted</th>
+                                <th style="padding:8px;text-align:right;width:90px;">Variance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockTakeItems"></tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeStockTake()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitStockTake()">Apply Adjustments</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Receive Stock Modal -->
+        <div id="receiveStockModal" class="modal-overlay">
+            <div class="modal" style="max-width:700px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2>Receive Stock</h2>
+                    <button class="close-btn" onclick="closeReceiveStock()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 140px);overflow-y:auto;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                        <div class="form-group">
+                            <label>Supplier Name *</label>
+                            <input type="text" id="receiveSupplier" placeholder="e.g. ABC Wholesalers" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Reference (optional)</label>
+                            <input type="text" id="receiveReference" placeholder="e.g. INV-001" style="width:100%;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label>Notes (optional)</label>
+                        <input type="text" id="receiveNotes" placeholder="Additional notes..." style="width:100%;">
+                    </div>
+                    <h4 style="margin:0 0 8px;font-size:14px;">Products Received</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:7px;text-align:left;">Product</th>
+                                <th style="padding:7px;text-align:right;width:90px;">Qty *</th>
+                                <th style="padding:7px;text-align:right;width:120px;">Cost (opt.)</th>
+                                <th style="padding:7px;width:36px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="receiveItemsBody"></tbody>
+                    </table>
+                    <button class="btn btn-secondary" onclick="addReceiveRow()" style="margin-top:10px;font-size:12px;">+ Add Product</button>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeReceiveStock()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitReceiveStock()">Receive Stock</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transfer Modal -->
+        <div id="transferModal" class="modal-overlay">
+            <div class="modal" style="max-width:620px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2>Record Transfer</h2>
+                    <button class="close-btn" onclick="closeTransfer()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 140px);overflow-y:auto;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+                        <div class="form-group">
+                            <label>From</label>
+                            <select id="transferFrom" style="width:100%;">
+                                <option value="backroom">Backroom</option>
+                                <option value="floor">Floor</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>To</label>
+                            <select id="transferTo" style="width:100%;" onchange="updateTransferWarning()">
+                                <option value="floor">Floor</option>
+                                <option value="backroom">Backroom</option>
+                                <option value="wastage">Wastage</option>
+                                <option value="spoilage">Spoilage</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="transferStockWarning" style="display:none;background:#fff3e0;border-left:4px solid #ff9800;padding:8px 12px;margin-bottom:12px;border-radius:4px;font-size:13px;">
+                        ⚠ Items transferred to <strong>Wastage</strong> or <strong>Spoilage</strong> will reduce stock quantity.
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label>Notes (optional)</label>
+                        <input type="text" id="transferNotes" placeholder="Reason for transfer..." style="width:100%;">
+                    </div>
+                    <h4 style="margin:0 0 8px;font-size:14px;">Products</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:7px;text-align:left;">Product</th>
+                                <th style="padding:7px;text-align:right;width:90px;">Qty *</th>
+                                <th style="padding:7px;width:36px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="transferItemsBody"></tbody>
+                    </table>
+                    <button class="btn btn-secondary" onclick="addTransferRow()" style="margin-top:10px;font-size:12px;">+ Add Product</button>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeTransfer()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitTransfer()">Record Transfer</button>
                 </div>
             </div>
         </div>
@@ -1885,6 +2028,11 @@
                     <div class="settings-menu-item" onclick="showReport('negative-stock', event)">Negative Stock Events</div>
                     <div class="settings-menu-item" onclick="showReport('recovery-sync', event)">Recovery Sync Log</div>
                     <div class="settings-menu-item" onclick="showReport('audit-activity', event)">Audit Activity</div>
+
+                    <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">Inventory</h3>
+                    <div class="settings-menu-item" onclick="showReport('stock-takes', event)">Stock Takes</div>
+                    <div class="settings-menu-item" onclick="showReport('stock-receives', event)">Supplier Receives</div>
+                    <div class="settings-menu-item" onclick="showReport('stock-transfers', event)">Stock Transfers</div>
                 </div>
 
                 <div class="settings-content">
@@ -5843,6 +5991,18 @@
                 loadSuspiciousActivityReport(container);
                 return;
             }
+            if (currentReport === 'stock-takes') {
+                loadInventoryHistoryReport('stock-takes', '/pos/inventory/stock-takes', container);
+                return;
+            }
+            if (currentReport === 'stock-receives') {
+                loadInventoryHistoryReport('stock-receives', '/pos/inventory/receives', container);
+                return;
+            }
+            if (currentReport === 'stock-transfers') {
+                loadInventoryHistoryReport('stock-transfers', '/pos/inventory/transfers', container);
+                return;
+            }
 
             const startDate = document.getElementById('reportStartDate').value;
             const endDate = document.getElementById('reportEndDate').value;
@@ -5916,9 +6076,143 @@
                 case 'audit-activity':
                     renderAuditActivityReport(data, container);
                     break;
+                case 'stock-takes':
+                    renderStockTakesReport(data, container);
+                    break;
+                case 'stock-receives':
+                    renderStockReceivesReport(data, container);
+                    break;
+                case 'stock-transfers':
+                    renderStockTransfersReport(data, container);
+                    break;
                 default:
                     container.innerHTML = '<p>Unknown report type</p>';
             }
+        }
+
+        // ── Inventory history report loader (shared by stock-takes, receives, transfers) ────
+        async function loadInventoryHistoryReport(reportType, apiPath, container) {
+            container.innerHTML = '<p style="text-align: center; color: #999;">Loading...</p>';
+            try {
+                const response = await fetch(`${API_URL}${apiPath}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    renderReport(reportType, result);
+                } else {
+                    container.innerHTML = `<p style="color: #f44336;">Error: ${result.error || 'Failed to load'}</p>`;
+                }
+            } catch (err) {
+                container.innerHTML = `<p style="color: #f44336;">Error: ${err.message}</p>`;
+            }
+        }
+
+        // ── Stock Takes report ────────────────────────────────────────────────
+        function renderStockTakesReport(data, container) {
+            const sessions = data.stock_takes || [];
+            if (sessions.length === 0) {
+                container.innerHTML = '<h2 style="margin-bottom:20px;">Stock Takes</h2><p style="color:#999;">No stock takes recorded yet.</p>';
+                return;
+            }
+            const rows = sessions.map(s => `
+                <tr>
+                    <td>${s.id}</td>
+                    <td>${(s.users && (s.users.full_name || s.users.username)) || 'Unknown'}</td>
+                    <td>${new Date(s.created_at).toLocaleString()}</td>
+                    <td style="text-align:center;">${s.product_count || 0}</td>
+                    <td style="text-align:center;color:${s.variance_count > 0 ? '#f57c00' : '#2e7d32'};">${s.variance_count || 0}</td>
+                    <td>${s.notes || '—'}</td>
+                </tr>
+            `).join('');
+            container.innerHTML = `
+                <h2 style="margin-bottom:20px;">Stock Takes</h2>
+                <table class="products-table">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Conducted By</th><th>Date</th>
+                            <th style="text-align:center;">Products</th>
+                            <th style="text-align:center;">Variances</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        // ── Supplier Receives report ──────────────────────────────────────────
+        function renderStockReceivesReport(data, container) {
+            const receives = data.receives || [];
+            if (receives.length === 0) {
+                container.innerHTML = '<h2 style="margin-bottom:20px;">Supplier Receives</h2><p style="color:#999;">No supplier receives recorded yet.</p>';
+                return;
+            }
+            const rows = receives.map(r => `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>${r.supplier_name}</td>
+                    <td>${r.reference || '—'}</td>
+                    <td>${new Date(r.created_at).toLocaleString()}</td>
+                    <td style="text-align:center;">${r.item_count || 0}</td>
+                    <td style="text-align:center;">${r.total_quantity || 0}</td>
+                    <td>${(r.users && (r.users.full_name || r.users.username)) || 'Unknown'}</td>
+                    <td>${r.notes || '—'}</td>
+                </tr>
+            `).join('');
+            container.innerHTML = `
+                <h2 style="margin-bottom:20px;">Supplier Receives</h2>
+                <table class="products-table">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Supplier</th><th>Reference</th><th>Date</th>
+                            <th style="text-align:center;">Items</th>
+                            <th style="text-align:center;">Total Units</th>
+                            <th>Received By</th><th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        // ── Stock Transfers report ────────────────────────────────────────────
+        function renderStockTransfersReport(data, container) {
+            const transfers = data.transfers || [];
+            if (transfers.length === 0) {
+                container.innerHTML = '<h2 style="margin-bottom:20px;">Stock Transfers</h2><p style="color:#999;">No stock transfers recorded yet.</p>';
+                return;
+            }
+            const rows = transfers.map(t => `
+                <tr>
+                    <td>${t.id}</td>
+                    <td>${t.from_location}</td>
+                    <td>${t.to_location}</td>
+                    <td style="text-align:center;">${t.item_count || 0}</td>
+                    <td style="text-align:center;">${t.affects_stock ? '<span style="color:#f44336;">Yes</span>' : 'No'}</td>
+                    <td>${new Date(t.created_at).toLocaleString()}</td>
+                    <td>${(t.users && (t.users.full_name || t.users.username)) || 'Unknown'}</td>
+                    <td>${t.notes || '—'}</td>
+                </tr>
+            `).join('');
+            container.innerHTML = `
+                <h2 style="margin-bottom:20px;">Stock Transfers</h2>
+                <p style="margin-bottom:15px;color:#666;font-size:13px;">
+                    Transfers to <strong>wastage</strong> or <strong>spoilage</strong> reduce stock quantity.
+                    Floor ↔ Backroom moves are visibility-only.
+                </p>
+                <table class="products-table">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>From</th><th>To</th>
+                            <th style="text-align:center;">Items</th>
+                            <th style="text-align:center;">Stock Reduced?</th>
+                            <th>Date</th><th>By</th><th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
         }
 
         function renderGrossProfitReport(data, container) {
@@ -7129,8 +7423,8 @@
                 const lowStockOnly = document.getElementById('lowStockOnly')?.checked || false;
                 const category = document.getElementById('stockFilterCategory')?.value || '';
 
-                let url = `${API_URL}/pos/stock?`;
-                if (lowStockOnly) url += 'low_stock_only=true&';
+                let url = `${API_URL}/pos/inventory?`;
+                if (lowStockOnly) url += 'low_stock=true&';
                 if (category) url += `category=${encodeURIComponent(category)}`;
 
                 const response = await fetch(url, {
@@ -7138,7 +7432,7 @@
                 });
 
                 const result = await response.json();
-                displayStock(result.products || []);
+                displayStock(result.inventory || []);
             } catch (error) {
                 console.error('Error loading stock:', error);
                 showNotification('Error loading stock data', 'error');
@@ -7189,14 +7483,13 @@
         }
 
         function showStockAdjustModal() {
-            // Populate product dropdown
             const select = document.getElementById('adjustProductId');
             select.innerHTML = '<option value="">Select a product...</option>' +
                 products.map(p => `<option value="${p.id}">${p.product_code} - ${p.product_name}</option>`).join('');
-
             document.getElementById('currentStockDisplay').textContent = '-';
             document.getElementById('adjustQuantity').value = '0';
             document.getElementById('adjustReason').value = '';
+            if (document.getElementById('adjustNotes')) document.getElementById('adjustNotes').value = '';
             document.getElementById('stockAdjustModal').style.display = 'flex';
         }
 
@@ -7218,35 +7511,33 @@
         }
 
         async function submitStockAdjust() {
-            const productId = document.getElementById('adjustProductId').value;
+            const productId  = document.getElementById('adjustProductId').value;
             const adjustType = document.getElementById('adjustType').value;
-            const quantity = document.getElementById('adjustQuantity').value;
-            const reason = document.getElementById('adjustReason').value;
+            const quantityRaw = parseInt(document.getElementById('adjustQuantity').value || '0');
+            const reason     = document.getElementById('adjustReason').value;
+            const notes      = document.getElementById('adjustNotes')?.value?.trim() || null;
 
-            if (!productId || !quantity) {
-                showNotification('Please select a product and enter quantity', 'error');
-                return;
-            }
+            if (!productId) { showNotification('Please select a product', 'error'); return; }
+            if (!reason)    { showNotification('Please select a reason', 'error'); return; }
+            if (quantityRaw < 0) { showNotification('Quantity must be 0 or greater', 'error'); return; }
+
+            const product    = products.find(p => p.id == productId);
+            const currentQty = product ? (product.stock_quantity || 0) : 0;
+
+            let quantity_change;
+            if (adjustType === 'add')    quantity_change = quantityRaw;
+            else if (adjustType === 'remove') quantity_change = -quantityRaw;
+            else quantity_change = quantityRaw - currentQty; // set to exact level
 
             try {
-                const response = await fetch(`${API_URL}/pos/stock/adjust`, {
+                const response = await fetch(`${API_URL}/pos/inventory/adjust`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        product_id: parseInt(productId),
-                        adjustment_type: adjustType,
-                        quantity: parseInt(quantity),
-                        reason: reason
-                    })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ product_id: parseInt(productId), quantity_change, reason, notes })
                 });
-
                 const result = await response.json();
-
-                if (result.success) {
-                    showNotification(`Stock adjusted: ${result.quantity_before} → ${result.quantity_after}`, 'success');
+                if (response.ok) {
+                    showNotification('Stock adjusted successfully', 'success');
                     closeStockAdjust();
                     loadProducts();
                     loadStock();
@@ -7259,13 +7550,208 @@
         }
 
         function showQuickAdjust(productId, productName, currentStock) {
+            showStockAdjustModal();
             document.getElementById('adjustProductId').value = productId;
             document.getElementById('currentStockDisplay').textContent = currentStock;
-            document.getElementById('stockAdjustModal').style.display = 'flex';
         }
 
+        // ── Stock Take ────────────────────────────────────────────────────────────
+
         function showStockTakeModal() {
-            alert('Stock Take feature - Coming soon!\nThis will allow you to scan or enter counts for all products.');
+            const tbody = document.getElementById('stockTakeItems');
+            tbody.innerHTML = (products || []).map((p, i) => `
+                <tr style="background:${i%2===0?'#fff':'#f9f9f9'};border-bottom:1px solid #eee;">
+                    <td style="padding:7px;">${p.product_name}${p.product_code ? ` <small style="color:#888;">(${p.product_code})</small>` : ''}</td>
+                    <td style="padding:7px;text-align:right;font-weight:600;${p.stock_quantity<0?'color:#c62828;':''}">${p.stock_quantity}</td>
+                    <td style="padding:7px;text-align:center;">
+                        <input type="number" id="stk_${p.id}" min="0" placeholder="—"
+                            style="width:80px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"
+                            oninput="updateStockTakeVariance(${p.id},${p.stock_quantity})">
+                    </td>
+                    <td id="var_${p.id}" style="padding:7px;text-align:right;color:#bbb;">—</td>
+                </tr>
+            `).join('');
+            document.getElementById('stockTakeNotes').value = '';
+            document.getElementById('stockTakeModal').style.display = 'flex';
+        }
+
+        function updateStockTakeVariance(productId, systemQty) {
+            const input = document.getElementById('stk_' + productId);
+            const cell  = document.getElementById('var_' + productId);
+            const val   = input.value.trim();
+            if (val === '') { cell.textContent = '—'; cell.style.color = '#bbb'; return; }
+            const variance = parseFloat(val) - systemQty;
+            cell.textContent = (variance > 0 ? '+' : '') + variance;
+            cell.style.color = variance === 0 ? '#2e7d32' : variance < 0 ? '#c62828' : '#e65100';
+        }
+
+        function closeStockTake() { document.getElementById('stockTakeModal').style.display = 'none'; }
+
+        async function submitStockTake() {
+            const notes = document.getElementById('stockTakeNotes').value.trim();
+            const items = [];
+            (products || []).forEach(p => {
+                const input = document.getElementById('stk_' + p.id);
+                if (input && input.value.trim() !== '') {
+                    items.push({ product_id: p.id, counted_qty: parseFloat(input.value) });
+                }
+            });
+            if (items.length === 0) { showNotification('Please enter at least one counted quantity', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/inventory/stock-take`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ notes: notes || undefined, items })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    const vc = result.stock_take?.variance_count || 0;
+                    showNotification(`Stock take complete — ${items.length} counted, ${vc} adjustment(s) applied`, 'success');
+                    closeStockTake();
+                    loadProducts();
+                    loadStock();
+                } else { showNotification(result.error || 'Stock take failed', 'error'); }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Receive Stock ─────────────────────────────────────────────────────────
+
+        function showReceiveStockModal() {
+            document.getElementById('receiveSupplier').value = '';
+            document.getElementById('receiveReference').value = '';
+            document.getElementById('receiveNotes').value = '';
+            document.getElementById('receiveItemsBody').innerHTML = '';
+            addReceiveRow();
+            document.getElementById('receiveStockModal').style.display = 'flex';
+        }
+
+        function closeReceiveStock() { document.getElementById('receiveStockModal').style.display = 'none'; }
+
+        function addReceiveRow() {
+            const tbody = document.getElementById('receiveItemsBody');
+            const options = (products || []).map(p => `<option value="${p.id}">${p.product_name}</option>`).join('');
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #eee';
+            tr.innerHTML = `
+                <td style="padding:5px;">
+                    <select style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;">
+                        <option value="">Select product...</option>${options}
+                    </select>
+                </td>
+                <td style="padding:5px;">
+                    <input type="number" min="1" value="1" style="width:75px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                </td>
+                <td style="padding:5px;">
+                    <input type="number" min="0" step="0.01" placeholder="0.00" style="width:90px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                </td>
+                <td style="padding:5px;text-align:center;">
+                    <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:16px;line-height:1;">&times;</button>
+                </td>`;
+            tbody.appendChild(tr);
+        }
+
+        async function submitReceiveStock() {
+            const supplier_name = document.getElementById('receiveSupplier').value.trim();
+            if (!supplier_name) { showNotification('Supplier name is required', 'error'); return; }
+            const reference = document.getElementById('receiveReference').value.trim();
+            const notes     = document.getElementById('receiveNotes').value.trim();
+            const items = [];
+            document.querySelectorAll('#receiveItemsBody tr').forEach(row => {
+                const sel  = row.querySelector('select');
+                const inputs = row.querySelectorAll('input[type="number"]');
+                const pid  = sel?.value;
+                const qty  = parseInt(inputs[0]?.value);
+                if (pid && qty > 0) {
+                    const cost = inputs[1]?.value;
+                    items.push({ product_id: parseInt(pid), quantity: qty, cost_price: cost ? parseFloat(cost) : null });
+                }
+            });
+            if (items.length === 0) { showNotification('Please add at least one product', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/inventory/receive`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ supplier_name, reference: reference || undefined, notes: notes || undefined, items })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Stock received from ${supplier_name} — ${items.length} product(s)`, 'success');
+                    closeReceiveStock();
+                    loadProducts();
+                    loadStock();
+                } else { showNotification(result.error || 'Receive failed', 'error'); }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Transfer ──────────────────────────────────────────────────────────────
+
+        function showTransferModal() {
+            document.getElementById('transferFrom').value = 'backroom';
+            document.getElementById('transferTo').value   = 'floor';
+            document.getElementById('transferNotes').value = '';
+            document.getElementById('transferItemsBody').innerHTML = '';
+            document.getElementById('transferStockWarning').style.display = 'none';
+            addTransferRow();
+            document.getElementById('transferModal').style.display = 'flex';
+        }
+
+        function closeTransfer() { document.getElementById('transferModal').style.display = 'none'; }
+
+        function updateTransferWarning() {
+            const to = document.getElementById('transferTo').value;
+            document.getElementById('transferStockWarning').style.display =
+                (to === 'wastage' || to === 'spoilage') ? 'block' : 'none';
+        }
+
+        function addTransferRow() {
+            const tbody = document.getElementById('transferItemsBody');
+            const options = (products || []).map(p => `<option value="${p.id}">${p.product_name}</option>`).join('');
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #eee';
+            tr.innerHTML = `
+                <td style="padding:5px;">
+                    <select style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;">
+                        <option value="">Select product...</option>${options}
+                    </select>
+                </td>
+                <td style="padding:5px;">
+                    <input type="number" min="1" value="1" style="width:75px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                </td>
+                <td style="padding:5px;text-align:center;">
+                    <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:16px;line-height:1;">&times;</button>
+                </td>`;
+            tbody.appendChild(tr);
+        }
+
+        async function submitTransfer() {
+            const from_location = document.getElementById('transferFrom').value;
+            const to_location   = document.getElementById('transferTo').value;
+            const notes         = document.getElementById('transferNotes').value.trim();
+            const items = [];
+            document.querySelectorAll('#transferItemsBody tr').forEach(row => {
+                const sel = row.querySelector('select');
+                const qty = parseInt(row.querySelector('input[type="number"]')?.value);
+                if (sel?.value && qty > 0) items.push({ product_id: parseInt(sel.value), quantity: qty });
+            });
+            if (items.length === 0) { showNotification('Please add at least one product', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/inventory/transfer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ from_location, to_location, notes: notes || undefined, items })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    const affects = result.transfer?.affects_stock;
+                    showNotification(
+                        `Transfer recorded: ${from_location} → ${to_location}${affects ? ' (stock updated)' : ''}`,
+                        'success'
+                    );
+                    closeTransfer();
+                    loadProducts();
+                    loadStock();
+                } else { showNotification(result.error || 'Transfer failed', 'error'); }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
 
         // ========== SALE SEARCH FUNCTIONS ==========

@@ -71,8 +71,10 @@ const POS_EVENTS = {
     PRODUCT_DELETED:        'PRODUCT_DELETED',       // hard delete (future)
 
     // Inventory events
-    STOCK_ADJUSTED:         'STOCK_ADJUSTED',
-    STOCK_TAKE_COMPLETED:   'STOCK_TAKE_COMPLETED',  // to be wired when stock-take route exists
+    STOCK_ADJUSTED:              'STOCK_ADJUSTED',
+    STOCK_TAKE_COMPLETED:        'STOCK_TAKE_COMPLETED',
+    SUPPLIER_RECEIVE_COMPLETED:  'SUPPLIER_RECEIVE_COMPLETED',
+    STOCK_TRANSFER_RECORDED:     'STOCK_TRANSFER_RECORDED',
 
     // Stock policy events
     STOCK_POLICY_CHANGED:        'STOCK_POLICY_CHANGED',        // admin toggled allow_negative_stock_sales
@@ -121,6 +123,8 @@ const EVENT_CATEGORY = {
     PRODUCT_DELETED:        'product',
     STOCK_ADJUSTED:              'inventory',
     STOCK_TAKE_COMPLETED:        'inventory',
+    SUPPLIER_RECEIVE_COMPLETED:  'inventory',
+    STOCK_TRANSFER_RECORDED:     'inventory',
     STOCK_POLICY_CHANGED:        'settings',
     NEGATIVE_STOCK_SALE_ALLOWED: 'inventory',
     NEGATIVE_STOCK_CREATED:      'inventory',

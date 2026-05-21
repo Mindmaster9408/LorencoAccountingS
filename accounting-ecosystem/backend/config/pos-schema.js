@@ -179,6 +179,104 @@ async function ensurePosSchema(pool) {
         ON customer_account_transactions(company_id, customer_id)
     `);
 
+    // ── pos_stock_takes ───────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_stock_takes (
+        id              SERIAL PRIMARY KEY,
+        company_id      INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        conducted_by    INTEGER REFERENCES users(id),
+        notes           TEXT,
+        product_count   INTEGER DEFAULT 0,
+        variance_count  INTEGER DEFAULT 0,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_stock_takes_company
+        ON pos_stock_takes(company_id)
+    `);
+
+    // ── pos_stock_take_items ──────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_stock_take_items (
+        id              SERIAL PRIMARY KEY,
+        stock_take_id   INTEGER NOT NULL REFERENCES pos_stock_takes(id) ON DELETE CASCADE,
+        company_id      INTEGER NOT NULL REFERENCES companies(id),
+        product_id      INTEGER NOT NULL REFERENCES products(id),
+        system_qty      DECIMAL(12,3) NOT NULL,
+        counted_qty     DECIMAL(12,3) NOT NULL,
+        variance        DECIMAL(12,3) NOT NULL,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── pos_supplier_receives ─────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_supplier_receives (
+        id              SERIAL PRIMARY KEY,
+        company_id      INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        supplier_name   VARCHAR(255) NOT NULL,
+        reference       VARCHAR(100),
+        notes           TEXT,
+        item_count      INTEGER DEFAULT 0,
+        total_quantity  INTEGER DEFAULT 0,
+        received_by     INTEGER REFERENCES users(id),
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_supplier_receives_company
+        ON pos_supplier_receives(company_id)
+    `);
+
+    // ── pos_supplier_receive_items ────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_supplier_receive_items (
+        id              SERIAL PRIMARY KEY,
+        receive_id      INTEGER NOT NULL REFERENCES pos_supplier_receives(id) ON DELETE CASCADE,
+        company_id      INTEGER NOT NULL REFERENCES companies(id),
+        product_id      INTEGER NOT NULL REFERENCES products(id),
+        quantity        INTEGER NOT NULL,
+        cost_price      DECIMAL(10,2),
+        qty_before      INTEGER,
+        qty_after       INTEGER,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── pos_stock_transfers ───────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_stock_transfers (
+        id              SERIAL PRIMARY KEY,
+        company_id      INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        from_location   VARCHAR(50) NOT NULL,
+        to_location     VARCHAR(50) NOT NULL,
+        notes           TEXT,
+        item_count      INTEGER DEFAULT 0,
+        affects_stock   BOOLEAN DEFAULT false,
+        transferred_by  INTEGER REFERENCES users(id),
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_stock_transfers_company
+        ON pos_stock_transfers(company_id)
+    `);
+
+    // ── pos_stock_transfer_items ──────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_stock_transfer_items (
+        id              SERIAL PRIMARY KEY,
+        transfer_id     INTEGER NOT NULL REFERENCES pos_stock_transfers(id) ON DELETE CASCADE,
+        company_id      INTEGER NOT NULL REFERENCES companies(id),
+        product_id      INTEGER NOT NULL REFERENCES products(id),
+        quantity        INTEGER NOT NULL,
+        qty_before      INTEGER,
+        qty_after       INTEGER,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     console.log('  ✅ POS schema ready.');
   } catch (err) {
     console.error('  ❌ POS schema migration error:', err.message);
