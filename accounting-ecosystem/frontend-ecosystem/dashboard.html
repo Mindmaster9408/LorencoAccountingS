@@ -312,6 +312,19 @@
             border-radius: 10px;
             display: block;
         }
+        .app-card-image-only {
+            padding: 0;
+            overflow: hidden;
+        }
+        .app-card-image-only::before {
+            display: none;
+        }
+        .app-card-full-image {
+            width: 100%;
+            min-height: 230px;
+            display: block;
+            object-fit: cover;
+        }
         .app-card .app-title {
             font-size: 1.1rem;
             font-weight: 700;
@@ -2149,6 +2162,16 @@
                 const installBtn = (app.key === 'payroll' && isActive)
                     ? `<button class="app-btn-launch" onclick="event.stopPropagation(); installPaytime()" id="paytimeInstallBtn" style="display:none;background:linear-gradient(135deg,#10b981,#059669);margin-top:6px;width:100%;">&#128229; Install Desktop</button>`
                     : '';
+
+                if (app.key === 'payroll') {
+                    return `
+                        <div class="app-card payroll app-card-image-only ${isActive ? '' : 'disabled'}"
+                             onclick="${isActive ? `launchApp('${app.key}')` : ''}"
+                             title="Lorenco Paytime${isActive ? '' : ' — Not Activated'}">
+                            <img src="${app.logo}" alt="Lorenco Paytime" class="app-card-full-image">
+                        </div>
+                    `;
+                }
 
                 return `
                     <div class="app-card ${app.cssClass} ${isActive ? '' : 'disabled'}" onclick="${isActive ? `launchApp('${app.key}')` : ''}">
