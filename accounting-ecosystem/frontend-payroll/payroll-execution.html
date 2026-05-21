@@ -1457,7 +1457,7 @@
                     '</div>' +
                 '</div>' +
                 '<div class="run-detail-panel" id="panel-' + esc(runId) + '">' +
-                    renderRunDetailPanel(runId, group, isFinalized, isReversed) +
+                    renderRunDetailPanel(runId, group, isFinalized, isReversed, periodKey) +
                 '</div>' +
             '</div>';
         });
@@ -1466,7 +1466,7 @@
         document.getElementById('history-content').innerHTML = html;
     }
 
-    function renderRunDetailPanel(runId, snapshots, isFinalized, isReversed) {
+    function renderRunDetailPanel(runId, snapshots, isFinalized, isReversed, periodKey) {
         var html = '';
 
         // Compute totals from snapshots
