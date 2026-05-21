@@ -1540,8 +1540,10 @@
             var actionBtns = '<button type="button" class="btn btn-outline btn-sm" onclick="loadRunDetail(\'' + esc(runId) + '\')">Load Full Run Summary</button>' +
                 '<a href="reports.html" class="btn btn-outline btn-sm" style="text-decoration:none;">📊 View Reports →</a>';
 
-            // Show reverse button for finalized runs in history (allows reversal from the history view)
+            // Show reverse + bulk print buttons for finalized runs in history
             if (isFinalized && !isReversed) {
+                actionBtns += '<button type="button" class="btn btn-outline btn-sm" ' +
+                    'onclick="bulkPrintPayslips(\'' + esc(runId) + '\')">🖨 Bulk Print Payslips</button>';
                 actionBtns += '<button type="button" class="btn-reverse" style="font-size:0.8rem;padding:6px 14px;" ' +
                     'onclick="openHistoryReversalModal(\'' + esc(runId) + '\', \'' + esc(periodKey || '') + '\')">🔄 Reverse This Run</button>';
             }
@@ -1666,6 +1668,139 @@
 
     function closePayslipPreview() {
         document.getElementById('payslipPreviewModal').classList.remove('show');
+    }
+
+    // ==========================================================================
+    // FEATURE — BULK PRINT PAYSLIPS (from finalized snapshots, no recalculation)
+    // ==========================================================================
+    function bulkPrintPayslips(runId) {
+        var cached = _statutoryCache[runId];
+        if (!cached || !cached.snapshots || !cached.snapshots.length) {
+            alert('Payslip data not loaded yet. Please wait for the run panel to finish loading and try again.');
+            return;
+        }
+        var snaps     = cached.snapshots;
+        var periodKey = cached.periodKey || '';
+
+        var pages = '';
+        snaps.forEach(function(snap, idx) {
+            var emp  = getEmployee(snap.employee_id);
+            var name = emp
+                ? ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim()
+                : 'Employee #' + snap.employee_id;
+            var empNum = (emp && emp.employee_number) ? emp.employee_number : '';
+
+            var out   = snap.calculation_output || {};
+            var items = snap.payslip_line_items  || [];
+            var basicSalary = snap.basic_salary != null ? Number(snap.basic_salary) : Number(out.gross || 0);
+
+            var incomeItems    = items.filter(function(i) { return i.type !== 'deduction'; });
+            var deductionItems = items.filter(function(i) { return i.type === 'deduction'; });
+
+            var fmtR = function(n) {
+                var v = Number(n);
+                return 'R ' + Math.abs(v).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
+            var row = function(label, amount, cls) {
+                return '<tr class="' + (cls || '') + '"><td>' + label + '</td><td class="amt">' + fmtR(amount) + '</td></tr>';
+            };
+
+            var earningsRows = '';
+            earningsRows += row('Basic Salary', basicSalary);
+            incomeItems.forEach(function(item) {
+                var amt = Number(item.amount || 0);
+                if (amt !== 0) earningsRows += row(item.description || item.type || 'Income', amt);
+            });
+            var overtimeAmt  = Number(out.overtimeAmount  || 0);
+            var shortTimeAmt = Number(out.shortTimeAmount || 0);
+            if (overtimeAmt  > 0) earningsRows += row('Overtime', overtimeAmt);
+            if (shortTimeAmt > 0) earningsRows += row('Short-Time Adjustment', -shortTimeAmt, 'deduct');
+            earningsRows += row('Total Gross', out.gross || 0, 'subtotal');
+
+            var deductRows = '';
+            deductRows += row('PAYE (Income Tax)', -(out.paye_base || out.paye || 0), 'deduct');
+            deductRows += row('UIF (Employee)', -(out.uif || 0), 'deduct');
+            deductRows += row('SDL (Employer)', -(out.sdl || 0), 'deduct');
+            var volAdj = Number(out.voluntary_paye_adjustment || 0);
+            if (volAdj !== 0) {
+                deductRows += row(volAdj > 0 ? 'Voluntary PAYE Increase' : 'PAYE Reduction', -volAdj, 'deduct');
+                deductRows += row('Final PAYE', -(out.paye || 0), 'deduct');
+            }
+            var medCredit = Number(out.medicalCredit || 0);
+            if (medCredit > 0) deductRows += row('Medical Aid Credit', medCredit);
+            deductionItems.forEach(function(item) {
+                var amt = Number(item.amount || 0);
+                if (amt !== 0) deductRows += row(item.description || 'Deduction', -Math.abs(amt), 'deduct');
+            });
+            deductRows += row('Total Deductions', -(out.deductions || 0), 'subtotal deduct');
+
+            var prorataNote = '';
+            if (out.prorataFactor != null && out.prorataFactor < 1) {
+                prorataNote = '<p class="note">⚠ Pro-rata applied: ' + Math.round(out.prorataFactor * 100) + '% of full-month salary</p>';
+            }
+
+            var pageBreak = idx < snaps.length - 1 ? 'page-break' : '';
+            pages +=
+                '<div class="payslip ' + pageBreak + '">' +
+                '<div class="ps-header">' +
+                    '<div class="ps-company">Lorenco Accounting Services</div>' +
+                    '<div class="ps-title">EMPLOYEE PAYSLIP</div>' +
+                    '<div class="ps-period">Period: ' + periodKey + (snap.is_locked ? ' · Finalized' : '') + '</div>' +
+                '</div>' +
+                '<div class="ps-employee">' +
+                    '<span class="ps-name">' + name + '</span>' +
+                    (empNum ? '<span class="ps-empnum">Employee #' + empNum + '</span>' : '') +
+                '</div>' +
+                '<table>' +
+                    '<thead><tr><th colspan="2">Earnings</th></tr></thead>' +
+                    '<tbody>' + earningsRows + '</tbody>' +
+                '</table>' +
+                '<table>' +
+                    '<thead><tr><th colspan="2">Deductions</th></tr></thead>' +
+                    '<tbody>' + deductRows + '</tbody>' +
+                '</table>' +
+                '<div class="ps-net"><span>NET PAY</span><span>' + fmtR(out.net || 0) + '</span></div>' +
+                prorataNote +
+                '</div>';
+        });
+
+        var win = window.open('', '_blank', 'width=860,height=700');
+        win.document.write(
+            '<!DOCTYPE html><html><head>' +
+            '<meta charset="utf-8">' +
+            '<title>Payslips — ' + periodKey + '</title>' +
+            '<style>' +
+            'body{font-family:Arial,sans-serif;margin:0;color:#222;}' +
+            '.payslip{max-width:680px;margin:32px auto;padding:28px 32px;border:1px solid #ccc;box-sizing:border-box;}' +
+            '.page-break{page-break-after:always;}' +
+            '.ps-header{text-align:center;border-bottom:2px solid #222;padding-bottom:12px;margin-bottom:14px;}' +
+            '.ps-company{font-size:1.05rem;font-weight:700;}' +
+            '.ps-title{font-size:0.95rem;font-weight:600;margin:2px 0;}' +
+            '.ps-period{font-size:0.8rem;color:#555;}' +
+            '.ps-employee{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;}' +
+            '.ps-name{font-size:1rem;font-weight:700;}' +
+            '.ps-empnum{font-size:0.8rem;color:#666;}' +
+            'table{width:100%;border-collapse:collapse;margin-bottom:10px;}' +
+            'th{background:#f0f0f0;padding:6px 10px;text-align:left;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.03em;border-bottom:2px solid #ccc;}' +
+            'td{padding:5px 10px;font-size:0.85rem;border-bottom:1px solid #eee;}' +
+            'td.amt{text-align:right;font-variant-numeric:tabular-nums;}' +
+            'tr.deduct td{color:#c62828;}' +
+            'tr.subtotal td{font-weight:700;border-top:2px solid #ccc;border-bottom:2px solid #ccc;background:#fafafa;}' +
+            '.ps-net{display:flex;justify-content:space-between;font-size:1.05rem;font-weight:700;padding:10px 10px;background:#e8f5e9;border:2px solid #388e3c;margin-top:4px;}' +
+            '.note{font-size:0.78rem;color:#856404;background:#fff3cd;padding:6px 10px;border-radius:4px;margin-top:8px;}' +
+            '@media print{' +
+            'body{margin:0;}' +
+            '.payslip{border:none;margin:0;padding:20px 24px;max-width:100%;}' +
+            '.page-break{page-break-after:always;}' +
+            '}' +
+            '</style>' +
+            '</head><body>' +
+            pages +
+            '</body></html>'
+        );
+        win.document.close();
+        win.focus();
+        win.print();
     }
 
     // Close payslip modal on backdrop click
@@ -1813,7 +1948,7 @@
     function buildStatutoryReturnsHTML(runId, snaps) {
         var calc      = _computeReturnsFromSnapshots(snaps);
         var periodKey = (snaps[0] && snaps[0].period_key) || '';
-        _statutoryCache[runId] = { calc: calc, periodKey: periodKey };
+        _statutoryCache[runId] = { calc: calc, periodKey: periodKey, snapshots: snaps };
 
         var safeId = esc(runId);
         var html = '<div class="statutory-returns-section">' +
