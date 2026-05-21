@@ -306,6 +306,12 @@
             font-size: 26px;
             flex-shrink: 0;
         }
+        .app-card-logo-image {
+            width: 100%; height: 100%;
+            object-fit: contain;
+            border-radius: 10px;
+            display: block;
+        }
         .app-card .app-title {
             font-size: 1.1rem;
             font-weight: 700;
@@ -1799,6 +1805,7 @@
                 name: 'Lorenco Paytime',
                 subtitle: 'Payroll Management',
                 icon: '&#128176;',
+                logo: 'assets/branding/paytime/paytime-logo.png',
                 desc: 'Full payroll — pay runs, payslips, PAYE/UIF, attendance, leave management.',
                 path: '/payroll',
                 cssClass: 'payroll',
@@ -2146,7 +2153,7 @@
                 return `
                     <div class="app-card ${app.cssClass} ${isActive ? '' : 'disabled'}" onclick="${isActive ? `launchApp('${app.key}')` : ''}">
                         <div class="app-card-header">
-                            <div class="app-icon">${app.icon}</div>
+                            <div class="app-icon">${app.logo ? `<img src="${app.logo}" alt="${app.name}" class="app-card-logo-image">` : app.icon}</div>
                             <div>
                                 <div class="app-title">${app.name}</div>
                                 <div class="app-subtitle">${app.subtitle}</div>
