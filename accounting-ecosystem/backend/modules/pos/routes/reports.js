@@ -105,34 +105,53 @@ router.get('/top-products', async (req, res) => {
 
 /**
  * GET /api/reports/cashier-performance
- * Sales per cashier
+ * Sales per cashier — enhanced with sessions worked, refunds, overrides, negative-stock events
  */
 router.get('/cashier-performance', async (req, res) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, startDate, endDate } = req.query;
     const now = new Date();
-    const startDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end = endDate || to || now.toISOString();
 
-    let query = supabase
-      .from('sales')
-      .select('user_id, total_amount, status, created_at, users:user_id(username, full_name)')
-      .eq('company_id', req.companyId)
-      .gte('created_at', startDate);
+    const [salesResult, auditResult, sessionsResult] = await Promise.all([
+      supabase
+        .from('sales')
+        .select('user_id, total_amount, status, users:user_id(username, full_name)')
+        .eq('company_id', req.companyId)
+        .gte('created_at', start)
+        .lte('created_at', end),
+      supabase
+        .from('pos_audit_events')
+        .select('user_id, action_type')
+        .eq('company_id', req.companyId)
+        .in('action_type', [
+          'SALE_RETURNED', 'NEGATIVE_STOCK_SALE_ALLOWED',
+          'MANAGER_OVERRIDE', 'SUPERVISOR_OVERRIDE_GRANTED', 'RECOVERY_RETRY_TRIGGERED'
+        ])
+        .gte('created_at', start)
+        .lte('created_at', end),
+      supabase
+        .from('till_sessions')
+        .select('user_id')
+        .eq('company_id', req.companyId)
+        .gte('opened_at', start)
+        .lte('opened_at', end)
+    ]);
 
-    if (to) query = query.lte('created_at', to);
-
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    if (salesResult.error) return res.status(500).json({ error: salesResult.error.message });
 
     const cashierMap = {};
-    (data || []).forEach(sale => {
+    (salesResult.data || []).forEach(sale => {
       const key = sale.user_id;
       if (!cashierMap[key]) {
         cashierMap[key] = {
           user_id: key,
           username: sale.users?.username,
           full_name: sale.users?.full_name,
-          total_sales: 0, completed_sales: 0, voided_sales: 0, total_revenue: 0
+          total_sales: 0, completed_sales: 0, voided_sales: 0, total_revenue: 0,
+          sessions_worked: 0, refunds_processed: 0,
+          negative_stock_allowed: 0, manager_overrides: 0, recovery_events: 0
         };
       }
       cashierMap[key].total_sales++;
@@ -142,6 +161,19 @@ router.get('/cashier-performance', async (req, res) => {
       } else if (sale.status === 'voided') {
         cashierMap[key].voided_sales++;
       }
+    });
+
+    (auditResult.data || []).forEach(ev => {
+      const c = cashierMap[ev.user_id];
+      if (!c) return;
+      if (ev.action_type === 'SALE_RETURNED') c.refunds_processed++;
+      else if (ev.action_type === 'NEGATIVE_STOCK_SALE_ALLOWED') c.negative_stock_allowed++;
+      else if (ev.action_type === 'MANAGER_OVERRIDE' || ev.action_type === 'SUPERVISOR_OVERRIDE_GRANTED') c.manager_overrides++;
+      else if (ev.action_type === 'RECOVERY_RETRY_TRIGGERED') c.recovery_events++;
+    });
+
+    (sessionsResult.data || []).forEach(sess => {
+      if (cashierMap[sess.user_id]) cashierMap[sess.user_id].sessions_worked++;
     });
 
     res.json({ cashiers: Object.values(cashierMap).sort((a, b) => b.total_revenue - a.total_revenue) });
