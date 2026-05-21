@@ -357,6 +357,212 @@ FOLLOW-UP NOTE
 
 ---
 
+## WORKSTREAM C — Safe Pay Run Reversal / Unlock Workflow
+
+### What Was Changed
+
+#### 1. `backend/config/migrations/024_payroll_run_reversal.sql` — NEW
+Adds reversal support to the DB schema:
+- Extends `payroll_runs.status` CHECK to include `'reversed'`
+- Adds `reversed_at TIMESTAMPTZ`, `reversed_by INTEGER`, `reversal_reason TEXT` to `payroll_runs`
+- Extends `payroll_snapshots.status` CHECK to include `'reversed'`
+- Adds `reversed_at TIMESTAMPTZ`, `reversed_by INTEGER` to `payroll_snapshots`
+- **Drops** `idx_payroll_snapshots_unique` (was unconditional — blocked re-run after reversal)
+- **Creates** `idx_payroll_snapshots_active_unique ON payroll_snapshots (company_id, employee_id, period_key) WHERE status != 'reversed'`
+
+**Run this migration in Supabase SQL Editor before testing the reversal flow.**
+
+#### 2. `backend/modules/payroll/services/PayrollHistoryService.js` — MODIFIED
+- `getSnapshot()`: added `.neq('status', 'reversed')` filter — prevents `maybeSingle()` ambiguity after reversal creates two rows for same period
+- `listSnapshots()`: added `includeReversed` option (default: false, excludes reversed from normal views)
+- Added `reverseSnapshotsForRun(supabase, runId, companyId, userId)` — sets all run snapshots to `status='reversed', is_locked=false, reversed_at, reversed_by`
+- Added `reversePayrollRun(supabase, runId, companyId, userId, reason)` — sets run to `status='reversed'`
+- Updated `module.exports` to export new methods
+
+#### 3. `backend/modules/payroll/routes/payruns.js` — MODIFIED
+- Added `POST /api/payroll/reverse` route — requires `PAYROLL.APPROVE` permission
+  - Validates `run_id`, `period_key`, `reason` (reason is mandatory for audit trail)
+  - Verifies run belongs to company and is currently `'finalized'`
+  - Calls `reverseSnapshotsForRun` then `reversePayrollRun` atomically
+  - Records audit log entry `PAYROLL_REVERSE`
+  - Returns `{ success, run_id, period_key, reversed_count, timestamp }`
+- Updated `GET /api/payroll/history` to accept `status='reversed'` and `include_reversed=true` query params
+
+#### 4. `backend/modules/payroll/routes/unlock.js` — MODIFIED
+Added pre-check before credential verification:
+- Fetches snapshot for `empId/period/companyId` where `is_locked=true`
+- If snapshot has a `payroll_run_id`, fetches that run
+- If run `status === 'finalized'` → returns HTTP 422 with `{ code: 'REQUIRES_RUN_REVERSAL', run_id }`
+- Pre-check failure is non-fatal (fails open to allow individual unlock as fallback)
+
+#### 5. `frontend-payroll/js/payroll-api.js` — MODIFIED
+- Added `reverse(runId, periodKey, reason)` method — `POST /api/payroll/reverse`
+- Added `getHistoryAll(periodKey)` method — `GET /api/payroll/history?include_reversed=true`
+
+#### 6. `frontend-payroll/payroll-execution.html` — MODIFIED
+- Added `.status-reversed` CSS badge (red) and `.btn-reverse` / reversal modal CSS
+- Added "🔄 Reverse Pay Run" button to `#finalized-badge` div (shown when run is finalized)
+- Added `#reversalModal` HTML — reason textarea (required), confirmation button
+- Added `openReversalModal()` / `closeReversalModal()` / `confirmReversal()` functions
+- Added `openHistoryReversalModal(runId, periodKey)` — allows reversing from the history view
+- Updated `loadHistory()` to call `PayrollAPI.getHistoryAll()` (includes reversed — full audit)
+- Updated `renderHistorySnapshots()` to detect reversed runs, show red badge + "[Reversed — audit record]" label
+- Updated `renderRunDetailPanel()` to handle `isReversed` parameter — suppresses statutory returns for reversed runs, shows "↩ Reversed" label, shows "Reverse This Run" button for finalized runs
+- Updated snapshot status badges to show `status-reversed` for reversed snapshots
+- Updated `loadRunDetail()` status badge to handle `'reversed'` status
+
+#### 7. `frontend-payroll/employee-detail.html` — MODIFIED
+- Added `var _lockedRunId = null` state variable
+- When `_isDbLocked = true`: captures `_lockedRunId = calcResult.data.snapshot.payroll_run_id`
+- Updated locked status bar message: shows "Execute Payroll → Reverse Pay Run" guidance when `_lockedRunId` is set
+- Updated `requestManagerAuth()` → now `async`: pre-checks run status via `PayrollAPI.getRunDetail(_lockedRunId)`. If `status === 'finalized'`, shows alert directing to Execute Payroll and returns without showing modal
+- Updated `verifyManagerAuth()`: handles `code === 'REQUIRES_RUN_REVERSAL'` server response — closes modal and shows correct guidance message
+
+### Architecture
+
+```
+POST /api/payroll/reverse
+  → verify run is 'finalized' + belongs to company
+  → reverseSnapshotsForRun (status='reversed', is_locked=false)
+  → reversePayrollRun (status='reversed', reason recorded)
+  → audit log
+
+After reversal:
+  → POST /api/payroll/run (creates new draft snapshots — allowed by conditional index)
+  → POST /api/payroll/finalize (locks new snapshots)
+  → Old reversed snapshots preserved for audit forever
+```
+
+### DB Migration Required
+**Run `024_payroll_run_reversal.sql` in Supabase SQL Editor before testing.**
+Includes verification query — expected result: all 4 checks return count ≥ 1.
+
+### What Was NOT Changed
+- PayrollEngine and calculation logic — untouched
+- Tax logic — untouched
+- YTD logic — untouched
+- PAYE/UIF/SDL rules — untouched
+- No hard deletes of any payroll data
+- No browser storage used
+
+### Regression Tests Required (RULE E3)
+Before push: TEST-PAY-02, TEST-PAY-09, TEST-PAY-10, TEST-PAY-11, TEST-PAY-12, TEST-PAY-13
+
+```
+FOLLOW-UP NOTE
+- Area: Payroll Run Reversal
+- Dependency: Migration 024 must be run in Supabase SQL Editor
+- Confirmed now: All backend routes, service methods, and frontend UI implemented
+- Not yet confirmed: Migration executed, reversal end-to-end tested, regression tests run
+- Risk if wrong: getSnapshot() may return ambiguous rows if conditional index not applied; reverse route will fail on status CHECK violation
+- Recommended next check: Run migration 024, test full reversal flow (finalize → reverse → re-run → re-finalize), run TEST-PAY-09 through TEST-PAY-13
+```
+
+---
+
 *Session date: 2026-05-21*
 *Changed by: Ruan van Loggerenberg*
 *Co-authored with: Claude Sonnet 4.6*
+
+---
+
+## WORKSTREAM D — Sean AI Coaching Tab Rebuild: Client Context Chat + Quick Actions
+
+### What Was Changed
+
+#### 1. `accounting-ecosystem/backend/sean/coaching-routes.js` — MODIFIED (new routes appended)
+
+**All existing 5 routes unchanged.** New additions before `module.exports`:
+
+**New helpers:**
+- `COACHING_APP_URL` / `COACHING_APP_TOKEN` — env vars for Coaching App proxy
+- `requireCoachingAccess(req, res, next)` — checks `users.has_coaching_access = true` in ecosystem DB; blocks with 403 if not set
+- `coachingAppFetch(path, opts)` — proxies to Coaching App backend using service token; throws `err.code = 'NOT_CONFIGURED'` if env vars missing
+
+**New routes (all require `requireCoachingAccess`):**
+- `GET /api/sean/coaching/clients/search?q=` — search Coaching App clients by name (min 2 chars, max 10 results)
+- `GET /api/sean/coaching/clients/:clientId/context` — lightweight context for chat: name, step, dream, gauges, latest session
+- `GET /api/sean/coaching/clients/:clientId/latest-session` — most recent session notes (date, summary, insights, actions, mood)
+- `GET /api/sean/coaching/clients/:clientId/full-profile` — full profile: all steps, all 9 gauges as bar chart data, last 5 sessions
+- `POST /api/sean/coaching/client-chat` — coaching chat with optional `coaching_client_id`; injects client context prefix into CoachingEngine input
+- `POST /api/sean/coaching/session-prep/:clientId` — structured session prep: step name, gauge highlights (concerns/strengths), last session summary + actions
+
+**Audit logging:** All new routes write to `sean_coaching_audit_log` via the existing `auditLog()` helper.
+
+**Multi-tenant safety:** `getCompanyId(req)` used throughout; `has_coaching_access` check enforced on every request.
+
+#### 2. `accounting-ecosystem/frontend-sean/index.html` — MODIFIED (coaching tab only)
+
+**HTML replaced** (old: disclaimer + pattern chat + pattern dashboard + manual case entry → new: 4 sections):
+- Mode toggle bar: Algemeen / Klient buttons
+- Section A: Client search panel (only visible in Klient mode) with live search input + results dropdown
+- Section B: Selected client badge (name + step + last session date) with clear button
+- Section C: Chat interface with mode indicator + messages area + input
+- Section D: Quick Actions panel (only visible when client selected) with Berei Sessie Voor / Vorige Sessie Notas / Volle Profiel buttons + `#coachingActionPanel` output area
+
+**JS replaced** (all old coaching functions removed, new ones added):
+- State: `_coachingMode` (string, default 'algemeen') and `_coachingClient` (object or null) — **JS variables only, no localStorage**
+- `loadCoachingTab()` — calls `switchCoachingMode(_coachingMode)` (name preserved, required by `switchTab()`)
+- `switchCoachingMode(mode)` — toggles mode buttons, shows/hides client section and quick actions
+- `searchCoachingClients()` — debounced 300ms, calls `/api/sean/coaching/clients/search`
+- `selectCoachingClient(id, name, step, lastSession)` — sets `_coachingClient`, updates badge, shows quick actions
+- `clearCoachingClient()` — clears `_coachingClient`, hides badge and quick actions
+- `sendCoachingClientChat()` — sends message to `/api/sean/coaching/client-chat` with optional `coaching_client_id`
+- `clearCoachingActionPanel()` — hides and clears the action output div
+- `runSessionPrep()` — calls `/api/sean/coaching/session-prep/:id`, renders gauge highlights + step + last session
+- `loadLatestSession()` — calls `/api/sean/coaching/clients/:id/latest-session`, renders session notes
+- `loadFullProfile()` — calls `/api/sean/coaching/clients/:id/full-profile`, renders gauge bar charts + steps + sessions
+- `_renderGaugeHighlights(highlights)` — renders concerns/strengths summary from session prep data
+
+**No localStorage used anywhere in new coaching code.** Chat messages live in DOM only (cleared on page refresh or client change).
+
+---
+
+### Architecture Notes
+
+**Authentication chain:**
+1. Ecosystem user logs in → JWT stored in `localStorage.sean_token` (auth token only — permitted)
+2. User opens coaching tab → every API call uses ecosystem JWT (`Bearer ${token}`)
+3. `requireCoachingAccess` checks `users.has_coaching_access` in ecosystem DB → only `ruanvlog@lorenco.co.za` has this set
+4. Backend proxy uses `COACHING_APP_TOKEN` env var → calls Coaching App as service account
+
+**Coaching App data contract used:**
+- `GET /api/clients/:id` returns `{ client: { ...all columns, steps[], gauges{}, sessions[] } }`
+- `sessions` = last 10 sessions ordered by `session_date DESC`
+- `gauges` = 9 keys: fuel, horizon, thrust, engine, compass, positive, weight, nav, negative (0–100)
+- Table: `coaching_clients` (canonical — confirmed from `clients.routes.js`)
+
+---
+
+### Deployment Setup Required
+
+Two env vars must be added to the ecosystem backend (Zeabur service environment):
+
+```
+COACHING_APP_URL=https://<coaching-app-hostname>
+COACHING_APP_TOKEN=<valid Coaching App JWT for the service/coach account>
+```
+
+The `COACHING_APP_TOKEN` must be a valid JWT issued by the Coaching App's own `/api/auth` route for the coach account. Until these are set, the new routes return 503 with a clear error message ("Coaching App integration not configured..."). The frontend shows this as a user-readable Afrikaans message.
+
+---
+
+### What Was NOT Changed
+
+- All other tabs in `frontend-sean/index.html` (Dashboard, Chat, Transactions, Calculator, Codex, Categories) — untouched
+- All existing 5 routes in `coaching-routes.js` (GET /cases, POST /cases, POST /chat, POST /feedback, GET /patterns) — untouched
+- Coaching App backend — not modified (task spec: "Do NOT modify Coaching App code")
+- No payroll files modified — no regression tests required
+
+---
+
+```
+FOLLOW-UP NOTE
+- Area: Sean Coaching Tab — Deployment
+- Dependency: COACHING_APP_URL + COACHING_APP_TOKEN env vars
+- Confirmed now: All backend routes + frontend UI implemented and verified
+- Not yet confirmed: Env vars set in Zeabur; end-to-end test against live Coaching App
+- Risk if wrong: Routes return 503; frontend shows error message (graceful degradation)
+- Recommended next check: Set env vars in Zeabur, open coaching tab, switch to Klient mode, search a client name, select client, test all 3 quick actions
+```
+

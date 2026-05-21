@@ -102,6 +102,26 @@ var PayrollAPI = (function () {
                 encodeURIComponent(employeeId) + '/' + encodeURIComponent(periodKey));
         },
 
+        // POST /api/payroll/reverse
+        // Body: { run_id, period_key, reason }
+        // 200: { success, run_id, period_key, reversed_count, timestamp }
+        // 400: missing fields or run not finalized
+        // 404: run not found
+        // 409: already reversed
+        reverse: function (runId, periodKey, reason) {
+            return request('POST', BASE + '/reverse', {
+                run_id:     runId,
+                period_key: periodKey,
+                reason:     reason
+            });
+        },
+
+        // GET /api/payroll/history?period_key=YYYY-MM&include_reversed=true
+        // Returns active + reversed snapshots — for full audit history views
+        getHistoryAll: function (periodKey) {
+            return request('GET', BASE + '/history?period_key=' + encodeURIComponent(periodKey) + '&include_reversed=true');
+        },
+
         // POST /api/payroll/calculate
         // Body: { employee_id, period_key, include_snapshot }
         // 200: { success, data: { gross, paye, uif, sdl, net, paye_base, medicalCredit,

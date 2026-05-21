@@ -294,6 +294,26 @@
         }
         .status-draft    { background: #fff3cd; color: #856404; }
         .status-finalized { background: #d4edda; color: #155724; }
+        .status-reversed  { background: #f8d7da; color: #721c24; }
+
+        /* ── REVERSAL MODAL ── */
+        .reversal-warning {
+            background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;
+            padding: 14px 16px; margin-bottom: 20px; font-size: 0.88rem; color: #856404;
+        }
+        .reversal-reason-input {
+            width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
+            font-size: 0.9rem; resize: vertical; min-height: 80px; font-family: inherit;
+        }
+        .reversal-reason-input:focus { outline: none; border-color: #dc3545; }
+        .btn-reverse {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white; border: none; border-radius: 8px;
+            padding: 10px 20px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .btn-reverse:hover:not(:disabled) { transform: translateY(-1px); opacity: 0.9; }
+        .btn-reverse:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
         /* ── NOTIFICATION TOAST ── */
         .toast-container {
@@ -580,6 +600,7 @@
                         <div id="finalized-badge" style="display:none; align-items:center; gap:12px; flex-wrap:wrap;">
                             <span class="finalized-badge">✓ Payroll Finalized</span>
                             <button type="button" class="btn btn-outline btn-sm" onclick="goToHistory()">📋 View History →</button>
+                            <button type="button" class="btn-reverse" id="reverse-run-btn" onclick="openReversalModal()">🔄 Reverse Pay Run</button>
                         </div>
                     </div>
 
@@ -664,6 +685,35 @@
                 <button class="btn btn-outline" onclick="closeFinalizeModal()">Cancel</button>
                 <button class="btn btn-success" id="confirm-finalize-btn" onclick="confirmFinalize()">
                     ✓ Yes, Finalize
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         REVERSAL CONFIRMATION MODAL
+    ═══════════════════════════════════════════════════════════════ -->
+    <div class="modal" id="reversalModal">
+        <div class="modal-box">
+            <div class="modal-title">Reverse Pay Run</div>
+            <div class="reversal-warning">
+                <strong>⚠ This will undo the finalization of this pay run.</strong><br>
+                All payslips will be unlocked so corrections can be made.
+                A new pay run and finalization will be required after corrections.
+                The reversed pay run is preserved in history for audit purposes.
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-weight:600;color:#555;margin-bottom:6px;font-size:0.9rem;">
+                    Reason for reversal <span style="color:#dc3545;">*</span>
+                </label>
+                <textarea id="reversal-reason-input" class="reversal-reason-input"
+                    placeholder="e.g. Incorrect salary for employee X, bonus omitted, tax table applied incorrectly…"></textarea>
+            </div>
+            <div style="font-size:0.85rem;color:#666;margin-bottom:20px;" id="reversal-summary"></div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeReversalModal()">Cancel</button>
+                <button class="btn-reverse" id="confirm-reversal-btn" onclick="confirmReversal()">
+                    🔄 Confirm Reversal
                 </button>
             </div>
         </div>
@@ -1199,6 +1249,86 @@
         document.getElementById('finalized-badge').style.display  = 'flex';
     }
 
+    // ==========================================================================
+    // FEATURE — PAY RUN REVERSAL
+    // ==========================================================================
+    function openReversalModal() {
+        document.getElementById('reversal-reason-input').value = '';
+        var summary = '';
+        if (state.periodKey) {
+            summary = 'Period: ' + state.periodKey;
+            if (state.currentRunId) summary += '  ·  Run: ' + state.currentRunId.slice(0, 8) + '…';
+        }
+        document.getElementById('reversal-summary').textContent = summary;
+        document.getElementById('reversalModal').classList.add('show');
+    }
+
+    function closeReversalModal() {
+        document.getElementById('reversalModal').classList.remove('show');
+    }
+
+    async function confirmReversal() {
+        var reason = (document.getElementById('reversal-reason-input').value || '').trim();
+        if (!reason) {
+            showToast('A reason is required to reverse a pay run.', 'warning');
+            document.getElementById('reversal-reason-input').focus();
+            return;
+        }
+
+        var btn = document.getElementById('confirm-reversal-btn');
+        // Check if this was triggered from the history view (has dataset run info)
+        var histRunId    = btn.dataset.histRunId    || '';
+        var histPeriodKey = btn.dataset.histPeriodKey || '';
+        var targetRunId  = histRunId    || state.currentRunId;
+        var targetPeriod = histPeriodKey || state.periodKey;
+        // Clear history-run dataset attrs so normal flow works next time
+        delete btn.dataset.histRunId;
+        delete btn.dataset.histPeriodKey;
+
+        btn.disabled    = true;
+        btn.textContent = 'Reversing…';
+
+        var res = await PayrollAPI.reverse(targetRunId, targetPeriod, reason);
+
+        btn.disabled    = false;
+        btn.textContent = '🔄 Confirm Reversal';
+        closeReversalModal();
+
+        if (res.status === 409) {
+            showToast('This pay run is already reversed.', 'warning');
+            return;
+        }
+        if (res.status === 404) {
+            showToast('Run not found — it may have already been deleted.', 'error');
+            return;
+        }
+        if (!res.ok || !res.data.success) {
+            var errMsg = (res.data && res.data.error) || 'Reversal failed. Please try again.';
+            if (res.data && res.data.detail) errMsg += ' — ' + res.data.detail;
+            showToast(errMsg, 'error');
+            return;
+        }
+
+        showToast(
+            'Pay run reversed — ' + (res.data.reversed_count || 0) + ' payslip(s) unlocked. Re-run payroll to make corrections.',
+            'success'
+        );
+
+        // If this was the currently-loaded run, update run-view UI back to draft
+        if (targetRunId === state.currentRunId) {
+            state.isFinalized = false;
+            state.currentRunId = null;
+            document.getElementById('finalized-badge').style.display  = 'none';
+            document.getElementById('finalize-section').style.display = 'block';
+        }
+
+        // If we were in the history view, reload it to show the updated reversed badge
+        if (histRunId) {
+            var histPeriodInput = document.getElementById('hist-period');
+            if (histPeriodInput && histPeriodInput.value) loadHistory();
+        }
+    }
+
     function goToHistory() {
         // Switch to History tab
         document.querySelectorAll('.tab-view').forEach(function (el) { el.classList.remove('active'); });
@@ -1217,6 +1347,20 @@
     // ==========================================================================
     // FEATURE 4 — HISTORY VIEW
     // ==========================================================================
+
+    // Allow reversing a run directly from the history view (for runs from prior periods)
+    function openHistoryReversalModal(runId, periodKey) {
+        // Re-use the same reversal modal but target the history run, not state.currentRunId
+        document.getElementById('reversal-reason-input').value = '';
+        document.getElementById('reversal-summary').textContent =
+            'Period: ' + (periodKey || '—') + '  ·  Run: ' + runId.slice(0, 8) + '…';
+        // Store the target run info on the button for confirmReversal() to pick up
+        var btn = document.getElementById('confirm-reversal-btn');
+        btn.dataset.histRunId    = runId;
+        btn.dataset.histPeriodKey = periodKey;
+        document.getElementById('reversalModal').classList.add('show');
+    }
+
     async function loadHistory() {
         var periodKey = document.getElementById('hist-period').value;
         if (!periodKey) {
@@ -1227,7 +1371,8 @@
         document.getElementById('hist-loading').style.display = 'flex';
         document.getElementById('history-content').innerHTML  = '';
 
-        var res = await PayrollAPI.getHistory(periodKey);
+        // Fetch all snapshots including reversed — history view shows complete audit trail
+        var res = await PayrollAPI.getHistoryAll(periodKey);
 
         document.getElementById('hist-loading').style.display = 'none';
 
@@ -1294,15 +1439,16 @@
         Object.keys(runGroups).forEach(function (runId) {
             var group = runGroups[runId];
             var first = group[0];
-            var isFinalized = group.some(function (s) { return s.is_locked || s.status === 'finalized'; });
-            var statusBadgeClass = isFinalized ? 'status-finalized' : 'status-draft';
-            var statusLabel      = isFinalized ? 'Finalized' : 'Draft';
+            var isReversed  = group.every(function (s) { return s.status === 'reversed'; });
+            var isFinalized = !isReversed && group.some(function (s) { return s.is_locked || s.status === 'finalized'; });
+            var statusBadgeClass = isReversed ? 'status-reversed' : (isFinalized ? 'status-finalized' : 'status-draft');
+            var statusLabel      = isReversed ? 'Reversed' : (isFinalized ? 'Finalized' : 'Draft');
             var runIdShort       = runId !== 'no-run' ? runId.slice(0, 8) + '…' : '—';
 
             html += '<div class="run-item" id="run-' + esc(runId) + '">' +
                 '<div class="run-item-header" onclick="toggleRunItem(\'' + esc(runId) + '\')">' +
                     '<div>' +
-                        '<div class="run-item-title">Period: ' + esc(periodKey) + '</div>' +
+                        '<div class="run-item-title">Period: ' + esc(periodKey) + (isReversed ? ' <span style="color:#721c24;">[Reversed — audit record]</span>' : '') + '</div>' +
                         '<div class="run-item-sub">Run ID: ' + runIdShort + '  ·  ' + group.length + ' employee(s)' +
                             '  ·  Created: ' + formatDate(first.created_at) + '</div>' +
                     '</div>' +
@@ -1311,7 +1457,7 @@
                     '</div>' +
                 '</div>' +
                 '<div class="run-detail-panel" id="panel-' + esc(runId) + '">' +
-                    renderRunDetailPanel(runId, group, isFinalized) +
+                    renderRunDetailPanel(runId, group, isFinalized, isReversed) +
                 '</div>' +
             '</div>';
         });
@@ -1320,7 +1466,7 @@
         document.getElementById('history-content').innerHTML = html;
     }
 
-    function renderRunDetailPanel(runId, snapshots, isFinalized) {
+    function renderRunDetailPanel(runId, snapshots, isFinalized, isReversed) {
         var html = '';
 
         // Compute totals from snapshots
@@ -1362,8 +1508,8 @@
             var out   = snap.calculation_output || {};
             var gross = out.gross || 0;
             var net   = out.net   || 0;
-            var badgeClass = snap.is_locked ? 'status-finalized' : 'status-draft';
-            var badgeLabel = snap.is_locked ? 'Finalized' : 'Draft';
+            var badgeClass = snap.status === 'reversed' ? 'status-reversed' : (snap.is_locked ? 'status-finalized' : 'status-draft');
+            var badgeLabel = snap.status === 'reversed' ? 'Reversed' : (snap.is_locked ? 'Finalized' : 'Draft');
             var snapJson   = esc(JSON.stringify(snap));
 
             html += '<tr class="snapshot-row-clickable" onclick="openPayslipPreview(' + snapJson + ')" title="Click to view payslip">' +
@@ -1381,16 +1527,28 @@
 
         // Action bar: run summary + reports link
         if (runId !== 'no-run') {
+            var actionBtns = '<button type="button" class="btn btn-outline btn-sm" onclick="loadRunDetail(\'' + esc(runId) + '\')">Load Full Run Summary</button>' +
+                '<a href="reports.html" class="btn btn-outline btn-sm" style="text-decoration:none;">📊 View Reports →</a>';
+
+            // Show reverse button for finalized runs in history (allows reversal from the history view)
+            if (isFinalized && !isReversed) {
+                actionBtns += '<button type="button" class="btn-reverse" style="font-size:0.8rem;padding:6px 14px;" ' +
+                    'onclick="openHistoryReversalModal(\'' + esc(runId) + '\', \'' + esc(periodKey || '') + '\')">🔄 Reverse This Run</button>';
+            }
+
+            if (isReversed) {
+                actionBtns += '<span style="font-size:0.82rem;color:#721c24;font-weight:600;">↩ Reversed — preserved for audit</span>';
+            }
+
             html += '<div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
-                '<button type="button" class="btn btn-outline btn-sm" onclick="loadRunDetail(\'' + esc(runId) + '\')">Load Full Run Summary</button>' +
-                '<a href="reports.html" class="btn btn-outline btn-sm" style="text-decoration:none;">📊 View Reports →</a>' +
+                actionBtns +
                 '<div id="run-header-' + esc(runId) + '" style="margin-top:12px;width:100%;"></div>' +
             '</div>';
         }
 
         // Statutory returns section — backend-authoritative (from snapshot calculation_output).
-        // Only shown for finalized runs with a known run ID.
-        if (isFinalized && runId !== 'no-run') {
+        // Only shown for finalized, non-reversed runs with a known run ID.
+        if (isFinalized && !isReversed && runId !== 'no-run') {
             html += buildStatutoryReturnsHTML(runId, snapshots);
         }
 
@@ -1524,7 +1682,7 @@
         }
 
         var run = res.data.run || {};
-        var statusBadgeClass = run.status === 'finalized' ? 'status-finalized' : 'status-draft';
+        var statusBadgeClass = run.status === 'finalized' ? 'status-finalized' : (run.status === 'reversed' ? 'status-reversed' : 'status-draft');
 
         container.innerHTML =
             '<div style="background:#f8f9fa;border-radius:10px;padding:16px 20px;font-size:0.88rem;">' +

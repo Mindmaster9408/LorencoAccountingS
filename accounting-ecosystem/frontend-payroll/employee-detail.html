@@ -1169,6 +1169,9 @@
         // Frozen inputs from locked snapshot — set by calculatePayslip() when locked:true.
         // Used by renderPayroll() to display finalized salary/allowances instead of live payrollData.
         var _lockedSnapshotInputs = null;
+        // Run ID of the payroll_run that owns the locked snapshot — used to pre-check whether
+        // individual unlock is allowed or the entire run must be reversed first.
+        var _lockedRunId = null;
 
         // ========== INIT ==========
         window.addEventListener('load', function() {
@@ -1908,7 +1911,9 @@
                 '<button class="btn btn-success" style="flex:1;" onclick="calculatePayslip().then(function(){downloadPayslipPDF();})">📄 Download PDF</button>' +
                 '</div>';
             if (_isDbLocked) {
-                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — This period has been finalised via Execute Payroll. Manager authorisation required to make changes.</div>' + viewBtns;
+                statusBar.innerHTML = '<div class="payslip-status-bar locked">🔒 Locked — This period has been finalised via Execute Payroll.' +
+                    (_lockedRunId ? ' To correct, go to <strong>Execute Payroll → Reverse Pay Run</strong>, then re-run. Or request a manager unlock if only this payslip needs correction.' : ' Manager authorisation required to make changes.') +
+                    '</div>' + viewBtns;
                 btnArea.innerHTML = '<button class="btn-unfinalize" onclick="requestManagerAuth()">🔓 Request Unlock</button>';
                 content.classList.add('locked-overlay');
             } else {
@@ -1918,7 +1923,28 @@
             Permissions.enforceUI();
         }
 
-        function requestManagerAuth() {
+        async function requestManagerAuth() {
+            // Pre-check: if the snapshot belongs to a finalized run, individual unlock
+            // is not allowed — the whole run must be reversed from Execute Payroll.
+            if (_lockedRunId) {
+                try {
+                    var runRes = await PayrollAPI.getRunDetail(_lockedRunId);
+                    if (runRes.ok && runRes.data && runRes.data.run) {
+                        if (runRes.data.run.status === 'finalized') {
+                            alert(
+                                'This payslip belongs to a finalised pay run.\n\n' +
+                                'To make corrections, go to Execute Payroll and use "Reverse Pay Run" for this period.\n\n' +
+                                'Individual payslip unlock is not available for finalised pay runs — the entire run must be reversed so all payslips are corrected consistently.'
+                            );
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    // Pre-check failed — fail open and show the modal.
+                    // The server will enforce REQUIRES_RUN_REVERSAL if applicable.
+                    console.warn('[requestManagerAuth] run status pre-check failed:', e.message);
+                }
+            }
             document.getElementById('authEmail').value = '';
             document.getElementById('authPassword').value = '';
             document.getElementById('managerAuthModal').classList.add('show');
@@ -1954,6 +1980,14 @@
                 const unlockData = await unlockResp.json();
 
                 if (!unlockResp.ok) {
+                    if (unlockData.code === 'REQUIRES_RUN_REVERSAL') {
+                        closeModal('managerAuthModal');
+                        alert(
+                            'Cannot unlock this payslip individually.\n\n' +
+                            'It belongs to a finalised pay run. Go to Execute Payroll and use "Reverse Pay Run" for this period, then re-run and re-finalise after making corrections.'
+                        );
+                        return;
+                    }
                     const msg = unlockData.error || 'Authorization denied';
                     alert('Unlock failed: ' + msg);
                     return;
@@ -2942,6 +2976,10 @@
                             regular_inputs: Array.isArray(calcResult.data.snapshot.payslip_line_items)
                                 ? calcResult.data.snapshot.payslip_line_items : []
                         };
+                        // Capture the run ID so requestManagerAuth() can pre-check run status
+                        _lockedRunId = calcResult.data.snapshot.payroll_run_id || null;
+                    } else {
+                        _lockedRunId = null;
                     }
                 } else if (calcResult.data && calcResult.data.error) {
                     console.error('[calculatePayslip] backend error:', calcResult.data.error);

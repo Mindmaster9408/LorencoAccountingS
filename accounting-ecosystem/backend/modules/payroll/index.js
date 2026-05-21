@@ -64,6 +64,10 @@ router.use('/pay-schedules', paySchedulesRoutes);
 // Backend-authoritative voluntary tax calculations (bonus spread PAYE computation)
 router.use('/voluntary-tax', voluntaryTaxRoutes);
 
+// Read-only: which company holds is_global_payroll_authority (DB-authoritative)
+const globalAuthorityRoutes = require('./routes/global-authority');
+router.use('/global-authority', globalAuthorityRoutes);
+
 // Health check for Payroll module
 router.get('/status', (req, res) => {
   res.json({ module: 'payroll', status: 'active', version: '1.0.0' });

@@ -424,7 +424,10 @@ async function saveSnapshot(supabase, snapshot, payrollRunId = null) {
 }
 
 /**
- * Retrieve a single snapshot for a specific employee + period.
+ * Retrieve a single active (non-reversed) snapshot for a specific employee + period.
+ * Excludes reversed snapshots — after migration 024 a period may have both a
+ * reversed snapshot and a new active one; without the filter maybeSingle() would
+ * throw "multiple rows returned".
  *
  * @param {object} supabase - Supabase client
  * @param {number} companyId
@@ -439,6 +442,7 @@ async function getSnapshot(supabase, companyId, employeeId, periodKey) {
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
     .eq('period_key', periodKey)
+    .neq('status', 'reversed')
     .maybeSingle();
 
   if (error) throw new Error(`Failed to fetch snapshot: ${error.message}`);
@@ -446,14 +450,15 @@ async function getSnapshot(supabase, companyId, employeeId, periodKey) {
 }
 
 /**
- * List all snapshots for a company + period (used by finalize and run history).
+ * List snapshots for a company + period.
  *
  * @param {object} supabase - Supabase client
  * @param {number} companyId
  * @param {string} periodKey - YYYY-MM
  * @param {object} [opts]
- * @param {number} [opts.employeeId] - Filter to single employee
- * @param {string} [opts.status]     - Filter by status ('draft'|'finalized')
+ * @param {number} [opts.employeeId]      - Filter to single employee
+ * @param {string} [opts.status]          - Filter by status ('draft'|'finalized'|'reversed')
+ * @param {boolean} [opts.includeReversed] - Include reversed snapshots (default: false)
  * @returns {Promise<object[]>} Array of snapshot rows
  */
 async function listSnapshots(supabase, companyId, periodKey, opts = {}) {
@@ -466,6 +471,11 @@ async function listSnapshots(supabase, companyId, periodKey, opts = {}) {
 
   if (opts.employeeId) query = query.eq('employee_id', opts.employeeId);
   if (opts.status)     query = query.eq('status', opts.status);
+  // By default exclude reversed snapshots — they are historical audit records,
+  // not active payroll data. Pass includeReversed:true for full audit views.
+  if (!opts.includeReversed && !opts.status) {
+    query = query.neq('status', 'reversed');
+  }
 
   const { data, error } = await query;
   if (error) throw new Error(`Failed to list snapshots: ${error.message}`);
@@ -611,6 +621,68 @@ async function getPayrollRun(supabase, companyId, periodKey, status) {
   return data;
 }
 
+// ─── Reversal methods (Migration 024) ────────────────────────────────────────
+
+/**
+ * Reverse all snapshots belonging to a payroll run.
+ * Sets status='reversed', is_locked=false, reversed_at, reversed_by.
+ * Does NOT delete any rows — reversed snapshots are preserved for audit.
+ *
+ * @param {object} supabase
+ * @param {string} runId - UUID of the payroll_run being reversed
+ * @param {number} companyId - Multi-tenant safety filter
+ * @param {number} userId - User ID performing reversal
+ * @returns {Promise<object[]>} Updated snapshot rows
+ */
+async function reverseSnapshotsForRun(supabase, runId, companyId, userId) {
+  const now = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('payroll_snapshots')
+    .update({
+      status:      'reversed',
+      is_locked:   false,
+      reversed_at: now,
+      reversed_by: userId
+    })
+    .eq('payroll_run_id', runId)
+    .eq('company_id', companyId)
+    .neq('status', 'reversed') // idempotent — skip already-reversed rows
+    .select();
+
+  if (error) throw new Error(`Failed to reverse snapshots: ${error.message}`);
+  return data || [];
+}
+
+/**
+ * Mark a payroll run as reversed.
+ * Sets status='reversed', reversed_at, reversed_by, reversal_reason.
+ *
+ * @param {object} supabase
+ * @param {string} runId - UUID of the payroll_run
+ * @param {number} companyId - Multi-tenant safety filter
+ * @param {number} userId - User ID performing reversal
+ * @param {string} reason - Required explanation for the reversal
+ * @returns {Promise<object>} Updated run row
+ */
+async function reversePayrollRun(supabase, runId, companyId, userId, reason) {
+  const { data, error } = await supabase
+    .from('payroll_runs')
+    .update({
+      status:          'reversed',
+      reversed_at:     new Date().toISOString(),
+      reversed_by:     userId,
+      reversal_reason: reason
+    })
+    .eq('id', runId)
+    .eq('company_id', companyId) // multi-tenant safety
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to reverse payroll run: ${error.message}`);
+  return data;
+}
+
 module.exports = {
   // Pure functions (unchanged)
   prepareSnapshot,
@@ -629,5 +701,8 @@ module.exports = {
   createPayrollRun,
   updatePayrollRunTotals,
   finalizePayrollRun,
-  getPayrollRun
+  getPayrollRun,
+  // Reversal (Migration 024)
+  reverseSnapshotsForRun,
+  reversePayrollRun
 };

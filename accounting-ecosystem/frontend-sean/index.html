@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -493,194 +493,106 @@
         <!-- ═══════ COACHING TAB ═══════ -->
         <div id="tab-coaching" class="tab-content">
 
-            <!-- Disclaimer banner -->
-            <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:8px;padding:10px 16px;font-size:0.82rem;color:#4c1d95;margin-bottom:18px;">
-                ⚠️ <strong>Coaching Signals — Nie Diagnoses Nie.</strong>
-                Hierdie module identifiseer gedragslinguistiese patrone in teks. Dit is geen mediese, sielkundige of psigiatriese evaluasie nie.
+            <!-- Mode Toggle -->
+            <div style="display:flex;gap:8px;margin-bottom:18px;">
+                <button id="coachingModeAlgemeen"
+                        class="btn btn-primary"
+                        onclick="switchCoachingMode('algemeen')"
+                        style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;">
+                    Algemeen
+                </button>
+                <button id="coachingModeClient"
+                        class="btn btn-outline"
+                        onclick="switchCoachingMode('client')"
+                        style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;">
+                    Klient
+                </button>
             </div>
 
-            <!-- ── Section A: Coaching Chat Panel ── -->
-            <div class="card" style="margin-bottom:20px;">
-                <h3>🧘 Coaching Gesprek</h3>
+            <!-- Section A: Client Search (Klient mode only) -->
+            <div id="coachingClientSection" style="display:none;margin-bottom:16px;">
+                <div class="card" style="padding:16px;">
+                    <h4 style="margin:0 0 12px;font-size:0.95rem;font-weight:600;">Soek Klient</h4>
+                    <div style="display:flex;gap:8px;margin-bottom:12px;">
+                        <input type="text" id="coachingClientSearch"
+                               style="flex:1;padding:9px 12px;border:2px solid var(--border);border-radius:6px;font-size:0.9rem;"
+                               placeholder="Klient naam..."
+                               onkeydown="if(event.key==='Enter'){searchCoachingClients();}"
+                               oninput="if(this.value.length>=2)searchCoachingClients();" />
+                        <button class="btn btn-outline" onclick="searchCoachingClients()" style="width:auto;white-space:nowrap;">Soek</button>
+                    </div>
+                    <div id="coachingSearchResults" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;"></div>
+                </div>
+            </div>
 
-                <!-- Chat messages area -->
+            <!-- Section B: Selected Client Badge -->
+            <div id="coachingSelectedClient" style="display:none;margin-bottom:12px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            padding:10px 14px;background:var(--primary-light);border:1px solid var(--primary);
+                            border-radius:8px;">
+                    <div>
+                        <span style="font-weight:700;color:var(--primary-dark);" id="coachingClientName">---</span>
+                        <span style="margin-left:10px;font-size:0.82rem;color:var(--text-muted);" id="coachingClientMeta">---</span>
+                    </div>
+                    <button onclick="clearCoachingClient()"
+                            style="background:none;border:none;cursor:pointer;font-size:0.82rem;color:var(--text-muted);padding:4px 8px;">
+                        x Verwyder
+                    </button>
+                </div>
+            </div>
+
+            <!-- Section C: Chat Interface -->
+            <div class="card" style="margin-bottom:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <h3 style="margin:0;">Coaching Gesprek</h3>
+                    <span id="coachingModeIndicator"
+                          style="font-size:0.78rem;padding:3px 10px;border-radius:20px;
+                                 background:#f1f5f9;color:var(--text-muted);font-weight:600;">
+                        Algemeen
+                    </span>
+                </div>
+
                 <div id="coachingMessages"
-                     style="min-height:160px;max-height:360px;overflow-y:auto;padding:12px;
+                     style="min-height:200px;max-height:420px;overflow-y:auto;padding:12px;
                             background:#f8fafc;border-radius:8px;border:1px solid var(--border);
                             margin-bottom:12px;display:flex;flex-direction:column;gap:8px;">
-                    <div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:20px 0;">
-                        Tik 'n boodskap hieronder om te begin...
+                    <div id="coachingWelcome" style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:20px 0;">
+                        Kies 'n modus en tik 'n boodskap om te begin...
                     </div>
                 </div>
 
-                <!-- Confidence + pattern indicator (hidden until response) -->
-                <div id="coachingMeta" style="display:none;margin-bottom:10px;font-size:0.82rem;
-                                              background:#f1f5f9;border-radius:6px;padding:8px 12px;
-                                              gap:16px;flex-wrap:wrap;">
-                    <span>Vertroue: <strong id="coachingConfidence">—</strong></span>
-                    <span>Patroongroep: <strong id="coachingPatternGroup">—</strong></span>
-                    <span>Sein: <strong id="coachingSignal">—</strong></span>
-                    <span id="coachingSourceBadge"></span>
-                </div>
-
-                <!-- Feedback buttons (hidden until response) -->
-                <div id="coachingFeedbackRow" style="display:none;margin-bottom:12px;gap:8px;flex-wrap:wrap;align-items:center;">
-                    <span style="font-size:0.82rem;color:var(--text-muted);">Respons:</span>
-                    <button class="btn btn-sm" onclick="submitCoachingFeedback('positive')"
-                            style="background:#10b981;color:#fff;border:none;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:0.82rem;">
-                        Dit het gewerk ✓
-                    </button>
-                    <button class="btn btn-sm" onclick="showCoachingNegativeFeedback()"
-                            style="background:#ef4444;color:#fff;border:none;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:0.82rem;">
-                        Verbeter dit ✗
-                    </button>
-                </div>
-
-                <!-- Negative feedback textarea (hidden until ✗ clicked) -->
-                <div id="coachingNegativePanel" style="display:none;margin-bottom:12px;">
-                    <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:5px;">
-                        Wat sou beter gewerk het?
-                    </label>
-                    <textarea id="coachingBetterResponse" rows="3"
-                              style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;
-                                     font-size:0.9rem;box-sizing:border-box;resize:vertical;"
-                              placeholder="Tik hier die respons wat beter sou gewerk het..."></textarea>
-                    <button class="btn btn-primary btn-sm" onclick="submitCoachingFeedback('negative')"
-                            style="margin-top:8px;width:auto;">
-                        Stoor verbetering
-                    </button>
-                </div>
-
-                <!-- Input row -->
                 <div style="display:flex;gap:8px;">
                     <textarea id="coachingInput" rows="2"
                               style="flex:1;padding:9px 12px;border:2px solid var(--border);border-radius:6px;
                                      font-size:0.9rem;resize:none;box-sizing:border-box;"
-                              placeholder="Beskryf die situasie of stuur 'n coaching boodskap..."
-                              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCoachingChat();}"></textarea>
-                    <button class="btn btn-primary" onclick="sendCoachingChat()"
+                              placeholder="Tik 'n coaching boodskap..."
+                              onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();sendCoachingClientChat();}"></textarea>
+                    <button class="btn btn-primary" onclick="sendCoachingClientChat()"
                             style="width:auto;align-self:flex-end;white-space:nowrap;">
                         Stuur
                     </button>
                 </div>
             </div>
 
-            <!-- ── Section B: Pattern Dashboard ── -->
-            <div class="card" style="margin-bottom:20px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                    <h3 style="margin:0;">📊 Patroon Dashboard</h3>
-                    <button class="btn btn-outline btn-sm" onclick="loadCoachingPatterns()" style="width:auto;">
-                        🔄 Verfris
-                    </button>
-                </div>
-
-                <!-- Stats grid -->
-                <div id="coachingStatsGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">
-                    <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-value" id="coachingStatTotal">—</div><div class="stat-label">Totale Gevalle</div></div>
-                    <div class="stat-card"><div class="stat-icon">🧠</div><div class="stat-value" id="coachingStatLearned">—</div><div class="stat-label">Geleer van Gebruiker</div></div>
-                    <div class="stat-card"><div class="stat-icon">✍️</div><div class="stat-value" id="coachingStatManual">—</div><div class="stat-label">Handmatige Inskrywings</div></div>
-                </div>
-
-                <!-- Pattern groups table -->
-                <h4 style="margin-bottom:8px;font-size:0.9rem;font-weight:600;color:var(--text-muted);">Patroongroepe</h4>
-                <div class="table-wrap" style="margin-bottom:18px;">
-                    <table>
-                        <thead><tr><th>Groep</th><th>Gevalle</th><th>Gem. Vertroue</th></tr></thead>
-                        <tbody id="coachingPatternGroupsBody">
-                            <tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted);">Laai patrone...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Recent cases -->
-                <h4 style="margin-bottom:8px;font-size:0.9rem;font-weight:600;color:var(--text-muted);">Onlangse Gevalle</h4>
-                <div class="table-wrap" style="margin-bottom:14px;">
-                    <table>
-                        <thead><tr><th>Patroon</th><th>Emosionele Staat</th><th>Uitkoms</th><th>Bron</th><th>Datum</th></tr></thead>
-                        <tbody id="coachingRecentCasesBody">
-                            <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Laai onlangse gevalle...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <button class="btn btn-outline btn-sm" onclick="showManualCaseForm()" style="width:auto;">
-                    ➕ Leer Nuwe Geval
-                </button>
-            </div>
-
-            <!-- ── Section C: Manual Case Entry ── -->
-            <div id="coachingManualForm" class="card" style="display:none;">
-                <h3>✍️ Handmatige Geval Inskrywing</h3>
-                <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px;">
-                    Voeg 'n coaching geval handmatig in vir patroonbou. Hierdie gevalle word <strong>nie</strong> as geleer van gebruiker gemerk nie.
-                </p>
-
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                    <div class="form-group" style="grid-column:1/-1;">
-                        <label>Trigger Frase <span style="color:var(--text-muted);font-weight:400;">(die coaching boodskap of situasie)</span></label>
-                        <textarea id="mcTrigger" rows="2"
-                                  style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;
-                                         font-size:0.9rem;resize:vertical;box-sizing:border-box;"
-                                  placeholder="bv. 'Ek voel vasgevang en weet nie wat om te doen nie'"></textarea>
+            <!-- Section D: Quick Actions (visible when client selected in Klient mode) -->
+            <div id="coachingQuickActions" style="display:none;">
+                <div class="card">
+                    <h4 style="margin:0 0 14px;font-size:0.95rem;font-weight:600;">Vinnige Aksies</h4>
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                        <button class="btn btn-outline" onclick="runSessionPrep()"
+                                style="width:auto;">
+                            Berei Sessie Voor
+                        </button>
+                        <button class="btn btn-outline" onclick="loadLatestSession()"
+                                style="width:auto;">
+                            Vorige Sessie Notas
+                        </button>
+                        <button class="btn btn-outline" onclick="loadFullProfile()"
+                                style="width:auto;">
+                            Volle Profiel
+                        </button>
                     </div>
-                    <div class="form-group" style="grid-column:1/-1;">
-                        <label>Konteks <span style="color:var(--text-muted);font-weight:400;">(agtergrond, situasie)</span></label>
-                        <textarea id="mcContext" rows="2"
-                                  style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;
-                                         font-size:0.9rem;resize:vertical;box-sizing:border-box;"
-                                  placeholder="Opsioneel — agtergrond of konteks rondom die trigger"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Emosionele Staat</label>
-                        <select id="mcEmotionalState"
-                                style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;font-size:0.9rem;">
-                            <option value="">— Kies —</option>
-                            <option value="control_perfectionism">Beheer / Perfeksionisme</option>
-                            <option value="isolated_disconnected">Geïsoleer / Verbreek</option>
-                            <option value="passive_stuck">Passief / Vasgevang</option>
-                            <option value="anxious_overwhelmed">Angstig / Oorweldig</option>
-                            <option value="motivated_action">Gemotiveer / Aksie</option>
-                            <option value="grief_loss">Hartseer / Verlies</option>
-                            <option value="relationship_conflict">Verhoudingskonflik</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Patroongroep</label>
-                        <input type="text" id="mcPatternGroup"
-                               style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;font-size:0.9rem;box-sizing:border-box;"
-                               placeholder="bv. passive_stuck" />
-                    </div>
-                    <div class="form-group" style="grid-column:1/-1;">
-                        <label>Respons Gebruik <span style="color:var(--text-muted);font-weight:400;">(die coaching respons wat gewerk het)</span></label>
-                        <textarea id="mcResponse" rows="3"
-                                  style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;
-                                         font-size:0.9rem;resize:vertical;box-sizing:border-box;"
-                                  placeholder="Die respons wat gebruik is of aanbeveel word..."></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Uitkoms</label>
-                        <select id="mcOutcome"
-                                style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;font-size:0.9rem;">
-                            <option value="positive">Positief</option>
-                            <option value="neutral">Neutraal</option>
-                            <option value="negative">Negatief</option>
-                            <option value="unknown">Onbekend</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Vertroue <span style="color:var(--text-muted);font-weight:400;">(0.00 – 1.00)</span></label>
-                        <input type="number" id="mcConfidence" min="0" max="1" step="0.01" value="0.80"
-                               style="width:100%;padding:9px 12px;border:2px solid var(--border);border-radius:6px;font-size:0.9rem;box-sizing:border-box;" />
-                    </div>
-                </div>
-
-                <div style="display:flex;gap:10px;margin-top:16px;">
-                    <button class="btn btn-primary" onclick="saveManualCase()" style="width:auto;">
-                        💾 Stoor Geval
-                    </button>
-                    <button class="btn btn-outline" onclick="hideManualCaseForm()" style="width:auto;">
-                        Kanselleer
-                    </button>
+                    <div id="coachingActionPanel" style="display:none;"></div>
                 </div>
             </div>
 
@@ -1934,226 +1846,273 @@ async function loadCategories() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════
-// COACHING
-// ═══════════════════════════════════════════════════════════
 
-// State: last response context for feedback submission
-let _coachingLast = null;
+// =============================================================
+// COACHING
+// =============================================================
+
+// In-memory state -- no localStorage/sessionStorage for coaching state
+let _coachingMode   = 'algemeen'; // 'algemeen' | 'client'
+let _coachingClient = null;       // { id, name, currentStep, lastSession }
 
 function loadCoachingTab() {
-    loadCoachingPatterns();
+    switchCoachingMode(_coachingMode);
 }
 
-async function sendCoachingChat() {
-    const input  = document.getElementById('coachingInput');
-    const msg    = (input.value || '').trim();
+function switchCoachingMode(mode) {
+    _coachingMode = mode;
+    const algBtn    = document.getElementById('coachingModeAlgemeen');
+    const cliBtn    = document.getElementById('coachingModeClient');
+    const clientSec = document.getElementById('coachingClientSection');
+    const quickActs = document.getElementById('coachingQuickActions');
+    const indicator = document.getElementById('coachingModeIndicator');
+    if (mode === 'client') {
+        algBtn.className = 'btn btn-outline';
+        cliBtn.className = 'btn btn-primary';
+        clientSec.style.display  = 'block';
+        indicator.textContent    = 'Klient';
+        indicator.style.background = 'var(--primary-light)';
+        indicator.style.color      = 'var(--primary-dark)';
+        if (_coachingClient) quickActs.style.display = 'block';
+    } else {
+        algBtn.className = 'btn btn-primary';
+        cliBtn.className = 'btn btn-outline';
+        clientSec.style.display  = 'none';
+        quickActs.style.display  = 'none';
+        indicator.textContent    = 'Algemeen';
+        indicator.style.background = '#f1f5f9';
+        indicator.style.color      = 'var(--text-muted)';
+    }
+}
+
+// Client search (debounced, min 2 chars)
+let _clientSearchTimer = null;
+async function searchCoachingClients() {
+    clearTimeout(_clientSearchTimer);
+    var q = (document.getElementById('coachingClientSearch').value || '').trim();
+    if (!q || q.length < 2) {
+        document.getElementById('coachingSearchResults').style.display = 'none';
+        return;
+    }
+    _clientSearchTimer = setTimeout(async () => {
+        var resultsEl = document.getElementById('coachingSearchResults');
+        resultsEl.style.display = 'block';
+        resultsEl.innerHTML = '<div style="padding:10px 14px;font-size:0.85rem;color:var(--text-muted);">Soek...</div>';
+        try {
+            var data    = await api('/sean/coaching/clients/search?q=' + encodeURIComponent(q));
+            var clients = data.clients || [];
+            if (!clients.length) {
+                resultsEl.innerHTML = '<div style="padding:10px 14px;font-size:0.85rem;color:var(--text-muted);">Geen kliente gevind nie.</div>';
+                return;
+            }
+            resultsEl.innerHTML = clients.map(c =>
+                '<div onclick="selectCoachingClient(' + c.id + ',\'' + escAttr(c.name) + '\',' + (c.currentStep || 1) + ',\'' + escAttr(c.lastSession || '') + '\')" ' +
+                'style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;" ' +
+                'onmouseover="this.style.background=\'#f0fdf4\'" onmouseout="this.style.background=\'\'"> ' +
+                '<div><strong style="font-size:0.9rem;">' + escHtml(c.name) + '</strong> ' +
+                '<span style="margin-left:8px;font-size:0.78rem;color:var(--text-muted);">Stap ' + (c.currentStep || '?') + '</span></div>' +
+                '<span style="font-size:0.78rem;padding:2px 8px;border-radius:12px;background:' + (c.status === 'active' ? '#d1fae5' : '#f1f5f9') + ';color:' + (c.status === 'active' ? '#065f46' : '#6b7280') + ';">' +
+                escHtml(c.status || 'onbekend') + '</span></div>'
+            ).join('');
+        } catch (err) {
+            var msg = err.message && err.message.indexOf('COACHING_APP_URL') >= 0
+                ? 'Coaching koppeling nie opgestel nie. Stel COACHING_APP_URL en COACHING_APP_TOKEN in.'
+                : escHtml(err.message);
+            resultsEl.innerHTML = '<div style="padding:10px 14px;font-size:0.85rem;color:#b45309;">' + msg + '</div>';
+        }
+    }, 300);
+}
+
+function selectCoachingClient(id, name, currentStep, lastSession) {
+    _coachingClient = { id: id, name: name, currentStep: currentStep, lastSession: lastSession };
+    document.getElementById('coachingClientName').textContent = name;
+    document.getElementById('coachingClientMeta').textContent =
+        'Stap ' + (currentStep || '?') + (lastSession ? ' · Laaste: ' + lastSession : '');
+    document.getElementById('coachingSelectedClient').style.display = 'block';
+    document.getElementById('coachingQuickActions').style.display   = 'block';
+    document.getElementById('coachingSearchResults').style.display  = 'none';
+    document.getElementById('coachingClientSearch').value           = '';
+    var indicator = document.getElementById('coachingModeIndicator');
+    indicator.textContent    = 'Klient: ' + name;
+    indicator.style.background = 'var(--primary-light)';
+    indicator.style.color      = 'var(--primary-dark)';
+    var input = document.getElementById('coachingInput');
+    if (input) input.placeholder = 'Gesels oor ' + name + '...';
+    clearCoachingActionPanel();
+}
+
+function clearCoachingClient() {
+    _coachingClient = null;
+    document.getElementById('coachingSelectedClient').style.display = 'none';
+    document.getElementById('coachingQuickActions').style.display   = 'none';
+    var indicator = document.getElementById('coachingModeIndicator');
+    indicator.textContent    = 'Klient';
+    indicator.style.background = 'var(--primary-light)';
+    indicator.style.color      = 'var(--primary-dark)';
+    var input = document.getElementById('coachingInput');
+    if (input) input.placeholder = "Tik 'n coaching boodskap...";
+    clearCoachingActionPanel();
+}
+
+// Chat -- sends message with optional client context (no localStorage used)
+async function sendCoachingClientChat() {
+    var input = document.getElementById('coachingInput');
+    var msg   = (input.value || '').trim();
     if (!msg) return;
-    input.value  = '';
+    input.value = '';
 
-    // Hide previous feedback UI
-    _coachingLast = null;
-    document.getElementById('coachingFeedbackRow').style.display  = 'none';
-    document.getElementById('coachingNegativePanel').style.display = 'none';
-    document.getElementById('coachingMeta').style.display          = 'none';
+    var container = document.getElementById('coachingMessages');
+    var welcome   = document.getElementById('coachingWelcome');
+    if (welcome) welcome.style.display = 'none';
 
-    const container = document.getElementById('coachingMessages');
-    container.innerHTML += `<div class="msg msg-user">${escHtml(msg)}</div>`;
-    container.innerHTML += `<div class="msg msg-sean" id="coachingTyping"><span class="typing-dots">Dink</span></div>`;
+    container.innerHTML += '<div class="msg msg-user">' + escHtml(msg) + '</div>';
+    container.innerHTML += '<div class="msg msg-sean" id="coachingTyping"><span class="typing-dots">Dink</span></div>';
     container.scrollTop = container.scrollHeight;
 
     try {
-        const data = await api('/sean/coaching/chat', {
-            method: 'POST',
-            body: JSON.stringify({ message: msg })
-        });
-
-        const typingEl = document.getElementById('coachingTyping');
+        var body = { message: msg };
+        if (_coachingClient) body.coaching_client_id = _coachingClient.id;
+        var data = await api('/sean/coaching/client-chat', { method: 'POST', body: JSON.stringify(body) });
+        var typingEl = document.getElementById('coachingTyping');
         if (typingEl) typingEl.remove();
-
-        const srcColors = { stored: '#10b981', signal_aware: '#6366f1', uncertain: '#f59e0b' };
-        const srcLabels = { stored: 'Patroon', signal_aware: 'Sein-bewus', uncertain: 'Onseker' };
-        const src   = data.source || 'uncertain';
-        const conf  = data.confidence || 0;
-        const confPct = Math.round(conf * 100);
-
-        container.innerHTML += `<div class="msg msg-sean">${escHtml(data.response)}</div>`;
+        container.innerHTML += '<div class="msg msg-sean">' + escHtml(data.response) + '</div>';
         container.scrollTop = container.scrollHeight;
-
-        // Update meta bar
-        document.getElementById('coachingConfidence').textContent   = confPct + '%';
-        document.getElementById('coachingPatternGroup').textContent  = data.patternGroup || '—';
-        document.getElementById('coachingSignal').textContent        = data.dominantSignal || '—';
-        document.getElementById('coachingSourceBadge').innerHTML     =
-            `<span style="padding:2px 9px;border-radius:20px;background:${srcColors[src] || '#6b7280'};color:#fff;font-weight:700;font-size:0.78rem;">${srcLabels[src] || src}</span>`;
-        document.getElementById('coachingMeta').style.display        = 'flex';
-
-        // Show feedback buttons only when not already maximally uncertain
-        document.getElementById('coachingFeedbackRow').style.display = 'flex';
-
-        // Store state for feedback
-        _coachingLast = {
-            original_message: msg,
-            response_given:   data.response,
-            pattern_group:    data.patternGroup || null,
-            dominant_signal:  data.dominantSignal || null,
-            confidence:       conf
-        };
-
     } catch (err) {
-        const typingEl = document.getElementById('coachingTyping');
-        if (typingEl) typingEl.remove();
-        container.innerHTML += `<div class="msg msg-sean" style="color:#ef4444;">${escHtml(err.message)}</div>`;
+        var typingEl2 = document.getElementById('coachingTyping');
+        if (typingEl2) typingEl2.remove();
+        var msg2 = err.message && err.message.indexOf('COACHING_APP_URL') >= 0
+            ? 'Coaching koppeling nie opgestel nie. Vra die administrateur om COACHING_APP_URL en COACHING_APP_TOKEN te stel.'
+            : err.message;
+        container.innerHTML += '<div class="msg msg-sean" style="color:#ef4444;">' + escHtml(msg2) + '</div>';
         container.scrollTop = container.scrollHeight;
     }
 }
 
-function showCoachingNegativeFeedback() {
-    document.getElementById('coachingNegativePanel').style.display = 'block';
-    document.getElementById('coachingBetterResponse').focus();
+// Quick actions
+function clearCoachingActionPanel() {
+    var el = document.getElementById('coachingActionPanel');
+    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
-async function submitCoachingFeedback(outcome) {
-    if (!_coachingLast) return;
-
-    const betterEl = document.getElementById('coachingBetterResponse');
-    const betterResponse = (betterEl ? betterEl.value.trim() : '') || null;
-
-    if (outcome === 'negative' && !betterResponse) {
-        alert('Tik asseblief die verbeterde respons in die teksveld.');
-        return;
-    }
-
+async function runSessionPrep() {
+    if (!_coachingClient) return;
+    var panel = document.getElementById('coachingActionPanel');
+    panel.style.display = 'block';
+    panel.innerHTML = '<div style="padding:12px;font-size:0.85rem;color:var(--text-muted);">Berei voor...</div>';
     try {
-        await api('/sean/coaching/feedback', {
-            method: 'POST',
-            body: JSON.stringify({
-                original_message: _coachingLast.original_message,
-                response_given:   _coachingLast.response_given,
-                outcome,
-                better_response:  betterResponse,
-                pattern_group:    _coachingLast.pattern_group,
-                dominant_signal:  _coachingLast.dominant_signal,
-                confidence:       _coachingLast.confidence
-            })
-        });
-
-        // Hide feedback UI and clear state
-        document.getElementById('coachingFeedbackRow').style.display  = 'none';
-        document.getElementById('coachingNegativePanel').style.display = 'none';
-        if (betterEl) betterEl.value = '';
-        _coachingLast = null;
-
-        const container = document.getElementById('coachingMessages');
-        const label = outcome === 'positive' ? '✓ Terugvoer gestoor — dankie!' : '✓ Verbetering geleer — dankie!';
-        container.innerHTML += `<div style="font-size:0.8rem;color:#10b981;text-align:center;padding:4px 0;">${label}</div>`;
-        container.scrollTop = container.scrollHeight;
-
-        // Refresh pattern stats in background
-        loadCoachingPatterns();
-
+        var data = await api('/sean/coaching/session-prep/' + _coachingClient.id, { method: 'POST', body: '{}' });
+        var p    = data.prep;
+        var gaugeHtml  = _renderGaugeHighlights(p.gaugeHighlights);
+        var actionList = p.latestSession && p.latestSession.actionItems.length
+            ? '<div style="margin-top:6px;"><strong>Aksies:</strong><ul style="margin:4px 0 0;padding-left:18px;">' +
+              p.latestSession.actionItems.map(function(a){ return '<li>' + escHtml(a) + '</li>'; }).join('') + '</ul></div>'
+            : '';
+        var sessionHtml = p.latestSession
+            ? '<div style="margin-top:10px;padding:10px;background:#f8fafc;border-radius:6px;font-size:0.85rem;">' +
+              '<strong>Laaste sessie (' + (p.latestSession.date || '?') + '):</strong>' +
+              '<p style="margin:6px 0 0;">' + escHtml(p.latestSession.summary || '---') + '</p>' + actionList + '</div>'
+            : '<p style="font-size:0.85rem;color:var(--text-muted);">Geen sessies gekapteer nie.</p>';
+        panel.innerHTML =
+            '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+            '<strong style="font-size:0.95rem;">Sessie Voorbereiding -- ' + escHtml(p.clientName) + '</strong>' +
+            '<button onclick="clearCoachingActionPanel()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);">x</button></div>' +
+            '<div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">Stap ' + p.currentStep + ': <strong>' + escHtml(p.stepName) + '</strong>' +
+            ' · ' + p.completedSteps + '/' + p.totalSteps + ' stappe voltooi' +
+            (p.dream ? ' · Droom: ' + escHtml(p.dream) : '') + '</div>' +
+            gaugeHtml + sessionHtml + '</div>';
     } catch (err) {
-        alert('Kon nie terugvoer stoor nie: ' + err.message);
+        panel.innerHTML = '<div style="padding:10px;font-size:0.85rem;color:#ef4444;">Kon nie voorberei nie: ' + escHtml(err.message) + '</div>';
     }
 }
 
-async function loadCoachingPatterns() {
+async function loadLatestSession() {
+    if (!_coachingClient) return;
+    var panel = document.getElementById('coachingActionPanel');
+    panel.style.display = 'block';
+    panel.innerHTML = '<div style="padding:12px;font-size:0.85rem;color:var(--text-muted);">Laai notas...</div>';
     try {
-        const data  = await api('/sean/coaching/patterns');
-        const stats = data.stats || {};
-
-        document.getElementById('coachingStatTotal').textContent   = stats.total   ?? '—';
-        document.getElementById('coachingStatLearned').textContent = stats.learnedFromUser ?? '—';
-        document.getElementById('coachingStatManual').textContent  = stats.manualEntries  ?? '—';
-
-        // Pattern groups table
-        const groups = stats.patternGroups || [];
-        const gbody  = document.getElementById('coachingPatternGroupsBody');
-        if (!groups.length) {
-            gbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-muted);">Nog geen patrone nie.</td></tr>';
-        } else {
-            gbody.innerHTML = groups.map(g => `<tr>
-                <td><strong>${escHtml(g.group)}</strong></td>
-                <td style="text-align:center;">${g.caseCount}</td>
-                <td style="text-align:center;">${g.avgConfidence != null ? Math.round(g.avgConfidence * 100) + '%' : '—'}</td>
-            </tr>`).join('');
+        var data = await api('/sean/coaching/clients/' + _coachingClient.id + '/latest-session');
+        var s    = data.session;
+        if (!s) {
+            panel.innerHTML = '<div style="padding:12px;font-size:0.85rem;color:var(--text-muted);">Geen sessies vir ' + escHtml(data.clientName) + ' gevind nie.</div>';
+            return;
         }
-
-        // Recent cases table
-        const recent = stats.recentCases || [];
-        const rbody  = document.getElementById('coachingRecentCasesBody');
-        if (!recent.length) {
-            rbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);">Nog geen gevalle nie.</td></tr>';
-        } else {
-            rbody.innerHTML = recent.map(c => {
-                const outcome = c.outcome || '—';
-                const outcomeColor = outcome === 'positive' ? '#10b981' : outcome === 'negative' ? '#ef4444' : '#6b7280';
-                const src = c.learnedFromUser
-                    ? '<span style="font-size:0.75rem;color:#6366f1;font-weight:700;">Gebruiker</span>'
-                    : '<span style="font-size:0.75rem;color:var(--text-muted);">Handmatig</span>';
-                return `<tr>
-                    <td>${escHtml(c.patternGroup || '—')}</td>
-                    <td>${escHtml(c.emotionalState || '—')}</td>
-                    <td><span style="color:${outcomeColor};font-weight:600;">${escHtml(outcome)}</span></td>
-                    <td>${src}</td>
-                    <td style="font-size:0.8rem;color:var(--text-muted);">${c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
-                </tr>`;
-            }).join('');
-        }
-
+        var insights = s.keyInsights.length
+            ? '<div style="margin-bottom:8px;"><strong style="font-size:0.85rem;">Sleutel-insigte:</strong><ul style="margin:4px 0 0;padding-left:18px;font-size:0.85rem;">' +
+              s.keyInsights.map(function(i){ return '<li>' + escHtml(i) + '</li>'; }).join('') + '</ul></div>'
+            : '';
+        var actions = s.actionItems.length
+            ? '<div><strong style="font-size:0.85rem;">Aksies:</strong><ul style="margin:4px 0 0;padding-left:18px;font-size:0.85rem;">' +
+              s.actionItems.map(function(a){ return '<li>' + escHtml(a) + '</li>'; }).join('') + '</ul></div>'
+            : '';
+        panel.innerHTML =
+            '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+            '<strong style="font-size:0.95rem;">Vorige Sessie -- ' + escHtml(data.clientName) + '</strong>' +
+            '<button onclick="clearCoachingActionPanel()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);">x</button></div>' +
+            '<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;">' + (s.date || '?') +
+            (s.duration ? ' · ' + s.duration + ' min' : '') +
+            (s.moodBefore != null ? ' · Bui voor: ' + s.moodBefore + '/10' : '') +
+            (s.moodAfter  != null ? ' na: ' + s.moodAfter + '/10' : '') + '</div>' +
+            (s.summary ? '<p style="font-size:0.88rem;margin:0 0 10px;">' + escHtml(s.summary) + '</p>' : '') +
+            insights + actions + '</div>';
     } catch (err) {
-        document.getElementById('coachingPatternGroupsBody').innerHTML =
-            `<tr><td colspan="3" style="color:#ef4444;text-align:center;">${escHtml(err.message)}</td></tr>`;
+        panel.innerHTML = '<div style="padding:10px;font-size:0.85rem;color:#ef4444;">Kon nie notas laai nie: ' + escHtml(err.message) + '</div>';
     }
 }
 
-function showManualCaseForm() {
-    document.getElementById('coachingManualForm').style.display = 'block';
-    document.getElementById('coachingManualForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function hideManualCaseForm() {
-    document.getElementById('coachingManualForm').style.display = 'none';
-    ['mcTrigger','mcContext','mcResponse'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.value = '';
-    });
-    ['mcEmotionalState','mcPatternGroup','mcOutcome'].forEach(id => {
-        const el = document.getElementById(id); if (el && el.tagName === 'SELECT') el.selectedIndex = 0;
-    });
-    const conf = document.getElementById('mcConfidence'); if (conf) conf.value = '0.80';
-}
-
-async function saveManualCase() {
-    const trigger = (document.getElementById('mcTrigger').value || '').trim();
-    if (!trigger) { alert('Trigger frase is verpligtend.'); return; }
-
-    const conf = parseFloat(document.getElementById('mcConfidence').value);
-    if (isNaN(conf) || conf < 0 || conf > 1) { alert('Vertroue moet tussen 0.00 en 1.00 wees.'); return; }
-
+async function loadFullProfile() {
+    if (!_coachingClient) return;
+    var panel = document.getElementById('coachingActionPanel');
+    panel.style.display = 'block';
+    panel.innerHTML = '<div style="padding:12px;font-size:0.85rem;color:var(--text-muted);">Laai profiel...</div>';
     try {
-        await api('/sean/coaching/cases', {
-            method: 'POST',
-            body: JSON.stringify({
-                trigger_phrase:     trigger,
-                context:            (document.getElementById('mcContext').value || '').trim() || null,
-                emotional_state:    document.getElementById('mcEmotionalState').value || null,
-                pattern_group:      (document.getElementById('mcPatternGroup').value || '').trim() || null,
-                response_used:      (document.getElementById('mcResponse').value || '').trim() || null,
-                outcome:            document.getElementById('mcOutcome').value || 'unknown',
-                confidence:         conf,
-                learned_from_user:  false
-            })
-        });
-
-        hideManualCaseForm();
-        loadCoachingPatterns();
-        alert('✅ Geval gestoor.');
-
+        var data = await api('/sean/coaching/clients/' + _coachingClient.id + '/full-profile');
+        var p    = data.profile;
+        var gaugeRows = Object.entries(p.gauges || {}).map(function(entry) {
+            var k = entry[0]; var v = entry[1];
+            var pct   = Math.min(100, Math.max(0, parseInt(v) || 0));
+            var color = pct >= 70 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444';
+            return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+                '<span style="width:100px;font-size:0.82rem;text-transform:capitalize;">' + k + '</span>' +
+                '<div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;">' +
+                '<div style="width:' + pct + '%;height:100%;background:' + color + ';border-radius:4px;"></div></div>' +
+                '<span style="width:28px;font-size:0.78rem;text-align:right;">' + pct + '</span></div>';
+        }).join('');
+        var completedSteps = (p.steps || []).filter(function(s){ return s.completed; });
+        var sessionRows = p.sessions.length
+            ? '<h5 style="font-size:0.85rem;font-weight:600;margin:14px 0 8px;">Onlangse Sessies</h5>' +
+              p.sessions.map(function(s){
+                return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">' +
+                    '<strong>' + (s.date || '?') + '</strong>: ' + escHtml(s.summary || '---') + '</div>';
+              }).join('')
+            : '';
+        panel.innerHTML =
+            '<div style="border-top:1px solid var(--border);padding-top:14px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+            '<strong style="font-size:0.95rem;">Volle Profiel -- ' + escHtml(p.name) + '</strong>' +
+            '<button onclick="clearCoachingActionPanel()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);">x</button></div>' +
+            '<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">' +
+            escHtml(p.email || '---') + ' · Stap ' + p.currentStep + ' · ' + escHtml(p.status || '---') +
+            (p.dream ? '<br><em>Droom: ' + escHtml(p.dream) + '</em>' : '') + '</div>' +
+            '<h5 style="font-size:0.85rem;font-weight:600;margin:0 0 8px;">Meters</h5>' + gaugeRows +
+            '<h5 style="font-size:0.85rem;font-weight:600;margin:14px 0 4px;">Reis</h5>' +
+            '<div style="font-size:0.82rem;">' + completedSteps.length + ' van ' + (p.steps || []).length + ' stappe voltooi</div>' +
+            sessionRows + '</div>';
     } catch (err) {
-        alert('Kon nie geval stoor nie: ' + err.message);
+        panel.innerHTML = '<div style="padding:10px;font-size:0.85rem;color:#ef4444;">Kon nie profiel laai nie: ' + escHtml(err.message) + '</div>';
     }
 }
 
+function _renderGaugeHighlights(highlights) {
+    if (!highlights || (!highlights.concerns.length && !highlights.strengths.length)) return '';
+    var c = highlights.concerns.map(function(x){ return x.gauge + ' (' + x.value + ')'; }).join(', ');
+    var s = highlights.strengths.map(function(x){ return x.gauge + ' (' + x.value + ')'; }).join(', ');
+    return '<div style="font-size:0.82rem;padding:8px 10px;background:#f8fafc;border-radius:6px;margin-bottom:8px;">' +
+        (c ? '<div style="margin-bottom:4px;"><strong style="color:#dc2626;">Aandag nodig:</strong> ' + c + '</div>' : '') +
+        (s ? '<div><strong style="color:#059669;">Sterkpunte:</strong> ' + s + '</div>' : '') + '</div>';
+}
 // ═══════════════════════════════════════════════════════════
 // UTILITIES
 // ═══════════════════════════════════════════════════════════

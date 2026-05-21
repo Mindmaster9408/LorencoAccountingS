@@ -1761,45 +1761,64 @@
         // ─── READ-ONLY GLOBAL TAX CONFIG (non-super_admin companies) ──────────
         // Fetches the global tax config from the API and displays it as read-only.
         // Non-governance companies consume this standard; they cannot edit it.
+        //
+        // Authority name is fetched from /api/payroll/global-authority (DB-authoritative).
+        // Falls back to 'Infinite Legacy' if the authority call fails or migration not yet run.
         function initTaxConfigReadOnly() {
-            var session = AUTH.getSession();
             var token = safeLocalStorage.getItem('token') || '';
+            var _authorityName = 'Infinite Legacy'; // fallback — overwritten by authority fetch
 
             // Hide year management controls — not relevant for read-only consumers
             var btnAddYear = document.querySelector('[onclick="addNewTaxYear()"]');
             if (btnAddYear) btnAddYear.style.display = 'none';
             document.getElementById('taxYearTabs').style.display = 'none';
 
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', '/api/payroll/kv/global/tax_config', true);
-            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
-            xhr.onload = function() {
-                if (xhr.status !== 200) {
-                    showGlobalConfigBanner('warning', '⚠️ Could not load global tax standard. Contact your administrator.');
-                    updateTaxLockState(true);
-                    return;
-                }
-                try {
-                    var resp = JSON.parse(xhr.responseText);
-                    if (!resp.value) {
-                        showGlobalConfigBanner('warning', '⚠️ Global tax standard not yet published. Contact your administrator (Infinite Legacy).');
+            function fetchKvConfig() {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '/api/payroll/kv/global/tax_config', true);
+                xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+                xhr.onload = function() {
+                    if (xhr.status !== 200) {
+                        showGlobalConfigBanner('warning', '⚠️ Could not load global tax standard. Contact your administrator.');
                         updateTaxLockState(true);
                         return;
                     }
-                    displayGlobalTaxConfig(resp.value, resp.updated_at);
-                } catch (e) {
-                    showGlobalConfigBanner('warning', '⚠️ Could not parse global tax config. Contact your administrator.');
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (!resp.value) {
+                            showGlobalConfigBanner('warning', '⚠️ Global tax standard not yet published. Contact your administrator (' + _authorityName + ').');
+                            updateTaxLockState(true);
+                            return;
+                        }
+                        displayGlobalTaxConfig(resp.value, resp.updated_at, _authorityName);
+                    } catch (e) {
+                        showGlobalConfigBanner('warning', '⚠️ Could not parse global tax config. Contact your administrator.');
+                        updateTaxLockState(true);
+                    }
+                };
+                xhr.onerror = function() {
+                    showGlobalConfigBanner('warning', '⚠️ Could not reach server to load global tax standard.');
                     updateTaxLockState(true);
-                }
+                };
+                xhr.send();
+            }
+
+            // Fetch authority company name first, then load KV config
+            var authXhr = new XMLHttpRequest();
+            authXhr.open('GET', '/api/payroll/global-authority', true);
+            authXhr.setRequestHeader('Authorization', 'Bearer ' + token);
+            authXhr.onload = function() {
+                try {
+                    var resp = JSON.parse(authXhr.responseText);
+                    if (resp.ok && resp.company_name) _authorityName = resp.company_name;
+                } catch (e) { /* use fallback */ }
+                fetchKvConfig();
             };
-            xhr.onerror = function() {
-                showGlobalConfigBanner('warning', '⚠️ Could not reach server to load global tax standard.');
-                updateTaxLockState(true);
-            };
-            xhr.send();
+            authXhr.onerror = function() { fetchKvConfig(); };
+            authXhr.send();
         }
 
-        function displayGlobalTaxConfig(cfg, updatedAt) {
+        function displayGlobalTaxConfig(cfg, updatedAt, authorityName) {
             document.getElementById('tcTaxYear').value   = cfg.TAX_YEAR || '';
             document.getElementById('tcPrimary').value   = cfg.PRIMARY_REBATE   != null ? cfg.PRIMARY_REBATE   : '';
             document.getElementById('tcSecondary').value = cfg.SECONDARY_REBATE != null ? cfg.SECONDARY_REBATE : '';
@@ -1830,7 +1849,7 @@
             document.getElementById('taxYearBadge').textContent = '🌐 Global Standard: ' + (cfg.TAX_YEAR || 'Not set');
 
             var updStr = updatedAt ? ' (published ' + new Date(updatedAt).toLocaleDateString('en-ZA') + ')' : '';
-            showGlobalConfigBanner('info', '🌐 Global Standard tax tables — governed by Infinite Legacy' + updStr + '. Your payroll calculations use these values automatically.');
+            showGlobalConfigBanner('info', '🌐 Global Standard tax tables — governed by ' + (authorityName || 'Infinite Legacy') + updStr + '. Your payroll calculations use these values automatically.');
 
             // Remove year-management controls irrelevant to read-only consumers
             var btnSetActive = document.getElementById('btnSetActive');

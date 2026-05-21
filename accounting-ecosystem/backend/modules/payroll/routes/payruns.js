@@ -516,14 +516,138 @@ router.post(
 );
 
 
+// ─── POST /api/payroll/reverse ────────────────────────────────────────────────
+/**
+ * Reverse a finalized payroll run.
+ *
+ * Sets the run status to 'reversed' and all its snapshots to 'reversed' +
+ * is_locked=false. This allows a corrected re-run + re-finalization for the
+ * same period. Reversed rows are NEVER deleted — full audit trail is preserved.
+ *
+ * Request Body:
+ * {
+ *   run_id:    uuid    (required — must be a finalized run for this company),
+ *   period_key: "2026-04" (required — for verification),
+ *   reason:    string  (required — mandatory audit trail entry)
+ * }
+ *
+ * Response:
+ * {
+ *   success: true,
+ *   run_id: uuid,
+ *   period_key: "2026-04",
+ *   reversed_count: number,
+ *   timestamp: ISO-8601
+ * }
+ */
+router.post(
+  '/reverse',
+  requirePermission('PAYROLL.APPROVE'),
+  requirePaytimeModule('payroll'),
+  async (req, res) => {
+    try {
+      const { run_id, period_key, reason } = req.body;
+
+      if (!run_id || !period_key) {
+        return res.status(400).json({ success: false, error: 'run_id and period_key are required' });
+      }
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ success: false, error: 'reason is required for reversal audit trail' });
+      }
+
+      // Verify the run belongs to this company, matches the period, and is finalized
+      const { data: run, error: runErr } = await supabase
+        .from('payroll_runs')
+        .select('*')
+        .eq('id', run_id)
+        .eq('company_id', req.companyId)
+        .eq('period_key', period_key)
+        .maybeSingle();
+
+      if (runErr) throw runErr;
+
+      if (!run) {
+        return res.status(404).json({
+          success: false,
+          error: `Payroll run ${run_id} not found for period ${period_key}`
+        });
+      }
+
+      if (run.status === 'reversed') {
+        return res.status(409).json({
+          success: false,
+          error: `Payroll run ${run_id} is already reversed`
+        });
+      }
+
+      if (run.status !== 'finalized') {
+        return res.status(400).json({
+          success: false,
+          error: `Only finalized pay runs can be reversed (current status: ${run.status})`
+        });
+      }
+
+      // Reverse all snapshots in this run (unlock them for correction)
+      let reversedSnapshots;
+      try {
+        reversedSnapshots = await PayrollHistoryService.reverseSnapshotsForRun(
+          supabase, run_id, req.companyId, req.user.userId
+        );
+      } catch (snapErr) {
+        console.error('[reverse] reverseSnapshotsForRun failed:', snapErr);
+        return res.status(500).json({ success: false, error: 'Failed to reverse snapshots', detail: snapErr.message });
+      }
+
+      // Reverse the run header
+      try {
+        await PayrollHistoryService.reversePayrollRun(
+          supabase, run_id, req.companyId, req.user.userId, reason.trim()
+        );
+      } catch (runReverseErr) {
+        console.error('[reverse] reversePayrollRun failed:', runReverseErr);
+        return res.status(500).json({ success: false, error: 'Failed to reverse run header', detail: runReverseErr.message });
+      }
+
+      // Audit log
+      try {
+        await auditFromReq(req, 'PAYROLL_REVERSE', 'payroll_runs', run_id, {
+          period_key,
+          reason:          reason.trim(),
+          reversed_count:  reversedSnapshots.length
+        });
+      } catch (auditErr) {
+        console.warn('Audit log failed for reversal:', auditErr.message);
+      }
+
+      res.json({
+        success:         true,
+        run_id,
+        period_key,
+        reversed_count:  reversedSnapshots.length,
+        timestamp:       new Date().toISOString()
+      });
+
+    } catch (err) {
+      console.error('Payroll reverse error:', err);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error during pay run reversal',
+        detail: err.message
+      });
+    }
+  }
+);
+
+
 // ─── GET /api/payroll/history ─────────────────────────────────────────────────
 /**
  * Retrieve historical payroll snapshots.
  *
  * Query Parameters:
- *   period_key    (required)  — "2026-04"
- *   employee_id   (optional)  — filter to single employee
- *   status        (optional)  — 'draft' | 'finalized'
+ *   period_key       (required)  — "2026-04"
+ *   employee_id      (optional)  — filter to single employee
+ *   status           (optional)  — 'draft' | 'finalized' | 'reversed'
+ *   include_reversed (optional)  — 'true' to include reversed snapshots
  *
  * Response:
  * {
@@ -542,7 +666,7 @@ router.get(
   requirePaytimeModule('payroll'),
   async (req, res) => {
     try {
-      const { period_key, employee_id, status } = req.query;
+      const { period_key, employee_id, status, include_reversed } = req.query;
 
       if (!period_key) {
         return res.status(400).json({
@@ -583,10 +707,11 @@ router.get(
         opts.employeeId = empId;
       }
 
-      if (status && !['draft', 'finalized'].includes(status)) {
-        return res.status(400).json({ success: false, error: 'status must be draft or finalized' });
+      if (status && !['draft', 'finalized', 'reversed'].includes(status)) {
+        return res.status(400).json({ success: false, error: 'status must be draft, finalized, or reversed' });
       }
       if (status) opts.status = status;
+      if (include_reversed === 'true') opts.includeReversed = true;
 
       const snapshots = await PayrollHistoryService.listSnapshots(
         supabase, req.companyId, period_key, opts

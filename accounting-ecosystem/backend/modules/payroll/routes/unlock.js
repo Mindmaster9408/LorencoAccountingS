@@ -38,6 +38,11 @@ const UNLOCK_AUTHORIZER_ROLES = ['super_admin', 'business_owner', 'practice_mana
 // Auth:  Bearer token of the REQUESTING user (must have PAYSLIPS.UNLOCK)
 // Logic: Verifies manager credentials, then removes payslip state keys
 //
+// IMPORTANT: If the payslip snapshot belongs to a FINALIZED pay run, individual
+// unlock is BLOCKED. The entire pay run must be reversed via POST /api/payroll/reverse
+// before individual payslips can be corrected. This prevents payrun/snapshot state
+// mismatch (finalized run header + unlocked snapshots).
+//
 router.post('/', requirePermission('PAYSLIPS.UNLOCK'), async (req, res) => {
     const { empId, period, managerEmail, managerPassword } = req.body || {};
     const companyId = req.companyId;
@@ -49,6 +54,42 @@ router.post('/', requirePermission('PAYSLIPS.UNLOCK'), async (req, res) => {
     }
     if (!managerEmail || !managerPassword) {
         return res.status(400).json({ error: 'Manager credentials required for unlock authorization' });
+    }
+
+    // ── Check if snapshot belongs to a finalized pay run ────────────────────
+    // Individual unlock is not allowed when the payslip is part of a finalized run.
+    // The run must be reversed first (POST /api/payroll/reverse) so that all
+    // snapshots are consistently unlocked in one atomic operation.
+    try {
+        const { data: snap } = await supabase
+            .from('payroll_snapshots')
+            .select('id, payroll_run_id, is_locked')
+            .eq('company_id', companyId)
+            .eq('employee_id', parseInt(empId))
+            .eq('period_key', String(period))
+            .eq('is_locked', true)
+            .maybeSingle();
+
+        if (snap && snap.payroll_run_id) {
+            const { data: run } = await supabase
+                .from('payroll_runs')
+                .select('id, status')
+                .eq('id', snap.payroll_run_id)
+                .eq('company_id', companyId)
+                .maybeSingle();
+
+            if (run && run.status === 'finalized') {
+                return res.status(422).json({
+                    error: 'This payslip is part of a finalised pay run. To make corrections, reverse the entire pay run in Execute Payroll, then re-run and re-finalise.',
+                    code: 'REQUIRES_RUN_REVERSAL',
+                    run_id: run.id
+                });
+            }
+        }
+    } catch (preCheckErr) {
+        // Non-fatal pre-check failure — log and proceed to allow individual unlock.
+        // The run status check is a UX guard; the actual lock state is enforced by the DB.
+        console.warn('Unlock: run status pre-check failed (proceeding):', preCheckErr.message);
     }
 
     // ── Verify manager credentials via the ecosystem auth system ────────────
