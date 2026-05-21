@@ -4,9 +4,9 @@
   "displayName": "Paytime Payroll",
   "status": "STABILITY_LOCKED",
   "lockedSince": "2026-05-12",
-  "lastLockedAt": "2026-05-20",
-  "lastLockedCommit": "b6e800a690cbefb6ceb976888492793239ec5479",
-  "lastLockedTag": "paytime-stable-2026-05-20",
+  "lastLockedAt": "2026-05-21",
+  "lastLockedCommit": "ce2a279",
+  "lastLockedTag": "paytime-stable-2026-05-21",
   "maintainer": "Lorenco Ecosystem",
   "description": "Paytime is a stability-locked module. All changes require explicit authorization and a full regression gate before deployment.",
 
@@ -112,6 +112,233 @@
       "requiredTests": ["TEST-PAY-11"],
       "requiresAuthorization": false,
       "sharedModule": true
+    },
+
+    {
+      "path": "frontend-payroll/login.html",
+      "level": "HIGH",
+      "reason": "Auth entry point. Token storage, redirect logic, and session initialisation all start here.",
+      "requiredTests": ["TEST-PAY-11", "TEST-PAY-13"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/company-selection.html",
+      "level": "HIGH",
+      "reason": "Company context selection. Incorrect company selection breaks multi-tenant isolation for all downstream payroll operations.",
+      "requiredTests": ["TEST-PAY-11", "TEST-PAY-12"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/employee-management.html",
+      "level": "HIGH",
+      "reason": "Employee listing and management entry point. Employee data integrity is foundational to correct payslip generation.",
+      "requiredTests": ["TEST-PAY-11", "TEST-PAY-12"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/company-details.html",
+      "level": "HIGH",
+      "reason": "Company tax settings (SDL registration, PAYE reference, UIF number). These settings feed directly into payroll calculations.",
+      "requiredTests": ["TEST-PAY-05", "TEST-PAY-11"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/attendance.html",
+      "level": "HIGH",
+      "reason": "Attendance records feed into hours-based payroll calculations and short-time deductions.",
+      "requiredTests": ["TEST-PAY-07"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/paye-reconciliation.html",
+      "level": "HIGH",
+      "reason": "PAYE reconciliation UI. Incorrect display or data binding here causes SARS compliance filing errors.",
+      "requiredTests": ["TEST-PAY-14"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/payroll-items.html",
+      "level": "HIGH",
+      "reason": "Payroll items configuration (earnings, deductions, IRP5 codes). Changes here directly affect all payslip calculations.",
+      "requiredTests": ["TEST-PAY-01", "TEST-PAY-02"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/reports.html",
+      "level": "HIGH",
+      "reason": "Payroll financial reports. Data binding errors produce incorrect financial output for clients.",
+      "requiredTests": ["TEST-PAY-10", "TEST-PAY-14"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/net-to-gross.html",
+      "level": "HIGH",
+      "reason": "Net-to-gross payroll calculator. Uses the same calculation engine as Execute Payroll.",
+      "requiredTests": ["TEST-PAY-01", "TEST-PAY-03"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/users.html",
+      "level": "HIGH",
+      "reason": "User and permission management. Incorrect role changes can grant or revoke payroll processing access.",
+      "requiredTests": ["TEST-PAY-11", "TEST-PAY-12"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/super-admin-dashboard.html",
+      "level": "HIGH",
+      "reason": "Super-admin control panel. Has cross-company access scope — regressions here risk cross-tenant data exposure.",
+      "requiredTests": ["TEST-PAY-11", "TEST-PAY-12"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/company-dashboard.html",
+      "level": "MEDIUM",
+      "reason": "Main payroll dashboard. Navigation hub — layout or routing regressions affect access to all payroll functions.",
+      "requiredTests": ["TEST-PAY-11"],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/historical-import.html",
+      "level": "MEDIUM",
+      "reason": "Historical payroll import tool. Incorrect imports can corrupt historical snapshot data.",
+      "requiredTests": ["TEST-PAY-09"],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/index.html",
+      "level": "LOW",
+      "reason": "Splash/redirect page. Should redirect to login — any change to redirect logic affects auth entry path.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+
+    {
+      "path": "frontend-payroll/js/attendance.js",
+      "level": "HIGH",
+      "reason": "Attendance logic including hours calculation and short-time rules that cascade into payroll deductions.",
+      "requiredTests": ["TEST-PAY-07"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/js/payroll-items-helper.js",
+      "level": "HIGH",
+      "reason": "Payroll items helper used in calculation flow. IRP5 code mapping and item classification logic live here.",
+      "requiredTests": ["TEST-PAY-01", "TEST-PAY-02"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/js/permissions.js",
+      "level": "HIGH",
+      "reason": "Frontend RBAC check layer. Must mirror backend permissions.js. Divergence causes UI to show controls that the API will reject.",
+      "requiredTests": ["TEST-PAY-11"],
+      "requiresAuthorization": true
+    },
+    {
+      "path": "frontend-payroll/js/feature-flags.js",
+      "level": "MEDIUM",
+      "reason": "Feature flag control. Incorrect flag evaluation can silently disable payroll features for specific clients.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/audit.js",
+      "level": "MEDIUM",
+      "reason": "Audit trail logging for payroll actions. Regressions break compliance audit records.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/banking-formats.js",
+      "level": "MEDIUM",
+      "reason": "Bank payment export formats. Incorrect file output causes failed EFT runs.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/export-formats.js",
+      "level": "MEDIUM",
+      "reason": "Payroll export formats (CSV, IRP5, reports). Incorrect output causes downstream processing failures.",
+      "requiredTests": ["TEST-PAY-14"],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/bulk-import-utils.js",
+      "level": "MEDIUM",
+      "reason": "Bulk employee/payroll data import utilities. Incorrect parsing can corrupt employee or payroll records.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/sean-helper.js",
+      "level": "MEDIUM",
+      "reason": "Sean AI helper integration. Must not write payroll business data to browser storage or expose client data cross-tenant.",
+      "requiredTests": ["TEST-PAY-13"],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/sidebar.js",
+      "level": "MEDIUM",
+      "reason": "Shared sidebar renderer for all payroll pages. Navigation, company name display, and auth-dependent links rendered here.",
+      "requiredTests": ["TEST-PAY-11"],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/narrative-generator.js",
+      "level": "LOW",
+      "reason": "Auto-narrative text generation for payslips and reports. Visual only — no calculation logic.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/pdf-branding.js",
+      "level": "LOW",
+      "reason": "PDF header/footer branding. Visual only — does not affect calculated figures.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/mobile-utils.js",
+      "level": "LOW",
+      "reason": "Mobile UI utilities. Visual responsiveness only.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/update-check.js",
+      "level": "LOW",
+      "reason": "Client-side version/update check. No payroll logic involved.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/js/cosmic-bg.js",
+      "level": "LOW",
+      "reason": "Particle canvas animation — visual atmosphere only. No payroll logic, no data access.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+
+    {
+      "path": "frontend-payroll/css/dark-theme.css",
+      "level": "MEDIUM",
+      "reason": "Core Paytime dark theme. Changes here affect visual presentation of all payroll UI including finalization state indicators.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/css/mobile-responsive.css",
+      "level": "LOW",
+      "reason": "Mobile responsive layout. Visual only.",
+      "requiredTests": [],
+      "requiresAuthorization": false
+    },
+    {
+      "path": "frontend-payroll/css/cosmic-bg.css",
+      "level": "LOW",
+      "reason": "Cosmic background visual layer — atmosphere only. No payroll logic, pointer-events: none.",
+      "requiredTests": [],
+      "requiresAuthorization": false
     }
   ],
 
