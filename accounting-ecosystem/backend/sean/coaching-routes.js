@@ -457,10 +457,22 @@ router.get('/patterns', async (req, res) => {
 const COACHING_APP_URL   = process.env.COACHING_APP_URL   || null;
 const COACHING_APP_TOKEN = process.env.COACHING_APP_TOKEN || null;
 
-// Verify the requesting ecosystem user has has_coaching_access = true.
+// Verify the requesting ecosystem user has coaching access.
+// Access is granted if either:
+//   (a) req.user.isSuperAdmin === true  — set in the JWT by the login route for super admins
+//   (b) users.has_coaching_access = true in the DB  — for explicitly granted non-admin users
+// Super admins are trusted Lorenco staff and bypass the DB column check.
 async function requireCoachingAccess(req, res, next) {
+    // (a) Super admin bypass — isSuperAdmin is embedded in the JWT by /api/auth/login
+    if (req.user?.isSuperAdmin === true) {
+        console.log('[coaching-routes] coaching access granted (super admin):', req.user?.email || req.user?.userId);
+        return next();
+    }
+
+    // (b) DB column check for non-super-admin users
     const userId = req.user?.userId || req.user?.id;
     if (!userId) {
+        console.warn('[coaching-routes] requireCoachingAccess: no userId in token payload:', JSON.stringify(req.user));
         return res.status(403).json({ error: 'Coaching access denied', code: 'NO_USER' });
     }
     try {
@@ -470,7 +482,12 @@ async function requireCoachingAccess(req, res, next) {
             .eq('id', userId)
             .maybeSingle();
 
+        if (error) {
+            console.error('[coaching-routes] has_coaching_access DB error for userId', userId, ':', error.message);
+        }
         if (error || !data || !data.has_coaching_access) {
+            console.warn('[coaching-routes] coaching access denied for userId', userId,
+                '— data:', JSON.stringify(data), '— dbError:', error?.message || 'none');
             return res.status(403).json({
                 error: 'Coaching access not authorised for this account',
                 code: 'NO_COACHING_ACCESS'

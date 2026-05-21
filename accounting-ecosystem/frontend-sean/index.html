@@ -1916,9 +1916,12 @@ async function searchCoachingClients() {
                 escHtml(c.status || 'onbekend') + '</span></div>'
             ).join('');
         } catch (err) {
-            var msg = err.message && err.message.indexOf('COACHING_APP_URL') >= 0
+            var m = err.message || '';
+            var msg = m.indexOf('COACHING_APP_URL') >= 0 || m.indexOf('NOT_CONFIGURED') >= 0
                 ? 'Coaching koppeling nie opgestel nie. Stel COACHING_APP_URL en COACHING_APP_TOKEN in.'
-                : escHtml(err.message);
+                : (m.indexOf('not authorised') >= 0 || m.indexOf('NO_COACHING_ACCESS') >= 0 || m.indexOf('Coaching access') >= 0)
+                ? 'Jy het nie toegang tot coaching kliënte vir hierdie rekening nie.'
+                : escHtml(m || 'Fout — probeer asseblief weer.');
             resultsEl.innerHTML = '<div style="padding:10px 14px;font-size:0.85rem;color:#b45309;">' + msg + '</div>';
         }
     }, 300);
