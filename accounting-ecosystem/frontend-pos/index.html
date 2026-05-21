@@ -5124,6 +5124,10 @@
         let autoPrintEnabled = false;
 
         async function checkout() {
+            if (forceUpdatePending) {
+                showNotification('A required update is pending. Please refresh before continuing.', 'error');
+                return;
+            }
             if (cart.length === 0 || !currentSession) {
                 showNotification('Cart is empty or no session open', 'error');
                 return;
