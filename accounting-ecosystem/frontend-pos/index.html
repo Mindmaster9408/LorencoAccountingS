@@ -6437,198 +6437,317 @@
 
         function renderTillSummaryReport(data, container) {
             const { sessions, summary } = data;
-            const discrepancyColor = summary.total_discrepancy >= 0 ? '#2e7d32' : '#c62828';
+            const fmt = v => v != null ? `R ${parseFloat(v).toFixed(2)}` : '<span style="color:#bbb;">—</span>';
+            const varColor = v => v == null ? '' : v < 0 ? 'color:#c62828;font-weight:bold;' : v > 0 ? 'color:#e65100;' : 'color:#2e7d32;';
+
             let html = `
                 <h2 style="margin-bottom: 20px;">Till Summary</h2>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
-                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
-                        <div style="font-size: 12px; color: #666;">Total Sessions</div>
-                        <div style="font-size: 24px; font-weight: bold; color: #2e7d32;">${summary.total}</div>
+                ${summary.snapshotted_sessions < summary.total_sessions ? `
+                <div style="background:#fff3e0;border-left:4px solid #ff9800;padding:10px 15px;margin-bottom:15px;border-radius:4px;font-size:13px;">
+                    <strong>${summary.total_sessions - summary.snapshotted_sessions} session(s)</strong> not yet cashed up — payment breakdown unavailable for those rows.
+                    Totals below reflect completed cashups only.
+                </div>` : ''}
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr) repeat(3, 1fr); gap: 12px; margin-bottom: 20px;">
+                    <div style="background:#e8f5e9;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Sessions</div>
+                        <div style="font-size:22px;font-weight:bold;color:#2e7d32;">${summary.total_sessions}</div>
+                        <div style="font-size:11px;color:#888;">${summary.open_sessions} open</div>
                     </div>
-                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
-                        <div style="font-size: 12px; color: #666;">Closed Sessions</div>
-                        <div style="font-size: 24px; font-weight: bold; color: #1565c0;">${summary.closed}</div>
+                    <div style="background:#e3f2fd;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Net Sales</div>
+                        <div style="font-size:20px;font-weight:bold;color:#1565c0;">R ${(summary.total_net_sales||0).toFixed(2)}</div>
+                        <div style="font-size:11px;color:#888;">${summary.total_sale_count} transactions</div>
                     </div>
-                    <div style="background: ${summary.total_discrepancy < 0 ? '#ffebee' : '#e8f5e9'}; padding: 15px; border-radius: 8px;">
-                        <div style="font-size: 12px; color: #666;">Total Discrepancy</div>
-                        <div style="font-size: 24px; font-weight: bold; color: ${discrepancyColor};">R ${summary.total_discrepancy.toFixed(2)}</div>
+                    <div style="background:#e8f5e9;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Cash</div>
+                        <div style="font-size:20px;font-weight:bold;color:#2e7d32;">R ${(summary.total_cash||0).toFixed(2)}</div>
+                    </div>
+                    <div style="background:#f3e5f5;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Card / EFT</div>
+                        <div style="font-size:20px;font-weight:bold;color:#6a1b9a;">R ${((summary.total_card||0)+(summary.total_eft||0)).toFixed(2)}</div>
+                    </div>
+                    <div style="background:#fff3e0;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Voids</div>
+                        <div style="font-size:22px;font-weight:bold;color:#e65100;">${summary.total_void_count}</div>
+                    </div>
+                    <div style="background:#fce4ec;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Refunds</div>
+                        <div style="font-size:20px;font-weight:bold;color:#c62828;">R ${(summary.total_refunds||0).toFixed(2)}</div>
+                    </div>
+                    <div style="background:${summary.inconsistent_sessions>0?'#ffebee':'#e8f5e9'};padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Variances</div>
+                        <div style="font-size:22px;font-weight:bold;color:${summary.sessions_with_variance>0?'#c62828':'#2e7d32'};">${summary.sessions_with_variance}</div>
+                        <div style="font-size:11px;color:#888;">${summary.inconsistent_sessions} inconsistent</div>
                     </div>
                 </div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <table style="width:100%;border-collapse:collapse;font-size:12px;">
                     <thead>
-                        <tr style="background: #667eea; color: white;">
-                            <th style="padding: 10px; text-align: left;">Cashier</th>
-                            <th style="padding: 10px; text-align: left;">Opened</th>
-                            <th style="padding: 10px; text-align: left;">Closed</th>
-                            <th style="padding: 10px; text-align: right;">Opening Float</th>
-                            <th style="padding: 10px; text-align: right;">Expected Cash</th>
-                            <th style="padding: 10px; text-align: right;">Actual Cash</th>
-                            <th style="padding: 10px; text-align: right;">Discrepancy</th>
-                            <th style="padding: 10px; text-align: center;">Status</th>
+                        <tr style="background:#667eea;color:white;">
+                            <th style="padding:8px;text-align:left;">Cashier</th>
+                            <th style="padding:8px;text-align:left;">Till</th>
+                            <th style="padding:8px;text-align:left;">Opened</th>
+                            <th style="padding:8px;text-align:left;">Closed</th>
+                            <th style="padding:8px;text-align:right;">Sales</th>
+                            <th style="padding:8px;text-align:right;">Cash</th>
+                            <th style="padding:8px;text-align:right;">Card/EFT</th>
+                            <th style="padding:8px;text-align:right;">Refunds</th>
+                            <th style="padding:8px;text-align:right;">Voids</th>
+                            <th style="padding:8px;text-align:right;">Exp. Cash</th>
+                            <th style="padding:8px;text-align:right;">Counted</th>
+                            <th style="padding:8px;text-align:right;">Variance</th>
+                            <th style="padding:8px;text-align:center;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
             sessions.forEach((s, i) => {
-                const disc = parseFloat(s.actual_cash || 0) - parseFloat(s.expected_cash || 0);
-                const discStyle = disc < 0 ? 'color: #c62828; font-weight: bold;' : disc > 0 ? 'color: #2e7d32;' : '';
+                const statusBadge = {
+                    open:      '<span style="background:#e3f2fd;color:#1565c0;padding:2px 7px;border-radius:10px;font-size:11px;">Open</span>',
+                    closed:    '<span style="background:#fff3e0;color:#e65100;padding:2px 7px;border-radius:10px;font-size:11px;">Pending</span>',
+                    cashed_up: '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:10px;font-size:11px;">Cashed Up</span>',
+                }[s.status] || s.status;
+                const snapBadge = s.has_snapshot ? '' : ' <span style="font-size:10px;color:#bbb;">(est.)</span>';
+                const cardEft = (s.payment_card != null || s.payment_eft != null)
+                    ? `R ${((s.payment_card||0)+(s.payment_eft||0)).toFixed(2)}` : '<span style="color:#bbb;">—</span>';
                 html += `
-                    <tr style="background: ${i % 2 === 0 ? '#fff' : '#f9f9f9'}; border-bottom: 1px solid #eee;">
-                        <td style="padding: 8px;">${s.users?.full_name || s.users?.username || s.user_id || '—'}</td>
-                        <td style="padding: 8px;">${s.opened_at ? new Date(s.opened_at).toLocaleString() : '—'}</td>
-                        <td style="padding: 8px;">${s.closed_at ? new Date(s.closed_at).toLocaleString() : '<span style="color:#999;">Open</span>'}</td>
-                        <td style="padding: 8px; text-align: right;">R ${parseFloat(s.opening_float || 0).toFixed(2)}</td>
-                        <td style="padding: 8px; text-align: right;">R ${parseFloat(s.expected_cash || 0).toFixed(2)}</td>
-                        <td style="padding: 8px; text-align: right;">R ${parseFloat(s.actual_cash || 0).toFixed(2)}</td>
-                        <td style="padding: 8px; text-align: right; ${discStyle}">R ${disc.toFixed(2)}</td>
-                        <td style="padding: 8px; text-align: center;">${s.closed_at ? '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:12px;font-size:11px;">Closed</span>' : '<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:12px;font-size:11px;">Open</span>'}</td>
+                    <tr style="background:${i%2===0?'#fff':'#f9f9f9'};border-bottom:1px solid #eee;">
+                        <td style="padding:7px;">${s.cashier || '—'}</td>
+                        <td style="padding:7px;">${s.till_name ? `${s.till_name}${s.till_number ? ' #'+s.till_number : ''}` : '—'}</td>
+                        <td style="padding:7px;white-space:nowrap;">${s.opened_at ? new Date(s.opened_at).toLocaleString() : '—'}</td>
+                        <td style="padding:7px;white-space:nowrap;">${s.closed_at ? new Date(s.closed_at).toLocaleString() : '<span style="color:#999;">—</span>'}</td>
+                        <td style="padding:7px;text-align:right;">${s.sale_count != null ? s.sale_count : '<span style="color:#bbb;">—</span>'}${snapBadge}</td>
+                        <td style="padding:7px;text-align:right;">${fmt(s.payment_cash)}</td>
+                        <td style="padding:7px;text-align:right;">${cardEft}</td>
+                        <td style="padding:7px;text-align:right;">${fmt(s.refund_total)}</td>
+                        <td style="padding:7px;text-align:right;">${s.void_count != null ? s.void_count : '<span style="color:#bbb;">—</span>'}</td>
+                        <td style="padding:7px;text-align:right;">${fmt(s.expected_cash_in_drawer)}</td>
+                        <td style="padding:7px;text-align:right;">${fmt(s.total_counted)}</td>
+                        <td style="padding:7px;text-align:right;${varColor(s.cash_variance)}">${s.cash_variance != null ? `R ${parseFloat(s.cash_variance).toFixed(2)}` : '<span style="color:#bbb;">—</span>'}</td>
+                        <td style="padding:7px;text-align:center;">${statusBadge}</td>
                     </tr>
+                    ${s.is_consistent === false ? `<tr style="background:#fff8f8;"><td colspan="13" style="padding:4px 8px;font-size:11px;color:#c62828;">⚠ ${s.consistency_issue_count} consistency issue(s) detected on this session</td></tr>` : ''}
                 `;
             });
             if (sessions.length === 0) {
-                html += '<tr><td colspan="8" style="padding: 20px; text-align: center; color: #999;">No till sessions in this period</td></tr>';
+                html += '<tr><td colspan="13" style="padding:20px;text-align:center;color:#999;">No till sessions in this period</td></tr>';
             }
             html += '</tbody></table>';
+            if (summary.snapshotted_sessions > 0) {
+                html += `<p style="margin-top:10px;font-size:11px;color:#999;">Payment breakdown sourced from <strong>sale_payments</strong> (split-payment authoritative). Rows marked (est.) are sessions not yet cashed up.</p>`;
+            }
             container.innerHTML = html;
         }
 
         function renderNegativeStockReport(data, container) {
-            const { events, total } = data;
-            let html = `
-                <h2 style="margin-bottom: 20px;">Negative Stock Events</h2>
-                <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
-                    <strong>${total} event${total !== 1 ? 's' : ''}</strong> where a sale was allowed despite stock being at or below zero.
-                </div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            const { stock_policy, currently_negative, currently_negative_count, events_in_period, events_in_period_count, period } = data;
+            const policyAllows = stock_policy?.allow_negative_stock_sales;
+
+            let html = `<h2 style="margin-bottom:20px;">Negative Stock</h2>`;
+
+            // Policy state banner
+            html += `<div style="background:${policyAllows?'#fff3e0':'#e8f5e9'};border-left:4px solid ${policyAllows?'#ff9800':'#4caf50'};padding:10px 15px;margin-bottom:20px;border-radius:4px;font-size:13px;">
+                <strong>Stock policy:</strong> Negative stock sales are <strong>${policyAllows ? 'ALLOWED' : 'blocked'}</strong> for this company.
+            </div>`;
+
+            // Part A: Currently negative products
+            html += `<h3 style="margin:0 0 12px;font-size:14px;color:#c62828;">Currently Below Zero (${currently_negative_count} product${currently_negative_count!==1?'s':''})</h3>`;
+            if (currently_negative_count === 0) {
+                html += `<div style="background:#e8f5e9;padding:12px 15px;border-radius:6px;margin-bottom:25px;font-size:13px;color:#2e7d32;">✓ No products currently below zero.</div>`;
+            } else {
+                html += `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:25px;">
                     <thead>
-                        <tr style="background: #667eea; color: white;">
-                            <th style="padding: 10px; text-align: left;">Date / Time</th>
-                            <th style="padding: 10px; text-align: left;">Cashier</th>
-                            <th style="padding: 10px; text-align: left;">Details</th>
+                        <tr style="background:#c62828;color:white;">
+                            <th style="padding:8px;text-align:left;">Product</th>
+                            <th style="padding:8px;text-align:left;">SKU</th>
+                            <th style="padding:8px;text-align:right;">Qty</th>
+                            <th style="padding:8px;text-align:right;">Unit Price</th>
+                            <th style="padding:8px;text-align:left;">Went Negative</th>
                         </tr>
                     </thead>
-                    <tbody>
-            `;
-            events.forEach((e, i) => {
-                const meta = e.metadata || e.details || {};
-                const detail = typeof meta === 'string' ? meta : JSON.stringify(meta);
-                html += `
-                    <tr style="background: ${i % 2 === 0 ? '#fff' : '#fff8f1'}; border-bottom: 1px solid #eee;">
-                        <td style="padding: 8px; white-space: nowrap;">${new Date(e.created_at).toLocaleString()}</td>
-                        <td style="padding: 8px;">${e.users?.full_name || e.users?.username || e.user_id || '—'}</td>
-                        <td style="padding: 8px; font-size: 12px; color: #555;">${detail !== '{}' ? detail : '—'}</td>
-                    </tr>
-                `;
-            });
-            if (events.length === 0) {
-                html += '<tr><td colspan="3" style="padding: 20px; text-align: center; color: #999;">No negative-stock events in this period</td></tr>';
+                    <tbody>`;
+                currently_negative.forEach((p, i) => {
+                    html += `<tr style="background:${i%2===0?'#fff8f8':'#fff'};border-bottom:1px solid #eee;">
+                        <td style="padding:7px;font-weight:500;">${p.product_name}</td>
+                        <td style="padding:7px;color:#888;">${p.sku || '—'}</td>
+                        <td style="padding:7px;text-align:right;color:#c62828;font-weight:bold;">${p.stock_quantity}</td>
+                        <td style="padding:7px;text-align:right;">R ${parseFloat(p.unit_price||0).toFixed(2)}</td>
+                        <td style="padding:7px;font-size:12px;">${p.went_negative_at ? new Date(p.went_negative_at).toLocaleString() : '<span style="color:#bbb;">Not recorded in period</span>'}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
             }
-            html += '</tbody></table>';
+
+            // Part B: Events in period
+            html += `<h3 style="margin:0 0 12px;font-size:14px;color:#e65100;">Negative Stock Events in Period (${events_in_period_count})</h3>`;
+            if (events_in_period_count === 0) {
+                html += `<div style="background:#f9f9f9;padding:12px 15px;border-radius:6px;font-size:13px;color:#999;">No negative stock events in the selected period.</div>`;
+            } else {
+                html += `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead>
+                        <tr style="background:#667eea;color:white;">
+                            <th style="padding:8px;text-align:left;">Date / Time</th>
+                            <th style="padding:8px;text-align:left;">Event</th>
+                            <th style="padding:8px;text-align:left;">User</th>
+                            <th style="padding:8px;text-align:left;">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+                events_in_period.forEach((e, i) => {
+                    const isCreated = e.action_type === 'NEGATIVE_STOCK_CREATED';
+                    const meta = e.metadata || e.after_snapshot || {};
+                    const detail = typeof meta === 'string' ? meta : (Object.keys(meta).length ? JSON.stringify(meta) : '—');
+                    html += `<tr style="background:${isCreated?'#fff8f8':i%2===0?'#fff':'#fff8f1'};border-bottom:1px solid #eee;">
+                        <td style="padding:7px;white-space:nowrap;">${new Date(e.created_at).toLocaleString()}</td>
+                        <td style="padding:7px;"><span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${isCreated?'#ffebee':'#fff3e0'};color:${isCreated?'#c62828':'#e65100'};">${e.action_type}</span></td>
+                        <td style="padding:7px;">${e.users?.full_name || e.users?.username || e.user_email || '—'}</td>
+                        <td style="padding:7px;color:#555;">${detail}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
+            }
+
             container.innerHTML = html;
         }
 
         function renderRecoverySyncReport(data, container) {
-            const { events, summary } = data;
-            const summaryItems = [
-                { label: 'Retries',   value: summary.retries,   bg: '#fff3e0', color: '#e65100' },
-                { label: 'Successes', value: summary.successes, bg: '#e8f5e9', color: '#2e7d32' },
-                { label: 'Failures',  value: summary.failures,  bg: '#ffebee', color: '#c62828' },
-                { label: 'Synced',    value: summary.synced,    bg: '#e3f2fd', color: '#1565c0' },
-                { label: 'Conflicts', value: summary.conflicts,  bg: '#f3e5f5', color: '#6a1b9a' },
+            const { summary, stale_sessions, pending_cashup_sessions, recovery_events, sync_events } = data;
+
+            const statCards = [
+                { label: 'Stale Open Sessions', value: summary.stale_open_sessions,     bg: summary.stale_open_sessions>0?'#ffebee':'#e8f5e9',   color: summary.stale_open_sessions>0?'#c62828':'#2e7d32' },
+                { label: 'Pending Cashup',       value: summary.pending_cashup_sessions, bg: summary.pending_cashup_sessions>0?'#fff3e0':'#e8f5e9', color: summary.pending_cashup_sessions>0?'#e65100':'#2e7d32' },
+                { label: 'Retries',              value: summary.recovery_retries,        bg: '#fff3e0', color: '#e65100' },
+                { label: 'Abandoned',            value: summary.abandoned_items,         bg: summary.abandoned_items>0?'#ffebee':'#e8f5e9', color: summary.abandoned_items>0?'#c62828':'#2e7d32' },
+                { label: 'Overrides',            value: summary.supervisor_overrides,    bg: '#f3e5f5', color: '#6a1b9a' },
+                { label: 'Offline Conflicts',    value: summary.offline_conflicts,       bg: summary.offline_conflicts>0?'#ffebee':'#e8f5e9', color: summary.offline_conflicts>0?'#c62828':'#2e7d32' },
+                { label: 'Unresolved',           value: summary.unresolved_count,        bg: summary.unresolved_count>0?'#ffebee':'#e8f5e9', color: summary.unresolved_count>0?'#c62828':'#2e7d32' },
             ];
-            let html = `<h2 style="margin-bottom: 20px;">Recovery Sync Log</h2>
-                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px;">
-            `;
-            summaryItems.forEach(item => {
-                html += `<div style="background: ${item.bg}; padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 11px; color: #666;">${item.label}</div>
-                    <div style="font-size: 22px; font-weight: bold; color: ${item.color};">${item.value}</div>
+
+            let html = `<h2 style="margin-bottom:20px;">Recovery / Sync Health</h2>
+                <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:20px;">`;
+            statCards.forEach(c => {
+                html += `<div style="background:${c.bg};padding:10px;border-radius:8px;text-align:center;">
+                    <div style="font-size:10px;color:#666;line-height:1.3;">${c.label}</div>
+                    <div style="font-size:22px;font-weight:bold;color:${c.color};">${c.value}</div>
                 </div>`;
             });
-            html += `</div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                    <thead>
-                        <tr style="background: #667eea; color: white;">
-                            <th style="padding: 10px; text-align: left;">Date / Time</th>
-                            <th style="padding: 10px; text-align: left;">Event</th>
-                            <th style="padding: 10px; text-align: left;">User</th>
-                            <th style="padding: 10px; text-align: left;">Details</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            const eventColors = {
-                RECOVERY_RETRY_TRIGGERED: '#fff3e0',
-                RECOVERY_SUCCESS:         '#e8f5e9',
-                RECOVERY_FAILED:          '#ffebee',
-                OFFLINE_SALE_SYNCED:      '#e3f2fd',
-                SYNC_CONFLICT:            '#f3e5f5',
-            };
-            events.forEach((e, i) => {
-                const rowBg = eventColors[e.action_type] || (i % 2 === 0 ? '#fff' : '#f9f9f9');
-                const meta = e.metadata || e.details || {};
-                const detail = typeof meta === 'string' ? meta : JSON.stringify(meta);
-                html += `
-                    <tr style="background: ${rowBg}; border-bottom: 1px solid #eee;">
-                        <td style="padding: 8px; white-space: nowrap;">${new Date(e.created_at).toLocaleString()}</td>
-                        <td style="padding: 8px;"><span style="font-size: 11px; background: #667eea22; padding: 2px 6px; border-radius: 4px;">${e.action_type}</span></td>
-                        <td style="padding: 8px;">${e.users?.full_name || e.users?.username || e.user_id || '—'}</td>
-                        <td style="padding: 8px; font-size: 12px; color: #555;">${detail !== '{}' ? detail : '—'}</td>
-                    </tr>
-                `;
-            });
-            if (events.length === 0) {
-                html += '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #999;">No recovery/sync events in this period</td></tr>';
+            html += `</div>`;
+
+            // Stale sessions
+            if (stale_sessions.length > 0) {
+                html += `<h3 style="margin:0 0 10px;font-size:14px;color:#c62828;">⚠ Stale Open Sessions (${stale_sessions.length})</h3>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
+                    <thead><tr style="background:#c62828;color:white;">
+                        <th style="padding:7px;text-align:left;">Cashier</th>
+                        <th style="padding:7px;text-align:left;">Till</th>
+                        <th style="padding:7px;text-align:left;">Opened</th>
+                        <th style="padding:7px;text-align:right;">Age (hours)</th>
+                    </tr></thead><tbody>`;
+                stale_sessions.forEach((s, i) => {
+                    html += `<tr style="background:${i%2===0?'#fff8f8':'#fff'};border-bottom:1px solid #eee;">
+                        <td style="padding:7px;">${s.users?.full_name || s.users?.username || '—'}</td>
+                        <td style="padding:7px;">${s.tills?.till_name || '—'}</td>
+                        <td style="padding:7px;">${new Date(s.opened_at).toLocaleString()}</td>
+                        <td style="padding:7px;text-align:right;color:#c62828;font-weight:bold;">${s.age_hours}h</td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
             }
-            html += '</tbody></table>';
+
+            // Pending cashup
+            if (pending_cashup_sessions.length > 0) {
+                html += `<h3 style="margin:0 0 10px;font-size:14px;color:#e65100;">Pending Cashup (${pending_cashup_sessions.length})</h3>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
+                    <thead><tr style="background:#e65100;color:white;">
+                        <th style="padding:7px;text-align:left;">Cashier</th>
+                        <th style="padding:7px;text-align:left;">Till</th>
+                        <th style="padding:7px;text-align:left;">Closed At</th>
+                    </tr></thead><tbody>`;
+                pending_cashup_sessions.forEach((s, i) => {
+                    html += `<tr style="background:${i%2===0?'#fff8f0':'#fff'};border-bottom:1px solid #eee;">
+                        <td style="padding:7px;">${s.users?.full_name || s.users?.username || '—'}</td>
+                        <td style="padding:7px;">${s.tills?.till_name || '—'}</td>
+                        <td style="padding:7px;">${s.closed_at ? new Date(s.closed_at).toLocaleString() : '—'}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
+            }
+
+            // Recovery events
+            const allEvents = [...recovery_events, ...sync_events].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            if (allEvents.length > 0) {
+                const evBg = { RECOVERY_RETRY_TRIGGERED:'#fff3e0', RECOVERY_MARKED_FAILED:'#ffebee', OFFLINE_CONFLICT:'#fce4ec', SUPERVISOR_OVERRIDE_GRANTED:'#f3e5f5', ABANDONED_SESSION_DETECTED:'#fff8f8' };
+                html += `<h3 style="margin:0 0 10px;font-size:14px;color:#444;">Recovery & Sync Events (${allEvents.length})</h3>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead><tr style="background:#667eea;color:white;">
+                        <th style="padding:7px;text-align:left;">Date / Time</th>
+                        <th style="padding:7px;text-align:left;">Event</th>
+                        <th style="padding:7px;text-align:left;">User</th>
+                        <th style="padding:7px;text-align:left;">Notes / Details</th>
+                    </tr></thead><tbody>`;
+                allEvents.forEach((e, i) => {
+                    const bg = evBg[e.action_type] || (i%2===0?'#fff':'#f9f9f9');
+                    const detail = e.notes || (e.metadata && Object.keys(e.metadata).length ? JSON.stringify(e.metadata) : '—');
+                    html += `<tr style="background:${bg};border-bottom:1px solid #eee;">
+                        <td style="padding:7px;white-space:nowrap;">${new Date(e.created_at).toLocaleString()}</td>
+                        <td style="padding:7px;"><span style="font-size:11px;background:#667eea22;padding:2px 6px;border-radius:4px;">${e.action_type}</span></td>
+                        <td style="padding:7px;">${e.users?.full_name || e.users?.username || e.user_email || '—'}</td>
+                        <td style="padding:7px;color:#555;">${detail}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table>`;
+            } else if (stale_sessions.length === 0 && pending_cashup_sessions.length === 0) {
+                html += `<div style="background:#e8f5e9;padding:15px;border-radius:6px;text-align:center;color:#2e7d32;">✓ No unresolved recovery or sync issues in this period.</div>`;
+            }
+
             container.innerHTML = html;
         }
 
         function renderAuditActivityReport(data, container) {
-            const { events, total, by_type } = data;
-            const typeEntries = Object.entries(by_type).sort((a, b) => b[1] - a[1]);
-            let html = `
-                <h2 style="margin-bottom: 20px;">Audit Activity</h2>
-                <div style="margin-bottom: 20px;">
-                    <strong style="font-size: 13px; color: #666;">Event Summary (${total} total)</strong>
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
-            `;
+            const { events, total, by_type, truncated } = data;
+            const typeEntries = Object.entries(by_type || {}).sort((a, b) => b[1] - a[1]);
+            const catColor = { override:'#f3e5f5', sale:'#e3f2fd', inventory:'#fff3e0', session:'#e8f5e9', recovery:'#ffebee' };
+
+            let html = `<h2 style="margin-bottom:20px;">Audit Activity</h2>
+                <div style="margin-bottom:15px;">
+                    <strong style="font-size:13px;color:#666;">Event Breakdown (${total} events shown)</strong>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">`;
             typeEntries.forEach(([type, count]) => {
-                html += `<span style="background: #667eea22; padding: 4px 10px; border-radius: 12px; font-size: 12px;">
-                    <strong>${count}</strong> ${type}
-                </span>`;
+                html += `<span style="background:#667eea22;padding:3px 10px;border-radius:12px;font-size:12px;"><strong>${count}</strong> ${type}</span>`;
             });
-            html += `</div></div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                    <thead>
-                        <tr style="background: #667eea; color: white;">
-                            <th style="padding: 10px; text-align: left;">Date / Time</th>
-                            <th style="padding: 10px; text-align: left;">Action</th>
-                            <th style="padding: 10px; text-align: left;">User</th>
-                            <th style="padding: 10px; text-align: left;">Details</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            events.forEach((e, i) => {
-                const meta = e.metadata || e.details || {};
-                const detail = typeof meta === 'string' ? meta : JSON.stringify(meta);
-                html += `
-                    <tr style="background: ${i % 2 === 0 ? '#fff' : '#f9f9f9'}; border-bottom: 1px solid #eee;">
-                        <td style="padding: 8px; white-space: nowrap;">${new Date(e.created_at).toLocaleString()}</td>
-                        <td style="padding: 8px;"><span style="font-size: 11px; background: #667eea22; padding: 2px 6px; border-radius: 4px;">${e.action_type}</span></td>
-                        <td style="padding: 8px;">${e.users?.full_name || e.users?.username || e.user_id || '—'}</td>
-                        <td style="padding: 8px; font-size: 12px; color: #555;">${detail !== '{}' ? detail : '—'}</td>
+            html += `</div></div>`;
+
+            if (truncated) {
+                html += `<div style="background:#fff3e0;border-left:4px solid #ff9800;padding:8px 12px;margin-bottom:12px;border-radius:4px;font-size:12px;">
+                    Showing first 500 events — narrow the date range to see all activity.
+                </div>`;
+            }
+
+            html += `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead>
+                    <tr style="background:#667eea;color:white;">
+                        <th style="padding:8px;text-align:left;">Date / Time</th>
+                        <th style="padding:8px;text-align:left;">Category</th>
+                        <th style="padding:8px;text-align:left;">Action</th>
+                        <th style="padding:8px;text-align:left;">User</th>
+                        <th style="padding:8px;text-align:left;">Notes / Details</th>
                     </tr>
-                `;
+                </thead>
+                <tbody>`;
+            events.forEach((e, i) => {
+                const catBg = catColor[e.action_category] || '#f9f9f9';
+                const detail = e.notes || (e.metadata && Object.keys(e.metadata).length ? JSON.stringify(e.metadata) : '—');
+                html += `<tr style="background:${i%2===0?'#fff':'#f9f9f9'};border-bottom:1px solid #eee;">
+                    <td style="padding:7px;white-space:nowrap;">${new Date(e.created_at).toLocaleString()}</td>
+                    <td style="padding:7px;"><span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${catBg};">${e.action_category || '—'}</span></td>
+                    <td style="padding:7px;"><span style="font-size:11px;background:#667eea22;padding:2px 6px;border-radius:4px;">${e.action_type}</span></td>
+                    <td style="padding:7px;">${e.users?.full_name || e.users?.username || e.user_email || '—'}</td>
+                    <td style="padding:7px;color:#555;">${detail}</td>
+                </tr>`;
             });
             if (events.length === 0) {
-                html += '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #999;">No audit events in this period</td></tr>';
+                html += '<tr><td colspan="5" style="padding:20px;text-align:center;color:#999;">No audit events in this period</td></tr>';
             }
-            if (total === 500) {
-                html += '<tr><td colspan="4" style="padding: 10px; text-align: center; color: #999; font-style: italic;">Showing first 500 events — narrow the date range to see more</td></tr>';
-            }
-            html += '</tbody></table>';
+            html += `</tbody></table>`;
             container.innerHTML = html;
         }
 
