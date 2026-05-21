@@ -251,4 +251,142 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/reports/till-summary
+ * Till session open/close log with cash discrepancies
+ */
+router.get('/till-summary', async (req, res) => {
+  try {
+    const { from, to, startDate, endDate } = req.query;
+    const now = new Date();
+    const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end = endDate || to || now.toISOString();
+
+    const { data, error } = await supabase
+      .from('till_sessions')
+      .select('*, users:user_id(username, full_name)')
+      .eq('company_id', req.companyId)
+      .gte('opened_at', start)
+      .lte('opened_at', end)
+      .order('opened_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const sessions = data || [];
+    const closed = sessions.filter(s => s.closed_at);
+    const totalDiscrepancy = closed.reduce((sum, s) => {
+      const expected = parseFloat(s.expected_cash || 0);
+      const actual   = parseFloat(s.actual_cash   || 0);
+      return sum + (actual - expected);
+    }, 0);
+
+    res.json({ sessions, summary: { total: sessions.length, closed: closed.length, total_discrepancy: totalDiscrepancy } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/reports/negative-stock
+ * Products sold when stock was at or below zero
+ */
+router.get('/negative-stock', async (req, res) => {
+  try {
+    const { from, to, startDate, endDate } = req.query;
+    const now = new Date();
+    const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end = endDate || to || now.toISOString();
+
+    const { data, error } = await supabase
+      .from('pos_audit_events')
+      .select('*, users:user_id(username, full_name)')
+      .eq('company_id', req.companyId)
+      .eq('action_type', 'NEGATIVE_STOCK_SALE_ALLOWED')
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ events: data || [], total: (data || []).length });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/reports/recovery-sync
+ * Recovery retry and offline-sync event log
+ */
+router.get('/recovery-sync', async (req, res) => {
+  try {
+    const { from, to, startDate, endDate } = req.query;
+    const now = new Date();
+    const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end = endDate || to || now.toISOString();
+
+    const { data, error } = await supabase
+      .from('pos_audit_events')
+      .select('*, users:user_id(username, full_name)')
+      .eq('company_id', req.companyId)
+      .in('action_type', [
+        'RECOVERY_RETRY_TRIGGERED', 'RECOVERY_SUCCESS', 'RECOVERY_FAILED',
+        'OFFLINE_SALE_SYNCED', 'SYNC_CONFLICT'
+      ])
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const events = data || [];
+    const summary = {
+      retries:   events.filter(e => e.action_type === 'RECOVERY_RETRY_TRIGGERED').length,
+      successes: events.filter(e => e.action_type === 'RECOVERY_SUCCESS').length,
+      failures:  events.filter(e => e.action_type === 'RECOVERY_FAILED').length,
+      synced:    events.filter(e => e.action_type === 'OFFLINE_SALE_SYNCED').length,
+      conflicts: events.filter(e => e.action_type === 'SYNC_CONFLICT').length,
+    };
+
+    res.json({ events, summary });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/reports/audit-activity
+ * Full POS audit event log (last 500 events in period, optional ?action_type= filter)
+ */
+router.get('/audit-activity', async (req, res) => {
+  try {
+    const { from, to, startDate, endDate, action_type } = req.query;
+    const now = new Date();
+    const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end = endDate || to || now.toISOString();
+
+    let query = supabase
+      .from('pos_audit_events')
+      .select('*, users:user_id(username, full_name)')
+      .eq('company_id', req.companyId)
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (action_type) query = query.eq('action_type', action_type);
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    const events = data || [];
+    const by_type = {};
+    events.forEach(e => { by_type[e.action_type] = (by_type[e.action_type] || 0) + 1; });
+
+    res.json({ events, total: events.length, by_type });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

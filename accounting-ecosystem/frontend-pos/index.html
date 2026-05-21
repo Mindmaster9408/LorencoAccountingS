@@ -1879,6 +1879,12 @@
                     <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">Integrations</h3>
                     <div class="settings-menu-item" onclick="showReport('inventory-sync', event)">Inventory Sync</div>
                     <div class="settings-menu-item" onclick="showReport('accounting-sync', event)">Accounting Sync</div>
+
+                    <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">Operational</h3>
+                    <div class="settings-menu-item" onclick="showReport('till-summary', event)">Till Summary</div>
+                    <div class="settings-menu-item" onclick="showReport('negative-stock', event)">Negative Stock Events</div>
+                    <div class="settings-menu-item" onclick="showReport('recovery-sync', event)">Recovery Sync Log</div>
+                    <div class="settings-menu-item" onclick="showReport('audit-activity', event)">Audit Activity</div>
                 </div>
 
                 <div class="settings-content">
@@ -5898,6 +5904,18 @@
                 case 'accounting-sync':
                     renderAccountingSyncReport(data, container);
                     break;
+                case 'till-summary':
+                    renderTillSummaryReport(data, container);
+                    break;
+                case 'negative-stock':
+                    renderNegativeStockReport(data, container);
+                    break;
+                case 'recovery-sync':
+                    renderRecoverySyncReport(data, container);
+                    break;
+                case 'audit-activity':
+                    renderAuditActivityReport(data, container);
+                    break;
                 default:
                     container.innerHTML = '<p>Unknown report type</p>';
             }
@@ -6414,6 +6432,203 @@
                 `;
             });
 
+            container.innerHTML = html;
+        }
+
+        function renderTillSummaryReport(data, container) {
+            const { sessions, summary } = data;
+            const discrepancyColor = summary.total_discrepancy >= 0 ? '#2e7d32' : '#c62828';
+            let html = `
+                <h2 style="margin-bottom: 20px;">Till Summary</h2>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
+                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; color: #666;">Total Sessions</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #2e7d32;">${summary.total}</div>
+                    </div>
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; color: #666;">Closed Sessions</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #1565c0;">${summary.closed}</div>
+                    </div>
+                    <div style="background: ${summary.total_discrepancy < 0 ? '#ffebee' : '#e8f5e9'}; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; color: #666;">Total Discrepancy</div>
+                        <div style="font-size: 24px; font-weight: bold; color: ${discrepancyColor};">R ${summary.total_discrepancy.toFixed(2)}</div>
+                    </div>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="background: #667eea; color: white;">
+                            <th style="padding: 10px; text-align: left;">Cashier</th>
+                            <th style="padding: 10px; text-align: left;">Opened</th>
+                            <th style="padding: 10px; text-align: left;">Closed</th>
+                            <th style="padding: 10px; text-align: right;">Opening Float</th>
+                            <th style="padding: 10px; text-align: right;">Expected Cash</th>
+                            <th style="padding: 10px; text-align: right;">Actual Cash</th>
+                            <th style="padding: 10px; text-align: right;">Discrepancy</th>
+                            <th style="padding: 10px; text-align: center;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            sessions.forEach((s, i) => {
+                const disc = parseFloat(s.actual_cash || 0) - parseFloat(s.expected_cash || 0);
+                const discStyle = disc < 0 ? 'color: #c62828; font-weight: bold;' : disc > 0 ? 'color: #2e7d32;' : '';
+                html += `
+                    <tr style="background: ${i % 2 === 0 ? '#fff' : '#f9f9f9'}; border-bottom: 1px solid #eee;">
+                        <td style="padding: 8px;">${s.users?.full_name || s.users?.username || s.user_id || '—'}</td>
+                        <td style="padding: 8px;">${s.opened_at ? new Date(s.opened_at).toLocaleString() : '—'}</td>
+                        <td style="padding: 8px;">${s.closed_at ? new Date(s.closed_at).toLocaleString() : '<span style="color:#999;">Open</span>'}</td>
+                        <td style="padding: 8px; text-align: right;">R ${parseFloat(s.opening_float || 0).toFixed(2)}</td>
+                        <td style="padding: 8px; text-align: right;">R ${parseFloat(s.expected_cash || 0).toFixed(2)}</td>
+                        <td style="padding: 8px; text-align: right;">R ${parseFloat(s.actual_cash || 0).toFixed(2)}</td>
+                        <td style="padding: 8px; text-align: right; ${discStyle}">R ${disc.toFixed(2)}</td>
+                        <td style="padding: 8px; text-align: center;">${s.closed_at ? '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:12px;font-size:11px;">Closed</span>' : '<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:12px;font-size:11px;">Open</span>'}</td>
+                    </tr>
+                `;
+            });
+            if (sessions.length === 0) {
+                html += '<tr><td colspan="8" style="padding: 20px; text-align: center; color: #999;">No till sessions in this period</td></tr>';
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function renderNegativeStockReport(data, container) {
+            const { events, total } = data;
+            let html = `
+                <h2 style="margin-bottom: 20px;">Negative Stock Events</h2>
+                <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+                    <strong>${total} event${total !== 1 ? 's' : ''}</strong> where a sale was allowed despite stock being at or below zero.
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="background: #667eea; color: white;">
+                            <th style="padding: 10px; text-align: left;">Date / Time</th>
+                            <th style="padding: 10px; text-align: left;">Cashier</th>
+                            <th style="padding: 10px; text-align: left;">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            events.forEach((e, i) => {
+                const meta = e.metadata || e.details || {};
+                const detail = typeof meta === 'string' ? meta : JSON.stringify(meta);
+                html += `
+                    <tr style="background: ${i % 2 === 0 ? '#fff' : '#fff8f1'}; border-bottom: 1px solid #eee;">
+                        <td style="padding: 8px; white-space: nowrap;">${new Date(e.created_at).toLocaleString()}</td>
+                        <td style="padding: 8px;">${e.users?.full_name || e.users?.username || e.user_id || '—'}</td>
+                        <td style="padding: 8px; font-size: 12px; color: #555;">${detail !== '{}' ? detail : '—'}</td>
+                    </tr>
+                `;
+            });
+            if (events.length === 0) {
+                html += '<tr><td colspan="3" style="padding: 20px; text-align: center; color: #999;">No negative-stock events in this period</td></tr>';
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function renderRecoverySyncReport(data, container) {
+            const { events, summary } = data;
+            const summaryItems = [
+                { label: 'Retries',   value: summary.retries,   bg: '#fff3e0', color: '#e65100' },
+                { label: 'Successes', value: summary.successes, bg: '#e8f5e9', color: '#2e7d32' },
+                { label: 'Failures',  value: summary.failures,  bg: '#ffebee', color: '#c62828' },
+                { label: 'Synced',    value: summary.synced,    bg: '#e3f2fd', color: '#1565c0' },
+                { label: 'Conflicts', value: summary.conflicts,  bg: '#f3e5f5', color: '#6a1b9a' },
+            ];
+            let html = `<h2 style="margin-bottom: 20px;">Recovery Sync Log</h2>
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px;">
+            `;
+            summaryItems.forEach(item => {
+                html += `<div style="background: ${item.bg}; padding: 12px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 11px; color: #666;">${item.label}</div>
+                    <div style="font-size: 22px; font-weight: bold; color: ${item.color};">${item.value}</div>
+                </div>`;
+            });
+            html += `</div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="background: #667eea; color: white;">
+                            <th style="padding: 10px; text-align: left;">Date / Time</th>
+                            <th style="padding: 10px; text-align: left;">Event</th>
+                            <th style="padding: 10px; text-align: left;">User</th>
+                            <th style="padding: 10px; text-align: left;">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            const eventColors = {
+                RECOVERY_RETRY_TRIGGERED: '#fff3e0',
+                RECOVERY_SUCCESS:         '#e8f5e9',
+                RECOVERY_FAILED:          '#ffebee',
+                OFFLINE_SALE_SYNCED:      '#e3f2fd',
+                SYNC_CONFLICT:            '#f3e5f5',
+            };
+            events.forEach((e, i) => {
+                const rowBg = eventColors[e.action_type] || (i % 2 === 0 ? '#fff' : '#f9f9f9');
+                const meta = e.metadata || e.details || {};
+                const detail = typeof meta === 'string' ? meta : JSON.stringify(meta);
+                html += `
+                    <tr style="background: ${rowBg}; border-bottom: 1px solid #eee;">
+                        <td style="padding: 8px; white-space: nowrap;">${new Date(e.created_at).toLocaleString()}</td>
+                        <td style="padding: 8px;"><span style="font-size: 11px; background: #667eea22; padding: 2px 6px; border-radius: 4px;">${e.action_type}</span></td>
+                        <td style="padding: 8px;">${e.users?.full_name || e.users?.username || e.user_id || '—'}</td>
+                        <td style="padding: 8px; font-size: 12px; color: #555;">${detail !== '{}' ? detail : '—'}</td>
+                    </tr>
+                `;
+            });
+            if (events.length === 0) {
+                html += '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #999;">No recovery/sync events in this period</td></tr>';
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function renderAuditActivityReport(data, container) {
+            const { events, total, by_type } = data;
+            const typeEntries = Object.entries(by_type).sort((a, b) => b[1] - a[1]);
+            let html = `
+                <h2 style="margin-bottom: 20px;">Audit Activity</h2>
+                <div style="margin-bottom: 20px;">
+                    <strong style="font-size: 13px; color: #666;">Event Summary (${total} total)</strong>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
+            `;
+            typeEntries.forEach(([type, count]) => {
+                html += `<span style="background: #667eea22; padding: 4px 10px; border-radius: 12px; font-size: 12px;">
+                    <strong>${count}</strong> ${type}
+                </span>`;
+            });
+            html += `</div></div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="background: #667eea; color: white;">
+                            <th style="padding: 10px; text-align: left;">Date / Time</th>
+                            <th style="padding: 10px; text-align: left;">Action</th>
+                            <th style="padding: 10px; text-align: left;">User</th>
+                            <th style="padding: 10px; text-align: left;">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            events.forEach((e, i) => {
+                const meta = e.metadata || e.details || {};
+                const detail = typeof meta === 'string' ? meta : JSON.stringify(meta);
+                html += `
+                    <tr style="background: ${i % 2 === 0 ? '#fff' : '#f9f9f9'}; border-bottom: 1px solid #eee;">
+                        <td style="padding: 8px; white-space: nowrap;">${new Date(e.created_at).toLocaleString()}</td>
+                        <td style="padding: 8px;"><span style="font-size: 11px; background: #667eea22; padding: 2px 6px; border-radius: 4px;">${e.action_type}</span></td>
+                        <td style="padding: 8px;">${e.users?.full_name || e.users?.username || e.user_id || '—'}</td>
+                        <td style="padding: 8px; font-size: 12px; color: #555;">${detail !== '{}' ? detail : '—'}</td>
+                    </tr>
+                `;
+            });
+            if (events.length === 0) {
+                html += '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #999;">No audit events in this period</td></tr>';
+            }
+            if (total === 500) {
+                html += '<tr><td colspan="4" style="padding: 10px; text-align: center; color: #999; font-style: italic;">Showing first 500 events — narrow the date range to see more</td></tr>';
+            }
+            html += '</tbody></table>';
             container.innerHTML = html;
         }
 
