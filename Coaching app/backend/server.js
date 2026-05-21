@@ -20,6 +20,7 @@ import spilRoutes from './routes/spil.routes.js';
 import questionBuilderRoutes from './routes/question-builder.routes.js';
 import debugRoutes from './routes/debug.routes.js';
 import campaignsRoutes from './routes/campaigns.routes.js';
+import internalRoutes from './routes/internal.routes.js';
 
 // Load environment variables
 dotenv.config();
@@ -76,6 +77,7 @@ app.use('/api/basis', basisRoutes);
 app.use('/api/spil', spilRoutes);
 app.use('/api/coaching/question-builder', questionBuilderRoutes);
 app.use('/api/campaigns', campaignsRoutes);
+app.use('/api/internal', internalRoutes);
 
 // TEMPORARY — debug endpoint, remove after diagnosis
 app.use('/api/debug', debugRoutes);

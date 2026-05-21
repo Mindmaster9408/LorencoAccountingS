@@ -446,16 +446,17 @@ router.get('/patterns', async (req, res) => {
 //   3. COACHING_APP_URL + COACHING_APP_TOKEN env vars on the ecosystem server
 //
 // The Coaching App uses its own JWT system. The ecosystem backend authenticates
-// with the Coaching App using a pre-configured service token (COACHING_APP_TOKEN).
-// No Coaching App code is modified.
+// with the Coaching App using a pre-shared internal service token (COACHING_INTERNAL_API_TOKEN).
+// No user JWT is involved — this is a server-to-server shared secret.
+// No Coaching App code path requires a user login for this flow.
 //
 // DEPLOYMENT SETUP REQUIRED:
 //   COACHING_APP_URL=https://<coaching-app-hostname>
-//   COACHING_APP_TOKEN=<valid Coaching App JWT for the coach service account>
+//   COACHING_INTERNAL_API_TOKEN=<strong-random-secret-same-in-both-services>
 // =============================================================================
 
-const COACHING_APP_URL   = process.env.COACHING_APP_URL   || null;
-const COACHING_APP_TOKEN = process.env.COACHING_APP_TOKEN || null;
+const COACHING_APP_URL            = process.env.COACHING_APP_URL            || null;
+const COACHING_INTERNAL_API_TOKEN = process.env.COACHING_INTERNAL_API_TOKEN || null;
 
 // Verify the requesting ecosystem user has coaching access.
 // Access is granted if either:
@@ -500,9 +501,9 @@ async function requireCoachingAccess(req, res, next) {
 // Proxy a request to the Coaching App backend using the configured service token.
 // Throws with err.code === 'NOT_CONFIGURED' if env vars are missing.
 async function coachingAppFetch(path, opts = {}) {
-    if (!COACHING_APP_URL || !COACHING_APP_TOKEN) {
+    if (!COACHING_APP_URL || !COACHING_INTERNAL_API_TOKEN) {
         const err = new Error(
-            'Coaching App integration not configured (COACHING_APP_URL / COACHING_APP_TOKEN missing)'
+            'Coaching App integration not configured (COACHING_APP_URL / COACHING_INTERNAL_API_TOKEN missing)'
         );
         err.code = 'NOT_CONFIGURED';
         throw err;
@@ -513,7 +514,7 @@ async function coachingAppFetch(path, opts = {}) {
         ...opts,
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + COACHING_APP_TOKEN,
+            'Authorization': 'Bearer ' + COACHING_INTERNAL_API_TOKEN,
             ...(opts.headers || {})
         }
     });
@@ -543,27 +544,27 @@ const QB_CONTEXT_KEYS = [
 // Fetch the latest BASIS submission linked to a coaching client.
 async function fetchClientBasisData(clientId) {
     try {
-        const list    = await coachingAppFetch('/api/basis');
+        const list    = await coachingAppFetch('/api/internal/basis');
         const matches = (Array.isArray(list) ? list : [])
             .filter(s => s.linked_client_id === clientId);
         if (matches.length === 0) return null;
         const pick = matches.find(s => s.status === 'reviewed' || s.status === 'submitted')
             || matches[0];
         if (!pick || !pick.has_results) return null;
-        return await coachingAppFetch(`/api/basis/${pick.id}`);
+        return await coachingAppFetch(`/api/internal/basis/${pick.id}`);
     } catch { return null; }
 }
 
 // Fetch the latest SPIL profile linked to a coaching client.
 async function fetchClientSpilData(clientId) {
     try {
-        const list    = await coachingAppFetch('/api/spil');
+        const list    = await coachingAppFetch('/api/internal/spil');
         const matches = (Array.isArray(list) ? list : [])
             .filter(p => p.linked_client_id === clientId);
         if (matches.length === 0) return null;
         const pick = matches.find(p => p.has_results) || matches[0];
         if (!pick) return null;
-        return await coachingAppFetch(`/api/spil/${pick.id}`);
+        return await coachingAppFetch(`/api/internal/spil/${pick.id}`);
     } catch { return null; }
 }
 
@@ -571,7 +572,7 @@ async function fetchClientSpilData(clientId) {
 async function fetchClientQuestionnaireData(clientId) {
     const answers = [];
     await Promise.all(QB_CONTEXT_KEYS.map(key =>
-        coachingAppFetch(`/api/coaching/question-builder/client/${clientId}/context/${key}`)
+        coachingAppFetch(`/api/internal/question-builder/client/${clientId}/context/${key}`)
             .then(rows => {
                 (Array.isArray(rows) ? rows : []).forEach(q => {
                     const ansVal = q.answer_text
@@ -630,7 +631,7 @@ router.get('/clients/search', requireCoachingAccess, async (req, res) => {
     }
 
     try {
-        const data    = await coachingAppFetch('/api/clients');
+        const data    = await coachingAppFetch('/api/internal/clients');
         const matches = (data.clients || [])
             .filter(c => (c.name || '').toLowerCase().includes(q))
             .slice(0, 10)
@@ -664,7 +665,7 @@ router.get('/clients/:clientId/context', requireCoachingAccess, async (req, res)
     if (isNaN(clientId)) return res.status(400).json({ error: 'Invalid clientId' });
 
     try {
-        const data = await coachingAppFetch(`/api/clients/${clientId}`);
+        const data = await coachingAppFetch(`/api/internal/clients/${clientId}`);
         const c    = data.client;
         if (!c) return res.status(404).json({ error: 'Client not found' });
 
@@ -704,7 +705,7 @@ router.get('/clients/:clientId/latest-session', requireCoachingAccess, async (re
     if (isNaN(clientId)) return res.status(400).json({ error: 'Invalid clientId' });
 
     try {
-        const data    = await coachingAppFetch(`/api/clients/${clientId}`);
+        const data    = await coachingAppFetch(`/api/internal/clients/${clientId}`);
         const c       = data.client;
         if (!c) return res.status(404).json({ error: 'Client not found' });
 
@@ -743,7 +744,7 @@ router.get('/clients/:clientId/full-profile', requireCoachingAccess, async (req,
 
     try {
         const [clientResp, basisRaw, spilRaw] = await Promise.all([
-            coachingAppFetch(`/api/clients/${clientId}`),
+            coachingAppFetch(`/api/internal/clients/${clientId}`),
             fetchClientBasisData(clientId).catch(() => null),
             fetchClientSpilData(clientId).catch(() => null)
         ]);
@@ -820,7 +821,7 @@ router.post('/client-chat', requireCoachingAccess, async (req, res) => {
 
     if (coaching_client_id) {
         try {
-            const data = await coachingAppFetch(`/api/clients/${coaching_client_id}`);
+            const data = await coachingAppFetch(`/api/internal/clients/${coaching_client_id}`);
             const c    = data.client;
             if (c) {
                 const latest = (c.sessions || [])[0] || null;
@@ -930,7 +931,7 @@ router.post('/session-prep/:clientId', requireCoachingAccess, async (req, res) =
 
     try {
         const [clientResp, basisRaw, questionnaireAnswers] = await Promise.all([
-            coachingAppFetch(`/api/clients/${clientId}`),
+            coachingAppFetch(`/api/internal/clients/${clientId}`),
             fetchClientBasisData(clientId).catch(() => null),
             fetchClientQuestionnaireData(clientId).catch(() => [])
         ]);
@@ -1000,7 +1001,7 @@ router.get('/clients/:clientId/rich-context', requireCoachingAccess, async (req,
 
     try {
         const [clientResp, basisRaw, spilRaw, questionnaireAnswers] = await Promise.all([
-            coachingAppFetch(`/api/clients/${clientId}`),
+            coachingAppFetch(`/api/internal/clients/${clientId}`),
             fetchClientBasisData(clientId).catch(() => null),
             fetchClientSpilData(clientId).catch(() => null),
             fetchClientQuestionnaireData(clientId).catch(() => [])
