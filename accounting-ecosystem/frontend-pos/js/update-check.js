@@ -36,9 +36,13 @@
   const BANNER_ID            = 'app-update-banner';
 
   // ── State ──────────────────────────────────────────────────────────────────
-  let knownVersion   = null;  // version seen on page load
-  let bannerShown    = false;
-  let pollTimer      = null;
+  let knownVersion        = null;  // version seen on page load
+  let bannerShown         = false;
+  let forcedUpdateActive  = false;
+  let pollTimer           = null;
+
+  // Expose current app version so it can be stamped on offline sale records
+  window.__posAppVersion = null;
 
   // ── Banner injection ───────────────────────────────────────────────────────
   function injectBannerStyles() {
@@ -125,6 +129,42 @@
     });
   }
 
+  // Forced update: non-dismissible blocking overlay (no dismiss button).
+  // Called when force_update === true and the page is running stale code.
+  // If the app defines window.onForceUpdateRequired(version), that handler is
+  // called first so it can gate addToCart/checkout with a modal.
+  // This banner also shows as a persistent visual indicator.
+  function triggerForcedUpdate(newVersion) {
+    if (forcedUpdateActive) return;
+    forcedUpdateActive = true;
+
+    if (typeof window.onForceUpdateRequired === 'function') {
+      window.onForceUpdateRequired(newVersion);
+    }
+
+    // Also show a persistent (non-dismissible) banner
+    injectBannerStyles();
+    let banner = document.getElementById(BANNER_ID);
+    if (banner) banner.remove(); // remove soft banner if already shown
+    banner = document.createElement('div');
+    banner.id = BANNER_ID;
+    banner.setAttribute('role', 'alert');
+    banner.setAttribute('aria-live', 'assertive');
+    banner.style.cssText = 'background: rgba(180,10,10,0.97); border-color: rgba(255,100,100,0.6);';
+    banner.innerHTML = `
+      <span class="uc-icon">&#9888;&#65039;</span>
+      <span class="uc-text">
+        <strong>Required update.</strong>
+        This version is no longer compatible. Refresh before continuing.
+      </span>
+      <button class="uc-refresh" onclick="window.location.reload()">Refresh Now</button>
+    `;
+    document.body.appendChild(banner);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => banner.classList.add('visible'));
+    });
+  }
+
   // ── Version polling (for pages without SW) ─────────────────────────────────
   async function checkVersion() {
     try {
@@ -134,15 +174,21 @@
       const v    = data.version;
 
       if (!knownVersion) {
-        // First check — record the version this page loaded with
+        // First check — record the version this page loaded with and expose it
         knownVersion = v;
+        window.__posAppVersion = v;
         return;
       }
 
       if (v !== knownVersion) {
         console.log('[update-check] New version detected:', v, '(was:', knownVersion + ')');
-        showUpdateBanner();
-        stopPolling();
+        if (data.force_update) {
+          triggerForcedUpdate(v);
+          stopPolling();
+        } else {
+          showUpdateBanner();
+          stopPolling();
+        }
       }
     } catch (err) {
       // Network error or server down — ignore silently

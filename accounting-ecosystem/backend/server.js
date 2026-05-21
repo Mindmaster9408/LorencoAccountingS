@@ -23,6 +23,10 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 // → browsers detect the updated service worker → caches invalidated automatically.
 // Override with BUILD_VERSION env var for deterministic versioning in CI/CD.
 const BUILD_VERSION = process.env.BUILD_VERSION || Date.now().toString(36);
+// MIN_COMPATIBLE_VERSION: clients older than this must reload before transacting.
+// FORCE_UPDATE: if 'true', clients running any older version are hard-blocked.
+const MIN_COMPATIBLE_VERSION = process.env.MIN_COMPATIBLE_VERSION || '';
+const FORCE_UPDATE = process.env.FORCE_UPDATE === 'true';
 
 const express = require('express');
 const cors = require('cors');
@@ -162,7 +166,12 @@ app.get('/api/modules', (req, res) => {
  */
 app.get('/api/version', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.json({ version: BUILD_VERSION, timestamp: new Date().toISOString() });
+  res.json({
+    version: BUILD_VERSION,
+    min_compatible_version: MIN_COMPATIBLE_VERSION,
+    force_update: FORCE_UPDATE,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // ─── One-time admin password reset endpoint ───────────────────────────────────

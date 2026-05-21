@@ -6,7 +6,7 @@
  *   HTML navigation   → Network-first (always fresh HTML when online)
  *   Other static      → Stale-while-revalidate (instant response + bg refresh)
  *   GET API calls     → Network-first, cache fallback (always try fresh data)
- *   POST/PUT/DELETE   → Network only; offline → queue for background sync
+ *   POST/PUT/DELETE   → Network only; network errors propagate to app (IndexedDB queue)
  *
  * POS prioritises speed at the counter (stale-while-revalidate for CSS/JS),
  * while HTML pages are always fetched fresh to pick up UI changes immediately.
@@ -21,7 +21,6 @@
 const CACHE_VERSION = 'pos-__BUILD_VERSION__';
 const STATIC_CACHE  = `${CACHE_VERSION}-static`;
 const DATA_CACHE    = `${CACHE_VERSION}-data`;
-const SYNC_QUEUE    = 'pos-sync-queue';
 
 // Static files to pre-cache on install (minimal set for fast SW install)
 const STATIC_FILES = [
@@ -153,7 +152,7 @@ async function refreshAsset(request) {
   }
 }
 
-// ── Network-first for API GET; cache fallback; queue writes when offline ──
+// ── Network-first for API GET; cache fallback; pass-through for writes ───
 async function handleApiRequest(request) {
   const url = new URL(request.url);
 
@@ -181,38 +180,9 @@ async function handleApiRequest(request) {
     }
   }
 
-  // POST/PUT/DELETE — try network; if offline, queue the request
-  try {
-    return await fetch(request);
-  } catch {
-    await queueRequest(request);
-    return new Response(JSON.stringify({
-      queued: true, offline: true,
-      message: 'Transaction saved offline — will sync when online'
-    }), { status: 202, headers: { 'Content-Type': 'application/json' } });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// OFFLINE QUEUE
-// ─────────────────────────────────────────────────────────────────────────
-async function queueRequest(request) {
-  try {
-    const body  = await request.clone().text();
-    const entry = {
-      url: request.url, method: request.method,
-      headers: Object.fromEntries(request.headers.entries()),
-      body, timestamp: Date.now()
-    };
-    const cache  = await caches.open(SYNC_QUEUE);
-    const queued = await cache.match('queue').then(r => r ? r.json() : []).catch(() => []);
-    queued.push(entry);
-    await cache.put('queue', new Response(JSON.stringify(queued), {
-      headers: { 'Content-Type': 'application/json' }
-    }));
-  } catch (e) {
-    console.error('[POS SW] Failed to queue request:', e);
-  }
+  // POST/PUT/DELETE — pass through to network; let errors propagate so the
+  // app's catch block fires saveOfflineSale() into IndexedDB (the sole queue).
+  return fetch(request);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#667eea">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/pos/manifest.json">
     <title>Checkout Charlie POS</title>
     <style>
         * {
@@ -3369,6 +3369,7 @@
         let cart = [];
         let categories = new Set();
         let selectedCategory = 'all';
+        let forceUpdatePending = false; // set true by onForceUpdateRequired; gates addToCart/checkout
         let selectedPayment = 'CASH';
         let editingProductId = null;
         let currentTab = 'till';
@@ -3541,7 +3542,8 @@
                     status: 'pending',
                     syncAttempts: 0,
                     createdAt: new Date().toISOString(),
-                    tempSaleNumber: 'OFFLINE-' + Date.now()
+                    tempSaleNumber: 'OFFLINE-' + Date.now(),
+                    app_version: window.__posAppVersion || 'unknown'
                 };
 
                 const request = store.add(sale);
@@ -3838,6 +3840,46 @@
                     if (typeof initSWUpdateCheck === 'function') {
                         initSWUpdateCheck(registration);
                     }
+
+                    // Force-update callback: called by update-check.js when force_update === true.
+                    // Blocks addToCart and shows a non-dismissible overlay until the user refreshes.
+                    window.onForceUpdateRequired = function (newVersion) {
+                        forceUpdatePending = true;
+                        console.warn('[POS] Force update required — version:', newVersion);
+
+                        // Show blocking overlay (non-dismissible)
+                        let overlay = document.getElementById('force-update-overlay');
+                        if (!overlay) {
+                            overlay = document.createElement('div');
+                            overlay.id = 'force-update-overlay';
+                            overlay.style.cssText = [
+                                'position:fixed', 'inset:0', 'z-index:999999',
+                                'display:flex', 'align-items:center', 'justify-content:center',
+                                'background:rgba(10,8,30,0.94)',
+                                'font-family:Segoe UI,Arial,sans-serif'
+                            ].join(';');
+                            overlay.innerHTML = `
+                                <div style="background:#1a1040;border:1px solid rgba(255,80,80,0.5);
+                                            border-radius:16px;padding:40px 36px;max-width:400px;
+                                            text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.7)">
+                                    <div style="font-size:2.5rem;margin-bottom:16px">&#9888;&#65039;</div>
+                                    <h2 style="color:#fff;margin-bottom:12px;font-size:1.3rem">
+                                        Required Update
+                                    </h2>
+                                    <p style="color:#c9b8f5;margin-bottom:28px;line-height:1.6;font-size:0.9rem">
+                                        A critical update has been deployed. Please refresh the page
+                                        before continuing to ensure data integrity.
+                                    </p>
+                                    <button onclick="window.location.reload()"
+                                            style="padding:12px 32px;background:linear-gradient(135deg,#667eea,#764ba2);
+                                                   border:none;border-radius:10px;color:#fff;font-size:1rem;
+                                                   font-weight:700;cursor:pointer">
+                                        Refresh Now
+                                    </button>
+                                </div>`;
+                            document.body.appendChild(overlay);
+                        }
+                    };
 
                     // Listen for sync messages from service worker
                     navigator.serviceWorker.addEventListener('message', (event) => {
@@ -4884,6 +4926,10 @@
         }
 
         function addToCart(product) {
+            if (forceUpdatePending) {
+                showNotification('A required update is pending. Please refresh before continuing.', 'error');
+                return;
+            }
             const existing = cart.find(item => item.productId === product.id);
             // When offline use the locally-estimated stock so the cart guard reflects
             // sales already saved to IndexedDB that haven't been confirmed by the server.
