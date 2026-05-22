@@ -25,9 +25,11 @@ router.get('/sales-summary', async (req, res) => {
     const startDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const endDate = to || now.toISOString();
 
+    // Include sale_payments so the payment breakdown is accurate for split payments.
+    // sales.payment_method holds only the primary method and is wrong for split sales.
     const { data: sales, error } = await supabase
       .from('sales')
-      .select('total_amount, vat_amount, discount_amount, status, created_at, payment_method')
+      .select('total_amount, vat_amount, discount_amount, status, created_at, payment_method, sale_payments(payment_method, amount)')
       .eq('company_id', req.companyId)
       .gte('created_at', startDate)
       .lte('created_at', endDate);
@@ -36,6 +38,23 @@ router.get('/sales-summary', async (req, res) => {
 
     const completed = (sales || []).filter(s => s.status === 'completed');
     const voided = (sales || []).filter(s => s.status === 'voided');
+
+    // Build payment breakdown from sale_payments rows (authoritative for split payments).
+    // Falls back to sales.payment_method + total_amount for any sale with no payment rows
+    // (legacy data or edge case).
+    const paymentAcc = {};
+    for (const s of completed) {
+      const pmts = s.sale_payments || [];
+      if (pmts.length > 0) {
+        for (const p of pmts) {
+          const method = (p.payment_method || 'cash').toUpperCase();
+          paymentAcc[method] = (paymentAcc[method] || 0) + parseFloat(p.amount || 0);
+        }
+      } else {
+        const method = (s.payment_method || 'cash').toUpperCase();
+        paymentAcc[method] = (paymentAcc[method] || 0) + parseFloat(s.total_amount || 0);
+      }
+    }
 
     res.json({
       report: {
@@ -46,13 +65,7 @@ router.get('/sales-summary', async (req, res) => {
         total_discounts: completed.reduce((sum, s) => sum + parseFloat(s.discount_amount || 0), 0),
         voided_count: voided.length,
         voided_amount: voided.reduce((sum, s) => sum + parseFloat(s.total_amount || 0), 0),
-        payment_breakdown: Object.entries(
-          completed.reduce((acc, s) => {
-            const method = s.payment_method || 'cash';
-            acc[method] = (acc[method] || 0) + parseFloat(s.total_amount || 0);
-            return acc;
-          }, {})
-        ).map(([method, amount]) => ({ method, amount }))
+        payment_breakdown: Object.entries(paymentAcc).map(([method, amount]) => ({ method, amount }))
       }
     });
   } catch (err) {

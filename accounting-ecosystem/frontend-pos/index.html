@@ -1732,7 +1732,7 @@
                             </div>
                         </div>
 
-                        <button class="checkout-btn" id="checkoutBtn" onclick="checkout()" disabled>Complete Sale</button>
+                        <button class="checkout-btn" id="checkoutBtn" onclick="checkoutWithFeatures()" disabled>Complete Sale</button>
                         <button class="clear-cart-btn" onclick="clearCart()">Clear Cart</button>
                         <button class="btn btn-secondary" style="width: 100%; margin-top: 10px;" onclick="openSaleSearch()">🔍 Search Sale / Reprint</button>
                     </div>
@@ -8534,75 +8534,139 @@
             }
         }
 
-        // ========== UPDATED CHECKOUT WITH SPLIT PAYMENT ==========
+        // ========== CHECKOUT WITH SPLIT PAYMENT ==========
+        // Entry point for the checkout button — handles both split and single-method paths.
+        // Single-method path delegates to checkout() which owns its own guard chain and
+        // checkoutInProgress management. Split path is fully managed here.
 
         async function checkoutWithFeatures() {
+            // Guards that apply to both split and single-method paths.
+            // checkout() re-checks these for the single-method path as belt-and-suspenders.
+            if (checkoutInProgress) return;
+            if (forceUpdatePending) {
+                showNotification('A required update is pending. Please refresh before continuing.', 'error');
+                return;
+            }
+            if (tillLocked) {
+                showNotification('This till is locked. Contact your manager to unlock it.', 'error');
+                return;
+            }
             if (cart.length === 0 || !currentSession) {
                 showNotification('Cart is empty or no session open', 'error');
                 return;
             }
 
-            // Account payment - must select customer
+            // Account payment requires a customer to be selected (single-method only —
+            // split payment does not support account settlement).
             if (selectedPayment === 'ACCOUNT' && !splitPaymentMode && !selectedAccountCustomerId) {
                 showNotification('Please select an account customer first', 'error');
                 return;
             }
 
-            if (splitPaymentMode) {
-                // Gather all split amounts
-                const payments = [];
-                document.querySelectorAll('.split-amount').forEach(input => {
-                    const amount = parseFloat(input.value) || 0;
-                    if (amount > 0) {
-                        payments.push({ method: input.dataset.method, amount });
-                    }
+            if (!splitPaymentMode) {
+                // Single-method checkout — delegate entirely to checkout() which manages
+                // checkoutInProgress, button state, offline fallback, and audit.
+                checkout();
+                return;
+            }
+
+            // ── Split payment path ────────────────────────────────────────────────────
+
+            // Collect non-zero payment rows from the split panel.
+            const payments = [];
+            document.querySelectorAll('.split-amount').forEach(input => {
+                const amount = parseFloat(input.value) || 0;
+                if (amount > 0) {
+                    payments.push({ method: input.dataset.method, amount });
+                }
+            });
+
+            if (payments.length === 0) {
+                showNotification('Enter at least one payment amount', 'error');
+                return;
+            }
+
+            // Validate allocated total matches cart total.
+            // Uses the same * 1.15 formula as updateSplitRemaining() so the UI and
+            // validation are always consistent. (BUG-2 — VAT-inclusive correction tracked
+            // as Workstream 13C — applies equally to both; fixing one fixes the other.)
+            const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 1.15;
+            const allocated = payments.reduce((sum, p) => sum + p.amount, 0);
+
+            if (Math.abs(allocated - total) > 0.01) {
+                showNotification('Split payment amounts must equal total', 'error');
+                return;
+            }
+
+            const idempotencyKey = crypto.randomUUID();
+
+            const payload = {
+                tillSessionId: currentSession.id,
+                items: cart.map(item => ({
+                    productId: item.productId,
+                    quantity: item.quantity
+                })),
+                payments,
+                idempotencyKey
+            };
+
+            checkoutInProgress = true;
+            const btn = document.getElementById('checkoutBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+
+            try {
+                const response = await fetch(`${API_URL}/pos/sales`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
                 });
 
-                const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 1.15;
-                const allocated = payments.reduce((sum, p) => sum + p.amount, 0);
+                const result = await response.json();
 
-                if (Math.abs(allocated - total) > 0.01) {
-                    showNotification('Split payment amounts must equal total', 'error');
-                    return;
-                }
+                if (response.ok) {
+                    lastSaleId = result.saleId;
 
-                const payload = {
-                    tillSessionId: currentSession.id,
-                    items: cart.map(item => ({
-                        productId: item.productId,
-                        quantity: item.quantity
-                    })),
-                    payments
-                };
+                    // Snapshot cart before clearing — needed for local stock decrement below.
+                    const soldItems = cart.map(item => ({ productId: item.productId, quantity: item.quantity }));
 
-                try {
-                    const response = await fetch(`${API_URL}/pos/sales/split-payment`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
+                    showSaleCompleteModal(result);
+                    cart = [];
+                    updateCart();
+                    toggleSplitPayment();
 
-                    const result = await response.json();
-
-                    if (response.ok) {
-                        lastSaleId = result.saleId;
-                        showSaleCompleteModal(result);
-                        cart = [];
-                        updateCart();
-                        toggleSplitPayment();
-                        await loadProducts();
-                    } else {
-                        showNotification(result.error || 'Checkout failed', 'error');
+                    // Decrement stock_quantity in memory for immediate tile/table display.
+                    // Server already committed the sale atomically — this is display-only.
+                    for (const sold of soldItems) {
+                        const product = products.find(p => p.id === sold.productId);
+                        if (product) {
+                            const base = product.stock_quantity ?? 0;
+                            product.stock_quantity = companyStockPolicy.allowNegativeStock
+                                ? base - sold.quantity
+                                : Math.max(0, base - sold.quantity);
+                        }
                     }
-                } catch (error) {
-                    showNotification('Checkout failed: ' + error.message, 'error');
+                    displayProductsGrid(products);
+                    displayProductsTable(products);
+                    rebuildBarcodeMap();
+
+                    // Open cash drawer only when a cash component is present in the split.
+                    if (autoPrintEnabled && lastSaleId) {
+                        const hasCash = payments.some(p => p.method === 'CASH' && p.amount > 0);
+                        printReceipt(lastSaleId, { openDrawer: openDrawerOnSale && hasCash });
+                    }
+                } else {
+                    showNotification(result.error || 'Checkout failed', 'error');
                 }
-            } else {
-                // Regular checkout
-                checkout();
+            } catch (error) {
+                showNotification('Checkout failed: ' + error.message, 'error');
+            } finally {
+                checkoutInProgress = false;
+                btn.textContent = 'Complete Sale';
+                btn.disabled = cart.length === 0 || !currentSession;
             }
         }
 
