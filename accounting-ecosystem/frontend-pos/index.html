@@ -7652,6 +7652,9 @@
             const section_element = document.getElementById(sectionId);
             if (section_element) {
                 section_element.style.display = 'block';
+                if (section === 'companies') {
+                    loadCompanies();
+                }
                 if (section === 'customers') {
                     loadCustomers();
                 }
@@ -10091,12 +10094,20 @@
         }
 
         async function loadMainCompanyInfo() {
-            // Always clear "Loading..." immediately — never leave the user on a spinner
-            document.getElementById('mainCompanyName').textContent = currentCompanyName || 'My Company';
-            document.getElementById('mainCompanyVat').textContent = '-';
-            document.getElementById('mainCompanyDetails').textContent = '';
+            const nameEl    = document.getElementById('mainCompanyName');
+            const vatEl     = document.getElementById('mainCompanyVat');
+            const detailsEl = document.getElementById('mainCompanyDetails');
 
-            if (!currentCompanyId) return;
+            // Clear spinner immediately — never leave "Loading..." under any condition
+            nameEl.textContent    = currentCompanyName || 'Loading...';
+            vatEl.textContent     = '-';
+            detailsEl.textContent = '';
+
+            if (!currentCompanyId) {
+                console.warn('[POS] loadMainCompanyInfo: currentCompanyId is null — cannot load company details');
+                nameEl.textContent = 'Current company unavailable';
+                return;
+            }
 
             try {
                 const res = await fetch(`${API_URL}/companies/${currentCompanyId}`, {
@@ -10105,15 +10116,18 @@
                 if (res.ok) {
                     const data = await res.json();
                     const company = data.company || {};
-                    document.getElementById('mainCompanyName').textContent = company.company_name || currentCompanyName || 'My Company';
-                    document.getElementById('mainCompanyVat').textContent = company.vat_number || '-';
-                    document.getElementById('mainCompanyDetails').textContent =
-                        `${company.trading_name || ''} ${company.address ? '| ' + company.address : ''}`.trim() || '';
+                    nameEl.textContent    = company.company_name || currentCompanyName || 'My Company';
+                    vatEl.textContent     = company.vat_number || '-';
+                    detailsEl.textContent =
+                        [company.trading_name, company.address ? '| ' + company.address : '']
+                        .filter(Boolean).join(' ').trim();
                 } else {
-                    console.log('Company info API error:', res.status);
+                    console.warn('[POS] loadMainCompanyInfo: API returned', res.status, 'for company', currentCompanyId);
+                    nameEl.textContent = currentCompanyName || 'Current company unavailable';
                 }
             } catch (e) {
-                console.log('Error loading main company:', e);
+                console.warn('[POS] loadMainCompanyInfo error:', e.message);
+                nameEl.textContent = currentCompanyName || 'Current company unavailable';
             }
         }
 
