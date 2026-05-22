@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Historical Comparatives — Lorenco Accounting</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
   <link rel="stylesheet" href="/accounting/css/main.css" />
   <style>
     /* ── Page Layout ─────────────────────────────────────────────────── */
@@ -551,7 +553,20 @@
     function renderBatchList(batches) {
       const el = document.getElementById('batchList');
       if (!batches.length) {
-        el.innerHTML = `<div class="empty-state" style="padding:24px;"><p>No batches found.</p></div>`;
+        el.innerHTML = `
+          <div class="empty-state" style="padding:24px;">
+            <div class="icon">📂</div>
+            <p style="font-weight:600; color:#374151;">No historical comparative batches created yet.</p>
+            <p style="margin-top:4px;">Create a batch to start capturing historical financial data.</p>
+            <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px; align-items:center;">
+              <button class="btn btn-primary" onclick="openCreateBatchModal()" style="width:200px;">
+                + Create Historical Batch
+              </button>
+              <button class="btn" disabled title="Coming soon" style="width:200px; opacity:0.5; cursor:not-allowed;">
+                Import Historical Data
+              </button>
+            </div>
+          </div>`;
         return;
       }
       el.innerHTML = batches.map(b => `
