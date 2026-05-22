@@ -5160,6 +5160,28 @@
             }, 100);
         }
 
+        // ── VAT-inclusive cart totals helper ────────────────────────────────────
+        // Product prices stored in DB are VAT-inclusive (customer price already includes VAT).
+        // VAT is extracted using the same formula as backend create_sale_atomic:
+        //   vat = linePrice × rate / (100 + rate)
+        // totalAmount = subtotal — no additive VAT on top of inclusive prices.
+        function cartTotals() {
+            let subtotal  = 0;
+            let vatAmount = 0;
+            for (const item of cart) {
+                const linePrice = item.price * item.quantity;
+                subtotal += linePrice;
+                const prod    = products.find(p => p.id === item.productId);
+                const vatRate = prod
+                    ? ((prod.requires_vat && prod.vat_rate) ? Number(prod.vat_rate) : 0)
+                    : 15;   // fallback: product not in array (shouldn't happen — defensive only)
+                if (vatRate > 0) {
+                    vatAmount += linePrice * (vatRate / (100 + vatRate));
+                }
+            }
+            return { subtotal, vatAmount, totalAmount: subtotal };
+        }
+
         function updateCart() {
             pendingRemoveConfirm.clear();
             const container = document.getElementById('cartItems');
@@ -5198,14 +5220,12 @@
                 document.getElementById('checkoutBtn').disabled = !currentSession;
             }
 
-            // Update totals
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const vat = subtotal * 0.15;
-            const total = subtotal + vat;
+            // Update totals — VAT-inclusive: no additive VAT on top of product prices
+            const { subtotal, vatAmount, totalAmount } = cartTotals();
 
             document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
-            document.getElementById('vat').textContent = `R ${vat.toFixed(2)}`;
-            document.getElementById('total').textContent = `R ${total.toFixed(2)}`;
+            document.getElementById('vat').textContent = `R ${vatAmount.toFixed(2)}`;
+            document.getElementById('total').textContent = `R ${totalAmount.toFixed(2)}`;
             document.getElementById('cartItemCount').textContent = `${cart.length} items`;
 
             // Update split payment remaining if active
@@ -5358,10 +5378,10 @@
             btn.disabled = true;
             btn.textContent = 'Processing...';
 
-            // Calculate totals for offline mode
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const vatAmount = subtotal * 0.15;
-            const totalAmount = subtotal + vatAmount;
+            // VAT-inclusive totals for offline receipt storage.
+            // Matches backend create_sale_atomic: VAT extracted from inclusive price,
+            // totalAmount = subtotal (no additive VAT on top of product prices).
+            const { subtotal, vatAmount, totalAmount } = cartTotals();
 
             const saleData = {
                 // Generated once per checkout attempt. Persists with the
@@ -7750,7 +7770,7 @@
         }
 
         function updateSplitRemaining() {
-            const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 1.15;
+            const { totalAmount: total } = cartTotals();
             let allocated = 0;
             document.querySelectorAll('.split-amount').forEach(input => {
                 allocated += parseFloat(input.value) || 0;
@@ -8519,13 +8539,11 @@
         }
 
         function updateTotals() {
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const vat = subtotal * 0.15;
-            const total = subtotal + vat;
+            const { subtotal, vatAmount, totalAmount } = cartTotals();
 
             document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
-            document.getElementById('vat').textContent = `R ${vat.toFixed(2)}`;
-            document.getElementById('total').textContent = `R ${total.toFixed(2)}`;
+            document.getElementById('vat').textContent = `R ${vatAmount.toFixed(2)}`;
+            document.getElementById('total').textContent = `R ${totalAmount.toFixed(2)}`;
             document.getElementById('cartItemCount').textContent = `${cart.length} items`;
 
             // Update split payment remaining if active
@@ -8587,10 +8605,9 @@
             }
 
             // Validate allocated total matches cart total.
-            // Uses the same * 1.15 formula as updateSplitRemaining() so the UI and
-            // validation are always consistent. (BUG-2 — VAT-inclusive correction tracked
-            // as Workstream 13C — applies equally to both; fixing one fixes the other.)
-            const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 1.15;
+            // cartTotals() uses VAT-inclusive extraction matching backend create_sale_atomic,
+            // so the split amounts the cashier enters are validated against the real sale total.
+            const { totalAmount: total } = cartTotals();
             const allocated = payments.reduce((sum, p) => sum + p.amount, 0);
 
             if (Math.abs(allocated - total) > 0.01) {
