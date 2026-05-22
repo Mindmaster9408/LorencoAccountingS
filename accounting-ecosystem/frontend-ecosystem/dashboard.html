@@ -325,6 +325,11 @@
             display: block;
             object-fit: cover;
         }
+        /* Logo image — contain preserves aspect ratio without cropping */
+        .checkout-charlie-card-img {
+            object-fit: contain;
+            background: #0f0f1a;  /* matches the dark tone of the CC logo background */
+        }
         .app-card .app-title {
             font-size: 1.1rem;
             font-weight: 700;
@@ -1810,6 +1815,7 @@
                 subtitle: 'Point of Sale',
                 icon: '&#128722;',
                 logo: 'assets/branding/checkout-charlie/checkout-charlie-logo-secondary.png',
+                fullCardImage: 'assets/branding/checkout-charlie/checkout-charlie-logo-main.png',
                 desc: 'Complete POS system — products, sales, tills, inventory, customers, receipts.',
                 path: '/pos',
                 cssClass: 'pos',
@@ -2175,6 +2181,16 @@
                              onclick="${isActive ? `launchApp('${app.key}')` : ''}"
                              title="Lorenco Paytime${isActive ? '' : ' — Not Activated'}">
                             <img src="${app.logo}" alt="Lorenco Paytime" class="app-card-full-image">
+                        </div>
+                    `;
+                }
+
+                if (app.key === 'pos') {
+                    return `
+                        <div class="app-card pos app-card-image-only ${isActive ? '' : 'disabled'}"
+                             onclick="${isActive ? `launchApp('${app.key}')` : ''}"
+                             title="Checkout Charlie${isActive ? '' : ' — Not Activated'}">
+                            <img src="${app.fullCardImage || app.logo}" alt="Checkout Charlie" class="app-card-full-image checkout-charlie-card-img">
                         </div>
                     `;
                 }
