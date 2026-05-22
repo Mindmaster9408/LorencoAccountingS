@@ -999,8 +999,8 @@ router.get('/companies/:companyId/users', authenticateToken, async (req, res) =>
 
     const { data: access, error } = await supabase
       .from('user_company_access')
-      .select(`role, is_primary, granted_at,
-               users:user_id (id, username, email, full_name, is_active, last_login_at, employee_id)`)
+      .select(`role, is_primary, granted_at, employee_id,
+               users:user_id (id, username, email, full_name, is_active, last_login_at)`)
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('granted_at');
@@ -1014,7 +1014,7 @@ router.get('/companies/:companyId/users', authenticateToken, async (req, res) =>
         username: a.users.username,
         email: a.users.email,
         full_name: a.users.full_name,
-        employee_id: a.users.employee_id,
+        employee_id: a.employee_id || null,
         is_active: a.users.is_active,
         last_login_at: a.users.last_login_at,
         role: a.role,
@@ -1081,7 +1081,6 @@ router.post('/companies/:companyId/users', authenticateToken, async (req, res) =
         full_name: full_name.trim(),
         email: email ? email.toLowerCase().trim() : null,
         role,
-        employee_id: employee_id || null,
         is_active: true,
       })
       .select('id, username, full_name, email, role')
@@ -1095,6 +1094,7 @@ router.post('/companies/:companyId/users', authenticateToken, async (req, res) =
         user_id: newUser.id,
         company_id: companyId,
         role,
+        employee_id: employee_id || null,
         is_active: true,
         is_primary: true,
         granted_at: new Date().toISOString(),
