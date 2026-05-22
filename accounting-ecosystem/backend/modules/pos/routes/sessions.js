@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
     const { status, user_id } = req.query;
     let query = supabase
       .from('till_sessions')
-      .select('*, tills(till_name, till_number), users:user_id(username, full_name)')
+      .select('*, tills(till_name, till_number, is_locked, locked_reason, is_printer_degraded, printer_degraded_reason), users:user_id(username, full_name)')
       .eq('company_id', req.companyId)
       .order('opened_at', { ascending: false });
 
@@ -49,7 +49,7 @@ router.get('/current', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('till_sessions')
-      .select('*, tills(till_name, till_number)')
+      .select('*, tills(till_name, till_number, is_locked, locked_reason, is_printer_degraded, printer_degraded_reason)')
       .eq('company_id', req.companyId)
       .eq('user_id', req.user.userId)
       .eq('status', 'open')

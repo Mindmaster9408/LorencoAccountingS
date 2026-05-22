@@ -87,6 +87,16 @@ const POS_EVENTS = {
     RECOVERY_NOTE_ADDED:         'RECOVERY_NOTE_ADDED',         // manager added a recovery note to a queue item
     SUPERVISOR_OVERRIDE_GRANTED: 'SUPERVISOR_OVERRIDE_GRANTED', // supervisor recorded a manual override action
     ABANDONED_SESSION_DETECTED:  'ABANDONED_SESSION_DETECTED',  // session open > 8h detected on health check
+
+    // Manager emergency control events (Workstream 11B)
+    EMERGENCY_SESSION_FORCE_CLOSED: 'EMERGENCY_SESSION_FORCE_CLOSED', // manager force-closed an open session
+    EMERGENCY_TILL_LOCKED:          'EMERGENCY_TILL_LOCKED',          // manager locked a till
+    EMERGENCY_TILL_UNLOCKED:        'EMERGENCY_TILL_UNLOCKED',        // manager unlocked a till
+    EMERGENCY_SYNC_PAUSED:          'EMERGENCY_SYNC_PAUSED',          // manager paused offline sync
+    EMERGENCY_SYNC_RESUMED:         'EMERGENCY_SYNC_RESUMED',         // manager resumed offline sync
+    EMERGENCY_USER_FORCE_LOGOUT:    'EMERGENCY_USER_FORCE_LOGOUT',    // manager force-closed all sessions for a user
+    EMERGENCY_PRINTER_DEGRADED:     'EMERGENCY_PRINTER_DEGRADED',     // manager marked till printer as degraded
+    EMERGENCY_PRINTER_RESTORED:     'EMERGENCY_PRINTER_RESTORED',     // manager marked till printer as restored
 };
 
 // Maps each event type to its action_category column value.
@@ -133,6 +143,15 @@ const EVENT_CATEGORY = {
     RECOVERY_NOTE_ADDED:         'recovery',
     SUPERVISOR_OVERRIDE_GRANTED: 'override',
     ABANDONED_SESSION_DETECTED:  'session',
+    // Emergency control events — 'override' category so they appear in support timeline
+    EMERGENCY_SESSION_FORCE_CLOSED: 'override',
+    EMERGENCY_TILL_LOCKED:          'override',
+    EMERGENCY_TILL_UNLOCKED:        'override',
+    EMERGENCY_SYNC_PAUSED:          'override',
+    EMERGENCY_SYNC_RESUMED:         'override',
+    EMERGENCY_USER_FORCE_LOGOUT:    'override',
+    EMERGENCY_PRINTER_DEGRADED:     'override',
+    EMERGENCY_PRINTER_RESTORED:     'override',
 };
 
 // ── Core logger ───────────────────────────────────────────────────────────────

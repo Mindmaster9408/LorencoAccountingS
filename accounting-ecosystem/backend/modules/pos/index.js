@@ -18,6 +18,8 @@ const discountsRoutes      = require('./routes/discounts');
 const loyaltyRoutes        = require('./routes/loyalty');
 const settingsRoutes       = require('./routes/settings');
 const recoveryRoutes       = require('./routes/recovery');
+const supportRoutes        = require('./routes/support');
+const emergencyRoutes      = require('./routes/emergency');
 
 const router = express.Router();
 
@@ -39,6 +41,8 @@ router.use('/discounts',  discountsRoutes);
 router.use('/loyalty',    loyaltyRoutes);
 router.use('/settings',   settingsRoutes);
 router.use('/recovery',   recoveryRoutes);
+router.use('/support',    supportRoutes);
+router.use('/emergency',  emergencyRoutes);
 
 // Health check for POS module
 router.get('/status', (req, res) => {
