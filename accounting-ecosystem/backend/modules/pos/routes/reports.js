@@ -662,4 +662,389 @@ router.get('/audit-activity', async (req, res) => {
   }
 });
 
+// ── Helper: parse date range from query params ────────────────────────────────
+function dateRange(query) {
+  const now = new Date();
+  const start = query.startDate || query.from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const end   = query.endDate   || query.to   || now.toISOString().slice(0, 10);
+  return { start: start + (start.length === 10 ? 'T00:00:00' : ''), end: end + (end.length === 10 ? 'T23:59:59' : '') };
+}
+
+/**
+ * GET /api/pos/reports/gross-profit
+ */
+router.get('/gross-profit', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: salesData, error } = await supabase
+      .from('sales')
+      .select('id, sale_number, subtotal, vat_amount, total_amount, created_at, payment_method, users:user_id(full_name, username), sale_items(quantity, unit_price, total_price, product_id, products:product_id(cost_price))')
+      .eq('company_id', req.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const sales = (salesData || []).map(s => {
+      const cogs = (s.sale_items || []).reduce((sum, i) => sum + (parseFloat(i.products?.cost_price || 0) * i.quantity), 0);
+      const subtotal = parseFloat(s.subtotal);
+      const gross_profit = subtotal - cogs;
+      return {
+        sale_number: s.sale_number,
+        cashier: s.users?.full_name || s.users?.username || 'Unknown',
+        created_at: s.created_at,
+        subtotal,
+        vat: parseFloat(s.vat_amount),
+        total_amount: parseFloat(s.total_amount),
+        gross_profit,
+        profit_margin: subtotal > 0 ? parseFloat((gross_profit / subtotal * 100).toFixed(1)) : 0,
+      };
+    });
+
+    const totalSales   = sales.reduce((s, r) => s + r.total_amount, 0);
+    const totalProfit  = sales.reduce((s, r) => s + r.gross_profit, 0);
+    res.json({ sales, summary: { totalSales, totalProfit, profitMargin: totalSales > 0 ? parseFloat((totalProfit / totalSales * 100).toFixed(1)) : 0, transactionCount: sales.length } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/reports/gross-profit-by-person
+ */
+router.get('/gross-profit-by-person', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: salesData, error } = await supabase
+      .from('sales')
+      .select('subtotal, vat_amount, total_amount, users:user_id(full_name, username), sale_items(quantity, unit_price, total_price, products:product_id(cost_price))')
+      .eq('company_id', req.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', start)
+      .lte('created_at', end);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const byPerson = {};
+    for (const s of salesData || []) {
+      const name = s.users?.full_name || s.users?.username || 'Unknown';
+      if (!byPerson[name]) byPerson[name] = { cashier: name, sales_count: 0, total_sales: 0, total_vat: 0, gross_profit: 0 };
+      const cogs = (s.sale_items || []).reduce((sum, i) => sum + (parseFloat(i.products?.cost_price || 0) * i.quantity), 0);
+      byPerson[name].sales_count++;
+      byPerson[name].total_sales  += parseFloat(s.total_amount);
+      byPerson[name].total_vat    += parseFloat(s.vat_amount);
+      byPerson[name].gross_profit += parseFloat(s.subtotal) - cogs;
+    }
+
+    const people = Object.values(byPerson).map(p => ({
+      ...p,
+      profit_margin: p.total_sales > 0 ? parseFloat((p.gross_profit / p.total_sales * 100).toFixed(1)) : 0,
+    }));
+
+    const totalSales  = people.reduce((s, r) => s + r.total_sales, 0);
+    const totalProfit = people.reduce((s, r) => s + r.gross_profit, 0);
+    res.json({ data: people, summary: { totalSales, totalProfit, profitMargin: totalSales > 0 ? parseFloat((totalProfit / totalSales * 100).toFixed(1)) : 0, staffCount: people.length } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/reports/gross-profit-by-product
+ */
+router.get('/gross-profit-by-product', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: itemsData, error } = await supabase
+      .from('sale_items')
+      .select('quantity, unit_price, total_price, products:product_id(product_name, product_code, cost_price, categories:category_id(name)), sales:sale_id(status, created_at, company_id)')
+      .eq('company_id', req.companyId)
+      .gte('sales.created_at', start)
+      .lte('sales.created_at', end);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const byProduct = {};
+    for (const item of (itemsData || [])) {
+      if (!item.sales || item.sales.status !== 'completed') continue;
+      const saleDate = item.sales.created_at;
+      if (saleDate < start || saleDate > end) continue;
+      const p = item.products || {};
+      const key = p.product_code || String(item.product_id);
+      if (!byProduct[key]) byProduct[key] = { product_code: p.product_code || '-', product_name: p.product_name || '-', category: p.categories?.name || '-', quantity_sold: 0, total_revenue: 0, gross_profit: 0 };
+      const cost = parseFloat(p.cost_price || 0);
+      const qty  = item.quantity;
+      const rev  = parseFloat(item.total_price);
+      byProduct[key].quantity_sold  += qty;
+      byProduct[key].total_revenue  += rev;
+      byProduct[key].gross_profit   += rev - cost * qty;
+    }
+
+    const products = Object.values(byProduct).map(p => ({
+      ...p,
+      profit_margin: p.total_revenue > 0 ? parseFloat((p.gross_profit / p.total_revenue * 100).toFixed(1)) : 0,
+    })).sort((a, b) => b.total_revenue - a.total_revenue);
+
+    const totalRevenue = products.reduce((s, r) => s + r.total_revenue, 0);
+    const totalProfit  = products.reduce((s, r) => s + r.gross_profit, 0);
+    res.json({ products, summary: { totalRevenue, totalProfit, profitMargin: totalRevenue > 0 ? parseFloat((totalProfit / totalRevenue * 100).toFixed(1)) : 0, productCount: products.length } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/reports/daily-summary
+ */
+router.get('/daily-summary', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: salesData, error } = await supabase
+      .from('sales')
+      .select('subtotal, vat_amount, total_amount, created_at, sale_items(quantity, unit_price, total_price, products:product_id(cost_price))')
+      .eq('company_id', req.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at');
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const byDay = {};
+    for (const s of salesData || []) {
+      const day = s.created_at.slice(0, 10);
+      if (!byDay[day]) byDay[day] = { sale_date: day, transaction_count: 0, daily_sales: 0, daily_vat: 0, daily_profit: 0 };
+      const cogs = (s.sale_items || []).reduce((sum, i) => sum + parseFloat(i.products?.cost_price || 0) * i.quantity, 0);
+      byDay[day].transaction_count++;
+      byDay[day].daily_sales  += parseFloat(s.total_amount);
+      byDay[day].daily_vat    += parseFloat(s.vat_amount);
+      byDay[day].daily_profit += parseFloat(s.subtotal) - cogs;
+    }
+
+    const days = Object.values(byDay);
+    const totalSales  = days.reduce((s, d) => s + d.daily_sales, 0);
+    const totalVat    = days.reduce((s, d) => s + d.daily_vat, 0);
+    const totalProfit = days.reduce((s, d) => s + d.daily_profit, 0);
+    const avgDailySales = days.length > 0 ? (totalSales / days.length).toFixed(2) : '0.00';
+    res.json({ days, summary: { totalSales, totalVat, totalProfit, avgDailySales } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/reports/audit-trail
+ */
+router.get('/audit-trail', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: salesData, error } = await supabase
+      .from('sales')
+      .select('id, sale_number, subtotal, vat_amount, total_amount, payment_method, created_at, users:user_id(full_name, username), sale_items(quantity)')
+      .eq('company_id', req.companyId)
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const sales = (salesData || []).map(s => {
+      const items  = s.sale_items || [];
+      const totalQ = items.reduce((sum, i) => sum + i.quantity, 0);
+      return {
+        sale_number: s.sale_number,
+        created_at: s.created_at,
+        cashier: s.users?.full_name || s.users?.username || 'Unknown',
+        item_count: items.length,
+        total_quantity: totalQ,
+        subtotal: parseFloat(s.subtotal),
+        vat_amount: parseFloat(s.vat_amount),
+        total_amount: parseFloat(s.total_amount),
+        payment_method: s.payment_method,
+      };
+    });
+
+    const methods = [...new Set(sales.map(s => s.payment_method).filter(Boolean))];
+    res.json({ sales, summary: { totalTransactions: sales.length, totalAmount: sales.reduce((s, r) => s + r.total_amount, 0), paymentMethods: methods } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/reports/vat-detail
+ */
+router.get('/vat-detail', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: salesData, error } = await supabase
+      .from('sales')
+      .select('sale_number, subtotal, vat_amount, total_amount, created_at, users:user_id(full_name, username), sale_items(quantity, unit_price, total_price, products:product_id(product_name))')
+      .eq('company_id', req.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const items = [];
+    let totalSubtotal = 0, totalVat = 0, vatableItems = 0, exemptItems = 0;
+
+    for (const s of salesData || []) {
+      const saleVat = parseFloat(s.vat_amount);
+      const saleSubtotal = parseFloat(s.subtotal);
+      const cashier = s.users?.full_name || s.users?.username || 'Unknown';
+      const saleItems = s.sale_items || [];
+      const saleRevenue = saleItems.reduce((sum, i) => sum + parseFloat(i.total_price || 0), 0);
+
+      for (const item of saleItems) {
+        const lineTotal  = parseFloat(item.total_price || 0);
+        const ratio      = saleRevenue > 0 ? lineTotal / saleRevenue : 0;
+        const lineVat    = parseFloat((saleVat * ratio).toFixed(2));
+        const lineSubtotal = parseFloat((lineTotal - lineVat).toFixed(2));
+        items.push({
+          sale_number: s.sale_number,
+          created_at: s.created_at,
+          cashier,
+          product_name: item.products?.product_name || 'Unknown',
+          quantity: item.quantity,
+          unit_price: parseFloat(item.unit_price),
+          subtotal: lineSubtotal,
+          vat_amount: lineVat,
+          total_with_vat: lineTotal,
+        });
+        totalSubtotal += lineSubtotal;
+        totalVat      += lineVat;
+        if (lineVat > 0) vatableItems++; else exemptItems++;
+      }
+    }
+
+    res.json({ items, summary: { totalSubtotal, totalVat, totalWithVat: totalSubtotal + totalVat, vatableItems, exemptItems } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/reports/vat-summary
+ */
+router.get('/vat-summary', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: salesData, error } = await supabase
+      .from('sales')
+      .select('subtotal, vat_amount, total_amount, created_at')
+      .eq('company_id', req.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at');
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const byDay = {};
+    for (const s of salesData || []) {
+      const day = s.created_at.slice(0, 10);
+      if (!byDay[day]) byDay[day] = { report_date: day + 'T00:00:00', taxable_amount: 0, vat_collected: 0, exempt_amount: 0, total_sales: 0, transaction_count: 0 };
+      byDay[day].taxable_amount  += parseFloat(s.subtotal);
+      byDay[day].vat_collected   += parseFloat(s.vat_amount);
+      byDay[day].total_sales     += parseFloat(s.total_amount);
+      byDay[day].transaction_count++;
+    }
+
+    const summary = Object.values(byDay);
+    const totalTaxable = summary.reduce((s, r) => s + r.taxable_amount, 0);
+    const totalVat     = summary.reduce((s, r) => s + r.vat_collected, 0);
+    const totalSales   = summary.reduce((s, r) => s + r.total_sales, 0);
+    res.json({ summary, totals: { totalTaxable, totalVat, totalExempt: 0, totalSales, effectiveVatRate: totalTaxable > 0 ? parseFloat((totalVat / totalTaxable * 100).toFixed(2)) : 0 } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/reports/inventory-sync
+ */
+router.get('/inventory-sync', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: itemsData, error } = await supabase
+      .from('sale_items')
+      .select('quantity, unit_price, total_price, products:product_id(product_name, product_code, cost_price), sales:sale_id(sale_number, created_at, payment_method, status, company_id)')
+      .eq('company_id', req.companyId)
+      .gte('sales.created_at', start)
+      .lte('sales.created_at', end);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const items = (itemsData || [])
+      .filter(i => i.sales?.status === 'completed' && i.sales?.created_at >= start && i.sales?.created_at <= end)
+      .map(i => ({
+        sale_number:    i.sales?.sale_number || '-',
+        created_at:     i.sales?.created_at || null,
+        product_code:   i.products?.product_code || '-',
+        product_name:   i.products?.product_name || 'Unknown',
+        quantity:       i.quantity,
+        unit_price:     parseFloat(i.unit_price),
+        cost_price:     parseFloat(i.products?.cost_price || 0),
+        cost_total:     parseFloat(i.products?.cost_price || 0) * i.quantity,
+        payment_method: i.sales?.payment_method || '-',
+      }));
+
+    res.json({ items, count: items.length, lastId: items.length > 0 ? items[0].sale_number : null });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/reports/accounting-sync
+ */
+router.get('/accounting-sync', async (req, res) => {
+  try {
+    const { start, end } = dateRange(req.query);
+    const { data: salesData, error } = await supabase
+      .from('sales')
+      .select('id, sale_number, subtotal, vat_amount, total_amount, payment_method, created_at, users:user_id(full_name, username), sale_items(quantity, unit_price, total_price, products:product_id(product_name))')
+      .eq('company_id', req.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const invoices = (salesData || []).map(s => ({
+      invoice_number: s.sale_number,
+      invoice_date:   s.created_at,
+      cashier:        s.users?.full_name || s.users?.username || 'Unknown',
+      payment_method: s.payment_method,
+      subtotal:       parseFloat(s.subtotal),
+      vat_amount:     parseFloat(s.vat_amount),
+      total_amount:   parseFloat(s.total_amount),
+      line_items:     (s.sale_items || []).map(i => {
+        const lineTotal    = parseFloat(i.total_price);
+        const saleRevenue  = (s.sale_items || []).reduce((sum, x) => sum + parseFloat(x.total_price || 0), 0);
+        const ratio        = saleRevenue > 0 ? lineTotal / saleRevenue : 0;
+        const lineVat      = parseFloat((parseFloat(s.vat_amount) * ratio).toFixed(2));
+        return {
+          product_name:  i.products?.product_name || 'Unknown',
+          quantity:      i.quantity,
+          unit_price:    parseFloat(i.unit_price),
+          line_subtotal: parseFloat((lineTotal - lineVat).toFixed(2)),
+          line_vat:      lineVat,
+          line_total:    lineTotal,
+        };
+      }),
+    }));
+
+    res.json({ invoices, count: invoices.length, lastId: invoices.length > 0 ? invoices[0].invoice_number : null });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

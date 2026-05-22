@@ -6617,7 +6617,7 @@
             container.innerHTML = '<p style="text-align: center; color: #999;">Loading report...</p>';
 
             try {
-                let url = `${API_URL}/reports/${currentReport}`;
+                let url = `${API_URL}/pos/reports/${currentReport}`;
                 const params = [];
                 if (startDate) params.push(`startDate=${startDate}`);
                 if (endDate) params.push(`endDate=${endDate}`);
