@@ -123,6 +123,7 @@ router.post('/login', async (req, res) => {
       email: user.email,
       fullName: user.full_name,
       isSuperAdmin: isSuperAdmin,
+      hasCoachingAccess: !!(user.has_coaching_access),
       companyId: null,
       role: isSuperAdmin ? 'super_admin' : null,
     };
@@ -484,6 +485,15 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       }
     }
 
+    // Fetch has_coaching_access from the users table — always from DB so the value is
+    // accurate regardless of what the incoming JWT claims (handles old sessions).
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('has_coaching_access')
+      .eq('id', req.user.userId)
+      .single();
+    const hasCoachingAccess = !!(userRow?.has_coaching_access);
+
     // Issue new token with company context
     const token = jwt.sign({
       userId: req.user.userId,
@@ -493,6 +503,7 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       companyId: parsedCompanyId,
       role: role,
       isSuperAdmin: isSuperAdmin,
+      hasCoachingAccess,
     }, JWT_SECRET, { expiresIn: '8h' });
 
     res.json({
@@ -501,6 +512,7 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       companyId: parsedCompanyId,
       role,
       apps_access: appsAccess,
+      hasCoachingAccess,
       company: {
         id: company.id,
         company_name: company.company_name,
@@ -523,7 +535,7 @@ router.get('/me', authenticateToken, async (req, res) => {
   try {
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, username, email, full_name, is_super_admin, created_at')
+      .select('id, username, email, full_name, is_super_admin, has_coaching_access, created_at')
       .eq('id', req.user.userId)
       .single();
 
@@ -533,6 +545,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 
     res.json({
       user,
+      hasCoachingAccess: !!(user.has_coaching_access),
       companyId: req.companyId,
       role: req.user.role,
       permissions: req.user.role ? getRolePermissions(req.user.role) : null,

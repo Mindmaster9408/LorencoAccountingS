@@ -1815,7 +1815,7 @@
                 subtitle: 'Point of Sale',
                 icon: '&#128722;',
                 logo: 'assets/branding/checkout-charlie/checkout-charlie-logo-secondary.png',
-                fullCardImage: 'assets/branding/checkout-charlie/checkout-charlie-logo-main.png',
+                fullCardImage: 'assets/branding/checkout-charlie/checkout-charlie-logo-secondary.png',
                 desc: 'Complete POS system — products, sales, tills, inventory, customers, receipts.',
                 path: '/pos',
                 cssClass: 'pos',
@@ -1905,16 +1905,19 @@
                 isSuperAdmin = localStorage.getItem('eco_super_admin') === 'true';
 
                 // Fallback: decode JWT in case eco_super_admin wasn't saved (old sessions)
-                if (!isSuperAdmin) {
-                    try {
-                        const tok = localStorage.getItem('eco_token');
-                        const payload = JSON.parse(atob(tok.split('.')[1]));
-                        if (payload.isSuperAdmin) {
-                            isSuperAdmin = true;
-                            localStorage.setItem('eco_super_admin', 'true');
-                        }
-                    } catch (_) {}
-                }
+                // Also backfill hasCoachingAccess from the JWT for sessions pre-dating that field.
+                try {
+                    const tok = localStorage.getItem('eco_token');
+                    const payload = JSON.parse(atob(tok.split('.')[1]));
+                    if (!isSuperAdmin && payload.isSuperAdmin) {
+                        isSuperAdmin = true;
+                        localStorage.setItem('eco_super_admin', 'true');
+                    }
+                    if (currentUser && currentUser.hasCoachingAccess === undefined && payload.hasCoachingAccess) {
+                        currentUser.hasCoachingAccess = true;
+                        localStorage.setItem('eco_user', JSON.stringify(currentUser));
+                    }
+                } catch (_) {}
             } catch (e) {
                 window.location.href = '/';
                 return;
@@ -1927,6 +1930,21 @@
 
             // Render user immediately (synchronous, no API deps)
             renderUser();
+
+            // Backfill hasCoachingAccess for sessions that predate that field.
+            // /api/auth/me always reads from DB so this is authoritative.
+            if (currentUser && currentUser.hasCoachingAccess === undefined) {
+                try {
+                    const meRes = await fetch(`${API_BASE}/api/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('eco_token')}` }
+                    });
+                    if (meRes.ok) {
+                        const meData = await meRes.json();
+                        currentUser.hasCoachingAccess = !!(meData.hasCoachingAccess);
+                        localStorage.setItem('eco_user', JSON.stringify(currentUser));
+                    }
+                } catch (_) {}
+            }
 
             // Fetch module status + company list in parallel — eliminates one full RTT
             const [_modResult] = await Promise.all([
@@ -2027,6 +2045,7 @@
                 }
 
                 // Refresh the eco_token so its embedded companyId matches Infinite Legacy.
+                // Also refreshes hasCoachingAccess from the DB via select-company.
                 try {
                     const currentToken = localStorage.getItem('eco_token');
                     const payload = JSON.parse(atob(currentToken.split('.')[1]));
@@ -2039,6 +2058,10 @@
                         if (selRes.ok) {
                             const selData = await selRes.json();
                             localStorage.setItem('eco_token', selData.token);
+                            if (currentUser && selData.hasCoachingAccess !== undefined) {
+                                currentUser.hasCoachingAccess = selData.hasCoachingAccess;
+                                localStorage.setItem('eco_user', JSON.stringify(currentUser));
+                            }
                         }
                     }
                 } catch (e) {
@@ -2107,6 +2130,10 @@
                     if (selRes.ok) {
                         const selData = await selRes.json();
                         localStorage.setItem('eco_token', selData.token);
+                        if (currentUser && selData.hasCoachingAccess !== undefined) {
+                            currentUser.hasCoachingAccess = selData.hasCoachingAccess;
+                            localStorage.setItem('eco_user', JSON.stringify(currentUser));
+                        }
                     }
                 }
 
