@@ -41,7 +41,8 @@ const ALLOWED_OVERRIDE_TYPES = [
  * GET /api/pos/recovery/sessions
  * Session health summary: open sessions, stale sessions (> 8h open),
  * and sessions closed but not yet cashed-up.
- * Fires ABANDONED_SESSION_DETECTED for each stale session found (fire-and-forget).
+ * Fires ABANDONED_SESSION_DETECTED once per stale session per 24-hour window.
+ * Deduplication prevents audit log flooding on repeated manager page loads.
  */
 router.get('/sessions', async (req, res) => {
     try {
