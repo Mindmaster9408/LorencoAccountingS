@@ -79,6 +79,43 @@
             .checkout-charlie-branding-stack .cc-logo-main       { max-width: 180px; }
             .checkout-charlie-branding-stack .cc-logo-poweredby  { max-width: 114px; }
         }
+
+        /* ── Login hero logo — dominant, fills card width ──────────────────── */
+        .cc-login-hero {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .cc-login-hero .cc-hero-logo {
+            max-width: 300px;
+            width: 100%;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+        }
+        /* ── Powered-by footer — subtle ecosystem attribution ───────────────── */
+        .cc-poweredby-footer {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #f0f0f0;
+        }
+        .cc-poweredby-footer img {
+            max-width: 150px;
+            width: 68%;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+            opacity: 0.75;
+        }
+        .cc-poweredby-footer .cc-fallback-text {
+            display: none;
+            color: #aaa;
+            font-size: 11px;
+        }
+        @media (max-width: 440px) {
+            .cc-login-hero .cc-hero-logo { max-width: 220px; }
+            .cc-poweredby-footer img     { max-width: 120px; }
+        }
         .nav-tabs {
             display: flex;
             gap: 5px;
@@ -1367,17 +1404,13 @@
     <!-- Login Screen -->
     <div id="loginScreen" class="login-screen">
         <div class="login-box" id="loginBox">
-            <div class="checkout-charlie-branding-stack" style="margin-bottom: 24px;">
-                <img class="cc-logo-main"
+            <!-- Hero branding — main logo only, large and dominant -->
+            <div class="cc-login-hero">
+                <img class="cc-hero-logo"
                      src="assets/branding/checkout-charlie/checkout-charlie-logo-main.png"
                      alt="Checkout Charlie"
                      onerror="this.style.display='none';this.nextElementSibling.style.display='block';">
                 <span class="cc-fallback-text" style="color:#667eea;font-size:22px;font-weight:bold;">Checkout Charlie</span>
-                <img class="cc-logo-poweredby"
-                     src="assets/branding/checkout-charlie/powered-by-lorenco-ecosystem.png"
-                     alt="Powered by Lorenco Ecosystem"
-                     onerror="this.style.display='none';this.nextElementSibling.style.display='block';">
-                <span class="cc-fallback-text" style="color:#888;font-size:12px;">Powered by Lorenco Ecosystem</span>
             </div>
             <div class="form-group">
                 <label>Username or Email</label>
@@ -1391,6 +1424,13 @@
             <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
                 <span style="color: #666;">Don't have an account?</span>
                 <button onclick="showRegisterForm()" style="background: none; border: none; color: #667eea; cursor: pointer; font-weight: 600; text-decoration: underline;">Register your company</button>
+            </div>
+            <!-- Ecosystem attribution — footer placement, below register link -->
+            <div class="cc-poweredby-footer">
+                <img src="assets/branding/checkout-charlie/powered-by-lorenco-ecosystem.png"
+                     alt="Powered by Lorenco Ecosystem"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='block';">
+                <span class="cc-fallback-text">Powered by Lorenco Ecosystem</span>
             </div>
         </div>
 
