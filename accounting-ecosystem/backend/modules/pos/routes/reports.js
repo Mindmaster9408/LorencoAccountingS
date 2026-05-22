@@ -1047,4 +1047,88 @@ router.get('/accounting-sync', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/pos/reports/cashup-history
+ * Historical cashup list sourced exclusively from pos_recon_snapshots (immutable).
+ * Each row is a frozen snapshot — never recalculated.
+ *
+ * Query params:
+ *   startDate / from       — session open date lower bound (default: start of month)
+ *   endDate   / to         — session open date upper bound (default: now)
+ *   till_id                — filter to a specific till
+ *   user_id                — filter to a specific cashier (cashier_user_id)
+ *   variance_only=true     — only rows where cash_variance != 0
+ *   force_close_only=true  — only sessions with status = 'force_closed'
+ */
+router.get('/cashup-history', async (req, res) => {
+  try {
+    const { from, to, startDate, endDate, till_id, user_id, variance_only, force_close_only } = req.query;
+    const now   = new Date();
+    const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end   = endDate   || to   || now.toISOString();
+
+    let query = supabase
+      .from('pos_recon_snapshots')
+      .select('*')
+      .eq('company_id', req.companyId)
+      .gte('session_opened_at', start)
+      .lte('session_opened_at', end)
+      .order('session_opened_at', { ascending: false })
+      .limit(500);
+
+    if (till_id)                    query = query.eq('till_id', parseInt(till_id));
+    if (user_id)                    query = query.eq('cashier_user_id', parseInt(user_id));
+    if (variance_only === 'true')   query = query.not('cash_variance', 'is', null).neq('cash_variance', 0);
+    if (force_close_only === 'true') query = query.eq('session_status', 'force_closed');
+
+    const { data: snapshots, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    const rows = snapshots || [];
+
+    // Enrich with till and user names without assuming FK constraints on pos_recon_snapshots
+    const tillIds = [...new Set(rows.map(s => s.till_id).filter(Boolean))];
+    const userIds = [...new Set(rows.map(s => s.cashier_user_id).filter(Boolean))];
+
+    const [tillsResult, usersResult] = await Promise.all([
+      tillIds.length > 0
+        ? supabase.from('tills').select('id, till_name, till_number').in('id', tillIds)
+        : Promise.resolve({ data: [] }),
+      userIds.length > 0
+        ? supabase.from('users').select('id, username, full_name').in('id', userIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const tillsMap = Object.fromEntries((tillsResult.data || []).map(t => [t.id, t]));
+    const usersMap = Object.fromEntries((usersResult.data || []).map(u => [u.id, u]));
+
+    const cashups = rows.map(s => ({
+      ...s,
+      till_name:    tillsMap[s.till_id]?.till_name   || null,
+      till_number:  tillsMap[s.till_id]?.till_number || null,
+      cashier_name: usersMap[s.cashier_user_id]?.full_name
+                 || usersMap[s.cashier_user_id]?.username
+                 || s.cashier_email
+                 || null,
+    }));
+
+    const fn = f => cashups.reduce((s, r) => s + (parseFloat(r[f]) || 0), 0);
+    const summary = {
+      total_cashups:      cashups.length,
+      total_net_sales:    fn('net_sales'),
+      total_cash:         fn('payment_cash'),
+      total_card:         fn('payment_card'),
+      total_eft:          fn('payment_eft'),
+      variance_count:     cashups.filter(r => r.cash_variance != null && parseFloat(r.cash_variance) !== 0).length,
+      force_close_count:  cashups.filter(r => r.session_status === 'force_closed').length,
+      inconsistent_count: cashups.filter(r => r.is_consistent === false).length,
+    };
+
+    res.json({ cashups, summary });
+  } catch (err) {
+    console.error('[reports] cashup-history:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

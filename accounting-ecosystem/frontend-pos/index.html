@@ -2206,6 +2206,9 @@
                     <div class="settings-menu-item" onclick="showReport('stock-takes', event)">Stock Takes</div>
                     <div class="settings-menu-item" onclick="showReport('stock-receives', event)">Supplier Receives</div>
                     <div class="settings-menu-item" onclick="showReport('stock-transfers', event)">Stock Transfers</div>
+
+                    <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">Cash-Up History</h3>
+                    <div class="settings-menu-item" onclick="showReport('cashup-history', event)">Cashup History</div>
                 </div>
 
                 <div class="settings-content">
@@ -2222,6 +2225,7 @@
                             </div>
                             <button class="btn btn-primary" onclick="loadCurrentReport()" style="align-self: flex-end;">Generate Report</button>
                             <button class="btn btn-secondary" onclick="exportCurrentReport()" style="align-self: flex-end;">📥 Export CSV</button>
+                            <button class="btn btn-secondary" onclick="printCurrentReport()" style="align-self: flex-end;">🖨 Print</button>
                         </div>
                     </div>
 
@@ -6692,6 +6696,9 @@
                 case 'stock-transfers':
                     renderStockTransfersReport(data, container);
                     break;
+                case 'cashup-history':
+                    renderCashupHistoryReport(data, container);
+                    break;
                 default:
                     container.innerHTML = '<p>Unknown report type</p>';
             }
@@ -7688,6 +7695,417 @@
 
         function syncToAccounting() {
             showNotification('Syncing to Accounting System... (Coming soon)', 'info');
+        }
+
+        // ── Cashup History Report ─────────────────────────────────────────────────
+
+        function renderCashupHistoryReport(data, container) {
+            const { cashups, summary } = data;
+
+            // Index snapshots by ID so per-row print can access them without extra API calls
+            window._cashupSnapshots = {};
+            (cashups || []).forEach(s => { window._cashupSnapshots[s.id] = s; });
+
+            const fmt  = v => v != null ? `R ${parseFloat(v).toFixed(2)}` : '<span style="color:#bbb;">—</span>';
+            const varC = v => v == null ? '' : parseFloat(v) < 0 ? 'color:#c62828;font-weight:bold;' : parseFloat(v) > 0 ? 'color:#e65100;font-weight:bold;' : 'color:#2e7d32;';
+
+            let html = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h2 style="margin:0;">Cashup History</h2>
+                    <span style="font-size:11px;color:#888;background:#f0f0f0;padding:3px 8px;border-radius:10px;">Source: pos_recon_snapshots — immutable</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
+                    <div style="background:#e8f5e9;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Cashups</div>
+                        <div style="font-size:22px;font-weight:bold;color:#2e7d32;">${summary.total_cashups}</div>
+                    </div>
+                    <div style="background:#e3f2fd;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Net Sales</div>
+                        <div style="font-size:18px;font-weight:bold;color:#1565c0;">R ${(summary.total_net_sales||0).toFixed(2)}</div>
+                    </div>
+                    <div style="background:#e8f5e9;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Cash</div>
+                        <div style="font-size:18px;font-weight:bold;color:#2e7d32;">R ${(summary.total_cash||0).toFixed(2)}</div>
+                    </div>
+                    <div style="background:#f3e5f5;padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#666;">Card / EFT</div>
+                        <div style="font-size:18px;font-weight:bold;color:#6a1b9a;">R ${((summary.total_card||0)+(summary.total_eft||0)).toFixed(2)}</div>
+                    </div>
+                    <div style="background:${summary.variance_count>0?'#fff3e0':'#e8f5e9'};padding:12px;border-radius:8px;">
+                        <div style="font-size:11px;color:#555;">Variances</div>
+                        <div style="font-size:22px;font-weight:bold;color:${summary.variance_count>0?'#e65100':'#2e7d32'};">${summary.variance_count}</div>
+                        <div style="font-size:11px;color:#888;">${summary.force_close_count} force-closed</div>
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;padding:10px 14px;background:#f5f7ff;border-radius:6px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+                    <input type="text" id="cashupSearch" placeholder="Search cashier or till…"
+                        oninput="filterCashupTable()"
+                        style="padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:12px;min-width:200px;">
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="cashupVarianceOnly" onchange="filterCashupTable()"> Variance only
+                    </label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="cashupForceCloseOnly" onchange="filterCashupTable()"> Force-closed only
+                    </label>
+                    <span id="cashupFilterCount" style="font-size:12px;color:#666;margin-left:auto;"></span>
+                </div>
+            `;
+
+            if (!cashups || cashups.length === 0) {
+                html += `<div style="text-align:center;padding:40px;color:#999;">No cashups found in this period</div>`;
+                container.innerHTML = html;
+                return;
+            }
+
+            html += `
+                <table style="width:100%;border-collapse:collapse;font-size:12px;" id="cashupHistoryTable">
+                    <thead>
+                        <tr style="background:#667eea;color:white;">
+                            <th style="padding:8px;text-align:left;">Date</th>
+                            <th style="padding:8px;text-align:left;">Till</th>
+                            <th style="padding:8px;text-align:left;">Cashier</th>
+                            <th style="padding:8px;text-align:center;">Status</th>
+                            <th style="padding:8px;text-align:right;">Sales</th>
+                            <th style="padding:8px;text-align:right;">Gross</th>
+                            <th style="padding:8px;text-align:right;">Cash</th>
+                            <th style="padding:8px;text-align:right;">Card/EFT</th>
+                            <th style="padding:8px;text-align:right;">Refunds</th>
+                            <th style="padding:8px;text-align:right;">Exp. Cash</th>
+                            <th style="padding:8px;text-align:right;">Counted</th>
+                            <th style="padding:8px;text-align:right;">Variance</th>
+                            <th style="padding:8px;text-align:center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cashupHistoryBody">
+            `;
+
+            cashups.forEach((s, i) => {
+                const dateStr = s.session_opened_at ? new Date(s.session_opened_at).toLocaleDateString() : '—';
+                const isForceClosed = s.session_status === 'force_closed';
+                const statusBadge = isForceClosed
+                    ? '<span style="background:#ffebee;color:#c62828;padding:2px 7px;border-radius:10px;font-size:11px;">Force Closed</span>'
+                    : '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:10px;font-size:11px;">Cashed Up</span>';
+                const inconsistBadge = s.is_consistent === false
+                    ? ' <span style="font-size:10px;color:#c62828;background:#ffebee;padding:1px 5px;border-radius:8px;" title="Data consistency issues detected">!</span>' : '';
+                const cardEft = (s.payment_card != null || s.payment_eft != null)
+                    ? `R ${((parseFloat(s.payment_card)||0)+(parseFloat(s.payment_eft)||0)).toFixed(2)}`
+                    : '<span style="color:#bbb;">—</span>';
+                const tillLabel = s.till_name ? `${s.till_name}${s.till_number ? ' #'+s.till_number : ''}` : '—';
+                const cashierLabel = s.cashier_name || s.cashier_email || '—';
+                const varAmt = s.cash_variance != null ? parseFloat(s.cash_variance) : null;
+
+                html += `
+                    <tr style="background:${i%2===0?'#fff':'#f9f9f9'};border-bottom:1px solid #eee;"
+                        class="cashup-data-row"
+                        data-cashier="${cashierLabel.toLowerCase()}"
+                        data-till="${tillLabel.toLowerCase()}"
+                        data-variance="${varAmt}"
+                        data-forceclosed="${isForceClosed}"
+                        id="cashup-row-${s.id}">
+                        <td style="padding:7px;white-space:nowrap;">${dateStr}</td>
+                        <td style="padding:7px;">${tillLabel}</td>
+                        <td style="padding:7px;">${cashierLabel}</td>
+                        <td style="padding:7px;text-align:center;">${statusBadge}${inconsistBadge}</td>
+                        <td style="padding:7px;text-align:right;">${s.sale_count != null ? s.sale_count : '<span style="color:#bbb;">—</span>'}</td>
+                        <td style="padding:7px;text-align:right;">${fmt(s.gross_sales)}</td>
+                        <td style="padding:7px;text-align:right;">${fmt(s.payment_cash)}</td>
+                        <td style="padding:7px;text-align:right;">${cardEft}</td>
+                        <td style="padding:7px;text-align:right;">${s.refund_count ? `${s.refund_count}× ${fmt(s.refund_total)}` : '—'}</td>
+                        <td style="padding:7px;text-align:right;">${fmt(s.expected_cash_in_drawer)}</td>
+                        <td style="padding:7px;text-align:right;">${fmt(s.total_counted)}</td>
+                        <td style="padding:7px;text-align:right;${varC(s.cash_variance)}">${varAmt != null ? `R ${varAmt >= 0 ? '+' : ''}${varAmt.toFixed(2)}` : '<span style="color:#bbb;">—</span>'}</td>
+                        <td style="padding:7px;text-align:center;white-space:nowrap;">
+                            <button class="btn btn-sm btn-secondary" onclick="toggleCashupDetail(${s.id})" style="font-size:11px;padding:3px 8px;margin-right:3px;">View</button>
+                            <button class="btn btn-sm btn-primary" onclick="printCashupRow(${s.id})" style="font-size:11px;padding:3px 8px;">🖨 Print</button>
+                        </td>
+                    </tr>
+                    <tr id="cashup-detail-${s.id}" style="display:none;background:#f8f9ff;" class="cashup-detail-row">
+                        <td colspan="13" style="padding:15px;">${buildCashupDetailHTML(s)}</td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table>`;
+            html += `<p style="margin-top:10px;font-size:11px;color:#999;">All values sourced from immutable <strong>pos_recon_snapshots</strong>. Snapshot values are frozen at time of cashup — they do not recalculate from current sales data.</p>`;
+            container.innerHTML = html;
+            filterCashupTable(); // apply initial count
+        }
+
+        function buildCashupDetailHTML(s) {
+            const fmt = v => v != null ? `R ${parseFloat(v).toFixed(2)}` : '—';
+            const varAmt = s.cash_variance != null ? parseFloat(s.cash_variance) : null;
+            const varStyle = varAmt == null ? '#333' : varAmt < 0 ? '#c62828' : varAmt > 0 ? '#e65100' : '#2e7d32';
+            return `
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-size:12px;">
+                    <div>
+                        <strong style="display:block;margin-bottom:8px;color:#667eea;border-bottom:1px solid #e8eaf6;padding-bottom:4px;">Session Info</strong>
+                        <div style="margin:3px 0;">Session #: ${s.till_session_id}</div>
+                        <div style="margin:3px 0;">Snapshot #: ${s.id}</div>
+                        <div style="margin:3px 0;">Opened: ${s.session_opened_at ? new Date(s.session_opened_at).toLocaleString() : '—'}</div>
+                        <div style="margin:3px 0;">Closed: ${s.session_closed_at ? new Date(s.session_closed_at).toLocaleString() : '—'}</div>
+                        <div style="margin:3px 0;">Trigger: <strong>${s.triggered_by || '—'}</strong></div>
+                        <div style="margin:3px 0;font-size:11px;color:#888;">Snapshot at: ${new Date(s.created_at).toLocaleString()}</div>
+                    </div>
+                    <div>
+                        <strong style="display:block;margin-bottom:8px;color:#667eea;border-bottom:1px solid #e8eaf6;padding-bottom:4px;">Sales Summary</strong>
+                        <div style="margin:3px 0;">Transactions: ${s.sale_count || 0}</div>
+                        <div style="margin:3px 0;">Gross sales: ${fmt(s.gross_sales)}</div>
+                        <div style="margin:3px 0;">Discounts: −${s.discount_total != null ? `R ${parseFloat(s.discount_total).toFixed(2)}` : '—'}</div>
+                        <div style="margin:3px 0;">VAT: ${fmt(s.vat_total)}</div>
+                        <div style="margin:3px 0;">Voids: ${s.void_count || 0} (${fmt(s.void_total)})</div>
+                        <div style="margin:3px 0;">Refunds: ${s.refund_count || 0} (${fmt(s.refund_total)})</div>
+                        <div style="margin:3px 0;font-weight:bold;">Net sales: ${fmt(s.net_sales)}</div>
+                    </div>
+                    <div>
+                        <strong style="display:block;margin-bottom:8px;color:#667eea;border-bottom:1px solid #e8eaf6;padding-bottom:4px;">Payment Breakdown</strong>
+                        <div style="margin:3px 0;">Cash: ${fmt(s.payment_cash)}</div>
+                        <div style="margin:3px 0;">Card: ${fmt(s.payment_card)}</div>
+                        <div style="margin:3px 0;">EFT: ${fmt(s.payment_eft)}</div>
+                        <div style="margin:3px 0;">Account: ${fmt(s.payment_account)}</div>
+                        <div style="margin:3px 0;">Other: ${fmt(s.payment_other)}</div>
+                    </div>
+                    <div>
+                        <strong style="display:block;margin-bottom:8px;color:#667eea;border-bottom:1px solid #e8eaf6;padding-bottom:4px;">Cash Reconciliation</strong>
+                        <div style="margin:3px 0;">Opening float: ${fmt(s.opening_balance)}</div>
+                        <div style="margin:3px 0;">+ Cash sales: ${fmt(s.payment_cash)}</div>
+                        <div style="margin:3px 0;">− Cash refunds: ${s.refund_cash != null ? `R ${parseFloat(s.refund_cash).toFixed(2)}` : '—'}</div>
+                        <div style="margin:3px 0;border-top:1px solid #ddd;padding-top:4px;">Expected in drawer: <strong>${fmt(s.expected_cash_in_drawer)}</strong></div>
+                        <div style="margin:3px 0;">Counted: ${fmt(s.total_counted)}</div>
+                        <div style="margin:5px 0;font-weight:bold;color:${varStyle};">Variance: ${varAmt != null ? `R ${varAmt >= 0 ? '+' : ''}${varAmt.toFixed(2)}` : '—'}</div>
+                        <div style="margin-top:6px;font-size:11px;color:${s.is_consistent !== false ? '#2e7d32' : '#c62828'};">
+                            ${s.is_consistent !== false ? '✓ Data consistent' : '⚠ Consistency issues detected'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleCashupDetail(snapshotId) {
+            const row = document.getElementById(`cashup-detail-${snapshotId}`);
+            if (!row) return;
+            row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+        }
+
+        function filterCashupTable() {
+            const search = (document.getElementById('cashupSearch')?.value || '').toLowerCase().trim();
+            const varianceOnly   = document.getElementById('cashupVarianceOnly')?.checked;
+            const forceCloseOnly = document.getElementById('cashupForceCloseOnly')?.checked;
+            const rows = document.querySelectorAll('#cashupHistoryBody .cashup-data-row');
+            let visible = 0;
+            rows.forEach(row => {
+                const cashier = row.dataset.cashier || '';
+                const till    = row.dataset.till    || '';
+                const variance  = parseFloat(row.dataset.variance);
+                const forceCl   = row.dataset.forceclosed === 'true';
+                const matchSearch = !search || cashier.includes(search) || till.includes(search);
+                const matchVar    = !varianceOnly   || (!isNaN(variance) && variance !== 0);
+                const matchForce  = !forceCloseOnly || forceCl;
+                const show = matchSearch && matchVar && matchForce;
+                row.style.display = show ? '' : 'none';
+                // Also hide the paired detail row when main row is hidden
+                const detailId = row.id.replace('cashup-row-', 'cashup-detail-');
+                const detail = document.getElementById(detailId);
+                if (detail && !show) detail.style.display = 'none';
+                if (show) visible++;
+            });
+            const counter = document.getElementById('cashupFilterCount');
+            if (counter) counter.textContent = `Showing ${visible} of ${rows.length}`;
+        }
+
+        // ── Cashup Print ──────────────────────────────────────────────────────────
+
+        function printCashupRow(snapshotId) {
+            const snap = window._cashupSnapshots && window._cashupSnapshots[snapshotId];
+            if (!snap) { showNotification('Cashup data not found', 'error'); return; }
+            printBrowserPage(buildCashupPrintHTML(snap));
+        }
+
+        function buildCashupPrintHTML(snap) {
+            const fmt = v => v != null ? `R ${parseFloat(v).toFixed(2)}` : '—';
+            const company    = currentCompanyName || 'POS System';
+            const printedBy  = currentUser ? (currentUser.fullName || currentUser.username || 'Unknown') : 'Unknown';
+            const printedAt  = new Date().toLocaleString();
+            const varAmt     = snap.cash_variance != null ? parseFloat(snap.cash_variance) : null;
+            const varStyle   = varAmt == null ? '' : varAmt < 0 ? 'color:#c62828;font-weight:bold;' : varAmt > 0 ? 'color:#e65100;font-weight:bold;' : 'color:#2e7d32;';
+            const tillLabel  = snap.till_name ? `${snap.till_name}${snap.till_number ? ' #'+snap.till_number : ''}` : '—';
+
+            return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Cashup Report — Session #${snap.till_session_id}</title>
+<style>
+body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 15mm 20mm; background: white; color: #000; }
+.page-header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
+.page-header h1 { font-size: 18px; margin: 0 0 4px; }
+.page-header h2 { font-size: 14px; margin: 0; font-weight: normal; color: #444; }
+.badge { display: inline-block; border: 1px solid #ff9800; color: #e65100; padding: 2px 10px; border-radius: 4px; font-size: 11px; margin-top: 5px; }
+.section { margin-bottom: 14px; }
+.section-title { font-size: 13px; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 3px; margin-bottom: 7px; }
+.row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #eee; }
+.row:last-child { border-bottom: none; }
+.row.sub { padding-left: 12px; color: #555; }
+.row.total { font-weight: bold; border-top: 1px solid #aaa; border-bottom: none; margin-top: 5px; padding-top: 6px; }
+.meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; }
+.flag { padding: 5px 10px; margin: 3px 0; font-size: 11px; border-left: 3px solid #ff9800; background: #fff8e1; }
+.flag.ok { border-left-color: #4caf50; background: #f1f8e9; }
+.flag.info { border-left-color: #2196f3; background: #e3f2fd; }
+.page-footer { border-top: 1px solid #ccc; margin-top: 20px; padding-top: 8px; font-size: 11px; color: #666; display: flex; justify-content: space-between; }
+@media print { @page { size: A4; margin: 10mm; } body { padding: 5mm 10mm; } }
+</style>
+</head>
+<body>
+<div class="page-header">
+    <h1>${company}</h1>
+    <h2>TILL CASH-UP REPORT</h2>
+    ${snap.session_status === 'force_closed' ? '<div class="badge">FORCE CLOSED SESSION</div>' : ''}
+    ${snap.triggered_by === 'manual' ? '<div class="badge">MANUAL SNAPSHOT — REPRINT</div>' : ''}
+</div>
+
+<div class="section">
+    <div class="section-title">Session Details</div>
+    <div class="meta-grid">
+        <div>Till: <strong>${tillLabel}</strong></div>
+        <div>Session #: <strong>${snap.till_session_id}</strong></div>
+        <div>Cashier: <strong>${snap.cashier_name || snap.cashier_email || '—'}</strong></div>
+        <div>Snapshot #: <strong>${snap.id}</strong></div>
+        <div>Opened: <strong>${snap.session_opened_at ? new Date(snap.session_opened_at).toLocaleString() : '—'}</strong></div>
+        <div>Closed: <strong>${snap.session_closed_at ? new Date(snap.session_closed_at).toLocaleString() : '—'}</strong></div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Sales Summary</div>
+    <div class="row"><span>Total transactions</span><span>${snap.sale_count || 0}</span></div>
+    <div class="row"><span>Gross sales</span><span>${fmt(snap.gross_sales)}</span></div>
+    <div class="row sub"><span>Discounts applied</span><span>−${snap.discount_total != null ? `R ${parseFloat(snap.discount_total).toFixed(2)}` : '—'}</span></div>
+    <div class="row sub"><span>VAT collected</span><span>${fmt(snap.vat_total)}</span></div>
+    <div class="row"><span>Voids (${snap.void_count || 0})</span><span>${fmt(snap.void_total)}</span></div>
+    <div class="row"><span>Refunds issued (${snap.refund_count || 0})</span><span>−${snap.refund_total != null ? `R ${parseFloat(snap.refund_total).toFixed(2)}` : '—'}</span></div>
+    <div class="row total"><span>Net Sales</span><span>${fmt(snap.net_sales)}</span></div>
+</div>
+
+<div class="section">
+    <div class="section-title">Payment Breakdown</div>
+    <div class="row"><span>Cash</span><span>${fmt(snap.payment_cash)}</span></div>
+    <div class="row"><span>Card</span><span>${fmt(snap.payment_card)}</span></div>
+    <div class="row"><span>EFT</span><span>${fmt(snap.payment_eft)}</span></div>
+    ${snap.payment_account ? `<div class="row"><span>Account</span><span>${fmt(snap.payment_account)}</span></div>` : ''}
+    ${snap.payment_other   ? `<div class="row"><span>Other</span><span>${fmt(snap.payment_other)}</span></div>`   : ''}
+</div>
+
+<div class="section">
+    <div class="section-title">Cash Reconciliation</div>
+    <div class="row"><span>Opening float</span><span>${fmt(snap.opening_balance)}</span></div>
+    <div class="row"><span>+ Cash sales received</span><span>${fmt(snap.payment_cash)}</span></div>
+    ${snap.refund_cash ? `<div class="row"><span>− Cash refunds paid out</span><span>R ${parseFloat(snap.refund_cash).toFixed(2)}</span></div>` : ''}
+    <div class="row total"><span>Expected cash in drawer</span><span>${fmt(snap.expected_cash_in_drawer)}</span></div>
+    <div class="row"><span>Counted cash</span><span>${fmt(snap.total_counted)}</span></div>
+    <div class="row total" style="${varStyle}">
+        <span>Variance</span>
+        <span>${varAmt != null ? (varAmt >= 0 ? '+' : '') + `R ${varAmt.toFixed(2)}` : '—'}</span>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Operational Flags</div>
+    <div class="flag ${snap.is_consistent !== false ? 'ok' : ''}">
+        ${snap.is_consistent !== false ? '✓ Data integrity: PASSED' : '⚠ Data integrity: ISSUES DETECTED — review consistency_issues on this snapshot'}
+    </div>
+    ${snap.session_status === 'force_closed' ? '<div class="flag">⚠ Session was force-closed (not a standard cashup close)</div>' : ''}
+    ${snap.triggered_by === 'manual' ? '<div class="flag">ℹ Snapshot triggered manually after session closed</div>' : ''}
+    <div class="flag info">Immutable snapshot #${snap.id} — created ${new Date(snap.created_at).toLocaleString()} — values will never change</div>
+</div>
+
+<div class="page-footer">
+    <span>Printed by: ${printedBy}</span>
+    <span>Printed at: ${printedAt}</span>
+    <span>Checkout Charlie POS</span>
+</div>
+<script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
+</body>
+</html>`;
+        }
+
+        // ── Universal Report Print ────────────────────────────────────────────────
+
+        function printCurrentReport() {
+            const container = document.getElementById('reportContainer');
+            if (!container) return;
+            const titleEl  = document.querySelector('#reportsLayout .settings-menu-item.active');
+            const title    = titleEl ? titleEl.textContent.trim() : (currentReport || 'Report');
+            const startDate = document.getElementById('reportStartDate')?.value || '';
+            const endDate   = document.getElementById('reportEndDate')?.value   || '';
+            const company   = currentCompanyName || 'POS Report';
+            const printedBy = currentUser ? (currentUser.fullName || currentUser.username || '') : '';
+            const now       = new Date().toLocaleString();
+            const periodLine = (startDate || endDate)
+                ? `<p style="color:#555;font-size:12px;margin:4px 0 0;">Period: ${startDate || '(start)'} to ${endDate || '(end)'}</p>` : '';
+
+            const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+* { background: white !important; background-color: white !important; color: #000 !important; }
+body { font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 10mm 15mm; }
+.print-header { border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 15px; }
+.print-header .co { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+.print-header h2 { font-size: 16px; margin: 0 0 3px; }
+.print-footer { border-top: 1px solid #ccc; margin-top: 12px; padding-top: 8px; font-size: 10px; color: #666 !important; display: flex; justify-content: space-between; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 10px; }
+th, thead tr td { background: #333 !important; color: white !important; padding: 6px 8px; text-align: left; }
+td { padding: 5px 8px; border-bottom: 1px solid #ddd; }
+button, .btn { display: none !important; }
+span[style*="color:#bbb"] { color: #999 !important; }
+@media print { @page { size: A4; margin: 10mm; } body { padding: 5mm 10mm; } }
+</style>
+</head>
+<body>
+<div class="print-header">
+    <div class="co">${company}</div>
+    <h2>${title}</h2>
+    ${periodLine}
+</div>
+${container.innerHTML}
+<div class="print-footer">
+    <span>Generated: ${now}</span>
+    ${printedBy ? `<span>By: ${printedBy}</span>` : ''}
+    <span>Checkout Charlie POS</span>
+</div>
+<script>window.onload = function() { setTimeout(function() { window.print(); }, 350); };<\/script>
+</body>
+</html>`;
+
+            printBrowserPage(html);
+        }
+
+        // ── Popup + iframe print fallback (A4 reports) ───────────────────────────
+        // Reuses the same popup-blocked-safe pattern as printBrowserReceipt() but
+        // sized for A4 instead of thermal receipt width.
+
+        function printBrowserPage(html) {
+            const popup = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
+            if (popup) {
+                popup.document.write(html);
+                popup.document.close();
+                popup.focus();
+                return;
+            }
+            // Popup blocked — silent iframe fallback
+            showNotification('Popup blocked — printing via in-page fallback', 'info');
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:900px;height:700px;border:none;';
+            document.body.appendChild(iframe);
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
+            setTimeout(() => {
+                try { iframe.contentWindow.print(); } catch (e) {}
+                setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 2500);
+            }, 350);
         }
 
         // Customer Management Functions
