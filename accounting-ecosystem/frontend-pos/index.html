@@ -41,23 +41,24 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 6px;
+            gap: 0;
         }
         .checkout-charlie-branding-stack img {
             object-fit: contain;
             display: block;
         }
         .checkout-charlie-branding-stack .cc-logo-main {
-            max-width: 220px;
+            max-width: 240px;
             width: 100%;
         }
         .checkout-charlie-branding-stack .cc-logo-poweredby {
-            max-width: 170px;
-            width: 75%;
+            max-width: 152px;   /* ~63% of main — sits tight beneath */
+            width: 63%;
+            margin-top: -6px;   /* pull up over any built-in bottom padding in main logo */
         }
         /* Compact variant — nav bar (50px height) */
         .checkout-charlie-branding-stack.cc-stack-compact {
-            gap: 2px;
+            gap: 0;
             margin-right: 20px;
         }
         .checkout-charlie-branding-stack.cc-stack-compact .cc-logo-main {
@@ -65,8 +66,9 @@
             height: 26px;
         }
         .checkout-charlie-branding-stack.cc-stack-compact .cc-logo-poweredby {
-            max-width: 110px;
-            height: 13px;
+            max-width: 88px;
+            height: 12px;
+            margin-top: -2px;
         }
         /* Fallback text (shown only when images fail) */
         .cc-fallback-text {
@@ -74,8 +76,8 @@
             text-align: center;
         }
         @media (max-width: 480px) {
-            .checkout-charlie-branding-stack .cc-logo-main    { max-width: 160px; }
-            .checkout-charlie-branding-stack .cc-logo-poweredby { max-width: 120px; }
+            .checkout-charlie-branding-stack .cc-logo-main       { max-width: 180px; }
+            .checkout-charlie-branding-stack .cc-logo-poweredby  { max-width: 114px; }
         }
         .nav-tabs {
             display: flex;
