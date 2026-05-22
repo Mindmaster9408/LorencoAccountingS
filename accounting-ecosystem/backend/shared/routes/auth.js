@@ -159,6 +159,7 @@ router.post('/login', async (req, res) => {
         fullName: user.full_name,
         email: user.email,
         isSuperAdmin: isSuperAdmin,
+        hasCoachingAccess: !!(user.has_coaching_access),
       },
       companies: companyList,
       selectedCompany,
@@ -754,6 +755,15 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
 
     if (userError || !user) {
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    // COACHING HARD LOCK: only the single authorised user (users.has_coaching_access = true)
+    // may launch the coaching app. No super admin bypass — isSuperAdmin does NOT grant access.
+    if (targetApp === 'coaching' && !user.has_coaching_access) {
+      return res.status(403).json({
+        error: 'Coaching access not authorised for this account',
+        code: 'NO_COACHING_ACCESS',
+      });
     }
 
     let resolvedCompanyId = resolvedCompanyId0;

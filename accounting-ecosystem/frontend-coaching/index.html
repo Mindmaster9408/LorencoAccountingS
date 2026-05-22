@@ -13,6 +13,15 @@
     <link rel="stylesheet" href="css/leads.css" />
     <link rel="stylesheet" href="css/journey.css" />
     <link rel="stylesheet" href="css/journey-exercises.css" />
+    <!-- COACHING HARD LOCK: redirect to ecosystem login before any content renders -->
+    <script>
+        (function () {
+            var token = localStorage.getItem('auth_token');
+            if (!token) {
+                window.location.replace('/');
+            }
+        }());
+    </script>
 </head>
 <body class="body-bg">
     <div class="app">

@@ -23,20 +23,16 @@ const authenticateToken = async (req, res, next) => {
       [decoded.userId]
     );
 
-    // If not found and this is an SSO token from the ecosystem, fall back to
-    // matching by email or auto-mapping to the coaching admin user
-    if (result.rows.length === 0 && decoded.ssoSource === 'ecosystem') {
-      // Try matching by email first
-      if (decoded.email) {
-        result = await query(
-          'SELECT id, email, first_name, last_name, role, is_active FROM coaching_users WHERE email = $1',
-          [decoded.email]
-        );
-      }
-      // If still not found, use the first admin user (coaching has a single admin)
-      if (result.rows.length === 0) {
-        result = await query(
-          "SELECT id, email, first_name, last_name, role, is_active FROM coaching_users WHERE role = 'admin' ORDER BY id ASC LIMIT 1"
+// If not found and this is an SSO token from the ecosystem, try matching by email.
+      // HARD LOCK: There is NO fallback to the first admin user — if the email does not
+      // match a coaching_users row, the request is rejected. The sso-launch endpoint
+      // already enforces has_coaching_access before issuing a coaching appToken, so a
+      // legitimate SSO token will always match by email.
+      if (result.rows.length === 0 && decoded.ssoSource === 'ecosystem') {
+        if (decoded.email) {
+          result = await query(
+            'SELECT id, email, first_name, last_name, role, is_active FROM coaching_users WHERE email = $1',
+            [decoded.email]
         );
       }
     }

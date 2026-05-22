@@ -459,16 +459,11 @@ const COACHING_APP_URL            = process.env.COACHING_APP_URL            || n
 const COACHING_INTERNAL_API_TOKEN = process.env.COACHING_INTERNAL_API_TOKEN || null;
 
 // Verify the requesting ecosystem user has coaching access.
-// Access is granted if either:
-//   (a) req.user.isSuperAdmin === true  — embedded in the JWT by /api/auth/login
-//   (b) users.has_coaching_access = true in the DB  — for non-admin granted users
+// HARD LOCK: ONLY users with users.has_coaching_access = true in the DB may pass.
+// There is NO super admin bypass — isSuperAdmin does NOT grant coaching access.
+// This ensures coaching is restricted to the single authorised user regardless of role.
 async function requireCoachingAccess(req, res, next) {
-    // (a) Super admin bypass — isSuperAdmin is set in the JWT at login time
-    if (req.user?.isSuperAdmin === true) {
-        return next();
-    }
-
-    // (b) DB column check for non-super-admin users
+    // DB column check — no bypass for any role, including super admins.
     const userId = req.user?.userId || req.user?.id;
     if (!userId) {
         console.warn('[coaching-routes] requireCoachingAccess: no userId in token — role:', req.user?.role || 'unknown');

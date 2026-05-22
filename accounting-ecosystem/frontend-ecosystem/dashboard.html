@@ -2150,14 +2150,19 @@
                 if (app.key === 'sean' && !isSuperAdmin) return '';
 
                 // Check per-app access: if user has a restriction, enforce it.
-                // Coaching is the ONLY exception to the super-admin bypass — even super admins
-                // must have coaching in their apps_access (or null apps_access) to see it.
+                // Coaching HARD LOCK: tile only ever shows when the authenticated user
+                // has hasCoachingAccess = true (sourced from login response / DB flag).
+                // No role, no super admin bypass — DB flag is the only gate.
                 const userCanAccess = (app.key === 'coaching')
-                    ? (!userAppsAccess || userAppsAccess.includes('coaching'))
+                    ? (currentUser?.hasCoachingAccess === true)
                     : (isSuperAdmin || !userAppsAccess || userAppsAccess.includes(app.key));
 
-                // App is active if the company has it in modules_enabled AND user can access it
-                const isActive = userCanAccess && (isSuperAdmin || companyModules.includes(app.key));
+                // App is active if the company has it in modules_enabled AND user can access it.
+                // Coaching bypasses the modules_enabled check — it is active whenever the user
+                // has the DB-level has_coaching_access flag (already captured in userCanAccess).
+                const isActive = app.key === 'coaching'
+                    ? userCanAccess
+                    : userCanAccess && (isSuperAdmin || companyModules.includes(app.key));
                 if (isActive) activeCount++;
 
                 const installBtn = (app.key === 'payroll' && isActive)
