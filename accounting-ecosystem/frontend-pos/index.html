@@ -2423,6 +2423,7 @@
                     <div class="settings-menu-item" onclick="showSettings('categories', event)">Categories</div>
                     <div class="settings-menu-item" onclick="showSettings('brands', event)">Brands</div>
                     <div class="settings-menu-item" onclick="showSettings('suppliers', event)">Suppliers</div>
+                    <div class="settings-menu-item" onclick="showSettings('tills', event)">Tills</div>
                     <div class="settings-menu-item" onclick="showSettings('sites', event)">Sites</div>
                 </div>
 
@@ -2801,7 +2802,60 @@
                             </table>
                         </div>
                     </div>
+
+                    <div id="tillsSection" style="display: none;">
+                        <div class="products-header">
+                            <h3 style="margin:0;">Tills</h3>
+                            <button class="btn btn-primary btn-sm" onclick="showAddTillModal()">+ Add Till</button>
+                        </div>
+                        <p style="color:#666;font-size:13px;margin:8px 0 16px;">Tills are the physical or virtual registers used to open sessions and process sales. At least one till must exist before a session can be opened.</p>
+                        <div class="customers-container">
+                            <div class="product-count" id="tillCount">Loading...</div>
+                            <table class="customers-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Till Name</th>
+                                        <th>Location</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="settingsTillsTableBody">
+                                    <tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Till Modal -->
+    <div id="addTillModal" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width:440px;">
+            <div class="modal-header">
+                <h2>Add Till</h2>
+                <button class="close-btn" onclick="closeAddTillModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Till Number *</label>
+                    <input type="number" id="newTillNumber" placeholder="e.g. 1" min="1" style="width:100%;">
+                </div>
+                <div class="form-group">
+                    <label>Till Name *</label>
+                    <input type="text" id="newTillName" placeholder="e.g. Main Till" style="width:100%;">
+                </div>
+                <div class="form-group">
+                    <label>Location (optional)</label>
+                    <input type="text" id="newTillLocation" placeholder="e.g. Front Counter" style="width:100%;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddTillModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveNewTill()">Add Till</button>
             </div>
         </div>
     </div>
@@ -4633,19 +4687,20 @@
                     }
                 }
             } else {
-                const balance = prompt('Enter opening balance:', '0');
-                if (balance !== null) {
-                    try {
-                        const tillsResponse = await fetch(`${API_URL}/pos/tills`, {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        const tillsResult = await tillsResponse.json();
+                // Check tills BEFORE prompting for balance so the user isn't left holding an entered balance
+                try {
+                    const tillsResponse = await fetch(`${API_URL}/pos/tills`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const tillsResult = await tillsResponse.json();
 
-                        if (tillsResult.tills.length === 0) {
-                            showNotification('No tills available', 'error');
-                            return;
-                        }
+                    if (!tillsResult.tills || tillsResult.tills.length === 0) {
+                        showNotification('No tills configured. Go to Settings → Tills to add one before opening a session.', 'error');
+                        return;
+                    }
 
+                    const balance = prompt('Enter opening balance:', '0');
+                    if (balance !== null) {
                         const response = await fetch(`${API_URL}/pos/sessions/open`, {
                             method: 'POST',
                             headers: {
@@ -4665,9 +4720,9 @@
                         } else {
                             showNotification(result.error || 'Error opening session', 'error');
                         }
-                    } catch (error) {
-                        showNotification('Error opening session', 'error');
                     }
+                } catch (error) {
+                    showNotification('Error opening session', 'error');
                 }
             }
         }
@@ -7661,6 +7716,9 @@
                 if (section === 'suppliers') {
                     loadSettingsSuppliers();
                 }
+                if (section === 'tills') {
+                    loadSettingsTills();
+                }
             }
         }
 
@@ -8408,6 +8466,98 @@
                 } else { showNotification(result.error || 'Receive failed', 'error'); }
             } catch (e) { showNotification('Error: ' + e.message, 'error'); }
         }
+
+        // ── Settings → Tills ──────────────────────────────────────────────────
+
+        async function loadSettingsTills() {
+            const tbody = document.getElementById('settingsTillsTableBody');
+            const countEl = document.getElementById('tillCount');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">Loading...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/pos/tills`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const tills = data.tills || [];
+                countEl.textContent = `${tills.length} Till${tills.length !== 1 ? 's' : ''}`;
+                if (tills.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">No tills configured. Click "+ Add Till" to create one.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = tills.map(t => `
+                    <tr>
+                        <td style="padding:8px 12px;">${t.till_number}</td>
+                        <td style="padding:8px 12px;font-weight:600;">${t.till_name}</td>
+                        <td style="padding:8px 12px;">${t.location || '—'}</td>
+                        <td style="padding:8px 12px;"><span style="color:#2e7d32;font-weight:600;">Active</span></td>
+                        <td style="padding:8px 12px;">
+                            <button class="btn btn-sm btn-danger" onclick="deactivateTill(${t.id}, '${t.till_name.replace(/'/g, "\\'")}')">Remove</button>
+                        </td>
+                    </tr>`).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#c62828;padding:20px;">Error loading tills</td></tr>';
+            }
+        }
+
+        function showAddTillModal() {
+            document.getElementById('newTillNumber').value = '';
+            document.getElementById('newTillName').value = '';
+            document.getElementById('newTillLocation').value = '';
+            document.getElementById('addTillModal').style.display = 'flex';
+        }
+
+        function closeAddTillModal() {
+            document.getElementById('addTillModal').style.display = 'none';
+        }
+
+        async function saveNewTill() {
+            const till_number = parseInt(document.getElementById('newTillNumber').value);
+            const till_name   = document.getElementById('newTillName').value.trim();
+            const location    = document.getElementById('newTillLocation').value.trim();
+            if (!till_number || !till_name) {
+                showNotification('Till number and till name are required', 'error');
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}/pos/tills`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ till_number, till_name, location: location || undefined })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Till "${till_name}" added`, 'success');
+                    closeAddTillModal();
+                    loadSettingsTills();
+                } else {
+                    showNotification(result.error || 'Error adding till', 'error');
+                }
+            } catch (e) {
+                showNotification('Error adding till', 'error');
+            }
+        }
+
+        async function deactivateTill(tillId, tillName) {
+            if (!confirm(`Remove till "${tillName}"? Active sessions on this till will not be affected.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/tills/${tillId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ is_active: false })
+                });
+                if (res.ok) {
+                    showNotification(`Till "${tillName}" removed`, 'success');
+                    loadSettingsTills();
+                } else {
+                    const result = await res.json();
+                    showNotification(result.error || 'Error removing till', 'error');
+                }
+            } catch (e) {
+                showNotification('Error removing till', 'error');
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
 
         function addReceiveRow() {
             const tbody = document.getElementById('receiveItemsBody');

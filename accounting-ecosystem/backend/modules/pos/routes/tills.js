@@ -65,6 +65,31 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
 });
 
 /**
+ * PATCH /api/pos/tills/:id
+ * Update a till (e.g. deactivate: { is_active: false })
+ */
+router.patch('/:id', requirePermission('SALES.CREATE'), async (req, res) => {
+  try {
+    const tillId = parseInt(req.params.id);
+    const { is_active } = req.body;
+
+    const { data, error } = await supabase
+      .from('tills')
+      .update({ is_active: !!is_active })
+      .eq('id', tillId)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'Till not found' });
+    res.json({ till: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * POST /api/pos/till/daily-reset
  * Reset daily counters (close all open sessions)
  */
