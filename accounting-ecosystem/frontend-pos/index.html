@@ -4669,7 +4669,7 @@
                                     'Authorization': `Bearer ${token}`,
                                     'Content-Type': 'application/json'
                                 },
-                                body: JSON.stringify({ closingBalance: parseFloat(balance), notes: 'Manual close' })
+                                body: JSON.stringify({ closing_balance: parseFloat(balance), notes: 'Manual close' })
                             });
 
                             const result = await response.json();
@@ -4708,8 +4708,8 @@
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                tillId: tillsResult.tills[0].id,
-                                openingBalance: parseFloat(balance)
+                                till_id: tillsResult.tills[0].id,
+                                opening_balance: parseFloat(balance)
                             })
                         });
 
