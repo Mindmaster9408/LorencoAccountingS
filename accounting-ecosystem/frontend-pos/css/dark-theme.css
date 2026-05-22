@@ -594,6 +594,49 @@ select option {
     color: var(--text) !important;
 }
 
+/* ── Workstream 14 — Settings Dark Theme Completion ─────────────────────────── */
+
+/* GAP-1: .customers-table has background:white in the base CSS class (not an
+   inline style, so the existing catch-all selectors don't reach it).
+   transparent lets the .customers-container var(--surface) show through. */
+.customers-table { background: transparent !important; }
+
+/* GAP-2: Settings panel cards use background:#f8f9fa / #f5f7fa / #fafafa /
+   #f5f5f5 / #e3f2fd / #e8f5e9 as inline styles.
+   The Workstream 12A catch-all only covers "white" and "enterprise-layout"
+   variants; these settings-specific shades were missed. */
+.settings-content [style*="background: #f8f9fa"],
+.settings-content [style*="background:#f8f9fa"],
+.settings-content [style*="background: #f5f7fa"],
+.settings-content [style*="background:#f5f7fa"],
+.settings-content [style*="background: #fafafa"],
+.settings-content [style*="background: #f5f5f5"],
+.settings-content [style*="background:#f5f5f5"],
+.settings-content [style*="background: #e3f2fd"],
+.settings-content [style*="background:#e3f2fd"],
+.settings-content [style*="background: #e8f5e9"],
+.settings-content [style*="background:#e8f5e9"] {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+
+/* GAP-3: Companies tab bar uses border-bottom:2px solid #eee inline — renders
+   as a distracting near-white line on the dark gradient background. */
+.settings-content [style*="border-bottom: 2px solid #eee"] {
+    border-bottom-color: var(--border) !important;
+}
+
+/* GAP-4: Modal-body inline panel backgrounds (#e3f2fd, #f8f9fa) — used by the
+   Sean AI assistant block and similar info panels inside product/customer modals.
+   Map to accent-subtle (a blue-tinted dark surface) to preserve visual hierarchy. */
+.modal-body [style*="background: #e3f2fd"],
+.modal-body [style*="background:#e3f2fd"],
+.modal-body [style*="background: #f8f9fa"],
+.modal-body [style*="background:#f8f9fa"] {
+    background: var(--accent-subtle) !important;
+    color: var(--text) !important;
+}
+
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
