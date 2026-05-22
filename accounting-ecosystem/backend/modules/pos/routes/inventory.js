@@ -257,7 +257,7 @@ router.get('/stock-takes', requirePermission('INVENTORY.VIEW'), async (req, res)
  */
 router.post('/receive', requirePermission('INVENTORY.ADJUST'), async (req, res) => {
   try {
-    const { supplier_name, reference, notes, items } = req.body;
+    const { supplier_name, supplier_id, reference, notes, items } = req.body;
     if (!supplier_name) return res.status(400).json({ error: 'supplier_name is required' });
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items array is required' });
 
@@ -265,8 +265,13 @@ router.post('/receive', requirePermission('INVENTORY.ADJUST'), async (req, res) 
     const { data: receive, error: recErr } = await supabase
       .from('pos_supplier_receives')
       .insert({
-        company_id: req.companyId, supplier_name, reference: reference || null,
-        notes: notes || null, item_count: items.length, total_quantity: totalQty,
+        company_id:  req.companyId,
+        supplier_name,
+        supplier_id: supplier_id ? parseInt(supplier_id) : null,
+        reference:   reference || null,
+        notes:       notes || null,
+        item_count:  items.length,
+        total_quantity: totalQty,
         received_by: req.user.userId,
       })
       .select().single();

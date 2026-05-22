@@ -1754,6 +1754,7 @@
                             Low Stock Only
                         </label>
                         <button class="btn btn-primary" onclick="showStockTakeModal()">Stock Take</button>
+                        <button class="btn btn-secondary" onclick="showSupplierReceiveModal()">Receive from Supplier</button>
                         <button class="btn btn-secondary" onclick="showReceiveStockModal()">Receive Stock</button>
                         <button class="btn btn-secondary" onclick="showTransferModal()">Record Transfer</button>
                         <button class="btn btn-secondary" onclick="showStockAdjustModal()">Adjust Stock</button>
@@ -2667,7 +2668,86 @@
 
                         <button class="btn btn-primary" onclick="saveGeneralSettings()" style="padding: 12px 30px;">Save All Settings</button>
                     </div>
+
+                    <!-- Suppliers Section -->
+                    <div id="suppliersSection" style="display: none;">
+                        <div class="products-header">
+                            <h3 style="margin:0;">Suppliers</h3>
+                        </div>
+                        <p style="color:#666;font-size:13px;margin:8px 0 16px;">Link products to suppliers so they auto-appear when receiving stock. Add or edit suppliers through the accounting module.</p>
+                        <div class="customers-container">
+                            <div class="product-count" id="supplierCount">Loading...</div>
+                            <table class="customers-table">
+                                <thead>
+                                    <tr>
+                                        <th>Code</th>
+                                        <th>Supplier Name</th>
+                                        <th>Contact</th>
+                                        <th>Phone</th>
+                                        <th>Linked Products</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="settingsSuppliersTableBody">
+                                    <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supplier Products Link Modal -->
+    <div id="supplierProductsModal" class="modal-overlay">
+        <div class="modal" style="max-width:600px;max-height:90vh;">
+            <div class="modal-header">
+                <h2>Products — <span id="supplierProductsTitle"></span></h2>
+                <button class="close-btn" onclick="closeSupplierProductsModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:calc(90vh - 140px);overflow-y:auto;">
+                <p style="font-size:13px;color:#666;margin-bottom:12px;">Tick every product this supplier provides. Ticked products auto-appear when you select this supplier on the Receive from Supplier screen.</p>
+                <div id="supplierProductsList" style="padding-bottom:8px;">Loading...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSupplierProductsModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveSupplierProducts()">Save Links</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supplier Receive Modal (linked flow) -->
+    <div id="supplierReceiveModal" class="modal-overlay">
+        <div class="modal" style="max-width:720px;max-height:90vh;">
+            <div class="modal-header">
+                <h2>Receive from Supplier</h2>
+                <button class="close-btn" onclick="closeSupplierReceive()">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:calc(90vh - 140px);overflow-y:auto;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                    <div class="form-group">
+                        <label>Supplier *</label>
+                        <select id="supplierReceiveSelect" onchange="loadSupplierLinkedProducts()" style="width:100%;">
+                            <option value="">— Select supplier —</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Reference (optional)</label>
+                        <input type="text" id="supplierReceiveRef" placeholder="e.g. INV-001" style="width:100%;">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label>Notes (optional)</label>
+                    <input type="text" id="supplierReceiveNotes" placeholder="Additional notes..." style="width:100%;">
+                </div>
+                <div id="supplierReceiveProductsArea">
+                    <p style="color:#999;font-size:13px;text-align:center;padding:20px 0;">Select a supplier to load their linked products.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSupplierReceive()">Cancel</button>
+                <button id="supplierReceiveSubmitBtn" class="btn btn-primary" onclick="submitSupplierReceive()" disabled>Receive Stock</button>
             </div>
         </div>
     </div>
@@ -7468,6 +7548,9 @@
                 if (section === 'customers') {
                     loadCustomers();
                 }
+                if (section === 'suppliers') {
+                    loadSettingsSuppliers();
+                }
             }
         }
 
@@ -7991,6 +8074,230 @@
         }
 
         function closeReceiveStock() { document.getElementById('receiveStockModal').style.display = 'none'; }
+
+        // ── Settings Suppliers ────────────────────────────────────────────────────
+
+        let currentSupplierId = null;
+        let settingsSupplierList = [];
+
+        async function loadSettingsSuppliers() {
+            const tbody = document.getElementById('settingsSuppliersTableBody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                settingsSupplierList = data.suppliers || [];
+                document.getElementById('supplierCount').textContent = `${settingsSupplierList.length} Suppliers`;
+                if (settingsSupplierList.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">No suppliers found. Add suppliers through the accounting module first.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = settingsSupplierList.map(s => `
+                    <tr data-supplier-id="${s.id}">
+                        <td>${s.supplier_code || s.code || '—'}</td>
+                        <td><strong>${s.supplier_name || s.name || '—'}</strong></td>
+                        <td>${s.contact_name || '—'}</td>
+                        <td>${s.contact_phone || s.phone || '—'}</td>
+                        <td id="supplierLinkCount_${s.id}" style="color:#999;">—</td>
+                        <td><button class="btn btn-sm btn-primary" onclick="openSupplierProducts(${s.id})">Manage Products</button></td>
+                    </tr>
+                `).join('');
+                settingsSupplierList.forEach(s => loadSupplierLinkCount(s.id));
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c00;padding:20px;">Error loading suppliers</td></tr>';
+            }
+        }
+
+        async function loadSupplierLinkCount(supplierId) {
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierId}/products`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    const el = document.getElementById(`supplierLinkCount_${supplierId}`);
+                    if (el) el.textContent = `${(data.products || []).length} products`;
+                }
+            } catch (e) { /* non-critical display */ }
+        }
+
+        async function openSupplierProducts(supplierId) {
+            currentSupplierId = supplierId;
+            const s = settingsSupplierList.find(x => x.id === supplierId);
+            document.getElementById('supplierProductsTitle').textContent = s ? (s.supplier_name || s.name) : '';
+            document.getElementById('supplierProductsList').innerHTML = 'Loading...';
+            document.getElementById('supplierProductsModal').style.display = 'flex';
+            try {
+                const [prodRes, linkRes] = await Promise.all([
+                    fetch(`${API_URL}/pos/products`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/pos/suppliers/${supplierId}/products`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                const { products: allProducts = [] } = await prodRes.json();
+                const { products: linkedProducts = [] } = await linkRes.json();
+                const linkedIds = new Set(linkedProducts.map(p => p.id));
+                if (allProducts.length === 0) {
+                    document.getElementById('supplierProductsList').innerHTML = '<p style="color:#999;padding:10px 0;">No products found.</p>';
+                    return;
+                }
+                document.getElementById('supplierProductsList').innerHTML = allProducts
+                    .sort((a, b) => a.product_name.localeCompare(b.product_name))
+                    .map(p => `
+                        <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#eee);cursor:pointer;">
+                            <input type="checkbox" value="${p.id}" ${linkedIds.has(p.id) ? 'checked' : ''} style="width:16px;height:16px;flex-shrink:0;">
+                            <span style="flex:1;">${p.product_name}</span>
+                            <span style="font-size:11px;color:#999;white-space:nowrap;">${p.product_code || ''}</span>
+                        </label>
+                    `).join('');
+            } catch (e) {
+                document.getElementById('supplierProductsList').innerHTML = '<p style="color:#c00;">Error loading products</p>';
+            }
+        }
+
+        function closeSupplierProductsModal() {
+            document.getElementById('supplierProductsModal').style.display = 'none';
+            currentSupplierId = null;
+        }
+
+        async function saveSupplierProducts() {
+            if (!currentSupplierId) return;
+            const productIds = [...document.querySelectorAll('#supplierProductsList input[type="checkbox"]:checked')]
+                .map(cb => parseInt(cb.value));
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${currentSupplierId}/products`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ product_ids: productIds })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`${productIds.length} product(s) linked`, 'success');
+                    closeSupplierProductsModal();
+                    loadSettingsSuppliers();
+                } else {
+                    showNotification(result.error || 'Failed to save', 'error');
+                }
+            } catch (e) { showNotification('Error: ' + e.message, 'error'); }
+        }
+
+        // ── Supplier Receive (linked flow) ────────────────────────────────────────
+
+        async function showSupplierReceiveModal() {
+            document.getElementById('supplierReceiveSelect').innerHTML = '<option value="">— Select supplier —</option>';
+            document.getElementById('supplierReceiveRef').value = '';
+            document.getElementById('supplierReceiveNotes').value = '';
+            document.getElementById('supplierReceiveProductsArea').innerHTML =
+                '<p style="color:#999;font-size:13px;text-align:center;padding:20px 0;">Select a supplier to load their linked products.</p>';
+            document.getElementById('supplierReceiveSubmitBtn').disabled = true;
+            document.getElementById('supplierReceiveModal').style.display = 'flex';
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const select = document.getElementById('supplierReceiveSelect');
+                (data.suppliers || []).forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.supplier_name || s.name;
+                    select.appendChild(opt);
+                });
+            } catch (e) { showNotification('Error loading suppliers', 'error'); }
+        }
+
+        function closeSupplierReceive() { document.getElementById('supplierReceiveModal').style.display = 'none'; }
+
+        async function loadSupplierLinkedProducts() {
+            const supplierId = document.getElementById('supplierReceiveSelect').value;
+            const area = document.getElementById('supplierReceiveProductsArea');
+            const submitBtn = document.getElementById('supplierReceiveSubmitBtn');
+            if (!supplierId) {
+                area.innerHTML = '<p style="color:#999;font-size:13px;text-align:center;padding:20px 0;">Select a supplier to load their linked products.</p>';
+                submitBtn.disabled = true;
+                return;
+            }
+            area.innerHTML = '<p style="color:#999;font-size:13px;text-align:center;padding:20px 0;">Loading products...</p>';
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierId}/products`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const linked = data.products || [];
+                if (linked.length === 0) {
+                    area.innerHTML = '<p style="color:#999;font-size:13px;text-align:center;padding:20px 0;">No products linked to this supplier.<br>Go to Settings → Suppliers → Manage Products to link products first.</p>';
+                    submitBtn.disabled = true;
+                    return;
+                }
+                area.innerHTML = `
+                    <h4 style="margin:0 0 8px;font-size:14px;">Quantities Received</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:7px;text-align:left;">Product</th>
+                                <th style="padding:7px;text-align:center;width:70px;">In Stock</th>
+                                <th style="padding:7px;text-align:right;width:100px;">Qty Received</th>
+                                <th style="padding:7px;text-align:right;width:120px;">Cost (opt.)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierReceiveItemsBody">
+                            ${linked.map(p => `
+                                <tr style="border-bottom:1px solid #eee;">
+                                    <td style="padding:7px;">
+                                        ${p.product_name}
+                                        ${p.product_code ? '<br><span style="font-size:11px;color:#999;">' + p.product_code + '</span>' : ''}
+                                    </td>
+                                    <td style="padding:7px;text-align:center;color:#666;">${p.stock_quantity ?? 0}</td>
+                                    <td style="padding:7px;">
+                                        <input type="number" min="0" value="0" data-product-id="${p.id}"
+                                            style="width:80px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                                    </td>
+                                    <td style="padding:7px;">
+                                        <input type="number" min="0" step="0.01" placeholder="0.00"
+                                            style="width:90px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>`;
+                submitBtn.disabled = false;
+            } catch (e) {
+                area.innerHTML = '<p style="color:#c00;font-size:13px;text-align:center;padding:20px 0;">Error loading products</p>';
+                submitBtn.disabled = true;
+            }
+        }
+
+        async function submitSupplierReceive() {
+            const sel = document.getElementById('supplierReceiveSelect');
+            const supplierId = sel.value;
+            const supplierName = sel.options[sel.selectedIndex]?.text || '';
+            const reference = document.getElementById('supplierReceiveRef').value.trim();
+            const notes     = document.getElementById('supplierReceiveNotes').value.trim();
+            const items = [];
+            document.querySelectorAll('#supplierReceiveItemsBody input[type="number"][data-product-id]').forEach(qtyInput => {
+                const pid = parseInt(qtyInput.dataset.productId);
+                const qty = parseInt(qtyInput.value || 0);
+                if (pid && qty > 0) {
+                    const costInput = qtyInput.closest('tr')?.querySelector('td:last-child input');
+                    const cost = costInput?.value;
+                    items.push({ product_id: pid, quantity: qty, cost_price: cost ? parseFloat(cost) : null });
+                }
+            });
+            if (items.length === 0) { showNotification('Enter at least one quantity greater than 0', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/inventory/receive`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        supplier_name: supplierName,
+                        supplier_id:   parseInt(supplierId),
+                        reference:     reference || undefined,
+                        notes:         notes || undefined,
+                        items
+                    })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    const summary = items.map(i => `+${i.quantity}`).join(', ');
+                    showNotification(`Received from ${supplierName} — ${items.length} product(s) (${summary})`, 'success');
+                    closeSupplierReceive();
+                    loadProducts();
+                    loadStock();
+                } else { showNotification(result.error || 'Receive failed', 'error'); }
+            } catch (e) { showNotification('Error: ' + e.message, 'error'); }
+        }
 
         function addReceiveRow() {
             const tbody = document.getElementById('receiveItemsBody');
