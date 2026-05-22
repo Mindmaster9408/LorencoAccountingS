@@ -100,7 +100,26 @@ router.post('/open', async (req, res) => {
       return res.status(400).json({ error: 'opening_balance cannot be negative' });
     }
 
-    // Check if user already has an open session
+    // Check if this till already has an open session (any user, same company).
+    // Enforces per-till uniqueness — prevents two cashiers sharing a till.
+    // The DB-level partial unique index (migration 037) is the hard safety net
+    // for any concurrent race that bypasses this application check.
+    const { data: tillSession } = await supabase
+      .from('till_sessions')
+      .select('id, user_id')
+      .eq('company_id', req.companyId)
+      .eq('till_id', till_id)
+      .eq('status', 'open')
+      .limit(1);
+
+    if (tillSession && tillSession.length > 0) {
+      return res.status(409).json({
+        error: 'This till already has an open session',
+        sessionId: tillSession[0].id,
+      });
+    }
+
+    // Check if this user already has an open session on any till
     const { data: existing } = await supabase
       .from('till_sessions')
       .select('id')

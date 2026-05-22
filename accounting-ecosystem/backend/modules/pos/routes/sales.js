@@ -516,22 +516,20 @@ router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => 
 
     if (retErr) return res.status(500).json({ error: retErr.message });
 
-    // Reverse stock for returned items
+    // Reverse stock for returned items — atomic per-item UPDATE via RPC.
+    // restore_stock_for_return uses stock_quantity = stock_quantity + qty at DB level:
+    // no read required, no race window under concurrent returns of the same product.
     for (const ri of itemsToReturn) {
       if (!ri.product_id || !ri.quantity) continue;
-      const { data: prod } = await supabase
-        .from('products')
-        .select('stock_quantity')
-        .eq('id', ri.product_id)
-        .eq('company_id', req.companyId)
-        .single();
-
-      if (prod) {
-        await supabase
-          .from('products')
-          .update({ stock_quantity: prod.stock_quantity + ri.quantity })
-          .eq('id', ri.product_id)
-          .eq('company_id', req.companyId);
+      const { error: stockErr } = await supabase.rpc('restore_stock_for_return', {
+        p_product_id: ri.product_id,
+        p_quantity:   ri.quantity,
+        p_company_id: req.companyId,
+      });
+      if (stockErr) {
+        // Non-fatal: pos_returns record is already committed. Log for investigation.
+        console.warn('[Sales] restore_stock_for_return non-fatal error:',
+          stockErr.message, '| product_id:', ri.product_id);
       }
     }
 

@@ -65,15 +65,6 @@ router.get('/sessions', async (req, res) => {
                 const ageHours = (now - new Date(s.opened_at)) / 3_600_000;
                 if (ageHours > STALE_SESSION_HOURS) {
                     stale.push({ ...s, age_hours: Math.round(ageHours) });
-                    posAuditFromReq(req, POS_EVENTS.ABANDONED_SESSION_DETECTED, {
-                        tillSessionId: s.id,
-                        tillId: s.till_id || null,
-                        metadata: {
-                            age_hours: Math.round(ageHours),
-                            opened_at: s.opened_at,
-                            session_user: s.users?.username || null,
-                        },
-                    });
                 } else {
                     open.push({ ...s, age_hours: Math.round(ageHours * 10) / 10 });
                 }
@@ -87,6 +78,40 @@ router.get('/sessions', async (req, res) => {
                         ? Math.round(closedAgeHours * 10) / 10
                         : null,
                 });
+            }
+        }
+
+        // Fire ABANDONED_SESSION_DETECTED only for sessions not already reported
+        // in the last 24 hours. One batch query covers all stale sessions so the
+        // endpoint never floods the audit log on repeated manager page loads.
+        if (stale.length > 0) {
+            const staleIds = stale.map(s => s.id);
+            const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+            const { data: recentEvents } = await supabase
+                .from('pos_audit_events')
+                .select('till_session_id')
+                .eq('company_id', req.companyId)
+                .eq('action_type', POS_EVENTS.ABANDONED_SESSION_DETECTED)
+                .in('till_session_id', staleIds)
+                .gte('created_at', since24h);
+
+            const alreadyReported = new Set(
+                (recentEvents || []).map(e => e.till_session_id)
+            );
+
+            for (const s of stale) {
+                if (!alreadyReported.has(s.id)) {
+                    posAuditFromReq(req, POS_EVENTS.ABANDONED_SESSION_DETECTED, {
+                        tillSessionId: s.id,
+                        tillId: s.till_id || null,
+                        metadata: {
+                            age_hours:    s.age_hours,
+                            opened_at:    s.opened_at,
+                            session_user: s.users?.username || null,
+                        },
+                    });
+                }
             }
         }
 
