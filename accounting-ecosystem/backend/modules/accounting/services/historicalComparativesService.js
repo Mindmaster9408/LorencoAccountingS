@@ -478,6 +478,155 @@ class HistoricalComparativesService {
     return result.rows;
   }
 
+  // ── DASHBOARD CHART TRENDS ────────────────────────────────────────────────
+
+  /**
+   * Dashboard trend data — returns Chart.js-compatible datasets.
+   *
+   * SECURITY RULES:
+   *   - companyId is always sourced from the caller parameter — never from user input.
+   *   - finalizedOnly defaults to true. Only routes that have verified the user role
+   *     may set finalizedOnly = false to expose draft batches.
+   *   - batchId and accountId are always parameterized in SQL — never interpolated.
+   *
+   * IMMUTABILITY RULE:
+   *   This method is strictly read-only. It NEVER writes to:
+   *   journals, journal_lines, bank_transactions, vat tables, or any live ledger table.
+   *
+   * @param {object}  opts
+   * @param {number}  opts.companyId       — mandatory, enforced server-side
+   * @param {string}  opts.metric          — revenue|expenses|gross_profit|net_profit|account_trend|annual_summary
+   * @param {number}  opts.fromYear        — FY start inclusive
+   * @param {number}  opts.toYear          — FY end inclusive
+   * @param {string}  [opts.batchId]       — narrow to a specific batch UUID
+   * @param {number}  [opts.accountId]     — required for account_trend metric
+   * @param {string}  [opts.accountType]   — optional extra account_type filter
+   * @param {boolean} [opts.finalizedOnly] — default true. Draft allowed only when caller verified role.
+   */
+  static async getDashboardTrends({
+    companyId, metric, fromYear, toYear,
+    batchId = null, accountId = null, accountType = null,
+    finalizedOnly = true,
+  }) {
+    const VALID_METRICS = ['revenue', 'gross_profit', 'net_profit', 'expenses', 'account_trend', 'annual_summary'];
+    if (!VALID_METRICS.includes(metric)) {
+      throw new Error(`Invalid metric "${metric}". Must be one of: ${VALID_METRICS.join(', ')}`);
+    }
+
+    const fyStart = parseInt(fromYear);
+    const fyEnd   = parseInt(toYear);
+    if (!fyStart || !fyEnd || fyStart > fyEnd) {
+      throw new Error('fromYear and toYear are required and fromYear must be <= toYear.');
+    }
+
+    // finalFilter is built from a boolean we control — safe string interpolation
+    const finalFilter = finalizedOnly
+      ? `AND l.is_finalized = true AND b.status = 'finalized'`
+      : `AND b.status IN ('draft', 'validated', 'finalized')`;
+
+    // All user-supplied IDs are parameterized — never interpolated
+    const params = [companyId, fyStart, fyEnd];
+
+    let batchFilter = '';
+    if (batchId) {
+      params.push(batchId);
+      batchFilter = `AND l.batch_id = $${params.length}`;
+    }
+
+    let accountTypeFilter = '';
+    if (accountType) {
+      params.push(accountType);
+      accountTypeFilter = `AND l.account_type = $${params.length}`;
+    }
+
+    let result;
+
+    // ── ACCOUNT TREND ──────────────────────────────────────────────────────
+    if (metric === 'account_trend') {
+      if (!accountId) throw new Error('accountId is required for the account_trend metric.');
+      params.push(parseInt(accountId));
+      const sql = `
+        SELECT
+          l.financial_year,
+          l.period_month,
+          l.account_code,
+          l.account_name,
+          l.account_type,
+          SUM(l.amount) AS total_amount
+        FROM historical_comparative_lines l
+        JOIN historical_comparative_batches b ON b.id = l.batch_id
+        WHERE
+          l.company_id = $1
+          ${finalFilter}
+          AND l.financial_year >= $2
+          AND l.financial_year <= $3
+          ${batchFilter}
+          AND l.account_id = $${params.length}
+        GROUP BY
+          l.financial_year, l.period_month,
+          l.account_code, l.account_name, l.account_type
+        ORDER BY l.financial_year ASC, l.period_month ASC
+      `;
+      result = await db.query(sql, params);
+      const chart = this._buildChartDataset({ metric, rows: result.rows, fyStart, fyEnd, finalizedOnly });
+      chart.metadata.batches = await this._getBatchMetadata({ companyId, fyStart, fyEnd, batchId, finalizedOnly });
+      return chart;
+    }
+
+    // ── ANNUAL SUMMARY ─────────────────────────────────────────────────────
+    if (metric === 'annual_summary') {
+      const sql = `
+        SELECT
+          l.financial_year,
+          l.account_type,
+          SUM(l.amount) AS total_amount
+        FROM historical_comparative_lines l
+        JOIN historical_comparative_batches b ON b.id = l.batch_id
+        WHERE
+          l.company_id = $1
+          ${finalFilter}
+          AND l.financial_year >= $2
+          AND l.financial_year <= $3
+          ${batchFilter}
+          AND l.account_type IN ('Income', 'Expense')
+        GROUP BY l.financial_year, l.account_type
+        ORDER BY l.financial_year ASC
+      `;
+      result = await db.query(sql, params);
+      const chart = this._buildAnnualSummaryDataset({ rows: result.rows, fyStart, fyEnd, finalizedOnly });
+      chart.metadata.batches = await this._getBatchMetadata({ companyId, fyStart, fyEnd, batchId, finalizedOnly });
+      return chart;
+    }
+
+    // ── REVENUE / EXPENSES / GROSS_PROFIT / NET_PROFIT ─────────────────────
+    // NOTE: gross_profit and net_profit use the same Income-minus-Expense formula.
+    // True gross profit (Income minus COGS only) would require a COGS sub_type tag
+    // in the accounts table. Document this as a known simplification.
+    const sql = `
+      SELECT
+        l.financial_year,
+        l.period_month,
+        l.account_type,
+        SUM(l.amount) AS total_amount
+      FROM historical_comparative_lines l
+      JOIN historical_comparative_batches b ON b.id = l.batch_id
+      WHERE
+        l.company_id = $1
+        ${finalFilter}
+        AND l.financial_year >= $2
+        AND l.financial_year <= $3
+        ${batchFilter}
+        AND l.account_type IN ('Income', 'Expense')
+        ${accountTypeFilter}
+      GROUP BY l.financial_year, l.period_month, l.account_type
+      ORDER BY l.financial_year ASC, l.period_month ASC
+    `;
+    result = await db.query(sql, params);
+    const chart = this._buildChartDataset({ metric, rows: result.rows, fyStart, fyEnd, finalizedOnly });
+    chart.metadata.batches = await this._getBatchMetadata({ companyId, fyStart, fyEnd, batchId, finalizedOnly });
+    return chart;
+  }
+
   // ── INTERNAL HELPERS ─────────────────────────────────────────────────────
 
   /**
@@ -551,6 +700,152 @@ class HistoricalComparativesService {
       monthOrder: SA_FY_MONTH_ORDER,
       monthNames: MONTH_NAMES,
     };
+  }
+
+  /**
+   * Build Chart.js-compatible dataset from raw SQL rows.
+   * Handles revenue, expenses, gross_profit, net_profit, and account_trend metrics.
+   * Pure function — no DB access.
+   */
+  static _buildChartDataset({ metric, rows, fyStart, fyEnd, finalizedOnly }) {
+    const years = [];
+    for (let y = fyStart; y <= fyEnd; y++) years.push(y);
+
+    const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const MONTH_LABELS = SA_FY_MONTH_ORDER.map(m => MONTH_SHORT[m - 1]);
+
+    if (metric === 'account_trend') {
+      // Lookup: year -> month -> amount
+      const lookup = {};
+      for (const row of rows) {
+        const fy = parseInt(row.financial_year);
+        const m  = parseInt(row.period_month);
+        if (!lookup[fy]) lookup[fy] = {};
+        lookup[fy][m] = parseFloat(row.total_amount || 0);
+      }
+
+      const accountInfo = rows.length > 0 ? {
+        account_code: rows[0].account_code,
+        account_name: rows[0].account_name,
+        account_type: rows[0].account_type,
+      } : null;
+
+      return {
+        labels: MONTH_LABELS,
+        datasets: years.map(y => ({
+          label: `FY ${y}/${String(y + 1).slice(-2)}`,
+          data: SA_FY_MONTH_ORDER.map(m => (lookup[y] && lookup[y][m] !== undefined ? lookup[y][m] : 0)),
+        })),
+        monthOrder: SA_FY_MONTH_ORDER,
+        source: 'historical_comparatives',
+        metadata: { financialYearStart: fyStart, financialYearEnd: fyEnd, metric, finalizedOnly, accountInfo },
+      };
+    }
+
+    // Income/Expense-based metrics
+    // Lookup: year -> month -> { Income: x, Expense: y }
+    const lookup = {};
+    for (const row of rows) {
+      const fy  = parseInt(row.financial_year);
+      const m   = parseInt(row.period_month);
+      const amt = parseFloat(row.total_amount || 0);
+      if (!lookup[fy]) lookup[fy] = {};
+      if (!lookup[fy][m]) lookup[fy][m] = { Income: 0, Expense: 0 };
+      if (row.account_type === 'Income' || row.account_type === 'Expense') {
+        lookup[fy][m][row.account_type] += amt;
+      }
+    }
+
+    return {
+      labels: MONTH_LABELS,
+      datasets: years.map(y => ({
+        label: `FY ${y}/${String(y + 1).slice(-2)}`,
+        data: SA_FY_MONTH_ORDER.map(m => {
+          const cell = (lookup[y] && lookup[y][m]) ? lookup[y][m] : { Income: 0, Expense: 0 };
+          switch (metric) {
+            case 'revenue':      return cell.Income;
+            case 'expenses':     return cell.Expense;
+            case 'gross_profit':
+            case 'net_profit':   return cell.Income - cell.Expense;
+            default:             return 0;
+          }
+        }),
+      })),
+      monthOrder: SA_FY_MONTH_ORDER,
+      source: 'historical_comparatives',
+      metadata: { financialYearStart: fyStart, financialYearEnd: fyEnd, metric, finalizedOnly },
+    };
+  }
+
+  /**
+   * Build annual summary dataset — three series: Revenue, Expenses, Net Profit.
+   * Labels are financial year strings (e.g. "FY 2022/23").
+   * Pure function — no DB access.
+   */
+  static _buildAnnualSummaryDataset({ rows, fyStart, fyEnd, finalizedOnly }) {
+    const years = [];
+    for (let y = fyStart; y <= fyEnd; y++) years.push(y);
+
+    const lookup = {};
+    for (const row of rows) {
+      const fy = parseInt(row.financial_year);
+      if (!lookup[fy]) lookup[fy] = { Income: 0, Expense: 0 };
+      if (row.account_type === 'Income' || row.account_type === 'Expense') {
+        lookup[fy][row.account_type] += parseFloat(row.total_amount || 0);
+      }
+    }
+
+    const revenue   = years.map(y => (lookup[y] ? lookup[y].Income  : 0));
+    const expenses  = years.map(y => (lookup[y] ? lookup[y].Expense : 0));
+    const netProfit = years.map((_, i) => revenue[i] - expenses[i]);
+
+    return {
+      labels: years.map(y => `FY ${y}/${String(y + 1).slice(-2)}`),
+      datasets: [
+        { label: 'Revenue',    data: revenue   },
+        { label: 'Expenses',   data: expenses  },
+        { label: 'Net Profit', data: netProfit },
+      ],
+      source: 'historical_comparatives',
+      metadata: {
+        financialYearStart: fyStart,
+        financialYearEnd: fyEnd,
+        metric: 'annual_summary',
+        finalizedOnly,
+      },
+    };
+  }
+
+  /**
+   * Fetch batch metadata for including in dashboard API responses.
+   * Allows users to inspect which batches contributed to a chart.
+   * Returns batches that overlap the requested year range.
+   * Never throws — metadata is supplementary information only.
+   */
+  static async _getBatchMetadata({ companyId, fyStart, fyEnd, batchId, finalizedOnly }) {
+    try {
+      let query = supabase
+        .from('historical_comparative_batches')
+        .select('id, description, source_type, source_name, financial_year_start, financial_year_end, status, finalized_at, created_at')
+        .eq('company_id', companyId)
+        .lte('financial_year_start', fyEnd)
+        .gte('financial_year_end', fyStart);
+
+      if (finalizedOnly) {
+        query = query.eq('status', 'finalized');
+      } else {
+        query = query.in('status', ['draft', 'validated', 'finalized']);
+      }
+
+      if (batchId) {
+        query = query.eq('id', batchId);
+      }
+
+      const { data } = await query;
+      return data || [];
+    } catch {
+      return []; // metadata failure must never surface as an error to the caller
+    }
   }
 
   /**

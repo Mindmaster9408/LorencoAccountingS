@@ -137,7 +137,7 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'reports.html' || currentPage === 'balance-sheet.html' || currentPage === 'cashflow.html' || currentPage === 'division-pl.html' || currentPage === 'historical-comparatives.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'reports.html' || currentPage === 'balance-sheet.html' || currentPage === 'cashflow.html' || currentPage === 'division-pl.html' || currentPage === 'historical-comparatives.html' || currentPage === 'historical-comparatives-charts.html' ? 'active' : ''}">
         <a href="/accounting/reports.html">Reports</a>
         <div class="dropdown">
           <div class="dropdown-header">Financial</div>
@@ -154,6 +154,7 @@ function createNavigation() {
           <a href="/accounting/aged-creditors.html">Aged Creditors</a>
           <div class="dropdown-header">Historical</div>
           <a href="/accounting/historical-comparatives.html">Historical Comparatives</a>
+          <a href="/accounting/historical-comparatives-charts.html">Historical Charts</a>
         </div>
       </div>
 

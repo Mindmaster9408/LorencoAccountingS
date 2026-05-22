@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Charts | Lorenco Accounting</title>
+    <link rel="stylesheet" href="/accounting/css/main.css">
+    <link rel="stylesheet" href="/accounting/css/dark-theme.css">
+    <!-- Chart.js CDN — pinned to v4 major -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        /* ─── Page Layout ─────────────────────────────────────────────── */
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        /* ─── Filter Bar ──────────────────────────────────────────────── */
+        .filter-bar {
+            background: var(--card-bg, #fff);
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 8px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .filter-bar label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary, #5f6368);
+        }
+        .filter-bar select,
+        .filter-bar input[type="number"] {
+            padding: 6px 10px;
+            border: 1px solid var(--border, #dadce0);
+            border-radius: 6px;
+            font-size: 13px;
+            background: var(--input-bg, #fff);
+            color: var(--text, #202124);
+            min-width: 90px;
+        }
+        .filter-bar .draft-toggle {
+            display: none; /* shown only for admin/accountant via JS */
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary, #5f6368);
+        }
+        .filter-bar .draft-toggle.visible {
+            display: flex;
+        }
+        .btn-apply {
+            padding: 7px 18px;
+            background: #1a73e8;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .btn-apply:hover { background: #1558b0; }
+
+        /* ─── Charts Grid ─────────────────────────────────────────────── */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .charts-grid .widget-full {
+            grid-column: 1 / -1;
+        }
+        @media (max-width: 900px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .charts-grid .widget-full { grid-column: 1; }
+        }
+
+        /* ─── Chart Widget ────────────────────────────────────────────── */
+        .chart-widget {
+            background: var(--card-bg, #fff);
+            border: 1px solid var(--border, #e0e0e0);
+            border-radius: 8px;
+            padding: 18px;
+            position: relative;
+        }
+        .widget-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .widget-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text, #202124);
+            margin: 0;
+        }
+        .source-badge {
+            font-size: 11px;
+            color: #fff;
+            background: #1a73e8;
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .widget-canvas-wrap {
+            position: relative;
+            height: 280px;
+        }
+        .widget-canvas-wrap canvas {
+            width: 100% !important;
+        }
+
+        /* ─── Empty / Loading States ──────────────────────────────────── */
+        .widget-empty {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary, #5f6368);
+            font-size: 14px;
+        }
+        .widget-empty a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        .widget-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 280px;
+            color: var(--text-secondary, #5f6368);
+            font-size: 14px;
+        }
+        .spinner {
+            border: 3px solid #e0e0e0;
+            border-top-color: #1a73e8;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ─── Data Sources Expandable ─────────────────────────────────── */
+        .widget-sources {
+            margin-top: 12px;
+            border-top: 1px solid var(--border, #e0e0e0);
+            padding-top: 10px;
+        }
+        .widget-sources summary {
+            font-size: 12px;
+            color: var(--text-secondary, #5f6368);
+            cursor: pointer;
+            user-select: none;
+        }
+        .source-detail {
+            font-size: 12px;
+            color: var(--text-secondary, #5f6368);
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+        .source-detail table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+        }
+        .source-detail th, .source-detail td {
+            text-align: left;
+            padding: 3px 6px;
+            border-bottom: 1px solid var(--border, #f0f0f0);
+        }
+        .source-detail th { font-weight: 600; color: var(--text, #202124); }
+
+        /* ─── Account Selector (Account Trend widget) ─────────────────── */
+        .account-search-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .account-search-row input {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid var(--border, #dadce0);
+            border-radius: 6px;
+            font-size: 13px;
+            min-width: 180px;
+        }
+        .account-search-row select {
+            padding: 6px 10px;
+            border: 1px solid var(--border, #dadce0);
+            border-radius: 6px;
+            font-size: 13px;
+            min-width: 200px;
+        }
+        .btn-load {
+            padding: 6px 14px;
+            background: #1a73e8;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .btn-load:hover { background: #1558b0; }
+
+        /* ─── Error Banner ────────────────────────────────────────────── */
+        .error-banner {
+            display: none;
+            background: #fce8e6;
+            color: #c5221f;
+            border: 1px solid #f28b82;
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div id="nav-container"></div>
+
+    <div class="content">
+        <div class="page-header">
+            <h1>Historical Financial Charts</h1>
+            <a href="/accounting/historical-comparatives.html" style="font-size:13px; color:#1a73e8; text-decoration:none;">
+                ← Back to Data Capture
+            </a>
+        </div>
+
+        <div id="errorBanner" class="error-banner"></div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <label>From FY
+                <input type="number" id="filterFromYear" value="" min="2000" max="2040" style="width:85px;">
+            </label>
+            <label>To FY
+                <input type="number" id="filterToYear" value="" min="2000" max="2040" style="width:85px;">
+            </label>
+            <label class="draft-toggle" id="draftToggleWrap">
+                <input type="checkbox" id="includeDraft"> Include draft data
+            </label>
+            <button class="btn-apply" onclick="loadAllCharts()">Apply</button>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="charts-grid">
+
+            <!-- Widget 1: Revenue Trend -->
+            <div class="chart-widget" id="w-revenue">
+                <div class="widget-header">
+                    <h3 class="widget-title">Historical Revenue Trend</h3>
+                    <span class="source-badge">Source: Historical Comparatives</span>
+                </div>
+                <div class="widget-loading" id="loading-revenue">
+                    <div class="spinner"></div> Loading&hellip;
+                </div>
+                <div class="widget-empty" id="empty-revenue">
+                    No finalized historical comparative data available yet.
+                    <br><a href="/accounting/historical-comparatives.html">Capture historical data →</a>
+                </div>
+                <div class="widget-canvas-wrap" id="canvas-wrap-revenue" style="display:none;">
+                    <canvas id="chart-revenue"></canvas>
+                </div>
+                <details class="widget-sources" id="sources-revenue" style="display:none;">
+                    <summary>Data source info</summary>
+                    <div class="source-detail" id="source-detail-revenue"></div>
+                </details>
+            </div>
+
+            <!-- Widget 2: Expense Trend -->
+            <div class="chart-widget" id="w-expenses">
+                <div class="widget-header">
+                    <h3 class="widget-title">Historical Expense Trend</h3>
+                    <span class="source-badge">Source: Historical Comparatives</span>
+                </div>
+                <div class="widget-loading" id="loading-expenses">
+                    <div class="spinner"></div> Loading&hellip;
+                </div>
+                <div class="widget-empty" id="empty-expenses">
+                    No finalized historical comparative data available yet.
+                    <br><a href="/accounting/historical-comparatives.html">Capture historical data →</a>
+                </div>
+                <div class="widget-canvas-wrap" id="canvas-wrap-expenses" style="display:none;">
+                    <canvas id="chart-expenses"></canvas>
+                </div>
+                <details class="widget-sources" id="sources-expenses" style="display:none;">
+                    <summary>Data source info</summary>
+                    <div class="source-detail" id="source-detail-expenses"></div>
+                </details>
+            </div>
+
+            <!-- Widget 3: Net Profit Trend -->
+            <div class="chart-widget" id="w-netprofit">
+                <div class="widget-header">
+                    <h3 class="widget-title">Historical Net Profit Trend</h3>
+                    <span class="source-badge">Source: Historical Comparatives</span>
+                </div>
+                <div class="widget-loading" id="loading-netprofit">
+                    <div class="spinner"></div> Loading&hellip;
+                </div>
+                <div class="widget-empty" id="empty-netprofit">
+                    No finalized historical comparative data available yet.
+                    <br><a href="/accounting/historical-comparatives.html">Capture historical data →</a>
+                </div>
+                <div class="widget-canvas-wrap" id="canvas-wrap-netprofit" style="display:none;">
+                    <canvas id="chart-netprofit"></canvas>
+                </div>
+                <details class="widget-sources" id="sources-netprofit" style="display:none;">
+                    <summary>Data source info</summary>
+                    <div class="source-detail" id="source-detail-netprofit"></div>
+                </details>
+            </div>
+
+            <!-- Widget 4: Annual Summary -->
+            <div class="chart-widget" id="w-annual">
+                <div class="widget-header">
+                    <h3 class="widget-title">Annual Summary (Revenue vs Expenses vs Profit)</h3>
+                    <span class="source-badge">Source: Historical Comparatives</span>
+                </div>
+                <div class="widget-loading" id="loading-annual">
+                    <div class="spinner"></div> Loading&hellip;
+                </div>
+                <div class="widget-empty" id="empty-annual">
+                    No finalized historical comparative data available yet.
+                    <br><a href="/accounting/historical-comparatives.html">Capture historical data →</a>
+                </div>
+                <div class="widget-canvas-wrap" id="canvas-wrap-annual" style="display:none;">
+                    <canvas id="chart-annual"></canvas>
+                </div>
+                <details class="widget-sources" id="sources-annual" style="display:none;">
+                    <summary>Data source info</summary>
+                    <div class="source-detail" id="source-detail-annual"></div>
+                </details>
+            </div>
+
+            <!-- Widget 5: Account Trend (full width) -->
+            <div class="chart-widget widget-full" id="w-account">
+                <div class="widget-header">
+                    <h3 class="widget-title">Account Trend</h3>
+                    <span class="source-badge">Source: Historical Comparatives</span>
+                </div>
+                <div class="account-search-row">
+                    <input type="text" id="accountSearchInput" placeholder="Search account name or code…"
+                           oninput="searchAccounts(this.value)" autocomplete="off">
+                    <select id="accountSelect" size="1">
+                        <option value="">— Select an account —</option>
+                    </select>
+                    <button class="btn-load" onclick="loadAccountTrend()">Load Chart</button>
+                </div>
+                <div class="widget-loading" id="loading-account" style="display:none;">
+                    <div class="spinner"></div> Loading&hellip;
+                </div>
+                <div class="widget-empty" id="empty-account">
+                    Search for an account above and click "Load Chart" to view its historical trend.
+                </div>
+                <div class="widget-canvas-wrap" id="canvas-wrap-account" style="display:none;">
+                    <canvas id="chart-account"></canvas>
+                </div>
+                <details class="widget-sources" id="sources-account" style="display:none;">
+                    <summary>Data source info</summary>
+                    <div class="source-detail" id="source-detail-account"></div>
+                </details>
+            </div>
+
+        </div><!-- /charts-grid -->
+    </div><!-- /content -->
+
+    <script src="/accounting/js/polyfills.js"></script>
+    <script src="/accounting/js/navigation.js"></script>
+    <script>
+        // ── Auth state (from localStorage — tokens only, no business data stored) ──
+        const token = localStorage.getItem('token');
+        const user  = JSON.parse(localStorage.getItem('user') || '{}');
+
+        if (!token) {
+            window.location.href = '/';
+        }
+
+        createNavigation('historical-comparatives-charts.html');
+
+        const API_URL = '/api/accounting/historical-comparatives';
+
+        // Chart.js color palette — visually distinct, up to 6 years
+        const YEAR_COLORS = [
+            '#2563eb', '#16a34a', '#dc2626', '#d97706', '#7c3aed', '#0891b2',
+        ];
+
+        // Registered Chart.js instances — stored to allow destroy/re-render on filter change
+        const chartInstances = {};
+
+        // ── Show draft toggle only for admin/accountant ──────────────────
+        if (['admin', 'accountant'].includes(user.role)) {
+            document.getElementById('draftToggleWrap').classList.add('visible');
+        }
+
+        // ── Default year range: last 5 years ────────────────────────────
+        (function initYearDefaults() {
+            const currentFY = new Date().getMonth() >= 2
+                ? new Date().getFullYear()
+                : new Date().getFullYear() - 1;
+            document.getElementById('filterToYear').value   = currentFY;
+            document.getElementById('filterFromYear').value = currentFY - 4;
+        })();
+
+        // ── Fetch wrapper ────────────────────────────────────────────────
+        async function fetchWithAuth(url) {
+            const res = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (res.status === 401) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                window.location.href = '/';
+            }
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            return res.json();
+        }
+
+        // ── Show error banner ────────────────────────────────────────────
+        function showError(msg) {
+            const el = document.getElementById('errorBanner');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 8000);
+        }
+
+        // ── Widget state helpers ─────────────────────────────────────────
+        function setWidgetLoading(key, on) {
+            document.getElementById(`loading-${key}`).style.display    = on ? 'flex' : 'none';
+            document.getElementById(`canvas-wrap-${key}`).style.display = on ? 'none' : 'block';
+        }
+        function setWidgetEmpty(key, on) {
+            document.getElementById(`empty-${key}`).style.display      = on ? 'block' : 'none';
+            document.getElementById(`canvas-wrap-${key}`).style.display = on ? 'none' : 'block';
+            document.getElementById(`loading-${key}`).style.display    = 'none';
+        }
+
+        // ── Render source-detail HTML ────────────────────────────────────
+        function renderSourceDetail(detailEl, sourcesEl, metadata) {
+            if (!metadata || !metadata.batches || metadata.batches.length === 0) {
+                sourcesEl.style.display = 'none';
+                return;
+            }
+            const rows = metadata.batches.map(b => `
+                <tr>
+                    <td>${escapeHtml(b.description || '—')}</td>
+                    <td>${escapeHtml(b.source_name || b.source_type || '—')}</td>
+                    <td>FY ${b.financial_year_start}/${String(b.financial_year_end).slice(-2)}</td>
+                    <td>${b.status}</td>
+                    <td>${b.finalized_at ? new Date(b.finalized_at).toLocaleDateString('en-ZA') : '—'}</td>
+                </tr>
+            `).join('');
+            detailEl.innerHTML = `
+                <table>
+                    <thead><tr>
+                        <th>Batch</th><th>Source</th><th>Period</th><th>Status</th><th>Finalized</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+            sourcesEl.style.display = 'block';
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        // ── Destroy existing chart instance ──────────────────────────────
+        function destroyChart(key) {
+            if (chartInstances[key]) {
+                chartInstances[key].destroy();
+                delete chartInstances[key];
+            }
+        }
+
+        // ── Apply colors to datasets ─────────────────────────────────────
+        function colorize(datasets, chartType) {
+            return datasets.map((ds, i) => {
+                const color = YEAR_COLORS[i % YEAR_COLORS.length];
+                if (chartType === 'bar') {
+                    return {
+                        ...ds,
+                        backgroundColor: color + 'aa',
+                        borderColor: color,
+                        borderWidth: 1,
+                    };
+                }
+                return {
+                    ...ds,
+                    borderColor: color,
+                    backgroundColor: color + '22',
+                    tension: 0.3,
+                    fill: chartType === 'line-fill',
+                    pointRadius: 3,
+                };
+            });
+        }
+
+        // ── Build query string ───────────────────────────────────────────
+        function buildQuery(extra = {}) {
+            const fromYear = document.getElementById('filterFromYear').value;
+            const toYear   = document.getElementById('filterToYear').value;
+            const includeDraft = document.getElementById('includeDraft').checked;
+            const params = new URLSearchParams({
+                fromYear, toYear,
+                ...(includeDraft ? { includeDraft: 'true' } : {}),
+                ...extra,
+            });
+            return params.toString();
+        }
+
+        // ── WIDGET: Revenue ──────────────────────────────────────────────
+        async function loadRevenue() {
+            setWidgetLoading('revenue', true);
+            try {
+                const data = await fetchWithAuth(`${API_URL}/dashboard/trends?${buildQuery({ metric: 'revenue' })}`);
+                const hasData = data.datasets && data.datasets.some(ds => ds.data.some(v => v !== 0));
+                if (!hasData) { setWidgetEmpty('revenue', true); return; }
+
+                setWidgetLoading('revenue', false);
+                destroyChart('revenue');
+                const ctx = document.getElementById('chart-revenue').getContext('2d');
+                chartInstances.revenue = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: data.labels, datasets: colorize(data.datasets, 'line') },
+                    options: lineOptions('Revenue (R)'),
+                });
+                renderSourceDetail(
+                    document.getElementById('source-detail-revenue'),
+                    document.getElementById('sources-revenue'),
+                    data.metadata
+                );
+            } catch (e) {
+                setWidgetEmpty('revenue', true);
+                showError(`Revenue chart: ${e.message}`);
+            }
+        }
+
+        // ── WIDGET: Expenses ─────────────────────────────────────────────
+        async function loadExpenses() {
+            setWidgetLoading('expenses', true);
+            try {
+                const data = await fetchWithAuth(`${API_URL}/dashboard/trends?${buildQuery({ metric: 'expenses' })}`);
+                const hasData = data.datasets && data.datasets.some(ds => ds.data.some(v => v !== 0));
+                if (!hasData) { setWidgetEmpty('expenses', true); return; }
+
+                setWidgetLoading('expenses', false);
+                destroyChart('expenses');
+                const ctx = document.getElementById('chart-expenses').getContext('2d');
+                chartInstances.expenses = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: data.labels, datasets: colorize(data.datasets, 'bar') },
+                    options: barOptions('Expenses (R)'),
+                });
+                renderSourceDetail(
+                    document.getElementById('source-detail-expenses'),
+                    document.getElementById('sources-expenses'),
+                    data.metadata
+                );
+            } catch (e) {
+                setWidgetEmpty('expenses', true);
+                showError(`Expenses chart: ${e.message}`);
+            }
+        }
+
+        // ── WIDGET: Net Profit ───────────────────────────────────────────
+        async function loadNetProfit() {
+            setWidgetLoading('netprofit', true);
+            try {
+                const data = await fetchWithAuth(`${API_URL}/dashboard/trends?${buildQuery({ metric: 'net_profit' })}`);
+                const hasData = data.datasets && data.datasets.some(ds => ds.data.some(v => v !== 0));
+                if (!hasData) { setWidgetEmpty('netprofit', true); return; }
+
+                setWidgetLoading('netprofit', false);
+                destroyChart('netprofit');
+                const ctx = document.getElementById('chart-netprofit').getContext('2d');
+                chartInstances.netprofit = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: data.labels, datasets: colorize(data.datasets, 'line-fill') },
+                    options: lineOptions('Net Profit (R)'),
+                });
+                renderSourceDetail(
+                    document.getElementById('source-detail-netprofit'),
+                    document.getElementById('sources-netprofit'),
+                    data.metadata
+                );
+            } catch (e) {
+                setWidgetEmpty('netprofit', true);
+                showError(`Net profit chart: ${e.message}`);
+            }
+        }
+
+        // ── WIDGET: Annual Summary ───────────────────────────────────────
+        async function loadAnnualSummary() {
+            setWidgetLoading('annual', true);
+            try {
+                const data = await fetchWithAuth(`${API_URL}/dashboard/trends?${buildQuery({ metric: 'annual_summary' })}`);
+                const hasData = data.datasets && data.datasets.some(ds => ds.data.some(v => v !== 0));
+                if (!hasData) { setWidgetEmpty('annual', true); return; }
+
+                setWidgetLoading('annual', false);
+                destroyChart('annual');
+                const ctx = document.getElementById('chart-annual').getContext('2d');
+                chartInstances.annual = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.labels,
+                        datasets: data.datasets.map((ds, i) => ({
+                            ...ds,
+                            backgroundColor: YEAR_COLORS[i % YEAR_COLORS.length] + 'bb',
+                            borderColor: YEAR_COLORS[i % YEAR_COLORS.length],
+                            borderWidth: 1,
+                        })),
+                    },
+                    options: {
+                        ...barOptions('Amount (R)'),
+                        plugins: {
+                            ...barOptions('Amount (R)').plugins,
+                            legend: { display: true, position: 'top' },
+                        },
+                    },
+                });
+                renderSourceDetail(
+                    document.getElementById('source-detail-annual'),
+                    document.getElementById('sources-annual'),
+                    data.metadata
+                );
+            } catch (e) {
+                setWidgetEmpty('annual', true);
+                showError(`Annual summary chart: ${e.message}`);
+            }
+        }
+
+        // ── WIDGET: Account Trend (interactive) ──────────────────────────
+        let accountSearchTimer = null;
+        async function searchAccounts(q) {
+            clearTimeout(accountSearchTimer);
+            if (q.length < 2) return;
+            accountSearchTimer = setTimeout(async () => {
+                try {
+                    const data = await fetchWithAuth(`${API_URL}/accounts/search?q=${encodeURIComponent(q)}`);
+                    const sel = document.getElementById('accountSelect');
+                    sel.innerHTML = '<option value="">— Select an account —</option>';
+                    (data.accounts || []).forEach(a => {
+                        const opt = document.createElement('option');
+                        opt.value = a.id;
+                        opt.textContent = `${a.account_code ? a.account_code + ' — ' : ''}${a.name}`;
+                        sel.appendChild(opt);
+                    });
+                } catch { /* silent — search is optional */ }
+            }, 300);
+        }
+
+        async function loadAccountTrend() {
+            const accountId = document.getElementById('accountSelect').value;
+            if (!accountId) {
+                alert('Please select an account first.');
+                return;
+            }
+            document.getElementById('empty-account').style.display   = 'none';
+            document.getElementById('canvas-wrap-account').style.display = 'none';
+            document.getElementById('sources-account').style.display = 'none';
+            document.getElementById('loading-account').style.display = 'flex';
+            try {
+                const data = await fetchWithAuth(
+                    `${API_URL}/dashboard/trends?${buildQuery({ metric: 'account_trend', accountId })}`
+                );
+                const hasData = data.datasets && data.datasets.some(ds => ds.data.some(v => v !== 0));
+                if (!hasData) {
+                    document.getElementById('loading-account').style.display = 'none';
+                    document.getElementById('empty-account').textContent = 'No data found for this account in the selected year range.';
+                    document.getElementById('empty-account').style.display = 'block';
+                    return;
+                }
+                document.getElementById('loading-account').style.display = 'none';
+                document.getElementById('canvas-wrap-account').style.display = 'block';
+
+                const title = data.metadata && data.metadata.accountInfo
+                    ? `${data.metadata.accountInfo.account_code || ''} ${data.metadata.accountInfo.account_name}`
+                    : 'Account Trend';
+                document.querySelector('#w-account .widget-title').textContent = `Account Trend — ${title.trim()}`;
+
+                destroyChart('account');
+                const ctx = document.getElementById('chart-account').getContext('2d');
+                chartInstances.account = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: data.labels, datasets: colorize(data.datasets, 'line') },
+                    options: lineOptions('Amount (R)'),
+                });
+                renderSourceDetail(
+                    document.getElementById('source-detail-account'),
+                    document.getElementById('sources-account'),
+                    data.metadata
+                );
+            } catch (e) {
+                document.getElementById('loading-account').style.display = 'none';
+                document.getElementById('empty-account').textContent = `Error loading chart: ${e.message}`;
+                document.getElementById('empty-account').style.display = 'block';
+            }
+        }
+
+        // ── Chart.js option factories ────────────────────────────────────
+        function lineOptions(yLabel) {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${ctx.dataset.label}: R ${Number(ctx.raw).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: {
+                        ticks: {
+                            callback: v => 'R ' + Number(v).toLocaleString('en-ZA'),
+                        },
+                        title: { display: true, text: yLabel },
+                    },
+                },
+            };
+        }
+
+        function barOptions(yLabel) {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` ${ctx.dataset.label}: R ${Number(ctx.raw).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: {
+                        ticks: { callback: v => 'R ' + Number(v).toLocaleString('en-ZA') },
+                        title: { display: true, text: yLabel },
+                    },
+                },
+            };
+        }
+
+        // ── Load all non-interactive charts ──────────────────────────────
+        function loadAllCharts() {
+            loadRevenue();
+            loadExpenses();
+            loadNetProfit();
+            loadAnnualSummary();
+        }
+
+        // ── Initial load ─────────────────────────────────────────────────
+        loadAllCharts();
+    </script>
+</body>
+</html>

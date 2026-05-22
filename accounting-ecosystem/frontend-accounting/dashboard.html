@@ -455,6 +455,15 @@
                 <h3>AI Actions Pending</h3>
                 <div class="value" id="aiPending">--</div>
             </div>
+            <div class="card" id="historicalCard" style="display:none;">
+                <h3>Historical Analysis</h3>
+                <div class="value" id="historicalBatchCount">--</div>
+                <p style="font-size:13px; color:#5f6368; margin-top:8px;">finalized batch(es)</p>
+                <a href="/accounting/historical-comparatives-charts.html"
+                   style="display:inline-block; margin-top:10px; font-size:13px; color:#1a73e8; text-decoration:none;">
+                   View Charts →
+                </a>
+            </div>
         </div>
         
         <div class="section">
@@ -567,6 +576,17 @@
                 // Load recent manual journals (system-generated journals excluded — visible in GL/reports)
                 const recentRes = await fetchWithAuth(`${API_URL}/journals?scope=manual&limit=5`);
                 const recentData = await recentRes.json();
+
+                // Load historical comparatives summary (non-blocking)
+                try {
+                    const histRes = await fetchWithAuth(`${API_URL}/historical-comparatives/batches?status=finalized`);
+                    const histData = await histRes.json();
+                    const count = Array.isArray(histData.batches) ? histData.batches.length : 0;
+                    if (count > 0) {
+                        document.getElementById('historicalBatchCount').textContent = count;
+                        document.getElementById('historicalCard').style.display = 'block';
+                    }
+                } catch { /* non-critical — card stays hidden */ }
                 
                 const tbody = document.querySelector('#recentJournals tbody');
                 if (recentData.journals && recentData.journals.length > 0) {

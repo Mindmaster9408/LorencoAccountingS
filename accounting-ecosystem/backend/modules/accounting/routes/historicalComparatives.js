@@ -334,4 +334,60 @@ router.get('/reports/account-trend', authenticate, hasPermission('historical.vie
   }
 });
 
+/**
+ * GET /api/accounting/historical-comparatives/dashboard/trends
+ * Returns Chart.js-compatible trend data for dashboard chart widgets.
+ *
+ * Query params:
+ *   metric       (required) — revenue|expenses|gross_profit|net_profit|account_trend|annual_summary
+ *   fromYear     (required) — FY start inclusive
+ *   toYear       (required) — FY end inclusive
+ *   batchId      (optional) — narrow to a specific batch
+ *   accountId    (optional) — required when metric=account_trend
+ *   accountType  (optional) — extra account_type filter
+ *   includeDraft (optional) — 'true' only honoured for admin/accountant roles
+ *
+ * SECURITY: company_id is always sourced from req.user.companyId — never from query params.
+ * DATA CONTRACT: This endpoint is strictly read-only. It never writes to any live ledger table.
+ */
+router.get('/dashboard/trends', authenticate, hasPermission('historical.view'), async (req, res) => {
+  try {
+    const { metric, fromYear, toYear, batchId, accountId, accountType, includeDraft } = req.query;
+
+    if (!metric) {
+      return res.status(400).json({ error: 'metric is required.' });
+    }
+    if (!fromYear || !toYear) {
+      return res.status(400).json({ error: 'fromYear and toYear are required.' });
+    }
+
+    // Draft access: only honoured for admin/accountant who explicitly request it
+    const canAccessDraft = ['admin', 'accountant'].includes(req.user.role);
+    const finalizedOnly  = !(canAccessDraft && (includeDraft === 'true' || includeDraft === '1'));
+
+    const data = await HistoricalComparativesService.getDashboardTrends({
+      companyId:    req.user.companyId,
+      metric:       String(metric),
+      fromYear:     parseInt(fromYear),
+      toYear:       parseInt(toYear),
+      batchId:      batchId   || null,
+      accountId:    accountId ? parseInt(accountId) : null,
+      accountType:  accountType || null,
+      finalizedOnly,
+    });
+
+    res.json(data);
+  } catch (error) {
+    if (error.message && (
+      error.message.startsWith('Invalid metric') ||
+      error.message.includes('required') ||
+      error.message.includes('must be')
+    )) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('[HistoricalComparatives] getDashboardTrends error:', error);
+    res.status(500).json({ error: 'Failed to load dashboard trend data.' });
+  }
+});
+
 module.exports = router;
