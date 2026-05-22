@@ -340,6 +340,15 @@ body {
 .btn-secondary:hover { background: var(--surface-hover) !important; }
 .ent-btn-primary { background: var(--accent) !important; }
 .ent-btn-primary:hover { background: var(--accent-dark) !important; }
+.ent-btn-secondary {
+    background: rgba(255,255,255,0.08) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--border-strong) !important;
+}
+.ent-btn-secondary:hover {
+    background: rgba(255,255,255,0.14) !important;
+    border-color: rgba(255,255,255,0.25) !important;
+}
 
 /* ── Forms ──────────────────────────────────────────────────────────────────── */
 label { color: var(--text-secondary) !important; }
@@ -392,8 +401,28 @@ select option {
 /* ── Notifications ──────────────────────────────────────────────────────────── */
 .notification {
     background: #1e1b3a !important;
-    box-shadow: 0 5px 20px rgba(0,0,0,0.4) !important;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5) !important;
     color: var(--text);
+}
+.notification.success {
+    background: rgba(16,185,129,0.15) !important;
+    border-left-color: #10b981 !important;
+    color: #a7f3d0 !important;
+}
+.notification.error {
+    background: rgba(239,68,68,0.15) !important;
+    border-left-color: #ef4444 !important;
+    color: #fca5a5 !important;
+}
+.notification.warning {
+    background: rgba(245,158,11,0.15) !important;
+    border-left-color: #f59e0b !important;
+    color: #fde68a !important;
+}
+.notification.info {
+    background: rgba(59,130,246,0.15) !important;
+    border-left-color: #3b82f6 !important;
+    color: #93c5fd !important;
 }
 
 /* ── Tabs ───────────────────────────────────────────────────────────────────── */
@@ -444,9 +473,13 @@ select option {
     color: var(--text) !important;
     border: 1px solid var(--border) !important;
 }
-/* Cash up content area — covers statically placed white divs */
-#cashUpContent > div[style*="background: white"],
-#cashUpContent > div[style*="background:white"] {
+/* Cash up content area — covers statically placed white divs.
+   Note: wrapper is #cashUpLayout (not #cashUpContent — corrected 2026-05-22). */
+#cashUpLayout div[style*="background: white"],
+#cashUpLayout div[style*="background:white"],
+#cashUpLayout div[style*="background: #e8f5e9"],
+#cashUpLayout div[style*="background: #e3f2fd"],
+#cashUpLayout div[style*="background: #fff3e0"] {
     background: var(--surface) !important;
     color: var(--text) !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
@@ -473,11 +506,91 @@ select option {
 [style*="background: #fff3e0"],
 [style*="background:#fff3e0"] {
     background: rgba(245,158,11,0.1) !important;
+    color: var(--text) !important;
 }
-/* Generic white-background divs inside POS sections */
+/* Text inside amber-bg containers — override dark amber #92400e to readable light amber */
+[style*="background: #fff3e0"] [style*="color: #92400e"],
+[style*="background: #fff3e0"] [style*="color:#92400e"],
+[style*="background:#fff3e0"] [style*="color: #92400e"],
+[style*="background:#fff3e0"] [style*="color:#92400e"],
+[style*="background: #fff3e0"] [style*="color: #e65100"],
+[style*="background:#fff3e0"] [style*="color: #e65100"] {
+    color: #fbbf24 !important;
+}
+
+/* ── Workstream 12A — Broad white/light background catch-all ────────────────── */
+/* Catches inline background:white divs in enterprise, settings, stock, and
+   report sections that are not covered by more specific class overrides above. */
+.enterprise-layout [style*="background: white"],
+.enterprise-layout [style*="background:white"],
+.enterprise-layout [style*="background: #fff"],
+.enterprise-layout [style*="background:#fff"],
+.settings-content [style*="background: white"],
+.settings-content [style*="background:white"],
+.stock-interface [style*="background: white"],
+.stock-interface [style*="background:white"] {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+
+/* Inline light-gray backgrounds common in summary boxes */
+.enterprise-layout [style*="background: #f5f7fa"],
+.enterprise-layout [style*="background:#f5f7fa"],
+.enterprise-layout [style*="background: #fafafa"],
+.enterprise-layout [style*="background: #f9f9f9"],
+.enterprise-layout [style*="background: #e8f5e9"],
+.enterprise-layout [style*="background: #e3f2fd"],
+#cashUpLayout [style*="background: #fafafa"],
+#cashUpLayout [style*="background: #f9f9f9"] {
+    background: var(--surface-alt) !important;
+    color: var(--text) !important;
+}
+
+/* ── Workstream 12A — Global inline gray text overrides ─────────────────────── */
+/* dark-theme.css is unconditionally loaded. color:#999, #666, #9ca3af are
+   invisible on dark purple backgrounds. Override globally — --text-secondary
+   (rgba(255,255,255,0.7)) is correct for secondary/muted text in dark mode. */
+/* Dark grays #333, #444 — near-black, invisible on dark backgrounds → --text */
+[style*="color: #333"],
+[style*="color:#333"],
+[style*="color: #444"],
+[style*="color:#444"] {
+    color: var(--text) !important;
+}
+/* Mid-grays #555, #666, #999, #9ca3af — invisible on dark → --text-secondary */
+[style*="color: #999"],
+[style*="color:#999"],
+[style*="color: #666"],
+[style*="color:#666"],
+[style*="color: #555"],
+[style*="color:#555"],
+[style*="color: #9ca3af"],
+[style*="color:#9ca3af"] {
+    color: var(--text-secondary) !important;
+}
+
+/* Generic white-background divs inside stock alerts */
 #stockAlerts > div[style*="background:white"],
 #stockAlerts > div[style*="background: white"] {
     background: var(--surface) !important;
+    color: var(--text) !important;
+}
+
+/* ── Support Tab — Emergency Controls ──────────────────────────────────────── */
+/* White panel backgrounds in the Support / Emergency Controls section */
+#supportLayout [style*="background: white"],
+#supportLayout [style*="background:white"],
+#supportLayout [style*="background: #f5f5f5"],
+#supportLayout [style*="background: #f9f9f9"] {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+}
+/* Health cards and recovery panel items already use CSS classes, but
+   till/session rows are JS-generated with inline styles */
+#emergencySessionsList [style],
+#emergencyTillsList > div {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
     color: var(--text) !important;
 }
 

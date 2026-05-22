@@ -232,7 +232,7 @@
         }
         .product-stock {
             font-size: 11px;
-            color: #999;
+            color: #6b7280;
             margin-top: 5px;
         }
         .cart-panel {
@@ -385,9 +385,11 @@
             box-shadow: 0 5px 15px rgba(40,167,69,0.3);
         }
         .checkout-btn:disabled {
-            background: #ccc;
+            background: #d1d5db;
+            color: #374151;
             cursor: not-allowed;
             transform: none;
+            box-shadow: none;
         }
         .clear-cart-btn {
             width: 100%;
@@ -403,7 +405,7 @@
         .empty-cart {
             text-align: center;
             padding: 40px;
-            color: #999;
+            color: #6b7280;
         }
 
         /* Settings Layout */
@@ -470,7 +472,7 @@
             right: 12px;
             top: 50%;
             transform: translateY(-50%);
-            color: #999;
+            color: #6b7280;
         }
         .header-actions {
             display: flex;
@@ -525,11 +527,11 @@
         }
         .products-table td {
             padding: 15px;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid #e0e0e0;
             font-size: 14px;
         }
         .products-table tbody tr:hover {
-            background: #f9f9f9;
+            background: #f3f4f6;
             cursor: pointer;
         }
         .product-count {
@@ -558,11 +560,11 @@
         }
         .customers-table td {
             padding: 15px;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid #e0e0e0;
             font-size: 14px;
         }
         .customers-table tbody tr:hover {
-            background: #f9f9f9;
+            background: #f3f4f6;
         }
         .customer-count {
             color: #666;
@@ -715,14 +717,15 @@
         .stock-table th, .stock-table td {
             padding: 12px 15px;
             text-align: left;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #e0e0e0;
         }
         .stock-table th {
-            background: #f5f5f5;
+            background: #f0f0f0;
             font-weight: 600;
+            color: #374151;
         }
         .stock-table tbody tr:hover {
-            background: #f9f9f9;
+            background: #f3f4f6;
         }
         .low-stock {
             background: #fff3e0 !important;
@@ -737,7 +740,7 @@
             font-weight: 500;
         }
         .stock-badge.ok { background: #e8f5e9; color: #2e7d32; }
-        .stock-badge.low { background: #fff3e0; color: #e65100; }
+        .stock-badge.low { background: #fff3e0; color: #92400e; }
         .stock-badge.out { background: #ffebee; color: #c62828; }
         .stock-badge.negative { background: #b71c1c; color: #fff; font-weight: 700; }
         .negative-stock { background: #fce4ec !important; }
@@ -774,7 +777,7 @@
         }
         .original-price {
             text-decoration: line-through;
-            color: #999;
+            color: #6b7280;
             font-size: 12px;
         }
 
@@ -797,7 +800,7 @@
             margin-bottom: 15px;
         }
         .auth-required h4 {
-            color: #e65100;
+            color: #92400e;
             margin: 0 0 10px 0;
         }
 
@@ -869,7 +872,10 @@
             border: none;
             font-size: 24px;
             cursor: pointer;
-            color: #999;
+            color: #4b5563;
+        }
+        .close-btn:hover {
+            color: #111827;
         }
         .modal-body {
             padding: 20px;
@@ -912,18 +918,35 @@
             top: 70px;
             right: 20px;
             background: white;
-            padding: 20px;
+            padding: 16px 20px;
             border-radius: 10px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            box-shadow: 0 6px 24px rgba(0,0,0,0.25);
             z-index: 1000;
             display: none;
             min-width: 300px;
+            color: #111827;
+            font-size: 14px;
+            font-weight: 500;
         }
         .notification.success {
-            border-left: 5px solid #28a745;
+            border-left: 5px solid #16a34a;
+            background: #f0fdf4;
+            color: #14532d;
         }
         .notification.error {
-            border-left: 5px solid #dc3545;
+            border-left: 5px solid #dc2626;
+            background: #fef2f2;
+            color: #7f1d1d;
+        }
+        .notification.warning {
+            border-left: 5px solid #d97706;
+            background: #fffbeb;
+            color: #78350f;
+        }
+        .notification.info {
+            border-left: 5px solid #2563eb;
+            background: #eff6ff;
+            color: #1e3a8a;
         }
 
         /* Company Selector Modal */
@@ -1041,7 +1064,7 @@
         .kpi-card.purple { border-left-color: #9c27b0; }
         .kpi-label {
             font-size: 12px;
-            color: #999;
+            color: #6b7280;
             text-transform: uppercase;
             letter-spacing: 1px;
             margin-bottom: 8px;
@@ -1098,7 +1121,7 @@
             font-weight: 600;
         }
         .status-badge.active { background: #e8f5e9; color: #2e7d32; }
-        .status-badge.pending { background: #fff3e0; color: #e65100; }
+        .status-badge.pending { background: #fff3e0; color: #92400e; }
         .status-badge.closed { background: #e0e0e0; color: #616161; }
         .status-badge.alert { background: #ffebee; color: #c62828; }
 
@@ -1143,7 +1166,7 @@
         .stock-zero-est  { font-size: 11px; color: #c62828; font-weight: 700; margin-top: 5px; }
         /* Negative stock — shown when allow_negative_stock_sales is enabled */
         .stock-negative  { font-size: 11px; color: #b71c1c; font-weight: 700; margin-top: 5px; background: #ffebee; padding: 2px 5px; border-radius: 3px; }
-        .stock-zero-neg  { font-size: 11px; color: #e65100; font-weight: 600; margin-top: 5px; background: #fff3e0; padding: 2px 5px; border-radius: 3px; }
+        .stock-zero-neg  { font-size: 11px; color: #92400e; font-weight: 600; margin-top: 5px; background: #fff3e0; padding: 2px 5px; border-radius: 3px; }
 
         /* ── Recovery Panel (Workstream 4A) ─────────────────────────────────── */
         .queue-item { border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px; margin-bottom: 10px; background: white; }
@@ -1156,18 +1179,35 @@
         .queue-status-badge.pending          { background: #e3f2fd; color: #1565c0; }
         .queue-status-badge.failed           { background: #ffebee; color: #b71c1c; }
         .queue-status-badge.conflict_stock,
-        .queue-status-badge.conflict_session { background: #fff3e0; color: #e65100; }
+        .queue-status-badge.conflict_session { background: #fff3e0; color: #92400e; }
         .queue-status-badge.abandoned        { background: #f5f5f5; color: #757575; }
         .recovery-action-btn { padding: 5px 12px; border: none; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; margin-right: 6px; }
         .recovery-action-btn.retry   { background: #e8f5e9; color: #2e7d32; }
         .recovery-action-btn.abandon { background: #ffebee; color: #b71c1c; }
         .recovery-action-btn.note    { background: #f3e5f5; color: #6a1b9a; }
+
+        /* Pilot Operations Toolkit — Workstream 11A */
+        .health-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+        .health-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; background: #fff; }
+        .health-card.status-ok    { border-left: 4px solid #10b981; }
+        .health-card.status-warn  { border-left: 4px solid #f59e0b; }
+        .health-card.status-error { border-left: 4px solid #ef4444; }
+        .health-card-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .health-card-value { font-size: 20px; font-weight: 700; color: #111827; }
+        .health-card-sub   { font-size: 12px; color: #4b5563; margin-top: 3px; }
+        .warning-banner { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 11px 14px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #92400e; }
+        .warning-banner.warn-critical { background: #fff1f2; border-color: #ef4444; color: #991b1b; }
+        .env-check-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+        .env-check-label { min-width: 170px; font-weight: 500; }
+        .timeline-row { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #e9eaec; font-size: 13px; align-items: flex-start; }
+        .timeline-time { color: #6b7280; min-width: 115px; white-space: nowrap; padding-top: 1px; }
+        .timeline-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
         .session-health-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        .session-health-table th { text-align: left; padding: 8px 12px; background: #f5f5f5; border-bottom: 2px solid #e0e0e0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .session-health-table td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .session-health-table th { text-align: left; padding: 8px 12px; background: #f0f0f0; border-bottom: 2px solid #d1d5db; color: #374151; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .session-health-table td { padding: 10px 12px; border-bottom: 1px solid #e0e0e0; vertical-align: middle; }
         .session-health-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
         .session-health-badge.open         { background: #e8f5e9; color: #2e7d32; }
-        .session-health-badge.stale        { background: #fff3e0; color: #e65100; font-weight: 700; }
+        .session-health-badge.stale        { background: #fff3e0; color: #92400e; font-weight: 700; }
         .session-health-badge.pending-cashup { background: #fce4ec; color: #880e4f; }
         .override-reason-textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; height: 80px; font-family: inherit; font-size: 14px; resize: vertical; box-sizing: border-box; }
         .override-reason-textarea:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 2px rgba(102,126,234,0.15); }
@@ -1199,6 +1239,12 @@
             color: white;
         }
         .ent-btn-primary:hover { background: #5a6fd6; }
+        .ent-btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        .ent-btn-secondary:hover { background: #f3f4f6; border-color: #9ca3af; }
         .ent-btn-success {
             background: #4caf50;
             color: white;
@@ -1249,7 +1295,7 @@
         .empty-state {
             text-align: center;
             padding: 40px;
-            color: #999;
+            color: #6b7280;
         }
         .empty-state .icon { font-size: 48px; margin-bottom: 10px; }
     </style>
@@ -1550,6 +1596,7 @@
                 <button class="nav-tab enterprise-tab" onclick="showTab('loyalty', event)">Loyalty</button>
                 <button class="nav-tab" onclick="showTab('settings', event)">Settings</button>
                 <button class="nav-tab" onclick="showTab('recovery', event)">Recovery</button>
+                <button class="nav-tab" onclick="showTab('support', event)">Support</button>
             </div>
             <div class="nav-right">
                 <div class="user-info">
@@ -1563,6 +1610,24 @@
         </div>
 
         <!-- Till Interface -->
+        <!-- Till lock + printer degraded warnings (hidden by default, shown by applyTillStateWarnings) -->
+        <div id="tillLockBanner" style="display:none;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:12px 16px;margin:8px 16px 0;display:flex;align-items:center;gap:10px;font-size:14px;color:#991b1b;">
+            <span style="font-size:20px;">🔒</span>
+            <div>
+                <strong>This till is locked.</strong>
+                <span id="tillLockReason" style="margin-left:6px;"></span>
+                <span style="color:#b91c1c;margin-left:6px;">Contact your manager to unlock.</span>
+            </div>
+        </div>
+        <div id="printerDegradedBanner" style="display:none;background:#fffbeb;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:6px 16px 0;display:flex;align-items:center;gap:10px;font-size:13px;color:#92400e;">
+            <span style="font-size:18px;">🖨️</span>
+            <div>
+                <strong>Printer degraded.</strong>
+                <span id="printerDegradedReason" style="margin-left:6px;"></span>
+                <span style="margin-left:6px;">Receipts may not print. Checkout is still available.</span>
+            </div>
+        </div>
+
         <div id="tillInterface" class="till-interface">
             <div class="till-grid">
                 <!-- Products Panel -->
@@ -1579,7 +1644,7 @@
                             >
                             <span class="scan-icon">📷</span>
                         </div>
-                        <div style="font-size: 11px; color: #999; margin-top: 5px;">Scan barcode or type to search products</div>
+                        <div style="font-size: 11px; color: #6b7280; margin-top: 5px;">Scan barcode or type to search products</div>
                     </div>
 
                     <div class="categories" id="categories"></div>
@@ -2053,8 +2118,8 @@
                     </div>
 
                     <!-- Report Container -->
-                    <div id="reportContainer" style="background: white; border-radius: 8px; padding: 20px;">
-                        <p style="text-align: center; color: #999;">Select a report to view</p>
+                    <div id="reportContainer" style="background: white; border-radius: 8px; padding: 20px; border: 1px solid #e5e7eb;">
+                        <p style="text-align: center; color: #6b7280;">Select a report to view</p>
                     </div>
                 </div>
             </div>
@@ -2068,7 +2133,7 @@
                 <!-- Pending Cashups Section (sessions from daily reset) -->
                 <div id="pendingCashupsSection" style="display: none; margin-bottom: 30px;">
                     <div style="background: #fff3e0; border: 2px solid #ff9800; border-radius: 10px; padding: 20px;">
-                        <h3 style="margin: 0 0 15px 0; color: #e65100; display: flex; align-items: center; gap: 10px;">
+                        <h3 style="margin: 0 0 15px 0; color: #92400e; display: flex; align-items: center; gap: 10px;">
                             <span style="font-size: 24px;">⏳</span> Pending Cashups from Previous Days
                         </h3>
                         <p style="color: #666; margin-bottom: 15px;">These sessions were reset for a new day but still need their cashup completed.</p>
@@ -2106,9 +2171,9 @@
                         <div id="cashUpSalesCount" style="font-size: 13px; color: #666; margin-top: 5px;">0 transactions</div>
                     </div>
                     <div style="background: #fff3e0; padding: 20px; border-radius: 10px; border-left: 5px solid #ff9800;">
-                        <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Expected Cash</div>
-                        <div id="cashUpExpectedCash" style="font-size: 32px; font-weight: bold; color: #e65100;">R 0.00</div>
-                        <div style="font-size: 13px; color: #666; margin-top: 5px;">Opening + Cash sales − Cash refunds</div>
+                        <div style="font-size: 14px; color: #555; margin-bottom: 5px;">Expected Cash</div>
+                        <div id="cashUpExpectedCash" style="font-size: 32px; font-weight: bold; color: #92400e;">R 0.00</div>
+                        <div style="font-size: 13px; color: #555; margin-top: 5px;">Opening + Cash sales − Cash refunds</div>
                     </div>
                     <div style="background: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #2196f3;">
                         <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Payment Breakdown</div>
@@ -3145,7 +3210,7 @@
                         </label>
                     </div>
                 </div>
-                <div style="margin-top:15px;padding:12px;background:#fff3e0;border-radius:8px;font-size:13px;color:#e65100;">
+                <div style="margin-top:15px;padding:12px;background:#fff3e0;border-radius:8px;font-size:13px;color:#92400e;">
                     <strong>Tip:</strong> Most thermal receipt printers use port 9100. Make sure the printer is connected to your network and powered on.
                 </div>
             </div>
@@ -3357,6 +3422,104 @@
         </div>
     </div>
 
+    <!-- Pilot Operations Toolkit (Workstream 11A) -->
+    <div id="supportLayout" class="enterprise-layout" style="display:none;">
+        <h1>Pilot Operations — Support Toolkit</h1>
+        <p style="color:#6b7280;font-size:14px;margin-top:4px;margin-bottom:20px;">Live diagnostics and operational monitoring for pilot store support.</p>
+
+        <!-- Pilot Warning Indicators -->
+        <div id="supportWarnings" style="margin-bottom:16px;"></div>
+
+        <!-- POS Health Panel -->
+        <div class="enterprise-section" style="margin-bottom:20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <h3 style="margin:0;">POS Health</h3>
+                <button class="ent-btn ent-btn-secondary" onclick="loadSupportPanel()" style="font-size:12px;padding:6px 12px;">↺ Refresh</button>
+            </div>
+            <div id="supportHealthPanel">
+                <p style="color:#999;text-align:center;padding:20px;">Loading health data…</p>
+            </div>
+        </div>
+
+        <!-- Fast Environment Checks -->
+        <div class="enterprise-section" style="margin-bottom:20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <h3 style="margin:0;">Environment Checks</h3>
+                <button class="ent-btn ent-btn-secondary" onclick="runEnvironmentChecks()" style="font-size:12px;padding:6px 12px;">Run Checks</button>
+            </div>
+            <div id="supportEnvChecks">
+                <p style="color:#999;font-size:14px;">Click "Run Checks" to verify the environment.</p>
+            </div>
+        </div>
+
+        <!-- Diagnostics Snapshot Export -->
+        <div class="enterprise-section" style="margin-bottom:20px;">
+            <h3 style="margin-bottom:10px;">Diagnostics Snapshot</h3>
+            <p style="color:#6b7280;font-size:14px;margin-bottom:12px;">One-click export of all operational state for remote support. No auth tokens included.</p>
+            <button class="ent-btn ent-btn-primary" onclick="exportDiagnosticsSnapshot()">⬇ Export Snapshot</button>
+        </div>
+
+        <!-- Support Event Timeline -->
+        <div class="enterprise-section" style="margin-bottom:20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <h3 style="margin:0;">Support Event Timeline</h3>
+                <button class="ent-btn ent-btn-secondary" onclick="loadSupportTimeline()" style="font-size:12px;padding:6px 12px;">↺ Refresh</button>
+            </div>
+            <div id="supportTimeline">
+                <p style="color:#999;text-align:center;padding:20px;">Loading events…</p>
+            </div>
+        </div>
+
+        <!-- Emergency Controls (Workstream 11B) -->
+        <div class="enterprise-section" style="border:2px solid #fee2e2;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <h3 style="margin:0;color:#991b1b;">Emergency Controls</h3>
+                <button class="ent-btn ent-btn-secondary" onclick="loadEmergencyPanel()" style="font-size:12px;padding:6px 12px;">↺ Refresh</button>
+            </div>
+            <p style="color:#b91c1c;font-size:13px;margin-bottom:16px;">Management only. All actions are permanently audited and cannot be reversed.</p>
+
+            <!-- Sync Pause -->
+            <div style="margin-bottom:20px;">
+                <h4 style="margin:0 0 8px;font-size:14px;">Offline Sync Control</h4>
+                <div id="emergencySyncState" style="font-size:13px;color:#6b7280;margin-bottom:8px;">Loading…</div>
+                <div style="display:flex;gap:8px;">
+                    <button id="pauseSyncBtn" class="ent-btn" style="background:#f97316;color:white;font-size:13px;padding:7px 14px;" onclick="showEmergencyAction('sync-pause')">⏸ Pause Sync</button>
+                    <button id="resumeSyncBtn" class="ent-btn ent-btn-secondary" style="font-size:13px;padding:7px 14px;" onclick="emergencyResumeSyncConfirm()">▶ Resume Sync</button>
+                </div>
+            </div>
+
+            <!-- Sessions -->
+            <div style="margin-bottom:20px;">
+                <h4 style="margin:0 0 8px;font-size:14px;">Force Close Session</h4>
+                <p style="font-size:13px;color:#6b7280;margin:0 0 8px;">Close an abandoned or stuck open session. Sales and audit records are preserved.</p>
+                <div id="emergencySessionsList">
+                    <p style="color:#999;font-size:13px;">Loading sessions…</p>
+                </div>
+            </div>
+
+            <!-- Tills -->
+            <div style="margin-bottom:20px;">
+                <h4 style="margin:0 0 8px;font-size:14px;">Till Controls</h4>
+                <p style="font-size:13px;color:#6b7280;margin:0 0 8px;">Lock or unlock a till. Mark printer as degraded or restored.</p>
+                <div id="emergencyTillsList">
+                    <p style="color:#999;font-size:13px;">Loading tills…</p>
+                </div>
+            </div>
+
+            <!-- Force Logout -->
+            <div>
+                <h4 style="margin:0 0 8px;font-size:14px;">Force Logout Cashier</h4>
+                <p style="font-size:13px;color:#6b7280;margin:0 0 8px;">Close all open sessions for a specific user. Their JWT remains valid until expiry but they cannot process sales.</p>
+                <div style="display:flex;gap:8px;max-width:520px;">
+                    <input id="forceLogoutEmail" type="email" placeholder="Cashier email address…"
+                           style="flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;" />
+                    <button class="ent-btn" style="background:#dc2626;color:white;font-size:13px;padding:7px 14px;white-space:nowrap;"
+                            onclick="showEmergencyAction('force-logout')">Force Logout</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Notification -->
     <div id="notification" class="notification"></div>
 
@@ -3370,6 +3533,9 @@
         let categories = new Set();
         let selectedCategory = 'all';
         let forceUpdatePending = false; // set true by onForceUpdateRequired; gates addToCart/checkout
+        let syncPaused     = false;     // set from /emergency/state on login; gates syncOfflineSales
+        let tillLocked     = false;     // set from currentSession.tills.is_locked; gates checkout
+        let printerDegraded = false;    // set from currentSession.tills.is_printer_degraded; shows warning
         let selectedPayment = 'CASH';
         let editingProductId = null;
         let currentTab = 'till';
@@ -3616,7 +3782,7 @@
         // Only one cycle may run at a time (syncInProgress guard).
         // Debounce is applied by the online event handler — do not add it here.
         async function syncOfflineSales() {
-            if (syncInProgress || !isOnline || !token) return;
+            if (syncInProgress || !isOnline || !token || syncPaused) return;
             syncInProgress = true;
 
             let synced = 0, conflicts = 0, failed = 0;
@@ -3630,9 +3796,9 @@
                 updateOfflineBanner();
 
                 for (const sale of pendingSales) {
-                    // Stop if we went offline mid-cycle — next online event will retry
-                    if (!isOnline) {
-                        console.log('[Sync] Went offline mid-cycle — stopping');
+                    // Stop if we went offline or sync was paused mid-cycle
+                    if (!isOnline || syncPaused) {
+                        console.log('[Sync] Went offline or sync paused mid-cycle — stopping');
                         break;
                     }
 
@@ -4040,13 +4206,13 @@
 
                         completeLogin();
                     } else {
-                        alert(result.error || 'No companies available');
+                        showNotification(result.error || 'No companies available', 'error');
                     }
                 } else {
-                    alert(result.error);
+                    showNotification(result.error || 'Login failed', 'error');
                 }
             } catch (error) {
-                alert('Login failed: ' + error.message);
+                showNotification('Login failed: ' + error.message, 'error');
             }
         }
 
@@ -4103,15 +4269,15 @@
                 } else {
                     // Handle subscription errors
                     if (result.subscriptionStatus === 'suspended') {
-                        alert('Company Suspended\\n\\nYour company subscription has been suspended. Please contact support to reactivate.');
+                        showNotification('Company suspended — contact support to reactivate.', 'error');
                     } else if (result.subscriptionStatus === 'pending') {
-                        alert('Pending Approval\\n\\nYour company registration is still pending approval. Please wait for activation.');
+                        showNotification('Registration pending — waiting for administrator approval.', 'warning');
                     } else {
-                        alert(result.error || 'Failed to select company');
+                        showNotification(result.error || 'Failed to select company', 'error');
                     }
                 }
             } catch (error) {
-                alert('Error selecting company: ' + error.message);
+                showNotification('Error selecting company: ' + error.message, 'error');
             }
         }
 
@@ -4126,6 +4292,7 @@
                     if (companyStockPolicy.allowNegativeStock) {
                         console.warn('[StockPolicy] Negative stock sales ENABLED for this company');
                     }
+                    openDrawerOnSale = d.settings?.open_drawer_on_sale !== 0;
                 }
             } catch (e) {
                 // Default remains false — strict mode if the endpoint is unavailable.
@@ -4151,6 +4318,7 @@
 
             loadProducts();
             checkSession();
+            loadEmergencyState();
             showTab('till');
         }
 
@@ -4159,6 +4327,7 @@
             const reportsTab  = document.querySelector('.nav-tab[onclick*="reports"]');
             const settingsTab = document.querySelector('.nav-tab[onclick*="settings"]');
             const recoveryTab = document.querySelector('.nav-tab[onclick*="recovery"]');
+            const supportTab  = document.querySelector('.nav-tab[onclick*="support"]');
 
             // Hide reports for admin and cashier (they can't see profit/sales/VAT reports)
             if (userRole === 'admin' || userRole === 'cashier') {
@@ -4181,6 +4350,7 @@
             ];
             if (!RECOVERY_ALLOWED_ROLES.includes(userRole)) {
                 if (recoveryTab) recoveryTab.classList.add('role-hidden');
+                if (supportTab)  supportTab.classList.add('role-hidden');
             }
         }
 
@@ -4213,17 +4383,30 @@
 
         async function checkSession() {
             try {
-                const response = await fetch(`${API_URL}/pos/sessions?status=open`, {
+                // Use /current so we only see the logged-in user's own open session.
+                // The list endpoint (/sessions?status=open) is company-wide and would
+                // return another cashier's session on a shared-company multi-till setup,
+                // causing the wrong till's lock/printer state to be applied here.
+                const response = await fetch(`${API_URL}/pos/sessions/current`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
                 const result = await response.json();
 
-                if (result.sessions && result.sessions.length > 0) {
-                    currentSession = result.sessions[0];
-                    document.getElementById('sessionStatus').textContent = 'Till Open';
-                    document.getElementById('checkoutBtn').disabled = cart.length === 0;
+                if (result.session) {
+                    currentSession = result.session;
+                    // Read till emergency state from joined till data
+                    const tillData = currentSession.tills || {};
+                    tillLocked      = !!(tillData.is_locked);
+                    printerDegraded = !!(tillData.is_printer_degraded);
+                    applyTillStateWarnings(tillData);
+                    document.getElementById('sessionStatus').textContent = tillLocked ? 'Till Locked' : 'Till Open';
+                    document.getElementById('checkoutBtn').disabled = cart.length === 0 || tillLocked;
                 } else {
+                    currentSession  = null;
+                    tillLocked      = false;
+                    printerDegraded = false;
+                    applyTillStateWarnings({});
                     document.getElementById('sessionStatus').textContent = 'No Session';
                     showNotification('Please open a till session', 'error');
                 }
@@ -4978,6 +5161,7 @@
         }
 
         function updateCart() {
+            pendingRemoveConfirm.clear();
             const container = document.getElementById('cartItems');
 
             if (cart.length === 0) {
@@ -5001,7 +5185,7 @@
                         </div>
                         <div class="cart-item-controls">
                             <div class="qty-controls">
-                                <button class="qty-btn" onclick="updateQty(${item.productId}, -1)">-</button>
+                                <button class="qty-btn" data-qty-product="${item.productId}" onclick="updateQty(${item.productId}, -1)">-</button>
                                 <span class="qty-display">${item.quantity}</span>
                                 <button class="qty-btn" onclick="updateQty(${item.productId}, 1)">+</button>
                             </div>
@@ -5032,19 +5216,45 @@
 
         function updateQty(productId, change) {
             const item = cart.find(i => i.productId === productId);
-            if (item) {
-                item.quantity += change;
-                if (item.quantity <= 0) {
+            if (!item) return;
+
+            if (change < 0 && item.quantity + change <= 0) {
+                if (pendingRemoveConfirm.has(productId)) {
+                    // Second tap confirmed — remove the item
+                    pendingRemoveConfirm.delete(productId);
                     removeItem(productId);
-                } else if (item.quantity > item.maxStock) {
-                    item.quantity = item.maxStock;
-                    showNotification('Maximum stock reached', 'error');
+                } else {
+                    // First tap — enter confirm state; auto-cancel after 2.5s
+                    pendingRemoveConfirm.add(productId);
+                    const btn = document.querySelector(`.qty-btn[data-qty-product="${productId}"]`);
+                    if (btn) {
+                        btn.textContent = '✕?';
+                        btn.style.background = '#ef4444';
+                        btn.style.color = 'white';
+                    }
+                    setTimeout(() => {
+                        pendingRemoveConfirm.delete(productId);
+                        const b = document.querySelector(`.qty-btn[data-qty-product="${productId}"]`);
+                        if (b && b.textContent === '✕?') {
+                            b.textContent = '-';
+                            b.style.background = '';
+                            b.style.color = '';
+                        }
+                    }, 2500);
                 }
-                updateCart();
+                return;
             }
+
+            item.quantity += change;
+            if (item.quantity > item.maxStock) {
+                item.quantity = item.maxStock;
+                showNotification('Maximum stock reached', 'error');
+            }
+            updateCart();
         }
 
         function removeItem(productId) {
+            pendingRemoveConfirm.delete(productId);
             cart = cart.filter(item => item.productId !== productId);
             updateCart();
         }
@@ -5122,16 +5332,31 @@
 
         let lastSaleId = null;
         let autoPrintEnabled = false;
+        let openDrawerOnSale = true;     // loaded from settings; default true preserves existing behaviour
+        let checkoutInProgress = false;  // prevents duplicate checkout execution while a request is in-flight
+        const pendingRemoveConfirm = new Set(); // qty-1 items awaiting second-tap remove confirmation
+        let saleCompleteAutoClose = null;       // countdown interval for sale complete modal auto-dismiss
 
         async function checkout() {
+            // Prevent duplicate execution if a checkout request is already in flight.
+            if (checkoutInProgress) return;
             if (forceUpdatePending) {
                 showNotification('A required update is pending. Please refresh before continuing.', 'error');
+                return;
+            }
+            if (tillLocked) {
+                showNotification('This till is locked. Contact your manager to unlock it.', 'error');
                 return;
             }
             if (cart.length === 0 || !currentSession) {
                 showNotification('Cart is empty or no session open', 'error');
                 return;
             }
+
+            checkoutInProgress = true;
+            const btn = document.getElementById('checkoutBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
 
             // Calculate totals for offline mode
             const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -5157,109 +5382,117 @@
                 totalAmount
             };
 
-            // If offline, save to IndexedDB
-            if (!isOnline) {
-                try {
-                    const offlineSale = await saveOfflineSale(saleData);
+            try {
+                // If offline, save to IndexedDB
+                if (!isOnline) {
+                    try {
+                        const offlineSale = await saveOfflineSale(saleData);
 
-                    // Update local stock estimate (decrease quantities).
-                    // Initialise from stock_quantity if current_stock not yet set —
-                    // the first offline sale must start from the server's last known value.
-                    for (const item of cart) {
-                        const product = products.find(p => p.id === item.productId);
-                        if (product) {
-                            const base = product.current_stock ?? product.stock_quantity ?? 0;
-                            product.current_stock = Math.max(0, base - item.quantity);
+                        // Update local stock estimate (decrease quantities).
+                        // Initialise from stock_quantity if current_stock not yet set —
+                        // the first offline sale must start from the server's last known value.
+                        for (const item of cart) {
+                            const product = products.find(p => p.id === item.productId);
+                            if (product) {
+                                const base = product.current_stock ?? product.stock_quantity ?? 0;
+                                product.current_stock = Math.max(0, base - item.quantity);
+                            }
                         }
+                        await cacheProducts(products);
+
+                        // Show offline sale complete modal
+                        showOfflineSaleModal(offlineSale);
+
+                        cart = [];
+                        updateCart();
+                        displayProductsGrid(products);
+
+                        // Print receipt (browser dialog)
+                        if (autoPrintEnabled) {
+                            printOfflineReceipt(offlineSale);
+                        }
+                    } catch (error) {
+                        showNotification('Failed to save offline sale: ' + error.message, 'error');
                     }
-                    await cacheProducts(products);
+                    return;
+                }
 
-                    // Show offline sale complete modal
-                    showOfflineSaleModal(offlineSale);
+                // Online mode - send to server
+                try {
+                    const response = await fetch(`${API_URL}/pos/sales`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            tillSessionId: currentSession.id,
+                            items: cart.map(item => ({
+                                productId: item.productId,
+                                quantity: item.quantity
+                            })),
+                            paymentMethod: selectedPayment,
+                            customerId: selectedAccountCustomerId || undefined,
+                            idempotencyKey: saleData.idempotencyKey
+                        })
+                    });
 
-                    cart = [];
-                    updateCart();
-                    displayProductsGrid(products);
+                    const result = await response.json();
 
-                    // Print receipt (browser dialog)
-                    if (autoPrintEnabled) {
-                        printOfflineReceipt(offlineSale);
+                    if (response.ok) {
+                        lastSaleId = result.saleId;
+
+                        // Snapshot cart before clearing — needed for local stock decrement below.
+                        const soldItems = cart.map(item => ({ productId: item.productId, quantity: item.quantity }));
+
+                        // Show sale complete modal with print option
+                        showSaleCompleteModal(result);
+
+                        cart = [];
+                        updateCart();
+
+                        // Decrement stock_quantity in memory for immediate tile/table display.
+                        // Server already committed the sale atomically — this is display-only.
+                        // loadProducts() restores server truth on next login, reconnect, or manual refresh.
+                        for (const sold of soldItems) {
+                            const product = products.find(p => p.id === sold.productId);
+                            if (product) {
+                                const base = product.stock_quantity ?? 0;
+                                product.stock_quantity = companyStockPolicy.allowNegativeStock
+                                    ? base - sold.quantity
+                                    : Math.max(0, base - sold.quantity);
+                            }
+                        }
+                        displayProductsGrid(products);
+                        displayProductsTable(products);
+                        rebuildBarcodeMap();
+
+                        // Auto-print if enabled. Drawer opens only for cash payments when
+                        // the open_drawer_on_sale company setting is enabled.
+                        if (autoPrintEnabled && lastSaleId) {
+                            printReceipt(lastSaleId, { openDrawer: openDrawerOnSale && selectedPayment === 'CASH' });
+                        }
+                    } else {
+                        showNotification(result.error || 'Checkout failed', 'error');
                     }
                 } catch (error) {
-                    showNotification('Failed to save offline sale: ' + error.message, 'error');
-                }
-                return;
-            }
-
-            // Online mode - send to server
-            try {
-                const response = await fetch(`${API_URL}/pos/sales`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        tillSessionId: currentSession.id,
-                        items: cart.map(item => ({
-                            productId: item.productId,
-                            quantity: item.quantity
-                        })),
-                        paymentMethod: selectedPayment,
-                        customerId: selectedAccountCustomerId || undefined,
-                        idempotencyKey: saleData.idempotencyKey
-                    })
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    lastSaleId = result.saleId;
-
-                    // Snapshot cart before clearing — needed for local stock decrement below.
-                    const soldItems = cart.map(item => ({ productId: item.productId, quantity: item.quantity }));
-
-                    // Show sale complete modal with print option
-                    showSaleCompleteModal(result);
-
-                    cart = [];
-                    updateCart();
-
-                    // Decrement stock_quantity in memory for immediate tile/table display.
-                    // Server already committed the sale atomically — this is display-only.
-                    // loadProducts() restores server truth on next login, reconnect, or manual refresh.
-                    for (const sold of soldItems) {
-                        const product = products.find(p => p.id === sold.productId);
-                        if (product) {
-                            const base = product.stock_quantity ?? 0;
-                            product.stock_quantity = companyStockPolicy.allowNegativeStock
-                                ? base - sold.quantity
-                                : Math.max(0, base - sold.quantity);
-                        }
+                    // Network error - try offline save
+                    console.log('[Checkout] Network error, saving offline:', error);
+                    try {
+                        const offlineSale = await saveOfflineSale(saleData);
+                        showOfflineSaleModal(offlineSale);
+                        cart = [];
+                        updateCart();
+                        showNotification('Sale saved offline - will sync when online', 'info');
+                    } catch (offlineError) {
+                        showNotification('Checkout failed: ' + error.message, 'error');
                     }
-                    displayProductsGrid(products);
-                    displayProductsTable(products);
-                    rebuildBarcodeMap();
-
-                    // Auto-print if enabled
-                    if (autoPrintEnabled && lastSaleId) {
-                        printReceipt(lastSaleId);
-                    }
-                } else {
-                    showNotification(result.error || 'Checkout failed', 'error');
                 }
-            } catch (error) {
-                // Network error - try offline save
-                console.log('[Checkout] Network error, saving offline:', error);
-                try {
-                    const offlineSale = await saveOfflineSale(saleData);
-                    showOfflineSaleModal(offlineSale);
-                    cart = [];
-                    updateCart();
-                    showNotification('Sale saved offline - will sync when online', 'info');
-                } catch (offlineError) {
-                    showNotification('Checkout failed: ' + error.message, 'error');
-                }
+            } finally {
+                checkoutInProgress = false;
+                btn.textContent = 'Complete Sale';
+                // Let cart state determine disabled — empty cart or no session keeps it disabled.
+                btn.disabled = cart.length === 0 || !currentSession;
             }
         }
 
@@ -5279,7 +5512,7 @@
                         <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">#${sale.tempSaleNumber}</div>
                         <div style="font-size: 32px; font-weight: bold; color: #ff9800; margin-bottom: 20px;">R ${sale.totalAmount.toFixed(2)}</div>
                         <div style="color: #666; margin-bottom: 10px;">Payment: ${sale.paymentMethod}</div>
-                        <div style="background: #fff3e0; padding: 10px; border-radius: 8px; color: #e65100; font-size: 13px; margin-bottom: 20px;">
+                        <div style="background: #fff3e0; padding: 10px; border-radius: 8px; color: #92400e; font-size: 13px; margin-bottom: 20px;">
                             This sale is saved locally and will sync automatically when internet is restored.
                         </div>
                         <div style="display: flex; gap: 10px; justify-content: center;">
@@ -5302,61 +5535,98 @@
             modal.id = 'saleCompleteModal';
             modal.style.display = 'flex';
             modal.innerHTML = `
-                <div class="modal" style="max-width: 450px;">
-                    <div class="modal-header" style="background: #10b981; color: white;">
-                        <h2 style="margin: 0;">Sale Complete!</h2>
-                        <button class="close-btn" onclick="closeSaleCompleteModal()" style="color: white;">&times;</button>
+                <div class="modal" style="max-width:380px;">
+                    <div class="modal-header" style="background:#10b981;color:white;padding:14px 20px;">
+                        <h2 style="margin:0;font-size:18px;">Sale Complete</h2>
+                        <button class="close-btn" onclick="closeSaleCompleteModal()" style="color:white;">&times;</button>
                     </div>
-                    <div class="modal-body" style="text-align: center; padding: 25px;">
-                        <div style="font-size: 48px; margin-bottom: 10px;">&#10003;</div>
-                        <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">#${sale.saleNumber}</div>
-                        <div style="font-size: 32px; font-weight: bold; color: #10b981; margin-bottom: 15px;">R ${sale.totalAmount.toFixed(2)}</div>
-                        <div style="color: #666; margin-bottom: 20px;">Payment: ${selectedPayment}</div>
-                        
-                        <div style="background:#f8f9fa;border-radius:10px;padding:15px;text-align:left;margin-bottom:15px;">
-                            <div style="font-weight:600;margin-bottom:10px;color:#333;">Send Receipt</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                                <button class="btn btn-primary" onclick="deliverReceipt(${sale.saleId}, 'print')" style="padding:10px;font-size:13px;">
-                                    &#128424; Print
-                                </button>
-                                <button class="btn btn-secondary" onclick="showEmailReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;">
-                                    &#9993; Email
-                                </button>
-                                <button class="btn btn-secondary" onclick="showSmsReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;">
-                                    &#128172; SMS
-                                </button>
-                                <button class="btn btn-secondary" onclick="showWhatsAppReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;">
-                                    &#128242; WhatsApp
-                                </button>
-                            </div>
-                            <div id="receiptDeliveryInput" style="margin-top:10px;display:none;">
-                                <div style="display:flex;gap:8px;">
-                                    <input type="text" id="receiptDeliveryValue" placeholder="" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">
-                                    <button class="btn btn-primary" onclick="sendReceiptDelivery(${sale.saleId})" style="padding:8px 15px;">Send</button>
-                                </div>
-                            </div>
-                            <div id="receiptDeliveryStatus" style="margin-top:8px;font-size:12px;"></div>
+                    <div class="modal-body" style="text-align:center;padding:20px;">
+                        <div style="font-size:40px;margin-bottom:6px;color:#10b981;">&#10003;</div>
+                        <div style="font-size:22px;font-weight:bold;margin-bottom:4px;">#${sale.saleNumber}</div>
+                        <div style="font-size:28px;font-weight:bold;color:#10b981;margin-bottom:4px;">R ${sale.totalAmount.toFixed(2)}</div>
+                        <div style="color:#888;font-size:13px;margin-bottom:18px;">${selectedPayment}</div>
+
+                        <button class="btn btn-primary" onclick="closeSaleCompleteModal()"
+                                style="width:100%;padding:14px;font-size:16px;margin-bottom:10px;">
+                            Done&nbsp;<span id="saleCompleteCountdown" style="opacity:0.65;font-size:13px;"></span>
+                        </button>
+
+                        <div style="display:flex;gap:8px;margin-bottom:8px;">
+                            <button class="btn btn-secondary" onclick="cancelSaleModalCountdown();deliverReceipt(${sale.saleId},'print')"
+                                    style="flex:1;padding:10px;font-size:13px;">&#128424; Print</button>
+                            <button class="btn btn-secondary" id="receiptMoreBtn" onclick="toggleReceiptOptions()"
+                                    style="flex:1;padding:10px;font-size:13px;">&#9993; Send&hellip;</button>
                         </div>
 
-                        <button class="btn btn-secondary" onclick="closeSaleCompleteModal()" style="padding: 12px 30px; font-size: 16px; width:100%;">
-                            Done
-                        </button>
+                        <div id="receiptSendOptions" style="display:none;background:#f8f9fa;border-radius:8px;padding:12px;text-align:left;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+                                <button class="btn btn-secondary" onclick="showEmailReceiptInput(${sale.saleId})" style="padding:8px;font-size:12px;">&#9993; Email</button>
+                                <button class="btn btn-secondary" onclick="showSmsReceiptInput(${sale.saleId})" style="padding:8px;font-size:12px;">&#128172; SMS</button>
+                                <button class="btn btn-secondary" onclick="showWhatsAppReceiptInput(${sale.saleId})" style="padding:8px;font-size:12px;grid-column:1/-1;">&#128242; WhatsApp</button>
+                            </div>
+                            <div id="receiptDeliveryInput" style="display:none;">
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="receiptDeliveryValue" placeholder="" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+                                    <button class="btn btn-primary" onclick="sendReceiptDelivery(${sale.saleId})" style="padding:8px 12px;font-size:13px;">Send</button>
+                                </div>
+                            </div>
+                            <div id="receiptDeliveryStatus" style="margin-top:6px;font-size:12px;"></div>
+                        </div>
                     </div>
                 </div>
             `;
             document.body.appendChild(modal);
+
+            // Auto-dismiss countdown — cashiers with thermal printers tap Done immediately;
+            // any interaction (Print / Send) cancels the timer.
+            let secsLeft = 6;
+            const updateCountdown = () => {
+                const el = document.getElementById('saleCompleteCountdown');
+                if (el) el.textContent = secsLeft > 0 ? `(${secsLeft}s)` : '';
+            };
+            updateCountdown();
+            saleCompleteAutoClose = setInterval(() => {
+                secsLeft--;
+                updateCountdown();
+                if (secsLeft <= 0) {
+                    clearInterval(saleCompleteAutoClose);
+                    saleCompleteAutoClose = null;
+                    closeSaleCompleteModal();
+                }
+            }, 1000);
         }
 
         function closeSaleCompleteModal() {
-            const modal = document.getElementById('saleCompleteModal');
-            if (modal) {
-                modal.remove();
+            if (saleCompleteAutoClose) {
+                clearInterval(saleCompleteAutoClose);
+                saleCompleteAutoClose = null;
             }
+            const modal = document.getElementById('saleCompleteModal');
+            if (modal) modal.remove();
             const input = document.getElementById('barcodeInput');
             if (input) input.focus();
         }
 
-        async function printReceipt(saleId) {
+        function cancelSaleModalCountdown() {
+            if (saleCompleteAutoClose) {
+                clearInterval(saleCompleteAutoClose);
+                saleCompleteAutoClose = null;
+            }
+            const el = document.getElementById('saleCompleteCountdown');
+            if (el) el.style.display = 'none';
+        }
+
+        function toggleReceiptOptions() {
+            cancelSaleModalCountdown();
+            const panel = document.getElementById('receiptSendOptions');
+            const btn   = document.getElementById('receiptMoreBtn');
+            if (!panel) return;
+            const visible = panel.style.display !== 'none';
+            panel.style.display = visible ? 'none' : 'block';
+            if (btn) btn.textContent = visible ? '✉ Send…' : '✉ Send ▲';
+        }
+
+        async function printReceipt(saleId, opts = {}) {
             // If offline, get receipt preview and use browser print
             if (!isOnline) {
                 showNotification('Offline - using browser print dialog', 'info');
@@ -5384,7 +5654,7 @@
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ open_drawer: true })
+                    body: JSON.stringify({ open_drawer: opts.openDrawer ?? false })
                 });
 
                 const result = await response.json();
@@ -5420,13 +5690,26 @@
         }
 
         function printBrowserReceipt(html) {
-            const printWindow = window.open('', '_blank', 'width=400,height=600');
-            printWindow.document.write(html);
-            printWindow.document.close();
-            printWindow.focus();
+            const popup = window.open('', '_blank', 'width=400,height=600');
+            if (popup) {
+                popup.document.write(html);
+                popup.document.close();
+                popup.focus();
+                setTimeout(() => { popup.print(); popup.close(); }, 250);
+                return;
+            }
+            // Popup blocked — silent iframe fallback so printing still works
+            showNotification('Popup blocked — printing via in-page fallback', 'info');
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:400px;height:600px;border:none;';
+            document.body.appendChild(iframe);
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
             setTimeout(() => {
-                printWindow.print();
-                printWindow.close();
+                try { iframe.contentWindow.print(); } catch (e) {}
+                setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 1500);
             }, 250);
         }
 
@@ -5578,6 +5861,7 @@
             document.getElementById('dashboardLayout').style.display = 'none';
             document.getElementById('loyaltyLayout').style.display = 'none';
             document.getElementById('recoveryLayout').style.display = 'none';
+            document.getElementById('supportLayout').style.display = 'none';
 
             // Show appropriate section
             if (tab === 'till') {
@@ -5603,8 +5887,11 @@
             } else if (tab === 'recovery') {
                 document.getElementById('recoveryLayout').style.display = 'block';
                 loadRecovery();
+            } else if (tab === 'support') {
+                document.getElementById('supportLayout').style.display = 'block';
+                loadSupportPanel();
             } else {
-                alert(`${tab.charAt(0).toUpperCase() + tab.slice(1)} section - To be implemented`);
+                showNotification(`${tab.charAt(0).toUpperCase() + tab.slice(1)} tab coming soon`, 'info');
             }
         }
 
@@ -5646,7 +5933,7 @@
                 document.getElementById('generalSection').style.display = 'block';
                 loadGeneralSettings();
             } else {
-                alert(`${section} section - To be implemented`);
+                showNotification(`${section} coming soon`, 'info');
             }
         }
 
@@ -5842,11 +6129,11 @@
         }
 
         function exportProducts() {
-            alert('Export Products - To be implemented');
+            showNotification('Export Products — coming soon', 'info');
         }
 
         function importProducts() {
-            alert('Import Products - To be implemented');
+            showNotification('Import Products — coming soon', 'info');
         }
 
         // Barcode Management Functions
@@ -6001,9 +6288,17 @@
             notification.className = `notification ${type}`;
             notification.style.display = 'block';
 
-            setTimeout(() => {
+            // Severity-based display duration. Errors stay visible long enough to read
+            // under cashier stress; success messages clear quickly to avoid clutter.
+            const durations = { success: 3000, info: 4000, warning: 5000, error: 7000 };
+            const ms = durations[type] || 4000;
+
+            // Cancel any pending hide timer so a rapid second notification is not
+            // dismissed early by the first notification's timer.
+            clearTimeout(notification._hideTimer);
+            notification._hideTimer = setTimeout(() => {
                 notification.style.display = 'none';
-            }, 3000);
+            }, ms);
         }
 
         // Reports Functions
@@ -6782,7 +7077,7 @@
         function renderTillSummaryReport(data, container) {
             const { sessions, summary } = data;
             const fmt = v => v != null ? `R ${parseFloat(v).toFixed(2)}` : '<span style="color:#bbb;">—</span>';
-            const varColor = v => v == null ? '' : v < 0 ? 'color:#c62828;font-weight:bold;' : v > 0 ? 'color:#e65100;' : 'color:#2e7d32;';
+            const varColor = v => v == null ? '' : v < 0 ? 'color:#c62828;font-weight:bold;' : v > 0 ? 'color:#92400e;' : 'color:#2e7d32;';
 
             let html = `
                 <h2 style="margin-bottom: 20px;">Till Summary</h2>
@@ -6811,8 +7106,8 @@
                         <div style="font-size:20px;font-weight:bold;color:#6a1b9a;">R ${((summary.total_card||0)+(summary.total_eft||0)).toFixed(2)}</div>
                     </div>
                     <div style="background:#fff3e0;padding:12px;border-radius:8px;">
-                        <div style="font-size:11px;color:#666;">Voids</div>
-                        <div style="font-size:22px;font-weight:bold;color:#e65100;">${summary.total_void_count}</div>
+                        <div style="font-size:11px;color:#555;">Voids</div>
+                        <div style="font-size:22px;font-weight:bold;color:#92400e;">${summary.total_void_count}</div>
                     </div>
                     <div style="background:#fce4ec;padding:12px;border-radius:8px;">
                         <div style="font-size:11px;color:#666;">Refunds</div>
@@ -6847,7 +7142,7 @@
             sessions.forEach((s, i) => {
                 const statusBadge = {
                     open:      '<span style="background:#e3f2fd;color:#1565c0;padding:2px 7px;border-radius:10px;font-size:11px;">Open</span>',
-                    closed:    '<span style="background:#fff3e0;color:#e65100;padding:2px 7px;border-radius:10px;font-size:11px;">Pending</span>',
+                    closed:    '<span style="background:#fff3e0;color:#92400e;padding:2px 7px;border-radius:10px;font-size:11px;">Pending</span>',
                     cashed_up: '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:10px;font-size:11px;">Cashed Up</span>',
                 }[s.status] || s.status;
                 const snapBadge = s.has_snapshot ? '' : ' <span style="font-size:10px;color:#bbb;">(est.)</span>';
@@ -6922,9 +7217,9 @@
             }
 
             // Part B: Events in period
-            html += `<h3 style="margin:0 0 12px;font-size:14px;color:#e65100;">Negative Stock Events in Period (${events_in_period_count})</h3>`;
+            html += `<h3 style="margin:0 0 12px;font-size:14px;color:#92400e;">Negative Stock Events in Period (${events_in_period_count})</h3>`;
             if (events_in_period_count === 0) {
-                html += `<div style="background:#f9f9f9;padding:12px 15px;border-radius:6px;font-size:13px;color:#999;">No negative stock events in the selected period.</div>`;
+                html += `<div style="background:#f9f9f9;padding:12px 15px;border-radius:6px;font-size:13px;color:#6b7280;">No negative stock events in the selected period.</div>`;
             } else {
                 html += `<table style="width:100%;border-collapse:collapse;font-size:12px;">
                     <thead>
@@ -6999,9 +7294,9 @@
 
             // Pending cashup
             if (pending_cashup_sessions.length > 0) {
-                html += `<h3 style="margin:0 0 10px;font-size:14px;color:#e65100;">Pending Cashup (${pending_cashup_sessions.length})</h3>
+                html += `<h3 style="margin:0 0 10px;font-size:14px;color:#92400e;">Pending Cashup (${pending_cashup_sessions.length})</h3>
                     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
-                    <thead><tr style="background:#e65100;color:white;">
+                    <thead><tr style="background:#92400e;color:white;">
                         <th style="padding:7px;text-align:left;">Cashier</th>
                         <th style="padding:7px;text-align:left;">Till</th>
                         <th style="padding:7px;text-align:left;">Closed At</th>
@@ -8192,7 +8487,7 @@
                     </div>
                     <div class="cart-item-controls">
                         <div class="qty-controls">
-                            <button class="qty-btn" onclick="updateQty(${item.productId}, -1)">-</button>
+                            <button class="qty-btn" data-qty-product="${item.productId}" onclick="updateQty(${item.productId}, -1)">-</button>
                             <input type="number" class="qty-input" value="${item.quantity}" min="1" max="${item.maxStock}"
                                    onchange="setQty(${item.productId}, this.value)" onclick="this.select()">
                             <button class="qty-btn" onclick="updateQty(${item.productId}, 1)">+</button>
@@ -8522,10 +8817,18 @@
         }
 
         function promptAbandonItem(tempId, safeNum) {
-            const reason = prompt(`Mark "${safeNum}" as permanently unrecoverable?\n\nEnter reason (required):`);
-            if (reason === null) return;
-            if (!reason.trim()) { showNotification('Reason is required to mark an item unrecoverable.', 'error'); return; }
-            markQueueItemAbandoned(tempId, safeNum, reason.trim());
+            showRecoveryInputModal({
+                title: 'Mark as Unrecoverable',
+                message: `Mark <strong>${escHtml(safeNum)}</strong> as permanently unrecoverable? This cannot be undone.`,
+                placeholder: 'Enter reason (required)…',
+                confirmLabel: 'Mark Unrecoverable',
+                confirmClass: 'btn-danger',
+                onConfirm(reason) {
+                    if (!reason.trim()) { showNotification('Reason is required.', 'error'); return false; }
+                    markQueueItemAbandoned(tempId, safeNum, reason.trim());
+                    return true;
+                },
+            });
         }
 
         async function markQueueItemAbandoned(tempId, safeNum, reason) {
@@ -8567,10 +8870,18 @@
         }
 
         function promptAddNote(tempId, safeNum) {
-            const note = prompt(`Add recovery note to "${safeNum}":`);
-            if (note === null) return;
-            if (!note.trim()) { showNotification('Note cannot be empty.', 'error'); return; }
-            addQueueNote(tempId, safeNum, note.trim());
+            showRecoveryInputModal({
+                title: 'Add Recovery Note',
+                message: `Add a note to <strong>${escHtml(safeNum)}</strong>:`,
+                placeholder: 'Enter note…',
+                confirmLabel: 'Save Note',
+                confirmClass: 'btn-primary',
+                onConfirm(note) {
+                    if (!note.trim()) { showNotification('Note cannot be empty.', 'error'); return false; }
+                    addQueueNote(tempId, safeNum, note.trim());
+                    return true;
+                },
+            });
         }
 
         async function addQueueNote(tempId, safeNum, note) {
@@ -8599,6 +8910,54 @@
 
             showNotification('Recovery note saved.', 'success');
             await loadRecovery();
+        }
+
+        function showRecoveryInputModal({ title, message, placeholder, confirmLabel, confirmClass, onConfirm }) {
+            const existing = document.getElementById('recoveryInputModal');
+            if (existing) existing.remove();
+
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.id = 'recoveryInputModal';
+            modal.style.cssText = 'display:flex;z-index:1100;';
+            modal.innerHTML = `
+                <div class="modal" style="max-width:420px;">
+                    <div class="modal-header">
+                        <h2 style="margin:0;font-size:16px;">${title}</h2>
+                        <button class="close-btn" onclick="closeRecoveryInputModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding:20px;">
+                        <p style="margin:0 0 12px;color:#555;line-height:1.5;">${message}</p>
+                        <textarea id="recoveryInputText" placeholder="${placeholder}"
+                                  style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;min-height:80px;font-family:inherit;"
+                                  onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))submitRecoveryInput()"></textarea>
+                        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                            <button class="btn btn-secondary" onclick="closeRecoveryInputModal()">Cancel</button>
+                            <button class="btn ${confirmClass}" onclick="submitRecoveryInput()" style="color:white;">${confirmLabel}</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            modal._onConfirm = onConfirm;
+            document.body.appendChild(modal);
+            setTimeout(() => {
+                const ta = document.getElementById('recoveryInputText');
+                if (ta) ta.focus();
+            }, 50);
+        }
+
+        function submitRecoveryInput() {
+            const modal = document.getElementById('recoveryInputModal');
+            const text  = (document.getElementById('recoveryInputText')?.value) || '';
+            if (modal && typeof modal._onConfirm === 'function') {
+                const success = modal._onConfirm(text);
+                if (success !== false) closeRecoveryInputModal();
+            }
+        }
+
+        function closeRecoveryInputModal() {
+            const modal = document.getElementById('recoveryInputModal');
+            if (modal) modal.remove();
         }
 
         function renderSessionHealth(data) {
@@ -9926,8 +10285,9 @@
                     document.getElementById('settingsGroupItems').checked = settings.group_same_items !== 0;
                     document.getElementById('settingsShowImages').checked = settings.use_product_images === 1;
 
-                    // Update auto-print flag
+                    // Update runtime flags
                     autoPrintEnabled = settings.auto_print_receipt !== 0;
+                    openDrawerOnSale = settings.open_drawer_on_sale !== 0;
                 }
             } catch (e) {
                 console.log('General settings load error:', e);
@@ -9977,6 +10337,7 @@
                 if (companyRes.ok && settingsRes.ok) {
                     showNotification('All settings saved successfully!', 'success');
                     autoPrintEnabled = document.getElementById('settingsAutoPrint').checked;
+                    openDrawerOnSale = document.getElementById('settingsOpenDrawer').checked;
                 } else {
                     showNotification('Some settings may not have saved', 'error');
                 }
@@ -10034,7 +10395,7 @@
                 const result = await res.json();
 
                 if (res.ok) {
-                    alert('Registration successful!\\n\\nYour company account is now pending approval. You will be able to log in once an administrator activates your account.\\n\\nThank you for registering with Checkout Charlie!');
+                    showNotification('Registration successful — your account is pending approval.', 'success');
                     showLoginForm();
                     // Clear form
                     document.getElementById('regFullName').value = '';
@@ -10522,6 +10883,7 @@
         }
 
         function showEmailReceiptInput(saleId) {
+            cancelSaleModalCountdown();
             receiptDeliveryMethod = 'email';
             const inputDiv = document.getElementById('receiptDeliveryInput');
             inputDiv.style.display = 'block';
@@ -10532,6 +10894,7 @@
         }
 
         function showSmsReceiptInput(saleId) {
+            cancelSaleModalCountdown();
             receiptDeliveryMethod = 'sms';
             const inputDiv = document.getElementById('receiptDeliveryInput');
             inputDiv.style.display = 'block';
@@ -10542,6 +10905,7 @@
         }
 
         function showWhatsAppReceiptInput(saleId) {
+            cancelSaleModalCountdown();
             receiptDeliveryMethod = 'whatsapp';
             const inputDiv = document.getElementById('receiptDeliveryInput');
             inputDiv.style.display = 'block';
@@ -10846,8 +11210,8 @@
                                     <div style="font-size:11px;color:#666;">Tier</div>
                                 </div>
                                 <div style="background:#fff3e0;padding:12px;border-radius:8px;text-align:center;">
-                                    <div style="font-size:20px;font-weight:bold;color:#e65100;">R ${parseFloat(c.current_balance || 0).toFixed(2)}</div>
-                                    <div style="font-size:11px;color:#666;">Account Balance</div>
+                                    <div style="font-size:20px;font-weight:bold;color:#92400e;">R ${parseFloat(c.current_balance || 0).toFixed(2)}</div>
+                                    <div style="font-size:11px;color:#555;">Account Balance</div>
                                 </div>
                                 <div style="background:#f3e5f5;padding:12px;border-radius:8px;text-align:center;">
                                     <div style="font-size:20px;font-weight:bold;color:#6a1b9a;">R ${parseFloat(c.credit_limit || 0).toFixed(2)}</div>
@@ -11066,6 +11430,629 @@
                 }
             } catch (e) {
                 showNotification('Error recording payment', 'error');
+            }
+        }
+
+        // ============ WORKSTREAM 11A — PILOT OPERATIONS TOOLKIT ============
+
+        let supportDataCache = null;
+
+        async function loadSupportPanel() {
+            await Promise.all([loadSupportHealth(), loadSupportTimeline(), loadEmergencyPanel()]);
+        }
+
+        async function loadSupportHealth() {
+            const container = document.getElementById('supportHealthPanel');
+            if (!container) return;
+
+            try {
+                const [sessionsRes, negStockRes] = await Promise.all([
+                    fetch(`${API_URL}/pos/recovery/sessions`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/pos/support/negative-stock`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                ]);
+
+                const sessionsData = sessionsRes.ok ? await sessionsRes.json() : {};
+                const negStockData = negStockRes.ok ? await negStockRes.json() : {};
+
+                let queuedCount = 0;
+                try {
+                    const queued = await getAllQueuedSales();
+                    queuedCount = (queued || []).length;
+                } catch (e) {}
+
+                let appVersion = '—';
+                try {
+                    const vRes = await fetch(`${API_URL}/pos/status`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (vRes.ok) { const vData = await vRes.json(); appVersion = vData.version || '—'; }
+                } catch (e) {}
+
+                const sessions     = sessionsData.sessions || sessionsData.open || [];
+                const staleSessions = sessionsData.stale || [];
+                const negStock     = negStockData.negative_stock_count ?? 0;
+
+                const health = {
+                    online:       isOnline,
+                    queuedCount,
+                    openSessions:  sessions.length,
+                    staleSessions: staleSessions.length,
+                    negStock,
+                    forceUpdate:   !!forceUpdatePending,
+                    appVersion,
+                    ts:            Date.now(),
+                };
+
+                supportDataCache = { ...supportDataCache, health, sessionsRaw: sessionsData };
+                renderHealthPanel(health);
+                renderWarningIndicators(health);
+
+            } catch (err) {
+                if (container) container.innerHTML = `<p style="color:#ef4444;font-size:14px;">Error loading health data: ${escHtml(err.message)}</p>`;
+            }
+        }
+
+        function renderHealthPanel(h) {
+            const container = document.getElementById('supportHealthPanel');
+            if (!container) return;
+
+            const cards = [
+                { label: 'Connectivity',   value: h.online ? 'Online' : 'Offline',      sub: '',                              status: h.online ? 'ok' : 'error' },
+                { label: 'Queued Sales',   value: h.queuedCount,                         sub: 'pending offline sync',          status: h.queuedCount > 0 ? 'warn' : 'ok' },
+                { label: 'Open Sessions',  value: h.openSessions,                        sub: 'active till sessions',          status: 'ok' },
+                { label: 'Stale Sessions', value: h.staleSessions,                       sub: '> 8h since last activity',      status: h.staleSessions > 0 ? 'warn' : 'ok' },
+                { label: 'Negative Stock', value: h.negStock,                            sub: 'active products below zero',    status: h.negStock > 0 ? 'warn' : 'ok' },
+                { label: 'Force Update',   value: h.forceUpdate ? 'Pending' : 'None',   sub: h.forceUpdate ? 'reload required' : 'up to date', status: h.forceUpdate ? 'error' : 'ok' },
+                { label: 'App Version',    value: h.appVersion,                          sub: 'from /pos/status',              status: 'ok' },
+                { label: 'Print Agent',    value: 'N/A',                                 sub: 'local agent (future)',           status: 'ok' },
+            ];
+
+            container.innerHTML = `
+                <div class="health-card-grid">
+                    ${cards.map(c => `
+                        <div class="health-card status-${c.status}">
+                            <div class="health-card-label">${c.label}</div>
+                            <div class="health-card-value">${c.value}</div>
+                            ${c.sub ? `<div class="health-card-sub">${c.sub}</div>` : ''}
+                        </div>`).join('')}
+                </div>
+                <p style="font-size:11px;color:#9ca3af;margin-top:10px;">Last refreshed: ${new Date(h.ts).toLocaleTimeString()}</p>`;
+        }
+
+        function renderWarningIndicators(h) {
+            const container = document.getElementById('supportWarnings');
+            if (!container) return;
+
+            const warnings = [];
+            if (!h.online)           warnings.push({ critical: true,  text: 'POS is currently OFFLINE. Queued sales are not syncing.' });
+            if (h.forceUpdate)       warnings.push({ critical: true,  text: 'A forced update is pending. This till cannot process new sales until it is reloaded.' });
+            if (h.staleSessions > 0) warnings.push({ critical: false, text: `${h.staleSessions} stale till session${h.staleSessions > 1 ? 's' : ''} detected (> 8h idle). Review in the Recovery panel.` });
+            if (h.queuedCount > 0)   warnings.push({ critical: false, text: `${h.queuedCount} offline sale${h.queuedCount > 1 ? 's' : ''} queued for sync.` });
+            if (h.negStock > 0)      warnings.push({ critical: false, text: `${h.negStock} active product${h.negStock > 1 ? 's' : ''} at negative stock.` });
+
+            if (warnings.length === 0) {
+                container.style.display = 'none';
+                container.innerHTML = '';
+                return;
+            }
+
+            container.style.display = 'block';
+            container.innerHTML = warnings.map(w => `
+                <div class="warning-banner${w.critical ? ' warn-critical' : ''}">
+                    <span style="font-size:18px;line-height:1;">${w.critical ? '🔴' : '⚠️'}</span>
+                    <span>${escHtml(w.text)}</span>
+                </div>`).join('');
+        }
+
+        // Keys must match POS_EVENTS constants in posAuditLogger.js exactly.
+        const TIMELINE_EVENT_LABELS = {
+            // Sale
+            SALE_CREATED:               { label: 'Sale',           color: '#10b981' },
+            SALE_REPLAYED:              { label: 'Sale (Replay)',  color: '#6b7280' },
+            SALE_VOIDED:                { label: 'Void',           color: '#ef4444' },
+            SALE_RETURNED:              { label: 'Return',         color: '#f59e0b' },
+            SALE_STOCK_FAILED:          { label: 'Stock Fail',     color: '#ef4444' },
+            SALE_RPC_FAILED:            { label: 'Sale Fail',      color: '#ef4444' },
+            // Sync
+            OFFLINE_SYNC_RECEIVED:      { label: 'Sync',           color: '#3b82f6' },
+            OFFLINE_CONFLICT:           { label: 'Sync Conflict',  color: '#ef4444' },
+            // Session
+            TILL_OPENED:                { label: 'Session Open',   color: '#6366f1' },
+            TILL_CLOSED:                { label: 'Session Closed', color: '#8b5cf6' },
+            SESSION_OPENED:             { label: 'Session Open',   color: '#6366f1' },
+            SESSION_CLOSED:             { label: 'Session Closed', color: '#8b5cf6' },
+            CASHUP_COMPLETED:           { label: 'Cash Up',        color: '#06b6d4' },
+            CASH_VARIANCE_RECORDED:     { label: 'Variance',       color: '#f59e0b' },
+            ABANDONED_SESSION_DETECTED: { label: 'Abandoned',      color: '#ef4444' },
+            // Recovery
+            RECOVERY_RETRY_TRIGGERED:   { label: 'Retry',          color: '#f59e0b' },
+            RECOVERY_MARKED_FAILED:     { label: 'Abandoned',      color: '#ef4444' },
+            RECOVERY_NOTE_ADDED:        { label: 'Note',           color: '#6b7280' },
+            // Override
+            MANAGER_OVERRIDE:           { label: 'Override',       color: '#f97316' },
+            MANAGER_OVERRIDE_USED:      { label: 'Override',       color: '#f97316' },
+            SUPERVISOR_OVERRIDE_GRANTED:{ label: 'Override',       color: '#f97316' },
+            // Inventory
+            STOCK_ADJUSTED:             { label: 'Inventory',      color: '#64748b' },
+            STOCK_TAKE_COMPLETED:       { label: 'Stock Take',     color: '#64748b' },
+            SUPPLIER_RECEIVE_COMPLETED: { label: 'Receive',        color: '#64748b' },
+            STOCK_TRANSFER_RECORDED:    { label: 'Transfer',       color: '#64748b' },
+            NEGATIVE_STOCK_SALE_ALLOWED:     { label: 'Neg Stock Sale',    color: '#f59e0b' },
+            NEGATIVE_STOCK_CREATED:          { label: 'Neg Stock',         color: '#f59e0b' },
+            // Emergency control events (Workstream 11B)
+            EMERGENCY_SESSION_FORCE_CLOSED:  { label: 'Force Close',       color: '#dc2626' },
+            EMERGENCY_TILL_LOCKED:           { label: 'Till Locked',       color: '#dc2626' },
+            EMERGENCY_TILL_UNLOCKED:         { label: 'Till Unlocked',     color: '#10b981' },
+            EMERGENCY_SYNC_PAUSED:           { label: 'Sync Paused',       color: '#f97316' },
+            EMERGENCY_SYNC_RESUMED:          { label: 'Sync Resumed',      color: '#10b981' },
+            EMERGENCY_USER_FORCE_LOGOUT:     { label: 'Force Logout',      color: '#dc2626' },
+            EMERGENCY_PRINTER_DEGRADED:      { label: 'Printer Degraded',  color: '#f59e0b' },
+            EMERGENCY_PRINTER_RESTORED:      { label: 'Printer Restored',  color: '#10b981' },
+        };
+
+        async function loadSupportTimeline() {
+            const container = document.getElementById('supportTimeline');
+            if (!container) return;
+            container.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">Loading…</p>';
+
+            try {
+                const res = await fetch(`${API_URL}/pos/support/events?limit=50`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) {
+                    const e = await res.json().catch(() => ({}));
+                    container.innerHTML = `<p style="color:#ef4444;font-size:14px;">Error: ${escHtml(e.error || res.statusText)}</p>`;
+                    return;
+                }
+                const data = await res.json();
+                const events = data.events || [];
+                supportDataCache = { ...supportDataCache, events };
+                renderSupportTimeline(events, container);
+            } catch (err) {
+                container.innerHTML = `<p style="color:#ef4444;font-size:14px;">Error loading timeline: ${escHtml(err.message)}</p>`;
+            }
+        }
+
+        function renderSupportTimeline(events, container) {
+            if (!events.length) {
+                container.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">No operational events found.</p>';
+                return;
+            }
+
+            const rows = events.map(ev => {
+                const meta = TIMELINE_EVENT_LABELS[ev.action_type] || { label: ev.action_type, color: '#9ca3af' };
+                const ts   = new Date(ev.created_at).toLocaleString('en-ZA', { dateStyle: 'short', timeStyle: 'short' });
+                const user = ev.user_email ? escHtml(ev.user_email.split('@')[0]) : '—';
+                const note = ev.notes ? `<span style="color:#6b7280;margin-left:6px;">${escHtml(ev.notes.substring(0, 80))}${ev.notes.length > 80 ? '…' : ''}</span>` : '';
+                return `
+                    <div class="timeline-row">
+                        <div class="timeline-time">${ts}</div>
+                        <div><span class="timeline-badge" style="background:${meta.color}20;color:${meta.color};">${meta.label}</span></div>
+                        <div style="flex:1;color:#374151;">${user}${note}</div>
+                    </div>`;
+            }).join('');
+
+            container.innerHTML = `<div>${rows}</div>`;
+        }
+
+        async function runEnvironmentChecks() {
+            const container = document.getElementById('supportEnvChecks');
+            if (!container) return;
+            container.innerHTML = '<p style="color:#999;font-size:14px;">Running checks…</p>';
+
+            const checks = [];
+
+            checks.push({ label: 'Network connectivity', pass: navigator.onLine, note: navigator.onLine ? 'navigator.onLine = true' : 'OFFLINE' });
+
+            const swActive = !!navigator.serviceWorker?.controller;
+            checks.push({ label: 'Service Worker active', pass: swActive, note: swActive ? 'SW controller present' : 'No active SW controller' });
+
+            let idbOk = false;
+            try {
+                const req = indexedDB.open('_test_probe_', 1);
+                await new Promise((res, rej) => {
+                    req.onsuccess = () => { req.result.close(); indexedDB.deleteDatabase('_test_probe_'); res(); };
+                    req.onerror = rej;
+                    req.onupgradeneeded = e => e.target.result.createObjectStore('t', {});
+                });
+                idbOk = true;
+            } catch (e) {}
+            checks.push({ label: 'IndexedDB available', pass: idbOk, note: idbOk ? 'Read/write OK' : 'IndexedDB blocked or unavailable' });
+
+            let lsOk = false;
+            try { localStorage.setItem('_probe', '1'); localStorage.removeItem('_probe'); lsOk = true; } catch (e) {}
+            checks.push({ label: 'localStorage available', pass: lsOk, note: lsOk ? 'OK (auth token only)' : 'Blocked' });
+
+            let apiOk = false, apiNote = 'Timed out';
+            try {
+                const r = await fetch(`${API_URL}/pos/status`, {
+                    signal: AbortSignal.timeout(5000),
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                apiOk  = r.ok;
+                apiNote = `HTTP ${r.status}`;
+            } catch (e) { apiNote = e.name === 'TimeoutError' ? 'Timed out (5s)' : escHtml(e.message); }
+            checks.push({ label: 'API reachable (/pos/status)', pass: apiOk, note: apiNote });
+
+            const notifPerm = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+            checks.push({ label: 'Notification permission', pass: notifPerm === 'granted', note: notifPerm, warn: notifPerm !== 'granted' });
+
+            checks.push({ label: 'Local print agent', pass: null, note: 'Placeholder — agent detection not yet implemented', warn: true });
+
+            const rows = checks.map(c => {
+                const icon = c.pass === null ? '⬜' : c.pass ? '✅' : (c.warn ? '⚠️' : '❌');
+                return `
+                    <div class="env-check-row">
+                        <span style="font-size:16px;width:24px;flex-shrink:0;">${icon}</span>
+                        <span class="env-check-label">${c.label}</span>
+                        <span style="color:#6b7280;font-size:13px;">${c.note}</span>
+                    </div>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div style="border:1px solid #e5e7eb;border-radius:8px;padding:0 12px;">${rows}</div>
+                <p style="font-size:11px;color:#9ca3af;margin-top:8px;">Checks run at ${new Date().toLocaleTimeString()}</p>`;
+
+            supportDataCache = { ...supportDataCache, envChecks: checks.map(c => ({ label: c.label, pass: c.pass, note: c.note })) };
+        }
+
+        function exportDiagnosticsSnapshot() {
+            const snapshot = {
+                exportedAt:   new Date().toISOString(),
+                appVersion:   supportDataCache?.health?.appVersion || '—',
+                userRole:     userRole || '—',
+                online:       navigator.onLine,
+                forceUpdate:  !!forceUpdatePending,
+                health:       supportDataCache?.health   || null,
+                envChecks:    supportDataCache?.envChecks || null,
+                queuedSales:  supportDataCache?.health?.queuedCount ?? null,
+                recentEvents: (supportDataCache?.events || []).slice(0, 20).map(e => ({
+                    action_type:     e.action_type,
+                    action_category: e.action_category,
+                    user_email:      e.user_email,
+                    till_id:         e.till_id,
+                    created_at:      e.created_at,
+                })),
+            };
+
+            const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = `pos-diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+            showNotification('Diagnostics snapshot exported', 'success');
+        }
+
+        // ============ WORKSTREAM 11B — MANAGER EMERGENCY CONTROLS ============
+
+        function applyTillStateWarnings(tillData) {
+            const lockBanner    = document.getElementById('tillLockBanner');
+            const printerBanner = document.getElementById('printerDegradedBanner');
+            const lockReason    = document.getElementById('tillLockReason');
+            const printerReason = document.getElementById('printerDegradedReason');
+
+            if (lockBanner) {
+                lockBanner.style.display = tillData.is_locked ? 'flex' : 'none';
+                if (lockReason) lockReason.textContent = tillData.locked_reason ? `(${escHtml(tillData.locked_reason)})` : '';
+            }
+            if (printerBanner) {
+                printerBanner.style.display = tillData.is_printer_degraded ? 'flex' : 'none';
+                if (printerReason) printerReason.textContent = tillData.printer_degraded_reason ? `(${escHtml(tillData.printer_degraded_reason)})` : '';
+            }
+            // Sync checkoutBtn state with till lock
+            const btn = document.getElementById('checkoutBtn');
+            if (btn && currentSession) btn.disabled = cart.length === 0 || tillData.is_locked;
+        }
+
+        async function loadEmergencyState() {
+            try {
+                const res = await fetch(`${API_URL}/pos/emergency/state`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    syncPaused = !!(data.syncPaused);
+                }
+            } catch (e) {
+                // Non-fatal — sync pause defaults to false
+            }
+        }
+
+        async function loadEmergencyPanel() {
+            await Promise.all([
+                loadEmergencySessionsList(),
+                loadEmergencyTillsList(),
+                loadEmergencySyncState(),
+            ]);
+        }
+
+        async function loadEmergencySyncState() {
+            const stateEl = document.getElementById('emergencySyncState');
+            if (!stateEl) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/emergency/state`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) { stateEl.textContent = 'Error loading sync state.'; return; }
+                const data = await res.json();
+                syncPaused = !!(data.syncPaused);
+                if (data.syncPaused) {
+                    const by = data.syncPausedBy ? ` by ${escHtml(data.syncPausedBy)}` : '';
+                    const at = data.syncPausedAt ? ` at ${new Date(data.syncPausedAt).toLocaleTimeString()}` : '';
+                    stateEl.innerHTML = `<span style="color:#dc2626;font-weight:600;">⏸ Sync is PAUSED${by}${at}.</span> Reason: ${escHtml(data.syncPausedReason || '—')}`;
+                } else {
+                    stateEl.innerHTML = '<span style="color:#10b981;font-weight:600;">▶ Sync is running normally.</span>';
+                }
+                const pauseBtn  = document.getElementById('pauseSyncBtn');
+                const resumeBtn = document.getElementById('resumeSyncBtn');
+                if (pauseBtn)  pauseBtn.style.display  = data.syncPaused ? 'none' : 'inline-block';
+                if (resumeBtn) resumeBtn.style.display = data.syncPaused ? 'inline-block' : 'none';
+            } catch (e) {
+                if (stateEl) stateEl.textContent = 'Error loading sync state.';
+            }
+        }
+
+        async function loadEmergencySessionsList() {
+            const container = document.getElementById('emergencySessionsList');
+            if (!container) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/recovery/sessions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) { container.innerHTML = '<p style="color:#ef4444;font-size:13px;">Error loading sessions.</p>'; return; }
+                const data = await res.json();
+                const open  = data.open  || [];
+                const stale = data.stale || [];
+                const all   = [...stale, ...open]; // stale first
+
+                if (all.length === 0) {
+                    container.innerHTML = '<p style="color:#10b981;font-size:13px;">No open sessions.</p>';
+                    return;
+                }
+
+                container.innerHTML = all.map(s => {
+                    const label  = stale.includes(s) ? '⚠️ Stale' : '🟢 Open';
+                    const age    = s.age_hours !== undefined ? `${s.age_hours}h` : '—';
+                    const user   = s.users?.username || s.users?.full_name || '—';
+                    const till   = s.tills?.till_name || `Till ${s.till_id}`;
+                    return `
+                        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;font-size:13px;">
+                            <div>
+                                <span style="font-weight:600;">${label}</span>
+                                <span style="margin:0 8px;color:#6b7280;">${till} · ${escHtml(user)} · ${age}</span>
+                            </div>
+                            <button class="btn btn-danger" style="font-size:12px;padding:4px 10px;"
+                                    onclick="showEmergencyAction('force-close-session', ${s.id}, '${escHtml(till + ' / ' + user)}')">
+                                Force Close
+                            </button>
+                        </div>`;
+                }).join('');
+            } catch (e) {
+                if (container) container.innerHTML = '<p style="color:#ef4444;font-size:13px;">Error loading sessions.</p>';
+            }
+        }
+
+        async function loadEmergencyTillsList() {
+            const container = document.getElementById('emergencyTillsList');
+            if (!container) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/tills`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) { container.innerHTML = '<p style="color:#ef4444;font-size:13px;">Error loading tills.</p>'; return; }
+                const data = await res.json();
+                const tills = data.tills || [];
+
+                if (tills.length === 0) {
+                    container.innerHTML = '<p style="color:#999;font-size:13px;">No tills configured.</p>';
+                    return;
+                }
+
+                container.innerHTML = tills.map(t => {
+                    const lockIcon    = t.is_locked ? '🔒' : '🔓';
+                    const printerIcon = t.is_printer_degraded ? '🖨️⚠️' : '🖨️✅';
+                    return `
+                        <div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:13px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                                <strong>${lockIcon} ${escHtml(t.till_name)} (${escHtml(t.till_number)})</strong>
+                                <span style="color:#6b7280;font-size:12px;">${t.location ? escHtml(t.location) : ''}</span>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                ${t.is_locked
+                                    ? `<button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;"
+                                               onclick="showEmergencyAction('unlock-till', ${t.id}, '${escHtml(t.till_name)}')">🔓 Unlock Till</button>
+                                       <span style="font-size:12px;color:#dc2626;padding:4px 0;">Locked: ${escHtml(t.locked_reason || '—')}</span>`
+                                    : `<button class="btn btn-danger" style="font-size:12px;padding:4px 10px;"
+                                               onclick="showEmergencyAction('lock-till', ${t.id}, '${escHtml(t.till_name)}')">🔒 Lock Till</button>`
+                                }
+                                ${t.is_printer_degraded
+                                    ? `<button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;"
+                                               onclick="emergencyPrinterRestoredConfirm(${t.id}, '${escHtml(t.till_name)}')">🖨️ Printer Restored</button>
+                                       <span style="font-size:12px;color:#f59e0b;padding:4px 0;">Degraded: ${escHtml(t.printer_degraded_reason || '—')}</span>`
+                                    : `<button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;border-color:#f59e0b;color:#92400e;"
+                                               onclick="showEmergencyAction('printer-degraded', ${t.id}, '${escHtml(t.till_name)}')">🖨️ Mark Printer Degraded</button>`
+                                }
+                                <span style="font-size:12px;color:#6b7280;padding:4px 0;">${printerIcon}</span>
+                            </div>
+                        </div>`;
+                }).join('');
+            } catch (e) {
+                if (container) container.innerHTML = '<p style="color:#ef4444;font-size:13px;">Error loading tills.</p>';
+            }
+        }
+
+        // Central emergency action dispatcher — shows recovery input modal for confirmation + reason
+        function showEmergencyAction(action, targetId, targetLabel) {
+            const configs = {
+                'force-close-session': {
+                    title:        'Force Close Session',
+                    message:      `Force-close session for <strong>${escHtml(targetLabel || '')}</strong>? Sales and audit records are preserved. The cashier will need to re-open a session.`,
+                    placeholder:  'Reason for force close (required)…',
+                    confirmLabel: 'Force Close Session',
+                    confirmClass: 'btn-danger',
+                },
+                'lock-till': {
+                    title:        'Lock Till',
+                    message:      `Lock <strong>${escHtml(targetLabel || '')}</strong>? The till will not be able to process new sales until unlocked.`,
+                    placeholder:  'Reason for locking (required)…',
+                    confirmLabel: 'Lock Till',
+                    confirmClass: 'btn-danger',
+                },
+                'unlock-till': {
+                    title:        'Unlock Till',
+                    message:      `Unlock <strong>${escHtml(targetLabel || '')}</strong>? Sales processing will resume immediately.`,
+                    placeholder:  'Reason for unlocking (optional)…',
+                    confirmLabel: 'Unlock Till',
+                    confirmClass: 'btn-primary',
+                },
+                'printer-degraded': {
+                    title:        'Mark Printer Degraded',
+                    message:      `Mark printer on <strong>${escHtml(targetLabel || '')}</strong> as degraded? The cashier will see a warning. Checkout is still allowed.`,
+                    placeholder:  'Reason (required — e.g. paper jam, hardware fault)…',
+                    confirmLabel: 'Mark Degraded',
+                    confirmClass: 'btn-secondary',
+                },
+                'sync-pause': {
+                    title:        'Pause Offline Sync',
+                    message:      'Pause offline sale replay for this company? Queued sales will not be retried until sync is resumed.',
+                    placeholder:  'Reason for pausing sync (required)…',
+                    confirmLabel: 'Pause Sync',
+                    confirmClass: 'btn-danger',
+                },
+                'force-logout': {
+                    title:        'Force Logout Cashier',
+                    message:      'Force-close all open sessions for the entered email address. The cashier will need to log in again and open a new till session.',
+                    placeholder:  'Reason for force logout (required)…',
+                    confirmLabel: 'Force Logout',
+                    confirmClass: 'btn-danger',
+                },
+            };
+
+            const cfg = configs[action];
+            if (!cfg) return;
+
+            showRecoveryInputModal({
+                title:        cfg.title,
+                message:      cfg.message,
+                placeholder:  cfg.placeholder,
+                confirmLabel: cfg.confirmLabel,
+                confirmClass: cfg.confirmClass,
+                onConfirm(reason) {
+                    if (action !== 'unlock-till' && !reason.trim()) {
+                        showNotification('Reason is required.', 'error');
+                        return false;
+                    }
+                    dispatchEmergencyAction(action, targetId, reason.trim());
+                    return true;
+                },
+            });
+        }
+
+        async function dispatchEmergencyAction(action, targetId, reason) {
+            let url, body;
+
+            if (action === 'force-close-session') {
+                url  = `${API_URL}/pos/emergency/session/${targetId}/force-close`;
+                body = { reason };
+            } else if (action === 'lock-till') {
+                url  = `${API_URL}/pos/emergency/till/${targetId}/lock`;
+                body = { reason };
+            } else if (action === 'unlock-till') {
+                url  = `${API_URL}/pos/emergency/till/${targetId}/unlock`;
+                body = { reason: reason || 'Till unlocked by manager' };
+            } else if (action === 'printer-degraded') {
+                url  = `${API_URL}/pos/emergency/till/${targetId}/printer-degraded`;
+                body = { reason };
+            } else if (action === 'sync-pause') {
+                url  = `${API_URL}/pos/emergency/sync/pause`;
+                body = { reason };
+            } else if (action === 'force-logout') {
+                const email = document.getElementById('forceLogoutEmail')?.value?.trim();
+                if (!email) { showNotification('Enter the cashier email address first.', 'error'); return; }
+                url  = `${API_URL}/pos/emergency/user/force-logout`;
+                body = { user_email: email, reason };
+            } else {
+                return;
+            }
+
+            try {
+                const res = await fetch(url, {
+                    method:  'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body:    JSON.stringify(body),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showNotification(buildEmergencySuccessMsg(action, data), 'success');
+                    // Refresh affected panels
+                    await loadEmergencyPanel();
+                    // If till lock changed and current session is on this till, re-check
+                    if ((action === 'lock-till' || action === 'unlock-till') && currentSession?.till_id === targetId) {
+                        checkSession();
+                    }
+                    if (action === 'force-logout') {
+                        document.getElementById('forceLogoutEmail').value = '';
+                    }
+                } else {
+                    showNotification(data.error || 'Emergency action failed.', 'error');
+                }
+            } catch (e) {
+                showNotification('Network error during emergency action.', 'error');
+            }
+        }
+
+        function buildEmergencySuccessMsg(action, data) {
+            switch (action) {
+                case 'force-close-session': return `Session ${data.sessionId} force-closed.`;
+                case 'lock-till':           return `Till locked.`;
+                case 'unlock-till':         return `Till unlocked.`;
+                case 'printer-degraded':    return `Printer marked as degraded.`;
+                case 'sync-pause':          return `Offline sync paused.`;
+                case 'sync-resume':         return `Offline sync resumed.`;
+                case 'force-logout':        return `Force logout complete. ${data.sessionsClosed || 0} session(s) closed.`;
+                case 'printer-restored':    return `Printer marked as restored.`;
+                default:                    return 'Emergency action completed.';
+            }
+        }
+
+        async function emergencyResumeSyncConfirm() {
+            try {
+                const res = await fetch(`${API_URL}/pos/emergency/sync/resume`, {
+                    method:  'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({}),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    syncPaused = false;
+                    showNotification('Offline sync resumed.', 'success');
+                    loadEmergencySyncState();
+                } else {
+                    showNotification(data.error || 'Failed to resume sync.', 'error');
+                }
+            } catch (e) {
+                showNotification('Network error resuming sync.', 'error');
+            }
+        }
+
+        async function emergencyPrinterRestoredConfirm(tillId, tillName) {
+            try {
+                const res = await fetch(`${API_URL}/pos/emergency/till/${tillId}/printer-restored`, {
+                    method:  'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({}),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showNotification(`Printer on ${escHtml(tillName)} marked as restored.`, 'success');
+                    await loadEmergencyPanel();
+                    if (currentSession?.till_id === tillId) checkSession();
+                } else {
+                    showNotification(data.error || 'Failed to mark printer restored.', 'error');
+                }
+            } catch (e) {
+                showNotification('Network error restoring printer.', 'error');
             }
         }
 
