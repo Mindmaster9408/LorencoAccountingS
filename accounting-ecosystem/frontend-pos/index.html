@@ -5318,7 +5318,7 @@
                 return;
             }
             try {
-                const res = await fetch(`${API_URL}/customers/search?q=${encodeURIComponent(query)}`, {
+                const res = await fetch(`${API_URL}/pos/customers?search=${encodeURIComponent(query)}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -5991,7 +5991,7 @@
             try {
                 const response = await fetch(`${API_URL}/pos/products/next-code/${prefix}`, {
                     headers: {
-                        'Authorization': `Bearer ${authToken}`
+                        'Authorization': `Bearer ${token}`
                     }
                 });
 
@@ -7476,7 +7476,7 @@
                 const activeOnly = document.getElementById('activeCustomersOnly')?.checked;
                 const query = activeOnly ? '?active_only=true' : '';
 
-                const response = await fetch(`${API_URL}/customers${query}`, {
+                const response = await fetch(`${API_URL}/pos/customers${query}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
@@ -7555,7 +7555,7 @@
 
         async function editCustomer(id) {
             try {
-                const response = await fetch(`${API_URL}/customers/${id}`, {
+                const response = await fetch(`${API_URL}/pos/customers/${id}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
@@ -7638,7 +7638,7 @@
 
             try {
                 const method = currentCustomerId ? 'PUT' : 'POST';
-                const url = currentCustomerId ? `${API_URL}/customers/${currentCustomerId}` : `${API_URL}/customers`;
+                const url = currentCustomerId ? `${API_URL}/pos/customers/${currentCustomerId}` : `${API_URL}/pos/customers`;
 
                 const response = await fetch(url, {
                     method,
@@ -7666,7 +7666,7 @@
         async function deleteCustomer(id) {
             if (confirm('Are you sure you want to delete this customer?')) {
                 try {
-                    const response = await fetch(`${API_URL}/customers/${id}`, {
+                    const response = await fetch(`${API_URL}/pos/customers/${id}`, {
                         method: 'DELETE',
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
@@ -7693,7 +7693,7 @@
             }
 
             try {
-                const response = await fetch(`${API_URL}/customers/search?q=${encodeURIComponent(query)}`, {
+                const response = await fetch(`${API_URL}/pos/customers?search=${encodeURIComponent(query)}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
@@ -9140,9 +9140,59 @@
                     const avgTx = (t.sales_count > 0) ? (parseFloat(t.revenue) / t.sales_count) : 0;
                     document.getElementById('kpiAvgTransaction').textContent = `R ${avgTx.toFixed(2)}`;
                     document.getElementById('kpiAvgBasket').textContent = `—`;
+
+                    // Low stock alert
+                    const lowStockCount = data.low_stock_count || 0;
+                    const alertsDiv = document.getElementById('dashboardAlerts');
+                    if (lowStockCount > 0) {
+                        const existingContent = alertsDiv.innerHTML;
+                        const lowStockRow = `<div class="alert-row warning" style="margin-bottom:8px;">
+                            <div>
+                                <strong>Low Stock</strong>
+                                <div style="font-size:12px;color:#666;">${lowStockCount} product${lowStockCount !== 1 ? 's' : ''} at or below reorder level (≤10 units)</div>
+                            </div>
+                            <span class="status-badge alert">warning</span>
+                        </div>`;
+                        // Prepend low stock row; remove empty-state placeholder if present
+                        if (alertsDiv.querySelector('.empty-state')) {
+                            alertsDiv.innerHTML = lowStockRow;
+                        } else {
+                            alertsDiv.innerHTML = lowStockRow + existingContent;
+                        }
+                    }
                 }
             } catch (e) {
                 console.log('Dashboard load error:', e);
+            }
+
+            // Load recent activity
+            try {
+                const actRes = await fetch(`${API_URL}/pos/sales?limit=8&status=completed`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (actRes.ok) {
+                    const actData = await actRes.json();
+                    const sales = actData.sales || [];
+                    const activityDiv = document.getElementById('dashboardActivity');
+                    if (sales.length === 0) {
+                        activityDiv.innerHTML = '<div class="empty-state"><div class="icon">&#128196;</div><p>No recent activity</p></div>';
+                    } else {
+                        activityDiv.innerHTML = sales.map(s => `
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:13px;">
+                                <div>
+                                    <strong>${escHtml(s.sale_number || s.id)}</strong>
+                                    <span style="margin-left:8px;color:#6b7280;">${(s.sale_items || []).length} item${(s.sale_items || []).length !== 1 ? 's' : ''}</span>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-weight:600;">R ${parseFloat(s.total_amount || 0).toFixed(2)}</div>
+                                    <div style="color:#9ca3af;font-size:11px;">${s.created_at ? new Date(s.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (e) {
+                console.log('Recent activity load error:', e);
             }
 
             // Load alerts
@@ -9154,18 +9204,19 @@
                     const alertData = await alertRes.json();
                     const alerts = alertData.alerts || [];
                     const alertsDiv = document.getElementById('dashboardAlerts');
-                    if (alerts.length === 0) {
-                        alertsDiv.innerHTML = '<div class="empty-state"><div class="icon">&#9989;</div><p>No active alerts</p></div>';
-                    } else {
-                        alertsDiv.innerHTML = alerts.map(a => `
+                    if (alerts.length > 0) {
+                        const existingContent = alertsDiv.querySelector('.empty-state') ? '' : alertsDiv.innerHTML;
+                        alertsDiv.innerHTML = existingContent + alerts.map(a => `
                             <div class="alert-row ${a.severity === 'critical' ? 'critical' : 'warning'}">
                                 <div>
-                                    <strong>${a.alert_type}</strong>
-                                    <div style="font-size:12px;color:#666;">${a.severity} - ${new Date(a.created_at).toLocaleString()}</div>
+                                    <strong>${escHtml(a.alert_type)}</strong>
+                                    <div style="font-size:12px;color:#666;">${escHtml(a.severity)} - ${new Date(a.created_at).toLocaleString()}</div>
                                 </div>
-                                <span class="status-badge ${a.status === 'open' ? 'alert' : 'pending'}">${a.status}</span>
+                                <span class="status-badge ${a.status === 'open' ? 'alert' : 'pending'}">${escHtml(a.status)}</span>
                             </div>
                         `).join('');
+                    } else if (!alertsDiv.querySelector('.alert-row')) {
+                        alertsDiv.innerHTML = '<div class="empty-state"><div class="icon">&#9989;</div><p>No active alerts</p></div>';
                     }
                 }
             } catch (e) {
@@ -9186,8 +9237,8 @@
                     } else {
                         tbody.innerHTML = locations.map(l => `
                             <tr>
-                                <td><strong>${l.location_name}</strong></td>
-                                <td>${l.location_type}</td>
+                                <td><strong>${escHtml(l.location_name)}</strong></td>
+                                <td>${escHtml(l.location_type)}</td>
                                 <td>-</td>
                                 <td>-</td>
                                 <td><span class="status-badge ${l.is_active ? 'active' : 'closed'}">${l.is_active ? 'Active' : 'Inactive'}</span></td>
@@ -9491,23 +9542,24 @@
         // Loyalty
         async function loadLoyaltyPrograms() {
             try {
-                const res = await fetch(`${API_URL}/loyalty/programs`, {
+                const res = await fetch(`${API_URL}/pos/loyalty/program`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    const programs = data.programs || [];
+                    // Backend returns a single program object in data.program
+                    const programs = data.program ? [data.program] : [];
                     const tbody = document.getElementById('loyaltyProgramsBody');
                     if (programs.length === 0) {
                         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">No loyalty programs configured. Create one to get started.</td></tr>';
                     } else {
                         tbody.innerHTML = programs.map(p => `
                             <tr>
-                                <td><strong>${p.program_name}</strong></td>
-                                <td>${p.points_per_currency}</td>
-                                <td>R ${parseFloat(p.points_value || 0).toFixed(2)}</td>
-                                <td>${p.minimum_redemption} pts</td>
-                                <td>${p.points_expiry_months ? p.points_expiry_months + ' months' : 'Never'}</td>
+                                <td><strong>${escHtml(p.name || 'Loyalty Program')}</strong></td>
+                                <td>${parseFloat(p.points_per_rand || 0).toFixed(2)}</td>
+                                <td>R ${parseFloat(p.redemption_rate || 0).toFixed(4)}</td>
+                                <td>${p.min_redemption_points || 0} pts</td>
+                                <td>—</td>
                                 <td><span class="status-badge ${p.is_active ? 'active' : 'closed'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
                             </tr>
                         `).join('');
@@ -9527,6 +9579,45 @@
             document.getElementById('loyPromotions').style.display = tab === 'promotions' ? 'block' : 'none';
 
             if (tab === 'promotions') loadPromotions();
+            if (tab === 'members') loadLoyaltyMembers();
+        }
+
+        async function loadLoyaltyMembers(searchTerm) {
+            const tbody = document.getElementById('loyaltyMembersBody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading members...</td></tr>';
+            try {
+                const params = new URLSearchParams({ active_only: 'true' });
+                if (searchTerm) params.set('search', searchTerm);
+                const res = await fetch(`${API_URL}/pos/customers?${params}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#f44336;padding:20px;">Error loading members.</td></tr>'; return; }
+                const data = await res.json();
+                const customers = (data.customers || []).filter(c => c.loyalty_points !== undefined && c.loyalty_points !== null || c.loyalty_tier);
+                if (customers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">No loyalty members found.</td></tr>';
+                } else {
+                    tbody.innerHTML = customers.map(c => `
+                        <tr>
+                            <td><strong>${escHtml(c.name || '—')}</strong><div style="font-size:12px;color:#999;">${escHtml(c.email || c.phone || '')}</div></td>
+                            <td>${escHtml(c.loyalty_number || c.id || '—')}</td>
+                            <td>—</td>
+                            <td>${escHtml(c.loyalty_tier || 'Standard')}</td>
+                            <td>${parseFloat(c.loyalty_points || 0).toFixed(0)} pts</td>
+                            <td>—</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) {
+                console.log('Loyalty members load error:', e);
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#f44336;padding:20px;">Error loading members.</td></tr>';
+            }
+        }
+
+        function searchLoyaltyMembers() {
+            const term = (document.getElementById('loyMemberSearch')?.value || '').trim();
+            loadLoyaltyMembers(term || undefined);
         }
 
         async function loadPromotions() {
@@ -9569,7 +9660,6 @@
             }
         }
 
-        function searchLoyaltyMembers() { /* placeholder */ }
         function showNewProgramModal() { showNotification('Program creation coming soon', 'info'); }
         function showEnrollCustomerModal() { showNotification('Customer enrollment coming soon', 'info'); }
         function showNewPromotionModal() { showNotification('Promotion creation coming soon', 'info'); }
@@ -9587,13 +9677,15 @@
         }
 
         async function loadMainCompanyInfo() {
-            // Set immediate fallback from session data
-            if (currentCompanyName) {
-                document.getElementById('mainCompanyName').textContent = currentCompanyName;
-            }
+            // Always clear "Loading..." immediately — never leave the user on a spinner
+            document.getElementById('mainCompanyName').textContent = currentCompanyName || 'My Company';
+            document.getElementById('mainCompanyVat').textContent = '-';
+            document.getElementById('mainCompanyDetails').textContent = '';
+
+            if (!currentCompanyId) return;
 
             try {
-                const res = await fetch(`${API_URL}/auth/company-info`, {
+                const res = await fetch(`${API_URL}/companies/${currentCompanyId}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {
@@ -9604,29 +9696,23 @@
                     document.getElementById('mainCompanyDetails').textContent =
                         `${company.trading_name || ''} ${company.address ? '| ' + company.address : ''}`.trim() || '';
                 } else {
-                    // API error - use session data as fallback
-                    const errorData = await res.json().catch(() => ({}));
-                    console.log('Company info API error:', res.status, errorData);
-                    document.getElementById('mainCompanyName').textContent = currentCompanyName || 'My Company';
-                    document.getElementById('mainCompanyVat').textContent = '-';
+                    console.log('Company info API error:', res.status);
                 }
             } catch (e) {
                 console.log('Error loading main company:', e);
-                document.getElementById('mainCompanyName').textContent = currentCompanyName || 'My Company';
-                document.getElementById('mainCompanyVat').textContent = '-';
             }
         }
 
         async function loadLocations() {
+            const tbody = document.getElementById('locationsTableBody');
             try {
-                const res = await fetch(`${API_URL}/auth/locations`, {
+                const res = await fetch(`${API_URL}/companies`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const tbody = document.getElementById('locationsTableBody');
 
                 if (res.ok) {
                     const data = await res.json();
-                    const locations = data.locations || [];
+                    const locations = (data.companies || []).filter(c => c.is_location === true);
 
                     if (locations.length === 0) {
                         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">No locations yet. Add your first store location.</td></tr>';
@@ -9652,16 +9738,16 @@
         }
 
         async function loadOtherCompanies() {
+            const tbody = document.getElementById('otherCompaniesTableBody');
             try {
-                const res = await fetch(`${API_URL}/auth/my-companies`, {
+                const res = await fetch(`${API_URL}/companies`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const tbody = document.getElementById('otherCompaniesTableBody');
 
                 if (res.ok) {
                     const data = await res.json();
-                    // Filter out current company and locations
-                    const companies = (data.companies || []).filter(c => !c.is_location && c.id !== selectedCompanyId);
+                    // Filter out current company and locations (is_location not in schema — always false)
+                    const companies = (data.companies || []).filter(c => !c.is_location && c.id !== (selectedCompanyId || currentCompanyId));
 
                     if (companies.length === 0) {
                         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">No other companies. Register a new company to manage multiple businesses.</td></tr>';
@@ -10334,10 +10420,12 @@
         async function loadGeneralSettings() {
             try {
                 // Load company info
-                const companyRes = await fetch(`${API_URL}/auth/company-info`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (companyRes.ok) {
+                const companyRes = currentCompanyId
+                    ? await fetch(`${API_URL}/companies/${currentCompanyId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                      })
+                    : null;
+                if (companyRes && companyRes.ok) {
                     const companyData = await companyRes.json();
                     const company = companyData.company || {};
                     document.getElementById('settingsCompanyName').value = company.company_name || '';
@@ -10378,22 +10466,24 @@
         async function saveGeneralSettings() {
             try {
                 // Save company info
-                const companyRes = await fetch(`${API_URL}/auth/company-info`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        company_name: document.getElementById('settingsCompanyName').value.trim(),
-                        trading_name: document.getElementById('settingsTradingName').value.trim() || null,
-                        vat_number: document.getElementById('settingsVatNumber').value.trim() || null,
-                        registration_number: document.getElementById('settingsRegNumber').value.trim() || null,
-                        contact_phone: document.getElementById('settingsPhone').value.trim() || null,
-                        contact_email: document.getElementById('settingsEmail').value.trim() || null,
-                        address: document.getElementById('settingsAddress').value.trim() || null
+                const companyRes = currentCompanyId
+                    ? await fetch(`${API_URL}/companies/${currentCompanyId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            company_name: document.getElementById('settingsCompanyName').value.trim(),
+                            trading_name: document.getElementById('settingsTradingName').value.trim() || null,
+                            vat_number: document.getElementById('settingsVatNumber').value.trim() || null,
+                            registration_number: document.getElementById('settingsRegNumber').value.trim() || null,
+                            contact_phone: document.getElementById('settingsPhone').value.trim() || null,
+                            contact_email: document.getElementById('settingsEmail').value.trim() || null,
+                            address: document.getElementById('settingsAddress').value.trim() || null
+                        })
                     })
-                });
+                    : null;
 
                 // Save company settings
                 const settingsRes = await fetch(`${API_URL}/pos/settings`, {
@@ -11263,7 +11353,7 @@
 
         async function showCustomerDetail(customerId) {
             try {
-                const res = await fetch(`${API_URL}/customers/${customerId}`, {
+                const res = await fetch(`${API_URL}/pos/customers/${customerId}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -11398,7 +11488,7 @@
 
         async function loadCustomerAccountHistory(customerId) {
             try {
-                const res = await fetch(`${API_URL}/customers/${customerId}/account`, {
+                const res = await fetch(`${API_URL}/pos/customers/${customerId}/account`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -11406,7 +11496,7 @@
                 const txns = data.transactions || [];
 
                 container.innerHTML = `
-                    <div style="margin-bottom:10px;font-weight:600;">Balance: R ${parseFloat(data.current_balance || 0).toFixed(2)} | Limit: R ${parseFloat(data.credit_limit || 0).toFixed(2)}</div>
+                    <div style="margin-bottom:10px;font-weight:600;">Balance: R ${parseFloat(data.balance || 0).toFixed(2)} | Limit: R ${parseFloat(data.customer?.credit_limit || 0).toFixed(2)}</div>
                     ${txns.length === 0 ? '<div style="color:#999;padding:10px;">No account transactions yet</div>' : `
                     <table class="products-table" style="font-size:12px;">
                         <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Reference</th></tr></thead>
@@ -11497,7 +11587,7 @@
             if (!amount || isNaN(amount)) return;
 
             try {
-                const res = await fetch(`${API_URL}/customers/${customerId}/account/payment`, {
+                const res = await fetch(`${API_URL}/pos/customers/${customerId}/account/payment`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ amount: parseFloat(amount), reference: 'Counter payment', payment_method: 'CASH' })
