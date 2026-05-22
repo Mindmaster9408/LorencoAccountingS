@@ -325,16 +325,19 @@
             display: block;
             object-fit: cover;
         }
-        /* CC full-image card — fills the full grid-stretched card height */
+        /* CC full-image card — contain preserves full branding, no text crop */
         .checkout-charlie-card-img {
-            object-fit: cover;
-            height: 100%;       /* fills whatever height the grid row gives the card */
-            min-height: 230px;  /* safety floor when card has no row-peer */
+            object-fit: contain;
+            object-position: center center;
+            height: 100%;
+            min-height: 230px;
+            background: #050814;  /* matches logo dark background, fills letterbox areas */
         }
-        /* Ensure the card div itself passes its grid height to children */
+        /* Card is flex-column so image can flex:1 to fill grid row height */
         .app-card.pos.app-card-image-only {
             display: flex;
             flex-direction: column;
+            background: #050814;  /* consistent background behind letterbox edges */
         }
         .app-card.pos.app-card-image-only .app-card-full-image {
             flex: 1;
