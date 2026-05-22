@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Historical Comparatives — Lorenco Accounting</title>
+  <link rel="stylesheet" href="/accounting/css/main.css" />
+  <style>
+    /* ── Page Layout ─────────────────────────────────────────────────── */
+    .page-container {
+      padding: 24px 32px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .page-header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-primary, #1a1a2e);
+      margin: 0;
+    }
+    .page-header .subtitle {
+      font-size: 13px;
+      color: var(--text-secondary, #666);
+      margin-top: 4px;
+    }
+
+    /* ── Tabs ────────────────────────────────────────────────────────── */
+    .tab-bar {
+      display: flex;
+      border-bottom: 2px solid var(--border, #e5e7eb);
+      margin-bottom: 24px;
+      gap: 4px;
+    }
+    .tab-btn {
+      padding: 8px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      color: var(--text-secondary, #666);
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn.active {
+      color: var(--primary, #2563eb);
+      border-bottom-color: var(--primary, #2563eb);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards ───────────────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary, #1a1a2e);
+      margin: 0;
+    }
+
+    /* ── Forms ───────────────────────────────────────────────────────── */
+    .form-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 180px;
+    }
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary, #666);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      padding: 8px 12px;
+      border: 1px solid var(--border, #d1d5db);
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--text-primary, #1a1a2e);
+      background: #fff;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: var(--primary, #2563eb);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────────────── */
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn-primary { background: var(--primary, #2563eb); color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .btn-secondary:hover { background: #e5e7eb; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-success:hover { background: #15803d; }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-sm { padding: 5px 11px; font-size: 13px; }
+
+    /* ── Batch List ──────────────────────────────────────────────────── */
+    .batch-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .batch-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      background: #fff;
+    }
+    .batch-item:hover { border-color: var(--primary, #2563eb); background: #f0f6ff; }
+    .batch-item.selected { border-color: var(--primary, #2563eb); background: #eff6ff; }
+    .batch-item-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .batch-status {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .status-draft    { background: #fef3c7; color: #92400e; }
+    .status-validated { background: #d1fae5; color: #065f46; }
+    .status-finalized { background: #e0e7ff; color: #3730a3; }
+    .status-archived  { background: #f3f4f6; color: #6b7280; }
+
+    /* ── Finalized Banner ────────────────────────────────────────────── */
+    .finalized-banner {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 12px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: #1e40af;
+    }
+    .finalized-banner .icon { font-size: 18px; }
+    .finalized-banner strong { font-weight: 600; }
+
+    /* ── Account Search ──────────────────────────────────────────────── */
+    .account-search-wrap {
+      position: relative;
+    }
+    .account-search-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid var(--border, #d1d5db);
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      z-index: 100;
+      max-height: 220px;
+      overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .account-result-item {
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .account-result-item:hover { background: #f0f6ff; }
+    .account-result-item .code { font-weight: 600; color: #374151; margin-right: 8px; }
+    .account-result-item .type { font-size: 11px; color: #9ca3af; float: right; }
+
+    /* ── Capture Grid ────────────────────────────────────────────────── */
+    .grid-wrapper {
+      overflow-x: auto;
+    }
+    .capture-grid {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 13px;
+    }
+    .capture-grid th {
+      background: #f8fafc;
+      padding: 8px 12px;
+      text-align: right;
+      font-size: 11px;
+      font-weight: 700;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #e5e7eb;
+      white-space: nowrap;
+    }
+    .capture-grid th.col-month { text-align: left; }
+    .capture-grid td {
+      padding: 4px 6px;
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: middle;
+    }
+    .capture-grid td.col-month {
+      font-weight: 600;
+      color: #374151;
+      white-space: nowrap;
+      padding-left: 12px;
+      font-size: 13px;
+    }
+    .capture-grid tr.fy-separator td {
+      border-top: 2px solid #dbeafe;
+      background: #f0f6ff;
+    }
+    .amount-cell {
+      width: 140px;
+      text-align: right;
+      padding: 5px 8px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      background: transparent;
+      transition: border-color 0.15s, background 0.15s;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .amount-cell:focus {
+      outline: none;
+      border-color: var(--primary, #2563eb);
+      background: #fff;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.12);
+    }
+    .amount-cell.has-value { color: #1a1a2e; font-weight: 500; }
+    .amount-cell.zero     { color: #d1d5db; }
+    .amount-cell:disabled { background: #f9fafb; color: #9ca3af; cursor: not-allowed; }
+    .grid-total-row td {
+      font-weight: 700;
+      background: #f0fdf4;
+      border-top: 2px solid #bbf7d0;
+      padding: 7px 12px;
+    }
+
+    /* ── Report Table ────────────────────────────────────────────────── */
+    .report-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 13px;
+    }
+    .report-table th {
+      background: #f8fafc;
+      padding: 9px 14px;
+      text-align: right;
+      font-size: 11px;
+      font-weight: 700;
+      color: #6b7280;
+      text-transform: uppercase;
+      border-bottom: 2px solid #e5e7eb;
+      white-space: nowrap;
+    }
+    .report-table th.col-account { text-align: left; }
+    .report-table td {
+      padding: 8px 14px;
+      border-bottom: 1px solid #f3f4f6;
+      text-align: right;
+    }
+    .report-table td.col-account {
+      text-align: left;
+      font-weight: 500;
+      color: #111827;
+    }
+    .report-table td.col-code {
+      text-align: left;
+      color: #6b7280;
+      font-size: 12px;
+    }
+    .report-table tr:hover td { background: #f9fafb; }
+
+    /* ── Empty States ────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: #9ca3af;
+    }
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; margin: 4px 0; }
+
+    /* ── Messages ────────────────────────────────────────────────────── */
+    .msg { padding: 10px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; display: none; }
+    .msg.visible { display: block; }
+    .msg-error   { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .msg-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .msg-info    { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .msg ul { margin: 6px 0 0 16px; padding: 0; }
+
+    /* ── Action Row ──────────────────────────────────────────────────── */
+    .action-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="navigation"></div>
+
+  <div class="page-container">
+    <div class="page-header">
+      <div>
+        <h1>Historical Comparative Financials</h1>
+        <div class="subtitle">
+          Capture and compare historical monthly financial data across multiple financial years
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="openCreateBatchModal()">+ New Batch</button>
+    </div>
+
+    <!-- ── TABS ───────────────────────────────────────────────────────── -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('capture', this)">Data Capture</button>
+      <button class="tab-btn" onclick="switchTab('reports', this)">Comparative Reports</button>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- TAB: CAPTURE                                                      -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div id="tab-capture" class="tab-panel active">
+      <div style="display:grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start;">
+
+        <!-- Batch Selector Panel -->
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Batches</span>
+              <select id="batchStatusFilter" onchange="loadBatches()" style="font-size:12px; padding:4px 8px; border:1px solid #d1d5db; border-radius:4px;">
+                <option value="">All statuses</option>
+                <option value="draft">Draft</option>
+                <option value="validated">Validated</option>
+                <option value="finalized">Finalized</option>
+              </select>
+            </div>
+            <div id="batchList" class="batch-list">
+              <div class="empty-state" style="padding: 24px;">
+                <p>Loading batches…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Capture Area -->
+        <div id="captureMain">
+          <div class="empty-state card">
+            <div class="icon">📋</div>
+            <p style="font-size:15px; font-weight:600; color:#374151;">Select a batch to begin</p>
+            <p>Choose a batch from the list, or create a new one to start capturing historical data.</p>
+            <br>
+            <button class="btn btn-primary" onclick="openCreateBatchModal()">+ Create Batch</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- TAB: REPORTS                                                      -->
+    <!-- ════════════════════════════════════════════════════════════════ -->
+    <div id="tab-reports" class="tab-panel">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Monthly P&amp;L Comparative Report</span>
+        </div>
+        <div class="form-row" style="margin-bottom:20px;">
+          <div class="form-group" style="max-width:160px;">
+            <label>Year From</label>
+            <input type="number" id="rptYearFrom" min="2000" max="2099" value="" placeholder="2021" />
+          </div>
+          <div class="form-group" style="max-width:160px;">
+            <label>Year To</label>
+            <input type="number" id="rptYearTo" min="2000" max="2099" value="" placeholder="2024" />
+          </div>
+          <div class="form-group" style="max-width:200px;">
+            <label>Account Type</label>
+            <select id="rptAccountType">
+              <option value="">All types</option>
+              <option value="Income">Income</option>
+              <option value="Expense">Expense</option>
+              <option value="Asset">Asset</option>
+              <option value="Liability">Liability</option>
+              <option value="Equity">Equity</option>
+            </select>
+          </div>
+          <div class="form-group" style="justify-content:flex-end; max-width:140px;">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary" onclick="loadReport()">Generate</button>
+          </div>
+        </div>
+        <div id="rptMsg" class="msg"></div>
+        <div id="reportOutput">
+          <div class="empty-state" style="padding:36px;">
+            <p>Set a year range and click Generate to view the report.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CREATE BATCH MODAL ─────────────────────────────────────────────── -->
+  <div id="createBatchModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:10px; padding:28px; width:480px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+      <h2 style="font-size:17px; font-weight:600; margin:0 0 20px 0; color:#1a1a2e;">New Historical Batch</h2>
+      <div id="createBatchMsg" class="msg"></div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Description *</label>
+          <input type="text" id="cbDescription" placeholder="e.g. FY2021–2023 historical capture" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>FY Start (year)</label>
+          <input type="number" id="cbFYStart" min="2000" max="2099" placeholder="2021" />
+        </div>
+        <div class="form-group">
+          <label>FY End (year)</label>
+          <input type="number" id="cbFYEnd" min="2000" max="2099" placeholder="2023" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Report Basis</label>
+          <select id="cbReportBasis">
+            <option value="profit_loss">Profit &amp; Loss</option>
+            <option value="trial_balance">Trial Balance</option>
+            <option value="balance_sheet">Balance Sheet</option>
+            <option value="mixed">Mixed</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Source</label>
+          <select id="cbSourceType">
+            <option value="manual">Manual capture</option>
+            <option value="tb_import">TB import</option>
+            <option value="csv">CSV</option>
+            <option value="excel">Excel</option>
+            <option value="opening_capture">Opening capture</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeCreateBatchModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitCreateBatch()">Create Batch</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/accounting/js/navigation.js"></script>
+  <script>
+    // ── Bootstrap ────────────────────────────────────────────────────────
+    document.getElementById('navigation').innerHTML = createNavigation();
+
+    // SA Financial Year month order: Mar(3)…Feb(2)
+    const SA_MONTHS = [3,4,5,6,7,8,9,10,11,12,1,2];
+    const MONTH_NAMES = {
+      1:'January',2:'February',3:'March',4:'April',
+      5:'May',6:'June',7:'July',8:'August',
+      9:'September',10:'October',11:'November',12:'December'
+    };
+    const MONTH_SHORT = {
+      1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',
+      7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'
+    };
+
+    let currentBatch = null;
+    let currentLines = [];
+
+    // ── API helpers ──────────────────────────────────────────────────────
+    const BASE = '/api/accounting/historical-comparatives';
+
+    async function api(method, path, body) {
+      const opts = {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(BASE + path, opts);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      return json;
+    }
+
+    // ── Tab switching ────────────────────────────────────────────────────
+    function switchTab(name, btn) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    // ── Batches ──────────────────────────────────────────────────────────
+    async function loadBatches() {
+      const status = document.getElementById('batchStatusFilter').value;
+      try {
+        const data = await api('GET', `/batches${status ? '?status=' + status : ''}`);
+        renderBatchList(data.batches || []);
+      } catch (e) {
+        document.getElementById('batchList').innerHTML =
+          `<p style="color:#dc2626; font-size:13px; padding:12px;">${e.message}</p>`;
+      }
+    }
+
+    function renderBatchList(batches) {
+      const el = document.getElementById('batchList');
+      if (!batches.length) {
+        el.innerHTML = `<div class="empty-state" style="padding:24px;"><p>No batches found.</p></div>`;
+        return;
+      }
+      el.innerHTML = batches.map(b => `
+        <div class="batch-item${currentBatch && currentBatch.id === b.id ? ' selected' : ''}"
+             onclick="selectBatch(${JSON.stringify(b).replace(/"/g, '&quot;')})">
+          <div>
+            <div style="font-weight:600; font-size:14px;">${escHtml(b.description || 'Untitled')}</div>
+            <div class="batch-item-meta">
+              FY ${b.financial_year_start || '?'} – ${b.financial_year_end || '?'}
+              &nbsp;·&nbsp; ${new Date(b.created_at).toLocaleDateString('en-ZA')}
+            </div>
+          </div>
+          <span class="batch-status status-${b.status}">${b.status}</span>
+        </div>
+      `).join('');
+    }
+
+    async function selectBatch(batch) {
+      currentBatch = batch;
+      await loadBatches(); // re-render to show selected highlight
+      await renderCaptureMain(batch);
+    }
+
+    // ── Capture Main ─────────────────────────────────────────────────────
+    async function renderCaptureMain(batch) {
+      const main = document.getElementById('captureMain');
+      const isFinalized = batch.status === 'finalized';
+
+      let linesData = [];
+      try {
+        const d = await api('GET', `/batch/${batch.id}/lines`);
+        linesData = d.lines || [];
+        currentLines = linesData;
+      } catch (e) {
+        main.innerHTML = `<div class="card"><p style="color:#dc2626;">${e.message}</p></div>`;
+        return;
+      }
+
+      // Build the year columns from batch config
+      const fyStart = batch.financial_year_start;
+      const fyEnd   = batch.financial_year_end;
+      const years   = [];
+      if (fyStart && fyEnd) {
+        for (let y = fyStart; y <= fyEnd; y++) years.push(y);
+      }
+
+      // Build account map from existing lines
+      const accountMap = {};
+      for (const line of linesData) {
+        const key = line.account_id ? `id_${line.account_id}` : `txt_${line.account_name}`;
+        if (!accountMap[key]) {
+          accountMap[key] = {
+            account_id: line.account_id,
+            account_code: line.account_code,
+            account_name: line.account_name,
+            account_type: line.account_type,
+            data: {},
+          };
+        }
+        if (!accountMap[key].data[line.financial_year]) {
+          accountMap[key].data[line.financial_year] = {};
+        }
+        accountMap[key].data[line.financial_year][line.period_month] = line.amount;
+      }
+
+      const accountRows = Object.values(accountMap);
+
+      main.innerHTML = `
+        ${isFinalized ? `
+          <div class="finalized-banner">
+            <span class="icon">🔒</span>
+            <div>
+              <strong>This batch is finalized and locked.</strong>
+              Finalized data cannot be edited. To make corrections, create a new batch.
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">${escHtml(batch.description || 'Batch')}</span>
+            <div class="action-row">
+              ${!isFinalized ? `
+                <button class="btn btn-secondary btn-sm" onclick="openAddAccountRow()">+ Add Account</button>
+                <button class="btn btn-secondary btn-sm" onclick="saveAllGrids()">Save All</button>
+                <button class="btn btn-secondary btn-sm" onclick="validateBatch()">Validate</button>
+                <button class="btn btn-success btn-sm" onclick="finalizeBatch()" ${batch.status !== 'validated' ? 'title="Validate first" style="opacity:0.5"' : ''}>
+                  Finalize
+                </button>
+              ` : ''}
+            </div>
+          </div>
+
+          <div id="captureMsg" class="msg"></div>
+
+          ${!isFinalized ? `
+            <!-- Account Search -->
+            <div class="form-row" id="addAccountRow" style="${accountRows.length > 0 ? 'display:none;' : ''}">
+              <div class="form-group" style="max-width:400px;">
+                <label>Search Account (COA)</label>
+                <div class="account-search-wrap">
+                  <input type="text" id="accountSearch" placeholder="Type account name or code…"
+                    oninput="searchAccounts(this.value)" autocomplete="off" />
+                  <div id="accountSearchResults" class="account-search-results" style="display:none;"></div>
+                </div>
+              </div>
+              <div class="form-group" style="max-width:200px;">
+                <label>Financial Year</label>
+                <select id="addFY">
+                  ${years.map(y => `<option value="${y}">${y}/${String(y+1).slice(-2)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          ` : ''}
+
+          <div id="accountGrids">
+            ${accountRows.length === 0 ? `
+              <div class="empty-state" style="padding:32px;">
+                <div class="icon">📊</div>
+                <p style="font-size:15px; font-weight:600; color:#374151;">No data captured yet</p>
+                <p>Search for an account above to begin entering historical figures.</p>
+              </div>
+            ` : accountRows.map(acc => buildAccountGrid(acc, years, isFinalized)).join('')}
+          </div>
+        </div>
+      `;
+
+      // Re-attach close-dropdown listener
+      document.addEventListener('click', closeAccountDropdown, { once: true });
+    }
+
+    function buildAccountGrid(acc, years, disabled) {
+      const gridId = `grid_${acc.account_id || acc.account_name.replace(/\W/g, '_')}`;
+      const showYears = years.length > 0 ? years : [new Date().getFullYear()];
+
+      let header = `<tr>
+        <th class="col-month">Month</th>
+        ${showYears.map(y => `<th>FY ${y}/${String(y+1).slice(-2)}</th>`).join('')}
+      </tr>`;
+
+      let rows = SA_MONTHS.map((month, idx) => {
+        const isSep = idx === 0;
+        const cells = showYears.map(y => {
+          const val = (acc.data && acc.data[y] && acc.data[y][month] !== undefined)
+            ? acc.data[y][month] : 0;
+          const isZero = !val;
+          return `<td>
+            <input type="text"
+              class="amount-cell${isZero ? ' zero' : ' has-value'}"
+              ${disabled ? 'disabled' : ''}
+              data-account-id="${acc.account_id || ''}"
+              data-account-code="${escHtml(acc.account_code || '')}"
+              data-account-name="${escHtml(acc.account_name)}"
+              data-account-type="${escHtml(acc.account_type || '')}"
+              data-year="${y}"
+              data-month="${month}"
+              value="${formatCurrency(val)}"
+              onfocus="onAmountFocus(this)"
+              onblur="onAmountBlur(this)"
+              onkeydown="handleGridKey(event, this)"
+            />
+          </td>`;
+        }).join('');
+
+        return `<tr${isSep ? ' class="fy-separator"' : ''}>
+          <td class="col-month">${MONTH_SHORT[month]}</td>
+          ${cells}
+        </tr>`;
+      }).join('');
+
+      // Totals row
+      const totals = showYears.map(y => {
+        const sum = SA_MONTHS.reduce((s, m) => s + (acc.data && acc.data[y] && acc.data[y][m] ? parseFloat(acc.data[y][m]) : 0), 0);
+        return `<td><strong>${formatCurrency(sum)}</strong></td>`;
+      }).join('');
+
+      return `
+        <div class="account-grid-block" style="margin-bottom:28px;" id="${gridId}">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div>
+              <span style="font-weight:700; font-size:14px;">${escHtml(acc.account_name)}</span>
+              ${acc.account_code ? `<span style="margin-left:8px; color:#6b7280; font-size:13px;">${escHtml(acc.account_code)}</span>` : ''}
+              ${acc.account_type ? `<span style="margin-left:8px; font-size:11px; color:#9ca3af; text-transform:uppercase;">${escHtml(acc.account_type)}</span>` : ''}
+            </div>
+            ${!disabled ? `<button class="btn btn-secondary btn-sm" onclick="saveAccountGrid('${gridId}', ${JSON.stringify(acc).replace(/"/g, '&quot;')}, [${showYears.join(',')}])">Save</button>` : ''}
+          </div>
+          <div class="grid-wrapper">
+            <table class="capture-grid" id="tbl_${gridId}">
+              <thead>${header}</thead>
+              <tbody>${rows}</tbody>
+              <tfoot><tr class="grid-total-row"><td class="col-month">TOTAL</td>${totals}</tr></tfoot>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── Account Grid: focus/blur/keyboard ────────────────────────────────
+    function onAmountFocus(input) {
+      const raw = parseCurrency(input.value);
+      input.value = raw === 0 ? '' : String(raw);
+      input.select();
+    }
+
+    function onAmountBlur(input) {
+      const raw = parseCurrency(input.value);
+      input.value = formatCurrency(raw);
+      input.classList.toggle('zero', raw === 0);
+      input.classList.toggle('has-value', raw !== 0);
+      updateGridTotal(input);
+    }
+
+    function handleGridKey(event, input) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        // Move to the cell below in the same column
+        const tbl = input.closest('table');
+        if (!tbl) return;
+        const cells = Array.from(tbl.querySelectorAll('.amount-cell'));
+        const idx = cells.indexOf(input);
+        if (idx >= 0 && idx + 1 < cells.length) cells[idx + 1].focus();
+      }
+      // Tab moves naturally
+    }
+
+    function updateGridTotal(input) {
+      const tbl = input.closest('table');
+      if (!tbl) return;
+      const year = input.dataset.year;
+      // Find all cells for this year
+      const cells = Array.from(tbl.querySelectorAll(`.amount-cell[data-year="${year}"]`));
+      const sum = cells.reduce((s, c) => s + parseCurrency(c.value), 0);
+      // Find total cell for this year column
+      const colIdx = Array.from(tbl.querySelector('thead tr').children).findIndex(
+        th => th.textContent.trim().startsWith(`FY ${year}`)
+      );
+      if (colIdx >= 0) {
+        const totalRow = tbl.querySelector('tfoot tr');
+        if (totalRow && totalRow.children[colIdx]) {
+          totalRow.children[colIdx].innerHTML = `<strong>${formatCurrency(sum)}</strong>`;
+        }
+      }
+    }
+
+    // ── Account Search ───────────────────────────────────────────────────
+    let searchTimeout = null;
+    async function searchAccounts(query) {
+      const results = document.getElementById('accountSearchResults');
+      if (!query || query.trim().length < 2) {
+        results.style.display = 'none';
+        return;
+      }
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(async () => {
+        try {
+          const data = await api('GET', `/accounts/search?q=${encodeURIComponent(query)}`);
+          if (!data.accounts || data.accounts.length === 0) {
+            results.innerHTML = `<div class="account-result-item" style="color:#9ca3af;">No accounts found</div>`;
+          } else {
+            results.innerHTML = data.accounts.map(a => `
+              <div class="account-result-item"
+                   onclick="selectAccount(${JSON.stringify(a).replace(/"/g, '&quot;')})">
+                <span class="code">${escHtml(a.code || '')}</span>
+                ${escHtml(a.name)}
+                <span class="type">${escHtml(a.account_type || '')}</span>
+              </div>
+            `).join('');
+          }
+          results.style.display = 'block';
+        } catch (e) {
+          results.innerHTML = `<div class="account-result-item" style="color:#dc2626;">${e.message}</div>`;
+          results.style.display = 'block';
+        }
+      }, 250);
+    }
+
+    function closeAccountDropdown() {
+      const results = document.getElementById('accountSearchResults');
+      if (results) results.style.display = 'none';
+    }
+
+    function selectAccount(account) {
+      document.getElementById('accountSearchResults').style.display = 'none';
+      document.getElementById('accountSearch').value = '';
+
+      const fyEl = document.getElementById('addFY');
+      const fy = fyEl ? parseInt(fyEl.value) : new Date().getFullYear();
+
+      // Check if grid for this account already exists
+      const gridId = `grid_${account.id || account.name.replace(/\W/g, '_')}`;
+      if (document.getElementById(gridId)) {
+        showMsg('captureMsg', 'info', 'Account grid already added.');
+        return;
+      }
+
+      // Build FY list from batch
+      const fyStart = currentBatch.financial_year_start;
+      const fyEnd   = currentBatch.financial_year_end;
+      const years   = [];
+      if (fyStart && fyEnd) {
+        for (let y = fyStart; y <= fyEnd; y++) years.push(y);
+      }
+      if (!years.length) years.push(fy);
+
+      const acc = {
+        account_id: account.id,
+        account_code: account.code,
+        account_name: account.name,
+        account_type: account.account_type,
+        data: {},
+      };
+
+      const gridsEl = document.getElementById('accountGrids');
+      // Remove empty state if present
+      const emptyState = gridsEl.querySelector('.empty-state');
+      if (emptyState) emptyState.remove();
+
+      // Append the new grid
+      const div = document.createElement('div');
+      div.innerHTML = buildAccountGrid(acc, years, false);
+      gridsEl.appendChild(div.firstElementChild);
+
+      // Show add row
+      document.getElementById('addAccountRow').style.display = '';
+    }
+
+    function openAddAccountRow() {
+      const row = document.getElementById('addAccountRow');
+      if (row) {
+        row.style.display = '';
+        document.getElementById('accountSearch').focus();
+      }
+    }
+
+    // ── Save grid for one account ────────────────────────────────────────
+    async function saveAccountGrid(gridId, acc, years) {
+      const tbl = document.getElementById(`tbl_${gridId}`);
+      if (!tbl) return;
+
+      const cells = [];
+      SA_MONTHS.forEach(month => {
+        years.forEach(year => {
+          const input = tbl.querySelector(`.amount-cell[data-month="${month}"][data-year="${year}"]`);
+          if (input) {
+            cells.push({ periodMonth: month, amount: parseCurrency(input.value), year });
+          }
+        });
+      });
+
+      showMsg('captureMsg', 'info', 'Saving…');
+
+      try {
+        // Group cells by year and save each year as a grid call
+        const byYear = {};
+        for (const c of cells) {
+          if (!byYear[c.year]) byYear[c.year] = [];
+          byYear[c.year].push({ periodMonth: c.periodMonth, amount: c.amount });
+        }
+
+        for (const [year, yearCells] of Object.entries(byYear)) {
+          await api('POST', `/batch/${currentBatch.id}/manual-grid`, {
+            accountId: acc.account_id || null,
+            accountCode: acc.account_code || null,
+            accountName: acc.account_name,
+            accountType: acc.account_type || null,
+            financialYear: parseInt(year),
+            cells: yearCells,
+          });
+        }
+
+        showMsg('captureMsg', 'success', `Saved ${cells.length} cells for ${acc.account_name}.`);
+      } catch (e) {
+        showMsg('captureMsg', 'error', e.message);
+      }
+    }
+
+    async function saveAllGrids() {
+      const gridBlocks = document.querySelectorAll('.account-grid-block');
+      if (!gridBlocks.length) {
+        showMsg('captureMsg', 'info', 'No grids to save.');
+        return;
+      }
+      showMsg('captureMsg', 'info', `Saving ${gridBlocks.length} account grid(s)…`);
+
+      // Iterate grids and extract data
+      let saved = 0;
+      let errors = 0;
+      for (const block of gridBlocks) {
+        try {
+          const inputs = block.querySelectorAll('.amount-cell');
+          if (!inputs.length) continue;
+          const accountId = inputs[0].dataset.accountId || null;
+          const accountCode = inputs[0].dataset.accountCode || null;
+          const accountName = inputs[0].dataset.accountName;
+          const accountType = inputs[0].dataset.accountType || null;
+
+          // Group by year
+          const byYear = {};
+          for (const input of inputs) {
+            const year = parseInt(input.dataset.year);
+            const month = parseInt(input.dataset.month);
+            if (!byYear[year]) byYear[year] = [];
+            byYear[year].push({ periodMonth: month, amount: parseCurrency(input.value) });
+          }
+
+          for (const [year, yearCells] of Object.entries(byYear)) {
+            await api('POST', `/batch/${currentBatch.id}/manual-grid`, {
+              accountId: accountId || null,
+              accountCode,
+              accountName,
+              accountType,
+              financialYear: parseInt(year),
+              cells: yearCells,
+            });
+          }
+          saved++;
+        } catch (e) {
+          errors++;
+        }
+      }
+
+      if (errors) {
+        showMsg('captureMsg', 'error', `Saved ${saved}, failed ${errors}. Check console for details.`);
+      } else {
+        showMsg('captureMsg', 'success', `All ${saved} account grid(s) saved successfully.`);
+      }
+    }
+
+    // ── Validate & Finalize ──────────────────────────────────────────────
+    async function validateBatch() {
+      if (!currentBatch) return;
+      showMsg('captureMsg', 'info', 'Validating…');
+      try {
+        const result = await api('POST', `/batch/${currentBatch.id}/validate`, {});
+        if (result.valid) {
+          currentBatch.status = 'validated';
+          let msg = 'Batch validated successfully.';
+          if (result.warnings.length) msg += ' Warnings: ' + result.warnings.join('; ');
+          showMsg('captureMsg', 'success', msg);
+          loadBatches();
+        } else {
+          const errorList = result.errors.map(e => `<li>${escHtml(e)}</li>`).join('');
+          showMsg('captureMsg', 'error', `Validation failed:<ul>${errorList}</ul>`, true);
+        }
+      } catch (e) {
+        showMsg('captureMsg', 'error', e.message);
+      }
+    }
+
+    async function finalizeBatch() {
+      if (!currentBatch) return;
+      if (currentBatch.status !== 'validated') {
+        showMsg('captureMsg', 'error', 'The batch must be validated before it can be finalized.');
+        return;
+      }
+      if (!confirm(
+        'Finalizing is PERMANENT and cannot be undone.\n\n' +
+        'Once finalized, no edits can be made to this batch. ' +
+        'A new batch must be created for any corrections.\n\n' +
+        'Are you sure you want to finalize?'
+      )) return;
+
+      showMsg('captureMsg', 'info', 'Finalizing…');
+      try {
+        await api('POST', `/batch/${currentBatch.id}/finalize`, {});
+        showMsg('captureMsg', 'success', 'Batch finalized and locked.');
+        await loadBatches();
+        currentBatch.status = 'finalized';
+        await renderCaptureMain(currentBatch);
+      } catch (e) {
+        showMsg('captureMsg', 'error', e.message);
+      }
+    }
+
+    // ── Create Batch Modal ───────────────────────────────────────────────
+    function openCreateBatchModal() {
+      document.getElementById('createBatchModal').style.display = 'flex';
+      document.getElementById('cbDescription').focus();
+    }
+    function closeCreateBatchModal() {
+      document.getElementById('createBatchModal').style.display = 'none';
+    }
+    async function submitCreateBatch() {
+      const description   = document.getElementById('cbDescription').value.trim();
+      const fyStart       = document.getElementById('cbFYStart').value;
+      const fyEnd         = document.getElementById('cbFYEnd').value;
+      const reportBasis   = document.getElementById('cbReportBasis').value;
+      const sourceType    = document.getElementById('cbSourceType').value;
+
+      if (!description) {
+        showMsg('createBatchMsg', 'error', 'Description is required.');
+        return;
+      }
+
+      try {
+        showMsg('createBatchMsg', 'info', 'Creating…');
+        const data = await api('POST', '/batches', {
+          description, financialYearStart: fyStart || null,
+          financialYearEnd: fyEnd || null, reportBasis, sourceType,
+        });
+        closeCreateBatchModal();
+        await loadBatches();
+        await selectBatch(data.batch);
+      } catch (e) {
+        showMsg('createBatchMsg', 'error', e.message);
+      }
+    }
+
+    // ── Report ───────────────────────────────────────────────────────────
+    async function loadReport() {
+      const yearFrom = parseInt(document.getElementById('rptYearFrom').value);
+      const yearTo   = parseInt(document.getElementById('rptYearTo').value);
+      const accType  = document.getElementById('rptAccountType').value;
+
+      if (!yearFrom || !yearTo) {
+        showMsg('rptMsg', 'error', 'Both year values are required.');
+        return;
+      }
+      if (yearFrom > yearTo) {
+        showMsg('rptMsg', 'error', '"Year From" must be less than or equal to "Year To".');
+        return;
+      }
+
+      showMsg('rptMsg', 'info', 'Loading…');
+      try {
+        const qs = `financialYearStart=${yearFrom}&financialYearEnd=${yearTo}${accType ? '&accountType=' + accType : ''}`;
+        const report = await api('GET', `/reports/monthly-pl?${qs}`);
+        renderReport(report, yearFrom, yearTo);
+        document.getElementById('rptMsg').classList.remove('visible');
+      } catch (e) {
+        showMsg('rptMsg', 'error', e.message);
+        document.getElementById('reportOutput').innerHTML = '';
+      }
+    }
+
+    function renderReport(report, yearFrom, yearTo) {
+      const { accounts, years, monthOrder, monthNames } = report;
+      const out = document.getElementById('reportOutput');
+
+      if (!accounts || accounts.length === 0) {
+        out.innerHTML = `<div class="empty-state"><p>No finalized data found for the selected year range.</p></div>`;
+        return;
+      }
+
+      // Build header: Month | FY2021/Mar | FY2021/Apr | … | FY2022/Mar | …
+      let headers = '<th class="col-account">Account</th><th class="col-code">Code</th>';
+      for (const y of years) {
+        for (const m of monthOrder) {
+          headers += `<th style="min-width:80px;">${MONTH_SHORT[m]}<br><span style="font-size:10px;color:#9ca3af;">FY${y}</span></th>`;
+        }
+        headers += `<th style="min-width:90px;background:#f0fdf4;">Total<br><span style="font-size:10px;color:#9ca3af;">FY${y}</span></th>`;
+      }
+
+      let rows = '';
+      for (const acc of accounts) {
+        rows += `<tr>
+          <td class="col-account">${escHtml(acc.account_name)}</td>
+          <td class="col-code">${escHtml(acc.account_code || '')}</td>`;
+        for (const y of years) {
+          let yearTotal = 0;
+          for (const m of monthOrder) {
+            const val = (acc.years && acc.years[y] && acc.years[y][m]) ? acc.years[y][m] : 0;
+            yearTotal += val;
+            rows += `<td>${val !== 0 ? formatCurrency(val) : '<span style="color:#d1d5db;">—</span>'}</td>`;
+          }
+          rows += `<td style="font-weight:600;background:#f0fdf4;">${formatCurrency(yearTotal)}</td>`;
+        }
+        rows += '</tr>';
+      }
+
+      out.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table class="report-table">
+            <thead><tr>${headers}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div style="font-size:12px; color:#6b7280; margin-top:12px;">
+          Showing finalized data for FY${yearFrom}–FY${yearTo}.
+          Only data from finalized batches is included.
+        </div>
+      `;
+    }
+
+    // ── Utilities ────────────────────────────────────────────────────────
+    function formatCurrency(val) {
+      if (!val && val !== 0) return '0.00';
+      const n = parseFloat(val);
+      return n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function parseCurrency(str) {
+      if (!str) return 0;
+      return parseFloat(String(str).replace(/[^\d.-]/g, '')) || 0;
+    }
+
+    function escHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showMsg(elementId, type, text, isHtml) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.className = `msg msg-${type} visible`;
+      if (isHtml) el.innerHTML = text;
+      else el.textContent = text;
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────
+    loadBatches();
+
+    // Pre-populate report year range (current year and 3 years back)
+    const thisYear = new Date().getFullYear();
+    document.getElementById('rptYearFrom').value = thisYear - 3;
+    document.getElementById('rptYearTo').value = thisYear;
+  </script>
+</body>
+</html>

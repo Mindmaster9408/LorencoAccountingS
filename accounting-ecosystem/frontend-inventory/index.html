@@ -97,6 +97,8 @@ body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, 
 .btn-success:hover { background: rgba(16,185,129,0.25); }
 .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
 .btn-xs { padding: 3px 9px; font-size: 0.72rem; border-radius: 7px; }
+.btn-gold { background: linear-gradient(135deg,#f5c542,#d97706); color: #1a1a1a; }
+.btn-gold:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(245,197,66,0.35); }
 
 /* ── Table ── */
 .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
@@ -227,6 +229,8 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   <div class="tab-sep"></div>
   <div class="nav-tab manufacturing" onclick="switchTab('boms')">📋 BOMs</div>
   <div class="nav-tab manufacturing" onclick="switchTab('workorders')">⚙️ Work Orders</div>
+  <div class="tab-sep"></div>
+  <div class="nav-tab" onclick="switchTab('reports')" style="color:var(--eco-gold)">📊 Reports</div>
 </div>
 
 <div class="main">
@@ -378,6 +382,35 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     </div>
   </div>
   <div class="table-wrap" id="workordersTable"><div class="empty"><div class="empty-icon">⚙️</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     REPORTS — PHASE 2A COSTING
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-reports">
+  <div class="section-header">
+    <div class="section-title">Inventory Reports</div>
+    <div class="toolbar">
+      <select class="filter-select" id="reportType" onchange="onReportTypeChange()">
+        <option value="stock-valuation">Stock Valuation</option>
+        <option value="valuation-movements">Valuation Movements</option>
+        <option value="work-order-costs">Work Order Costs</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="loadSelectedReport()">↺ Refresh</button>
+      <button class="btn btn-gold" onclick="loadSelectedReport()" id="btnGenReport">Generate Report</button>
+    </div>
+  </div>
+  <!-- Date range filter (shown for movement/WO cost reports, hidden for stock valuation) -->
+  <div id="reportDateBar" style="display:none;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <label style="font-size:0.82rem;color:var(--text-muted)">From</label>
+    <input type="date" id="reportFrom" class="filter-select" style="width:150px">
+    <label style="font-size:0.82rem;color:var(--text-muted)">To</label>
+    <input type="date" id="reportTo" class="filter-select" style="width:150px">
+  </div>
+  <!-- Summary banner populated by each report -->
+  <div id="reportSummary" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 20px;margin-bottom:16px;"></div>
+  <!-- Table output -->
+  <div class="table-wrap" id="reportContainer"><div class="empty"><div class="empty-icon">📊</div><p>Select a report type and click Generate.</p></div></div>
 </div>
 
 </div><!-- /.main -->
@@ -762,6 +795,7 @@ async function switchTab(name) {
     if (name === 'orders')     await loadOrders();
     if (name === 'boms')       await loadBoms();
     if (name === 'workorders') await loadWorkOrders();
+    if (name === 'reports')    onReportTypeChange();
   }
 }
 
@@ -906,15 +940,18 @@ function renderItemsTable(items) {
   const wrap = document.getElementById('itemsTable');
   if (!items.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><p>No items found.</p></div>'; return; }
   wrap.innerHTML = `<table><thead><tr>
-    <th>Name / SKU</th><th>Type</th><th>Unit</th><th>Cost</th><th>Stock</th><th>Min</th><th>Location</th><th>Actions</th>
+    <th>Name / SKU</th><th>Type</th><th>Unit</th><th title="Weighted average cost">Avg Cost</th><th>Stock</th><th>Value</th><th>Min</th><th>Location</th><th>Actions</th>
   </tr></thead><tbody>${items.map(i=>{
     const low = parseFloat(i.current_stock||0) <= parseFloat(i.min_stock||0);
+    const avgCost = parseFloat(i.average_cost) || parseFloat(i.cost_price) || 0;
+    const totalVal = avgCost * (parseFloat(i.current_stock) || 0);
     return `<tr>
       <td><div style="font-weight:700">${esc(i.name)}</div>${i.sku?`<div style="font-size:0.72rem;color:var(--text-muted)">${esc(i.sku)}</div>`:''}${i.barcode?`<div style="font-size:0.7rem;color:var(--text-muted)">🔲 ${esc(i.barcode)}</div>`:''}</td>
       <td>${itemTypeBadge(i.item_type)}</td>
       <td>${esc(i.unit||'unit')}</td>
-      <td>${fmtR(i.cost_price)}</td>
+      <td>${fmtR(avgCost)}</td>
       <td class="${low?'low-stock':''}">${fmtQty(i.current_stock)}</td>
+      <td style="font-size:0.82rem;color:var(--eco-cyan)">${fmtR(totalVal)}</td>
       <td>${fmtQty(i.min_stock)}</td>
       <td>${esc(i.warehouses?.name||'—')}</td>
       <td class="td-actions">
@@ -1630,6 +1667,176 @@ async function confirmCompleteWo() {
     showToast('Work order completed. Stock updated.');
     await loadWorkOrders(); await loadItems(); await loadDashboard();
   } catch(e) { showToast(e.message, true); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVENTORY REPORTS — Phase 2A Costing
+// ════════════════════════════════════════════════════════════════════════════
+
+function onReportTypeChange() {
+  const type = document.getElementById('reportType').value;
+  const dateBar = document.getElementById('reportDateBar');
+  // Show date bar for reports that need a date range
+  dateBar.style.display = (type === 'valuation-movements' || type === 'work-order-costs') ? 'flex' : 'none';
+  // Set default dates if empty
+  if (!document.getElementById('reportFrom').value) {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    document.getElementById('reportFrom').value = d.toISOString().split('T')[0];
+    document.getElementById('reportTo').value = new Date().toISOString().split('T')[0];
+  }
+}
+
+async function loadSelectedReport() {
+  const type = document.getElementById('reportType').value;
+  if (type === 'stock-valuation')      await loadStockValuationReport();
+  else if (type === 'valuation-movements') await loadValuationMovementsReport();
+  else if (type === 'work-order-costs')    await loadWoCostReport();
+}
+
+// ─── Stock Valuation ─────────────────────────────────────────────────────────
+async function loadStockValuationReport() {
+  const container = document.getElementById('reportContainer');
+  const summary   = document.getElementById('reportSummary');
+  container.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  summary.style.display = 'none';
+  try {
+    const d = await apiFetch('/reports/stock-valuation');
+    const items = d.items || [];
+    const rep   = d.report || {};
+
+    summary.style.display = 'block';
+    summary.innerHTML = `
+      <div style="display:flex;gap:32px;flex-wrap:wrap;">
+        <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-cyan)">${fmtR(rep.grand_total||0)}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Total Stock Value</div></div>
+        <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-gold)">${rep.total_items||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Items</div></div>
+        <div><div style="font-size:1.5rem;font-weight:800;color:${rep.zero_cost_items>0?'var(--eco-red)':'var(--eco-green)'}">${rep.zero_cost_items||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Zero-Cost Items</div></div>
+        <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString('en-ZA')}</div>
+      </div>`;
+
+    if (!items.length) {
+      container.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><p>No stock items found.</p></div>';
+      return;
+    }
+
+    container.innerHTML = `<table><thead><tr>
+      <th>Item</th><th>SKU</th><th>Category</th><th>Method</th>
+      <th style="text-align:right">Qty</th>
+      <th style="text-align:right">Avg Cost</th>
+      <th style="text-align:right">Total Value</th>
+    </tr></thead><tbody>${items.map(i => `<tr>
+      <td style="font-weight:600">${esc(i.name)}</td>
+      <td style="color:var(--text-muted);font-size:0.8rem">${esc(i.sku||'—')}</td>
+      <td>${esc(i.category||'—')}</td>
+      <td><span class="badge badge-info" style="font-size:0.7rem">${esc(i.costingMethod)}</span></td>
+      <td style="text-align:right">${fmtQty(i.qty)}</td>
+      <td style="text-align:right">${fmtR(i.unitCost)}</td>
+      <td style="text-align:right;font-weight:700;color:${i.unitCost===0?'var(--eco-red)':'var(--eco-cyan)'}">${fmtR(i.totalValue)}</td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch(e) {
+    container.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`;
+    showToast(e.message, true);
+  }
+}
+
+// ─── Valuation Movements ─────────────────────────────────────────────────────
+async function loadValuationMovementsReport() {
+  const container = document.getElementById('reportContainer');
+  const summary   = document.getElementById('reportSummary');
+  const from = document.getElementById('reportFrom').value;
+  const to   = document.getElementById('reportTo').value;
+  if (!from) { showToast('Select a From date.', true); return; }
+  container.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  summary.style.display = 'none';
+  try {
+    const d = await apiFetch(`/reports/valuation-movements?from=${from}&to=${to||''}`);
+    const rows = d.movements || [];
+    const rep  = d.report || {};
+
+    summary.style.display = 'block';
+    summary.innerHTML = `
+      <div style="display:flex;gap:32px;flex-wrap:wrap;">
+        <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-cyan)">${rep.row_count||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Movements</div></div>
+        <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-gold)">${fmtR(rep.total_cost_moved||0)}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Total Cost Moved</div></div>
+        <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString('en-ZA')}</div>
+      </div>`;
+
+    if (!rows.length) {
+      container.innerHTML = '<div class="empty"><p>No movements found for this period.</p></div>';
+      return;
+    }
+
+    container.innerHTML = `<table><thead><tr>
+      <th>Date</th><th>Item</th><th>Type</th><th>Source</th>
+      <th style="text-align:right">Qty</th>
+      <th style="text-align:right">Unit Cost</th>
+      <th style="text-align:right">Total Cost</th>
+      <th style="text-align:right">Running Avg</th>
+    </tr></thead><tbody>${rows.map(r => `<tr>
+      <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(r.created_at)}</td>
+      <td style="font-weight:600">${esc(r.inventory_items?.name||'—')}</td>
+      <td>${statusBadge(r.movement_type)}</td>
+      <td style="font-size:0.78rem;color:var(--text-muted)">${esc(r.source_type||'—')}${r.source_id?` #${esc(r.source_id)}`:''}</td>
+      <td style="text-align:right">${fmtQty(r.qty)}</td>
+      <td style="text-align:right">${fmtR(r.unit_cost)}</td>
+      <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(r.total_cost)}</td>
+      <td style="text-align:right;font-size:0.8rem;color:var(--text-muted)">${fmtR(r.running_avg_cost)}</td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch(e) {
+    container.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`;
+    showToast(e.message, true);
+  }
+}
+
+// ─── Work Order Costs ─────────────────────────────────────────────────────────
+async function loadWoCostReport() {
+  const container = document.getElementById('reportContainer');
+  const summary   = document.getElementById('reportSummary');
+  container.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  summary.style.display = 'none';
+  try {
+    const d = await apiFetch('/reports/work-order-cost-summary');
+    const rows = d.work_orders || [];
+    const rep  = d.report || {};
+
+    summary.style.display = 'block';
+    summary.innerHTML = `
+      <div style="display:flex;gap:32px;flex-wrap:wrap;">
+        <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-cyan)">${fmtR(rep.grand_total||0)}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Total WO Cost</div></div>
+        <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-gold)">${rep.total_wos||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Work Orders</div></div>
+        <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-green)">${rep.finalized_wos||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Finalized</div></div>
+        <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-red)">${rep.open_wos||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Open</div></div>
+      </div>`;
+
+    if (!rows.length) {
+      container.innerHTML = '<div class="empty"><p>No work order cost data found.</p></div>';
+      return;
+    }
+
+    container.innerHTML = `<table><thead><tr>
+      <th>Work Order</th><th>Item</th><th>Status</th>
+      <th style="text-align:right">Material</th>
+      <th style="text-align:right">Total Cost</th>
+      <th style="text-align:right">Completed Qty</th>
+      <th style="text-align:right">Unit Cost</th>
+    </tr></thead><tbody>${rows.map(r => {
+      const wo = r.work_orders || {};
+      const item = wo.inventory_items || {};
+      const totalCost = (parseFloat(r.material_cost)||0) + (parseFloat(r.labor_cost)||0) + (parseFloat(r.overhead_cost)||0);
+      return `<tr>
+        <td style="font-weight:600">${esc(wo.reference_number||'WO-'+r.work_order_id)}</td>
+        <td>${esc(item.name||'—')}</td>
+        <td>${statusBadge(r.status)}</td>
+        <td style="text-align:right">${fmtR(r.material_cost)}</td>
+        <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(totalCost)}</td>
+        <td style="text-align:right">${r.completed_qty ? fmtQty(r.completed_qty) : '—'}</td>
+        <td style="text-align:right;color:var(--eco-gold)">${r.unit_cost ? fmtR(r.unit_cost) : '—'}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+  } catch(e) {
+    container.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`;
+    showToast(e.message, true);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

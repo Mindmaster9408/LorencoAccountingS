@@ -12,12 +12,15 @@ const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
 const bomRoutes = require('./routes/boms');
 const workOrderRoutes = require('./routes/work-orders');
+const inventoryReportsRoutes = require('./routes/reports');
+const costingService = require('./services/costingService');
 
 const router = express.Router();
 
 // ─── Sub-routers ──────────────────────────────────────────────────────────────
 router.use('/boms', bomRoutes);
 router.use('/work-orders', workOrderRoutes);
+router.use('/reports', inventoryReportsRoutes);
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 router.get('/status', (req, res) => {
@@ -254,7 +257,9 @@ router.post('/movements', async (req, res) => {
       p_reference:     reference || null,
       p_notes:         notes || null,
       p_cost_price:    cost_price ? parseFloat(cost_price) : null,
-      p_created_by:    req.user.userId
+      p_created_by:    req.user.userId,
+      p_source_type:   'manual',
+      p_source_id:     null
     });
 
     if (rpcErr) return res.status(500).json({ error: rpcErr.message });
@@ -458,7 +463,7 @@ router.post('/purchase-orders/:id/receive', async (req, res) => {
   const poItemIds = lines.map(l => parseInt(l.po_item_id)).filter(id => !isNaN(id));
   const { data: poItems, error: itemsErr } = await supabase
     .from('purchase_order_items')
-    .select('id, item_id, quantity, received_qty')
+    .select('id, item_id, quantity, received_qty, unit_price')
     .eq('po_id', req.params.id)
     .in('id', poItemIds);
 
@@ -495,7 +500,7 @@ router.post('/purchase-orders/:id/receive', async (req, res) => {
       .eq('id', poItem.id);
     if (lineUpdateErr) return res.status(500).json({ error: lineUpdateErr.message });
 
-    // Atomic stock-in via RPC
+    // Atomic stock-in via RPC — unit_price from PO line feeds weighted average costing
     const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
       p_company_id:    req.companyId,
       p_item_id:       poItem.item_id,
@@ -504,8 +509,10 @@ router.post('/purchase-orders/:id/receive', async (req, res) => {
       p_warehouse_id:  null,
       p_reference:     `PO-${req.params.id}`,
       p_notes:         notes || `Received from PO #${req.params.id}`,
-      p_cost_price:    null,
-      p_created_by:    req.user.userId
+      p_cost_price:    poItem.unit_price ? parseFloat(poItem.unit_price) : null,
+      p_created_by:    req.user.userId,
+      p_source_type:   'po_receive',
+      p_source_id:     String(req.params.id)
     });
 
     if (rpcErr || !rpcResult?.success) {

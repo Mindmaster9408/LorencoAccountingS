@@ -155,6 +155,12 @@ const PERMISSIONS = {
   // Diagnostics & repair tooling
   'diagnostics.view':   ['admin', 'accountant', 'bookkeeper'],
   'diagnostics.repair': ['admin', 'accountant'],
+
+  // Historical Comparative Financial Engine
+  'historical.view':     ['admin', 'accountant', 'bookkeeper', 'viewer'],
+  'historical.create':   ['admin', 'accountant'],
+  'historical.edit':     ['admin', 'accountant'],
+  'historical.finalize': ['admin', 'accountant'],
 };
 
 function hasPermission(permission) {

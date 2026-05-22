@@ -18,6 +18,7 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
 const { auditFromReq } = require('../../../middleware/audit');
+const costingService = require('../services/costingService');
 
 const router = express.Router();
 
@@ -291,7 +292,12 @@ router.post('/:id/complete', async (req, res) => {
     : wo.quantity_to_produce;
   if (qtyProduced <= 0) return res.status(400).json({ error: 'quantity_produced must be > 0' });
 
-  // Atomic stock-in for finished goods via RPC
+  // Finalize WO cost — computes unit_cost from accumulated material cost / qty_produced
+  const { unitCost: woUnitCost } = await costingService.finalizeWorkOrderCost(
+    supabase, req.companyId, parseInt(req.params.id), qtyProduced
+  );
+
+  // Atomic stock-in for finished goods — cost basis from finalized WO cost
   const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
     p_company_id:    req.companyId,
     p_item_id:       wo.item_id,
@@ -300,8 +306,10 @@ router.post('/:id/complete', async (req, res) => {
     p_warehouse_id:  null,
     p_reference:     `WO-${req.params.id}`,
     p_notes:         'Received from work order completion',
-    p_cost_price:    null,
-    p_created_by:    req.user.userId
+    p_cost_price:    woUnitCost || null,
+    p_created_by:    req.user.userId,
+    p_source_type:   'wo_complete',
+    p_source_id:     String(req.params.id)
   });
 
   if (rpcErr) return res.status(500).json({ error: rpcErr.message });
@@ -373,10 +381,10 @@ router.post('/:id/issue-materials', async (req, res) => {
       return res.status(422).json({ error: `Material ${issue.material_id} not found on this work order` });
     }
 
-    // Confirm available stock before committing
+    // Confirm available stock before committing; fetch average_cost for costing
     const { data: itemRow } = await supabase
       .from('inventory_items')
-      .select('current_stock, name')
+      .select('current_stock, average_cost, cost_price, name')
       .eq('id', mat.item_id)
       .eq('company_id', req.companyId)
       .single();
@@ -391,11 +399,14 @@ router.post('/:id/issue-materials', async (req, res) => {
       });
     }
 
-    resolvedIssues.push({ mat, qty });
+    resolvedIssues.push({ mat, qty, itemRow });
   }
 
   // ─── PHASE 2: Apply all changes (all pre-validated; atomic RPC per item)
-  for (const { mat, qty } of resolvedIssues) {
+  for (const { mat, qty, itemRow } of resolvedIssues) {
+    // Cost at time of issue = item's current weighted average (best available cost basis)
+    const issueCost = parseFloat(itemRow.average_cost) || parseFloat(itemRow.cost_price) || null;
+
     const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
       p_company_id:    req.companyId,
       p_item_id:       mat.item_id,
@@ -404,8 +415,10 @@ router.post('/:id/issue-materials', async (req, res) => {
       p_warehouse_id:  null,
       p_reference:     `WO-${req.params.id}`,
       p_notes:         `Issued to work order ${req.params.id}`,
-      p_cost_price:    null,
-      p_created_by:    req.user.userId
+      p_cost_price:    issueCost,
+      p_created_by:    req.user.userId,
+      p_source_type:   'wo_issue',
+      p_source_id:     String(req.params.id)
     });
 
     if (rpcErr || !rpcResult?.success) {
@@ -420,6 +433,13 @@ router.post('/:id/issue-materials', async (req, res) => {
       .from('work_order_materials')
       .update({ issued_qty: (parseFloat(mat.issued_qty) || 0) + qty })
       .eq('id', mat.id);
+
+    // Accumulate material cost on the WO cost record
+    if (issueCost) {
+      await costingService.accumulateWorkOrderMaterialCost(
+        supabase, req.companyId, parseInt(req.params.id), qty * issueCost
+      );
+    }
   }
 
   await auditFromReq(req, 'UPDATE', 'work_order', wo.id, {

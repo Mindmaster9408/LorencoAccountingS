@@ -81,4 +81,7 @@ router.use('/kv', require('./routes/kv'));
 // Diagnostics & repair tooling
 router.use('/diagnostics', require('./routes/diagnostics'));
 
+// Historical Comparative Financial Engine
+router.use('/historical-comparatives', require('./routes/historicalComparatives'));
+
 module.exports = router;

@@ -1,0 +1,581 @@
+'use strict';
+
+/**
+ * Historical Comparatives Service
+ * ============================================================================
+ * Manages historical comparative financial data for the accounting module.
+ *
+ * KEY RULES (permanent, non-negotiable):
+ *   1. Finalized batches are IMMUTABLE — no edits, ever.
+ *   2. This module NEVER writes to journals, journal_lines, bank_transactions,
+ *      vat tables, or any other live financial table.
+ *   3. All data is company-scoped. company_id is always enforced server-side.
+ *   4. Every write operation writes an audit record. Audit failure does not
+ *      block the main operation.
+ *   5. SA financial year default: March (month 3) → February (month 2).
+ * ============================================================================
+ */
+
+const { supabase } = require('../../../config/database');
+const db = require('../config/database');
+
+// South African financial year month order (Mar = FY month 1, Feb = FY month 12)
+const SA_FY_MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
+const MONTH_NAMES = {
+  1: 'January', 2: 'February', 3: 'March', 4: 'April',
+  5: 'May', 6: 'June', 7: 'July', 8: 'August',
+  9: 'September', 10: 'October', 11: 'November', 12: 'December'
+};
+
+class HistoricalComparativesService {
+
+  // ── BATCH MANAGEMENT ─────────────────────────────────────────────────────
+
+  /**
+   * Create a new draft batch.
+   * Returns the created batch record.
+   */
+  static async createBatch({ companyId, userId, sourceType, sourceName, description,
+    financialYearStart, financialYearEnd, reportBasis = 'profit_loss' }) {
+    const { data, error } = await supabase
+      .from('historical_comparative_batches')
+      .insert({
+        company_id: companyId,
+        created_by: userId,
+        source_type: sourceType || 'manual',
+        source_name: sourceName || null,
+        description: description || null,
+        financial_year_start: financialYearStart || null,
+        financial_year_end: financialYearEnd || null,
+        period_granularity: 'monthly',
+        report_basis: reportBasis,
+        status: 'draft',
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    await this._writeAuditLog({
+      companyId,
+      batchId: data.id,
+      lineId: null,
+      action: 'BATCH_CREATED',
+      oldValue: null,
+      newValue: { id: data.id, status: 'draft', description },
+      performedBy: userId,
+    });
+
+    return data;
+  }
+
+  /**
+   * List all batches for a company. Returns most-recent-first.
+   * Optionally filter by status.
+   */
+  static async listBatches({ companyId, status = null }) {
+    let query = supabase
+      .from('historical_comparative_batches')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false });
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  /**
+   * Get a single batch by id, asserting company ownership.
+   */
+  static async getBatch({ companyId, batchId }) {
+    const { data, error } = await supabase
+      .from('historical_comparative_batches')
+      .select('*')
+      .eq('id', batchId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null; // not found
+      throw error;
+    }
+    return data;
+  }
+
+  // ── ACCOUNT SEARCH ───────────────────────────────────────────────────────
+
+  /**
+   * Search the Chart of Accounts for a company.
+   * Returns id, code, name, account_type for matching accounts.
+   */
+  static async searchAccounts({ companyId, query }) {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('id, code, name, account_type')
+      .eq('company_id', companyId)
+      .or(`name.ilike.%${query}%,code.ilike.%${query}%`)
+      .order('code', { ascending: true })
+      .limit(30);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  // ── LINE CAPTURE ─────────────────────────────────────────────────────────
+
+  /**
+   * Get all lines for a batch, grouped by account for efficient rendering.
+   * Returns an array of account groups, each with 12 monthly amounts.
+   */
+  static async getBatchLines({ companyId, batchId }) {
+    const { data, error } = await supabase
+      .from('historical_comparative_lines')
+      .select('*')
+      .eq('batch_id', batchId)
+      .eq('company_id', companyId)
+      .order('account_code', { ascending: true })
+      .order('financial_year', { ascending: true })
+      .order('period_month', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  /**
+   * Save a single manual line (upsert by batch + account_id + year + month).
+   * Blocks if the batch is finalized.
+   */
+  static async saveManualLine({ companyId, batchId, userId, accountId,
+    accountCode, accountName, accountType, financialYear, periodMonth, amount,
+    sourceReference, notes }) {
+
+    // Finalization guard
+    const batch = await this.getBatch({ companyId, batchId });
+    if (!batch) throw new Error('Batch not found or access denied.');
+    if (batch.is_finalized || batch.status === 'finalized') {
+      await this._writeAuditLog({
+        companyId, batchId, lineId: null,
+        action: 'FINALIZED_EDIT_BLOCKED',
+        oldValue: null,
+        newValue: { accountCode, financialYear, periodMonth, amount },
+        performedBy: userId,
+      });
+      throw new Error('This batch is finalized and cannot be edited.');
+    }
+
+    // Build period dates
+    const { periodStart, periodEnd } = this._buildPeriodDates(financialYear, periodMonth);
+
+    // Check for existing line (for audit before/after)
+    let existingLine = null;
+    if (accountId) {
+      const { data: existing } = await supabase
+        .from('historical_comparative_lines')
+        .select('*')
+        .eq('batch_id', batchId)
+        .eq('account_id', accountId)
+        .eq('financial_year', financialYear)
+        .eq('period_month', periodMonth)
+        .maybeSingle();
+      existingLine = existing;
+    }
+
+    const lineData = {
+      batch_id: batchId,
+      company_id: companyId,
+      account_id: accountId || null,
+      account_code: accountCode || null,
+      account_name: accountName,
+      account_type: accountType || null,
+      financial_year: financialYear,
+      period_month: periodMonth,
+      period_start: periodStart,
+      period_end: periodEnd,
+      amount: amount,
+      original_amount: existingLine ? existingLine.original_amount : amount,
+      source_reference: sourceReference || null,
+      capture_method: 'manual',
+      entered_by: userId,
+      entered_at: existingLine ? existingLine.entered_at : new Date().toISOString(),
+      updated_by: userId,
+      updated_at: new Date().toISOString(),
+      is_finalized: false,
+      notes: notes || null,
+    };
+
+    let savedLine;
+    if (existingLine) {
+      const { data, error } = await supabase
+        .from('historical_comparative_lines')
+        .update(lineData)
+        .eq('id', existingLine.id)
+        .select()
+        .single();
+      if (error) throw error;
+      savedLine = data;
+    } else {
+      const { data, error } = await supabase
+        .from('historical_comparative_lines')
+        .insert(lineData)
+        .select()
+        .single();
+      if (error) throw error;
+      savedLine = data;
+    }
+
+    // Update batch updated_at
+    await supabase
+      .from('historical_comparative_batches')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', batchId);
+
+    await this._writeAuditLog({
+      companyId, batchId, lineId: savedLine.id,
+      action: existingLine ? 'LINE_UPDATED' : 'LINE_CREATED',
+      oldValue: existingLine ? { amount: existingLine.amount } : null,
+      newValue: { amount, accountCode, financialYear, periodMonth },
+      performedBy: userId,
+    });
+
+    return savedLine;
+  }
+
+  /**
+   * Bulk-save a full account grid (12 months × 1 financial year).
+   * cells: [{ periodMonth, amount }] — 12 entries expected.
+   * Blocks if batch is finalized.
+   */
+  static async saveManualGrid({ companyId, batchId, userId, accountId,
+    accountCode, accountName, accountType, financialYear, cells }) {
+
+    const batch = await this.getBatch({ companyId, batchId });
+    if (!batch) throw new Error('Batch not found or access denied.');
+    if (batch.is_finalized || batch.status === 'finalized') {
+      await this._writeAuditLog({
+        companyId, batchId, lineId: null,
+        action: 'FINALIZED_EDIT_BLOCKED',
+        oldValue: null,
+        newValue: { accountCode, financialYear, cellCount: cells.length },
+        performedBy: userId,
+      });
+      throw new Error('This batch is finalized and cannot be edited.');
+    }
+
+    const results = [];
+    for (const cell of cells) {
+      const result = await this.saveManualLine({
+        companyId, batchId, userId,
+        accountId, accountCode, accountName, accountType,
+        financialYear: financialYear,
+        periodMonth: cell.periodMonth,
+        amount: cell.amount,
+        sourceReference: null,
+        notes: null,
+      });
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  // ── VALIDATION & FINALIZATION ────────────────────────────────────────────
+
+  /**
+   * Validate a batch — checks for obvious data issues.
+   * Sets status to 'validated' if no blocking errors found.
+   * Returns { valid: boolean, errors: [], warnings: [] }.
+   */
+  static async validateBatch({ companyId, batchId, userId }) {
+    const batch = await this.getBatch({ companyId, batchId });
+    if (!batch) throw new Error('Batch not found or access denied.');
+    if (batch.status === 'finalized') {
+      throw new Error('Batch is already finalized.');
+    }
+
+    const lines = await this.getBatchLines({ companyId, batchId });
+
+    const errors = [];
+    const warnings = [];
+
+    if (lines.length === 0) {
+      errors.push('Batch contains no data lines. Add at least one line before validating.');
+    }
+
+    // Check for lines with zero amounts (warn, not error)
+    const zeroLines = lines.filter(l => l.amount === 0);
+    if (zeroLines.length > 0) {
+      warnings.push(`${zeroLines.length} line(s) have a zero amount. Confirm this is intentional.`);
+    }
+
+    // Check for missing account names
+    const unnamedLines = lines.filter(l => !l.account_name || l.account_name.trim() === '');
+    if (unnamedLines.length > 0) {
+      errors.push(`${unnamedLines.length} line(s) are missing an account name.`);
+    }
+
+    const valid = errors.length === 0;
+
+    if (valid) {
+      const { error } = await supabase
+        .from('historical_comparative_batches')
+        .update({ status: 'validated', updated_at: new Date().toISOString() })
+        .eq('id', batchId)
+        .eq('company_id', companyId);
+      if (error) throw error;
+
+      await this._writeAuditLog({
+        companyId, batchId, lineId: null,
+        action: 'BATCH_VALIDATED',
+        oldValue: { status: batch.status },
+        newValue: { status: 'validated', lineCount: lines.length },
+        performedBy: userId,
+      });
+    }
+
+    return { valid, errors, warnings };
+  }
+
+  /**
+   * Finalize a batch — permanently locks it. No edits after this.
+   * Sets is_finalized = true on all lines.
+   * IMMUTABLE after this point. Create a new batch for corrections.
+   */
+  static async finalizeBatch({ companyId, batchId, userId }) {
+    const batch = await this.getBatch({ companyId, batchId });
+    if (!batch) throw new Error('Batch not found or access denied.');
+    if (batch.status === 'finalized') {
+      throw new Error('Batch is already finalized.');
+    }
+    if (batch.status === 'draft') {
+      throw new Error('Batch must be validated before finalizing. Run validation first.');
+    }
+
+    const now = new Date().toISOString();
+
+    // Mark all lines as finalized
+    const { error: linesError } = await supabase
+      .from('historical_comparative_lines')
+      .update({ is_finalized: true, updated_at: now })
+      .eq('batch_id', batchId)
+      .eq('company_id', companyId);
+
+    if (linesError) throw linesError;
+
+    // Mark the batch as finalized
+    const { data: finalizedBatch, error: batchError } = await supabase
+      .from('historical_comparative_batches')
+      .update({
+        status: 'finalized',
+        finalized_at: now,
+        finalized_by: userId,
+        updated_at: now,
+      })
+      .eq('id', batchId)
+      .eq('company_id', companyId)
+      .select()
+      .single();
+
+    if (batchError) throw batchError;
+
+    await this._writeAuditLog({
+      companyId, batchId, lineId: null,
+      action: 'BATCH_FINALIZED',
+      oldValue: { status: batch.status },
+      newValue: { status: 'finalized', finalized_at: now, finalized_by: userId },
+      performedBy: userId,
+    });
+
+    return finalizedBatch;
+  }
+
+  // ── REPORTS ──────────────────────────────────────────────────────────────
+
+  /**
+   * Monthly P&L Comparative Report.
+   * Returns finalized lines for the company across the specified year range,
+   * grouped by account, showing one column per month per year.
+   * Only returns finalized data (is_finalized = true).
+   */
+  static async getMonthlyPLReport({ companyId, financialYearStart, financialYearEnd, accountType = null }) {
+    let query = db.query.bind(db);
+
+    let params = [companyId, financialYearStart, financialYearEnd];
+    let accountTypeFilter = '';
+    if (accountType) {
+      params.push(accountType);
+      accountTypeFilter = `AND l.account_type = $${params.length}`;
+    }
+
+    const sql = `
+      SELECT
+        l.account_id,
+        l.account_code,
+        l.account_name,
+        l.account_type,
+        l.financial_year,
+        l.period_month,
+        SUM(l.amount) AS total_amount
+      FROM historical_comparative_lines l
+      JOIN historical_comparative_batches b ON b.id = l.batch_id
+      WHERE
+        l.company_id = $1
+        AND l.is_finalized = true
+        AND b.status = 'finalized'
+        AND l.financial_year >= $2
+        AND l.financial_year <= $3
+        ${accountTypeFilter}
+      GROUP BY
+        l.account_id, l.account_code, l.account_name, l.account_type,
+        l.financial_year, l.period_month
+      ORDER BY
+        l.account_code ASC,
+        l.financial_year ASC,
+        l.period_month ASC
+    `;
+
+    const result = await db.query(sql, params);
+    return this._buildPLReportStructure(result.rows, financialYearStart, financialYearEnd);
+  }
+
+  /**
+   * Account Trend Report.
+   * Returns monthly figures for a specific account across multiple years.
+   * Useful for trend analysis / graphing.
+   */
+  static async getAccountTrendReport({ companyId, accountId, financialYearStart, financialYearEnd }) {
+    const sql = `
+      SELECT
+        l.account_id,
+        l.account_code,
+        l.account_name,
+        l.account_type,
+        l.financial_year,
+        l.period_month,
+        SUM(l.amount) AS total_amount
+      FROM historical_comparative_lines l
+      JOIN historical_comparative_batches b ON b.id = l.batch_id
+      WHERE
+        l.company_id = $1
+        AND l.account_id = $2
+        AND l.is_finalized = true
+        AND b.status = 'finalized'
+        AND l.financial_year >= $3
+        AND l.financial_year <= $4
+      GROUP BY
+        l.account_id, l.account_code, l.account_name, l.account_type,
+        l.financial_year, l.period_month
+      ORDER BY
+        l.financial_year ASC,
+        l.period_month ASC
+    `;
+
+    const result = await db.query(sql, [companyId, accountId, financialYearStart, financialYearEnd]);
+    return result.rows;
+  }
+
+  // ── INTERNAL HELPERS ─────────────────────────────────────────────────────
+
+  /**
+   * Build period start/end dates for a given financial year and calendar month.
+   * SA financial year: year refers to the START year (e.g. 2023 = March 2023 – Feb 2024).
+   * March 2023 → period_start: 2023-03-01, period_end: 2023-03-31
+   * January 2024 (FY 2023) → period_start: 2024-01-01, period_end: 2024-01-31
+   * February 2024 (FY 2023) → period_start: 2024-02-01, period_end: 2024-02-29
+   */
+  static _buildPeriodDates(financialYear, periodMonth) {
+    // If month is Jan or Feb, it belongs to the NEXT calendar year from FY start
+    const calendarYear = (periodMonth <= 2) ? financialYear + 1 : financialYear;
+    const month = String(periodMonth).padStart(2, '0');
+    const periodStart = `${calendarYear}-${month}-01`;
+    // Last day of the month
+    const lastDay = new Date(calendarYear, periodMonth, 0).getDate();
+    const periodEnd = `${calendarYear}-${month}-${String(lastDay).padStart(2, '0')}`;
+    return { periodStart, periodEnd };
+  }
+
+  /**
+   * Group raw report rows into a structured object:
+   * {
+   *   accounts: [{
+   *     account_id, account_code, account_name, account_type,
+   *     years: {
+   *       2022: { 3: amount, 4: amount, ..., 2: amount },
+   *       2023: { ... }
+   *     }
+   *   }],
+   *   years: [2022, 2023],
+   *   monthOrder: [3,4,5,...,2]
+   * }
+   */
+  static _buildPLReportStructure(rows, yearStart, yearEnd) {
+    const accountMap = {};
+    const yearsSet = new Set();
+
+    for (const row of rows) {
+      const key = row.account_id
+        ? `id_${row.account_id}`
+        : `code_${row.account_code}_${row.account_name}`;
+
+      if (!accountMap[key]) {
+        accountMap[key] = {
+          account_id: row.account_id,
+          account_code: row.account_code,
+          account_name: row.account_name,
+          account_type: row.account_type,
+          years: {},
+        };
+      }
+
+      const fy = row.financial_year;
+      yearsSet.add(fy);
+      if (!accountMap[key].years[fy]) {
+        accountMap[key].years[fy] = {};
+      }
+      accountMap[key].years[fy][row.period_month] = parseFloat(row.total_amount);
+    }
+
+    const years = [];
+    for (let y = yearStart; y <= yearEnd; y++) years.push(y);
+
+    return {
+      accounts: Object.values(accountMap).sort((a, b) => {
+        if (a.account_code && b.account_code) return a.account_code.localeCompare(b.account_code);
+        return a.account_name.localeCompare(b.account_name);
+      }),
+      years,
+      monthOrder: SA_FY_MONTH_ORDER,
+      monthNames: MONTH_NAMES,
+    };
+  }
+
+  /**
+   * Write an audit record for historical comparatives.
+   * Never throws — audit failure must not break the main operation.
+   */
+  static async _writeAuditLog({ companyId, batchId, lineId, action, oldValue, newValue, performedBy }) {
+    try {
+      await supabase
+        .from('historical_comparative_audit_log')
+        .insert({
+          company_id: companyId,
+          batch_id: batchId || null,
+          line_id: lineId || null,
+          action,
+          old_value: oldValue || null,
+          new_value: newValue || null,
+          performed_by: performedBy || null,
+          performed_at: new Date().toISOString(),
+        });
+    } catch (err) {
+      console.error('[HistoricalComparatives] Audit log write failed:', err.message);
+      // Do not throw — audit log failure must not block the main operation
+    }
+  }
+}
+
+module.exports = HistoricalComparativesService;
