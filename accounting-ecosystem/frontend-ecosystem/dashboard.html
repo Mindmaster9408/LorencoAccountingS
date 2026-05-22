@@ -325,10 +325,20 @@
             display: block;
             object-fit: cover;
         }
-        /* CC full-image card — cover fills card exactly like Paytime */
+        /* CC full-image card — fills the full grid-stretched card height */
         .checkout-charlie-card-img {
             object-fit: cover;
-            height: 230px;
+            height: 100%;       /* fills whatever height the grid row gives the card */
+            min-height: 230px;  /* safety floor when card has no row-peer */
+        }
+        /* Ensure the card div itself passes its grid height to children */
+        .app-card.pos.app-card-image-only {
+            display: flex;
+            flex-direction: column;
+        }
+        .app-card.pos.app-card-image-only .app-card-full-image {
+            flex: 1;
+            min-height: 230px;
         }
         .app-card .app-title {
             font-size: 1.1rem;
