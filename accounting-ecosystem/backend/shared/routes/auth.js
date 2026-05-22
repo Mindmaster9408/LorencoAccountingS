@@ -969,4 +969,195 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
   }
 });
 
+// ── Company User Management ───────────────────────────────────────────────────
+// These routes allow authorised users to manage who belongs to a company.
+// Super admins may manage any company; other users may only manage companies
+// they already have access to.
+
+function canManageCompanyUsers(req, companyId, accessRows) {
+  if (req.user.isSuperAdmin || req.user.role === 'super_admin') return true;
+  return (accessRows || []).some(r => String(r.company_id) === String(companyId) && r.is_active);
+}
+
+/**
+ * GET /api/auth/companies/:companyId/users
+ * List active users for a company.
+ */
+router.get('/companies/:companyId/users', authenticateToken, async (req, res) => {
+  try {
+    const companyId = parseInt(req.params.companyId);
+    if (!companyId) return res.status(400).json({ error: 'companyId is required' });
+
+    const { data: myAccess } = await supabase
+      .from('user_company_access')
+      .select('company_id, is_active')
+      .eq('user_id', req.user.userId);
+
+    if (!canManageCompanyUsers(req, companyId, myAccess)) {
+      return res.status(403).json({ error: 'Access denied to this company' });
+    }
+
+    const { data: access, error } = await supabase
+      .from('user_company_access')
+      .select(`role, is_primary, granted_at,
+               users:user_id (id, username, email, full_name, is_active, last_login_at, employee_id)`)
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('granted_at');
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const users = (access || [])
+      .filter(a => a.users)
+      .map(a => ({
+        id: a.users.id,
+        username: a.users.username,
+        email: a.users.email,
+        full_name: a.users.full_name,
+        employee_id: a.users.employee_id,
+        is_active: a.users.is_active,
+        last_login_at: a.users.last_login_at,
+        role: a.role,
+        is_primary: a.is_primary,
+        granted_at: a.granted_at,
+      }));
+
+    res.json({ users });
+  } catch (err) {
+    console.error('GET /auth/companies/:id/users error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/auth/companies/:companyId/users
+ * Create a new user and add them to the company.
+ */
+router.post('/companies/:companyId/users', authenticateToken, async (req, res) => {
+  try {
+    const companyId = parseInt(req.params.companyId);
+    if (!companyId) return res.status(400).json({ error: 'companyId is required' });
+
+    const { data: myAccess } = await supabase
+      .from('user_company_access')
+      .select('company_id, is_active')
+      .eq('user_id', req.user.userId);
+
+    if (!canManageCompanyUsers(req, companyId, myAccess)) {
+      return res.status(403).json({ error: 'Access denied to this company' });
+    }
+
+    const { username, password, full_name, email, role, employee_id } = req.body;
+    if (!username || !password || !full_name || !role) {
+      return res.status(400).json({ error: 'username, password, full_name and role are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Check username uniqueness
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username.toLowerCase().trim())
+      .maybeSingle();
+    if (existing) return res.status(409).json({ error: 'Username already taken' });
+
+    // Verify company exists
+    const { data: company } = await supabase
+      .from('companies')
+      .select('id')
+      .eq('id', companyId)
+      .single();
+    if (!company) return res.status(404).json({ error: 'Company not found' });
+
+    const password_hash = await bcrypt.hash(password, 12);
+
+    const { data: newUser, error: userErr } = await supabase
+      .from('users')
+      .insert({
+        username: username.toLowerCase().trim(),
+        password_hash,
+        full_name: full_name.trim(),
+        email: email ? email.toLowerCase().trim() : null,
+        role,
+        employee_id: employee_id || null,
+        is_active: true,
+      })
+      .select('id, username, full_name, email, role')
+      .single();
+
+    if (userErr) return res.status(500).json({ error: userErr.message });
+
+    const { error: accessErr } = await supabase
+      .from('user_company_access')
+      .insert({
+        user_id: newUser.id,
+        company_id: companyId,
+        role,
+        is_active: true,
+        is_primary: true,
+        granted_at: new Date().toISOString(),
+      });
+
+    if (accessErr) {
+      // Clean up orphan user on access insert failure
+      await supabase.from('users').delete().eq('id', newUser.id);
+      return res.status(500).json({ error: accessErr.message });
+    }
+
+    await auditFromReq(req, 'CREATE', 'users', newUser.id, {
+      action: 'create_company_user',
+      companyId,
+      newUsername: newUser.username,
+      role,
+    });
+
+    res.status(201).json({ user: newUser });
+  } catch (err) {
+    console.error('POST /auth/companies/:id/users error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * DELETE /api/auth/companies/:companyId/users/:userId
+ * Remove a user from a company (deactivates their access record, does not delete the user).
+ */
+router.delete('/companies/:companyId/users/:userId', authenticateToken, async (req, res) => {
+  try {
+    const companyId = parseInt(req.params.companyId);
+    const userId    = parseInt(req.params.userId);
+    if (!companyId || !userId) return res.status(400).json({ error: 'companyId and userId are required' });
+
+    const { data: myAccess } = await supabase
+      .from('user_company_access')
+      .select('company_id, is_active')
+      .eq('user_id', req.user.userId);
+
+    if (!canManageCompanyUsers(req, companyId, myAccess)) {
+      return res.status(403).json({ error: 'Access denied to this company' });
+    }
+
+    const { error } = await supabase
+      .from('user_company_access')
+      .update({ is_active: false })
+      .eq('user_id', userId)
+      .eq('company_id', companyId);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'UPDATE', 'user_company_access', userId, {
+      action: 'remove_company_user',
+      companyId,
+      userId,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /auth/companies/:id/users/:uid error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -637,6 +637,19 @@ select option {
     color: var(--text) !important;
 }
 
+/* ── General Settings — form input visibility ───────────────────────────────── */
+/* The global input rule sets rgba(255,255,255,0.06) background which blends
+   into the section surface. Bump to 0.10 + stronger border for legibility. */
+#generalSection input[type="text"],
+#generalSection input[type="number"],
+#generalSection input[type="email"],
+#generalSection textarea {
+    background: rgba(255,255,255,0.10) !important;
+    border-color: rgba(255,255,255,0.25) !important;
+}
+#generalSection h4 { color: var(--text) !important; }
+#generalSection p   { color: var(--text-secondary) !important; }
+
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
