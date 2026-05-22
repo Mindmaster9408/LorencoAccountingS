@@ -313,69 +313,6 @@
         .btn-login.loading .spinner  { display: inline-block; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── Divider ───────────────────────────────────────────────────────── */
-        .divider {
-            display: flex;
-            align-items: center;
-            margin: 26px 0;
-            gap: 14px;
-        }
-        .divider::before, .divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: rgba(255,255,255,0.08);
-        }
-        .divider span {
-            color: rgba(200, 210, 255, 0.3);
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
-            font-weight: 500;
-            white-space: nowrap;
-        }
-
-        /* ── App links ─────────────────────────────────────────────────────── */
-        .app-links {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-        }
-        .app-link {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            padding: 14px 10px;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 16px;
-            color: rgba(200, 210, 255, 0.55);
-            text-decoration: none;
-            font-size: 0.74rem;
-            font-weight: 500;
-            text-align: center;
-            transition: all 0.22s;
-        }
-        .app-link:hover {
-            background: rgba(255,255,255,0.07);
-            border-color: rgba(255,255,255,0.14);
-            color: var(--text);
-            transform: translateY(-2px);
-        }
-        .app-link .icon {
-            width: 36px; height: 36px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 17px;
-            flex-shrink: 0;
-        }
-        .app-link.pos .icon        { background: rgba(59, 130, 246, 0.18); }
-        .app-link.payroll .icon    { background: rgba(16, 185, 129, 0.18); }
-        .app-link.accounting .icon { background: rgba(245, 158, 11, 0.18); }
-
         /* ── Register button ───────────────────────────────────────────────── */
         .btn-register {
             width: 100%;
@@ -818,7 +755,6 @@
         @media (max-width: 600px) {
             .login-card        { padding: 32px 24px 28px; }
             .brand-name        { font-size: 1.6rem; letter-spacing: 4px; }
-            .app-links         { grid-template-columns: 1fr; }
             .reg-modal         { width: 95vw; }
             .type-cards        { grid-template-columns: 1fr; }
             .reg-row           { grid-template-columns: 1fr; }
@@ -882,23 +818,6 @@
                         <span class="spinner"></span>
                     </button>
                 </form>
-
-                <div class="divider"><span>or login directly to</span></div>
-
-                <div class="app-links">
-                    <a href="/pos" class="app-link pos">
-                        <div class="icon">&#128722;</div>
-                        <span>Checkout Charlie</span>
-                    </a>
-                    <a href="/payroll/login.html" class="app-link payroll">
-                        <div class="icon">&#128176;</div>
-                        <span>Lorenco Paytime</span>
-                    </a>
-                    <a href="/accounting" class="app-link accounting">
-                        <div class="icon">&#128200;</div>
-                        <span>Accounting</span>
-                    </a>
-                </div>
 
                 <button type="button" class="btn-register" onclick="openRegister()">
                     Create an Account
