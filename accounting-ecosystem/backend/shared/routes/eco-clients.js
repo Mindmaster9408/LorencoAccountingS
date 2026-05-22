@@ -16,6 +16,12 @@ const { auditFromReq } = require('../../middleware/audit');
 
 const router = express.Router();
 
+// JWT can carry isSuperAdmin=false but role='super_admin' (when is_super_admin DB column
+// is false/null but user_company_access.role = 'super_admin'). Accept both.
+function isAdminUser(user) {
+  return !!(user && (user.isSuperAdmin || user.role === 'super_admin'));
+}
+
 // ─── Cross-App Sync Helper ──────────────────────────────────────────────────
 
 /**
@@ -209,7 +215,7 @@ router.get('/', async (req, res) => {
     const { company_id, app, search, client_type } = req.query;
 
     // Super admins can pass ?status=all to see inactive clients too (admin control panel)
-    const showAll = req.query.status === 'all' && req.user.isSuperAdmin;
+    const showAll = req.query.status === 'all' && isAdminUser(req.user);
 
     // ── Resolve effective company filter ──────────────────────────────────────
     // For non-admins: if a company_id param is supplied, verify they actually
@@ -220,13 +226,13 @@ router.get('/', async (req, res) => {
     // company as a default scope — that silently restricts the result set and hides
     // clients belonging to other account holders (e.g. Kobus Accountants).
     // Super admins can still scope explicitly with a ?company_id= query param.
-    let effectiveCompanyId = (req.user.isSuperAdmin && showAll)
+    let effectiveCompanyId = (isAdminUser(req.user) && showAll)
       ? null
       : (req.companyId || null);
 
     if (company_id) {
       const requestedId = parseInt(company_id);
-      if (req.user.isSuperAdmin) {
+      if (isAdminUser(req.user)) {
         // Super admins can scope to any company
         effectiveCompanyId = requestedId;
       } else {
@@ -256,11 +262,11 @@ router.get('/', async (req, res) => {
       q = q.eq('is_active', true);
     }
 
-    if (!req.user.isSuperAdmin || effectiveCompanyId) {
-      if (req.user.isSuperAdmin && effectiveCompanyId) {
+    if (!isAdminUser(req.user) || effectiveCompanyId) {
+      if (isAdminUser(req.user) && effectiveCompanyId) {
         // Super admin scoped to a specific company
         q = q.eq('company_id', effectiveCompanyId);
-      } else if (!req.user.isSuperAdmin) {
+      } else if (!isAdminUser(req.user)) {
         q = q.eq('company_id', effectiveCompanyId);
       }
       // Super admin with no company filter → returns all (no eq added) — used by admin panel only
@@ -277,9 +283,9 @@ router.get('/', async (req, res) => {
 
     // ── Parallel phase: run owned-clients query, firm-access lookup,
     //    and per-user access filter all at the same time ─────────────────────
-    const isNonAdminWithCompany = !req.user.isSuperAdmin && req.user.userId && effectiveCompanyId && !company_id;
+    const isNonAdminWithCompany = !isAdminUser(req.user) && req.user.userId && effectiveCompanyId && !company_id;
 
-    const firmAccessPromise = (!req.user.isSuperAdmin && req.companyId && !company_id)
+    const firmAccessPromise = (!isAdminUser(req.user) && req.companyId && !company_id)
       ? supabase
           .from('eco_client_firm_access')
           .select('eco_client_id')
@@ -475,7 +481,7 @@ router.get('/:id', async (req, res) => {
     }
 
     // Verify ownership: super admin, direct owner, or shared access
-    if (!req.user.isSuperAdmin) {
+    if (!isAdminUser(req.user)) {
       const isOwner = client.company_id === req.companyId;
 
       let hasSharedAccess = false;
@@ -538,7 +544,7 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/adopt-company', async (req, res) => {
   try {
-    if (!req.user || !req.user.isSuperAdmin) {
+    if (!req.user || !isAdminUser(req.user)) {
       return res.status(403).json({ error: 'Super admin access required' });
     }
 
@@ -699,7 +705,7 @@ router.post('/', async (req, res) => {
     let resolvedCompanyId = parseInt(company_id) || req.companyId || null;
 
     if (!resolvedCompanyId) {
-      const isSuperAdmin = req.user && req.user.isSuperAdmin;
+      const isSuperAdmin = isAdminUser(req.user);
       if (isSuperAdmin) {
         const { data: allCos } = await supabase
           .from('companies').select('id').eq('is_active', true).order('id').limit(1);
@@ -1021,7 +1027,7 @@ router.post('/:id/firm-access', async (req, res) => {
     }
 
     // Only the managing company or super admin can grant access
-    if (!req.user.isSuperAdmin && client.company_id !== req.companyId) {
+    if (!isAdminUser(req.user) && client.company_id !== req.companyId) {
       return res.status(403).json({ error: 'Only the managing firm can grant access' });
     }
 
@@ -1117,7 +1123,7 @@ router.delete('/:id/firm-access/:firmId', async (req, res) => {
     }
 
     // Only the managing company or super admin can revoke
-    if (!req.user.isSuperAdmin && client.company_id !== req.companyId) {
+    if (!isAdminUser(req.user) && client.company_id !== req.companyId) {
       return res.status(403).json({ error: 'Only the managing firm can revoke access' });
     }
 
@@ -1155,7 +1161,7 @@ router.delete('/:id/firm-access/:firmId', async (req, res) => {
  */
 router.patch('/:id/parent', async (req, res) => {
   try {
-    if (!req.user || !req.user.isSuperAdmin) {
+    if (!req.user || !isAdminUser(req.user)) {
       return res.status(403).json({ error: 'Super admin access required' });
     }
 
@@ -1283,7 +1289,7 @@ router.post('/:ecoClientId/create-owner', async (req, res) => {
     }
 
     // Practice isolation — verify the requesting user belongs to the managing practice
-    if (!req.user.isSuperAdmin && String(req.companyId) !== String(ecoClient.company_id)) {
+    if (!isAdminUser(req.user) && String(req.companyId) !== String(ecoClient.company_id)) {
       return res.status(403).json({ error: 'Access denied — this client does not belong to your practice' });
     }
 
