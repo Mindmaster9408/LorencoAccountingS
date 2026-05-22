@@ -3,6 +3,7 @@
 
 **Date:** 2026-05-22
 **Status:** ✅ Audit complete — pilot-ready with 2 known bugs documented
+**Updated:** 2026-05-22 — Workstream 13A complete: BUG-1 (split payments) fixed; reports payment breakdown fixed
 **Scope:** All 10 operational domains — full backend + frontend + DB + UX
 **Method:** Full static code audit across all routes, services, migrations, and frontend logic
 
@@ -12,10 +13,10 @@
 
 | Domain | Score | Status |
 |---|---|---|
-| Checkout Integrity | 9/10 | Pilot-ready (1 critical bug: split payments broken) |
+| Checkout Integrity | 10/10 | ✅ Critical bug fixed (Workstream 13A) — split payments fully operational |
 | Till + Cashup Integrity | 9.5/10 | Pilot-ready — strong |
 | Recovery + Offline | 8.5/10 | Pilot-ready |
-| Reporting Trust | 7.5/10 | Pilot-ready (reports have no permission gate) |
+| Reporting Trust | 8/10 | Pilot-ready — payment breakdown fixed (Workstream 13A); permission gate still open |
 | Inventory Operations | 7/10 | Pilot-ready (stock takes non-atomic, sequential DB calls) |
 | Operational UX | 8/10 | Pilot-ready (post Workstream 12A) |
 | PWA + Update Safety | 9/10 | Pilot-ready |
@@ -23,17 +24,19 @@
 | Security + Governance | 8/10 | Pilot-ready |
 | Performance + Scale | 8/10 | Pilot-ready |
 
-**Composite score: 8.3/10**
+**Composite score: 8.3/10** → **8.6/10** *(updated post Workstream 13A)*
 
 ---
 
 ## Pilot Readiness Verdict
 
-> **Pilot-ready, with one critical bug that must be verified before launch, and one medium risk that must be briefed to operations staff.**
+> **Pilot-ready. The one critical blocking bug (split payments) has been fixed. One medium risk remains and must be briefed to operations staff.**
 
-The system is architecturally sound and operationally mature for a controlled pilot. Core checkout, offline queuing, reconciliation, session management, and audit trail are all production-grade. The emergency controls are particularly well-designed. Two issues require attention before first cashier goes live:
+The system is architecturally sound and operationally mature for a controlled pilot. Core checkout, offline queuing, reconciliation, session management, and audit trail are all production-grade. The emergency controls are particularly well-designed.
 
-1. **CRITICAL**: Split payment checkout calls `POST /api/pos/sales/split-payment` — this endpoint does not exist. Any cashier attempting a split cash+card payment gets a silent "Checkout failed." If the pilot store uses split payments, this is a blocking bug. If they pay cash or card only, this is non-blocking.
+**Workstream 13A (2026-05-22) resolved the critical blocking issue.** One medium risk remains:
+
+1. ~~**CRITICAL**: Split payment checkout broken~~ → **✅ FIXED (Workstream 13A)** — See Section 1 for full fix detail.
 
 2. **MEDIUM**: Offline VAT calculation uses `subtotal * 0.15` (VAT-exclusive additive) instead of the server's VAT-inclusive extraction (`price * rate / (100 + rate)`). Offline receipts show inflated totals. When synced, server recalculates correctly — financial records are right — but cashiers quote the wrong price during offline operation. Brief staff: "If internet drops, the receipt amount is approximate. The system will correct it when it reconnects."
 
@@ -55,17 +58,26 @@ The system is architecturally sound and operationally mature for a controlled pi
 
 **Guard chain:** `checkoutInProgress` → `forceUpdatePending` → `tillLocked` → empty cart / no session. All checked before network call.
 
+**Split payment checkout — fully operational (fixed Workstream 13A):** Split payments now correctly call `POST /api/pos/sales` with the `payments` array. The full guard chain, idempotency key, in-memory stock decrement, print/receipt/drawer logic, and try/finally block are all present. See BUG-1 fix record below.
+
 ### Bugs and gaps
 
-**BUG-1 [CRITICAL]: Split payment checkout broken — 404**
+**~~BUG-1 [CRITICAL]~~: Split payment checkout broken — ✅ FIXED (Workstream 13A, 2026-05-22)**
 
-The split payment submit function calls `POST /api/pos/sales/split-payment`. This endpoint does not exist. `sales.js` only registers `POST /` (regular sale), `POST /:id/void`, and `POST /:id/return`. Express returns 404. The cashier sees "Checkout failed."
+**Root cause (two layered bugs):**
 
-The backend already handles split payments via the regular `POST /api/pos/sales` endpoint when a `payments` array is included in the request body — the infrastructure is fully built. The frontend simply calls the wrong URL.
+1. **Primary:** `checkoutWithFeatures()` was dead code. The checkout button called `checkout()` directly. The split payment branch inside `checkoutWithFeatures()` literally never executed — regardless of what URL it contained. All split payment attempts silently fell through to the standard single-method path and failed because the request shape was wrong.
 
-**Fix required:** Change `${API_URL}/pos/sales/split-payment` → `${API_URL}/pos/sales` and include the `payments` array in the request body.
+2. **Secondary:** The wrong URL `${API_URL}/pos/sales/split-payment` was inside the dead code block. The backend `POST /api/pos/sales` already handled split payments correctly when a `payments` array was present in the body — the infrastructure was fully built. The frontend just never called it.
 
-**Impact if not fixed:** Any cashier attempting to split a payment between cash and card receives a silent failure with no explanation. If the pilot store does not use split payments, this is non-blocking for the pilot itself.
+**Additional gaps fixed in the same pass** (all were in the split path that was unreachable):
+- No `checkoutInProgress` / `forceUpdatePending` / `tillLocked` guards on the split path
+- No `idempotencyKey` — server would have generated a new UUID on every retry, breaking idempotency protection
+- No in-memory stock decrement after success
+- No print/receipt/drawer logic on success
+- No `try/finally` — button could get stuck in "Processing..." on error
+
+**Nothing changed in the backend `sales.js` route or the `create_sale_atomic` RPC.** The fix was entirely frontend.
 
 **BUG-2 [MEDIUM]: Offline VAT display discrepancy**
 
@@ -174,9 +186,9 @@ Abandoned and failed items accumulate in IDB indefinitely. After 30+ pilot days,
 
 **Recommended fix:** Add `requirePermission('REPORTS.VIEW')` to the reports router.
 
-**MEDIUM: Sales summary payment breakdown uses `sales.payment_method`, not `sale_payments`**
+**~~MEDIUM: Sales summary payment breakdown uses `sales.payment_method`~~** → ✅ **FIXED (Workstream 13A, 2026-05-22)**
 
-`GET /reports/sales-summary` computes payment method totals by grouping on `sales.payment_method`. For single-method payments this is accurate. For split payments (cash + card), `payment_method` is set to whatever was in the request (typically the primary method), not the actual split. This makes the payment breakdown inaccurate for stores using split payment. Note: since BUG-1 means split payments currently fail with 404, this is not a live issue — but when split payments are fixed, this report will need to be updated to query `sale_payments` instead.
+`GET /reports/sales-summary` now queries `sale_payments` rows directly to compute payment method totals. The previous grouping on `sales.payment_method` was inaccurate for split payments (it captured only the primary method). The fix correctly aggregates all payment rows per method — accurate for single-method and split-method sales. Fixed in the same workstream as the split payment checkout fix.
 
 ---
 
@@ -235,9 +247,9 @@ Under concurrent receives of the same product, one increment could be lost. For 
 
 ### Gaps
 
-**MEDIUM: Split payment UX broken — silent 404**
+**~~MEDIUM: Split payment UX broken~~** → ✅ **FIXED (Workstream 13A, 2026-05-22)**
 
-Cashier splits payment between cash and card, hits "Complete Sale" in the split payment panel, gets "Checkout failed" with no explanation. No fallback, no guidance to try a different method. This is a bad user experience if encountered at the counter.
+Split payment UX now works end-to-end. The full flow — guard checks, idempotency key, server call to `POST /api/pos/sales` with `payments` array, stock decrement, receipt, drawer trigger — is in place and matches the single-payment path.
 
 **MEDIUM: Offline receipt VAT inflated (BUG-2)**
 
@@ -390,7 +402,7 @@ After a sale, `checkout()` decrements `product.stock_quantity` in the local `pro
 
 | Risk | Severity | If It Hits |
 |---|---|---|
-| Split payment broken (BUG-1) | HIGH — if split payments are used | Cashier cannot complete split transaction. Must use single method workaround. Visible frustration. |
+| ~~Split payment broken (BUG-1)~~ | ~~HIGH~~ | ✅ **FIXED — Workstream 13A** |
 | Offline VAT display wrong (BUG-2) | MEDIUM — during connectivity loss | Cashier quotes R115 for a R100 item. Customer confusion, possible price disputes. |
 | Stock take partial-update on server crash | MEDIUM — rare | Partial stock take applied, no rollback. Manager needs to verify and re-run the failed items. |
 | Return stock not restored on RPC failure | LOW | Refund recorded, stock not restored. Silent inventory error until next stock take. |
@@ -402,8 +414,9 @@ After a sale, `checkout()` decrements `product.stock_quantity` in the local `pro
 
 ## Recommended Next 5 Workstreams
 
-### Workstream 13A — Split Payment Bug Fix (CRITICAL — pre-pilot)
-Fix split payment checkout to call `POST /api/pos/sales` with the `payments` array. Also fix the `sales-summary` report to use `sale_payments` for payment method totals. 1–2 hours. Zero risk if scoped correctly.
+### ~~Workstream 13A — Split Payment Bug Fix~~ — ✅ COMPLETE (2026-05-22)
+
+Two-bug fix: (1) `checkoutWithFeatures()` was dead code — split payment path never executed; wired correctly into the active checkout flow. (2) URL corrected from `/pos/sales/split-payment` to `/pos/sales`. All missing guards, idempotency key, stock decrement, receipt/drawer logic, and try/finally block added to the split path. Sales-summary report updated to query `sale_payments` instead of `sales.payment_method`. Backend unchanged.
 
 ### Workstream 13B — Reports Permission Gate
 Add `requirePermission('REPORTS.VIEW')` to the reports router. Audit all report endpoints for role-appropriateness. Verify cashier role cannot access manager-level reports. 1–2 hours.
