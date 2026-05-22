@@ -7710,6 +7710,9 @@
                 if (section === 'companies') {
                     loadCompanies();
                 }
+                if (section === 'users') {
+                    loadCompaniesForUserFilter();
+                }
                 if (section === 'customers') {
                     loadCustomers();
                 }
@@ -10654,7 +10657,7 @@
 
         async function loadCompaniesForUserFilter() {
             try {
-                const res = await fetch(`${API_URL}/auth/companies/all`, {
+                const res = await fetch(`${API_URL}/auth/companies`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {
