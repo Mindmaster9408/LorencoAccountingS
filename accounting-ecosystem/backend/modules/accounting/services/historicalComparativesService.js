@@ -29,6 +29,19 @@ const MONTH_NAMES = {
 
 class HistoricalComparativesService {
 
+  // ── INTERNAL HELPERS ─────────────────────────────────────────────────────
+
+  /**
+   * Coerce any user-ID value to INTEGER (nullable).
+   * The app's users table uses INTEGER PKs throughout (migrations 014, 019, 041).
+   * JWT carries userId as a number but route params may arrive as string "1".
+   */
+  static _actorId(id) {
+    if (id === null || id === undefined || id === '') return null;
+    const n = parseInt(id, 10);
+    return isNaN(n) ? null : n;
+  }
+
   // ── BATCH MANAGEMENT ─────────────────────────────────────────────────────
 
   /**
@@ -41,7 +54,7 @@ class HistoricalComparativesService {
       .from('historical_comparative_batches')
       .insert({
         company_id: companyId,
-        created_by: userId,
+        created_by: this._actorId(userId),
         source_type: sourceType || 'manual',
         source_name: sourceName || null,
         description: description || null,
@@ -200,9 +213,9 @@ class HistoricalComparativesService {
       original_amount: existingLine ? existingLine.original_amount : amount,
       source_reference: sourceReference || null,
       capture_method: 'manual',
-      entered_by: userId,
+      entered_by: this._actorId(userId),
       entered_at: existingLine ? existingLine.entered_at : new Date().toISOString(),
-      updated_by: userId,
+      updated_by: this._actorId(userId),
       updated_at: new Date().toISOString(),
       is_finalized: false,
       notes: notes || null,
@@ -372,7 +385,7 @@ class HistoricalComparativesService {
       .update({
         status: 'finalized',
         finalized_at: now,
-        finalized_by: userId,
+        finalized_by: this._actorId(userId),
         updated_at: now,
       })
       .eq('id', batchId)
@@ -863,7 +876,7 @@ class HistoricalComparativesService {
           action,
           old_value: oldValue || null,
           new_value: newValue || null,
-          performed_by: performedBy || null,
+          performed_by: this._actorId(performedBy),
           performed_at: new Date().toISOString(),
         });
     } catch (err) {
