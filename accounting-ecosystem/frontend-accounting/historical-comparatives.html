@@ -525,6 +525,13 @@
               <option value="Equity">Equity</option>
             </select>
           </div>
+          <div class="form-group" style="max-width:200px;" id="rptLayoutGroup">
+            <label>Column Layout</label>
+            <select id="rptLayout">
+              <option value="year-groups">Year groups (all months per year)</option>
+              <option value="month-groups">Month groups (all years per month)</option>
+            </select>
+          </div>
           <div class="form-group" style="justify-content:flex-end; max-width:140px;">
             <label>&nbsp;</label>
             <button class="btn btn-primary no-print" onclick="loadReport()">Generate</button>
@@ -1312,13 +1319,17 @@
       }
 
       onReportModeChange();
+      onReportTypeChange();
     }
 
     function onReportTypeChange() {
       const type = document.getElementById('rptType').value;
-      // TB-style doesn't use account type filter; show/hide accordingly
+      // TB-style doesn't use account type filter
       document.getElementById('rptAccountTypeGroup').style.display =
         type === 'tb-comparative' ? 'none' : '';
+      // Column layout selector only applies to monthly P&L
+      document.getElementById('rptLayoutGroup').style.display =
+        type === 'monthly-pl' ? '' : 'none';
     }
 
     function onReportModeChange() {
@@ -1363,11 +1374,16 @@
       try {
         let report;
         if (rptType === 'monthly-pl') {
+          const layout = document.getElementById('rptLayout').value;
           let qs = `financialYearStart=${yearFrom}&financialYearEnd=${yearTo}&statusMode=${mode}`;
           if (accType) qs += `&accountType=${encodeURIComponent(accType)}`;
           if (batchId) qs += `&batchId=${encodeURIComponent(batchId)}`;
           report = await api('GET', `/reports/monthly-pl?${qs}`);
-          renderPLReport(report, yearFrom, yearTo);
+          if (layout === 'month-groups') {
+            renderPLReportMonthGroups(report, yearFrom, yearTo);
+          } else {
+            renderPLReport(report, yearFrom, yearTo);
+          }
         } else if (rptType === 'tb-comparative') {
           let qs = `financialYearStart=${yearFrom}&financialYearEnd=${yearTo}&statusMode=${mode}`;
           if (batchId) qs += `&batchId=${encodeURIComponent(batchId)}`;
@@ -1433,6 +1449,77 @@
         <div style="overflow-x:auto;">
           <table class="report-table">
             <thead><tr>${headers}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div style="font-size:12px; color:${isDraft ? '#92400e' : '#6b7280'}; margin-top:12px;">${footerNote}</div>
+      `;
+    }
+
+    // ── Render: Monthly P&L — Month Groups layout ────────────────────────
+    // Shows each month as a group of columns (one per year), so you can compare
+    // e.g. March across FY21 / FY22 / FY23 / FY24 / FY25 side by side.
+    function renderPLReportMonthGroups(report, yearFrom, yearTo) {
+      const { accounts, years, monthOrder, metadata } = report;
+      const out = document.getElementById('reportOutput');
+      const isDraft = metadata && metadata.isDraftPreview;
+
+      if (!accounts || accounts.length === 0) {
+        out.innerHTML = `<div class="empty-state"><p>No data found for the selected year range.</p></div>`;
+        return;
+      }
+
+      const nYears = years.length;
+
+      // Two-row header: row 1 = month name (spanning nYears cols), row 2 = FY labels
+      // Plus Account / Code fixed cols, and a Total section at the end
+      let headerRow1 = '<th class="col-account" rowspan="2">Account</th><th class="col-code" rowspan="2">Code</th>';
+      let headerRow2 = '';
+
+      for (const m of monthOrder) {
+        headerRow1 += `<th colspan="${nYears}" style="text-align:center; border-left:2px solid #e5e7eb; padding:6px 4px; font-size:12px;">${MONTH_SHORT[m]}</th>`;
+        for (const y of years) {
+          headerRow2 += `<th style="min-width:75px; border-left:${y === years[0] ? '2px solid #e5e7eb' : ''}; font-size:11px;">FY${y}<br><span style="font-size:10px;color:#9ca3af;">${String(y+1).slice(-2)}</span></th>`;
+        }
+      }
+      // Annual totals section
+      headerRow1 += `<th colspan="${nYears}" style="text-align:center; border-left:2px solid #bbf7d0; background:#f0fdf4; color:#1a1a2e; padding:6px 4px; font-size:12px;">Annual Total</th>`;
+      for (const y of years) {
+        headerRow2 += `<th style="min-width:90px; background:#f0fdf4; color:#1a1a2e; border-left:${y === years[0] ? '2px solid #bbf7d0' : ''}; font-size:11px;">FY${y}<br><span style="font-size:10px;color:#6b7280;">${String(y+1).slice(-2)}</span></th>`;
+      }
+
+      let rows = '';
+      for (const acc of accounts) {
+        rows += `<tr><td class="col-account">${escHtml(acc.account_name)}</td><td class="col-code">${escHtml(acc.account_code || '')}</td>`;
+
+        const yearTotals = {};
+        for (const m of monthOrder) {
+          for (const y of years) {
+            const val = (acc.years && acc.years[y] && acc.years[y][m]) ? acc.years[y][m] : 0;
+            yearTotals[y] = (yearTotals[y] || 0) + val;
+            const borderLeft = y === years[0] ? 'border-left:2px solid #e5e7eb;' : '';
+            rows += `<td style="${borderLeft}">${val !== 0 ? formatCurrency(val) : '<span style="color:#d1d5db;">—</span>'}</td>`;
+          }
+        }
+        // Annual totals
+        for (const y of years) {
+          const borderLeft = y === years[0] ? 'border-left:2px solid #bbf7d0;' : '';
+          rows += `<td style="font-weight:600; background:#f0fdf4; color:#1a1a2e; ${borderLeft}">${formatCurrency(yearTotals[y] || 0)}</td>`;
+        }
+        rows += '</tr>';
+      }
+
+      const footerNote = isDraft
+        ? `<strong>DRAFT PREVIEW — NOT FINALIZED.</strong> ${escHtml(metadata.sourceWarning || '')}`
+        : `Showing finalized data for FY${yearFrom}–FY${yearTo}. Each month column group compares the same month across all years.`;
+
+      out.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table class="report-table">
+            <thead>
+              <tr>${headerRow1}</tr>
+              <tr>${headerRow2}</tr>
+            </thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
