@@ -161,6 +161,13 @@ const PERMISSIONS = {
   'historical.create':   ['admin', 'accountant'],
   'historical.edit':     ['admin', 'accountant'],
   'historical.finalize': ['admin', 'accountant'],
+
+  // Opening Balance / Prior Year Trial Balance Import
+  'opening_balance.view':     ['admin', 'accountant', 'bookkeeper', 'viewer'],
+  'opening_balance.create':   ['admin', 'accountant'],
+  'opening_balance.edit':     ['admin', 'accountant'],
+  'opening_balance.finalize': ['admin', 'accountant'],
+  'opening_balance.archive':  ['admin', 'accountant'],
 };
 
 function hasPermission(permission) {

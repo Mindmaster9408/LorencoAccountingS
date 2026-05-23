@@ -84,4 +84,7 @@ router.use('/diagnostics', require('./routes/diagnostics'));
 // Historical Comparative Financial Engine
 router.use('/historical-comparatives', require('./routes/historicalComparatives'));
 
+// Opening Balance / Prior Year Trial Balance Import Engine
+router.use('/opening-balances', require('./routes/openingBalances'));
+
 module.exports = router;

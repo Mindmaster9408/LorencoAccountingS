@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Opening Balances — Lorenco Accounting</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <style>
+    /* ── Page Layout ─────────────────────────────────────────────────── */
+    .page-container {
+      padding: 24px 32px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .page-header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-primary, #1a1a2e);
+      margin: 0;
+    }
+    .page-header .subtitle {
+      font-size: 13px;
+      color: var(--text-secondary, #666);
+      margin-top: 4px;
+    }
+
+    /* ── Cards ───────────────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary, #1a1a2e);
+      margin: 0;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 6px;
+      border: 1px solid var(--border, #e5e7eb);
+      background: #fff;
+      color: var(--text-primary, #1a1a2e);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover { background: #f3f4f6; }
+    .btn-primary {
+      background: var(--primary, #2563eb);
+      color: #fff;
+      border-color: var(--primary, #2563eb);
+    }
+    .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+    .btn-danger {
+      background: #fef2f2;
+      color: #dc2626;
+      border-color: #fecaca;
+    }
+    .btn-danger:hover { background: #fee2e2; }
+    .btn-success {
+      background: #f0fdf4;
+      color: #16a34a;
+      border-color: #bbf7d0;
+    }
+    .btn-success:hover { background: #dcfce7; }
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    /* ── Status badges ───────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-draft      { background: #f3f4f6; color: #6b7280; }
+    .badge-validated  { background: #eff6ff; color: #2563eb; }
+    .badge-finalized  { background: #f0fdf4; color: #16a34a; }
+    .badge-archived   { background: #f9fafb; color: #9ca3af; }
+
+    /* ── Tables ──────────────────────────────────────────────────────── */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      text-align: left;
+      padding: 8px 12px;
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary, #6b7280);
+      background: #f9fafb;
+      border-bottom: 1px solid var(--border, #e5e7eb);
+    }
+    .data-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border, #e5e7eb);
+      vertical-align: middle;
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: #f9fafb; }
+    .data-table td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+    .data-table th.amount { text-align: right; }
+
+    /* ── Variance panel ──────────────────────────────────────────────── */
+    .variance-panel {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 16px;
+      background: #f9fafb;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .variance-panel .vp-item { text-align: center; }
+    .variance-panel .vp-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary, #6b7280);
+      margin-bottom: 4px;
+    }
+    .variance-panel .vp-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary, #1a1a2e);
+      font-variant-numeric: tabular-nums;
+    }
+    .variance-panel .vp-value.balanced { color: #16a34a; }
+    .variance-panel .vp-value.out-of-balance { color: #dc2626; }
+    .variance-alert {
+      display: none;
+      padding: 10px 14px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      color: #dc2626;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .variance-alert.visible { display: block; }
+    .balance-ok {
+      display: none;
+      padding: 10px 14px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      color: #16a34a;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .balance-ok.visible { display: block; }
+
+    /* ── Grid action buttons ─────────────────────────────────────────── */
+    .action-btns { display: flex; gap: 6px; flex-wrap: nowrap; }
+
+    /* ── Forms ───────────────────────────────────────────────────────── */
+    .form-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .form-group { flex: 1; min-width: 160px; }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary, #6b7280);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text-primary, #1a1a2e);
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--primary, #2563eb);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+    }
+
+    /* ── Account search dropdown ─────────────────────────────────────── */
+    .acct-search-wrap { position: relative; }
+    .acct-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.12);
+      z-index: 100;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .acct-dropdown .acct-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .acct-dropdown .acct-item:hover { background: #eff6ff; }
+    .acct-dropdown .acct-item .code {
+      font-weight: 700;
+      color: var(--primary, #2563eb);
+      min-width: 60px;
+    }
+    .acct-dropdown .acct-item .name { color: var(--text-primary, #1a1a2e); }
+    .acct-dropdown .acct-item.non-postable { opacity: 0.5; cursor: default; font-style: italic; }
+    .acct-dropdown .acct-none { padding: 10px 12px; color: var(--text-secondary, #999); font-size: 13px; }
+
+    /* ── Modal ───────────────────────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 10px;
+      padding: 28px;
+      width: 480px;
+      max-width: 96vw;
+      box-shadow: 0 8px 32px rgba(0,0,0,.18);
+    }
+    .modal h2 {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 0 0 20px;
+      color: var(--text-primary, #1a1a2e);
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    /* ── Line entry row inline form ──────────────────────────────────── */
+    .line-entry-form {
+      display: grid;
+      grid-template-columns: 140px 1fr 1fr 100px 100px 32px;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      background: #eff6ff;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    .line-entry-form input,
+    .line-entry-form select {
+      padding: 6px 8px;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 5px;
+      font-size: 12px;
+    }
+    .line-entry-form input:focus,
+    .line-entry-form select:focus {
+      outline: none;
+      border-color: var(--primary, #2563eb);
+    }
+    .line-entry-form input[type="number"] { text-align: right; }
+
+    /* ── Views ───────────────────────────────────────────────────────── */
+    #view-list { }
+    #view-batch { display: none; }
+
+    /* ── Filters ─────────────────────────────────────────────────────── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .filter-bar select {
+      padding: 7px 10px;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .filter-bar label { font-size: 13px; color: var(--text-secondary, #666); }
+
+    /* ── Empty state ─────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-secondary, #9ca3af);
+    }
+    .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+    .empty-state p { margin: 0; font-size: 14px; }
+
+    /* ── Alerts ──────────────────────────────────────────────────────── */
+    .alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+    .alert-error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .alert-success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    .alert-info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+    /* ── Line status indicator ───────────────────────────────────────── */
+    .line-status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .dot-unmapped  { background: #f59e0b; }
+    .dot-mapped    { background: #22c55e; }
+    .dot-excluded  { background: #9ca3af; }
+
+    /* ── Batch detail toolbar ─────────────────────────────────────────── */
+    .batch-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .batch-toolbar .back-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 13px; color: var(--primary, #2563eb);
+      background: none; border: none; cursor: pointer; padding: 0;
+    }
+    .batch-toolbar .back-btn:hover { text-decoration: underline; }
+    .batch-toolbar .sep { color: var(--text-secondary, #ccc); }
+    .batch-name {
+      font-size: 14px; font-weight: 600;
+      color: var(--text-primary, #1a1a2e);
+    }
+
+    /* ── Map button in table ─────────────────────────────────────────── */
+    .map-cell { min-width: 200px; }
+    .map-cell .mapped-name {
+      font-size: 12px; color: #16a34a; font-weight: 600;
+    }
+    .map-cell .map-search {
+      width: 100%; padding: 4px 7px;
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 5px; font-size: 12px;
+    }
+
+    /* ── Progress summary ────────────────────────────────────────────── */
+    .progress-summary {
+      display: flex; gap: 16px; flex-wrap: wrap;
+      font-size: 12px; color: var(--text-secondary, #666);
+      margin-bottom: 8px;
+    }
+    .progress-summary span b { color: var(--text-primary, #1a1a2e); }
+  </style>
+</head>
+<body>
+  <div id="nav-placeholder"></div>
+
+  <div class="page-container">
+    <!-- ── Page header ──────────────────────────────────────────────── -->
+    <div class="page-header">
+      <div>
+        <h1>Opening Balances</h1>
+        <div class="subtitle">Import prior-year trial balances to establish your accounting starting point.</div>
+      </div>
+      <button class="btn btn-primary" id="btnCreateBatch" onclick="openCreateBatchModal()">+ New Import Batch</button>
+    </div>
+
+    <!-- ── BATCH LIST VIEW ──────────────────────────────────────────── -->
+    <div id="view-list">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Import Batches</span>
+          <div class="filter-bar" style="margin:0;">
+            <label for="batchFilter">Status:</label>
+            <select id="batchFilter" onchange="loadBatches()">
+              <option value="">All</option>
+              <option value="draft">Draft</option>
+              <option value="validated">Validated</option>
+              <option value="finalized">Finalized</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+        </div>
+        <div id="batchList">
+          <div class="empty-state"><p>Loading…</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── BATCH DETAIL VIEW ────────────────────────────────────────── -->
+    <div id="view-batch">
+      <!-- toolbar -->
+      <div class="batch-toolbar">
+        <button class="back-btn" onclick="showListView()">← Back to Batches</button>
+        <span class="sep">/</span>
+        <span class="batch-name" id="batchDetailName"></span>
+        <span id="batchDetailBadge"></span>
+      </div>
+
+      <!-- global error banner -->
+      <div id="batchError" class="alert alert-error" style="display:none;"></div>
+      <div id="batchSuccess" class="alert alert-success" style="display:none;"></div>
+
+      <!-- ── Variance / balance panel (always visible) ────────────── -->
+      <div class="variance-panel">
+        <div class="vp-item">
+          <div class="vp-label">Total Debits</div>
+          <div class="vp-value" id="vpDebit">0.00</div>
+        </div>
+        <div class="vp-item">
+          <div class="vp-label">Total Credits</div>
+          <div class="vp-value" id="vpCredit">0.00</div>
+        </div>
+        <div class="vp-item">
+          <div class="vp-label">Variance</div>
+          <div class="vp-value" id="vpVariance">0.00</div>
+        </div>
+      </div>
+      <div class="variance-alert" id="varianceAlert">
+        ⚠ <strong>Trial balance does not balance.</strong> Finalization is blocked until the variance is corrected.
+        Adjust the debit/credit amounts on your lines until Debits = Credits.
+      </div>
+      <div class="balance-ok" id="balanceOk">
+        ✓ Trial balance is balanced.
+      </div>
+
+      <!-- ── Add line row (hidden for finalized/archived) ─────────── -->
+      <div id="addLineSection">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Add Line</span>
+          </div>
+          <div id="addLineError" class="alert alert-error" style="display:none;"></div>
+          <div class="form-row">
+            <div class="form-group" style="flex:0 0 140px;">
+              <label>Source Code</label>
+              <input type="text" id="addCode" placeholder="e.g. 2000" maxlength="50" />
+            </div>
+            <div class="form-group">
+              <label>Source Account Name</label>
+              <input type="text" id="addName" placeholder="e.g. Trade Creditors" maxlength="255" />
+            </div>
+            <div class="form-group" style="flex:0 0 120px;">
+              <label>Debit (R)</label>
+              <input type="number" id="addDebit" min="0" step="0.01" placeholder="0.00" />
+            </div>
+            <div class="form-group" style="flex:0 0 120px;">
+              <label>Credit (R)</label>
+              <input type="number" id="addCredit" min="0" step="0.01" placeholder="0.00" />
+            </div>
+            <div class="form-group" style="flex:0 0 180px;">
+              <label>Map to COA Account</label>
+              <div class="acct-search-wrap">
+                <input type="text" id="addAcctSearch" placeholder="Search code or name…"
+                  oninput="searchAccountsFor('add')"
+                  autocomplete="off" />
+                <div id="addAcctDropdown" class="acct-dropdown" style="display:none;"></div>
+              </div>
+              <input type="hidden" id="addAcctId" />
+              <div id="addAcctLabel" style="font-size:11px; color:#16a34a; margin-top:3px;"></div>
+            </div>
+            <div class="form-group" style="flex:1 0 120px;">
+              <label>Notes</label>
+              <input type="text" id="addNotes" placeholder="Optional" maxlength="255" />
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:4px;">
+            <button class="btn btn-primary" id="btnAddLine" onclick="submitAddLine()">Add Line</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Lines table ───────────────────────────────────────────── -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Trial Balance Lines</span>
+          <div class="progress-summary" id="progressSummary"></div>
+        </div>
+        <div id="linesTableWrap">
+          <div class="empty-state"><p>Loading lines…</p></div>
+        </div>
+      </div>
+
+      <!-- ── Action toolbar ────────────────────────────────────────── -->
+      <div id="batchActions" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:24px;">
+        <button class="btn" id="btnValidate" onclick="runValidate()">Validate TB</button>
+        <button class="btn btn-success" id="btnFinalize" onclick="runFinalize()" disabled>Finalize &amp; Post Journal</button>
+        <button class="btn" id="btnArchive" onclick="runArchive()" style="display:none;">Archive</button>
+        <span id="actionHint" style="font-size:12px; color:var(--text-secondary,#999);"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CREATE BATCH MODAL ─────────────────────────────────────────────── -->
+  <div class="modal-overlay" id="modalCreateBatch">
+    <div class="modal">
+      <h2>New Opening Balance Import</h2>
+      <div id="createBatchError" class="alert alert-error" style="display:none;"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Effective Date *</label>
+          <input type="date" id="cbEffectiveDate" required />
+        </div>
+        <div class="form-group">
+          <label>Source Type</label>
+          <select id="cbSourceType">
+            <option value="manual">Manual Entry</option>
+            <option value="csv_import">CSV Import</option>
+            <option value="xero">Xero</option>
+            <option value="sage">Sage</option>
+            <option value="pastel">Pastel</option>
+            <option value="quickbooks">QuickBooks</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Source Name / Label *</label>
+          <input type="text" id="cbSourceName" placeholder="e.g. Xero TB 28 Feb 2024" maxlength="255" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" id="cbDescription" placeholder="Optional notes" maxlength="500" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeCreateBatchModal()">Cancel</button>
+        <button class="btn btn-primary" id="btnCreateBatchSubmit" onclick="submitCreateBatch()">Create Batch</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── EDIT LINE MODAL ────────────────────────────────────────────────── -->
+  <div class="modal-overlay" id="modalEditLine">
+    <div class="modal">
+      <h2>Edit Line</h2>
+      <div id="editLineError" class="alert alert-error" style="display:none;"></div>
+      <input type="hidden" id="editLineId" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Source Code</label>
+          <input type="text" id="editCode" maxlength="50" />
+        </div>
+        <div class="form-group">
+          <label>Source Account Name</label>
+          <input type="text" id="editName" maxlength="255" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Debit (R)</label>
+          <input type="number" id="editDebit" min="0" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label>Credit (R)</label>
+          <input type="number" id="editCredit" min="0" step="0.01" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Notes</label>
+          <input type="text" id="editNotes" maxlength="255" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeEditLineModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitEditLine()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Bootstrap ────────────────────────────────────────────────────────
+    const _token = localStorage.getItem('token');
+    if (!_token) window.location.href = '/';
+
+    const BASE = '/api/accounting/opening-balances';
+
+    let currentBatch    = null;  // full batch object
+    let currentLines    = [];    // array of line objects
+    let _acctSearchTimer = null; // debounce timer for account search
+
+    // ── Escape HTML ──────────────────────────────────────────────────────
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // ── Format currency ──────────────────────────────────────────────────
+    function fmtAmt(v) {
+      const n = parseFloat(v || 0);
+      return n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // ── API helper ───────────────────────────────────────────────────────
+    async function api(method, path, body) {
+      const opts = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + _token,
+        },
+        credentials: 'include',
+      };
+      if (body !== undefined) opts.body = JSON.stringify(body);
+      const res = await fetch(BASE + path, opts);
+      const json = await res.json();
+      if (!res.ok) {
+        const msg = json.detail
+          ? `${json.error || 'Error'}: ${json.detail}`
+          : (json.error || `HTTP ${res.status}`);
+        throw new Error(msg);
+      }
+      return json;
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // BATCH LIST VIEW
+    // ────────────────────────────────────────────────────────────────────
+
+    async function loadBatches() {
+      const status = document.getElementById('batchFilter').value;
+      const el     = document.getElementById('batchList');
+      el.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+      try {
+        const data = await api('GET', `/batches${status ? '?status=' + encodeURIComponent(status) : ''}`);
+        renderBatchList(data.batches || []);
+      } catch (e) {
+        el.innerHTML = `<p class="alert alert-error">${escHtml(e.message)}</p>`;
+      }
+    }
+
+    function renderBatchList(batches) {
+      const el = document.getElementById('batchList');
+      if (!batches.length) {
+        el.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">📋</div>
+            <p style="font-weight:600; color:#374151;">No import batches yet.</p>
+            <p style="margin-top:4px;">Click <strong>+ New Import Batch</strong> to start capturing a prior-year trial balance.</p>
+          </div>`;
+        return;
+      }
+
+      const rows = batches.map(b => {
+        const variance = parseFloat(b.variance || 0);
+        const varCls = Math.abs(variance) > 0.01 ? 'style="color:#dc2626; font-weight:700;"' : 'style="color:#16a34a; font-weight:700;"';
+        const badgeCls = `badge badge-${b.status}`;
+        const editBtn = (b.status === 'draft' || b.status === 'validated')
+          ? `<button class="btn" style="font-size:12px; padding:4px 10px;" onclick="openBatch('${escHtml(b.id)}')">Open</button>`
+          : `<button class="btn" style="font-size:12px; padding:4px 10px;" onclick="openBatch('${escHtml(b.id)}')">View</button>`;
+        return `
+          <tr>
+            <td><strong>${escHtml(b.source_name)}</strong></td>
+            <td>${escHtml(b.effective_date)}</td>
+            <td><span class="${badgeCls}">${escHtml(b.status)}</span></td>
+            <td class="amount">${fmtAmt(b.debit_total)}</td>
+            <td class="amount">${fmtAmt(b.credit_total)}</td>
+            <td class="amount" ${varCls}>${fmtAmt(variance)}</td>
+            <td>${b.journal_id ? `<a href="/accounting/journals.html#${b.journal_id}" style="font-size:12px; color:var(--primary,#2563eb);">JNL #${b.journal_id}</a>` : '—'}</td>
+            <td>${editBtn}</td>
+          </tr>`;
+      }).join('');
+
+      el.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Source Name</th>
+              <th>Effective Date</th>
+              <th>Status</th>
+              <th class="amount">Debits</th>
+              <th class="amount">Credits</th>
+              <th class="amount">Variance</th>
+              <th>Journal</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // CREATE BATCH MODAL
+    // ────────────────────────────────────────────────────────────────────
+
+    function openCreateBatchModal() {
+      document.getElementById('cbEffectiveDate').value = '';
+      document.getElementById('cbSourceType').value    = 'manual';
+      document.getElementById('cbSourceName').value    = '';
+      document.getElementById('cbDescription').value   = '';
+      document.getElementById('createBatchError').style.display = 'none';
+      document.getElementById('modalCreateBatch').classList.add('open');
+      document.getElementById('cbEffectiveDate').focus();
+    }
+
+    function closeCreateBatchModal() {
+      document.getElementById('modalCreateBatch').classList.remove('open');
+    }
+
+    async function submitCreateBatch() {
+      const btn = document.getElementById('btnCreateBatchSubmit');
+      const errEl = document.getElementById('createBatchError');
+      errEl.style.display = 'none';
+
+      const effectiveDate = document.getElementById('cbEffectiveDate').value;
+      const sourceType    = document.getElementById('cbSourceType').value;
+      const sourceName    = document.getElementById('cbSourceName').value.trim();
+      const description   = document.getElementById('cbDescription').value.trim();
+
+      if (!effectiveDate) { errEl.textContent = 'Effective date is required.'; errEl.style.display = 'block'; return; }
+      if (!sourceName)    { errEl.textContent = 'Source name / label is required.'; errEl.style.display = 'block'; return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Creating…';
+      try {
+        const data = await api('POST', '/batches', { effectiveDate, sourceType, sourceName, description: description || null });
+        closeCreateBatchModal();
+        openBatch(data.batch.id);
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create Batch';
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // BATCH DETAIL VIEW
+    // ────────────────────────────────────────────────────────────────────
+
+    function showListView() {
+      document.getElementById('view-list').style.display = '';
+      document.getElementById('view-batch').style.display = 'none';
+      document.getElementById('btnCreateBatch').style.display = '';
+      currentBatch = null;
+      currentLines = [];
+      loadBatches();
+    }
+
+    async function openBatch(batchId) {
+      document.getElementById('view-list').style.display = 'none';
+      document.getElementById('view-batch').style.display = '';
+      document.getElementById('btnCreateBatch').style.display = 'none';
+
+      clearBatchMessages();
+
+      try {
+        const [batchData, linesData] = await Promise.all([
+          api('GET', `/batch/${encodeURIComponent(batchId)}`),
+          api('GET', `/batch/${encodeURIComponent(batchId)}/lines`),
+        ]);
+        currentBatch = batchData.batch;
+        currentLines = linesData.lines || [];
+        renderBatchDetail();
+      } catch (e) {
+        showBatchError(e.message);
+      }
+    }
+
+    function renderBatchDetail() {
+      if (!currentBatch) return;
+      const b = currentBatch;
+
+      document.getElementById('batchDetailName').textContent = b.source_name;
+      document.getElementById('batchDetailBadge').innerHTML = `<span class="badge badge-${b.status}">${b.status}</span>`;
+
+      // Variance panel
+      const debit    = parseFloat(b.debit_total   || 0);
+      const credit   = parseFloat(b.credit_total  || 0);
+      const variance = parseFloat(b.variance      || 0);
+
+      document.getElementById('vpDebit').textContent   = fmtAmt(debit);
+      document.getElementById('vpCredit').textContent  = fmtAmt(credit);
+      document.getElementById('vpVariance').textContent = fmtAmt(variance);
+
+      const balanced = Math.abs(variance) <= 0.01;
+      document.getElementById('vpVariance').className = 'vp-value ' + (balanced ? 'balanced' : 'out-of-balance');
+      document.getElementById('varianceAlert').classList.toggle('visible', !balanced);
+      document.getElementById('balanceOk').classList.toggle('visible', balanced && currentLines.filter(l => l.line_status !== 'excluded').length > 0);
+
+      // Locked batch: hide add-line section
+      const editable = (b.status === 'draft' || b.status === 'validated');
+      document.getElementById('addLineSection').style.display = editable ? '' : 'none';
+
+      // Actions
+      const validateBtn  = document.getElementById('btnValidate');
+      const finalizeBtn  = document.getElementById('btnFinalize');
+      const archiveBtn   = document.getElementById('btnArchive');
+      const actionHint   = document.getElementById('actionHint');
+
+      validateBtn.style.display  = editable ? '' : 'none';
+      finalizeBtn.style.display  = editable ? '' : 'none';
+      archiveBtn.style.display   = b.status === 'finalized' ? '' : 'none';
+
+      if (editable) {
+        const unmapped = currentLines.filter(l => l.line_status === 'unmapped').length;
+        const canFinalize = b.status === 'validated' && balanced && unmapped === 0;
+        finalizeBtn.disabled = !canFinalize;
+        if (!canFinalize) {
+          if (b.status !== 'validated') actionHint.textContent = 'Run Validate TB before finalizing.';
+          else if (unmapped > 0) actionHint.textContent = `${unmapped} unmapped line(s). Map all lines before finalizing.`;
+          else if (!balanced) actionHint.textContent = 'Variance must be 0.00 before finalizing.';
+          else actionHint.textContent = '';
+        } else {
+          actionHint.textContent = '';
+        }
+      } else if (b.status === 'finalized') {
+        actionHint.textContent = b.journal_id ? `Posted as Journal #${b.journal_id}.` : 'This batch is finalized and posted.';
+      } else if (b.status === 'archived') {
+        actionHint.textContent = 'This batch is archived.';
+      }
+
+      renderLinesTable();
+    }
+
+    function renderLinesTable() {
+      const el = document.getElementById('linesTableWrap');
+      const b  = currentBatch;
+      const editable = (b.status === 'draft' || b.status === 'validated');
+
+      // Progress summary
+      const total    = currentLines.length;
+      const mapped   = currentLines.filter(l => l.line_status === 'mapped').length;
+      const unmapped = currentLines.filter(l => l.line_status === 'unmapped').length;
+      const excluded = currentLines.filter(l => l.line_status === 'excluded').length;
+      document.getElementById('progressSummary').innerHTML =
+        `<span><b>${total}</b> lines</span>` +
+        `<span><b>${mapped}</b> mapped</span>` +
+        `<span style="color:#f59e0b;"><b>${unmapped}</b> unmapped</span>` +
+        (excluded ? `<span style="color:#9ca3af;"><b>${excluded}</b> excluded</span>` : '');
+
+      if (!currentLines.length) {
+        el.innerHTML = `<div class="empty-state"><p>No lines yet. Use <strong>Add Line</strong> above.</p></div>`;
+        return;
+      }
+
+      const rows = currentLines.map(line => {
+        const dotCls = { unmapped: 'dot-unmapped', mapped: 'dot-mapped', excluded: 'dot-excluded' }[line.line_status] || 'dot-unmapped';
+
+        // Map cell
+        let mapCell = '';
+        if (line.line_status === 'mapped' && line.mapped_account_code) {
+          mapCell = `<div class="mapped-name">${escHtml(line.mapped_account_code)} — ${escHtml(line.mapped_account_name)}</div>`;
+          if (editable) {
+            mapCell += `<button class="btn btn-danger" style="font-size:11px; padding:2px 7px; margin-top:3px;" onclick="unmapLine('${escHtml(line.id)}')">Unmap</button>`;
+          }
+        } else if (line.line_status !== 'excluded' && editable) {
+          mapCell = `
+            <div class="acct-search-wrap">
+              <input class="map-search" type="text" id="mapSearch_${escHtml(line.id)}"
+                placeholder="Search COA account…"
+                oninput="searchAccountsForLine('${escHtml(line.id)}')"
+                autocomplete="off" />
+              <div id="mapDrop_${escHtml(line.id)}" class="acct-dropdown" style="display:none;"></div>
+            </div>`;
+        } else if (line.line_status === 'excluded') {
+          mapCell = `<span style="color:#9ca3af; font-size:12px; font-style:italic;">Excluded</span>`;
+          if (editable) {
+            mapCell += `<button class="btn" style="font-size:11px; padding:2px 7px; margin-left:6px;" onclick="includeLineAgain('${escHtml(line.id)}')">Include</button>`;
+          }
+        } else {
+          mapCell = `<span style="color:#9ca3af; font-size:12px;">—</span>`;
+        }
+
+        // Action buttons
+        let actBtns = '';
+        if (editable && line.line_status !== 'excluded') {
+          actBtns = `
+            <button class="btn" style="font-size:11px; padding:3px 8px;" title="Edit line" onclick="openEditLine('${escHtml(line.id)}')">Edit</button>
+            <button class="btn btn-danger" style="font-size:11px; padding:3px 8px;" title="Exclude this line from totals" onclick="excludeLine('${escHtml(line.id)}')">Exclude</button>
+            <button class="btn btn-danger" style="font-size:11px; padding:3px 8px;" title="Delete line" onclick="deleteLine('${escHtml(line.id)}')">Delete</button>`;
+        }
+
+        const rowStyle = line.line_status === 'excluded' ? 'opacity:0.5; text-decoration:line-through;' : '';
+        return `
+          <tr style="${rowStyle}">
+            <td><span class="line-status-dot ${dotCls}"></span>${escHtml(line.source_account_code || '—')}</td>
+            <td>${escHtml(line.source_account_name || '—')}</td>
+            <td class="map-cell">${mapCell}</td>
+            <td class="amount">${line.debit  > 0 ? fmtAmt(line.debit)  : ''}</td>
+            <td class="amount">${line.credit > 0 ? fmtAmt(line.credit) : ''}</td>
+            <td>${escHtml(line.notes || '')}</td>
+            <td><div class="action-btns">${actBtns}</div></td>
+          </tr>`;
+      }).join('');
+
+      el.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Source Code</th>
+              <th>Source Account</th>
+              <th>Mapped COA Account</th>
+              <th class="amount">Debit</th>
+              <th class="amount">Credit</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // ADD LINE
+    // ────────────────────────────────────────────────────────────────────
+
+    async function submitAddLine() {
+      const btn   = document.getElementById('btnAddLine');
+      const errEl = document.getElementById('addLineError');
+      errEl.style.display = 'none';
+
+      const code  = document.getElementById('addCode').value.trim();
+      const name  = document.getElementById('addName').value.trim();
+      const debit = parseFloat(document.getElementById('addDebit').value || 0);
+      const credit= parseFloat(document.getElementById('addCredit').value || 0);
+      const acctId= document.getElementById('addAcctId').value || null;
+      const notes = document.getElementById('addNotes').value.trim();
+
+      if (!name && !code) { errEl.textContent = 'Enter a source account code or name.'; errEl.style.display = 'block'; return; }
+      if (debit < 0 || credit < 0) { errEl.textContent = 'Amounts must be non-negative.'; errEl.style.display = 'block'; return; }
+      if (debit > 0 && credit > 0) { errEl.textContent = 'Cannot have both debit and credit on one line.'; errEl.style.display = 'block'; return; }
+      if (debit === 0 && credit === 0) { errEl.textContent = 'Enter either a debit or credit amount.'; errEl.style.display = 'block'; return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Adding…';
+      try {
+        await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/manual-line`, {
+          sourceAccountCode: code  || null,
+          sourceAccountName: name  || null,
+          mappedAccountId:   acctId ? parseInt(acctId, 10) : null,
+          debit,
+          credit,
+          notes: notes || null,
+        });
+        // Clear form
+        document.getElementById('addCode').value  = '';
+        document.getElementById('addName').value  = '';
+        document.getElementById('addDebit').value = '';
+        document.getElementById('addCredit').value= '';
+        document.getElementById('addAcctSearch').value = '';
+        document.getElementById('addAcctId').value     = '';
+        document.getElementById('addAcctLabel').textContent = '';
+
+        await refreshBatchAndLines();
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add Line';
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // EDIT LINE MODAL
+    // ────────────────────────────────────────────────────────────────────
+
+    function openEditLine(lineId) {
+      const line = currentLines.find(l => l.id === lineId);
+      if (!line) return;
+      document.getElementById('editLineId').value = lineId;
+      document.getElementById('editCode').value   = line.source_account_code  || '';
+      document.getElementById('editName').value   = line.source_account_name  || '';
+      document.getElementById('editDebit').value  = line.debit  > 0 ? line.debit  : '';
+      document.getElementById('editCredit').value = line.credit > 0 ? line.credit : '';
+      document.getElementById('editNotes').value  = line.notes  || '';
+      document.getElementById('editLineError').style.display = 'none';
+      document.getElementById('modalEditLine').classList.add('open');
+    }
+
+    function closeEditLineModal() {
+      document.getElementById('modalEditLine').classList.remove('open');
+    }
+
+    async function submitEditLine() {
+      const errEl  = document.getElementById('editLineError');
+      errEl.style.display = 'none';
+      const lineId = document.getElementById('editLineId').value;
+      const code   = document.getElementById('editCode').value.trim();
+      const name   = document.getElementById('editName').value.trim();
+      const debit  = parseFloat(document.getElementById('editDebit').value  || 0);
+      const credit = parseFloat(document.getElementById('editCredit').value || 0);
+      const notes  = document.getElementById('editNotes').value.trim();
+
+      if (debit < 0 || credit < 0) { errEl.textContent = 'Amounts must be non-negative.'; errEl.style.display = 'block'; return; }
+      if (debit > 0 && credit > 0) { errEl.textContent = 'Cannot have both debit and credit.'; errEl.style.display = 'block'; return; }
+      if (debit === 0 && credit === 0) { errEl.textContent = 'Enter either a debit or credit amount.'; errEl.style.display = 'block'; return; }
+
+      try {
+        await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/manual-line`, {
+          lineId,
+          sourceAccountCode: code  || null,
+          sourceAccountName: name  || null,
+          debit,
+          credit,
+          notes: notes || null,
+        });
+        closeEditLineModal();
+        await refreshBatchAndLines();
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = 'block';
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // DELETE / EXCLUDE / INCLUDE LINE
+    // ────────────────────────────────────────────────────────────────────
+
+    async function deleteLine(lineId) {
+      if (!confirm('Delete this line? This cannot be undone.')) return;
+      try {
+        await api('DELETE', `/batch/${encodeURIComponent(currentBatch.id)}/line/${encodeURIComponent(lineId)}`);
+        await refreshBatchAndLines();
+      } catch (e) {
+        showBatchError(e.message);
+      }
+    }
+
+    async function excludeLine(lineId) {
+      if (!confirm('Exclude this line? It will not count toward the TB balance or journal.')) return;
+      try {
+        await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/exclude-line`, { lineId });
+        await refreshBatchAndLines();
+      } catch (e) {
+        showBatchError(e.message);
+      }
+    }
+
+    async function includeLineAgain(lineId) {
+      // Re-include by unmapping (sets status back to unmapped)
+      try {
+        await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/unmap-line`, { lineId });
+        await refreshBatchAndLines();
+      } catch (e) {
+        showBatchError(e.message);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // MAP LINE — inline search in table
+    // ────────────────────────────────────────────────────────────────────
+
+    async function searchAccountsForLine(lineId) {
+      const inputEl = document.getElementById(`mapSearch_${lineId}`);
+      const dropEl  = document.getElementById(`mapDrop_${lineId}`);
+      if (!inputEl || !dropEl) return;
+
+      const term = inputEl.value.trim();
+      if (!term) { dropEl.style.display = 'none'; return; }
+
+      clearTimeout(_acctSearchTimer);
+      _acctSearchTimer = setTimeout(async () => {
+        try {
+          const data = await api('GET', `/accounts/search?q=${encodeURIComponent(term)}`);
+          const accounts = data.accounts || [];
+          if (!accounts.length) {
+            dropEl.innerHTML = '<div class="acct-none">No accounts found.</div>';
+          } else {
+            dropEl.innerHTML = accounts.map(a => {
+              if (!a.is_postable) {
+                return `<div class="acct-item non-postable">
+                  <span class="code">${escHtml(a.account_code)}</span>
+                  <span class="name">${escHtml(a.account_name)} ⊕ (parent)</span>
+                </div>`;
+              }
+              return `<div class="acct-item" onclick="selectAccountForLine('${escHtml(lineId)}', ${a.account_id}, '${escHtml(a.account_code)}', '${escHtml(a.account_name.replace(/'/g, "\\'"))}')">
+                <span class="code">${escHtml(a.account_code)}</span>
+                <span class="name">${escHtml(a.account_name)}</span>
+              </div>`;
+            }).join('');
+          }
+          dropEl.style.display = 'block';
+        } catch (e) {
+          dropEl.innerHTML = `<div class="acct-none" style="color:#dc2626;">${escHtml(e.message)}</div>`;
+          dropEl.style.display = 'block';
+        }
+      }, 300);
+    }
+
+    async function selectAccountForLine(lineId, accountId, code, name) {
+      const dropEl = document.getElementById(`mapDrop_${lineId}`);
+      if (dropEl) dropEl.style.display = 'none';
+      try {
+        await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/map-line`, {
+          lineId,
+          mappedAccountId: accountId,
+        });
+        await refreshBatchAndLines();
+      } catch (e) {
+        showBatchError(e.message);
+      }
+    }
+
+    async function unmapLine(lineId) {
+      try {
+        await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/unmap-line`, { lineId });
+        await refreshBatchAndLines();
+      } catch (e) {
+        showBatchError(e.message);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // ACCOUNT SEARCH — Add Line form
+    // ────────────────────────────────────────────────────────────────────
+
+    function searchAccountsFor(context) {
+      if (context !== 'add') return;
+      const inputEl = document.getElementById('addAcctSearch');
+      const dropEl  = document.getElementById('addAcctDropdown');
+      const term    = inputEl.value.trim();
+
+      if (!term) { dropEl.style.display = 'none'; return; }
+
+      clearTimeout(_acctSearchTimer);
+      _acctSearchTimer = setTimeout(async () => {
+        try {
+          const data = await api('GET', `/accounts/search?q=${encodeURIComponent(term)}`);
+          const accounts = data.accounts || [];
+          if (!accounts.length) {
+            dropEl.innerHTML = '<div class="acct-none">No accounts found.</div>';
+          } else {
+            dropEl.innerHTML = accounts.map(a => {
+              if (!a.is_postable) {
+                return `<div class="acct-item non-postable">
+                  <span class="code">${escHtml(a.account_code)}</span>
+                  <span class="name">${escHtml(a.account_name)} ⊕ (parent)</span>
+                </div>`;
+              }
+              return `<div class="acct-item" onclick="selectAccountForAdd(${a.account_id}, '${escHtml(a.account_code)}', '${escHtml(a.account_name.replace(/'/g, "\\'"))}')">
+                <span class="code">${escHtml(a.account_code)}</span>
+                <span class="name">${escHtml(a.account_name)}</span>
+              </div>`;
+            }).join('');
+          }
+          dropEl.style.display = 'block';
+        } catch (e) {
+          dropEl.innerHTML = `<div class="acct-none" style="color:#dc2626;">${escHtml(e.message)}</div>`;
+          dropEl.style.display = 'block';
+        }
+      }, 300);
+    }
+
+    function selectAccountForAdd(accountId, code, name) {
+      document.getElementById('addAcctId').value         = accountId;
+      document.getElementById('addAcctSearch').value     = `${code} — ${name}`;
+      document.getElementById('addAcctLabel').textContent = `${code} — ${name}`;
+      document.getElementById('addAcctDropdown').style.display = 'none';
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // VALIDATE
+    // ────────────────────────────────────────────────────────────────────
+
+    async function runValidate() {
+      const btn = document.getElementById('btnValidate');
+      btn.disabled = true;
+      btn.textContent = 'Validating…';
+      clearBatchMessages();
+      try {
+        const result = await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/validate`);
+        if (result.valid) {
+          showBatchSuccess('Trial balance validated successfully. You may now finalize.');
+        } else {
+          showBatchError('Validation failed:\n' + result.errors.join('\n'));
+        }
+        await refreshBatchAndLines();
+      } catch (e) {
+        showBatchError(e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Validate TB';
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // FINALIZE
+    // ────────────────────────────────────────────────────────────────────
+
+    async function runFinalize() {
+      const confirmed = confirm(
+        'Finalize this trial balance?\n\n' +
+        'This will create a posted opening balance journal in your general ledger.\n' +
+        'The batch will be locked and cannot be edited after finalization.\n\n' +
+        'Proceed?'
+      );
+      if (!confirmed) return;
+
+      const btn = document.getElementById('btnFinalize');
+      btn.disabled = true;
+      btn.textContent = 'Finalizing…';
+      clearBatchMessages();
+      try {
+        const result = await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/finalize`);
+        showBatchSuccess(
+          `Opening balance journal posted successfully. ` +
+          `Journal #${result.journalId} created with ${result.lineCount} lines. ` +
+          `Debits: R ${fmtAmt(result.debitTotal)}  Credits: R ${fmtAmt(result.creditTotal)}.`
+        );
+        await refreshBatchAndLines();
+      } catch (e) {
+        showBatchError(e.message);
+        btn.disabled = false;
+        btn.textContent = 'Finalize & Post Journal';
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // ARCHIVE
+    // ────────────────────────────────────────────────────────────────────
+
+    async function runArchive() {
+      if (!confirm('Archive this batch? It will be hidden from the default list but can be retrieved with the Archive filter.')) return;
+      try {
+        await api('POST', `/batch/${encodeURIComponent(currentBatch.id)}/archive`);
+        showBatchSuccess('Batch archived.');
+        await refreshBatchAndLines();
+      } catch (e) {
+        showBatchError(e.message);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // HELPERS
+    // ────────────────────────────────────────────────────────────────────
+
+    async function refreshBatchAndLines() {
+      if (!currentBatch) return;
+      try {
+        const [batchData, linesData] = await Promise.all([
+          api('GET', `/batch/${encodeURIComponent(currentBatch.id)}`),
+          api('GET', `/batch/${encodeURIComponent(currentBatch.id)}/lines`),
+        ]);
+        currentBatch = batchData.batch;
+        currentLines = linesData.lines || [];
+        renderBatchDetail();
+      } catch (e) {
+        showBatchError(e.message);
+      }
+    }
+
+    function clearBatchMessages() {
+      document.getElementById('batchError').style.display   = 'none';
+      document.getElementById('batchSuccess').style.display = 'none';
+    }
+
+    function showBatchError(msg) {
+      const el = document.getElementById('batchError');
+      el.textContent = msg;
+      el.style.display = 'block';
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function showBatchSuccess(msg) {
+      const el = document.getElementById('batchSuccess');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.acct-search-wrap')) {
+        document.querySelectorAll('.acct-dropdown').forEach(d => d.style.display = 'none');
+      }
+    });
+
+    // ── Init ─────────────────────────────────────────────────────────────
+    loadBatches();
+  </script>
+</body>
+</html>

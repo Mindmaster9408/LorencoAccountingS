@@ -155,6 +155,7 @@ function createNavigation() {
           <div class="dropdown-header">Historical</div>
           <a href="/accounting/historical-comparatives.html">Historical Comparatives</a>
           <a href="/accounting/historical-comparatives-charts.html">Historical Charts</a>
+          <a href="/accounting/opening-balances.html">Opening Balances</a>
         </div>
       </div>
 
