@@ -274,12 +274,10 @@
     .amount-cell:disabled { background: #f9fafb; color: #9ca3af; cursor: not-allowed; }
     .grid-total-row td {
       font-weight: 700;
-      background: #f0fdf4;
-      color: #1a1a2e;
-      border-top: 2px solid #bbf7d0;
+      background: rgba(52, 211, 153, 0.15);
+      border-top: 2px solid rgba(52, 211, 153, 0.35);
       padding: 7px 12px;
     }
-    .grid-total-row td strong { color: #1a1a2e; }
 
     /* ── Draft Warning Banner ───────────────────────────────────────── */
     .draft-warning-banner {
@@ -314,6 +312,17 @@
     .report-section-total td.col-account { color: #1a1a2e; }
     .report-yoy-positive { color: #15803d; font-size: 11px; }
     .report-yoy-negative { color: #dc2626; font-size: 11px; }
+    /* Total columns — semi-transparent so they work on both dark and light themes */
+    .rpt-total-hd {
+      background: rgba(52, 211, 153, 0.18) !important;
+      border-left: 2px solid rgba(52, 211, 153, 0.35) !important;
+      min-width: 90px;
+    }
+    .rpt-total-cell {
+      font-weight: 600;
+      background: rgba(52, 211, 153, 0.12) !important;
+      border-left: 2px solid rgba(52, 211, 153, 0.25) !important;
+    }
     .rpt-draft-info {
       display: none;
       margin-bottom: 12px;
@@ -833,6 +842,7 @@
               ${!isFinalized ? `
                 <button type="button" class="btn btn-secondary btn-sm" onclick="openAddAccountRow()">+ Add Account</button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="saveAllGrids()">Save All</button>
+                <button type="button" class="btn btn-warning btn-sm" onclick="fixScaledAmounts()" title="Fix amounts that were saved 100× too large due to a number format bug">Fix ×100 amounts</button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="validateBatch()">Validate</button>
                 <button type="button" class="btn btn-success btn-sm" onclick="finalizeBatch()" ${batch.status !== 'validated' ? 'disabled title="Validate first"' : ''}>
                   Finalize
@@ -1423,7 +1433,7 @@
         for (const m of monthOrder) {
           headers += `<th style="min-width:80px;">${MONTH_SHORT[m]}<br><span style="font-size:10px;color:#9ca3af;">FY${y}</span></th>`;
         }
-        headers += `<th style="min-width:90px;background:#f0fdf4;color:#1a1a2e;">Total<br><span style="font-size:10px;color:#6b7280;">FY${y}</span></th>`;
+        headers += `<th class="rpt-total-hd">Total<br><span style="font-size:10px;opacity:0.65;">FY${y}</span></th>`;
       }
 
       let rows = '';
@@ -1436,7 +1446,7 @@
             yearTotal += val;
             rows += `<td>${val !== 0 ? formatCurrency(val) : '<span style="color:#d1d5db;">—</span>'}</td>`;
           }
-          rows += `<td style="font-weight:600;background:#f0fdf4;color:#1a1a2e;">${formatCurrency(yearTotal)}</td>`;
+          rows += `<td class="rpt-total-cell">${formatCurrency(yearTotal)}</td>`;
         }
         rows += '</tr>';
       }
@@ -1483,9 +1493,9 @@
         }
       }
       // Annual totals section
-      headerRow1 += `<th colspan="${nYears}" style="text-align:center; border-left:2px solid #bbf7d0; background:#f0fdf4; color:#1a1a2e; padding:6px 4px; font-size:12px;">Annual Total</th>`;
+      headerRow1 += `<th colspan="${nYears}" class="rpt-total-hd" style="text-align:center; padding:6px 4px; font-size:12px;">Annual Total</th>`;
       for (const y of years) {
-        headerRow2 += `<th style="min-width:90px; background:#f0fdf4; color:#1a1a2e; border-left:${y === years[0] ? '2px solid #bbf7d0' : ''}; font-size:11px;">FY${y}<br><span style="font-size:10px;color:#6b7280;">${String(y+1).slice(-2)}</span></th>`;
+        headerRow2 += `<th class="rpt-total-hd" style="min-width:90px; font-size:11px; border-left:${y === years[0] ? '' : 'none'};">FY${y}<br><span style="font-size:10px;opacity:0.65;">${String(y+1).slice(-2)}</span></th>`;
       }
 
       let rows = '';
@@ -1503,8 +1513,7 @@
         }
         // Annual totals
         for (const y of years) {
-          const borderLeft = y === years[0] ? 'border-left:2px solid #bbf7d0;' : '';
-          rows += `<td style="font-weight:600; background:#f0fdf4; color:#1a1a2e; ${borderLeft}">${formatCurrency(yearTotals[y] || 0)}</td>`;
+          rows += `<td class="rpt-total-cell">${formatCurrency(yearTotals[y] || 0)}</td>`;
         }
         rows += '</tr>';
       }
@@ -1556,7 +1565,7 @@
         }
         rows += `<tr class="report-section-total"><td class="col-account">Total ${escHtml(sec.type)}</td><td class="col-code"></td><td class="col-code"></td>`;
         for (const y of years) {
-          rows += `<td style="background:#f0fdf4;color:#1a1a2e;">${formatCurrency(sec.yearTotals[y] || 0)}</td>`;
+          rows += `<td class="rpt-total-cell">${formatCurrency(sec.yearTotals[y] || 0)}</td>`;
         }
         rows += '</tr>';
       }

@@ -273,6 +273,42 @@ router.post('/batch/:batchId/manual-grid', authenticate, hasPermission('historic
   }
 });
 
+// ── RESCALE ───────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/accounting/historical-comparatives/batch/:batchId/rescale
+ * Divide all line amounts for a draft/validated batch by a given divisor.
+ * Used to fix amounts that were stored at 100× scale due to a parseCurrency bug.
+ * Body: { divisor: 100 }
+ * Only permitted on non-finalized batches.
+ */
+router.post('/batch/:batchId/rescale', authenticate, hasPermission('historical.create'), async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const { divisor } = req.body;
+
+    const d = parseFloat(divisor);
+    if (!d || d <= 0 || d > 1000) {
+      return res.status(400).json({ error: 'divisor must be a positive number up to 1000.' });
+    }
+
+    const result = await HistoricalComparativesService.rescaleBatchAmounts({
+      companyId: req.user.companyId,
+      batchId,
+      userId: req.user.id,
+      divisor: d,
+    });
+
+    res.json(result);
+  } catch (error) {
+    if (error.message && error.message.includes('finalized')) {
+      return res.status(403).json({ error: error.message });
+    }
+    console.error('[HistoricalComparatives] rescaleBatchAmounts error:', error);
+    res.status(500).json({ error: 'Failed to rescale batch amounts.' });
+  }
+});
+
 // ── VALIDATION & FINALIZATION ─────────────────────────────────────────────────
 
 /**

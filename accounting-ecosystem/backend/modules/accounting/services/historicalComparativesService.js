@@ -620,6 +620,69 @@ class HistoricalComparativesService {
     return savedLines;
   }
 
+  // ── RESCALE ──────────────────────────────────────────────────────────────
+
+  /**
+   * Divide all line amounts in a draft/validated batch by `divisor`.
+   * Only permitted on non-finalized batches.
+   * Used to recover from the parseCurrency ×100 bug where amounts were stored
+   * 100× too large because the SA comma decimal separator was stripped.
+   */
+  static async rescaleBatchAmounts({ companyId, batchId, userId, divisor }) {
+    const batch = await this.getBatch({ companyId, batchId });
+    if (!batch) throw new Error('Batch not found or access denied.');
+    if (batch.is_finalized || batch.status === 'finalized') {
+      throw new Error('This batch is finalized and cannot be modified.');
+    }
+
+    // Fetch all lines for this batch
+    const { data: lines, error: fetchErr } = await supabase
+      .from('historical_comparative_lines')
+      .select('id, amount, original_amount')
+      .eq('batch_id', batchId)
+      .eq('company_id', companyId);
+
+    if (fetchErr) throw fetchErr;
+    if (!lines || lines.length === 0) {
+      return { updated: 0, divisor };
+    }
+
+    // Build rescaled rows — divide amount (and original_amount if it looks scaled too)
+    const now = new Date().toISOString();
+    const actorId = this._actorId(userId);
+    const rescaled = lines.map(l => ({
+      id: l.id,
+      amount: parseFloat((l.amount / divisor).toFixed(2)),
+      original_amount: l.original_amount !== null
+        ? parseFloat((l.original_amount / divisor).toFixed(2))
+        : null,
+      updated_by: actorId,
+      updated_at: now,
+    }));
+
+    // Batch upsert — uses primary key (id) to update each row
+    const { error: upsertErr } = await supabase
+      .from('historical_comparative_lines')
+      .upsert(rescaled);
+
+    if (upsertErr) throw upsertErr;
+
+    await supabase
+      .from('historical_comparative_batches')
+      .update({ updated_at: now })
+      .eq('id', batchId);
+
+    await this._writeAuditLog({
+      companyId, batchId, lineId: null,
+      action: 'BATCH_RESCALED',
+      oldValue: null,
+      newValue: { divisor, linesAffected: rescaled.length },
+      performedBy: userId,
+    });
+
+    return { updated: rescaled.length, divisor };
+  }
+
   // ── VALIDATION & FINALIZATION ────────────────────────────────────────────
 
   /**
