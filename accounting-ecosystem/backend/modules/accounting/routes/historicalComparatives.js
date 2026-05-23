@@ -99,6 +99,50 @@ router.get('/accounts/search', authenticate, hasPermission('historical.view'), a
   }
 });
 
+// ── COA SYNC ──────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/accounting/historical-comparatives/batch/:batchId/sync-accounts
+ * Sync active postable COA accounts into a draft/validated batch.
+ * Finalized batches are blocked.
+ */
+router.post('/batch/:batchId/sync-accounts', authenticate, hasPermission('historical.create'), async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const result = await HistoricalComparativesService.syncBatchAccountsFromCOA({
+      companyId: req.user.companyId,
+      batchId,
+      userId: req.user.id,
+    });
+    res.json(result);
+  } catch (error) {
+    if (error.message && error.message.includes('finalized')) {
+      return res.status(403).json({ error: error.message });
+    }
+    console.error('[HistoricalComparatives] syncBatchAccountsFromCOA error:', error);
+    res.status(500).json({ error: 'Failed to sync Chart of Accounts.' });
+  }
+});
+
+/**
+ * GET /api/accounting/historical-comparatives/batch/:batchId/accounts
+ * Return the synced account list for a batch, with capture progress.
+ * Includes parent (group) rows and postable (editable) rows.
+ */
+router.get('/batch/:batchId/accounts', authenticate, hasPermission('historical.view'), async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const result = await HistoricalComparativesService.getBatchAccountList({
+      companyId: req.user.companyId,
+      batchId,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('[HistoricalComparatives] getBatchAccountList error:', error);
+    res.status(500).json({ error: 'Failed to load batch account list.' });
+  }
+});
+
 // ── BATCH LINES ───────────────────────────────────────────────────────────────
 
 /**

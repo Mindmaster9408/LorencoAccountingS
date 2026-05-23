@@ -310,6 +310,167 @@ router.delete('/:id', authenticate, hasPermission('account.delete'), async (req,
 });
 
 /**
+ * GET /api/accounts/:accountId/sub-accounts/next-code
+ * Returns the suggested next sub-account suffix for a parent account.
+ * Inspects existing children, finds highest numeric suffix, returns next padded to 3 digits.
+ */
+router.get('/:accountId/sub-accounts/next-code', authenticate, hasPermission('account.view'), async (req, res) => {
+  try {
+    const parentAccountId = parseInt(req.params.accountId);
+    if (isNaN(parentAccountId)) return res.status(400).json({ error: 'Invalid account ID' });
+    const companyId = req.user.companyId;
+
+    const { data: parent, error: parentErr } = await supabase
+      .from('accounts')
+      .select('id, code, name, is_active')
+      .eq('id', parentAccountId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (parentErr) throw parentErr;
+    if (!parent) return res.status(404).json({ error: 'Parent account not found' });
+
+    const { data: children } = await supabase
+      .from('accounts')
+      .select('code')
+      .eq('company_id', companyId)
+      .eq('parent_id', parentAccountId);
+
+    const prefix = `${parent.code}/`;
+    let maxSuffix = 0;
+    for (const child of (children || [])) {
+      if (child.code.startsWith(prefix)) {
+        const n = parseInt(child.code.slice(prefix.length), 10);
+        if (!isNaN(n) && n > maxSuffix) maxSuffix = n;
+      }
+    }
+
+    const nextNum    = maxSuffix + 1;
+    const nextSuffix = String(nextNum).padStart(3, '0');
+    const nextCode   = `${parent.code}/${nextSuffix}`;
+
+    res.json({ parentCode: parent.code, parentName: parent.name, nextSuffix, nextCode });
+  } catch (error) {
+    console.error('Error getting next sub-account code:', error);
+    res.status(500).json({ error: 'Failed to get next sub-account code' });
+  }
+});
+
+/**
+ * POST /api/accounts/:accountId/sub-accounts
+ * Create a sub-account under a parent account.
+ *
+ * Body: { suffix, name, description, vatCode, subType }
+ * Code format: PARENT_CODE/SUFFIX  (e.g. 5000 + suffix "001" → "5000/001")
+ * Full name:   parent.name + " - " + name  (e.g. "Sales Revenue - Online Sales")
+ *
+ * Side-effects:
+ *   - Parent account is_postable is set to false on first sub-account creation.
+ *   - Parent account_level remains 0; child account_level = parent_level + 1.
+ */
+router.post('/:accountId/sub-accounts', authenticate, hasPermission('account.create'), async (req, res) => {
+  try {
+    const parentAccountId = parseInt(req.params.accountId);
+    if (isNaN(parentAccountId)) return res.status(400).json({ error: 'Invalid account ID' });
+
+    const companyId = req.user.companyId;
+    const { suffix, name, description, vatCode, subType } = req.body;
+
+    if (!suffix || !suffix.trim()) {
+      return res.status(400).json({ error: 'suffix is required (e.g. "001")' });
+    }
+    if (!/^\d{1,4}$/.test(suffix.trim())) {
+      return res.status(400).json({ error: 'suffix must be 1–4 digits (e.g. "001", "002")' });
+    }
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    // Fetch parent — must belong to this company
+    const { data: parent, error: parentErr } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('id', parentAccountId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (parentErr) throw parentErr;
+    if (!parent) return res.status(404).json({ error: 'Parent account not found' });
+    if (!parent.is_active) return res.status(409).json({ error: 'Cannot add sub-account to an inactive account' });
+
+    // Build sub-account code: PARENT/SUFFIX
+    const subCode = `${parent.code}/${suffix.trim()}`;
+
+    // Check uniqueness per company
+    const { data: existing } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('code', subCode)
+      .maybeSingle();
+    if (existing) {
+      return res.status(409).json({ error: `Account code ${subCode} already exists` });
+    }
+
+    // Full account name: "Parent Name - Sub Label"
+    const fullName = `${parent.name} - ${name.trim()}`;
+
+    // Create sub-account
+    const { data: subAccount, error: insertErr } = await supabase
+      .from('accounts')
+      .insert({
+        company_id:           companyId,
+        code:                 subCode,
+        name:                 fullName,
+        type:                 parent.type,
+        parent_id:            parentAccountId,
+        description:          description || null,
+        sub_type:             subType || parent.sub_type || null,
+        reporting_group:      parent.reporting_group || null,
+        sort_order:           parent.sort_order,
+        vat_code:             vatCode || parent.vat_code || null,
+        is_active:            true,
+        is_system:            false,
+        is_postable:          true,
+        account_level:        (parent.account_level || 0) + 1,
+        created_from_parent:  true,
+      })
+      .select()
+      .single();
+    if (insertErr) throw insertErr;
+
+    // Set parent to non-postable (idempotent — already false if it had children before)
+    let parentUpdated = false;
+    if (parent.is_postable !== false) {
+      await supabase
+        .from('accounts')
+        .update({ is_postable: false, updated_at: new Date().toISOString() })
+        .eq('id', parentAccountId)
+        .eq('company_id', companyId);
+      parentUpdated = true;
+    }
+
+    await AuditLogger.logUserAction(
+      req, 'CREATE', 'ACCOUNT', subAccount.id,
+      null,
+      { code: subAccount.code, name: subAccount.name, type: subAccount.type, parentCode: parent.code },
+      `Sub-account created under ${parent.code}`
+    );
+    if (parentUpdated) {
+      await AuditLogger.logUserAction(
+        req, 'UPDATE', 'ACCOUNT', parentAccountId,
+        { is_postable: true },
+        { is_postable: false },
+        'Parent account set to non-postable (sub-account created)'
+      );
+    }
+
+    res.status(201).json({ subAccount, parentUpdated, parentCode: parent.code });
+  } catch (error) {
+    console.error('Error creating sub-account:', error);
+    res.status(500).json({ error: error.message || 'Failed to create sub-account' });
+  }
+});
+
+/**
  * POST /api/accounts/provision-defaults
  * Seeds the standard SA chart of accounts for this company (safe if already has accounts).
  */

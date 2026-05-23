@@ -312,5 +312,133 @@ A "Historical Analysis" card is added to the existing dashboard cards grid. It:
 
 ---
 
-*Report updated to include Dashboard Chart Integration add-on.*
+## 9. Chart of Accounts Sub-Account Support
+
+**Session:** Add-on implementation — COA sub-accounts + edit modal sub-account creation flow
+
+### Database migrations added
+
+| Migration | Purpose |
+|-----------|---------|
+| `044_coa_sub_accounts.sql` | Adds `is_postable`, `account_level`, `display_order`, `created_from_parent` to `accounts` table |
+| `045_historical_coa_sync.sql` | Creates `historical_comparative_batch_accounts` helper table; adds snapshot columns to `historical_comparative_lines` |
+
+### New backend endpoint: next-code suggestion
+
+**`GET /api/accounting/accounts/:accountId/sub-accounts/next-code`**
+
+- Returns the suggested next 3-digit suffix for a parent account's next sub-account
+- Inspects all existing children (`parent_id = accountId`), finds highest numeric suffix after `/`, returns next padded to 3 digits
+- Example: parent `4000` has children `4000/001`, `4000/002` → returns `{ nextSuffix: "003", nextCode: "4000/003" }`
+- Fallback if no children exist: `001`
+
+### Parent name prepending rule
+
+`POST /api/accounting/accounts/:accountId/sub-accounts` now constructs the full account name as:
+
+```
+fullName = parent.name + " - " + name (from request body)
+```
+
+Example:
+- Parent: `4000 — Sales Revenue`
+- User enters name: `Online Sales`
+- Created account name: `Sales Revenue - Online Sales`
+
+The frontend sends the short label only. The backend always prepends the parent name.
+
+### Edit modal "Create Sub Account" button
+
+**File:** `frontend-accounting/accounts.html`
+
+Button `+ Create Sub Account` added to the edit modal action bar (between Cancel and Update Account).
+
+Visibility rules — shown only when ALL conditions are true:
+- Currently editing an existing account (`editingId` is set)
+- Account is active (`is_active === true`)
+- Account is not a child itself (`parent_id` is null)
+- Account is not a system account (`is_system === false`)
+
+When clicked: `createSubAccountFromEdit()` closes the edit modal and immediately calls `showSubAccountModal()` with the parent context pre-filled.
+
+### Sub-account modal enhancements
+
+- **Auto-suggested suffix**: On modal open, `_loadNextSuffix()` calls the next-code API and populates the suffix field. Field shows `…` while loading. Fallback to `001` on error.
+- **3-digit default**: Suffix API returns values padded to 3 digits (`001`, `002`, `003`). Existing validation (`/^\d{1,4}$/`) remains compatible with legacy 2-digit values.
+- **Short name field**: User enters only the short label (e.g. `Online Sales`). Placeholder updated to reflect this.
+- **Full name preview**: As user types the short name, a live preview shows the resulting full name: `Full account name: Sales Revenue - Online Sales`. Hidden when field is empty.
+- **Focus on name field**: Modal opens with focus on the Name field (not Suffix), since suffix is auto-suggested.
+- **Backdrop click**: Clicking outside the modal closes it.
+
+### Parent non-postable behaviour (unchanged rule, now triggered from both surfaces)
+
+First sub-account creation → parent `is_postable = false` (set by backend, idempotent). This means:
+- Parent appears with `PARENT` badge in COA table
+- Direct journals, bank allocations, and historical capture lines to the parent account are blocked
+- Historical Comparatives sync shows parent as a group-row section header (non-editable)
+
+### Tests
+
+| Test | Expected result |
+|------|----------------|
+| Open `4000 Sales Revenue` edit modal | "Create Sub Account" button visible |
+| Open edit modal on inactive account | "Create Sub Account" button hidden |
+| Open edit modal on a sub-account | "Create Sub Account" button hidden |
+| Click "Create Sub Account" | Edit modal closes; sub-account modal opens with `4000 — Sales Revenue` pre-filled |
+| Sub-account modal opens for account with no children | Suffix field auto-fills to `001` |
+| Sub-account modal opens for account with `4000/001`, `4000/002` | Suffix auto-fills to `003` |
+| Type "Online Sales" in name field | Preview shows `Full account name: Sales Revenue - Online Sales` |
+| Submit with suffix `001`, name `Online Sales` | Account `4000/001` created with name `Sales Revenue - Online Sales` |
+| Parent `4000` after first sub-account | `is_postable = false`, PARENT badge visible, non-editable in Historical Comparatives |
+| Second sub-account creation from edit modal | Suffix auto-suggests `002` |
+| Historical Comparatives COA sync | `4000` shows as group row; `4000/001` and `4000/002` show as editable capture rows |
+| No localStorage used | Confirmed — all state in DB via API |
+
+---
+
+## 10. Historical Comparatives COA Sync
+
+**Session:** Add-on implementation — COA-driven batch account list + auto-sync
+
+### New backend endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/accounting/historical-comparatives/batch/:batchId/sync-accounts` | Upserts all active COA accounts into the batch accounts table. Blocked for finalized batches. Returns `{ synced, parentRows, captureRows, syncedAt }` |
+| `GET /api/accounting/historical-comparatives/batch/:batchId/accounts` | Returns the synced account list with `can_capture` and `captured_lines` per account |
+
+### Helper table: `historical_comparative_batch_accounts`
+
+Stores the ordered account list for each batch snapshot:
+- `is_group_row = true` for parent (non-postable) accounts → rendered as section headers
+- `is_postable = true` + `is_group_row = false` → rendered as editable capture grids
+- `UNIQUE (batch_id, account_id)` — safe to re-sync repeatedly (upsert)
+- Finalized batches: sync endpoint returns 403 — account list is frozen
+
+### Frontend COA-driven capture grid
+
+**File:** `frontend-accounting/historical-comparatives.html`
+
+**On batch open (`renderCaptureMain`):**
+1. Loads synced accounts (`GET /batch/:id/accounts`) and existing lines (`GET /batch/:id/lines`) in parallel
+2. If no accounts exist and batch is not finalized: **auto-syncs COA** immediately
+3. Builds `lineDataMap` (account_id → year → month → amount) for grid pre-population
+4. Any line-only accounts (added before first sync) are preserved below the synced list
+5. Group rows render as `.group-row-header` section dividers (indigo left-border, non-editable)
+6. Postable rows render as full editable 12-month × N-year grids
+
+**COA Sync Bar (shown above all account grids):**
+- Shows last sync timestamp: `Synced with Chart of Accounts: [datetime]`
+- `↻ Sync COA` button — calls `POST /batch/:id/sync-accounts`, then full re-render
+- Finalized batches: shows locked note instead of sync button
+
+### Finalized batch behaviour
+
+- Sync button hidden; replaced with: "Chart of Accounts changes will no longer sync into this finalized batch."
+- All amount inputs `disabled` (read-only display)
+- Locked banner shown at top of capture area
+
+---
+
+*Report updated to include COA Sub-Accounts, Edit Modal Sub-Account Creation Flow, and Historical COA Sync.*
 *Full implementation follows CLAUDE.md Part D (no browser storage) and Part A (audit-before-change) standards.*

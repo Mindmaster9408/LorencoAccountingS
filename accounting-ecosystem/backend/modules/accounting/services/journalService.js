@@ -71,6 +71,35 @@ class JournalService {
   /**
    * Validate journal lines
    */
+  /**
+   * Verify that every account referenced in the lines is postable.
+   * Parent/header accounts have is_postable = false and must never receive
+   * journal entries directly.
+   */
+  static async _assertAccountsPostable(companyId, lines) {
+    const accountIds = [...new Set(
+      lines.map(l => parseInt(l.accountId || l.account_id)).filter(Boolean)
+    )];
+    if (!accountIds.length) return;
+
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('id, code, name, is_postable')
+      .eq('company_id', companyId)
+      .in('id', accountIds);
+
+    if (error) throw new Error(`Account validation failed: ${error.message}`);
+
+    const nonPostable = (data || []).filter(a => a.is_postable === false);
+    if (nonPostable.length > 0) {
+      const list = nonPostable.map(a => `${a.code} (${a.name})`).join(', ');
+      throw new Error(
+        `The following account(s) are parent accounts and cannot be used for direct postings. ` +
+        `Select a sub-account instead: ${list}`
+      );
+    }
+  }
+
   static validateLines(lines) {
     if (!lines || lines.length === 0) {
       return { valid: false, message: 'Journal must have at least one line' };
@@ -171,6 +200,9 @@ class JournalService {
     const isLocked = await this.isPeriodLocked(companyId, date);
     if (isLocked) throw new Error('Cannot create journal in a locked period');
 
+    // ── Postability check — block parent/header accounts ──────────────────────
+    await this._assertAccountsPostable(companyId, lines);
+
     // ── Atomic write: header + lines inside one pg transaction ────────────────
     const client = await db.getClient();
     try {
@@ -240,6 +272,8 @@ class JournalService {
 
     const isLocked = await this.isPeriodLocked(companyId, date);
     if (isLocked) throw new Error('Cannot move journal into a locked period');
+
+    await this._assertAccountsPostable(companyId, lines);
 
     // ── Atomic write: header update + lines delete + lines re-insert ──────────
     const client = await db.getClient();

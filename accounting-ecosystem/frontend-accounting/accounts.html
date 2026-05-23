@@ -33,8 +33,14 @@
         .type-expense   { background: #fff3e0; color: #e65100; }
         .system-badge   { background: #e0e0e0; color: #616161; font-size: 10px; padding: 2px 8px; border-radius: 8px; margin-left: 6px; }
         .inactive-badge { background: #f5f5f5; color: #9aa0a6; font-size: 10px; padding: 2px 8px; border-radius: 8px; margin-left: 6px; }
+        .parent-badge   { background: #fff3e0; color: #e65100; font-size: 10px; padding: 2px 8px; border-radius: 8px; margin-left: 6px; font-weight: 700; }
+        .sub-badge      { background: #e8f5e9; color: #2e7d32; font-size: 10px; padding: 2px 8px; border-radius: 8px; margin-left: 6px; }
         .action-btn { padding: 4px 10px; border: 1px solid #e0e0e0; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; background: white; }
         .action-btn:hover { background: #f0f8ff; border-color: #0066cc; color: #0066cc; }
+        .action-btn-sub { padding: 4px 10px; border: 1px solid #c8e6c9; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; background: #f1f8e9; color: #2e7d32; }
+        .action-btn-sub:hover { background: #c8e6c9; }
+        .sub-account-row td:first-child { padding-left: 32px; }
+        .sub-account-row td:first-child::before { content: '↳ '; color: #9aa0a6; }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; }
         .modal-overlay.show { display: flex; }
@@ -171,11 +177,50 @@
             </select>
         </div>
 
+        <div id="parentAccountWarning" style="display:none;background:#fff3e0;color:#e65100;padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;">
+            ⚠ This account has sub-accounts and cannot be used for direct postings. Only its sub-accounts are postable.
+        </div>
+
         <div class="modal-error" id="modalError"></div>
 
         <div class="modal-actions">
             <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn-secondary" id="createSubFromEditBtn" onclick="createSubAccountFromEdit()" style="display:none;">+ Create Sub Account</button>
             <button class="btn-primary" id="saveAccountBtn" onclick="saveAccount()">Save Account</button>
+        </div>
+    </div>
+</div>
+
+<!-- Sub-Account Creation Modal -->
+<div class="modal-overlay" id="subAccountModal">
+    <div class="modal" style="width:520px;max-width:96vw;">
+        <h2>Create Sub-Account</h2>
+        <p id="subAccParentInfo" style="font-size:13px;color:#5f6368;margin-bottom:16px;"></p>
+        <div id="subAccParentWarning" style="display:none;background:#fff3e0;color:#e65100;padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;">
+            ⚠ Creating this sub-account will make the parent account non-postable. No direct journal entries or bank allocations will be possible to the parent account — only to its sub-accounts.
+        </div>
+        <div class="form-group">
+            <label>Parent Account</label>
+            <input type="text" id="subAccParentDisplay" readonly />
+        </div>
+        <div class="form-group">
+            <label>Sub-Account Code Suffix <span style="color:#9aa0a6;font-weight:400">(e.g. "001" → creates 4000/001)</span></label>
+            <input type="text" id="subAccSuffix" placeholder="001" maxlength="4" pattern="\d{1,4}" />
+        </div>
+        <div id="subAccCodePreview" style="font-size:12px;color:#0066cc;margin:-8px 0 12px;"></div>
+        <div class="form-group">
+            <label>Sub-Account Name <span style="color:#9aa0a6;font-weight:400">(short label, e.g. "Online Sales")</span></label>
+            <input type="text" id="subAccName" placeholder="e.g. Online Sales" maxlength="255" oninput="_updateNamePreview()" />
+        </div>
+        <div id="subAccNamePreview" style="font-size:12px;color:#374151;margin:-8px 0 12px;padding:6px 10px;background:#f8f9fa;border-radius:4px;display:none;"></div>
+        <div class="form-group">
+            <label>Description <span style="color:#9aa0a6;font-weight:400">(optional)</span></label>
+            <textarea id="subAccDescription" rows="2" placeholder="Optional description"></textarea>
+        </div>
+        <div class="modal-error" id="subAccError"></div>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary" onclick="closeSubAccountModal()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="submitSubAccount()">Create Sub-Account</button>
         </div>
     </div>
 </div>
@@ -260,20 +305,30 @@
         }
 
         tbody.innerHTML = list.map(acc => {
+            const isParent = acc.is_postable === false;
+            const isChild  = !!acc.parent_id;
+
             const nameBadges =
                 (acc.is_system  ? '<span class="system-badge">SYSTEM</span>' : '') +
-                (!acc.is_active ? '<span class="inactive-badge">INACTIVE</span>' : '');
+                (!acc.is_active ? '<span class="inactive-badge">INACTIVE</span>' : '') +
+                (isParent       ? '<span class="parent-badge">PARENT</span>' : '') +
+                (isChild        ? '<span class="sub-badge">SUB</span>' : '');
 
             const editBtn = !acc.is_system
-                ? `<button class="action-btn" onclick="showEditModal(${acc.id})">Edit</button>`
+                ? `<button class="action-btn" onclick="showEditModal(${acc.id})" title="${isParent ? 'This account has sub-accounts and cannot be used for direct postings.' : 'Edit account'}">Edit</button>`
                 : '';
 
-            return `<tr>
+            const subBtn = (!acc.is_system && acc.is_active && !isChild)
+                ? `<button class="action-btn-sub" onclick="showSubAccountModal(${acc.id}, '${esc(acc.code)}', '${esc(acc.name).replace(/'/g,'&#39;')}', '${acc.type}')" title="Create sub-account under ${esc(acc.code)}">+ Sub</button>`
+                : '';
+
+            const rowClass = isChild ? 'sub-account-row' : '';
+            return `<tr class="${rowClass}">
                 <td><strong>${esc(acc.code)}</strong></td>
                 <td>${esc(acc.name)}${nameBadges}</td>
                 <td><span class="type-badge type-${acc.type}">${acc.type}</span></td>
                 <td style="color:#5f6368">${esc(acc.description || '')}</td>
-                <td>${editBtn}</td>
+                <td style="display:flex;gap:4px;">${editBtn}${subBtn}</td>
             </tr>`;
         }).join('');
     }
@@ -336,8 +391,10 @@
         document.getElementById('accType').value             = 'expense';
         document.getElementById('accType').disabled          = false;
         document.getElementById('accDesc').value             = '';
-        document.getElementById('isActiveGroup').style.display = 'none';
-        document.getElementById('modalError').style.display  = 'none';
+        document.getElementById('isActiveGroup').style.display       = 'none';
+        document.getElementById('modalError').style.display           = 'none';
+        document.getElementById('parentAccountWarning').style.display  = 'none';
+        document.getElementById('createSubFromEditBtn').style.display  = 'none';
         document.getElementById('saveAccountBtn').textContent = 'Save Account';
         document.getElementById('accountModal').classList.add('show');
         // Auto-fill a suggested code immediately
@@ -369,6 +426,10 @@
         document.getElementById('accActive').value          = acc.is_active ? 'true' : 'false';
         document.getElementById('isActiveGroup').style.display = 'block';
         document.getElementById('modalError').style.display = 'none';
+        document.getElementById('parentAccountWarning').style.display = acc.is_postable === false ? '' : 'none';
+        // Show "Create Sub Account" only for active, non-child, non-system accounts
+        const showSubBtn = acc.is_active && !acc.parent_id && !acc.is_system;
+        document.getElementById('createSubFromEditBtn').style.display = showSubBtn ? '' : 'none';
         document.getElementById('saveAccountBtn').textContent = 'Update Account';
         document.getElementById('accountModal').classList.add('show');
     }
@@ -572,6 +633,135 @@
         }
     }
 
+    // ── Sub-Account Modal ─────────────────────────────────────────────────────
+    let _subParentId   = null;
+    let _subParentCode = '';
+    let _subParentName = '';
+
+    function showSubAccountModal(accountId, code, name, type) {
+        _subParentId   = accountId;
+        _subParentCode = code;
+        _subParentName = name;
+
+        document.getElementById('subAccParentInfo').textContent =
+            `Creating a sub-account under: ${code} — ${name} (${type})`;
+        document.getElementById('subAccParentDisplay').value = `${code} — ${name}`;
+
+        const parentAcc = allAccounts.find(a => a.id === accountId);
+        const willBecomeNonPostable = parentAcc && parentAcc.is_postable !== false;
+        document.getElementById('subAccParentWarning').style.display = willBecomeNonPostable ? '' : 'none';
+
+        document.getElementById('subAccSuffix').value             = '';
+        document.getElementById('subAccName').value               = '';
+        document.getElementById('subAccDescription').value        = '';
+        document.getElementById('subAccCodePreview').textContent  = '';
+        document.getElementById('subAccNamePreview').style.display = 'none';
+        document.getElementById('subAccError').style.display      = 'none';
+
+        document.getElementById('subAccountModal').classList.add('show');
+        setTimeout(() => document.getElementById('subAccName').focus(), 50);
+
+        // Async: fetch suggested next suffix from backend
+        _loadNextSuffix(accountId);
+    }
+
+    async function _loadNextSuffix(accountId) {
+        const suffixEl = document.getElementById('subAccSuffix');
+        suffixEl.value    = '…';
+        suffixEl.disabled = true;
+        try {
+            const res  = await fetch(`/api/accounting/accounts/${accountId}/sub-accounts/next-code`, { headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '');
+            suffixEl.value = data.nextSuffix;
+        } catch (_) {
+            suffixEl.value = '001';
+        } finally {
+            suffixEl.disabled = false;
+            _updateSubCodePreview();
+        }
+    }
+
+    function closeSubAccountModal() {
+        document.getElementById('subAccountModal').classList.remove('show');
+        _subParentId = null;
+    }
+
+    function _updateSubCodePreview() {
+        const suffix  = document.getElementById('subAccSuffix').value.trim();
+        const preview = document.getElementById('subAccCodePreview');
+        if (!suffix) {
+            preview.textContent = '';
+        } else if (/^\d{1,4}$/.test(suffix)) {
+            preview.textContent = `→ Account code will be: ${_subParentCode}/${suffix}`;
+            preview.style.color = '#0066cc';
+        } else {
+            preview.textContent = 'Suffix must be 1–4 digits (e.g. 001, 002)';
+            preview.style.color = '#c62828';
+        }
+    }
+
+    function _updateNamePreview() {
+        const shortName = (document.getElementById('subAccName').value || '').trim();
+        const preview   = document.getElementById('subAccNamePreview');
+        if (shortName) {
+            const fullName = _subParentName ? `${_subParentName} - ${shortName}` : shortName;
+            preview.textContent   = `Full account name: ${fullName}`;
+            preview.style.display = '';
+        } else {
+            preview.style.display = 'none';
+        }
+    }
+
+    function createSubAccountFromEdit() {
+        const acc = allAccounts.find(a => a.id === editingId);
+        if (!acc) return;
+        closeModal();
+        showSubAccountModal(acc.id, acc.code, acc.name, acc.type);
+    }
+
+    async function submitSubAccount() {
+        const suffix = document.getElementById('subAccSuffix').value.trim();
+        const name   = document.getElementById('subAccName').value.trim();
+        const desc   = document.getElementById('subAccDescription').value.trim();
+        const errEl  = document.getElementById('subAccError');
+        errEl.style.display = 'none';
+
+        if (!suffix || !/^\d{1,4}$/.test(suffix)) {
+            errEl.textContent   = 'Suffix must be 1–4 digits (e.g. 001, 002).';
+            errEl.style.display = 'block';
+            return;
+        }
+        if (!name) {
+            errEl.textContent   = 'Sub-account name is required.';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        const btn = document.querySelector('#subAccountModal .btn-primary');
+        btn.disabled    = true;
+        btn.textContent = 'Creating…';
+
+        try {
+            const res  = await fetch(`/api/accounting/accounts/${_subParentId}/sub-accounts`, {
+                method: 'POST',
+                headers: authH(),
+                body: JSON.stringify({ suffix, name, description: desc || null }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+            closeSubAccountModal();
+            await loadAccounts();
+        } catch (err) {
+            errEl.textContent   = err.message;
+            errEl.style.display = 'block';
+        } finally {
+            btn.disabled    = false;
+            btn.textContent = 'Create Sub-Account';
+        }
+    }
+
     // ── Utils ─────────────────────────────────────────────────────────────────
     function esc(s) {
         if (!s) return '';
@@ -584,6 +774,10 @@
     document.getElementById('overlayModal').addEventListener('click', function(e) {
         if (e.target === this) closeOverlayModal();
     });
+    document.getElementById('subAccountModal').addEventListener('click', function(e) {
+        if (e.target === this) closeSubAccountModal();
+    });
+    document.getElementById('subAccSuffix').addEventListener('input', _updateSubCodePreview);
 
     // ── Init ──────────────────────────────────────────────────────────────────
     loadAccounts();

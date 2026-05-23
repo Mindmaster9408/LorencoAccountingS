@@ -338,6 +338,35 @@
       align-items: center;
       flex-wrap: wrap;
     }
+
+    /* ── COA Sync Bar ────────────────────────────────────────────────── */
+    .coa-sync-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0 12px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 12px;
+      color: #6b7280;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* ── Group Row (parent account section header) ───────────────────── */
+    .group-row-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f8fafc;
+      border-left: 3px solid #c7d2fe;
+      padding: 8px 14px;
+      margin: 20px 0 4px;
+      border-radius: 0 4px 4px 0;
+    }
+    .group-row-header .group-code { font-weight: 700; color: #374151; font-size: 13px; min-width: 60px; }
+    .group-row-header .group-name { font-weight: 600; color: #374151; font-size: 13px; }
+    .group-row-header .group-badge { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-left: auto; }
   </style>
 </head>
 <body>
@@ -595,44 +624,82 @@
       const main = document.getElementById('captureMain');
       const isFinalized = batch.status === 'finalized';
 
-      let linesData = [];
+      main.innerHTML = `<div class="card"><p style="color:#6b7280;font-size:13px;padding:20px;">Loading batch data…</p></div>`;
+
+      // Load synced COA account list and existing lines in parallel
+      let batchAccountList = [];
+      let syncedAt         = null;
+      let linesData        = [];
       try {
-        const d = await api('GET', `/batch/${batch.id}/lines`);
-        linesData = d.lines || [];
-        currentLines = linesData;
+        const [acctData, lineData] = await Promise.all([
+          api('GET', `/batch/${batch.id}/accounts`),
+          api('GET', `/batch/${batch.id}/lines`),
+        ]);
+        batchAccountList = acctData.accounts || [];
+        syncedAt         = batchAccountList.length > 0 ? batchAccountList[0].synced_at : null;
+        linesData        = lineData.lines || [];
+        currentLines     = linesData;
       } catch (e) {
         main.innerHTML = `<div class="card"><p style="color:#dc2626;">${e.message}</p></div>`;
         return;
       }
 
-      // Build the year columns from batch config
+      // Auto-sync COA on first open if batch has no synced accounts and is editable
+      if (batchAccountList.length === 0 && !isFinalized) {
+        main.innerHTML = `<div class="card"><p style="color:#6b7280;font-size:13px;padding:20px;">⟳ Auto-syncing Chart of Accounts…</p></div>`;
+        try {
+          const syncResult = await api('POST', `/batch/${batch.id}/sync-accounts`, {});
+          syncedAt = syncResult.syncedAt;
+          const reloaded   = await api('GET', `/batch/${batch.id}/accounts`);
+          batchAccountList = reloaded.accounts || [];
+        } catch (_) {
+          // Non-fatal — COA may be empty; continue with manual capture mode
+        }
+      }
+
+      // Build line data lookup: account_id → { year → { month → amount } }
+      const lineDataMap = {};
+      for (const line of linesData) {
+        if (!line.account_id) continue;
+        if (!lineDataMap[line.account_id]) lineDataMap[line.account_id] = {};
+        if (!lineDataMap[line.account_id][line.financial_year]) lineDataMap[line.account_id][line.financial_year] = {};
+        lineDataMap[line.account_id][line.financial_year][line.period_month] = line.amount;
+      }
+
+      // Accounts added manually before any COA sync — show below synced rows
+      const syncedAccountIds = new Set(batchAccountList.map(a => a.account_id));
+      const lineOnlyMap = {};
+      for (const line of linesData) {
+        if (syncedAccountIds.has(line.account_id)) continue;
+        const k = line.account_id ? `id_${line.account_id}` : `txt_${line.account_name}`;
+        if (!lineOnlyMap[k]) {
+          lineOnlyMap[k] = {
+            account_id: line.account_id, account_code: line.account_code,
+            account_name: line.account_name, account_type: line.account_type,
+            is_group_row: false, can_capture: true, data: {},
+          };
+        }
+        if (!lineOnlyMap[k].data[line.financial_year]) lineOnlyMap[k].data[line.financial_year] = {};
+        lineOnlyMap[k].data[line.financial_year][line.period_month] = line.amount;
+      }
+
       const fyStart = batch.financial_year_start;
       const fyEnd   = batch.financial_year_end;
       const years   = [];
-      if (fyStart && fyEnd) {
-        for (let y = fyStart; y <= fyEnd; y++) years.push(y);
-      }
+      if (fyStart && fyEnd) for (let y = fyStart; y <= fyEnd; y++) years.push(y);
 
-      // Build account map from existing lines
-      const accountMap = {};
-      for (const line of linesData) {
-        const key = line.account_id ? `id_${line.account_id}` : `txt_${line.account_name}`;
-        if (!accountMap[key]) {
-          accountMap[key] = {
-            account_id: line.account_id,
-            account_code: line.account_code,
-            account_name: line.account_name,
-            account_type: line.account_type,
-            data: {},
-          };
-        }
-        if (!accountMap[key].data[line.financial_year]) {
-          accountMap[key].data[line.financial_year] = {};
-        }
-        accountMap[key].data[line.financial_year][line.period_month] = line.amount;
-      }
+      // Build ordered rows: synced COA list + any line-only extras
+      const syncedRows = batchAccountList.map(a => ({
+        account_id: a.account_id, account_code: a.account_code,
+        account_name: a.account_name, account_type: a.account_type,
+        is_group_row: a.is_group_row, can_capture: a.can_capture,
+        data: lineDataMap[a.account_id] || {},
+      }));
+      const allRows = [...syncedRows, ...Object.values(lineOnlyMap)];
 
-      const accountRows = Object.values(accountMap);
+      const syncedAtDisplay = syncedAt
+        ? `Synced with Chart of Accounts: ${new Date(syncedAt).toLocaleString('en-ZA')}`
+        : 'Not yet synced with Chart of Accounts.';
 
       main.innerHTML = `
         ${isFinalized ? `
@@ -650,10 +717,10 @@
             <span class="card-title">${escHtml(batch.description || 'Batch')}</span>
             <div class="action-row">
               ${!isFinalized ? `
-                <button class="btn btn-secondary btn-sm" onclick="openAddAccountRow()">+ Add Account</button>
-                <button class="btn btn-secondary btn-sm" onclick="saveAllGrids()">Save All</button>
-                <button class="btn btn-secondary btn-sm" onclick="validateBatch()">Validate</button>
-                <button class="btn btn-success btn-sm" onclick="finalizeBatch()" ${batch.status !== 'validated' ? 'title="Validate first" style="opacity:0.5"' : ''}>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openAddAccountRow()">+ Add Account</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="saveAllGrids()">Save All</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="validateBatch()">Validate</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="finalizeBatch()" ${batch.status !== 'validated' ? 'disabled title="Validate first"' : ''}>
                   Finalize
                 </button>
               ` : ''}
@@ -662,11 +729,18 @@
 
           <div id="captureMsg" class="msg"></div>
 
+          <div class="coa-sync-bar" id="coaSyncBar">
+            <span id="coaSyncStatus">${escHtml(syncedAtDisplay)}</span>
+            ${!isFinalized
+              ? `<button type="button" class="btn btn-secondary btn-sm" onclick="syncCOA()">↻ Sync COA</button>`
+              : `<span>Chart of Accounts changes will no longer sync into this finalized batch.</span>`
+            }
+          </div>
+
           ${!isFinalized ? `
-            <!-- Account Search -->
-            <div class="form-row" id="addAccountRow" style="${accountRows.length > 0 ? 'display:none;' : ''}">
+            <div class="form-row" id="addAccountRow" style="display:none;">
               <div class="form-group" style="max-width:400px;">
-                <label>Search Account (COA)</label>
+                <label>Add Account (COA search)</label>
                 <div class="account-search-wrap">
                   <input type="text" id="accountSearch" placeholder="Type account name or code…"
                     oninput="searchAccounts(this.value)" autocomplete="off" />
@@ -675,7 +749,7 @@
               </div>
               <div class="form-group" style="max-width:200px;">
                 <label>Financial Year</label>
-                <select id="addFY">
+                <select id="addFY" aria-label="Financial Year">
                   ${years.map(y => `<option value="${y}">${y}/${String(y+1).slice(-2)}</option>`).join('')}
                 </select>
               </div>
@@ -683,19 +757,48 @@
           ` : ''}
 
           <div id="accountGrids">
-            ${accountRows.length === 0 ? `
+            ${allRows.length === 0 ? `
               <div class="empty-state" style="padding:32px;">
                 <div class="icon">📊</div>
-                <p style="font-size:15px; font-weight:600; color:#374151;">No data captured yet</p>
-                <p>Search for an account above to begin entering historical figures.</p>
+                <p style="font-size:15px;font-weight:600;color:#374151;">No accounts found</p>
+                <p>Your Chart of Accounts may be empty. Add accounts first, then sync here.</p>
               </div>
-            ` : accountRows.map(acc => buildAccountGrid(acc, years, isFinalized)).join('')}
+            ` : allRows.map(acc =>
+                acc.is_group_row
+                  ? buildGroupRowHeader(acc)
+                  : buildAccountGrid(acc, years, isFinalized)
+              ).join('')}
           </div>
         </div>
       `;
 
-      // Re-attach close-dropdown listener
       document.addEventListener('click', closeAccountDropdown, { once: true });
+    }
+
+    function buildGroupRowHeader(acc) {
+      return `
+        <div class="group-row-header">
+          <span class="group-code">${escHtml(acc.account_code || '')}</span>
+          <span class="group-name">${escHtml(acc.account_name)}</span>
+          <span class="group-badge">${escHtml(acc.account_type || '')}</span>
+        </div>
+      `;
+    }
+
+    async function syncCOA() {
+      if (!currentBatch) return;
+      const bar = document.getElementById('coaSyncBar');
+      const btn = bar ? bar.querySelector('button') : null;
+      if (btn) { btn.disabled = true; btn.textContent = '⟳ Syncing…'; }
+      try {
+        const result = await api('POST', `/batch/${currentBatch.id}/sync-accounts`, {});
+        // Full re-render to reflect any COA changes in the account list
+        await renderCaptureMain(currentBatch);
+        showMsg('captureMsg', 'success', `Chart of Accounts synced: ${result.captureRows} capture rows, ${result.parentRows} group rows.`);
+      } catch (e) {
+        showMsg('captureMsg', 'error', e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '↻ Sync COA'; }
+      }
     }
 
     function buildAccountGrid(acc, years, disabled) {

@@ -123,20 +123,152 @@ class HistoricalComparativesService {
   // ── ACCOUNT SEARCH ───────────────────────────────────────────────────────
 
   /**
-   * Search the Chart of Accounts for a company.
-   * Returns id, code, name, account_type for matching accounts.
+   * Search the Chart of Accounts for active, postable accounts only.
+   * Parent/header accounts (is_postable = false) are excluded — they cannot
+   * receive direct historical captures.
    */
   static async searchAccounts({ companyId, query }) {
     const { data, error } = await supabase
       .from('accounts')
-      .select('id, code, name, account_type')
+      .select('id, code, name, type, parent_id, is_postable')
       .eq('company_id', companyId)
+      .eq('is_active', true)
+      .eq('is_postable', true)
       .or(`name.ilike.%${query}%,code.ilike.%${query}%`)
       .order('code', { ascending: true })
       .limit(30);
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map(a => ({
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      account_type: a.type,
+      parent_id: a.parent_id,
+    }));
+  }
+
+  // ── COA SYNC ─────────────────────────────────────────────────────────────
+
+  /**
+   * Sync active COA accounts into a draft or validated batch.
+   * For P&L batches: income + expense accounts.
+   * For trial_balance / mixed batches: all active accounts.
+   * Parent (non-postable) accounts are synced as group rows only.
+   * Finalized batches are blocked — their account list is permanently locked.
+   *
+   * Returns { synced, added, updated, parentRows, captureRows, syncedAt }.
+   */
+  static async syncBatchAccountsFromCOA({ companyId, batchId, userId }) {
+    const batch = await this.getBatch({ companyId, batchId });
+    if (!batch) throw new Error('Batch not found or access denied.');
+    if (batch.status === 'finalized') {
+      throw new Error('This batch is finalized. Chart of Accounts changes no longer sync into finalized batches.');
+    }
+
+    // Determine which account types to include
+    const isPLBatch = batch.report_basis === 'profit_loss';
+    let query = supabase
+      .from('accounts')
+      .select('id, code, name, type, parent_id, is_postable, sort_order, display_order, account_level')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .order('code', { ascending: true });
+
+    if (isPLBatch) {
+      query = query.in('type', ['income', 'expense']);
+    }
+
+    const { data: coaAccounts, error: coaErr } = await query;
+    if (coaErr) throw coaErr;
+    if (!coaAccounts || coaAccounts.length === 0) {
+      return { synced: 0, added: 0, updated: 0, parentRows: 0, captureRows: 0, syncedAt: new Date().toISOString() };
+    }
+
+    const now = new Date().toISOString();
+    const rows = coaAccounts.map(a => ({
+      batch_id:         batchId,
+      company_id:       companyId,
+      account_id:       a.id,
+      account_code:     a.code,
+      account_name:     a.name,
+      account_type:     a.type,
+      parent_account_id: a.parent_id || null,
+      is_postable:      a.is_postable !== false,
+      is_group_row:     a.is_postable === false,
+      display_order:    a.display_order || a.sort_order || 0,
+      synced_at:        now,
+    }));
+
+    // Upsert: update synced_at + name/code on conflict (account may have been renamed)
+    const { data: upserted, error: upsertErr } = await supabase
+      .from('historical_comparative_batch_accounts')
+      .upsert(rows, {
+        onConflict: 'batch_id,account_id',
+        ignoreDuplicates: false,
+      })
+      .select('id, is_group_row');
+
+    if (upsertErr) throw upsertErr;
+
+    const parentRows  = (upserted || []).filter(r => r.is_group_row).length;
+    const captureRows = (upserted || []).length - parentRows;
+
+    await this._writeAuditLog({
+      companyId, batchId, lineId: null,
+      action: 'BATCH_UPDATED',
+      oldValue: null,
+      newValue: { coa_sync: true, total: (upserted || []).length, syncedAt: now },
+      performedBy: userId,
+    });
+
+    return {
+      synced:      (upserted || []).length,
+      parentRows,
+      captureRows,
+      syncedAt:    now,
+    };
+  }
+
+  /**
+   * Return the account list for a batch, with captured value summary.
+   * Each account row includes how many monthly lines have been entered.
+   */
+  static async getBatchAccountList({ companyId, batchId }) {
+    const batch = await this.getBatch({ companyId, batchId });
+    if (!batch) throw new Error('Batch not found or access denied.');
+
+    const { data: accounts, error: accErr } = await supabase
+      .from('historical_comparative_batch_accounts')
+      .select('*')
+      .eq('batch_id', batchId)
+      .eq('company_id', companyId)
+      .order('display_order', { ascending: true })
+      .order('account_code', { ascending: true });
+
+    if (accErr) throw accErr;
+    if (!accounts || accounts.length === 0) return { accounts: [], batch };
+
+    // Fetch line counts per account_id to show capture progress
+    const { data: lines } = await supabase
+      .from('historical_comparative_lines')
+      .select('account_id')
+      .eq('batch_id', batchId)
+      .eq('company_id', companyId);
+
+    const lineCountMap = {};
+    for (const l of (lines || [])) {
+      if (l.account_id) lineCountMap[l.account_id] = (lineCountMap[l.account_id] || 0) + 1;
+    }
+
+    const result = accounts.map(a => ({
+      ...a,
+      can_capture:   a.is_postable && !a.is_group_row,
+      captured_lines: lineCountMap[a.account_id] || 0,
+    }));
+
+    return { accounts: result, batch };
   }
 
   // ── LINE CAPTURE ─────────────────────────────────────────────────────────
@@ -181,6 +313,21 @@ class HistoricalComparativesService {
       throw new Error('This batch is finalized and cannot be edited.');
     }
 
+    // Postability guard — parent/header accounts cannot receive historical capture lines
+    if (accountId) {
+      const { data: acct } = await supabase
+        .from('accounts')
+        .select('code, name, is_postable')
+        .eq('id', accountId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      if (acct && acct.is_postable === false) {
+        throw new Error(
+          `Account ${acct.code} (${acct.name}) is a parent account and cannot be used for direct historical capture. Select a sub-account instead.`
+        );
+      }
+    }
+
     // Build period dates
     const { periodStart, periodEnd } = this._buildPeriodDates(financialYear, periodMonth);
 
@@ -219,6 +366,12 @@ class HistoricalComparativesService {
       updated_at: new Date().toISOString(),
       is_finalized: false,
       notes: notes || null,
+      // Immutable snapshots — preserve account name/code/type at time of capture
+      account_code_snapshot: accountCode || null,
+      account_name_snapshot: accountName || null,
+      account_type_snapshot: accountType || null,
+      synced_from_coa: !!accountId,
+      coa_synced_at: accountId ? new Date().toISOString() : null,
     };
 
     let savedLine;
