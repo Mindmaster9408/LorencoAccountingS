@@ -1554,7 +1554,9 @@
 
     function parseCurrency(str) {
       if (!str) return 0;
-      return parseFloat(String(str).replace(/[^\d.-]/g, '')) || 0;
+      // SA locale: space = thousands sep, comma = decimal sep ("2 073 662,00" → 2073662)
+      const normalized = String(str).replace(/\s/g, '').replace(',', '.');
+      return parseFloat(normalized) || 0;
     }
 
     function escHtml(str) {
