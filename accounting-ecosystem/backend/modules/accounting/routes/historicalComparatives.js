@@ -322,17 +322,32 @@ router.post('/batch/:batchId/finalize', authenticate, hasPermission('historical.
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
 
+// Roles permitted to request draft/unfinalized data in report endpoints.
+const DRAFT_REPORT_ROLES = ['business_owner', 'accountant', 'practice_manager', 'admin', 'super_admin'];
+
 /**
  * GET /api/accounting/historical-comparatives/reports/monthly-pl
  * Monthly comparative P&L report across multiple financial years.
- * Query: financialYearStart, financialYearEnd, accountType (optional)
+ * Query: financialYearStart, financialYearEnd, accountType (optional),
+ *        statusMode (optional: finalized_only|draft_preview|all),
+ *        batchId    (optional: UUID — narrows to a specific batch)
+ *
+ * SECURITY: statusMode other than 'finalized_only' requires DRAFT_REPORT_ROLES.
+ * IMMUTABILITY: strictly read-only — no writes to any live ledger table.
  */
 router.get('/reports/monthly-pl', authenticate, hasPermission('historical.view'), async (req, res) => {
   try {
-    const { financialYearStart, financialYearEnd, accountType } = req.query;
+    const { financialYearStart, financialYearEnd, accountType, statusMode, batchId } = req.query;
 
     if (!financialYearStart || !financialYearEnd) {
       return res.status(400).json({ error: 'financialYearStart and financialYearEnd are required.' });
+    }
+
+    const VALID_MODES = ['finalized_only', 'draft_preview', 'all'];
+    const resolvedMode = VALID_MODES.includes(statusMode) ? statusMode : 'finalized_only';
+
+    if (resolvedMode !== 'finalized_only' && !DRAFT_REPORT_ROLES.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Draft preview access requires accountant or admin role.' });
     }
 
     const report = await HistoricalComparativesService.getMonthlyPLReport({
@@ -340,12 +355,96 @@ router.get('/reports/monthly-pl', authenticate, hasPermission('historical.view')
       financialYearStart: parseInt(financialYearStart),
       financialYearEnd: parseInt(financialYearEnd),
       accountType: accountType || null,
+      statusMode: resolvedMode,
+      batchId: batchId || null,
     });
 
     res.json(report);
   } catch (error) {
     console.error('[HistoricalComparatives] getMonthlyPLReport error:', error);
     res.status(500).json({ error: 'Failed to generate monthly P&L report.' });
+  }
+});
+
+/**
+ * GET /api/accounting/historical-comparatives/reports/tb-comparative
+ * TB-style comparative report: annual totals per account, grouped by account type.
+ * Query: financialYearStart, financialYearEnd,
+ *        statusMode (optional: finalized_only|draft_preview|all),
+ *        batchId    (optional: UUID)
+ *
+ * SECURITY: statusMode other than 'finalized_only' requires DRAFT_REPORT_ROLES.
+ * IMMUTABILITY: strictly read-only.
+ */
+router.get('/reports/tb-comparative', authenticate, hasPermission('historical.view'), async (req, res) => {
+  try {
+    const { financialYearStart, financialYearEnd, statusMode, batchId } = req.query;
+
+    if (!financialYearStart || !financialYearEnd) {
+      return res.status(400).json({ error: 'financialYearStart and financialYearEnd are required.' });
+    }
+
+    const VALID_MODES = ['finalized_only', 'draft_preview', 'all'];
+    const resolvedMode = VALID_MODES.includes(statusMode) ? statusMode : 'finalized_only';
+
+    if (resolvedMode !== 'finalized_only' && !DRAFT_REPORT_ROLES.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Draft preview access requires accountant or admin role.' });
+    }
+
+    const report = await HistoricalComparativesService.getTBStyleComparativeReport({
+      companyId: req.user.companyId,
+      financialYearStart: parseInt(financialYearStart),
+      financialYearEnd: parseInt(financialYearEnd),
+      statusMode: resolvedMode,
+      batchId: batchId || null,
+    });
+
+    res.json(report);
+  } catch (error) {
+    console.error('[HistoricalComparatives] getTBStyleComparativeReport error:', error);
+    res.status(500).json({ error: 'Failed to generate TB comparative report.' });
+  }
+});
+
+/**
+ * GET /api/accounting/historical-comparatives/reports/multi-year
+ * Multi-year comparative: annual totals per account across year range.
+ * Frontend adds YoY % change columns from the returned data.
+ * Query: financialYearStart, financialYearEnd, accountType (optional),
+ *        statusMode (optional: finalized_only|draft_preview|all),
+ *        batchId    (optional: UUID)
+ *
+ * SECURITY: statusMode other than 'finalized_only' requires DRAFT_REPORT_ROLES.
+ * IMMUTABILITY: strictly read-only.
+ */
+router.get('/reports/multi-year', authenticate, hasPermission('historical.view'), async (req, res) => {
+  try {
+    const { financialYearStart, financialYearEnd, accountType, statusMode, batchId } = req.query;
+
+    if (!financialYearStart || !financialYearEnd) {
+      return res.status(400).json({ error: 'financialYearStart and financialYearEnd are required.' });
+    }
+
+    const VALID_MODES = ['finalized_only', 'draft_preview', 'all'];
+    const resolvedMode = VALID_MODES.includes(statusMode) ? statusMode : 'finalized_only';
+
+    if (resolvedMode !== 'finalized_only' && !DRAFT_REPORT_ROLES.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Draft preview access requires accountant or admin role.' });
+    }
+
+    const report = await HistoricalComparativesService.getMultiYearComparativeReport({
+      companyId: req.user.companyId,
+      financialYearStart: parseInt(financialYearStart),
+      financialYearEnd: parseInt(financialYearEnd),
+      accountType: accountType || null,
+      statusMode: resolvedMode,
+      batchId: batchId || null,
+    });
+
+    res.json(report);
+  } catch (error) {
+    console.error('[HistoricalComparatives] getMultiYearComparativeReport error:', error);
+    res.status(500).json({ error: 'Failed to generate multi-year comparative report.' });
   }
 });
 

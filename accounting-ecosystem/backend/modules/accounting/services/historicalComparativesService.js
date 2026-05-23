@@ -621,15 +621,55 @@ class HistoricalComparativesService {
   // ── REPORTS ──────────────────────────────────────────────────────────────
 
   /**
-   * Monthly P&L Comparative Report.
-   * Returns finalized lines for the company across the specified year range,
-   * grouped by account, showing one column per month per year.
-   * Only returns finalized data (is_finalized = true).
+   * Returns the SQL WHERE fragment for batch/line finalization status.
+   * statusMode values:
+   *   'finalized_only' — only lines/batches that are fully finalized (safe default)
+   *   'draft_preview'  — all batches incl. draft and validated (read-only preview)
+   *   'all'            — same as draft_preview (alias, for completeness)
+   * The filter string is built from a controlled enum — safe string interpolation.
    */
-  static async getMonthlyPLReport({ companyId, financialYearStart, financialYearEnd, accountType = null }) {
-    let query = db.query.bind(db);
+  static _buildStatusFilter(statusMode) {
+    if (statusMode === 'draft_preview' || statusMode === 'all') {
+      return `AND b.status IN ('draft', 'validated', 'finalized')`;
+    }
+    return `AND l.is_finalized = true AND b.status = 'finalized'`;
+  }
+
+  /**
+   * Builds the metadata block appended to every report response.
+   * isDraftPreview = true triggers the warning banner in the UI.
+   */
+  static _buildReportMetadata(statusMode) {
+    const isDraftPreview = statusMode !== 'finalized_only';
+    return {
+      statusMode,
+      isDraftPreview,
+      sourceWarning: isDraftPreview
+        ? 'This report includes draft/unfinalized data. For internal preview only — not suitable for financial reporting or tax submissions.'
+        : null,
+    };
+  }
+
+  /**
+   * Monthly P&L Comparative Report.
+   * Returns lines for the company across the specified year range,
+   * grouped by account, showing one column per month per year.
+   *
+   * statusMode: 'finalized_only' (default) | 'draft_preview' | 'all'
+   * batchId:    optional UUID — narrows to a specific batch when set.
+   * SECURITY: company_id always from caller param; batchId always parameterized.
+   * IMMUTABILITY: read-only — never writes to any live ledger table.
+   */
+  static async getMonthlyPLReport({ companyId, financialYearStart, financialYearEnd, accountType = null, statusMode = 'finalized_only', batchId = null }) {
+    const statusFilter = this._buildStatusFilter(statusMode);
 
     let params = [companyId, financialYearStart, financialYearEnd];
+    let batchFilter = '';
+    if (batchId) {
+      params.push(batchId);
+      batchFilter = `AND l.batch_id = $${params.length}`;
+    }
+
     let accountTypeFilter = '';
     if (accountType) {
       params.push(accountType);
@@ -649,10 +689,10 @@ class HistoricalComparativesService {
       JOIN historical_comparative_batches b ON b.id = l.batch_id
       WHERE
         l.company_id = $1
-        AND l.is_finalized = true
-        AND b.status = 'finalized'
+        ${statusFilter}
         AND l.financial_year >= $2
         AND l.financial_year <= $3
+        ${batchFilter}
         ${accountTypeFilter}
       GROUP BY
         l.account_id, l.account_code, l.account_name, l.account_type,
@@ -664,7 +704,176 @@ class HistoricalComparativesService {
     `;
 
     const result = await db.query(sql, params);
-    return this._buildPLReportStructure(result.rows, financialYearStart, financialYearEnd);
+    const structure = this._buildPLReportStructure(result.rows, financialYearStart, financialYearEnd);
+    return { ...structure, metadata: this._buildReportMetadata(statusMode) };
+  }
+
+  /**
+   * TB-Style Comparative Report.
+   * Returns annual totals per account grouped by account type (section totals included).
+   * Useful for balance-sheet / trial-balance style review across years.
+   *
+   * statusMode: 'finalized_only' | 'draft_preview' | 'all'
+   * batchId:    optional UUID — narrows to a specific batch.
+   * SECURITY: company_id always from caller param; batchId always parameterized.
+   * IMMUTABILITY: read-only — never writes to any live ledger table.
+   */
+  static async getTBStyleComparativeReport({ companyId, financialYearStart, financialYearEnd, statusMode = 'finalized_only', batchId = null }) {
+    const statusFilter = this._buildStatusFilter(statusMode);
+    const TYPE_ORDER = { Asset: 1, Liability: 2, Equity: 3, Income: 4, Expense: 5 };
+
+    let params = [companyId, financialYearStart, financialYearEnd];
+    let batchFilter = '';
+    if (batchId) {
+      params.push(batchId);
+      batchFilter = `AND l.batch_id = $${params.length}`;
+    }
+
+    const sql = `
+      SELECT
+        l.account_id,
+        l.account_code,
+        l.account_name,
+        l.account_type,
+        l.financial_year,
+        SUM(l.amount) AS year_total
+      FROM historical_comparative_lines l
+      JOIN historical_comparative_batches b ON b.id = l.batch_id
+      WHERE
+        l.company_id = $1
+        ${statusFilter}
+        AND l.financial_year >= $2
+        AND l.financial_year <= $3
+        ${batchFilter}
+      GROUP BY
+        l.account_id, l.account_code, l.account_name, l.account_type,
+        l.financial_year
+      ORDER BY
+        l.account_type ASC,
+        l.account_code ASC,
+        l.financial_year ASC
+    `;
+
+    const result = await db.query(sql, params);
+
+    const accountMap = {};
+    for (const row of result.rows) {
+      const key = row.account_id ? `id_${row.account_id}` : `code_${row.account_code}_${row.account_name}`;
+      if (!accountMap[key]) {
+        accountMap[key] = {
+          account_id: row.account_id,
+          account_code: row.account_code,
+          account_name: row.account_name,
+          account_type: row.account_type,
+          years: {},
+        };
+      }
+      accountMap[key].years[row.financial_year] = parseFloat(row.year_total);
+    }
+
+    const years = [];
+    for (let y = financialYearStart; y <= financialYearEnd; y++) years.push(y);
+
+    const sectionMap = {};
+    for (const acc of Object.values(accountMap)) {
+      const t = acc.account_type || 'Other';
+      if (!sectionMap[t]) sectionMap[t] = { type: t, accounts: [], yearTotals: {} };
+      sectionMap[t].accounts.push(acc);
+      for (const y of years) {
+        sectionMap[t].yearTotals[y] = (sectionMap[t].yearTotals[y] || 0) + (acc.years[y] || 0);
+      }
+    }
+
+    const sections = Object.values(sectionMap)
+      .sort((a, b) => (TYPE_ORDER[a.type] || 9) - (TYPE_ORDER[b.type] || 9));
+
+    for (const sec of sections) {
+      sec.accounts.sort((a, b) => {
+        if (a.account_code && b.account_code) return a.account_code.localeCompare(b.account_code);
+        return a.account_name.localeCompare(b.account_name);
+      });
+    }
+
+    return { sections, years, metadata: this._buildReportMetadata(statusMode) };
+  }
+
+  /**
+   * Multi-Year Comparative Report.
+   * Returns annual totals per account across the year range, suitable for
+   * year-over-year comparison. Frontend computes YoY % change columns.
+   *
+   * statusMode: 'finalized_only' | 'draft_preview' | 'all'
+   * batchId:    optional UUID — narrows to a specific batch.
+   * SECURITY: company_id always from caller param; batchId always parameterized.
+   * IMMUTABILITY: read-only — never writes to any live ledger table.
+   */
+  static async getMultiYearComparativeReport({ companyId, financialYearStart, financialYearEnd, accountType = null, statusMode = 'finalized_only', batchId = null }) {
+    const statusFilter = this._buildStatusFilter(statusMode);
+
+    let params = [companyId, financialYearStart, financialYearEnd];
+    let batchFilter = '';
+    if (batchId) {
+      params.push(batchId);
+      batchFilter = `AND l.batch_id = $${params.length}`;
+    }
+
+    let accountTypeFilter = '';
+    if (accountType) {
+      params.push(accountType);
+      accountTypeFilter = `AND l.account_type = $${params.length}`;
+    }
+
+    const sql = `
+      SELECT
+        l.account_id,
+        l.account_code,
+        l.account_name,
+        l.account_type,
+        l.financial_year,
+        SUM(l.amount) AS year_total
+      FROM historical_comparative_lines l
+      JOIN historical_comparative_batches b ON b.id = l.batch_id
+      WHERE
+        l.company_id = $1
+        ${statusFilter}
+        AND l.financial_year >= $2
+        AND l.financial_year <= $3
+        ${batchFilter}
+        ${accountTypeFilter}
+      GROUP BY
+        l.account_id, l.account_code, l.account_name, l.account_type,
+        l.financial_year
+      ORDER BY
+        l.account_code ASC,
+        l.financial_year ASC
+    `;
+
+    const result = await db.query(sql, params);
+
+    const accountMap = {};
+    for (const row of result.rows) {
+      const key = row.account_id ? `id_${row.account_id}` : `code_${row.account_code}_${row.account_name}`;
+      if (!accountMap[key]) {
+        accountMap[key] = {
+          account_id: row.account_id,
+          account_code: row.account_code,
+          account_name: row.account_name,
+          account_type: row.account_type,
+          years: {},
+        };
+      }
+      accountMap[key].years[row.financial_year] = parseFloat(row.year_total);
+    }
+
+    const years = [];
+    for (let y = financialYearStart; y <= financialYearEnd; y++) years.push(y);
+
+    const accounts = Object.values(accountMap).sort((a, b) => {
+      if (a.account_code && b.account_code) return a.account_code.localeCompare(b.account_code);
+      return a.account_name.localeCompare(b.account_name);
+    });
+
+    return { accounts, years, metadata: this._buildReportMetadata(statusMode) };
   }
 
   /**

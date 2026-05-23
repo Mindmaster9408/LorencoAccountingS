@@ -275,8 +275,60 @@
     .grid-total-row td {
       font-weight: 700;
       background: #f0fdf4;
+      color: #1a1a2e;
       border-top: 2px solid #bbf7d0;
       padding: 7px 12px;
+    }
+    .grid-total-row td strong { color: #1a1a2e; }
+
+    /* ── Draft Warning Banner ───────────────────────────────────────── */
+    .draft-warning-banner {
+      display: none;
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #92400e;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .draft-warning-banner.visible { display: flex; }
+    .report-section-header {
+      background: #f1f5f9;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #374151;
+    }
+    .report-section-header td { padding: 6px 14px; text-align: left !important; }
+    .report-section-total td {
+      font-weight: 700;
+      background: #f8fafc;
+      border-top: 2px solid #e5e7eb;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    .report-section-total td.col-account { color: #1a1a2e; }
+    .report-yoy-positive { color: #15803d; font-size: 11px; }
+    .report-yoy-negative { color: #dc2626; font-size: 11px; }
+    .rpt-draft-info {
+      display: none;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #0369a1;
+    }
+    .rpt-draft-info.visible { display: block; }
+    .rpt-print-btn { font-size: 12px; padding: 5px 12px; }
+    @media print {
+      .draft-warning-banner.visible { display: flex !important; background: #fef3c7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none !important; }
     }
 
     /* ── Report Table ────────────────────────────────────────────────── */
@@ -432,9 +484,28 @@
     <div id="tab-reports" class="tab-panel">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Monthly P&amp;L Comparative Report</span>
+          <span class="card-title">Comparative Reports</span>
+          <button type="button" class="btn btn-secondary no-print rpt-print-btn" onclick="window.print()" id="rptPrintBtn" style="display:none;">Print / Export</button>
         </div>
-        <div class="form-row" style="margin-bottom:20px;">
+
+        <!-- Controls row -->
+        <div class="form-row" style="margin-bottom:12px; align-items:flex-end; flex-wrap:wrap;">
+          <div class="form-group" style="max-width:220px;">
+            <label>Report Type</label>
+            <select id="rptType" onchange="onReportTypeChange()">
+              <option value="monthly-pl">Monthly P&amp;L Comparative</option>
+              <option value="tb-comparative">Monthly TB-Style</option>
+              <option value="multi-year">Multi-Year Comparative</option>
+            </select>
+          </div>
+          <div class="form-group" style="max-width:220px;" id="rptModeGroup">
+            <label>Data Mode</label>
+            <select id="rptMode" onchange="onReportModeChange()">
+              <option value="finalized_only">Finalized only</option>
+              <option value="draft_preview">Current draft batch preview</option>
+              <option value="all">Draft + finalized (all)</option>
+            </select>
+          </div>
           <div class="form-group" style="max-width:160px;">
             <label>Year From</label>
             <input type="number" id="rptYearFrom" min="2000" max="2099" value="" placeholder="2021" />
@@ -443,7 +514,7 @@
             <label>Year To</label>
             <input type="number" id="rptYearTo" min="2000" max="2099" value="" placeholder="2024" />
           </div>
-          <div class="form-group" style="max-width:200px;">
+          <div class="form-group" style="max-width:200px;" id="rptAccountTypeGroup">
             <label>Account Type</label>
             <select id="rptAccountType">
               <option value="">All types</option>
@@ -456,9 +527,22 @@
           </div>
           <div class="form-group" style="justify-content:flex-end; max-width:140px;">
             <label>&nbsp;</label>
-            <button class="btn btn-primary" onclick="loadReport()">Generate</button>
+            <button class="btn btn-primary no-print" onclick="loadReport()">Generate</button>
           </div>
         </div>
+
+        <!-- Draft batch info strip (shown only in draft modes) -->
+        <div id="rptDraftInfo" class="rpt-draft-info">
+          <strong>Draft preview:</strong> Showing data from <span id="rptDraftBatchName">the selected batch</span>.
+          Select a batch in the <strong>Data Capture</strong> tab to change the source.
+        </div>
+
+        <!-- Warning banner — shown whenever isDraftPreview = true -->
+        <div id="rptDraftWarning" class="draft-warning-banner">
+          <span>⚠️</span>
+          <span>DRAFT PREVIEW — NOT FINALIZED. This report contains unfinalized data and is for internal review only. Do not use for financial reporting or tax submissions.</span>
+        </div>
+
         <div id="rptMsg" class="msg"></div>
         <div id="reportOutput">
           <div class="empty-state" style="padding:36px;">
@@ -571,6 +655,17 @@
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.getElementById('tab-' + name).classList.add('active');
       btn.classList.add('active');
+      if (name === 'reports') initReportsTab();
+    }
+
+    // ── Auth helpers ─────────────────────────────────────────────────────
+    function _getTokenPayload() {
+      try { return JSON.parse(atob(_token.split('.')[1])); } catch (_) { return {}; }
+    }
+
+    function _canAccessDraftReports() {
+      const role = (_getTokenPayload().role || '').toLowerCase();
+      return ['business_owner', 'accountant', 'practice_manager', 'admin', 'super_admin'].includes(role);
     }
 
     // ── Batches ──────────────────────────────────────────────────────────
@@ -1199,11 +1294,59 @@
       }
     }
 
+    // ── Reports tab init ─────────────────────────────────────────────────
+    function initReportsTab() {
+      // Hide draft mode options if user role doesn't permit draft access
+      const modeSelect = document.getElementById('rptMode');
+      if (!_canAccessDraftReports()) {
+        Array.from(modeSelect.options).forEach(o => {
+          if (o.value !== 'finalized_only') o.disabled = true;
+        });
+        modeSelect.value = 'finalized_only';
+        document.getElementById('rptModeGroup').title = 'Draft access requires accountant or admin role.';
+      }
+
+      // Auto-set draft mode if the currently selected batch is draft/validated
+      if (_canAccessDraftReports() && currentBatch && ['draft', 'validated'].includes(currentBatch.status)) {
+        modeSelect.value = 'draft_preview';
+      }
+
+      onReportModeChange();
+    }
+
+    function onReportTypeChange() {
+      const type = document.getElementById('rptType').value;
+      // TB-style doesn't use account type filter; show/hide accordingly
+      document.getElementById('rptAccountTypeGroup').style.display =
+        type === 'tb-comparative' ? 'none' : '';
+    }
+
+    function onReportModeChange() {
+      const mode = document.getElementById('rptMode').value;
+      const isDraft = mode !== 'finalized_only';
+      const infoEl    = document.getElementById('rptDraftInfo');
+      const warningEl = document.getElementById('rptDraftWarning');
+
+      if (isDraft) {
+        infoEl.classList.add('visible');
+        warningEl.classList.add('visible');
+        const batchName = currentBatch
+          ? escHtml(currentBatch.description || `Batch #${currentBatch.id}`)
+          : '<em>no batch selected — data from all draft/validated batches</em>';
+        document.getElementById('rptDraftBatchName').innerHTML = batchName;
+      } else {
+        infoEl.classList.remove('visible');
+        warningEl.classList.remove('visible');
+      }
+    }
+
     // ── Report ───────────────────────────────────────────────────────────
     async function loadReport() {
       const yearFrom = parseInt(document.getElementById('rptYearFrom').value);
       const yearTo   = parseInt(document.getElementById('rptYearTo').value);
       const accType  = document.getElementById('rptAccountType').value;
+      const rptType  = document.getElementById('rptType').value;
+      const mode     = document.getElementById('rptMode').value;
 
       if (!yearFrom || !yearTo) {
         showMsg('rptMsg', 'error', 'Both year values are required.');
@@ -1214,41 +1357,62 @@
         return;
       }
 
+      const batchId = (mode !== 'finalized_only' && currentBatch) ? currentBatch.id : null;
+
       showMsg('rptMsg', 'info', 'Loading…');
       try {
-        const qs = `financialYearStart=${yearFrom}&financialYearEnd=${yearTo}${accType ? '&accountType=' + accType : ''}`;
-        const report = await api('GET', `/reports/monthly-pl?${qs}`);
-        renderReport(report, yearFrom, yearTo);
+        let report;
+        if (rptType === 'monthly-pl') {
+          let qs = `financialYearStart=${yearFrom}&financialYearEnd=${yearTo}&statusMode=${mode}`;
+          if (accType) qs += `&accountType=${encodeURIComponent(accType)}`;
+          if (batchId) qs += `&batchId=${encodeURIComponent(batchId)}`;
+          report = await api('GET', `/reports/monthly-pl?${qs}`);
+          renderPLReport(report, yearFrom, yearTo);
+        } else if (rptType === 'tb-comparative') {
+          let qs = `financialYearStart=${yearFrom}&financialYearEnd=${yearTo}&statusMode=${mode}`;
+          if (batchId) qs += `&batchId=${encodeURIComponent(batchId)}`;
+          report = await api('GET', `/reports/tb-comparative?${qs}`);
+          renderTBReport(report, yearFrom, yearTo);
+        } else {
+          let qs = `financialYearStart=${yearFrom}&financialYearEnd=${yearTo}&statusMode=${mode}`;
+          if (accType) qs += `&accountType=${encodeURIComponent(accType)}`;
+          if (batchId) qs += `&batchId=${encodeURIComponent(batchId)}`;
+          report = await api('GET', `/reports/multi-year?${qs}`);
+          renderMultiYearReport(report, yearFrom, yearTo);
+        }
+
         document.getElementById('rptMsg').classList.remove('visible');
+        document.getElementById('rptPrintBtn').style.display = '';
       } catch (e) {
         showMsg('rptMsg', 'error', e.message);
         document.getElementById('reportOutput').innerHTML = '';
+        document.getElementById('rptPrintBtn').style.display = 'none';
       }
     }
 
-    function renderReport(report, yearFrom, yearTo) {
-      const { accounts, years, monthOrder, monthNames } = report;
+    // ── Render: Monthly P&L ──────────────────────────────────────────────
+    function renderPLReport(report, yearFrom, yearTo) {
+      const { accounts, years, monthOrder, metadata } = report;
       const out = document.getElementById('reportOutput');
+      const isDraft = metadata && metadata.isDraftPreview;
+      const emptyMsg = isDraft ? 'No data found for the selected year range and batch.' : 'No finalized data found for the selected year range.';
 
       if (!accounts || accounts.length === 0) {
-        out.innerHTML = `<div class="empty-state"><p>No finalized data found for the selected year range.</p></div>`;
+        out.innerHTML = `<div class="empty-state"><p>${emptyMsg}</p></div>`;
         return;
       }
 
-      // Build header: Month | FY2021/Mar | FY2021/Apr | … | FY2022/Mar | …
       let headers = '<th class="col-account">Account</th><th class="col-code">Code</th>';
       for (const y of years) {
         for (const m of monthOrder) {
           headers += `<th style="min-width:80px;">${MONTH_SHORT[m]}<br><span style="font-size:10px;color:#9ca3af;">FY${y}</span></th>`;
         }
-        headers += `<th style="min-width:90px;background:#f0fdf4;">Total<br><span style="font-size:10px;color:#9ca3af;">FY${y}</span></th>`;
+        headers += `<th style="min-width:90px;background:#f0fdf4;color:#1a1a2e;">Total<br><span style="font-size:10px;color:#6b7280;">FY${y}</span></th>`;
       }
 
       let rows = '';
       for (const acc of accounts) {
-        rows += `<tr>
-          <td class="col-account">${escHtml(acc.account_name)}</td>
-          <td class="col-code">${escHtml(acc.account_code || '')}</td>`;
+        rows += `<tr><td class="col-account">${escHtml(acc.account_name)}</td><td class="col-code">${escHtml(acc.account_code || '')}</td>`;
         for (const y of years) {
           let yearTotal = 0;
           for (const m of monthOrder) {
@@ -1256,10 +1420,14 @@
             yearTotal += val;
             rows += `<td>${val !== 0 ? formatCurrency(val) : '<span style="color:#d1d5db;">—</span>'}</td>`;
           }
-          rows += `<td style="font-weight:600;background:#f0fdf4;">${formatCurrency(yearTotal)}</td>`;
+          rows += `<td style="font-weight:600;background:#f0fdf4;color:#1a1a2e;">${formatCurrency(yearTotal)}</td>`;
         }
         rows += '</tr>';
       }
+
+      const footerNote = isDraft
+        ? `<strong>DRAFT PREVIEW — NOT FINALIZED.</strong> ${escHtml(metadata.sourceWarning || '')}`
+        : `Showing finalized data for FY${yearFrom}–FY${yearTo}. Only data from finalized batches is included.`;
 
       out.innerHTML = `
         <div style="overflow-x:auto;">
@@ -1268,10 +1436,112 @@
             <tbody>${rows}</tbody>
           </table>
         </div>
-        <div style="font-size:12px; color:#6b7280; margin-top:12px;">
-          Showing finalized data for FY${yearFrom}–FY${yearTo}.
-          Only data from finalized batches is included.
+        <div style="font-size:12px; color:${isDraft ? '#92400e' : '#6b7280'}; margin-top:12px;">${footerNote}</div>
+      `;
+    }
+
+    // ── Render: TB-Style ─────────────────────────────────────────────────
+    function renderTBReport(report, yearFrom, yearTo) {
+      const { sections, years, metadata } = report;
+      const out = document.getElementById('reportOutput');
+      const isDraft = metadata && metadata.isDraftPreview;
+
+      if (!sections || sections.length === 0) {
+        out.innerHTML = `<div class="empty-state"><p>No data found for the selected year range.</p></div>`;
+        return;
+      }
+
+      let headers = '<th class="col-account">Account</th><th class="col-code">Code</th><th class="col-code">Type</th>';
+      for (const y of years) {
+        headers += `<th style="min-width:110px;">FY${y}<br><span style="font-size:10px;color:#9ca3af;">Annual Total</span></th>`;
+      }
+
+      let rows = '';
+      for (const sec of sections) {
+        rows += `<tr class="report-section-header"><td colspan="${3 + years.length}">${escHtml(sec.type)}</td></tr>`;
+        for (const acc of sec.accounts) {
+          rows += `<tr><td class="col-account" style="padding-left:24px;">${escHtml(acc.account_name)}</td><td class="col-code">${escHtml(acc.account_code || '')}</td><td class="col-code">${escHtml(acc.account_type || '')}</td>`;
+          for (const y of years) {
+            const val = acc.years[y] || 0;
+            rows += `<td>${val !== 0 ? formatCurrency(val) : '<span style="color:#d1d5db;">—</span>'}</td>`;
+          }
+          rows += '</tr>';
+        }
+        rows += `<tr class="report-section-total"><td class="col-account">Total ${escHtml(sec.type)}</td><td class="col-code"></td><td class="col-code"></td>`;
+        for (const y of years) {
+          rows += `<td style="background:#f0fdf4;color:#1a1a2e;">${formatCurrency(sec.yearTotals[y] || 0)}</td>`;
+        }
+        rows += '</tr>';
+      }
+
+      const footerNote = isDraft
+        ? `<strong>DRAFT PREVIEW — NOT FINALIZED.</strong> ${escHtml(metadata.sourceWarning || '')}`
+        : `Showing finalized data for FY${yearFrom}–FY${yearTo}. Only data from finalized batches is included.`;
+
+      out.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table class="report-table">
+            <thead><tr>${headers}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
         </div>
+        <div style="font-size:12px; color:${isDraft ? '#92400e' : '#6b7280'}; margin-top:12px;">${footerNote}</div>
+      `;
+    }
+
+    // ── Render: Multi-Year Comparative ───────────────────────────────────
+    function renderMultiYearReport(report, yearFrom, yearTo) {
+      const { accounts, years, metadata } = report;
+      const out = document.getElementById('reportOutput');
+      const isDraft = metadata && metadata.isDraftPreview;
+
+      if (!accounts || accounts.length === 0) {
+        out.innerHTML = `<div class="empty-state"><p>No data found for the selected year range.</p></div>`;
+        return;
+      }
+
+      let headers = '<th class="col-account">Account</th><th class="col-code">Code</th>';
+      for (let i = 0; i < years.length; i++) {
+        const y = years[i];
+        headers += `<th style="min-width:110px;">FY${y}<br><span style="font-size:10px;color:#9ca3af;">Annual Total</span></th>`;
+        if (i > 0) {
+          headers += `<th style="min-width:70px;"><span style="font-size:10px;">vs FY${years[i-1]}</span></th>`;
+        }
+      }
+
+      let rows = '';
+      for (const acc of accounts) {
+        rows += `<tr><td class="col-account">${escHtml(acc.account_name)}</td><td class="col-code">${escHtml(acc.account_code || '')}</td>`;
+        for (let i = 0; i < years.length; i++) {
+          const y = years[i];
+          const val = acc.years[y] || 0;
+          rows += `<td>${val !== 0 ? formatCurrency(val) : '<span style="color:#d1d5db;">—</span>'}</td>`;
+          if (i > 0) {
+            const prev = acc.years[years[i-1]] || 0;
+            if (prev === 0) {
+              rows += `<td style="color:#9ca3af; font-size:11px;">n/a</td>`;
+            } else {
+              const pct = ((val - prev) / Math.abs(prev)) * 100;
+              const cls = pct >= 0 ? 'report-yoy-positive' : 'report-yoy-negative';
+              rows += `<td class="${cls}">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</td>`;
+            }
+          }
+        }
+        rows += '</tr>';
+      }
+
+      const footerNote = isDraft
+        ? `<strong>DRAFT PREVIEW — NOT FINALIZED.</strong> ${escHtml(metadata.sourceWarning || '')}`
+        : `Showing finalized data for FY${yearFrom}–FY${yearTo}. Only data from finalized batches is included.`;
+
+      out.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table class="report-table">
+            <thead><tr>${headers}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div style="font-size:12px; color:${isDraft ? '#92400e' : '#6b7280'}; margin-top:12px;">${footerNote}</div>
       `;
     }
 
@@ -1311,6 +1581,9 @@
     const thisYear = new Date().getFullYear();
     document.getElementById('rptYearFrom').value = thisYear - 3;
     document.getElementById('rptYearTo').value = thisYear;
+
+    // Init reports tab controls (mode visibility, draft access check)
+    initReportsTab();
   </script>
 </body>
 </html>
