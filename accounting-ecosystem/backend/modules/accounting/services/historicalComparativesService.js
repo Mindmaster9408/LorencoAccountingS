@@ -474,10 +474,15 @@ class HistoricalComparativesService {
    * Bulk-save a full account grid (12 months × 1 financial year).
    * cells: [{ periodMonth, amount }] — 12 entries expected.
    * Blocks if batch is finalized.
+   *
+   * PERFORMANCE: Uses bulk DB operations regardless of cell count.
+   * Previous implementation called saveManualLine per cell (6 round-trips × 84 cells = 504 queries).
+   * This implementation uses ~5 queries total for any number of cells.
    */
   static async saveManualGrid({ companyId, batchId, userId, accountId,
     accountCode, accountName, accountType, financialYear, cells }) {
 
+    // 1. Get batch once — finalization guard
     const batch = await this.getBatch({ companyId, batchId });
     if (!batch) throw new Error('Batch not found or access denied.');
     if (batch.is_finalized || batch.status === 'finalized') {
@@ -491,21 +496,128 @@ class HistoricalComparativesService {
       throw new Error('This batch is finalized and cannot be edited.');
     }
 
-    const results = [];
-    for (const cell of cells) {
-      const result = await this.saveManualLine({
-        companyId, batchId, userId,
-        accountId, accountCode, accountName, accountType,
-        financialYear: financialYear,
-        periodMonth: cell.periodMonth,
-        amount: cell.amount,
-        sourceReference: null,
-        notes: null,
-      });
-      results.push(result);
+    // 2. Postability guard — one query for the whole grid, not one per cell
+    if (accountId) {
+      const { data: acct } = await supabase
+        .from('accounts')
+        .select('code, name, is_postable')
+        .eq('id', accountId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      if (acct && acct.is_postable === false) {
+        throw new Error(
+          `Account ${acct.code} (${acct.name}) is a parent account and cannot be used for direct historical capture. Select a sub-account instead.`
+        );
+      }
     }
 
-    return results;
+    // 3. Fetch all existing lines for this account + batch + year in ONE query
+    let existingQuery = supabase
+      .from('historical_comparative_lines')
+      .select('id, financial_year, period_month, amount, original_amount, entered_by, entered_at')
+      .eq('batch_id', batchId)
+      .eq('financial_year', financialYear);
+
+    if (accountId) {
+      existingQuery = existingQuery.eq('account_id', accountId);
+    } else {
+      existingQuery = existingQuery
+        .eq('account_name', accountName)
+        .eq('account_code', accountCode || '');
+    }
+
+    const { data: existingLines } = await existingQuery;
+    const existingMap = {};
+    if (existingLines) {
+      for (const line of existingLines) {
+        existingMap[`${line.period_month}`] = line;
+      }
+    }
+
+    // 4. Build all row data locally — _buildPeriodDates is pure, no DB calls
+    const now = new Date().toISOString();
+    const actorId = this._actorId(userId);
+
+    const toUpdate = [];
+    const toInsert = [];
+
+    for (const cell of cells) {
+      const { periodStart, periodEnd } = this._buildPeriodDates(financialYear, cell.periodMonth);
+      const existing = existingMap[`${cell.periodMonth}`];
+
+      const row = {
+        batch_id: batchId,
+        company_id: companyId,
+        account_id: accountId || null,
+        account_code: accountCode || null,
+        account_name: accountName,
+        account_type: accountType || null,
+        financial_year: financialYear,
+        period_month: cell.periodMonth,
+        period_start: periodStart,
+        period_end: periodEnd,
+        amount: cell.amount,
+        original_amount: existing ? (existing.original_amount ?? cell.amount) : cell.amount,
+        source_reference: null,
+        capture_method: 'manual',
+        entered_by: existing ? existing.entered_by : actorId,
+        entered_at: existing ? existing.entered_at : now,
+        updated_by: actorId,
+        updated_at: now,
+        is_finalized: false,
+        notes: null,
+        account_code_snapshot: accountCode || null,
+        account_name_snapshot: accountName || null,
+        account_type_snapshot: accountType || null,
+      };
+
+      if (existing) {
+        toUpdate.push({ id: existing.id, ...row });
+      } else {
+        toInsert.push(row);
+      }
+    }
+
+    // 5. Single batch update + single batch insert (max 2 queries for all cells)
+    let savedLines = [];
+
+    if (toUpdate.length > 0) {
+      const { data, error } = await supabase
+        .from('historical_comparative_lines')
+        .upsert(toUpdate)
+        .select('id');
+      if (error) throw error;
+      if (data) savedLines = savedLines.concat(data);
+    }
+
+    if (toInsert.length > 0) {
+      const { data, error } = await supabase
+        .from('historical_comparative_lines')
+        .insert(toInsert)
+        .select('id');
+      if (error) throw error;
+      if (data) savedLines = savedLines.concat(data);
+    }
+
+    // 6. Update batch updated_at once
+    await supabase
+      .from('historical_comparative_batches')
+      .update({ updated_at: now })
+      .eq('id', batchId);
+
+    // 7. One audit log entry for the whole grid save
+    await this._writeAuditLog({
+      companyId, batchId, lineId: null,
+      action: 'GRID_SAVED',
+      oldValue: null,
+      newValue: {
+        accountCode, accountName, financialYear,
+        updated: toUpdate.length, inserted: toInsert.length,
+      },
+      performedBy: userId,
+    });
+
+    return savedLines;
   }
 
   // ── VALIDATION & FINALIZATION ────────────────────────────────────────────

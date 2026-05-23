@@ -1138,23 +1138,23 @@
       showMsg('captureMsg', 'info', 'Saving…');
 
       try {
-        // Group cells by year and save each year as a grid call
+        // Group cells by year, then send all years in parallel
         const byYear = {};
         for (const c of cells) {
           if (!byYear[c.year]) byYear[c.year] = [];
           byYear[c.year].push({ periodMonth: c.periodMonth, amount: c.amount });
         }
 
-        for (const [year, yearCells] of Object.entries(byYear)) {
-          await api('POST', `/batch/${currentBatch.id}/manual-grid`, {
+        await Promise.all(Object.entries(byYear).map(([year, yearCells]) =>
+          api('POST', `/batch/${currentBatch.id}/manual-grid`, {
             accountId: acc.account_id || null,
             accountCode: acc.account_code || null,
             accountName: acc.account_name,
             accountType: acc.account_type || null,
             financialYear: parseInt(year),
             cells: yearCells,
-          });
-        }
+          })
+        ));
 
         showMsg('captureMsg', 'success', `Saved ${cells.length} cells for ${acc.account_name}.`);
       } catch (e) {
@@ -1191,16 +1191,16 @@
             byYear[year].push({ periodMonth: month, amount: parseCurrency(input.value) });
           }
 
-          for (const [year, yearCells] of Object.entries(byYear)) {
-            await api('POST', `/batch/${currentBatch.id}/manual-grid`, {
+          await Promise.all(Object.entries(byYear).map(([year, yearCells]) =>
+            api('POST', `/batch/${currentBatch.id}/manual-grid`, {
               accountId: accountId || null,
               accountCode,
               accountName,
               accountType,
               financialYear: parseInt(year),
               cells: yearCells,
-            });
-          }
+            })
+          ));
           saved++;
         } catch (e) {
           errors++;
