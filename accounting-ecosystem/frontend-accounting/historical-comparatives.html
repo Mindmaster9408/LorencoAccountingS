@@ -555,7 +555,13 @@
       if (body) opts.body = JSON.stringify(body);
       const res = await fetch(BASE + path, opts);
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      if (!res.ok) {
+        // Include detail from backend when available (e.g. DB column errors)
+        const msg = json.detail
+          ? `${json.error || 'Error'}: ${json.detail}`
+          : (json.error || `HTTP ${res.status}`);
+        throw new Error(msg);
+      }
       return json;
     }
 
@@ -652,8 +658,14 @@
           syncedAt = syncResult.syncedAt;
           const reloaded   = await api('GET', `/batch/${batch.id}/accounts`);
           batchAccountList = reloaded.accounts || [];
-        } catch (_) {
-          // Non-fatal — COA may be empty; continue with manual capture mode
+        } catch (syncErr) {
+          // Surface the sync failure so the user can diagnose it (e.g. missing migration)
+          console.warn('[HistoricalComparatives] COA auto-sync failed:', syncErr.message);
+          main.innerHTML = `<div class="card"><p style="color:#dc2626;font-size:13px;padding:20px;">
+            COA auto-sync failed: ${escHtml(syncErr.message)}<br>
+            <small>Check that database migrations 044 and 045 have been applied in Supabase. You can still use the account search below to add entries manually.</small>
+          </p></div>`;
+          return;
         }
       }
 
@@ -929,18 +941,21 @@
           if (!data.accounts || data.accounts.length === 0) {
             results.innerHTML = `<div class="account-result-item" style="color:#9ca3af;">No accounts found</div>`;
           } else {
-            results.innerHTML = data.accounts.map(a => `
-              <div class="account-result-item"
-                   onclick="selectAccount(${JSON.stringify(a).replace(/"/g, '&quot;')})">
-                <span class="code">${escHtml(a.code || '')}</span>
-                ${escHtml(a.name)}
-                <span class="type">${escHtml(a.account_type || '')}</span>
-              </div>
-            `).join('');
+            results.innerHTML = data.accounts.map(a => {
+              const nonPostable = a.is_postable === false;
+              return `
+              <div class="account-result-item${nonPostable ? ' non-postable' : ''}"
+                   title="${nonPostable ? 'Parent account — cannot capture directly' : ''}"
+                   onclick="${nonPostable ? '' : `selectAccount(${JSON.stringify(a).replace(/"/g, '&quot;')})`}">
+                <span class="code">${escHtml(a.account_code || '')}</span>
+                ${escHtml(a.account_name || '')}
+                <span class="type">${escHtml(a.account_type || '')}${nonPostable ? ' ⊕' : ''}</span>
+              </div>`;
+            }).join('');
           }
           results.style.display = 'block';
         } catch (e) {
-          results.innerHTML = `<div class="account-result-item" style="color:#dc2626;">${e.message}</div>`;
+          results.innerHTML = `<div class="account-result-item" style="color:#dc2626;">Failed to search accounts: ${escHtml(e.message)}</div>`;
           results.style.display = 'block';
         }
       }, 250);
@@ -958,8 +973,14 @@
       const fyEl = document.getElementById('addFY');
       const fy = fyEl ? parseInt(fyEl.value) : new Date().getFullYear();
 
+      // Block capture into parent/non-postable accounts
+      if (account.is_postable === false) {
+        showMsg('captureMsg', 'error', `${account.account_code || ''} ${account.account_name} is a parent account. Select a sub-account to capture against.`);
+        return;
+      }
+
       // Check if grid for this account already exists
-      const gridId = `grid_${account.id || account.name.replace(/\W/g, '_')}`;
+      const gridId = `grid_${account.account_id || (account.account_name || '').replace(/\W/g, '_')}`;
       if (document.getElementById(gridId)) {
         showMsg('captureMsg', 'info', 'Account grid already added.');
         return;
@@ -975,9 +996,9 @@
       if (!years.length) years.push(fy);
 
       const acc = {
-        account_id: account.id,
-        account_code: account.code,
-        account_name: account.name,
+        account_id: account.account_id,
+        account_code: account.account_code,
+        account_name: account.account_name,
         account_type: account.account_type,
         data: {},
       };

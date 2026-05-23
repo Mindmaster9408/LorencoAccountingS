@@ -123,9 +123,14 @@ class HistoricalComparativesService {
   // ── ACCOUNT SEARCH ───────────────────────────────────────────────────────
 
   /**
-   * Search the Chart of Accounts for active, postable accounts only.
-   * Parent/header accounts (is_postable = false) are excluded — they cannot
-   * receive direct historical captures.
+   * Search the Chart of Accounts for active accounts (postable AND non-postable).
+   * Parent/header accounts (is_postable = false) are returned but flagged so the
+   * frontend can prevent direct capture against them.
+   *
+   * DEFENSIVE FALLBACK: Migration 044 adds the is_postable column to accounts.
+   * If that migration has not yet been applied, Supabase returns error code 42703
+   * (undefined_column). We detect this and retry without is_postable so the feature
+   * degrades gracefully rather than throwing a 500.
    */
   static async searchAccounts({ companyId, query }) {
     const { data, error } = await supabase
@@ -133,18 +138,47 @@ class HistoricalComparativesService {
       .select('id, code, name, type, parent_id, is_postable')
       .eq('company_id', companyId)
       .eq('is_active', true)
-      .eq('is_postable', true)
       .or(`name.ilike.%${query}%,code.ilike.%${query}%`)
       .order('code', { ascending: true })
-      .limit(30);
+      .limit(50);
 
-    if (error) throw error;
+    // Graceful fallback when migration 044 (is_postable column) has not been applied yet.
+    if (error) {
+      if (error.code === '42703') {
+        console.warn(
+          '[HistoricalComparatives] searchAccounts: is_postable column missing on accounts table. ' +
+          'Run migration 044 (044_coa_sub_accounts.sql) in Supabase SQL Editor. Falling back to query without is_postable.'
+        );
+        const { data: fallback, error: fallbackErr } = await supabase
+          .from('accounts')
+          .select('id, code, name, type, parent_id')
+          .eq('company_id', companyId)
+          .eq('is_active', true)
+          .or(`name.ilike.%${query}%,code.ilike.%${query}%`)
+          .order('code', { ascending: true })
+          .limit(50);
+        if (fallbackErr) throw fallbackErr;
+        return (fallback || []).map(a => ({
+          account_id:       a.id,
+          account_code:     a.code,
+          account_name:     a.name,
+          account_type:     a.type,
+          parent_account_id: a.parent_id || null,
+          is_postable:      true,
+          has_children:     false,
+        }));
+      }
+      throw error;
+    }
+
     return (data || []).map(a => ({
-      id: a.id,
-      code: a.code,
-      name: a.name,
-      account_type: a.type,
-      parent_id: a.parent_id,
+      account_id:       a.id,
+      account_code:     a.code,
+      account_name:     a.name,
+      account_type:     a.type,
+      parent_account_id: a.parent_id || null,
+      is_postable:      a.is_postable !== false,
+      has_children:     false,
     }));
   }
 
@@ -168,20 +202,47 @@ class HistoricalComparativesService {
 
     // Determine which account types to include
     const isPLBatch = batch.report_basis === 'profit_loss';
-    let query = supabase
-      .from('accounts')
-      .select('id, code, name, type, parent_id, is_postable, sort_order, display_order, account_level')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true })
-      .order('code', { ascending: true });
 
-    if (isPLBatch) {
-      query = query.in('type', ['income', 'expense']);
+    // Select accounts — note: is_postable, display_order, account_level are added by migration 044.
+    // If that migration has not yet been applied we fall back to a reduced select so the sync
+    // still populates the batch list (without postability meta).
+    let coaAccounts;
+    {
+      let q = supabase
+        .from('accounts')
+        .select('id, code, name, type, parent_id, is_postable, sort_order, display_order, account_level')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('code', { ascending: true });
+      if (isPLBatch) q = q.in('type', ['income', 'expense']);
+
+      const { data, error: coaErr } = await q;
+      if (coaErr) {
+        if (coaErr.code === '42703') {
+          console.warn(
+            '[HistoricalComparatives] syncBatchAccountsFromCOA: migration 044 columns missing on accounts table. ' +
+            'Run 044_coa_sub_accounts.sql. Falling back to reduced select.'
+          );
+          let qFallback = supabase
+            .from('accounts')
+            .select('id, code, name, type, parent_id, sort_order')
+            .eq('company_id', companyId)
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true })
+            .order('code', { ascending: true });
+          if (isPLBatch) qFallback = qFallback.in('type', ['income', 'expense']);
+          const { data: fallback, error: fallbackErr } = await qFallback;
+          if (fallbackErr) throw fallbackErr;
+          coaAccounts = (fallback || []).map(a => ({ ...a, is_postable: true, display_order: a.sort_order || 0, account_level: 0 }));
+        } else {
+          throw coaErr;
+        }
+      } else {
+        coaAccounts = data || [];
+      }
     }
 
-    const { data: coaAccounts, error: coaErr } = await query;
-    if (coaErr) throw coaErr;
     if (!coaAccounts || coaAccounts.length === 0) {
       return { synced: 0, added: 0, updated: 0, parentRows: 0, captureRows: 0, syncedAt: new Date().toISOString() };
     }
@@ -370,8 +431,6 @@ class HistoricalComparativesService {
       account_code_snapshot: accountCode || null,
       account_name_snapshot: accountName || null,
       account_type_snapshot: accountType || null,
-      synced_from_coa: !!accountId,
-      coa_synced_at: accountId ? new Date().toISOString() : null,
     };
 
     let savedLine;

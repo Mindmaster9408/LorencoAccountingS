@@ -669,8 +669,8 @@
                     sel.innerHTML = '<option value="">— Select an account —</option>';
                     (data.accounts || []).forEach(a => {
                         const opt = document.createElement('option');
-                        opt.value = a.id;
-                        opt.textContent = `${a.account_code ? a.account_code + ' — ' : ''}${a.name}`;
+                        opt.value = a.account_id;
+                        opt.textContent = `${a.account_code ? a.account_code + ' — ' : ''}${a.account_name || ''}`;
                         sel.appendChild(opt);
                     });
                 } catch { /* silent — search is optional */ }

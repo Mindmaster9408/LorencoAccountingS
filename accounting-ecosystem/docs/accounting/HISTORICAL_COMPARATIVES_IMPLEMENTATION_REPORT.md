@@ -440,5 +440,85 @@ Stores the ordered account list for each batch snapshot:
 
 ---
 
-*Report updated to include COA Sub-Accounts, Edit Modal Sub-Account Creation Flow, and Historical COA Sync.*
-*Full implementation follows CLAUDE.md Part D (no browser storage) and Part A (audit-before-change) standards.*
+## 11. Account Search Fix (2026)
+
+**Symptom reported:** UI shows "Failed to search accounts." when typing in the COA search box. Capture grid was empty on batch open.
+
+### Root Cause Analysis
+
+**Primary root cause — Migration 044 not applied to production Supabase:**
+
+The `searchAccounts` service method selected and filtered on the `is_postable` column
+(added by `044_coa_sub_accounts.sql`). If that migration had not been run, PostgREST returned:
+
+```
+{ code: "42703", message: "column accounts.is_postable does not exist" }
+```
+
+The service method called `if (error) throw error;` → route caught it and returned 500
+`{ error: "Failed to search accounts." }` → frontend `api()` helper threw that as an error
+message → catch block displayed "Failed to search accounts." — exactly what the user saw.
+
+`syncBatchAccountsFromCOA` had the same problem: it also selects `is_postable`,
+`display_order`, and `account_level` (all added by migration 044). If that migration
+was missing, the COA auto-sync on batch open also failed — explaining the empty capture grid.
+The auto-sync previously swallowed this error silently; it now surfaces it to the user.
+
+**Secondary issues also fixed in this session:**
+
+| Bug | Location | Impact |
+|-----|----------|--------|
+| `searchAccounts` filtered `.eq('is_postable', true)` | Service | Excluded parent accounts (wrong — task requires them returned with flag) |
+| Response format used `id`/`code`/`name` | Service | Mismatch: `selectAccount` expected these; charts page expected `account_code`/`account_id` |
+| `saveManualLine` inserted `synced_from_coa`/`coa_synced_at` | Service | These columns don't exist in any migration → every save failed |
+| Error handler returned `{ error: "..." }` only | Route | Frontend couldn't distinguish "column missing" from any other error |
+| Charts page used `a.id`/`a.name` | `historical-comparatives-charts.html` | Mixed format (used `a.account_code` already but `a.id` not `a.account_id`) |
+
+### Migrations Required (MUST be applied before feature works end-to-end)
+
+Both migrations are safe to re-run (use `IF NOT EXISTS` / `IF EXISTS`).
+
+| Migration | Purpose | How to apply |
+|-----------|---------|--------------|
+| `044_coa_sub_accounts.sql` | Adds `is_postable`, `account_level`, `display_order`, `created_from_parent` to `accounts` table | Supabase dashboard → SQL Editor → paste file → Run |
+| `045_historical_coa_sync.sql` | Creates `historical_comparative_batch_accounts`; adds snapshot columns to `historical_comparative_lines` | Supabase dashboard → SQL Editor → paste file → Run |
+
+### Code Changes Made
+
+**`services/historicalComparativesService.js`**
+- `searchAccounts`: removed `.eq('is_postable', true)` filter (returns ALL active accounts including parents); added `42703` graceful fallback (retries without `is_postable` if column doesn't exist yet); updated return format to `{ account_id, account_code, account_name, account_type, parent_account_id, is_postable, has_children }`; limit increased to 50.
+- `syncBatchAccountsFromCOA`: added `42703` graceful fallback (retries with reduced column select if migration 044 not applied yet).
+- `saveManualLine`: removed `synced_from_coa` and `coa_synced_at` from `lineData` — these columns do not exist in any migration.
+
+**`routes/historicalComparatives.js`**
+- Search route 500 handler: now returns `{ error: "...", detail: error.message }` so the frontend can display a useful diagnostic.
+
+**`frontend-accounting/historical-comparatives.html`**
+- `api()` helper: includes `json.detail` in the thrown error when present.
+- `searchAccounts`: renders with `a.account_code` / `a.account_name`; non-postable accounts shown with `⊕` marker, click disabled, title tooltip; catch shows "Failed to search accounts: [detail]".
+- `selectAccount`: uses `account.account_id` / `account.account_code` / `account.account_name`; blocks capture to non-postable accounts with a clear user message.
+- COA auto-sync catch: no longer silent — shows error message with migration guidance.
+
+**`frontend-accounting/historical-comparatives-charts.html`**
+- `searchAccounts`: uses `a.account_id` (was `a.id`) and `a.account_name` (was `a.name`).
+
+### Tests to Run After Applying Migrations
+
+| Test | Expected result |
+|------|----------------|
+| Open batch → capture tab | COA auto-syncs; grid shows accounts |
+| Search "4000" | Returns `Sales Revenue` with `is_postable` flag |
+| Search "sales" | Returns `Sales Revenue` |
+| Search another company's account | Not returned |
+| Parent account returned | Shown with `⊕` badge; click does nothing |
+| Click non-postable account | Warning "Parent account — select a sub-account" |
+| Click postable account | Grid added; save works |
+| Save grid | No error about `synced_from_coa` column |
+| Charts page account search | Populates select with `account_id` as option value |
+| Migrations NOT applied | Search returns "Failed to search accounts: column accounts.is_postable does not exist" — clear actionable message instead of blank failure |
+| No localStorage used | Confirmed — all state in DB via API |
+
+---
+
+*Report updated to include Account Search Fix — root cause analysis, migration requirements, code changes.*
+*All fixes follow CLAUDE.md Part A (audit-before-change), Part D (no browser storage), and Part E (payroll unaffected).*

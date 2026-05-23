@@ -95,7 +95,8 @@ router.get('/accounts/search', authenticate, hasPermission('historical.view'), a
     res.json({ accounts });
   } catch (error) {
     console.error('[HistoricalComparatives] searchAccounts error:', error);
-    res.status(500).json({ error: 'Failed to search accounts.' });
+    // Include error.message (not stack) so the frontend can show a useful detail.
+    res.status(500).json({ error: 'Failed to search accounts.', detail: error.message });
   }
 });
 
