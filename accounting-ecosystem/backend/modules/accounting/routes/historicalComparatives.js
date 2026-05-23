@@ -71,7 +71,7 @@ router.post('/batches', authenticate, hasPermission('historical.create'), async 
     res.status(201).json({ batch });
   } catch (error) {
     console.error('[HistoricalComparatives] createBatch error:', error);
-    res.status(500).json({ error: 'Failed to create batch.' });
+    res.status(500).json({ error: error.message || 'Failed to create batch.', detail: error.details || error.hint || undefined });
   }
 });
 
