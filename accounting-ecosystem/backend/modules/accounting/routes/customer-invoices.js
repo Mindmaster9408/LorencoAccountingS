@@ -383,7 +383,8 @@ router.put('/:id', async (req, res) => {
     const { error: updateErr } = await supabase
       .from('customer_invoices')
       .update(updatePayload)
-      .eq('id', invoiceId);
+      .eq('id', invoiceId)
+      .eq('company_id', companyId);
 
     if (updateErr) throw new Error(updateErr.message);
 
@@ -533,18 +534,21 @@ router.post('/:id/post', async (req, res) => {
       }
     }
 
-    // CR VAT Output (2300) if any VAT
+    // CR VAT Output (2300) if any VAT — account must exist; missing account is an explicit error
     const totalVat = parseFloat(invoice.vat_amount) || 0;
     if (totalVat > 0) {
       const vatOutputId = await findAccountByCode(companyId, '2300');
-      if (vatOutputId) {
-        glLines.push({
-          accountId:   vatOutputId,
-          debit:       0,
-          credit:      totalVat,
-          description: 'VAT Output (Payable)',
+      if (!vatOutputId) {
+        return res.status(422).json({
+          error: 'VAT Output account (code 2300) not found. Please provision the base chart of accounts before posting VAT-bearing customer invoices.'
         });
       }
+      glLines.push({
+        accountId:   vatOutputId,
+        debit:       0,
+        credit:      totalVat,
+        description: 'VAT Output (Payable)',
+      });
     }
 
     // Create + post journal
@@ -563,7 +567,8 @@ router.post('/:id/post', async (req, res) => {
     const { error: updErr } = await supabase
       .from('customer_invoices')
       .update({ status: 'sent', journal_id: glJournal.id, updated_at: new Date().toISOString() })
-      .eq('id', invoiceId);
+      .eq('id', invoiceId)
+      .eq('company_id', companyId);
 
     if (updErr) {
       console.warn(`[CustomerAR] Invoice ${invoiceId} posted to GL (journal ${glJournal.id}) but status update failed:`, updErr.message);
@@ -667,7 +672,8 @@ router.post('/:id/void', async (req, res) => {
     const { error: voidErr } = await supabase
       .from('customer_invoices')
       .update({ status: 'void', updated_at: new Date().toISOString() })
-      .eq('id', invoiceId);
+      .eq('id', invoiceId)
+      .eq('company_id', companyId);
 
     if (voidErr) throw new Error(voidErr.message);
 
@@ -697,6 +703,9 @@ router.post('/:id/void', async (req, res) => {
 });
 
 // ─── Record Customer Payment ──────────────────────────────────────────────────
+// STRICT mode: GL journal is created BEFORE payment is inserted.
+// If GL posting fails for any reason the payment is never saved and the
+// invoice amount_paid is never updated. No silent GL failures are permitted.
 
 router.post('/payments', async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
@@ -709,34 +718,116 @@ router.post('/payments', async (req, res) => {
   if (!customerName) return res.status(400).json({ error: 'Customer name is required' });
   if (!paymentDate)  return res.status(400).json({ error: 'Payment date is required' });
   if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'Amount must be greater than 0' });
-  if (!bankLedgerAccountId) return res.status(400).json({ error: 'Bank account is required for customer payments' });
+  if (!bankLedgerAccountId) {
+    return res.status(422).json({ error: 'Bank ledger account is required before customer payment can be recorded.' });
+  }
+
+  const paymentAmount = parseFloat(amount);
 
   try {
+    // ── Step 1: Validate AR account exists ──────────────────────────────────
+    const arAccountId = await findAccountByCode(companyId, '1100');
+    if (!arAccountId) {
+      return res.status(422).json({
+        error: 'Accounts Receivable account (code 1100) not found. Please provision the base chart of accounts before recording customer payments.'
+      });
+    }
+
+    // ── Step 2: Validate bank ledger account is active and postable ─────────
+    const { data: bankAcct } = await supabase
+      .from('accounts')
+      .select('id, is_postable, is_active')
+      .eq('id', parseInt(bankLedgerAccountId))
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (!bankAcct || bankAcct.is_active === false) {
+      return res.status(422).json({ error: 'Valid bank ledger account is required before customer payment can be recorded.' });
+    }
+    if (bankAcct.is_postable === false) {
+      return res.status(422).json({ error: 'The selected bank ledger account is a parent/header account and cannot be posted to directly. Select a posting sub-account.' });
+    }
+
+    // ── Step 3: Validate allocations ────────────────────────────────────────
+    if (allocations && allocations.length > 0) {
+      const allocTotal = allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+      if (Math.abs(allocTotal - paymentAmount) > 0.01) {
+        return res.status(422).json({
+          error: `Allocation total (${allocTotal.toFixed(2)}) does not equal payment amount (${paymentAmount.toFixed(2)}). Allocations must sum to the full payment amount.`
+        });
+      }
+
+      for (const alloc of allocations) {
+        if (!alloc.invoiceId || !alloc.amount) continue;
+        const allocAmount = parseFloat(alloc.amount);
+        const { data: inv } = await supabase
+          .from('customer_invoices')
+          .select('amount_paid, total_inc_vat, invoice_number')
+          .eq('id', parseInt(alloc.invoiceId))
+          .eq('company_id', companyId)
+          .maybeSingle();
+        if (!inv) {
+          return res.status(422).json({ error: `Invoice ${alloc.invoiceId} not found for this company.` });
+        }
+        const remaining = parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid || 0);
+        if (allocAmount > remaining + 0.01) {
+          return res.status(422).json({
+            error: `Allocation of ${allocAmount.toFixed(2)} exceeds outstanding balance of ${remaining.toFixed(2)} on invoice ${inv.invoice_number || alloc.invoiceId}.`
+          });
+        }
+      }
+    }
+
+    // ── Step 4: Create and post GL journal BEFORE inserting the payment ──────
+    // Ordering: GL first means a GL failure leaves nothing saved.
+    // DR Bank / CR AR(1100)
+    const glJournal = await JournalService.createDraftJournal({
+      companyId,
+      date:            paymentDate,
+      reference:       reference || null,
+      description:     `AR Receipt: ${customerName}`,
+      sourceType:      'customer_payment',
+      createdByUserId: userId(req),
+      lines: [
+        { accountId: parseInt(bankLedgerAccountId), debit: paymentAmount, credit: 0, description: 'Bank receipt' },
+        { accountId: arAccountId, debit: 0, credit: paymentAmount, description: `AR cleared: ${customerName}` },
+      ],
+    });
+    await JournalService.postJournal(glJournal.id, companyId, userId(req));
+
+    // ── Step 5: Insert payment (journal_id already known) ────────────────────
     const { data: payment, error: payErr } = await supabase
       .from('customer_payments')
       .insert({
-        company_id:            companyId,
-        customer_id:           customerId ? parseInt(customerId) : null,
-        customer_name:         customerName,
-        payment_date:          paymentDate,
-        payment_method:        paymentMethod || 'bank_transfer',
-        reference:             reference || null,
-        amount:                parseFloat(amount),
+        company_id:             companyId,
+        customer_id:            customerId ? parseInt(customerId) : null,
+        customer_name:          customerName,
+        payment_date:           paymentDate,
+        payment_method:         paymentMethod || 'bank_transfer',
+        reference:              reference || null,
+        amount:                 paymentAmount,
         bank_ledger_account_id: parseInt(bankLedgerAccountId),
-        notes:                 notes || null,
-        created_by_user_id:    userId(req),
+        notes:                  notes || null,
+        created_by_user_id:     userId(req),
+        journal_id:             glJournal.id,
       })
       .select()
       .single();
 
-    if (payErr) throw new Error(payErr.message);
+    if (payErr) {
+      // GL posted but payment row failed — reverse journal to keep GL clean.
+      await JournalService.reverseJournal(glJournal.id, companyId, userId(req)).catch(rErr => {
+        console.error(`[CustomerAR] CRITICAL: journal ${glJournal.id} posted but payment insert failed AND reversal failed:`, rErr.message);
+      });
+      throw new Error(payErr.message);
+    }
 
-    // Apply to invoices
+    // ── Step 6: Apply allocations and update invoice statuses ────────────────
     if (allocations && allocations.length) {
       for (const alloc of allocations) {
         if (!alloc.invoiceId || !alloc.amount) continue;
 
-        const allocAmount = parseFloat(alloc.amount);
+        const allocAmount    = parseFloat(alloc.amount);
         const allocInvoiceId = parseInt(alloc.invoiceId);
 
         const { error: allocErr } = await supabase
@@ -750,7 +841,6 @@ router.post('/payments', async (req, res) => {
           continue;
         }
 
-        // Fetch current invoice totals to compute new status
         const { data: inv } = await supabase
           .from('customer_invoices')
           .select('amount_paid, total_inc_vat, status')
@@ -775,48 +865,7 @@ router.post('/payments', async (req, res) => {
       }
     }
 
-    // ── GL Posting (Payment) ──────────────────────────────────────────────
-    // DR Bank / CR AR(1100)
-    const arAccountId = await findAccountByCode(companyId, '1100');
-    if (arAccountId) {
-      try {
-        const glJournal = await JournalService.createDraftJournal({
-          companyId,
-          date:            paymentDate,
-          reference:       reference || null,
-          description:     `AR Receipt: ${customerName}`,
-          sourceType:      'customer_payment',
-          createdByUserId: userId(req),
-          lines: [
-            { accountId: parseInt(bankLedgerAccountId), debit: parseFloat(amount), credit: 0, description: 'Bank receipt' },
-            { accountId: arAccountId, debit: 0, credit: parseFloat(amount), description: `AR cleared: ${customerName}` },
-          ],
-        });
-        await JournalService.postJournal(glJournal.id, companyId, userId(req));
-
-        const { error: jUpdErr } = await supabase
-          .from('customer_payments')
-          .update({ journal_id: glJournal.id })
-          .eq('id', payment.id);
-
-        if (jUpdErr) {
-          console.warn(`[CustomerAR] Payment ${payment.id} GL posted (journal ${glJournal.id}) but journal_id update failed:`, jUpdErr.message);
-        }
-      } catch (glErr) {
-        console.warn(`[CustomerAR] GL posting failed for payment ${payment.id} — payment still recorded:`, glErr.message);
-      }
-    } else {
-      console.warn(`[CustomerAR] AR account (1100) not found for company ${companyId} — GL posting skipped for payment ${payment.id}`);
-    }
-    // ── End GL Posting ────────────────────────────────────────────────────
-
-    // Re-read payment to get journal_id (updated above if GL posted)
-    const { data: paymentFull } = await supabase
-      .from('customer_payments')
-      .select('journal_id')
-      .eq('id', payment.id)
-      .maybeSingle();
-
+    // ── Step 7: Audit log ────────────────────────────────────────────────────
     await AuditLogger.log({
       companyId,
       actorType: 'USER',
@@ -829,9 +878,9 @@ router.post('/payments', async (req, res) => {
         customerName,
         paymentDate,
         paymentMethod: paymentMethod || 'bank_transfer',
-        amount: parseFloat(amount),
+        amount: paymentAmount,
         allocationCount: allocations ? allocations.length : 0,
-        journalId: paymentFull?.journal_id || null,
+        journalId: glJournal.id,
       },
       reason: 'Customer payment recorded',
       ipAddress: req.ip,
@@ -841,6 +890,97 @@ router.post('/payments', async (req, res) => {
     res.status(201).json({ payment });
   } catch (err) {
     console.error('POST /customer-invoices/payments error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Aged Debtors Report ──────────────────────────────────────────────────────
+// GET /aging — groups outstanding customer invoices by customer and buckets them
+// into ageing periods.  Null due_date → current (with noDueDateCount flag).
+// Grouping: customer_id when set, fallback to normalised customer_name.
+
+router.get('/aging', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId       = req.companyId;
+  const asAt            = req.query.asAt || new Date().toISOString().slice(0, 10);
+  const customerIdFilter = req.query.customerId ? parseInt(req.query.customerId) : null;
+  const includeZero     = req.query.includeZero === 'true';
+  const asAtDate        = new Date(asAt + 'T00:00:00Z');
+
+  try {
+    let q = supabase
+      .from('customer_invoices')
+      .select('id, customer_id, customer_name, invoice_number, invoice_date, due_date, total_inc_vat, amount_paid')
+      .eq('company_id', companyId)
+      .not('status', 'in', '("draft","void","cancelled")');
+
+    if (customerIdFilter) q = q.eq('customer_id', customerIdFilter);
+
+    const { data: invoices, error } = await q;
+    if (error) throw new Error(error.message);
+
+    const byCustomer = {};
+
+    for (const inv of (invoices || [])) {
+      const outstanding = Math.round((parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid || 0)) * 100) / 100;
+      if (!includeZero && outstanding <= 0.005) continue;
+
+      // Group by customer_id when present, otherwise by normalised name
+      const groupKey = inv.customer_id
+        ? `id:${inv.customer_id}`
+        : `name:${(inv.customer_name || '').toLowerCase().trim()}`;
+
+      if (!byCustomer[groupKey]) {
+        byCustomer[groupKey] = {
+          customerId:     inv.customer_id || null,
+          customerName:   inv.customer_name,
+          current:        0,
+          days30:         0,
+          days60:         0,
+          days90:         0,
+          days90plus:     0,
+          total:          0,
+          invoiceCount:   0,
+          noDueDateCount: 0,
+        };
+      }
+
+      const entry = byCustomer[groupKey];
+      entry.invoiceCount++;
+      entry.total = Math.round((entry.total + outstanding) * 100) / 100;
+
+      if (!inv.due_date) {
+        entry.current = Math.round((entry.current + outstanding) * 100) / 100;
+        entry.noDueDateCount++;
+      } else {
+        const dueDate    = new Date(inv.due_date + 'T00:00:00Z');
+        const msPerDay   = 1000 * 60 * 60 * 24;
+        const daysOverdue = Math.floor((asAtDate - dueDate) / msPerDay);
+
+        if      (daysOverdue <= 0)  entry.current    = Math.round((entry.current    + outstanding) * 100) / 100;
+        else if (daysOverdue <= 30) entry.days30     = Math.round((entry.days30     + outstanding) * 100) / 100;
+        else if (daysOverdue <= 60) entry.days60     = Math.round((entry.days60     + outstanding) * 100) / 100;
+        else if (daysOverdue <= 90) entry.days90     = Math.round((entry.days90     + outstanding) * 100) / 100;
+        else                        entry.days90plus = Math.round((entry.days90plus + outstanding) * 100) / 100;
+      }
+    }
+
+    const customers = Object.values(byCustomer).sort((a, b) =>
+      (a.customerName || '').localeCompare(b.customerName || '')
+    );
+
+    const totals = customers.reduce((acc, c) => ({
+      current:    Math.round((acc.current    + c.current)    * 100) / 100,
+      days30:     Math.round((acc.days30     + c.days30)     * 100) / 100,
+      days60:     Math.round((acc.days60     + c.days60)     * 100) / 100,
+      days90:     Math.round((acc.days90     + c.days90)     * 100) / 100,
+      days90plus: Math.round((acc.days90plus + c.days90plus) * 100) / 100,
+      total:      Math.round((acc.total      + c.total)      * 100) / 100,
+    }), { current: 0, days30: 0, days60: 0, days90: 0, days90plus: 0, total: 0 });
+
+    res.json({ asAt, customers, totals });
+  } catch (err) {
+    console.error('GET /customer-invoices/aging error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -387,6 +387,31 @@
         .indent-2 {
             padding-left: 55px;
         }
+
+        .ar-hidden { display: none !important; }
+
+        .report-loading {
+            text-align: center;
+            padding: 32px;
+            color: #5f6368;
+            font-size: 14px;
+        }
+
+        .report-empty {
+            text-align: center;
+            padding: 40px;
+            color: #9aa0a6;
+            font-size: 14px;
+        }
+
+        .error-banner {
+            background: #fee2e2;
+            color: #b91c1c;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <script src="js/polyfills.js"></script>
@@ -402,151 +427,175 @@
         <div class="report-controls">
             <div class="control-group">
                 <label>As At Date</label>
-                <input type="date" id="asAtDate" value="2026-01-14">
+                <input type="date" id="asAtDate">
             </div>
             <div class="control-group">
                 <label>Include Zero Balances</label>
-                <select>
-                    <option>No</option>
-                    <option>Yes</option>
+                <select id="includeZero">
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
                 </select>
             </div>
-            <div class="control-group">
-                <label>Sort By</label>
-                <select>
-                    <option>Customer Name</option>
-                    <option>Total Outstanding</option>
-                    <option>Oldest Debt</option>
-                </select>
-            </div>
-            <button class="btn-primary" onclick="generateReport()">Generate Report</button>
-            <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
-            <button class="btn-secondary" onclick="exportExcel()">Export Excel</button>
+            <button type="button" class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
+            <button type="button" class="btn-secondary" disabled title="Coming soon">Export PDF</button>
+            <button type="button" class="btn-secondary" disabled title="Coming soon">Export Excel</button>
         </div>
+        <div id="errorBanner" class="error-banner ar-hidden"></div>
         
-        <div class="report-card">
+        <div class="report-card ar-hidden" id="reportCard">
             <div class="report-header">
                 <h2 id="reportCompanyName"></h2>
-                <script>var _rcn=document.getElementById('reportCompanyName');if(_rcn)_rcn.textContent=localStorage.getItem('accounting_company_name')||localStorage.getItem('eco_company_name')||'My Company';</script>
-                <p>Aged Debtors - As at 14 January 2026</p>
+                <p id="reportSubtitle">Aged Debtors</p>
             </div>
-            
+
             <div class="report-content">
-                <table class="report-table">
+                <div id="reportLoading" class="report-loading ar-hidden">Loading…</div>
+                <div id="reportEmpty"   class="report-empty   ar-hidden">No outstanding debtors found for the selected criteria.</div>
+                <table class="report-table ar-hidden" id="reportTable">
                     <thead>
                         <tr>
                             <th>Customer</th>
                             <th class="amount">Current</th>
-                            <th class="amount">0-30 Days</th>
-                            <th class="amount">31-60 Days</th>
-                            <th class="amount">61-90 Days</th>
+                            <th class="amount">0–30 Days</th>
+                            <th class="amount">31–60 Days</th>
+                            <th class="amount">61–90 Days</th>
                             <th class="amount">90+ Days</th>
                             <th class="amount">Total</th>
+                            <th class="amount">Invoices</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr>
-                            <td>ABC Corporation</td>
-                            <td class="amount">R 8,500.00</td>
-                            <td class="amount">R 12,400.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 20,900.00</td>
-                        </tr>
-                        <tr>
-                            <td>XYZ Industries</td>
-                            <td class="amount">R 15,200.00</td>
-                            <td class="amount">R 6,800.00</td>
-                            <td class="amount">R 4,200.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 26,200.00</td>
-                        </tr>
-                        <tr>
-                            <td>Global Traders</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 8,600.00</td>
-                            <td class="amount">R 3,500.00</td>
-                            <td class="amount">R 2,100.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount warning">R 14,200.00</td>
-                        </tr>
-                        <tr>
-                            <td>Metro Solutions</td>
-                            <td class="amount">R 5,400.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 5,400.00</td>
-                        </tr>
-                        <tr>
-                            <td>TechWorld Ltd</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 3,200.00</td>
-                            <td class="amount">R 5,800.00</td>
-                            <td class="amount">R 4,200.00</td>
-                            <td class="amount negative">R 2,500.00</td>
-                            <td class="amount negative">R 15,700.00</td>
-                        </tr>
-                        <tr>
-                            <td>Alpha Retail</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>Beta Wholesale</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 2,800.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 0.00</td>
-                            <td class="amount">R 2,800.00</td>
-                        </tr>
-                        
-                        <tr><td colspan="7" style="height: 10px;"></td></tr>
-                        
-                        <tr class="grand-total">
-                            <td><strong>TOTAL</strong></td>
-                            <td class="amount"><strong>R 29,100.00</strong></td>
-                            <td class="amount"><strong>R 31,000.00</strong></td>
-                            <td class="amount"><strong>R 16,300.00</strong></td>
-                            <td class="amount"><strong>R 6,300.00</strong></td>
-                            <td class="amount"><strong>R 2,500.00</strong></td>
-                            <td class="amount"><strong>R 85,200.00</strong></td>
-                        </tr>
-                    </tbody>
+                    <tbody id="reportBody"></tbody>
                 </table>
             </div>
         </div>
     </div>
     
     <script>
-        let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/'; }
 
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
+        // Set asAt date to today on load
+        document.getElementById('asAtDate').value = new Date().toISOString().slice(0, 10);
+
+        function getAuthHeaders() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
         }
-        
-        // User info display handled by navigation.js
-        
-        function generateReport() {
-            alert('Generating report with selected parameters...');
+
+        function fmtAmt(n) {
+            const v = parseFloat(n) || 0;
+            return 'R ' + Math.abs(v).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
-        
-        function exportPDF() {
-            alert('Exporting report to PDF...');
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
-        
-        function exportExcel() {
-            alert('Exporting report to Excel...');
+
+        function showError(msg) {
+            const el = document.getElementById('errorBanner');
+            el.textContent = msg;
+            el.classList.remove('ar-hidden');
+            setTimeout(() => el.classList.add('ar-hidden'), 10000);
+        }
+
+        function hide(id)   { document.getElementById(id).classList.add('ar-hidden');    }
+        function show(id)   { document.getElementById(id).classList.remove('ar-hidden'); }
+
+        async function generateReport() {
+            const asAt        = document.getElementById('asAtDate').value;
+            const includeZero = document.getElementById('includeZero').value;
+
+            if (!asAt) { showError('Please select an As At date.'); return; }
+
+            const btn = document.getElementById('generateBtn');
+            btn.disabled    = true;
+            btn.textContent = 'Loading…';
+
+            hide('errorBanner');
+            hide('reportTable');
+            hide('reportEmpty');
+            show('reportCard');
+            show('reportLoading');
+
+            try {
+                const url = '/api/accounting/customer-invoices/aging?asAt=' + encodeURIComponent(asAt)
+                          + '&includeZero=' + encodeURIComponent(includeZero);
+                const res = await fetch(url, { headers: getAuthHeaders() });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                const data = await res.json();
+
+                hide('reportLoading');
+
+                document.getElementById('reportSubtitle').textContent =
+                    'Aged Debtors — As at ' + data.asAt;
+
+                // Set company name from token (no localStorage business data)
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    document.getElementById('reportCompanyName').textContent =
+                        payload.companyName || payload.company_name || '';
+                } catch (_) { /* leave blank */ }
+
+                const customers = data.customers || [];
+                const totals    = data.totals    || {};
+
+                if (customers.length === 0) {
+                    show('reportEmpty');
+                    return;
+                }
+
+                const tbody = document.getElementById('reportBody');
+                tbody.innerHTML = '';
+
+                customers.forEach(c => {
+                    const hasOverdue = c.days90plus > 0;
+                    const hasOld     = c.days60 > 0 || c.days90 > 0;
+                    const totalClass = hasOverdue ? 'negative' : hasOld ? 'warning' : '';
+                    const noDue      = c.noDueDateCount > 0
+                        ? ' <span title="' + c.noDueDateCount + ' invoice(s) with no due date bucketed into Current" class="warning">*</span>'
+                        : '';
+
+                    tbody.insertAdjacentHTML('beforeend',
+                        '<tr>' +
+                        '<td>' + escHtml(c.customerName) + noDue + '</td>' +
+                        '<td class="amount">' + fmtAmt(c.current)    + '</td>' +
+                        '<td class="amount">' + fmtAmt(c.days30)     + '</td>' +
+                        '<td class="amount">' + fmtAmt(c.days60)     + '</td>' +
+                        '<td class="amount">' + fmtAmt(c.days90)     + '</td>' +
+                        '<td class="amount ' + (hasOverdue ? 'negative' : '') + '">' + fmtAmt(c.days90plus) + '</td>' +
+                        '<td class="amount ' + totalClass + '">' + fmtAmt(c.total) + '</td>' +
+                        '<td class="amount">' + (c.invoiceCount || 0) + '</td>' +
+                        '</tr>'
+                    );
+                });
+
+                // Totals row
+                const hasOverdueTot = totals.days90plus > 0;
+                tbody.insertAdjacentHTML('beforeend',
+                    '<tr><td colspan="8" class="ar-spacer"></td></tr>' +
+                    '<tr class="grand-total">' +
+                    '<td><strong>TOTAL</strong></td>' +
+                    '<td class="amount"><strong>' + fmtAmt(totals.current)    + '</strong></td>' +
+                    '<td class="amount"><strong>' + fmtAmt(totals.days30)     + '</strong></td>' +
+                    '<td class="amount"><strong>' + fmtAmt(totals.days60)     + '</strong></td>' +
+                    '<td class="amount"><strong>' + fmtAmt(totals.days90)     + '</strong></td>' +
+                    '<td class="amount ' + (hasOverdueTot ? 'negative' : '') + '"><strong>' + fmtAmt(totals.days90plus) + '</strong></td>' +
+                    '<td class="amount"><strong>' + fmtAmt(totals.total)      + '</strong></td>' +
+                    '<td class="amount"></td>' +
+                    '</tr>'
+                );
+
+                show('reportTable');
+
+            } catch (e) {
+                hide('reportLoading');
+                showError('Failed to generate report: ' + e.message);
+            } finally {
+                btn.disabled    = false;
+                btn.textContent = 'Generate Report';
+            }
         }
     </script>
 </body>

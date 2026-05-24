@@ -396,6 +396,27 @@ router.post('/invoices', hasPermission('ap.manage'), async (req, res) => {
 
     const userId = req.user && req.user.userId ? req.user.userId : null;
 
+    // ── Pre-creation GL account validation ────────────────────────────────────
+    // Supplier invoice immediately posts to GL on creation (no draft stage).
+    // If the required accounts are absent the invoice must not be created —
+    // a live invoice with journal_id=null is a silent balance sheet gap.
+    if (totals.totalIncVat > 0) {
+      const apCheck = await findAccountByCode(companyId, '2000');
+      if (!apCheck) {
+        return res.status(422).json({
+          error: 'Accounts Payable account (code 2000) not found. Please provision the base chart of accounts before creating supplier invoices.'
+        });
+      }
+    }
+    if (totals.vatAmount > 0) {
+      const vatCheck = await findAccountByCode(companyId, '1400');
+      if (!vatCheck) {
+        return res.status(422).json({
+          error: 'VAT Input account (code 1400) not found. Please provision the base chart of accounts before creating VAT-bearing supplier invoices.'
+        });
+      }
+    }
+
     // Insert invoice header
     const { data: invoice, error: invErr } = await supabase
       .from('supplier_invoices')
@@ -494,8 +515,6 @@ router.post('/invoices', hasPermission('ap.manage'), async (req, res) => {
           .eq('id', invoice.id);
         if (jidErr) console.warn(`[Suppliers] Failed to link journal_id to invoice ${invoice.id}:`, jidErr.message);
       }
-    } else {
-      console.warn(`[Suppliers] AP account (2000) not found for company ${companyId} — GL posting skipped for invoice ${invoice.id}`);
     }
     // ── End GL Posting ────────────────────────────────────────────────────
 
@@ -1179,6 +1198,9 @@ router.get('/payments', async (req, res) => {
   }
 });
 
+// STRICT mode: GL journal is created BEFORE payment is inserted.
+// If GL posting fails the payment and allocations are never saved.
+// bankLedgerAccountId is required — no silent GL skip.
 router.post('/payments', async (req, res) => {
   const companyId = req.companyId;
   const {
@@ -1189,21 +1211,94 @@ router.post('/payments', async (req, res) => {
   if (!supplierId)  return res.status(400).json({ error: 'Supplier is required' });
   if (!paymentDate) return res.status(400).json({ error: 'Payment date is required' });
   if (!amount || parseFloat(amount) <= 0) return res.status(400).json({ error: 'Amount must be greater than 0' });
+  if (!bankLedgerAccountId) {
+    return res.status(422).json({ error: 'Bank ledger account is required before supplier payment can be recorded.' });
+  }
+
+  const paymentAmount = parseFloat(amount);
+  const reqUserId     = req.user && req.user.userId ? req.user.userId : null;
 
   try {
-    // Verify supplier belongs to company
+    // ── Step 1: Verify supplier belongs to company ───────────────────────────
     const { data: supRow, error: supErr } = await supabase
       .from('suppliers')
-      .select('id')
+      .select('id, name')
       .eq('id', parseInt(supplierId))
       .eq('company_id', companyId)
       .maybeSingle();
     if (supErr) throw new Error(supErr.message);
     if (!supRow) return res.status(400).json({ error: 'Supplier not found for this company' });
 
-    const userId = req.user && req.user.userId ? req.user.userId : null;
+    // ── Step 2: Validate AP account exists ───────────────────────────────────
+    const apAccount = await findAccountByCode(companyId, '2000');
+    if (!apAccount) {
+      return res.status(422).json({
+        error: 'Accounts Payable account (code 2000) not found. Please provision the base chart of accounts before recording supplier payments.'
+      });
+    }
 
-    // Insert payment
+    // ── Step 3: Validate bank ledger account is active and postable ──────────
+    const { data: bankAcct } = await supabase
+      .from('accounts')
+      .select('id, is_postable, is_active')
+      .eq('id', parseInt(bankLedgerAccountId))
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (!bankAcct || bankAcct.is_active === false) {
+      return res.status(422).json({ error: 'Valid bank ledger account is required before supplier payment can be recorded.' });
+    }
+    if (bankAcct.is_postable === false) {
+      return res.status(422).json({ error: 'The selected bank ledger account is a parent/header account and cannot be posted to directly. Select a posting sub-account.' });
+    }
+
+    // ── Step 4: Validate allocations ────────────────────────────────────────
+    if (allocations && allocations.length > 0) {
+      const allocTotal = allocations.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+      if (Math.abs(allocTotal - paymentAmount) > 0.01) {
+        return res.status(422).json({
+          error: `Allocation total (${allocTotal.toFixed(2)}) does not equal payment amount (${paymentAmount.toFixed(2)}). Allocations must sum to the full payment amount.`
+        });
+      }
+
+      for (const alloc of allocations) {
+        if (!alloc.invoiceId || !alloc.amount) continue;
+        const allocAmount = parseFloat(alloc.amount);
+        const { data: inv } = await supabase
+          .from('supplier_invoices')
+          .select('amount_paid, total_inc_vat, invoice_number')
+          .eq('id', parseInt(alloc.invoiceId))
+          .eq('company_id', companyId)
+          .maybeSingle();
+        if (!inv) {
+          return res.status(422).json({ error: `Supplier invoice ${alloc.invoiceId} not found for this company.` });
+        }
+        const remaining = parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid || 0);
+        if (allocAmount > remaining + 0.01) {
+          return res.status(422).json({
+            error: `Allocation of ${allocAmount.toFixed(2)} exceeds outstanding balance of ${remaining.toFixed(2)} on invoice ${inv.invoice_number || alloc.invoiceId}.`
+          });
+        }
+      }
+    }
+
+    // ── Step 5: Create and post GL journal BEFORE inserting payment ──────────
+    // DR AP (2000) / CR Bank
+    const glJournal = await JournalService.createDraftJournal({
+      companyId,
+      date:            paymentDate,
+      reference:       reference || null,
+      description:     `AP Payment: ${supRow.name}`,
+      sourceType:      'supplier_payment',
+      createdByUserId: reqUserId,
+      lines: [
+        { accountId: apAccount.id,              debit: paymentAmount, credit: 0,             description: 'Accounts Payable cleared' },
+        { accountId: parseInt(bankLedgerAccountId), debit: 0,         credit: paymentAmount, description: 'Bank payment out' },
+      ],
+    });
+    await JournalService.postJournal(glJournal.id, companyId, reqUserId);
+
+    // ── Step 6: Insert payment (journal_id already known) ────────────────────
     const { data: payment, error: payErr } = await supabase
       .from('supplier_payments')
       .insert({
@@ -1212,16 +1307,24 @@ router.post('/payments', async (req, res) => {
         payment_date:           paymentDate,
         payment_method:         paymentMethod || 'bank_transfer',
         reference:              reference || null,
-        amount:                 parseFloat(amount),
+        amount:                 paymentAmount,
         notes:                  notes || null,
-        bank_ledger_account_id: bankLedgerAccountId ? parseInt(bankLedgerAccountId) : null,
-        created_by_user_id:     userId,
+        bank_ledger_account_id: parseInt(bankLedgerAccountId),
+        created_by_user_id:     reqUserId,
+        journal_id:             glJournal.id,
       })
       .select()
       .single();
-    if (payErr) throw new Error(payErr.message);
 
-    // Apply allocations to invoices
+    if (payErr) {
+      // GL posted but payment row failed — reverse journal to keep GL clean.
+      await JournalService.reverseJournal(glJournal.id, companyId, reqUserId).catch(rErr => {
+        console.error(`[Suppliers] CRITICAL: journal ${glJournal.id} posted but payment insert failed AND reversal failed:`, rErr.message);
+      });
+      throw new Error(payErr.message);
+    }
+
+    // ── Step 7: Apply allocations to invoices ────────────────────────────────
     if (allocations && allocations.length) {
       for (const alloc of allocations) {
         if (!alloc.invoiceId || !alloc.amount) continue;
@@ -1235,7 +1338,6 @@ router.post('/payments', async (req, res) => {
           });
         if (allocErr) throw new Error(allocErr.message);
 
-        // Fetch current invoice totals to recompute status
         const { data: invRow, error: invFetchErr } = await supabase
           .from('supplier_invoices')
           .select('total_inc_vat, amount_paid')
@@ -1248,11 +1350,7 @@ router.post('/payments', async (req, res) => {
           const newStatus = invoiceStatus(invRow.total_inc_vat, newAmountPaid);
           const { error: invUpdErr } = await supabase
             .from('supplier_invoices')
-            .update({
-              amount_paid: newAmountPaid,
-              status:      newStatus,
-              updated_at:  new Date().toISOString(),
-            })
+            .update({ amount_paid: newAmountPaid, status: newStatus, updated_at: new Date().toISOString() })
             .eq('id', parseInt(alloc.invoiceId))
             .eq('company_id', companyId);
           if (invUpdErr) throw new Error(invUpdErr.message);
@@ -1260,69 +1358,24 @@ router.post('/payments', async (req, res) => {
       }
     }
 
-    // ── GL Posting (Payment) ──────────────────────────────────────────────
-    // DR AP (2000) / CR Bank ledger account — both sides required to post.
-    if (bankLedgerAccountId) {
-      const apAccount = await findAccountByCode(companyId, '2000');
-      if (apAccount) {
-        const glJournal = await JournalService.createDraftJournal({
-          companyId,
-          date: paymentDate,
-          reference: reference || null,
-          description: `AP Payment: ${paymentMethod || 'bank_transfer'}`,
-          sourceType: 'supplier_payment',
-          createdByUserId: userId,
-          lines: [
-            {
-              accountId:   apAccount.id,
-              debit:       parseFloat(amount),
-              credit:      0,
-              description: 'Accounts Payable cleared',
-            },
-            {
-              accountId:   parseInt(bankLedgerAccountId),
-              debit:       0,
-              credit:      parseFloat(amount),
-              description: 'Bank payment out',
-            },
-          ],
-        });
-        await JournalService.postJournal(glJournal.id, companyId, userId);
-        const { error: jidErr } = await supabase
-          .from('supplier_payments')
-          .update({ journal_id: glJournal.id })
-          .eq('id', payment.id);
-        if (jidErr) console.warn(`[Suppliers] Failed to link journal_id to payment ${payment.id}:`, jidErr.message);
-      } else {
-        console.warn(`[Suppliers] AP account (2000) not found for company ${companyId} — GL posting skipped for payment ${payment.id}`);
-      }
-    }
-    // ── End GL Posting ────────────────────────────────────────────────────
-
-    // Re-read payment to get journal_id (updated above if GL posted)
-    const { data: paymentFull } = await supabase
-      .from('supplier_payments')
-      .select('journal_id')
-      .eq('id', payment.id)
-      .maybeSingle();
-
+    // ── Step 8: Audit log ────────────────────────────────────────────────────
     await AuditLogger.log({
       companyId,
       actorType: 'USER',
-      actorId: userId,
+      actorId:   reqUserId,
       actionType: 'SUPPLIER_PAYMENT_RECORDED',
       entityType: 'SUPPLIER_PAYMENT',
-      entityId: payment.id,
+      entityId:   payment.id,
       beforeJson: null,
       afterJson: {
-        supplierId: parseInt(supplierId),
+        supplierId:     parseInt(supplierId),
         paymentDate,
-        paymentMethod: paymentMethod || 'bank_transfer',
-        amount: parseFloat(amount),
+        paymentMethod:  paymentMethod || 'bank_transfer',
+        amount:         paymentAmount,
         allocationCount: allocations ? allocations.length : 0,
-        journalId: paymentFull?.journal_id || null,
+        journalId:      glJournal.id,
       },
-      reason: 'Supplier payment recorded',
+      reason:    'Supplier payment recorded',
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
     });
