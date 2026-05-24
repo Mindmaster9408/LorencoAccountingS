@@ -1056,7 +1056,31 @@ async function _validatePostedAllocationJournal(companyId, journalId, bankTxn, l
  */
 router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
   try {
-    const { lines, description, allocationType } = req.body;
+    const { lines, description, allocationType, appliedRuleId } = req.body;
+
+    // Validate appliedRuleId if provided — must belong to company and be active
+    if (appliedRuleId != null) {
+      const { data: ruleRow, error: ruleErr } = await supabase
+        .from('bank_allocation_rules')
+        .select('id, is_active')
+        .eq('id', appliedRuleId)
+        .eq('company_id', req.user.companyId)
+        .maybeSingle();
+      if (ruleErr || !ruleRow) {
+        return res.status(422).json({
+          success: false,
+          error: 'appliedRuleId does not exist or does not belong to this company',
+          errorCode: 'INVALID_RULE_ID'
+        });
+      }
+      if (!ruleRow.is_active) {
+        return res.status(422).json({
+          success: false,
+          error: 'appliedRuleId refers to an inactive rule',
+          errorCode: 'INACTIVE_RULE'
+        });
+      }
+    }
 
     if (!lines || !Array.isArray(lines)) {
       return res.status(400).json({ success: false, error: 'Lines array is required', errorCode: 'MISSING_LINES' });
@@ -1124,6 +1148,37 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     if (vatSettingIds.length > 0) {
       const vatCode = isMoneyIn ? '2300' : '1400';
       cachedVatAccount = await findVatAccount(req.user.companyId, vatCode);
+
+      // VAT-bearing allocations must hard-block if the VAT control account is missing.
+      // This prevents silent gross fallback postings that break VAT compliance.
+      const hasVatBearingLine = lines.some(line => {
+        const vs = line.vatSettingId ? vatSettingMap[line.vatSettingId] : null;
+        if (!vs || Number(vs.rate) <= 0) return false;
+
+        const gross = Math.round(Number(line.amount) * 100) / 100;
+        const vatInclusive = line.vatInclusive !== false; // default true
+        const vatAmt = vatInclusive
+          ? Math.round((gross - Math.round((gross / (1 + vs.rate / 100)) * 100) / 100) * 100) / 100
+          : Math.round((gross * vs.rate / 100) * 100) / 100;
+
+        return vatAmt > 0;
+      });
+
+      if (hasVatBearingLine && !cachedVatAccount) {
+        if (isMoneyIn) {
+          return res.status(422).json({
+            success: false,
+            error: 'VAT Output account (code 2300) not found. Please provision the base chart of accounts before posting VAT-bearing bank allocations.',
+            errorCode: 'MISSING_VAT_OUTPUT_ACCOUNT',
+          });
+        }
+
+        return res.status(422).json({
+          success: false,
+          error: 'VAT Input account (code 1400) not found. Please provision the base chart of accounts before posting VAT-bearing bank allocations.',
+          errorCode: 'MISSING_VAT_INPUT_ACCOUNT',
+        });
+      }
     }
 
     // Process each allocation line
@@ -1156,38 +1211,23 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
 
         // VAT account line — Input (1400) for payments out, Output (2300) for receipts in
         const vatAccount = cachedVatAccount;
-        if (vatAccount) {
-          journalLines.push({
-            accountId:   vatAccount.id,
-            debit:       isMoneyIn ? 0 : vatAmt,
-            credit:      isMoneyIn ? vatAmt : 0,
-            description: `VAT — ${vs.name} (${vs.rate}%) on: ${lineDesc}`
+        if (!vatAccount) {
+          // Defensive guard: flow should already have hard-blocked before journal creation.
+          return res.status(422).json({
+            success: false,
+            error: isMoneyIn
+              ? 'VAT Output account (code 2300) not found. Please provision the base chart of accounts before posting VAT-bearing bank allocations.'
+              : 'VAT Input account (code 1400) not found. Please provision the base chart of accounts before posting VAT-bearing bank allocations.',
+            errorCode: isMoneyIn ? 'MISSING_VAT_OUTPUT_ACCOUNT' : 'MISSING_VAT_INPUT_ACCOUNT',
           });
-        } else {
-          // VAT account not found in COA — fall back to posting full gross to allocation account
-          // Log warning so accountant is alerted
-          const missingVatCode = isMoneyIn ? '2300' : '1400';
-          console.warn(
-            `[bank.allocate] VAT account ${missingVatCode} not found for company ${req.user.companyId}. ` +
-            `Posting full amount without VAT split. Check Chart of Accounts.`
-          );
-          await AuditLogger.logSystemAction(
-            req.user.companyId,
-            'SYSTEM_ERROR',
-            'BANK_ALLOCATION_VAT',
-            bankTxn.id,
-            null,
-            {
-              missingVatAccountCode: missingVatCode,
-              bankTransactionId: bankTxn.id,
-              fallback: 'full gross amount posted to allocation account without VAT split',
-            },
-            `VAT account ${missingVatCode} not found during bank allocation — full gross posted without VAT split`
-          );
-          // Replace the ex-VAT line with a full-gross line
-          journalLines[journalLines.length - 1].debit  = isMoneyIn ? 0 : gross;
-          journalLines[journalLines.length - 1].credit = isMoneyIn ? gross : 0;
         }
+
+        journalLines.push({
+          accountId:   vatAccount.id,
+          debit:       isMoneyIn ? 0 : vatAmt,
+          credit:      isMoneyIn ? vatAmt : 0,
+          description: `VAT — ${vs.name} (${vs.rate}%) on: ${lineDesc}`
+        });
       } else {
         // No VAT — standard single-line allocation
         journalLines.push({
@@ -1208,7 +1248,10 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       sourceType: 'bank',
       createdByUserId: req.user.id,
       lines: journalLines,
-      metadata: { bankTransactionId: bankTxn.id }
+      metadata: Object.assign(
+        { bankTransactionId: bankTxn.id },
+        appliedRuleId != null ? { appliedRuleId } : {}
+      )
     });
 
     // Post the journal — guarantees journal.status = 'posted' on success.
@@ -1301,29 +1344,37 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
 
     // Mark transaction as matched — persist display fields so the Reviewed tab
     // can show the allocation type, account, and VAT setting without a journal_lines JOIN.
+    const linkTimestamp = new Date().toISOString();
+    const linkPayload = {
+      status:                'matched',
+      matched_entity_type:   'JOURNAL',
+      matched_entity_id:     journal.id,
+      matched_by_user_id:    req.user.id,
+      matched_at:            linkTimestamp,
+      updated_at:            linkTimestamp,
+      allocated_account_id:  allocatedAccountId,
+      allocation_type:       allocationType || null,
+      allocated_account_name: allocatedAccountName,
+      vat_setting_id:        (lines[0]?.vatSettingId) ? parseInt(lines[0].vatSettingId, 10) : null
+    };
     const { error: updErr } = await supabase
       .from('bank_transactions')
-      .update({
-        status: 'matched',
-        matched_entity_type: 'JOURNAL',
-        matched_entity_id: journal.id,
-        matched_by_user_id: req.user.id,
-        allocated_account_id:   allocatedAccountId,
-        allocation_type:        allocationType || null,
-        allocated_account_name: allocatedAccountName,
-        vat_setting_id:         (lines[0]?.vatSettingId) ? parseInt(lines[0].vatSettingId, 10) : null
-      })
-      .eq('id', bankTxn.id);
+      .update(linkPayload)
+      .eq('id', bankTxn.id)
+      .eq('company_id', req.user.companyId);  // defence-in-depth: confirm tenant scope on write
 
     if (updErr) {
       // Journal is posted but bank transaction linkage update failed.
       // This would leave a dangling posted journal in the GL with no bank transaction pointing at it.
       // Attempt to reverse the journal to restore a clean state, then surface a real error to the caller.
       console.error(
-        '[bank.allocate] Bank transaction status update failed after journal posted.',
-        'Journal ID:', journal.id, '| Bank transaction ID:', bankTxn.id,
-        '| Error:', updErr.message,
-        '— Attempting journal reversal to prevent dangling GL entry.'
+        `[BANK-ALLOC-LINK-FAIL] journalId=${journal.id} | bankTransactionId=${bankTxn.id} | companyId=${req.user.companyId}`,
+        '\n  errorCode:',    updErr.code,
+        '\n  errorMessage:', updErr.message,
+        '\n  errorDetails:', JSON.stringify(updErr.details),
+        '\n  errorHint:',    updErr.hint,
+        '\n  failedPayload:', JSON.stringify(linkPayload),
+        '\n  — Attempting journal reversal to prevent dangling GL entry.'
       );
       let linkageReversalSucceeded = false;
       try {
@@ -1374,6 +1425,21 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       { status: 'matched', journalId: journal.id },
       'Bank transaction allocated to journal'
     );
+
+    // Log rule acceptance if this allocation was triggered by a bank allocation rule
+    if (appliedRuleId != null) {
+      AuditLogger.logUserAction(
+        req,
+        'BANK_RULE_ACCEPTED',
+        'BANK_ALLOCATION_RULE',
+        appliedRuleId,
+        null,
+        { bankTransactionId: bankTxn.id, journalId: journal.id, accountId: lines[0]?.accountId || null },
+        `Bank allocation rule ${appliedRuleId} suggestion accepted`
+      ).catch(err =>
+        console.error('[bank.allocate] BANK_RULE_ACCEPTED audit log failed:', err.message)
+      );
+    }
 
     // SEAN Bank Learning — fire async event for trusted sources (pdf / api).
     // Untrusted sources (csv / manual) are silently ignored inside recordBankAllocationEvent.

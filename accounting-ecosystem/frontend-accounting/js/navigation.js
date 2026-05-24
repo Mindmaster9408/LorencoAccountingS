@@ -121,7 +121,7 @@ function createNavigation() {
           <a href="/accounting/bank.html">Bank Transactions</a>
           <a href="/accounting/bank-reconciliation.html">Bank Reconciliation</a>
           <a href="#">Payment Processing</a>
-          <a href="#">Bank Rules</a>
+          <a href="/accounting/bank-rules.html">Bank Rules</a>
           <a href="/accounting/bank-staging.html">Import Review (Staging)</a>
         </div>
       </div>
@@ -137,7 +137,7 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'reports.html' || currentPage === 'balance-sheet.html' || currentPage === 'cashflow.html' || currentPage === 'division-pl.html' || currentPage === 'historical-comparatives.html' || currentPage === 'historical-comparatives-charts.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'reports.html' || currentPage === 'balance-sheet.html' || currentPage === 'cashflow.html' || currentPage === 'division-pl.html' || currentPage === 'historical-comparatives.html' || currentPage === 'historical-comparatives-charts.html' || currentPage === 'control-account-reconciliation.html' ? 'active' : ''}">
         <a href="/accounting/reports.html">Reports</a>
         <div class="dropdown">
           <div class="dropdown-header">Financial</div>
@@ -152,6 +152,7 @@ function createNavigation() {
           <a href="/accounting/vat.html">VAT Reconciliation</a>
           <a href="/accounting/aged-debtors.html">Aged Debtors</a>
           <a href="/accounting/aged-creditors.html">Aged Creditors</a>
+          <a href="/accounting/control-account-reconciliation.html">Control Reconciliation</a>
           <div class="dropdown-header">Historical</div>
           <a href="/accounting/historical-comparatives.html">Historical Comparatives</a>
           <a href="/accounting/historical-comparatives-charts.html">Historical Charts</a>

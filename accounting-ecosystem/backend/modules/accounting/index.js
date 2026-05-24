@@ -50,6 +50,9 @@ router.use('/accounts',  require('./routes/accounts'));
 router.use('/journals',  require('./routes/journals'));
 router.use('/periods',   require('./routes/accounting-periods'));
 router.use('/year-end',  require('./routes/yearEnd'));
+// Bank rules must be mounted BEFORE the generic /bank mount so that
+// /bank/rules/* is matched specifically rather than falling into bank.js.
+router.use('/bank/rules',   require('./routes/bankRules'));
 router.use('/bank',         require('./routes/bank'));
 router.use('/bank/staging', require('./routes/bankStaging'));
 router.use('/pos', require('./routes/pos-bridge'));
@@ -59,6 +62,7 @@ router.use('/customer-invoices', require('./routes/customer-invoices'));
 router.use('/segments', require('./routes/segments'));
 
 // Tax & compliance
+router.use('/vat', require('./routes/vat-report'));
 router.use('/vat-settings', require('./routes/vat-settings'));
 router.use('/vat-recon', require('./routes/vatRecon'));
 router.use('/paye/config', require('./routes/payeConfig'));

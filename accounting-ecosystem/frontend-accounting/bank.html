@@ -949,9 +949,30 @@
             background: linear-gradient(135deg, #f0f8ff 0%, #ffffff 100%);
             border-left: 4px solid #0066cc;
         }
-        
+
         .ai-suggestion-row.show {
             display: table-row;
+        }
+
+        .rule-suggestion-row {
+            display: none;
+        }
+        .rule-suggestion-row.show {
+            display: table-row;
+            background: #f0f9f0;
+            border-left: 3px solid #34a853;
+        }
+        .rule-suggestion-banner {
+            padding: 6px 14px;
+            font-size: 12px;
+            color: #2d6a3e;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .rule-suggestion-banner.overridden {
+            color: #9aa0a6;
+            font-style: italic;
         }
         
         .ai-suggestion-content {
@@ -2216,7 +2237,12 @@ Click OK to simulate uploading a file.`;
                         <div class="ai-decision"><em>Click to analyze…</em></div>
                     </div>
                 </td>
-            </tr>`;
+            </tr>
+            ${txn.status === 'unmatched' ? `<tr class="rule-suggestion-row" id="ruleBannerRow_${txn.id}">
+                <td colspan="13">
+                    <div class="rule-suggestion-banner" id="ruleBanner_${txn.id}"></div>
+                </td>
+            </tr>` : ''}`;
         }
 
         // Render one page of rows from _allTxnData into the tbody
@@ -2236,6 +2262,7 @@ Click OK to simulate uploading a file.`;
             } else {
                 tbody.insertAdjacentHTML('beforeend', slice.map(txnRowHtml).join(''));
                 restoreAllocationsToUI();
+                prefillRuleSuggestions(slice); // non-blocking
             }
 
             renderPaginationBar(_allTxnData.length, page);
@@ -3431,11 +3458,11 @@ Click OK to simulate uploading a file.`;
         // ALLOCATION TRACKING
         // ===================================
 
-        // Store allocations in memory (and safeLocalStorage for persistence)
-        let transactionAllocations = JSON.parse(safeLocalStorage.getItem(storageKey('bank_allocations')) || '{}');
+        // In-memory only — allocation drafts are never persisted to browser storage
+        let transactionAllocations = {};
 
         function saveAllocationsToStorage() {
-            safeLocalStorage.setItem(storageKey('bank_allocations'), JSON.stringify(transactionAllocations));
+            // No-op: allocation draft state is in-memory only (RULE D1 compliance)
         }
 
         function getTransactionData(id) {
@@ -3473,6 +3500,12 @@ Click OK to simulate uploading a file.`;
 
             if (!transactionAllocations[id]) {
                 transactionAllocations[id] = {};
+            }
+            // If user manually changes type, the rule suggestion is overridden
+            if (transactionAllocations[id]._fromRule) {
+                transactionAllocations[id].appliedRuleId = null;
+                transactionAllocations[id]._fromRule = false;
+                updateRuleSuggestionBanner(id, 'overridden');
             }
             transactionAllocations[id].type = type;
             // Clear any previously chosen VAT setting when type changes
@@ -3589,6 +3622,12 @@ Click OK to simulate uploading a file.`;
             if (!transactionAllocations[id]) {
                 transactionAllocations[id] = {};
             }
+            // If user manually changes account, the rule suggestion is overridden
+            if (transactionAllocations[id]._fromRule) {
+                transactionAllocations[id].appliedRuleId = null;
+                transactionAllocations[id]._fromRule = false;
+                updateRuleSuggestionBanner(id, 'overridden');
+            }
             transactionAllocations[id].accountCode = accountCode;
             transactionAllocations[id].accountName = accountText;
             // Store real account ID for API allocation
@@ -3660,14 +3699,19 @@ Click OK to simulate uploading a file.`;
                 }
 
                 // Call the real allocation API — handles double-entry journal automatically
+                const allocationPayload = {
+                    lines: [allocationLine],
+                    description: txnData.description,
+                    allocationType: allocation.type || null
+                };
+                // Pass appliedRuleId if this allocation originated from a bank rule suggestion
+                if (allocation.appliedRuleId != null) {
+                    allocationPayload.appliedRuleId = allocation.appliedRuleId;
+                }
                 const res = await fetch(`/api/accounting/bank/transactions/${id}/allocate`, {
                     method: 'POST',
                     headers: getAuthHeaders(),
-                    body: JSON.stringify({
-                        lines: [allocationLine],
-                        description: txnData.description,
-                        allocationType: allocation.type || null
-                    })
+                    body: JSON.stringify(allocationPayload)
                 });
                 const data = await res.json();
                 if (!res.ok) {
@@ -3759,6 +3803,96 @@ Click OK to simulate uploading a file.`;
                     }
                 }
             });
+        }
+
+        // Show or update the rule suggestion banner for a transaction row.
+        // state: 'suggested' | 'overridden' | 'hidden'
+        function updateRuleSuggestionBanner(id, state, suggestion) {
+            const bannerRow = document.getElementById('ruleBannerRow_' + id);
+            const banner    = document.getElementById('ruleBanner_' + id);
+            if (!bannerRow || !banner) return;
+
+            if (state === 'suggested' && suggestion) {
+                const acctLabel = suggestion.accountCode + ' ' + suggestion.accountName;
+                banner.className = 'rule-suggestion-banner';
+                banner.innerHTML = '&#10003; Suggested by bank rule: <strong>' +
+                    escapeHtml(suggestion.matchPattern) + '</strong> &rarr; ' +
+                    escapeHtml(acctLabel) +
+                    (suggestion.vatSettingName ? ' &middot; VAT: ' + escapeHtml(suggestion.vatSettingName) : '') +
+                    ' &nbsp;<span style="color:#9aa0a6;font-size:11px;">(Rule #' + suggestion.ruleId + ' &bull; ' + suggestion.matchType + ')</span>';
+                bannerRow.classList.add('show');
+            } else if (state === 'overridden') {
+                banner.className = 'rule-suggestion-banner overridden';
+                banner.innerHTML = 'Rule suggestion overridden.';
+                bannerRow.classList.add('show');
+            } else {
+                bannerRow.classList.remove('show');
+                banner.innerHTML = '';
+            }
+        }
+
+        // Fetch and apply bank rule suggestions for all unmatched rows on the current page.
+        // Fires in parallel — non-blocking, never fails the page render.
+        async function prefillRuleSuggestions(slice) {
+            const unmatched = (slice || []).filter(t => t.status === 'unmatched');
+            if (!unmatched.length) return;
+
+            await Promise.allSettled(unmatched.map(async txn => {
+                try {
+                    const res = await fetch(
+                        '/api/accounting/bank/rules/suggest?bankTransactionId=' + encodeURIComponent(txn.id),
+                        { headers: getAuthHeaders() }
+                    );
+                    if (!res.ok) return; // 404 = no match — silent
+                    const data = await res.json();
+                    if (!data.suggestion || data.suggestion.source !== 'bank_rule') return;
+
+                    const s = data.suggestion;
+                    const row = document.querySelector('tr[data-txn-id="' + txn.id + '"]');
+                    if (!row) return;
+
+                    // Only prefill if user hasn't already made a selection on this row
+                    const existing = transactionAllocations[txn.id];
+                    if (existing && existing.type) return;
+
+                    // Set allocation memory entry
+                    transactionAllocations[txn.id] = {
+                        type: 'account',
+                        accountId: s.accountId,
+                        accountCode: s.accountCode,
+                        accountName: s.accountName,
+                        vatSettingId: s.vatSettingId || null,
+                        appliedRuleId: s.ruleId,
+                        _fromRule: true
+                    };
+
+                    // Populate options and set type select
+                    updateAccountOptions(row, 'account', txn.id);
+                    const selects = row.querySelectorAll('.allocation-select');
+                    const typeSelect = selects[0];
+                    const acctSelect = selects[1];
+                    if (typeSelect && !typeSelect.disabled) typeSelect.value = 'account';
+
+                    // Set account select
+                    if (acctSelect && s.accountCode) {
+                        acctSelect.value = s.accountCode;
+                    }
+
+                    // Show and populate VAT select
+                    const vatSel     = document.getElementById('vatSelect_' + txn.id);
+                    const vatNoApply = document.getElementById('vatNoApply_' + txn.id);
+                    if (vatSel && window._companyIsVatRegistered) {
+                        populateVatSelect(txn.id);
+                        vatSel.style.display = '';
+                        if (vatNoApply) vatNoApply.style.display = 'none';
+                        if (s.vatSettingId) vatSel.value = String(s.vatSettingId);
+                    }
+
+                    updateRuleSuggestionBanner(txn.id, 'suggested', s);
+                } catch (err) {
+                    // Non-blocking — suggestion fetch errors must never break page render
+                }
+            }));
         }
 
         // Flip: correct import direction error (money in ↔ money out)
@@ -4318,10 +4452,12 @@ Click OK to simulate uploading a file.`;
                         amount:    Math.abs(txnData.amount)
                     };
 
+                    const bulkPayload = { lines: [allocationLine], description: txnData.description, allocationType: allocation.type || null };
+                    if (allocation.appliedRuleId != null) bulkPayload.appliedRuleId = allocation.appliedRuleId;
                     const res  = await fetch(`/api/accounting/bank/transactions/${id}/allocate`, {
                         method:  'POST',
                         headers: getAuthHeaders(),
-                        body:    JSON.stringify({ lines: [allocationLine], description: txnData.description, allocationType: allocation.type || null })
+                        body:    JSON.stringify(bulkPayload)
                     });
                     const data = await res.json();
 

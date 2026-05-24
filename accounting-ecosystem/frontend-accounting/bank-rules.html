@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lorenco Accounting — Bank Rules</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+    }
+
+    .page-wrapper {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 24px;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+
+    .page-header h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; }
+    .page-header p  { font-size: 14px; color: #6b7280; margin-top: 4px; }
+
+    .btn {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #0066cc; color: #fff; }
+    .btn-primary:hover { background: #0052a3; }
+    .btn-danger  { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-ghost   { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+    .btn-ghost:hover { background: #e5e7eb; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+
+    .card-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid #f3f4f6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-header h2 { font-size: 16px; font-weight: 600; color: #111827; }
+    .card-header p  { font-size: 13px; color: #6b7280; margin-top: 2px; }
+
+    /* ── Info banner ── */
+    .info-banner {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #1e40af;
+      margin-bottom: 20px;
+    }
+
+    /* ── Error banner ── */
+    .error-banner {
+      padding: 12px 16px;
+      background: #fee2e2;
+      color: #991b1b;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    /* ── Table ── */
+    .rules-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .rules-table th {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }
+
+    .rules-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: middle;
+    }
+
+    .rules-table tr:last-child td { border-bottom: none; }
+    .rules-table tr:hover td { background: #f9fafb; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-active   { background: #dcfce7; color: #166534; }
+    .badge-inactive { background: #f3f4f6; color: #6b7280; }
+    .badge-match    { background: #eff6ff; color: #1d4ed8; }
+
+    .stat-chip {
+      display: inline-block;
+      font-size: 11px;
+      color: #6b7280;
+      background: #f3f4f6;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .mono { font-family: 'Courier New', monospace; font-size: 12px; color: #374151; }
+
+    /* ── Empty state ── */
+    .empty-state {
+      padding: 60px 24px;
+      text-align: center;
+      color: #6b7280;
+    }
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; }
+    .empty-state .hint { font-size: 13px; color: #9ca3af; margin-top: 6px; }
+
+    /* ── Loading ── */
+    .loading-row td { text-align: center; padding: 40px; color: #9ca3af; font-size: 13px; }
+
+    /* ── Modal ── */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: #fff;
+      border-radius: 14px;
+      padding: 28px 32px;
+      width: 540px;
+      max-width: calc(100vw - 40px);
+      max-height: calc(100vh - 60px);
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+
+    .modal h2 { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #111827; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #111827;
+      background: #fff;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus,
+    .form-group select:focus { outline: none; border-color: #0066cc; box-shadow: 0 0 0 3px rgba(0,102,204,0.1); }
+    .form-group .hint { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+    .form-group.required label::after { content: ' *'; color: #dc2626; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #f3f4f6;
+    }
+
+    .modal-error {
+      background: #fee2e2;
+      color: #991b1b;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    /* ── Confirm modal ── */
+    .confirm-modal { width: 420px; }
+    .confirm-modal p { font-size: 14px; color: #374151; line-height: 1.6; margin-bottom: 8px; }
+    .confirm-modal .warn { color: #92400e; background: #fffbeb; border-radius: 6px; padding: 10px 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <div>
+      <h1>Bank Allocation Rules</h1>
+      <p>Automatic account suggestions for unmatched bank transactions based on description patterns</p>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="openCreateModal()">+ New Rule</button>
+  </div>
+
+  <div id="errorBanner" class="error-banner"></div>
+
+  <div class="info-banner">
+    <strong>Suggest-only:</strong> Rules suggest an account when a bank transaction matches a pattern. The accountant still clicks Allocate — no rule ever auto-posts to the General Ledger.
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>Active Rules</h2>
+        <p id="rulesCount">Loading…</p>
+      </div>
+    </div>
+    <table class="rules-table">
+      <thead>
+        <tr>
+          <th>Priority</th>
+          <th>Pattern</th>
+          <th>Match Type</th>
+          <th>Account</th>
+          <th>VAT</th>
+          <th>Status</th>
+          <th>Applied</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rulesBody">
+        <tr class="loading-row"><td colspan="8">Loading rules…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ── Create / Edit Rule Modal ─────────────────────────────────────── -->
+<div class="modal-backdrop" id="ruleModal">
+  <div class="modal">
+    <h2 id="modalTitle">New Bank Rule</h2>
+    <div class="modal-error" id="modalError"></div>
+
+    <div class="form-group required">
+      <label>Match Pattern</label>
+      <input type="text" id="fPattern" placeholder="e.g. ESKOM, Woolworths, FNB Fees" maxlength="200">
+      <div class="hint">The description text to match. Digits, dates and amounts are stripped before matching so &ldquo;ESKOM 202405&rdquo; matches &ldquo;ESKOM&rdquo;.</div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group required">
+        <label>Match Type</label>
+        <select id="fMatchType">
+          <option value="contains">Contains</option>
+          <option value="exact">Exact</option>
+          <option value="starts_with">Starts With</option>
+        </select>
+      </div>
+      <div class="form-group required">
+        <label>Priority</label>
+        <input type="number" id="fPriority" value="100" min="1" max="9999">
+        <div class="hint">Lower number = higher priority.</div>
+      </div>
+    </div>
+
+    <div class="form-group required">
+      <label>Suggest Account</label>
+      <select id="fAccount">
+        <option value="">Select account…</option>
+      </select>
+      <div class="hint">Only postable (non-header) accounts are shown.</div>
+    </div>
+
+    <div class="form-group" id="vatGroup">
+      <label>Suggest VAT Setting <span style="font-weight:400;color:#6b7280;">(optional)</span></label>
+      <select id="fVat">
+        <option value="">No VAT</option>
+      </select>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeRuleModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="saveRuleBtn" onclick="saveRule()">Save Rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Deactivate Confirm Modal ──────────────────────────────────────── -->
+<div class="modal-backdrop" id="confirmModal">
+  <div class="modal confirm-modal">
+    <h2>Deactivate Rule</h2>
+    <p id="confirmMsg">Are you sure you want to deactivate this rule?</p>
+    <p class="warn">The rule will no longer suggest accounts for new transactions. Existing allocations are not affected.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeConfirmModal()">Cancel</button>
+      <button type="button" class="btn btn-danger" id="confirmDeactivateBtn" onclick="confirmDeactivate()">Deactivate</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Auth ───────────────────────────────────────────────────────────────────
+  const token = localStorage.getItem('token') || localStorage.getItem('sb-token') || localStorage.getItem('eco_token');
+  if (!token) window.location.href = '/dashboard/login.html';
+
+  function authHeaders() {
+    return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+  }
+
+  // ── XSS safety ─────────────────────────────────────────────────────────────
+  function esc(str) {
+    if (str == null || str === '') return '—';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let allRules     = [];
+  let allAccounts  = [];
+  let allVat       = [];
+  let editingId    = null;   // null = create, number = update
+  let pendingDeact = null;   // ruleId awaiting deactivation confirm
+
+  // ── Load ───────────────────────────────────────────────────────────────────
+  async function loadAll() {
+    await Promise.all([loadRules(), loadAccounts(), loadVatSettings()]);
+  }
+
+  async function loadRules() {
+    try {
+      const res = await fetch('/api/accounting/bank/rules', { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      allRules = data.rules || [];
+      renderRules();
+    } catch (err) {
+      showBanner('Failed to load rules: ' + err.message);
+    }
+  }
+
+  async function loadAccounts() {
+    try {
+      const res = await fetch('/api/accounting/accounts', { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) return;
+      // Keep only postable (non-header, active) accounts
+      allAccounts = (data.accounts || []).filter(a => a.is_postable !== false && a.is_active !== false);
+    } catch (_) { /* non-critical */ }
+  }
+
+  async function loadVatSettings() {
+    try {
+      const res = await fetch('/api/accounting/vat-settings', { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) return;
+      allVat = data.vatSettings || data || [];
+    } catch (_) { /* non-critical */ }
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function renderRules() {
+    const tbody = document.getElementById('rulesBody');
+    const count = document.getElementById('rulesCount');
+    const active = allRules.filter(r => r.is_active).length;
+    count.textContent = allRules.length + ' rule(s) — ' + active + ' active';
+
+    if (!allRules.length) {
+      tbody.innerHTML = `<tr><td colspan="8">
+        <div class="empty-state">
+          <div class="icon">&#128274;</div>
+          <p>No bank rules yet.</p>
+          <p class="hint">Click &ldquo;+ New Rule&rdquo; to create the first rule for this company.</p>
+        </div>
+      </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = allRules.map(r => {
+      const acctLabel = r.account_code ? (r.account_code + ' ' + (r.account_name || '')) : '—';
+      const vatLabel  = r.vat_setting_name || '—';
+      const lastAppl  = r.last_applied_at ? new Date(r.last_applied_at).toLocaleDateString('en-ZA') : '—';
+      return `<tr>
+        <td>${esc(r.priority)}</td>
+        <td><span class="mono">${esc(r.match_pattern)}</span></td>
+        <td><span class="badge badge-match">${esc(r.match_type)}</span></td>
+        <td>${esc(acctLabel)}</td>
+        <td>${esc(vatLabel)}</td>
+        <td><span class="badge ${r.is_active ? 'badge-active' : 'badge-inactive'}">${r.is_active ? 'Active' : 'Inactive'}</span></td>
+        <td><span class="stat-chip" title="Total times applied">${r.apply_count || 0}&#215;</span> ${lastAppl !== '—' ? '<span style="font-size:11px;color:#9ca3af;">' + lastAppl + '</span>' : ''}</td>
+        <td style="white-space:nowrap;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="openEditModal(${r.id})">Edit</button>
+          ${r.is_active
+            ? `<button type="button" class="btn btn-ghost btn-sm" style="color:#dc2626;margin-left:4px;" onclick="openDeactivateConfirm(${r.id},'${esc(r.match_pattern).replace(/'/g,'\\&apos;')}')">Deactivate</button>`
+            : '<span style="font-size:11px;color:#9ca3af;margin-left:4px;">Inactive</span>'}
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Create modal ────────────────────────────────────────────────────────────
+  function openCreateModal() {
+    editingId = null;
+    document.getElementById('modalTitle').textContent = 'New Bank Rule';
+    document.getElementById('fPattern').value   = '';
+    document.getElementById('fMatchType').value = 'contains';
+    document.getElementById('fPriority').value  = '100';
+    document.getElementById('saveRuleBtn').textContent = 'Save Rule';
+    populateAccountSelect(null);
+    populateVatSelect(null);
+    hideModalError();
+    document.getElementById('ruleModal').classList.add('open');
+  }
+
+  function openEditModal(ruleId) {
+    const r = allRules.find(x => x.id === ruleId);
+    if (!r) return;
+    editingId = ruleId;
+    document.getElementById('modalTitle').textContent = 'Edit Rule';
+    document.getElementById('fPattern').value   = r.match_pattern || '';
+    document.getElementById('fMatchType').value = r.match_type    || 'contains';
+    document.getElementById('fPriority').value  = r.priority      || 100;
+    document.getElementById('saveRuleBtn').textContent = 'Update Rule';
+    populateAccountSelect(r.account_id);
+    populateVatSelect(r.vat_setting_id);
+    hideModalError();
+    document.getElementById('ruleModal').classList.add('open');
+  }
+
+  function closeRuleModal() {
+    document.getElementById('ruleModal').classList.remove('open');
+    editingId = null;
+  }
+
+  function populateAccountSelect(selectedId) {
+    const sel = document.getElementById('fAccount');
+    let html = '<option value="">Select account…</option>';
+
+    const groups = { Assets: [], Liabilities: [], Equity: [], Income: [], Expenses: [] };
+    const typeMap = { asset: 'Assets', liability: 'Liabilities', equity: 'Equity', income: 'Income', expense: 'Expenses' };
+
+    allAccounts.forEach(a => {
+      const group = typeMap[a.type] || 'Other';
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(a);
+    });
+
+    Object.entries(groups).forEach(([group, accts]) => {
+      if (!accts.length) return;
+      html += `<optgroup label="${group}">`;
+      accts.forEach(a => {
+        const sel = selectedId && a.id === selectedId ? ' selected' : '';
+        html += `<option value="${a.id}"${sel}>${a.code} — ${a.name}</option>`;
+      });
+      html += '</optgroup>';
+    });
+
+    sel.innerHTML = html;
+  }
+
+  function populateVatSelect(selectedId) {
+    const sel = document.getElementById('fVat');
+    let html = '<option value="">No VAT</option>';
+    allVat.forEach(vs => {
+      const s = selectedId && vs.id === selectedId ? ' selected' : '';
+      html += `<option value="${vs.id}"${s}>${vs.name}</option>`;
+    });
+    sel.innerHTML = html;
+  }
+
+  // ── Save ───────────────────────────────────────────────────────────────────
+  async function saveRule() {
+    hideModalError();
+    const pattern   = document.getElementById('fPattern').value.trim();
+    const matchType = document.getElementById('fMatchType').value;
+    const priority  = parseInt(document.getElementById('fPriority').value, 10);
+    const accountId = parseInt(document.getElementById('fAccount').value, 10) || null;
+    const vatId     = parseInt(document.getElementById('fVat').value, 10) || null;
+
+    if (!pattern) return showModalError('Match pattern is required.');
+    if (!accountId) return showModalError('Please select an account.');
+    if (isNaN(priority) || priority < 1) return showModalError('Priority must be a positive number.');
+
+    const body = { matchPattern: pattern, matchType, priority, accountId, vatSettingId: vatId };
+
+    try {
+      document.getElementById('saveRuleBtn').disabled = true;
+      const url    = editingId != null ? '/api/accounting/bank/rules/' + editingId : '/api/accounting/bank/rules';
+      const method = editingId != null ? 'PUT' : 'POST';
+      const res    = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
+      const data   = await res.json();
+      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      closeRuleModal();
+      await loadRules();
+    } catch (err) {
+      showModalError(err.message);
+    } finally {
+      document.getElementById('saveRuleBtn').disabled = false;
+    }
+  }
+
+  // ── Deactivate ─────────────────────────────────────────────────────────────
+  function openDeactivateConfirm(ruleId, pattern) {
+    pendingDeact = ruleId;
+    document.getElementById('confirmMsg').innerHTML =
+      'Deactivate the rule for pattern <strong>' + esc(pattern) + '</strong>?';
+    document.getElementById('confirmModal').classList.add('open');
+  }
+
+  function closeConfirmModal() {
+    pendingDeact = null;
+    document.getElementById('confirmModal').classList.remove('open');
+  }
+
+  async function confirmDeactivate() {
+    if (!pendingDeact) return;
+    try {
+      document.getElementById('confirmDeactivateBtn').disabled = true;
+      const res  = await fetch('/api/accounting/bank/rules/' + pendingDeact, { method: 'DELETE', headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      closeConfirmModal();
+      await loadRules();
+    } catch (err) {
+      closeConfirmModal();
+      showBanner('Deactivation failed: ' + err.message);
+    } finally {
+      const btn = document.getElementById('confirmDeactivateBtn');
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ── Error helpers ──────────────────────────────────────────────────────────
+  function showBanner(msg) {
+    const b = document.getElementById('errorBanner');
+    b.textContent = msg;
+    b.style.display = 'block';
+  }
+
+  function showModalError(msg) {
+    const e = document.getElementById('modalError');
+    e.textContent = msg;
+    e.style.display = 'block';
+  }
+
+  function hideModalError() {
+    const e = document.getElementById('modalError');
+    e.style.display = 'none';
+    e.textContent   = '';
+  }
+
+  // ── Close modals on backdrop click ─────────────────────────────────────────
+  document.getElementById('ruleModal').addEventListener('click', function(e) {
+    if (e.target === this) closeRuleModal();
+  });
+  document.getElementById('confirmModal').addEventListener('click', function(e) {
+    if (e.target === this) closeConfirmModal();
+  });
+
+  // ── Keyboard esc ───────────────────────────────────────────────────────────
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeRuleModal(); closeConfirmModal(); }
+  });
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  loadAll();
+</script>
+</body>
+</html>
