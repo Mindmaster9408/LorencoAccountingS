@@ -1541,20 +1541,42 @@ router.post('/transactions/:id/unreconcile', authenticate, hasPermission('bank.r
 
 /**
  * POST /api/bank/reconcile
- * Mark transactions as reconciled
+ * Mark transactions as reconciled and (optionally) create a recon session record.
+ *
+ * Required: transactionIds
+ * Optional (for session creation): bankAccountId, statementDate,
+ *   statementClosingBalance, clearedBalance
+ *   — when all four optional fields are provided a bank_recon_sessions row is
+ *     created and each reconciled transaction is linked to it via recon_session_id.
+ *   — omitting them keeps backward compatibility (transactions are still reconciled
+ *     but no session row is written).
  */
 router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (req, res) => {
   try {
-    const { transactionIds } = req.body;
+    const {
+      transactionIds,
+      bankAccountId,
+      statementDate,
+      statementClosingBalance,
+      clearedBalance,
+    } = req.body;
 
     if (!transactionIds || !Array.isArray(transactionIds) || transactionIds.length === 0) {
       return res.status(400).json({ error: 'Transaction IDs array is required' });
     }
 
+    // Determine whether to create a formal recon session
+    const createSession = (
+      bankAccountId != null &&
+      statementDate != null &&
+      statementClosingBalance != null &&
+      clearedBalance != null
+    );
+
     // ── Step 1: Fetch all requested transactions scoped to this company ──────
     const { data: txns, error: fetchErr } = await supabase
       .from('bank_transactions')
-      .select('id, status, matched_entity_id, matched_entity_type, description')
+      .select('id, status, matched_entity_id, matched_entity_type, description, bank_account_id')
       .in('id', transactionIds)
       .eq('company_id', req.user.companyId);
 
@@ -1641,16 +1663,55 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
       });
     }
 
-    // ── Step 5: Mark all verified transactions as reconciled ─────────────────
+    // ── Step 5: Create recon session BEFORE updating transactions ─────────────
+    // Insert the session first so we have a sessionId to stamp on each transaction.
+    // If session creation fails, the entire reconciliation is aborted (no transactions
+    // are marked reconciled) — this keeps the session and transaction state consistent.
+    let sessionId = null;
+    if (createSession) {
+      const sessionPayload = {
+        company_id:                req.user.companyId,
+        bank_account_id:           Number(bankAccountId),
+        statement_date:            statementDate,
+        statement_closing_balance: Number(statementClosingBalance),
+        cleared_balance:           Number(clearedBalance),
+        difference:                Number((Number(statementClosingBalance) - Number(clearedBalance)).toFixed(2)),
+        transaction_count:         valid.length,
+        created_by:                req.user.id || null,
+      };
+
+      const { data: session, error: sessionErr } = await supabase
+        .from('bank_recon_sessions')
+        .insert(sessionPayload)
+        .select('id')
+        .single();
+
+      if (sessionErr) {
+        console.error('[bank.reconcile] Failed to create recon session:', sessionErr.message);
+        return res.status(500).json({
+          error: 'Failed to create reconciliation session record. No changes were made.',
+          detail: sessionErr.message,
+        });
+      }
+      sessionId = session.id;
+    }
+
+    // ── Step 6: Mark all verified transactions as reconciled ─────────────────
     const reconciledAt = new Date().toISOString();
     const succeeded    = [];
     const failed       = [];
 
     for (const txn of valid) {
       try {
+        const updatePayload = {
+          status:           'reconciled',
+          reconciled_at:    reconciledAt,
+          recon_session_id: sessionId, // null when no session fields provided
+        };
+
         const { error: updErr } = await supabase
           .from('bank_transactions')
-          .update({ status: 'reconciled', reconciled_at: reconciledAt })
+          .update(updatePayload)
           .eq('id', txn.id)
           .eq('company_id', req.user.companyId)
           .eq('status', 'matched');  // double-guard: must still be matched at write time
@@ -1667,7 +1728,16 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
       }
     }
 
-    // ── Step 6: Audit log — one entry per successfully reconciled transaction ─
+    // If any updates failed after session was created, correct the session count
+    if (sessionId && failed.length > 0) {
+      await supabase
+        .from('bank_recon_sessions')
+        .update({ transaction_count: succeeded.length })
+        .eq('id', sessionId)
+        .catch(e => console.error('[bank.reconcile] Could not correct session count:', e.message));
+    }
+
+    // ── Step 7: Audit log — one entry per successfully reconciled transaction ─
     for (const txnId of succeeded) {
       const txn = txnMap[txnId];
       AuditLogger.logUserAction(
@@ -1676,12 +1746,29 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
         'BANK_TRANSACTION',
         txnId,
         { status: 'matched', journalId: txn?.matched_entity_id },
-        { status: 'reconciled', reconciled_at: reconciledAt },
+        { status: 'reconciled', reconciled_at: reconciledAt, recon_session_id: sessionId },
         'Bank transaction reconciled'
       ).catch(err => console.error('[bank.reconcile] Audit log error for txn', txnId, ':', err.message));
     }
 
-    // ── Step 7: Return structured result ─────────────────────────────────────
+    if (sessionId) {
+      AuditLogger.logUserAction(
+        req,
+        'CREATE',
+        'BANK_RECON_SESSION',
+        sessionId,
+        null,
+        {
+          bank_account_id:           bankAccountId,
+          statement_date:            statementDate,
+          statement_closing_balance: statementClosingBalance,
+          transaction_count:         succeeded.length,
+        },
+        'Bank reconciliation session created'
+      ).catch(err => console.error('[bank.reconcile] Session audit log error:', err.message));
+    }
+
+    // ── Step 8: Return structured result ─────────────────────────────────────
     if (failed.length > 0 && succeeded.length === 0) {
       return res.status(500).json({
         error: 'All reconciliation updates failed',
@@ -1694,6 +1781,7 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
         message: `${succeeded.length} transaction(s) reconciled. ${failed.length} update(s) failed.`,
         count: succeeded.length,
         reconciledIds: succeeded,
+        sessionId,
         failedTransactions: failed
       });
     }
@@ -1701,7 +1789,8 @@ router.post('/reconcile', authenticate, hasPermission('bank.reconcile'), async (
     res.json({
       message: `${succeeded.length} transaction(s) reconciled successfully`,
       count: succeeded.length,
-      reconciledIds: succeeded
+      reconciledIds: succeeded,
+      sessionId,
     });
 
   } catch (error) {

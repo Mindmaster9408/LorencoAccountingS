@@ -544,4 +544,178 @@ router.get('/division-profit-loss', authenticate, hasPermission('report.view'), 
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/reports/unallocated-bank-transactions
+// Lists bank_transactions with status = 'unmatched' (confirmed but not yet
+// allocated/journalised). This is the "silent gap" list that does NOT appear in
+// the TB — the TB is correct in excluding these; this report surfaces them for
+// management review so the accountant can track what still needs to be allocated.
+//
+// Query params:
+//   bankAccountId  — optional, filter to one bank account
+//   dateFrom       — optional YYYY-MM-DD
+//   dateTo         — optional YYYY-MM-DD
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/unallocated-bank-transactions', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { bankAccountId, dateFrom, dateTo } = req.query;
+    const companyId = req.user.companyId;
+
+    let q = supabase
+      .from('bank_transactions')
+      .select(`
+        id,
+        date,
+        description,
+        amount,
+        reference,
+        bank_account_id,
+        bank_accounts!bank_transactions_bank_account_id_fkey(
+          id,
+          name,
+          account_number
+        )
+      `)
+      .eq('company_id', companyId)
+      .eq('status', 'unmatched')
+      .order('date', { ascending: false })
+      .order('id', { ascending: false });
+
+    if (bankAccountId) q = q.eq('bank_account_id', Number(bankAccountId));
+    if (dateFrom)      q = q.gte('date', dateFrom);
+    if (dateTo)        q = q.lte('date', dateTo);
+
+    const { data: txns, error } = await q;
+    if (error) throw new Error(error.message);
+
+    const rows = txns || [];
+    const totalAmount = rows.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    res.json({
+      transactions: rows,
+      count:       rows.length,
+      totalAmount: Number(totalAmount.toFixed(2)),
+      filters: { bankAccountId: bankAccountId || null, dateFrom: dateFrom || null, dateTo: dateTo || null },
+    });
+
+  } catch (error) {
+    console.error('Error generating unallocated bank transactions report:', error);
+    res.status(500).json({ error: 'Failed to generate unallocated bank transactions report' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/reports/bank-recon-history
+// Lists all formal bank_recon_sessions for the company (from migration 047).
+// Each row represents one completed bank reconciliation event with the
+// statement date, closing balance, difference, and who performed it.
+//
+// Query params:
+//   bankAccountId  — optional, filter to one bank account
+//
+// GET /api/reports/bank-recon-history/:sessionId
+// Returns one session with its linked transactions.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/bank-recon-history', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { bankAccountId } = req.query;
+    const companyId = req.user.companyId;
+
+    let q = supabase
+      .from('bank_recon_sessions')
+      .select(`
+        id,
+        bank_account_id,
+        statement_date,
+        statement_closing_balance,
+        cleared_balance,
+        difference,
+        transaction_count,
+        created_at,
+        created_by,
+        bank_accounts!bank_recon_sessions_bank_account_id_fkey(
+          id,
+          name,
+          account_number
+        ),
+        users!bank_recon_sessions_created_by_fkey(
+          id,
+          name,
+          email
+        )
+      `)
+      .eq('company_id', companyId)
+      .order('statement_date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (bankAccountId) q = q.eq('bank_account_id', Number(bankAccountId));
+
+    const { data: sessions, error } = await q;
+    if (error) throw new Error(error.message);
+
+    res.json({ sessions: sessions || [] });
+
+  } catch (error) {
+    console.error('Error generating bank recon history:', error);
+    res.status(500).json({ error: 'Failed to generate bank reconciliation history' });
+  }
+});
+
+router.get('/bank-recon-history/:sessionId', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const sessionId = Number(req.params.sessionId);
+    const companyId = req.user.companyId;
+
+    if (!sessionId || isNaN(sessionId)) {
+      return res.status(400).json({ error: 'Invalid session ID' });
+    }
+
+    const { data: session, error: sessErr } = await supabase
+      .from('bank_recon_sessions')
+      .select(`
+        id,
+        bank_account_id,
+        statement_date,
+        statement_closing_balance,
+        cleared_balance,
+        difference,
+        transaction_count,
+        created_at,
+        created_by,
+        bank_accounts!bank_recon_sessions_bank_account_id_fkey(
+          id,
+          name,
+          account_number
+        ),
+        users!bank_recon_sessions_created_by_fkey(
+          id,
+          name,
+          email
+        )
+      `)
+      .eq('id', sessionId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (sessErr || !session) {
+      return res.status(404).json({ error: 'Reconciliation session not found' });
+    }
+
+    const { data: txns, error: txnErr } = await supabase
+      .from('bank_transactions')
+      .select('id, date, description, amount, reference, allocated_account_name, allocation_type, reconciled_at')
+      .eq('recon_session_id', sessionId)
+      .eq('company_id', companyId)
+      .order('date', { ascending: true });
+
+    if (txnErr) throw new Error(txnErr.message);
+
+    res.json({ session, transactions: txns || [] });
+
+  } catch (error) {
+    console.error('Error fetching bank recon session:', error);
+    res.status(500).json({ error: 'Failed to fetch reconciliation session' });
+  }
+});
+
 module.exports = router;

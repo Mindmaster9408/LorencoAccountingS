@@ -533,7 +533,16 @@
             background: #d1fae5;
             color: #10b981;
         }
-        
+
+        .status-unallocated {
+            background: #fce7e7;
+            color: #e53e3e;
+        }
+
+        .row-unallocated {
+            opacity: 0.65;
+        }
+
         .summary-panel {
             background: white;
             padding: 24px;
@@ -752,6 +761,7 @@
                 <div class="filter-row">
                     <button class="filter-btn active" onclick="filterTransactions('all', this)">All</button>
                     <button class="filter-btn" onclick="filterTransactions('matched', this)">Pending Reconciliation</button>
+                    <button class="filter-btn" onclick="filterTransactions('unmatched', this)">Needs Allocation</button>
                     <button class="filter-btn" onclick="filterTransactions('reconciled', this)">Already Reconciled</button>
                 </div>
 
@@ -935,17 +945,19 @@
             try {
                 showLoading(true);
 
-                // Fetch matched (pending reconciliation) and reconciled (already done) in parallel
-                const [matchedData, reconciledData] = await Promise.all([
+                // Fetch matched, reconciled, and unmatched (awaiting allocation) in parallel
+                const [matchedData, reconciledData, unmatchedData] = await Promise.all([
                     apiGet('/bank/transactions?bankAccountId=' + currentAccount.id + '&status=matched&limit=1000'),
-                    apiGet('/bank/transactions?bankAccountId=' + currentAccount.id + '&status=reconciled&limit=1000')
+                    apiGet('/bank/transactions?bankAccountId=' + currentAccount.id + '&status=reconciled&limit=1000'),
+                    apiGet('/bank/transactions?bankAccountId=' + currentAccount.id + '&status=unmatched&limit=1000')
                 ]);
 
                 const matched    = (matchedData.transactions    || []).map(t => ({ ...t, _txnStatus: 'matched' }));
                 const reconciled = (reconciledData.transactions || []).map(t => ({ ...t, _txnStatus: 'reconciled' }));
+                const unmatched  = (unmatchedData.transactions  || []).map(t => ({ ...t, _txnStatus: 'unmatched' }));
 
                 // Merge and sort by date asc, then id asc
-                transactions = [...matched, ...reconciled].sort((a, b) => {
+                transactions = [...matched, ...reconciled, ...unmatched].sort((a, b) => {
                     const d = (a.date || '').localeCompare(b.date || '');
                     return d !== 0 ? d : String(a.id).localeCompare(String(b.id));
                 });
@@ -971,8 +983,9 @@
             const tbody = document.getElementById('transactionsBody');
             let toShow = transactions;
 
-            if (currentFilter === 'matched')    toShow = transactions.filter(t => t._txnStatus === 'matched');
+            if (currentFilter === 'matched')         toShow = transactions.filter(t => t._txnStatus === 'matched');
             else if (currentFilter === 'reconciled') toShow = transactions.filter(t => t._txnStatus === 'reconciled');
+            else if (currentFilter === 'unmatched')  toShow = transactions.filter(t => t._txnStatus === 'unmatched');
 
             tbody.innerHTML = '';
 
@@ -981,9 +994,11 @@
                     ? 'No transactions pending reconciliation for this account'
                     : currentFilter === 'reconciled'
                         ? 'No reconciled transactions found'
-                        : currentAccount
-                            ? 'No allocated transactions found. Import and allocate transactions from the Bank page first.'
-                            : 'Select a bank account to load transactions';
+                        : currentFilter === 'unmatched'
+                            ? 'No unallocated transactions — all transactions have been allocated'
+                            : currentAccount
+                                ? 'No allocated transactions found. Import and allocate transactions from the Bank page first.'
+                                : 'Select a bank account to load transactions';
                 tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9aa0a6;">' + escHtml(emptyMsg) + '</td></tr>';
                 updateSummary();
                 return;
@@ -991,22 +1006,32 @@
 
             toShow.forEach(txn => {
                 const isReconciled = txn._txnStatus === 'reconciled';
+                const isUnmatched  = txn._txnStatus === 'unmatched';
                 const isChecked    = checkedIds.has(txn.id);
                 const amount       = parseFloat(txn.amount || 0);
                 const moneyIn      = amount > 0 ? fmtCcy(amount)              : '—';
                 const moneyOut     = amount < 0 ? fmtCcy(Math.abs(amount))    : '—';
 
-                const statusBadge = isReconciled
-                    ? '<span class="status-badge status-reconciled">Reconciled</span>'
-                    : '<span class="status-badge status-unreconciled">Pending</span>';
+                let statusBadge;
+                if (isReconciled) {
+                    statusBadge = '<span class="status-badge status-reconciled">Reconciled</span>';
+                } else if (isUnmatched) {
+                    statusBadge = '<span class="status-badge status-unallocated">Requires allocation first</span>';
+                } else {
+                    statusBadge = '<span class="status-badge status-unreconciled">Pending</span>';
+                }
 
                 const row = document.createElement('tr');
                 if (isReconciled) row.classList.add('reconciled');
+                if (isUnmatched)  row.classList.add('row-unallocated');
+
+                const chkDisabled = (isReconciled ? ' disabled title="Already reconciled"' : '')
+                                  + (isUnmatched  ? ' disabled title="Allocate this transaction first before reconciling"' : '');
 
                 row.innerHTML =
                     '<td><input type="checkbox" class="checkbox"' +
-                    (isChecked    ? ' checked'                               : '') +
-                    (isReconciled ? ' disabled title="Already reconciled"'   : '') +
+                    (isChecked ? ' checked' : '') +
+                    chkDisabled +
                     ' onchange="toggleCheck(\'' + txn.id + '\', this.checked)"></td>' +
                     '<td>' + escHtml(txn.date || '') + '</td>' +
                     '<td>' + escHtml(txn.description || '') + '</td>' +
@@ -1044,7 +1069,8 @@
             });
             const clearedBalance = bookOpening + clearedSum;
 
-            const pendingCount  = transactions.filter(t => t._txnStatus === 'matched').length;
+            const unmatchedCount = transactions.filter(t => t._txnStatus === 'unmatched').length;
+            const pendingCount   = transactions.filter(t => t._txnStatus === 'matched').length;
             const checkedCount  = [...checkedIds].filter(id => {
                 const t = transactions.find(x => x.id === id);
                 return t && t._txnStatus === 'matched';
@@ -1053,7 +1079,9 @@
             document.getElementById('clearedBalance').textContent  = fmtCcy(clearedBalance);
             document.getElementById('summaryStatement').textContent = fmtCcy(statementBalance);
             document.getElementById('summaryCleared').textContent   = fmtCcy(clearedBalance);
-            document.getElementById('unclearedCount').textContent   = pendingCount + ' item' + (pendingCount !== 1 ? 's' : '');
+            document.getElementById('unclearedCount').textContent   =
+                pendingCount + ' item' + (pendingCount !== 1 ? 's' : '') +
+                (unmatchedCount > 0 ? ' (' + unmatchedCount + ' needs allocation)' : '');
             document.getElementById('checkedCount').textContent     = checkedCount + ' item' + (checkedCount !== 1 ? 's' : '');
 
             const difference  = statementBalance - clearedBalance;
@@ -1137,7 +1165,25 @@
             btn.textContent = 'Reconciling…';
 
             try {
-                const result = await apiPost('/bank/reconcile', { transactionIds: toReconcile });
+                // Compute cleared balance at reconciliation time (same formula as updateSummary)
+                const bookOpening = parseFloat(document.getElementById('_bookOpening').value || 0);
+                let clearedSum = 0;
+                transactions.forEach(t => {
+                    if (checkedIds.has(t.id) && t._txnStatus === 'matched') {
+                        clearedSum += parseFloat(t.amount || 0);
+                    }
+                });
+                const clearedBal = bookOpening + clearedSum;
+
+                const payload = {
+                    transactionIds:          toReconcile,
+                    bankAccountId:           currentAccount ? currentAccount.id : null,
+                    statementDate:           document.getElementById('statementDate').value || null,
+                    statementClosingBalance: statementBalance,
+                    clearedBalance:          Number(clearedBal.toFixed(2)),
+                };
+
+                const result = await apiPost('/bank/reconcile', payload);
 
                 checkedIds.clear();
                 statementBalance = 0;
