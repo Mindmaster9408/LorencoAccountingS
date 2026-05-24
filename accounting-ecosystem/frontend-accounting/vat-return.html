@@ -6,583 +6,404 @@
     <title>VAT Return - Lorenco Accounting</title>
     <script src="js/navigation.js"></script>
     <script src="js/theme-guard.js"></script>
+    <link rel="stylesheet" href="css/dark-theme.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { box-sizing: border-box; }
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f8f9fa;
+            margin: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f4f7fb;
+            color: #1f2937;
         }
-        
-        .top-bar {
-            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
-            color: white;
-            padding: 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            height: 60px;
-            box-shadow: 0 2px 8px rgba(0,102,204,0.2);
-        }
-        
-        .brand-section {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            padding: 0 25px;
-        }
-        
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 20px;
-            font-weight: 700;
-        }
-        
-        .logo-icon {
-            width: 35px;
-            height: 35px;
-            background: white;
-            color: #0066cc;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
-        }
-        
-        .company-selector {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        
-        .company-selector:hover {
-            background: rgba(255,255,255,0.25);
-        }
-        
-        .right-section {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 0 25px;
-        }
-        
-        .icon-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.15);
-            border: none;
-            color: white;
-            cursor: pointer;
-            transition: background 0.2s;
-            font-size: 16px;
-        }
-        
-        .icon-btn:hover {
-            background: rgba(255,255,255,0.25);
-        }
-        
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            padding: 6px 12px;
-            border-radius: 6px;
-            transition: background 0.2s;
-        }
-        
-        .user-menu:hover {
-            background: rgba(255,255,255,0.15);
-        }
-        
-        .user-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: white;
-            color: #0066cc;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 14px;
-        }
-        
-        .user-name {
-            font-size: 14px;
-            font-weight: 500;
-        }
-        
-        .navbar {
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            display: flex;
-            padding: 0 25px;
-            gap: 5px;
-        }
-        
-        .nav-item {
-            position: relative;
-        }
-        
-        .nav-item > a {
-            display: block;
-            padding: 16px 20px;
-            color: #202124;
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 14px;
-            transition: all 0.2s;
-            border-bottom: 3px solid transparent;
-        }
-        
-        .nav-item > a:hover,
-        .nav-item > a.active {
-            color: #0066cc;
-            border-bottom-color: #0066cc;
-            background: rgba(0,102,204,0.05);
-        }
-        
-        .dropdown {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            background: white;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border-radius: 8px;
-            min-width: 220px;
-            padding: 8px 0;
-            opacity: 0;
-            visibility: hidden;
-            transform: translateY(-10px);
-            transition: all 0.2s;
-            z-index: 1000;
-        }
-        
-        .nav-item:hover .dropdown {
-            opacity: 1;
-            visibility: visible;
-            transform: translateY(0);
-        }
-        
-        .dropdown a {
-            display: block;
-            padding: 10px 20px;
-            color: #202124;
-            text-decoration: none;
-            font-size: 14px;
-            transition: background 0.2s;
-        }
-        
-        .dropdown a:hover {
-            background: rgba(0,102,204,0.08);
-            color: #0066cc;
-        }
-        
-        .dropdown-header {
-            padding: 8px 20px 4px;
-            color: #9aa0a6;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
-            padding: 30px 25px;
+            padding: 28px 20px 40px;
         }
-        
-        .page-header {
-            margin-bottom: 30px;
-        }
-        
-        .page-header h1 {
+        .header h1 {
+            margin: 0;
             font-size: 28px;
-            color: #202124;
-            margin-bottom: 8px;
         }
-        
-        .page-header p {
-            color: #666;
-            font-size: 14px;
+        .header p {
+            margin: 8px 0 0;
+            color: #5b6472;
         }
-        
-        .report-controls {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 25px;
+        .controls {
+            margin-top: 22px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 16px;
             display: flex;
-            gap: 20px;
+            gap: 12px;
             align-items: end;
             flex-wrap: wrap;
         }
-        
-        .control-group {
+        .control {
             display: flex;
             flex-direction: column;
             gap: 6px;
+            min-width: 200px;
         }
-        
-        .control-group label {
+        .control label {
             font-size: 12px;
-            color: #666;
             font-weight: 600;
+            color: #4b5563;
         }
-        
-        .control-group select,
-        .control-group input {
-            padding: 10px 14px;
-            border: 1px solid #e8eaed;
-            border-radius: 6px;
+        .control select {
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
             font-size: 14px;
-            min-width: 180px;
+            background: #fff;
         }
-        
+        .btn {
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
         .btn-primary {
             background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
-            color: white;
-            border: none;
-            padding: 10px 24px;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s;
+            color: #fff;
         }
-        
-        .btn-primary:hover {
-            transform: translateY(-1px);
-        }
-        
-        .btn-secondary {
-            background: white;
-            color: #0066cc;
-            border: 1px solid #0066cc;
-            padding: 10px 24px;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .btn-secondary:hover {
-            background: rgba(0,102,204,0.05);
-        }
-        
-        .report-card {
-            background: white;
+        .banner {
+            margin-top: 16px;
+            background: #e8f4ff;
+            border: 1px solid #bcdcff;
+            color: #034078;
             border-radius: 10px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 12px 14px;
+            font-size: 14px;
+        }
+        .state {
+            margin-top: 16px;
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: 14px;
+            display: none;
+        }
+        .state-loading { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+        .state-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .state-empty { background: #f9fafb; border: 1px solid #e5e7eb; color: #4b5563; }
+        .cards {
+            margin-top: 18px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 12px;
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 14px;
+        }
+        .card h3 {
+            margin: 0;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #6b7280;
+            letter-spacing: 0.4px;
+        }
+        .card .value {
+            margin-top: 8px;
+            font-size: 26px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .card .sub {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .value-payable { color: #b91c1c !important; }
+        .value-refundable { color: #166534 !important; }
+        .panel {
+            margin-top: 16px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
             overflow: hidden;
         }
-        
-        .report-header {
-            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
-            color: white;
-            padding: 25px;
-            text-align: center;
+        .panel h2 {
+            margin: 0;
+            padding: 12px 14px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 16px;
+            background: #f8fafc;
         }
-        
-        .report-header h2 {
-            font-size: 22px;
-            margin-bottom: 5px;
+        .warnings-list {
+            margin: 0;
+            padding: 12px 22px 16px;
+            color: #7c2d12;
         }
-        
-        .report-header p {
-            font-size: 13px;
-            opacity: 0.9;
-        }
-        
-        .report-content {
-            padding: 30px;
-        }
-        
-        .report-table {
+        table {
             width: 100%;
             border-collapse: collapse;
         }
-        
-        .report-table th {
+        th, td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f1f5f9;
             text-align: left;
-            padding: 12px 15px;
-            border-bottom: 2px solid #e8eaed;
-            color: #666;
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .report-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #f1f3f4;
-            color: #202124;
             font-size: 14px;
         }
-        
-        .report-table tr:hover {
-            background: rgba(0,102,204,0.02);
+        th {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: #475569;
+            background: #f8fafc;
         }
-        
-        .section-header {
-            font-weight: 700;
-            font-size: 15px;
-            background: rgba(0,102,204,0.05);
-            color: #0066cc;
-        }
-        
-        .section-total {
-            font-weight: 700;
-            background: rgba(0,102,204,0.08);
-            border-top: 2px solid #0066cc;
-        }
-        
-        .grand-total {
-            font-weight: 700;
-            font-size: 16px;
-            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
-            color: white;
-            border: none;
-        }
-        
-        .amount {
-            text-align: right;
-            font-family: 'Courier New', monospace;
-        }
-        
-        .positive {
-            color: #34a853;
-        }
-        
-        .negative {
-            color: #ea4335;
-        }
-        
-        .indent-1 {
-            padding-left: 35px;
-        }
-        
-        .indent-2 {
-            padding-left: 55px;
+        td.num { text-align: right; font-family: 'Courier New', monospace; }
+        @media (max-width: 700px) {
+            .container { padding: 20px 14px 30px; }
+            .card .value { font-size: 22px; }
+            th, td { font-size: 12px; }
         }
     </style>
-    <link rel="stylesheet" href="css/dark-theme.css">
-    <script src="js/polyfills.js"></script>
 </head>
 <body>
-
     <div class="container">
-        <div class="page-header">
+        <div class="header">
             <h1>VAT Return</h1>
-            <p>VAT201 Return showing VAT collected and paid</p>
+            <p>Authoritative VAT201 draft view generated from posted accounting data.</p>
         </div>
-        
-        <div class="report-controls">
-            <div class="control-group">
-                <label>Period From</label>
-                <input type="date" id="dateFrom" value="2026-01-01">
+
+        <div class="controls">
+            <div class="control">
+                <label for="periodSelect">VAT Period (YYYY-MM)</label>
+                <select id="periodSelect"></select>
             </div>
-            <div class="control-group">
-                <label>Period To</label>
-                <input type="date" id="dateTo" value="2026-01-31">
-            </div>
-            <div class="control-group">
-                <label>VAT Period</label>
-                <select>
-                    <option>January 2026</option>
-                    <option>December 2025</option>
-                    <option>November 2025</option>
-                </select>
-            </div>
-            <button class="btn-primary" onclick="generateReport()">Generate Return</button>
-            <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
-            <button class="btn-secondary" onclick="submitReturn()">Submit to SARS</button>
+            <button class="btn btn-primary" id="loadBtn" type="button">Load VAT Report</button>
         </div>
-        
-        <div class="report-card">
-            <div class="report-header">
-                <h2 id="reportCompanyName"></h2>
-                <script>var _rcn=document.getElementById('reportCompanyName');if(_rcn)_rcn.textContent=localStorage.getItem('accounting_company_name')||localStorage.getItem('eco_company_name')||'My Company';</script>
-                <p>VAT Return (VAT201) - January 2026</p>
+
+        <div class="banner">Draft VAT report - generated from posted accounting data. Not submitted to SARS.</div>
+
+        <div class="state state-loading" id="loadingState">Loading VAT report...</div>
+        <div class="state state-error" id="errorState"></div>
+        <div class="state state-empty" id="emptyState">No VAT totals available for this period yet.</div>
+
+        <div class="cards" id="summaryCards" style="display:none;">
+            <div class="card">
+                <h3>Output VAT</h3>
+                <div class="value" id="outputVat">R 0.00</div>
+                <div class="sub" id="periodLabelOut">Period</div>
             </div>
-            
-            <div class="report-content">
-                <table class="report-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 80px;">Field</th>
-                            <th>Description</th>
-                            <th class="amount">Amount (ZAR)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr class="section-header">
-                            <td colspan="3">OUTPUT TAX</td>
-                        </tr>
-                        <tr>
-                            <td>1</td>
-                            <td class="indent-1">Standard-rated supplies (incl VAT)</td>
-                            <td class="amount">R 261,450.00</td>
-                        </tr>
-                        <tr>
-                            <td>2</td>
-                            <td class="indent-1">Zero-rated supplies</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>3</td>
-                            <td class="indent-1">Exempt supplies</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>4</td>
-                            <td class="indent-1">Total supplies (1 + 2 + 3)</td>
-                            <td class="amount">R 261,450.00</td>
-                        </tr>
-                        <tr>
-                            <td>5</td>
-                            <td class="indent-1">Output VAT @ 15%</td>
-                            <td class="amount">R 34,102.83</td>
-                        </tr>
-                        <tr>
-                            <td>6</td>
-                            <td class="indent-1">Bad debts recovered</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr class="section-total">
-                            <td>7</td>
-                            <td><strong>Total Output Tax (5 + 6)</strong></td>
-                            <td class="amount"><strong>R 34,102.83</strong></td>
-                        </tr>
-                        
-                        <tr><td colspan="3" style="height: 15px;"></td></tr>
-                        
-                        <tr class="section-header">
-                            <td colspan="3">INPUT TAX</td>
-                        </tr>
-                        <tr>
-                            <td>8</td>
-                            <td class="indent-1">Standard-rated purchases (incl VAT)</td>
-                            <td class="amount">R 131,445.00</td>
-                        </tr>
-                        <tr>
-                            <td>9</td>
-                            <td class="indent-1">Zero-rated purchases</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>10</td>
-                            <td class="indent-1">Capital goods (incl VAT)</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>11</td>
-                            <td class="indent-1">Total purchases (8 + 9 + 10)</td>
-                            <td class="amount">R 131,445.00</td>
-                        </tr>
-                        <tr>
-                            <td>12</td>
-                            <td class="indent-1">Input VAT @ 15%</td>
-                            <td class="amount">R 17,145.00</td>
-                        </tr>
-                        <tr>
-                            <td>13</td>
-                            <td class="indent-1">Bad debts written off</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>14</td>
-                            <td class="indent-1">Import VAT deferred</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr class="section-total">
-                            <td>15</td>
-                            <td><strong>Total Input Tax (12 + 13 + 14)</strong></td>
-                            <td class="amount"><strong>R 17,145.00</strong></td>
-                        </tr>
-                        
-                        <tr><td colspan="3" style="height: 15px;"></td></tr>
-                        
-                        <tr class="section-header">
-                            <td colspan="3">ADJUSTMENTS</td>
-                        </tr>
-                        <tr>
-                            <td>16</td>
-                            <td class="indent-1">Import VAT from Customs</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>17</td>
-                            <td class="indent-1">VAT refund payments</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>18</td>
-                            <td class="indent-1">Total adjustments (16 + 17)</td>
-                            <td class="amount">R 0.00</td>
-                        </tr>
-                        
-                        <tr><td colspan="3" style="height: 15px;"></td></tr>
-                        
-                        <tr class="section-total" style="background: rgba(0,102,204,0.12);">
-                            <td>19</td>
-                            <td><strong>Total VAT (7 - 15 + 18)</strong></td>
-                            <td class="amount positive"><strong>R 16,957.83</strong></td>
-                        </tr>
-                        
-                        <tr><td colspan="3" style="height: 10px;"></td></tr>
-                        
-                        <tr class="grand-total">
-                            <td>20</td>
-                            <td><strong>VAT PAYABLE TO SARS</strong></td>
-                            <td class="amount"><strong>R 16,957.83</strong></td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="card">
+                <h3>Input VAT</h3>
+                <div class="value" id="inputVat">R 0.00</div>
+                <div class="sub" id="periodLabelIn">Period</div>
             </div>
+            <div class="card">
+                <h3>Net Payable / Refundable</h3>
+                <div class="value" id="netVat">R 0.00</div>
+                <div class="sub" id="netDirection">Payable/Refundable</div>
+            </div>
+        </div>
+
+        <div class="panel" id="warningsPanel" style="display:none;">
+            <h2>Warnings</h2>
+            <ul class="warnings-list" id="warningsList"></ul>
+        </div>
+
+        <div class="panel" id="sourcePanel" style="display:none;">
+            <h2>Source Breakdown</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Journal Count</th>
+                        <th class="num">Output VAT</th>
+                        <th class="num">Input VAT</th>
+                        <th class="num">Net VAT</th>
+                    </tr>
+                </thead>
+                <tbody id="sourceBody"></tbody>
+            </table>
         </div>
     </div>
-    
-    <script>
-        let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
 
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
+    <script>
+        const API_BASE = window.location.origin + '/api/accounting';
+
+        function formatMoney(value) {
+            const amount = Math.abs(Number(value) || 0);
+            return 'R ' + amount.toLocaleString('en-ZA', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
         }
-        
-        // User info display handled by navigation.js
-        
-        function generateReport() {
-            alert('Generating VAT return with selected parameters...');
+
+        function normalizePeriodKey(input) {
+            const raw = String(input || '').trim();
+            if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+            if (/^\d{4}\.\d{2}$/.test(raw)) return raw.replace('.', '-');
+            return raw;
         }
-        
-        function exportPDF() {
-            alert('Exporting VAT return to PDF...');
+
+        function getAuthHeaders() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/';
+                throw new Error('Missing auth token');
+            }
+            return { 'Authorization': `Bearer ${token}` };
         }
-        
-        function submitReturn() {
-            alert('This would submit the VAT return to SARS eFiling system...');
+
+        function setState(state, message) {
+            const loading = document.getElementById('loadingState');
+            const error = document.getElementById('errorState');
+            const empty = document.getElementById('emptyState');
+
+            loading.style.display = state === 'loading' ? 'block' : 'none';
+            error.style.display = state === 'error' ? 'block' : 'none';
+            empty.style.display = state === 'empty' ? 'block' : 'none';
+
+            if (state === 'error') error.textContent = message || 'Failed to load VAT report.';
         }
+
+        function buildPeriods() {
+            const select = document.getElementById('periodSelect');
+            const now = new Date();
+            select.innerHTML = '';
+
+            for (let i = 0; i < 18; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const key = `${y}-${m}`;
+                const label = `${key} (${d.toLocaleString('en-ZA', { month: 'long', year: 'numeric' })})`;
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = label;
+                select.appendChild(opt);
+            }
+        }
+
+        async function fetchVatReport(periodKey) {
+            const response = await fetch(`${API_BASE}/vat/report?periodKey=${encodeURIComponent(periodKey)}&includeSources=true`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders(),
+                },
+            });
+
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload.error || 'VAT report request failed');
+            }
+
+            return payload;
+        }
+
+        function renderSummary(report) {
+            document.getElementById('summaryCards').style.display = 'grid';
+
+            const outputEl = document.getElementById('outputVat');
+            const inputEl = document.getElementById('inputVat');
+            const netEl = document.getElementById('netVat');
+            const netDirection = document.getElementById('netDirection');
+
+            outputEl.textContent = formatMoney(report.outputVat);
+            inputEl.textContent = formatMoney(report.inputVat);
+            netEl.textContent = formatMoney(report.netVatPayableRefundable);
+
+            netEl.classList.remove('value-payable', 'value-refundable');
+            if ((report.netVatPayableRefundable || 0) >= 0) {
+                netEl.classList.add('value-payable');
+                netDirection.textContent = 'Payable to SARS';
+            } else {
+                netEl.classList.add('value-refundable');
+                netDirection.textContent = 'Refundable from SARS';
+            }
+
+            const periodMeta = `${report.periodKey} | ${report.dateFrom} to ${report.dateTo}`;
+            document.getElementById('periodLabelOut').textContent = periodMeta;
+            document.getElementById('periodLabelIn').textContent = periodMeta;
+        }
+
+        function renderWarnings(report) {
+            const panel = document.getElementById('warningsPanel');
+            const list = document.getElementById('warningsList');
+            const warnings = Array.isArray(report.warnings) ? report.warnings : [];
+
+            if (!warnings.length) {
+                panel.style.display = 'none';
+                list.innerHTML = '';
+                return;
+            }
+
+            panel.style.display = 'block';
+            list.innerHTML = warnings.map(w => `<li>${w}</li>`).join('');
+        }
+
+        function renderSourceBreakdown(report) {
+            const panel = document.getElementById('sourcePanel');
+            const body = document.getElementById('sourceBody');
+            const breakdown = report.sourceBreakdown || {};
+
+            const rows = [
+                ['Customer Invoices', breakdown.customerInvoices],
+                ['Supplier Invoices', breakdown.supplierInvoices],
+                ['Bank Allocations', breakdown.bankAllocations],
+                ['Manual Journals', breakdown.manualJournals],
+                ['Out-of-Period', breakdown.outOfPeriod],
+            ];
+
+            body.innerHTML = rows.map(([label, bucket]) => {
+                const b = bucket || {};
+                return `
+                    <tr>
+                        <td>${label}</td>
+                        <td>${Number(b.journalCount || 0)}</td>
+                        <td class="num">${formatMoney(b.outputVat || 0)}</td>
+                        <td class="num">${formatMoney(b.inputVat || 0)}</td>
+                        <td class="num">${formatMoney(b.netVat || 0)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            panel.style.display = 'block';
+        }
+
+        function clearPanels() {
+            document.getElementById('summaryCards').style.display = 'none';
+            document.getElementById('warningsPanel').style.display = 'none';
+            document.getElementById('sourcePanel').style.display = 'none';
+        }
+
+        async function loadReport() {
+            clearPanels();
+            setState('loading');
+
+            try {
+                const select = document.getElementById('periodSelect');
+                const periodKey = normalizePeriodKey(select.value);
+                const report = await fetchVatReport(periodKey);
+
+                const hasAnyVat = Math.abs(Number(report.outputVat || 0)) > 0.0001
+                    || Math.abs(Number(report.inputVat || 0)) > 0.0001;
+
+                if (!hasAnyVat) {
+                    setState('empty');
+                } else {
+                    setState(null);
+                }
+
+                renderSummary(report);
+                renderWarnings(report);
+                renderSourceBreakdown(report);
+            } catch (error) {
+                setState('error', error.message);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            buildPeriods();
+            document.getElementById('loadBtn').addEventListener('click', loadReport);
+            loadReport();
+        });
     </script>
 </body>
 </html>

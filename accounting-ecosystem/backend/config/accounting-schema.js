@@ -699,6 +699,20 @@ async function ensureAccountingSchema(pool) {
     // tab can display the VAT treatment without a journal_lines JOIN.
     await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS vat_setting_id INTEGER REFERENCES vat_settings(id)`);
 
+    // ── 24e. Add matched_at timestamp to bank_transactions ───────────────────
+    // Records the exact moment a bank transaction was matched to a GL journal.
+    // Set by the allocation route alongside status='matched'.
+    await client.query(`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS matched_at TIMESTAMPTZ`);
+
+    // ── Post-migration: notify PostgREST to reload its schema cache ───────────
+    // The ALTER TABLE statements above run through a direct pg pool connection.
+    // Supabase's PostgREST layer caches the schema independently and is NOT
+    // automatically notified of schema changes made via direct pg connections.
+    // Without this NOTIFY, PostgREST's cache stays stale and UPDATE/INSERT calls
+    // through the Supabase JS client that reference the new columns fail with
+    // "column not found in schema cache".
+    await client.query(`SELECT pg_notify('pgrst', 'reload schema')`);
+
     // ── 25. Customer AR Tables ─────────────────────────────────────────────────
 
     await client.query(`

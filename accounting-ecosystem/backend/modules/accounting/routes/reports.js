@@ -718,4 +718,309 @@ router.get('/bank-recon-history/:sessionId', authenticate, hasPermission('report
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/accounting/reports/control-account-reconciliation
+//
+// Forensic reconciliation proof: compares GL control account balances against
+// the corresponding sub-ledger outstanding balances.
+//
+//   AR: GL account 1100  vs  outstanding customer_invoices
+//   AP: GL account 2000  vs  outstanding supplier_invoices
+//
+// Sign convention (consistent with rest of reports.js):
+//   AR GL balance  = SUM(debit) − SUM(credit) → positive = receivable  (asset)
+//   AP GL balance  = SUM(credit) − SUM(debit) → positive = payable    (liability)
+//
+// Query params:
+//   asAt  — ISO date (YYYY-MM-DD), defaults to today
+//   type  — 'ar' | 'ap' | 'both'  (default 'both')
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/control-account-reconciliation', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const companyId = req.user.companyId;
+    const asAt = req.query.asAt || new Date().toISOString().slice(0, 10);
+    const type = req.query.type || 'both';
+
+    const includeAR = type === 'ar' || type === 'both';
+    const includeAP = type === 'ap' || type === 'both';
+
+    const result = { asAt };
+    if (includeAR) result.ar = await buildARReconciliation(companyId, asAt);
+    if (includeAP) result.ap = await buildAPReconciliation(companyId, asAt);
+
+    res.json(result);
+  } catch (error) {
+    console.error('[reports.control-account-recon] Error:', error.message);
+    res.status(500).json({ error: 'Failed to generate control account reconciliation' });
+  }
+});
+
+// ─── AR helper: GL 1100 vs customer_invoices sub-ledger ──────────────────────
+async function buildARReconciliation(companyId, asAt) {
+  const warnings = [];
+
+  // 1. Lookup control account 1100
+  const acctRes = await db.query(
+    `SELECT id, code, name FROM accounts WHERE company_id = $1 AND code = '1100' LIMIT 1`,
+    [companyId]
+  );
+  const acct = acctRes.rows[0] || null;
+  if (!acct) {
+    warnings.push('AR control account (code 1100) not found in Chart of Accounts. GL balance cannot be calculated.');
+  }
+
+  // 2. GL balance: debit − credit (positive = receivable, asset normal balance)
+  let glBalance = 0;
+  if (acct) {
+    const glRes = await db.query(
+      `SELECT COALESCE(SUM(jl.debit), 0) AS d, COALESCE(SUM(jl.credit), 0) AS c
+       FROM journal_lines jl
+       INNER JOIN journals j ON j.id = jl.journal_id
+       WHERE j.company_id = $1
+         AND j.status = 'posted'
+         AND j.date <= $2
+         AND jl.account_id = $3`,
+      [companyId, asAt, acct.id]
+    );
+    const d = parseFloat(glRes.rows[0].d);
+    const c = parseFloat(glRes.rows[0].c);
+    glBalance = Math.round((d - c) * 100) / 100;
+
+    // Warning: manual journals posting directly to 1100 (bypass sub-ledger)
+    const manualRes = await db.query(
+      `SELECT COUNT(DISTINCT j.id) AS cnt
+       FROM journal_lines jl
+       INNER JOIN journals j ON j.id = jl.journal_id
+       WHERE j.company_id = $1
+         AND j.status = 'posted'
+         AND j.date <= $2
+         AND jl.account_id = $3
+         AND (j.source_type = 'manual' OR j.source_type IS NULL)`,
+      [companyId, asAt, acct.id]
+    );
+    const manualCount = parseInt(manualRes.rows[0].cnt || 0);
+    if (manualCount > 0) {
+      warnings.push(
+        `${manualCount} manual journal(s) post directly to AR control account 1100 and are not linked to customer invoices or payments. ` +
+        `These may cause a GL vs sub-ledger difference.`
+      );
+    }
+  }
+
+  // 3. Sub-ledger: outstanding customer invoices as at asAt
+  const slRes = await db.query(
+    `SELECT COALESCE(SUM(total_inc_vat - amount_paid), 0) AS subledger_balance, COUNT(*) AS invoice_count
+     FROM customer_invoices
+     WHERE company_id = $1
+       AND invoice_date <= $2
+       AND status NOT IN ('draft', 'void', 'cancelled')
+       AND (total_inc_vat - amount_paid) > 0.005`,
+    [companyId, asAt]
+  );
+  const subledgerBalance = Math.round(parseFloat(slRes.rows[0].subledger_balance || 0) * 100) / 100;
+  const invoiceCount     = parseInt(slRes.rows[0].invoice_count || 0);
+
+  // 4. Warning: invoices posted (sent/part_paid) but journal_id missing
+  const orphanInvRes = await db.query(
+    `SELECT COUNT(*) AS cnt FROM customer_invoices
+     WHERE company_id = $1 AND status IN ('sent', 'part_paid') AND journal_id IS NULL`,
+    [companyId]
+  );
+  const orphanInvCount = parseInt(orphanInvRes.rows[0].cnt || 0);
+  if (orphanInvCount > 0) {
+    warnings.push(
+      `${orphanInvCount} customer invoice(s) with status 'sent' or 'part_paid' have no linked GL journal. ` +
+      `These appear in the sub-ledger but NOT in the GL.`
+    );
+  }
+
+  // 5. Warning: customer payments with no GL journal
+  const orphanPayRes = await db.query(
+    `SELECT COUNT(*) AS cnt FROM customer_payments WHERE company_id = $1 AND journal_id IS NULL`,
+    [companyId]
+  );
+  const orphanPayCount = parseInt(orphanPayRes.rows[0].cnt || 0);
+  if (orphanPayCount > 0) {
+    warnings.push(
+      `${orphanPayCount} customer payment(s) have no linked GL journal. ` +
+      `These reduce the sub-ledger but NOT the GL.`
+    );
+  }
+
+  // 6. Detail breakdown by customer
+  const detailRes = await db.query(
+    `SELECT
+       CASE WHEN customer_id IS NOT NULL THEN 'id:' || customer_id::text
+            ELSE 'name:' || lower(trim(customer_name)) END AS group_key,
+       MAX(customer_name)  AS customer_name,
+       MAX(customer_id)    AS customer_id,
+       COUNT(*)            AS invoice_count,
+       COALESCE(SUM(total_inc_vat - amount_paid), 0) AS outstanding
+     FROM customer_invoices
+     WHERE company_id = $1
+       AND invoice_date <= $2
+       AND status NOT IN ('draft', 'void', 'cancelled')
+       AND (total_inc_vat - amount_paid) > 0.005
+     GROUP BY CASE WHEN customer_id IS NOT NULL THEN 'id:' || customer_id::text
+                   ELSE 'name:' || lower(trim(customer_name)) END
+     ORDER BY outstanding DESC`,
+    [companyId, asAt]
+  );
+  const details = detailRes.rows.map(r => ({
+    customerName: r.customer_name,
+    customerId:   r.customer_id ? parseInt(r.customer_id) : null,
+    invoiceCount: parseInt(r.invoice_count),
+    outstanding:  Math.round(parseFloat(r.outstanding || 0) * 100) / 100,
+  }));
+
+  const difference   = Math.round((glBalance - subledgerBalance) * 100) / 100;
+  const isReconciled = Math.abs(difference) < 0.01;
+
+  return {
+    controlAccountCode: '1100',
+    controlAccountName: acct ? acct.name : 'Accounts Receivable (account not found)',
+    glBalance,
+    subledgerBalance,
+    difference,
+    isReconciled,
+    customerCount: details.length,
+    invoiceCount,
+    warnings,
+    details,
+  };
+}
+
+// ─── AP helper: GL 2000 vs supplier_invoices sub-ledger ──────────────────────
+async function buildAPReconciliation(companyId, asAt) {
+  const warnings = [];
+
+  // 1. Lookup control account 2000
+  const acctRes = await db.query(
+    `SELECT id, code, name FROM accounts WHERE company_id = $1 AND code = '2000' LIMIT 1`,
+    [companyId]
+  );
+  const acct = acctRes.rows[0] || null;
+  if (!acct) {
+    warnings.push('AP control account (code 2000) not found in Chart of Accounts. GL balance cannot be calculated.');
+  }
+
+  // 2. GL balance: credit − debit (positive = payable, liability normal balance)
+  let glBalance = 0;
+  if (acct) {
+    const glRes = await db.query(
+      `SELECT COALESCE(SUM(jl.debit), 0) AS d, COALESCE(SUM(jl.credit), 0) AS c
+       FROM journal_lines jl
+       INNER JOIN journals j ON j.id = jl.journal_id
+       WHERE j.company_id = $1
+         AND j.status = 'posted'
+         AND j.date <= $2
+         AND jl.account_id = $3`,
+      [companyId, asAt, acct.id]
+    );
+    const d = parseFloat(glRes.rows[0].d);
+    const c = parseFloat(glRes.rows[0].c);
+    glBalance = Math.round((c - d) * 100) / 100; // SIGN FLIP for liability account
+
+    // Warning: manual journals posting directly to 2000 (bypass sub-ledger)
+    const manualRes = await db.query(
+      `SELECT COUNT(DISTINCT j.id) AS cnt
+       FROM journal_lines jl
+       INNER JOIN journals j ON j.id = jl.journal_id
+       WHERE j.company_id = $1
+         AND j.status = 'posted'
+         AND j.date <= $2
+         AND jl.account_id = $3
+         AND (j.source_type = 'manual' OR j.source_type IS NULL)`,
+      [companyId, asAt, acct.id]
+    );
+    const manualCount = parseInt(manualRes.rows[0].cnt || 0);
+    if (manualCount > 0) {
+      warnings.push(
+        `${manualCount} manual journal(s) post directly to AP control account 2000 and are not linked to supplier invoices or payments. ` +
+        `These may cause a GL vs sub-ledger difference.`
+      );
+    }
+  }
+
+  // 3. Sub-ledger: outstanding supplier invoices as at asAt
+  const slRes = await db.query(
+    `SELECT COALESCE(SUM(total_inc_vat - amount_paid), 0) AS subledger_balance, COUNT(*) AS invoice_count
+     FROM supplier_invoices
+     WHERE company_id = $1
+       AND invoice_date <= $2
+       AND status NOT IN ('draft', 'cancelled')
+       AND (total_inc_vat - amount_paid) > 0.005`,
+    [companyId, asAt]
+  );
+  const subledgerBalance = Math.round(parseFloat(slRes.rows[0].subledger_balance || 0) * 100) / 100;
+  const invoiceCount     = parseInt(slRes.rows[0].invoice_count || 0);
+
+  // 4. Warning: invoices posted (unpaid/part_paid) but journal_id missing
+  const orphanInvRes = await db.query(
+    `SELECT COUNT(*) AS cnt FROM supplier_invoices
+     WHERE company_id = $1 AND status IN ('unpaid', 'part_paid') AND journal_id IS NULL`,
+    [companyId]
+  );
+  const orphanInvCount = parseInt(orphanInvRes.rows[0].cnt || 0);
+  if (orphanInvCount > 0) {
+    warnings.push(
+      `${orphanInvCount} supplier invoice(s) with status 'unpaid' or 'part_paid' have no linked GL journal. ` +
+      `These appear in the sub-ledger but NOT in the GL.`
+    );
+  }
+
+  // 5. Warning: supplier payments with no GL journal
+  const orphanPayRes = await db.query(
+    `SELECT COUNT(*) AS cnt FROM supplier_payments WHERE company_id = $1 AND journal_id IS NULL`,
+    [companyId]
+  );
+  const orphanPayCount = parseInt(orphanPayRes.rows[0].cnt || 0);
+  if (orphanPayCount > 0) {
+    warnings.push(
+      `${orphanPayCount} supplier payment(s) have no linked GL journal. ` +
+      `These reduce the sub-ledger but NOT the GL.`
+    );
+  }
+
+  // 6. Detail breakdown by supplier
+  const detailRes = await db.query(
+    `SELECT
+       si.supplier_id,
+       MAX(s.name)  AS supplier_name,
+       COUNT(*)     AS invoice_count,
+       COALESCE(SUM(si.total_inc_vat - si.amount_paid), 0) AS outstanding
+     FROM supplier_invoices si
+     LEFT JOIN suppliers s ON s.id = si.supplier_id AND s.company_id = si.company_id
+     WHERE si.company_id = $1
+       AND si.invoice_date <= $2
+       AND si.status NOT IN ('draft', 'cancelled')
+       AND (si.total_inc_vat - si.amount_paid) > 0.005
+     GROUP BY si.supplier_id
+     ORDER BY outstanding DESC`,
+    [companyId, asAt]
+  );
+  const details = detailRes.rows.map(r => ({
+    supplierName: r.supplier_name || 'Unknown Supplier',
+    supplierId:   r.supplier_id ? parseInt(r.supplier_id) : null,
+    invoiceCount: parseInt(r.invoice_count),
+    outstanding:  Math.round(parseFloat(r.outstanding || 0) * 100) / 100,
+  }));
+
+  const difference   = Math.round((glBalance - subledgerBalance) * 100) / 100;
+  const isReconciled = Math.abs(difference) < 0.01;
+
+  return {
+    controlAccountCode: '2000',
+    controlAccountName: acct ? acct.name : 'Accounts Payable (account not found)',
+    glBalance,
+    subledgerBalance,
+    difference,
+    isReconciled,
+    supplierCount: details.length,
+    invoiceCount,
+    warnings,
+    details,
+  };
+}
+
 module.exports = router;

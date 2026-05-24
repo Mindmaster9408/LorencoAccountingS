@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Account Reconciliation - Lorenco Accounting</title>
+    <script src="js/navigation.js"></script>
+    <script src="js/theme-guard.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f8f9fa;
+        }
+
+        .top-bar {
+            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
+            color: white;
+            padding: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 60px;
+            box-shadow: 0 2px 8px rgba(0,102,204,0.2);
+        }
+
+        .brand-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 0 25px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .logo-icon {
+            width: 35px;
+            height: 35px;
+            background: white;
+            color: #0066cc;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+        }
+
+        .company-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .company-selector:hover { background: rgba(255,255,255,0.25); }
+
+        .right-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 0 25px;
+        }
+
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 16px;
+        }
+
+        .icon-btn:hover { background: rgba(255,255,255,0.25); }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .user-menu:hover { background: rgba(255,255,255,0.15); }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: white;
+            color: #0066cc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .user-name { font-size: 14px; font-weight: 500; }
+
+        .navbar {
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            padding: 0 25px;
+            gap: 5px;
+        }
+
+        .nav-item { position: relative; }
+
+        .nav-item > a {
+            display: block;
+            padding: 16px 20px;
+            color: #202124;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.2s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .nav-item > a:hover,
+        .nav-item > a.active {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+            background: rgba(0,102,204,0.05);
+        }
+
+        .dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: 8px;
+            min-width: 220px;
+            padding: 8px 0;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s;
+            z-index: 1000;
+        }
+
+        .nav-item:hover .dropdown {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown a {
+            display: block;
+            padding: 10px 20px;
+            color: #202124;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .dropdown a:hover {
+            background: rgba(0,102,204,0.08);
+            color: #0066cc;
+        }
+
+        .dropdown-header {
+            padding: 8px 20px 4px;
+            color: #9aa0a6;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 25px;
+        }
+
+        .page-header {
+            margin-bottom: 30px;
+        }
+
+        .page-header h1 {
+            font-size: 28px;
+            color: #202124;
+            margin-bottom: 8px;
+        }
+
+        .page-header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .report-controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            display: flex;
+            gap: 20px;
+            align-items: end;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .control-group label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .control-group select,
+        .control-group input {
+            padding: 10px 14px;
+            border: 1px solid #e8eaed;
+            border-radius: 6px;
+            font-size: 14px;
+            min-width: 180px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .btn-primary:hover { transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        .recon-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 900px) {
+            .recon-grid { grid-template-columns: 1fr; }
+        }
+
+        .recon-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .recon-card-header {
+            padding: 18px 22px;
+            color: white;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .recon-card-header.reconciled   { background: linear-gradient(135deg, #1e7e34 0%, #28a745 100%); }
+        .recon-card-header.unreconciled { background: linear-gradient(135deg, #c62828 0%, #ea4335 100%); }
+        .recon-card-header.missing      { background: linear-gradient(135deg, #e65100 0%, #fb8c00 100%); }
+        .recon-card-header.loading      { background: linear-gradient(135deg, #5f6368 0%, #9aa0a6 100%); }
+
+        .recon-status-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.2);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .recon-card-body {
+            padding: 22px;
+        }
+
+        .recon-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f3f4;
+            font-size: 14px;
+        }
+
+        .recon-row:last-child { border-bottom: none; }
+
+        .recon-label { color: #5f6368; }
+
+        .recon-value {
+            font-weight: 600;
+            font-family: 'Courier New', monospace;
+        }
+
+        .recon-value.positive { color: #1e7e34; }
+        .recon-value.negative { color: #c62828; }
+        .recon-value.reconciled  { color: #1e7e34; }
+        .recon-value.unreconciled { color: #c62828; }
+
+        .recon-diff-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            margin-top: 6px;
+            border-top: 2px solid #e8eaed;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .warnings-section {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px dashed #fbbc04;
+        }
+
+        .warning-item {
+            background: #fff8e1;
+            border-left: 3px solid #fbbc04;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            font-size: 12px;
+            color: #666;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .detail-section {
+            margin-top: 14px;
+        }
+
+        .detail-section summary {
+            font-size: 13px;
+            color: #0066cc;
+            cursor: pointer;
+            font-weight: 600;
+            padding: 6px 0;
+            outline: none;
+        }
+
+        .detail-section summary:hover { text-decoration: underline; }
+
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+
+        .detail-table th {
+            text-align: left;
+            padding: 8px 12px;
+            border-bottom: 2px solid #e8eaed;
+            color: #666;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f1f3f4;
+            color: #202124;
+        }
+
+        .detail-table tr:hover { background: rgba(0,102,204,0.02); }
+
+        .detail-table .amount { text-align: right; font-family: 'Courier New', monospace; }
+
+        .detail-total td {
+            font-weight: 700;
+            border-top: 2px solid #e8eaed;
+            background: rgba(0,102,204,0.04);
+        }
+
+        .report-card-outer {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 25px;
+        }
+
+        .report-card-header {
+            background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%);
+            color: white;
+            padding: 22px 25px;
+            text-align: center;
+        }
+
+        .report-card-header h2 { font-size: 20px; margin-bottom: 4px; }
+        .report-card-header p  { font-size: 13px; opacity: 0.9; }
+
+        .error-banner {
+            background: #fee2e2;
+            color: #b91c1c;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin-bottom: 18px;
+            font-size: 14px;
+        }
+
+        .ar-hidden { display: none !important; }
+
+        .loading-placeholder {
+            text-align: center;
+            padding: 48px;
+            color: #9aa0a6;
+            font-size: 14px;
+        }
+    </style>
+    <link rel="stylesheet" href="css/dark-theme.css">
+    <script src="js/polyfills.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Control Account Reconciliation</h1>
+            <p>Compares AR/AP GL control account balances against outstanding sub-ledger balances to detect posting discrepancies.</p>
+        </div>
+
+        <div class="report-controls">
+            <div class="control-group">
+                <label>As At Date</label>
+                <input type="date" id="asAtDate">
+            </div>
+            <div class="control-group">
+                <label>Ledger</label>
+                <select id="typeSelect">
+                    <option value="both">AR &amp; AP (Both)</option>
+                    <option value="ar">AR Only (Account 1100)</option>
+                    <option value="ap">AP Only (Account 2000)</option>
+                </select>
+            </div>
+            <button type="button" class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
+        </div>
+
+        <div id="errorBanner" class="error-banner ar-hidden"></div>
+
+        <div id="reportArea" class="ar-hidden">
+            <div class="report-card-outer">
+                <div class="report-card-header">
+                    <h2 id="reportCompanyName"></h2>
+                    <p id="reportSubtitle">Control Account Reconciliation</p>
+                </div>
+            </div>
+
+            <div class="recon-grid" id="reconGrid"></div>
+        </div>
+
+        <div id="loadingPlaceholder" class="loading-placeholder ar-hidden">
+            Generating reconciliation&hellip;
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/'; }
+
+        document.getElementById('asAtDate').value = new Date().toISOString().slice(0, 10);
+
+        function authHeaders() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+        }
+
+        function fmtAmt(n) {
+            const v = parseFloat(n) || 0;
+            const sign = v < 0 ? '-' : '';
+            return sign + 'R\u00a0' + Math.abs(v).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorBanner');
+            el.textContent = msg;
+            el.classList.remove('ar-hidden');
+            setTimeout(() => el.classList.add('ar-hidden'), 12000);
+        }
+
+        function hide(id) { document.getElementById(id).classList.add('ar-hidden'); }
+        function show(id) { document.getElementById(id).classList.remove('ar-hidden'); }
+
+        // ── Build one reconciliation card ────────────────────────────────────
+        function buildReconCard(data, side) {
+            const isAR     = side === 'ar';
+            const label    = isAR ? 'AR' : 'AP';
+            const entity   = isAR ? 'Customer' : 'Supplier';
+            const countKey = isAR ? 'customerCount' : 'supplierCount';
+            const nameKey  = isAR ? 'customerName'  : 'supplierName';
+            const idKey    = isAR ? 'customerId'     : 'supplierId';
+
+            const missing  = !data.controlAccountCode;
+            const hasAcct  = data.glBalance !== undefined;
+            const diff     = parseFloat(data.difference) || 0;
+            const reconciled = data.isReconciled;
+
+            let headerClass = reconciled ? 'reconciled' : 'unreconciled';
+            if (missing) headerClass = 'missing';
+            const badgeText = reconciled ? 'Reconciled' : (missing ? 'Missing Account' : 'Difference');
+
+            const diffClass  = Math.abs(diff) < 0.01 ? 'reconciled' : 'unreconciled';
+            const glClass    = parseFloat(data.glBalance) >= 0 ? 'positive' : 'negative';
+            const slClass    = parseFloat(data.subledgerBalance) >= 0 ? 'positive' : 'negative';
+
+            // Warnings HTML
+            let warningsHtml = '';
+            if (data.warnings && data.warnings.length > 0) {
+                warningsHtml = '<div class="warnings-section">' +
+                    data.warnings.map(w => '<div class="warning-item">&#x26A0; ' + escHtml(w) + '</div>').join('') +
+                    '</div>';
+            }
+
+            // Detail table
+            let detailHtml = '';
+            if (data.details && data.details.length > 0) {
+                let rows = data.details.map(d =>
+                    '<tr>' +
+                    '<td>' + escHtml(d[nameKey] || 'Unknown') + '</td>' +
+                    '<td class="amount">' + d.invoiceCount + '</td>' +
+                    '<td class="amount">' + fmtAmt(d.outstanding) + '</td>' +
+                    '</tr>'
+                ).join('');
+
+                const totalOut = data.details.reduce((sum, d) => sum + (parseFloat(d.outstanding) || 0), 0);
+                rows += '<tr class="detail-total">' +
+                    '<td>Total</td>' +
+                    '<td class="amount">' + data.invoiceCount + '</td>' +
+                    '<td class="amount">' + fmtAmt(totalOut) + '</td>' +
+                    '</tr>';
+
+                detailHtml = '<details class="detail-section">' +
+                    '<summary>' + escHtml(entity) + ' Breakdown (' + (data[countKey] || 0) + ')</summary>' +
+                    '<table class="detail-table">' +
+                    '<thead><tr><th>' + escHtml(entity) + '</th><th class="amount">Invoices</th><th class="amount">Outstanding</th></tr></thead>' +
+                    '<tbody>' + rows + '</tbody>' +
+                    '</table>' +
+                    '</details>';
+            }
+
+            return `
+                <div class="recon-card">
+                    <div class="recon-card-header ${headerClass}">
+                        <span>${label} Control Account — ${escHtml(data.controlAccountCode || '?')} ${escHtml(data.controlAccountName || '')}</span>
+                        <span class="recon-status-badge">${escHtml(badgeText)}</span>
+                    </div>
+                    <div class="recon-card-body">
+                        <div class="recon-row">
+                            <span class="recon-label">GL Balance (Account ${escHtml(data.controlAccountCode || '?')})</span>
+                            <span class="recon-value ${glClass}">${fmtAmt(data.glBalance)}</span>
+                        </div>
+                        <div class="recon-row">
+                            <span class="recon-label">Sub-Ledger Outstanding</span>
+                            <span class="recon-value ${slClass}">${fmtAmt(data.subledgerBalance)}</span>
+                        </div>
+                        <div class="recon-diff-row">
+                            <span>Difference</span>
+                            <span class="recon-value ${diffClass}">${fmtAmt(diff)} ${reconciled ? '&#x2714;' : '&#x2718;'}</span>
+                        </div>
+                        ${warningsHtml}
+                        ${detailHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        // ── Main report generator ────────────────────────────────────────────
+        async function generateReport() {
+            const asAt = document.getElementById('asAtDate').value;
+            const type = document.getElementById('typeSelect').value;
+
+            if (!asAt) { showError('Please select an As At date.'); return; }
+
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = true;
+            btn.textContent = 'Loading\u2026';
+
+            hide('errorBanner');
+            hide('reportArea');
+            show('loadingPlaceholder');
+
+            try {
+                const url = '/api/accounting/reports/control-account-reconciliation'
+                    + '?asAt=' + encodeURIComponent(asAt)
+                    + '&type=' + encodeURIComponent(type);
+
+                const res = await fetch(url, { headers: authHeaders() });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                const data = await res.json();
+
+                hide('loadingPlaceholder');
+
+                // Company name from JWT
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    document.getElementById('reportCompanyName').textContent =
+                        payload.companyName || payload.company_name || '';
+                } catch (_) { /* leave blank */ }
+
+                document.getElementById('reportSubtitle').textContent =
+                    'Control Account Reconciliation — As at ' + escHtml(data.asAt);
+
+                const grid = document.getElementById('reconGrid');
+                grid.innerHTML = '';
+
+                if (data.ar) grid.insertAdjacentHTML('beforeend', buildReconCard(data.ar, 'ar'));
+                if (data.ap) grid.insertAdjacentHTML('beforeend', buildReconCard(data.ap, 'ap'));
+
+                show('reportArea');
+
+            } catch (e) {
+                hide('loadingPlaceholder');
+                showError('Failed to generate report: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generate Report';
+            }
+        }
+    </script>
+</body>
+</html>
