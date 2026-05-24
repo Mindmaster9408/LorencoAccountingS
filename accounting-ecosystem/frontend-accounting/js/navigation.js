@@ -185,11 +185,12 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'ai-settings.html' || currentPage === 'system-health.html' || currentPage === 'accounting-diagnostics.html' || currentPage === 'audit-log.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'ai-settings.html' || currentPage === 'system-health.html' || currentPage === 'accounting-diagnostics.html' || currentPage === 'audit-log.html' || currentPage === 'audit-trail.html' ? 'active' : ''}">
         <a href="#">Administration</a>
         <div class="dropdown">
           <div class="dropdown-header">Monitoring</div>
-          <a href="/accounting/audit-log.html">Audit Log</a>
+          <a href="/accounting/audit-trail.html">Audit Trail</a>
+          <a href="/accounting/audit-log.html">Audit Log (Legacy)</a>
           <a href="/accounting/system-health.html">System Health</a>
           <a href="/accounting/accounting-diagnostics.html">Diagnostics &amp; Repair</a>
           <a href="#">User Activity</a>
