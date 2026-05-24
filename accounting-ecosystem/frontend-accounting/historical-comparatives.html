@@ -428,6 +428,30 @@
     .group-row-header .group-code { font-weight: 700; color: #374151; font-size: 13px; min-width: 60px; }
     .group-row-header .group-name { font-weight: 600; color: #374151; font-size: 13px; }
     .group-row-header .group-badge { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-left: auto; }
+
+    /* ── Tree expand/collapse ────────────────────────────────────────── */
+    .group-row-header {
+      cursor: pointer;
+      user-select: none;
+    }
+    .group-row-header:hover {
+      background: #eef2ff;
+      border-left-color: #6366f1;
+    }
+    .group-toggle-arrow {
+      font-size: 11px;
+      color: #9ca3af;
+      min-width: 14px;
+      display: inline-block;
+      transition: color 0.15s;
+      font-style: normal;
+    }
+    .group-row-header.expanded .group-toggle-arrow {
+      color: #4f46e5;
+    }
+    .group-children-indent {
+      padding-left: 0;
+    }
   </style>
 </head>
 <body>
@@ -640,6 +664,11 @@
     let currentBatch = null;
     let currentLines = [];
 
+    // ── Tree expand/collapse state ────────────────────────────────────────
+    // Tracks which group header IDs are currently expanded.
+    // Reset on each fresh renderCaptureMain call so default is all-expanded.
+    let expandedGroups = new Set();
+
     // ── API helpers ──────────────────────────────────────────────────────
     const BASE = '/api/accounting/historical-comparatives';
 
@@ -848,6 +877,8 @@
                   Finalize
                 </button>
               ` : ''}
+              <button type="button" class="btn btn-secondary btn-sm" onclick="expandAllGroups()" title="Expand all account groups">&#9660; Expand All</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="collapseAllGroups()" title="Collapse all account groups">&#9654; Collapse All</button>
             </div>
           </div>
 
@@ -887,11 +918,7 @@
                 <p style="font-size:15px;font-weight:600;color:#374151;">No accounts found</p>
                 <p>Your Chart of Accounts may be empty. Add accounts first, then sync here.</p>
               </div>
-            ` : allRows.map(acc =>
-                acc.is_group_row
-                  ? buildGroupRowHeader(acc)
-                  : buildAccountGrid(acc, years, isFinalized)
-              ).join('')}
+            ` : buildGroupedRows(allRows, years, isFinalized)}
           </div>
         </div>
       `;
@@ -899,14 +926,95 @@
       document.addEventListener('click', closeAccountDropdown, { once: true });
     }
 
-    function buildGroupRowHeader(acc) {
+    function buildGroupRowHeader(acc, gid) {
+      const id = gid || groupId(acc);
       return `
-        <div class="group-row-header">
+        <div class="group-row-header expanded" id="grphdr_${id}" onclick="toggleGroup('${id}')">
+          <span class="group-toggle-arrow">&#9660;</span>
           <span class="group-code">${escHtml(acc.account_code || '')}</span>
           <span class="group-name">${escHtml(acc.account_name)}</span>
           <span class="group-badge">${escHtml(acc.account_type || '')}</span>
         </div>
       `;
+    }
+
+    // ── Tree helpers ─────────────────────────────────────────────────────
+
+    // Compute a DOM-safe, stable ID for a group row.
+    // Uses account_id when available; falls back to sanitised account_code/name.
+    function groupId(acc) {
+      if (acc.account_id) return 'gid' + acc.account_id;
+      return 'gc' + (acc.account_code || acc.account_name || '').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40);
+    }
+
+    // Build the full account-grids HTML with parent/child grouping wrappers.
+    // Resets expandedGroups so all groups default to expanded on every fresh render.
+    // Children inside a collapsed group are still rendered in the DOM (display:none)
+    // so that saveAllGrids() and querySelectorAll('.account-grid-block') always find them.
+    function buildGroupedRows(rows, years, disabled) {
+      expandedGroups = new Set();
+      let html = '';
+      let inGroup = false;
+
+      for (const acc of rows) {
+        if (acc.is_group_row) {
+          if (inGroup) html += '</div>'; // close previous group's children wrapper
+          const gid = groupId(acc);
+          expandedGroups.add(gid);
+          html += buildGroupRowHeader(acc, gid);
+          html += `<div class="group-children" data-group-children="${gid}">`;
+          inGroup = true;
+        } else {
+          html += buildAccountGrid(acc, years, disabled);
+        }
+      }
+      if (inGroup) html += '</div>'; // close last group's children wrapper
+      return html;
+    }
+
+    // Toggle one group between expanded and collapsed.
+    function toggleGroup(gid) {
+      const childWrapper = document.querySelector('[data-group-children="' + gid + '"]');
+      const header = document.getElementById('grphdr_' + gid);
+      const arrow  = header ? header.querySelector('.group-toggle-arrow') : null;
+
+      if (expandedGroups.has(gid)) {
+        expandedGroups.delete(gid);
+        if (childWrapper) childWrapper.style.display = 'none';
+        if (header) header.classList.remove('expanded');
+        if (arrow) arrow.innerHTML = '&#9654;'; // ▶
+      } else {
+        expandedGroups.add(gid);
+        if (childWrapper) childWrapper.style.display = '';
+        if (header) header.classList.add('expanded');
+        if (arrow) arrow.innerHTML = '&#9660;'; // ▼
+      }
+    }
+
+    // Expand all groups at once.
+    function expandAllGroups() {
+      document.querySelectorAll('[data-group-children]').forEach(w => {
+        expandedGroups.add(w.dataset.groupChildren);
+        w.style.display = '';
+      });
+      document.querySelectorAll('.group-row-header').forEach(h => {
+        h.classList.add('expanded');
+        const a = h.querySelector('.group-toggle-arrow');
+        if (a) a.innerHTML = '&#9660;'; // ▼
+      });
+    }
+
+    // Collapse all groups at once.
+    function collapseAllGroups() {
+      document.querySelectorAll('[data-group-children]').forEach(w => {
+        expandedGroups.delete(w.dataset.groupChildren);
+        w.style.display = 'none';
+      });
+      document.querySelectorAll('.group-row-header').forEach(h => {
+        h.classList.remove('expanded');
+        const a = h.querySelector('.group-toggle-arrow');
+        if (a) a.innerHTML = '&#9654;'; // ▶
+      });
     }
 
     async function syncCOA() {

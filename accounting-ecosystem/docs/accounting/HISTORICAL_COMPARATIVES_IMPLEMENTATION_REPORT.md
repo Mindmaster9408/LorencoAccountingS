@@ -522,3 +522,176 @@ Both migrations are safe to re-run (use `IF NOT EXISTS` / `IF EXISTS`).
 
 *Report updated to include Account Search Fix — root cause analysis, migration requirements, code changes.*
 *All fixes follow CLAUDE.md Part A (audit-before-change), Part D (no browser storage), and Part E (payroll unaffected).*
+
+---
+
+## 12. Expand/Collapse Tree UI
+
+**Session:** Add-on implementation — Expandable/collapsible account group tree in `historical-comparatives.html`  
+**Scope:** Frontend / UI only — no backend changes, no schema changes, no calculation changes.
+
+---
+
+### Overview
+
+The Historical Comparatives capture screen renders a flat list of account rows: group/parent rows (`is_group_row: true`, non-editable section headers) interleaved with postable child rows (`can_capture: true`, editable 12-month × N-year grids). This enhancement converts that flat list into a collapsible tree — each group header is clickable and toggles the visibility of its children.
+
+---
+
+### Rendering Logic
+
+`buildGroupedRows(rows, years, disabled)` replaces the previous `allRows.map(acc => ...)` call in `renderCaptureMain`.
+
+**Structure produced:**
+
+```html
+<div class="group-row-header expanded" id="grphdr_gid{id}" onclick="toggleGroup('{gid}')">
+  <span class="group-toggle-arrow">▼</span>
+  <span class="group-code">4000</span>
+  <span class="group-name">Sales Revenue</span>
+  <span class="group-badge">Income</span>
+</div>
+<div class="group-children" data-group-children="{gid}">
+  <!-- one .account-grid-block per postable child -->
+</div>
+```
+
+Each group section is a header `<div>` immediately followed by a sibling `<div class="group-children">` wrapper. The wrapper uses `data-group-children="{gid}"` as its selector key — not an `id` attribute — so the selector is always predictable regardless of content.
+
+**`buildGroupedRows` flow:**
+1. Iterates `rows` in order
+2. When `acc.is_group_row === true` → closes any open `group-children` wrapper, emits new header + opens new `group-children` wrapper, adds `gid` to `expandedGroups`
+3. Otherwise → emits `buildAccountGrid(acc, years, disabled)` inside the current open wrapper
+4. Closes final wrapper after loop
+
+**Default state:** All groups are expanded on first load. `expandedGroups` is populated by `buildGroupedRows` with every `gid` at render time.
+
+---
+
+### State Handling
+
+```javascript
+let expandedGroups = new Set();
+```
+
+- Module-level variable (same scope as `currentLines`, `currentBatchId`, etc.)
+- **Frontend state only** — never persisted to DB, never sent to the server
+- Re-initialized on every `renderCaptureMain` call (all groups open after each page re-render)
+- `toggleGroup(gid)` adds/removes from the Set as the user expands/collapses
+- `expandAllGroups()` / `collapseAllGroups()` bulk-updates both the Set and DOM
+
+---
+
+### toggleGroup / expandAllGroups / collapseAllGroups
+
+```javascript
+function toggleGroup(gid) {
+  const childWrapper = document.querySelector('[data-group-children="' + gid + '"]');
+  const header = document.getElementById('grphdr_' + gid);
+  if (expandedGroups.has(gid)) {
+    expandedGroups.delete(gid);
+    childWrapper.style.display = 'none';      // CSS hide only — DOM nodes remain
+    header.classList.remove('expanded');
+    header.querySelector('.group-toggle-arrow').innerHTML = '&#9654;'; // ▶
+  } else {
+    expandedGroups.add(gid);
+    childWrapper.style.display = '';          // Restore natural display
+    header.classList.add('expanded');
+    header.querySelector('.group-toggle-arrow').innerHTML = '&#9660;'; // ▼
+  }
+}
+```
+
+`expandAllGroups` and `collapseAllGroups` iterate `[data-group-children]` elements and `.group-row-header` elements respectively to bulk-set state.
+
+---
+
+### groupId() — DOM-safe ID generation
+
+```javascript
+function groupId(acc) {
+  if (acc.account_id) return 'gid' + acc.account_id;
+  return 'gc' + (acc.account_code || acc.account_name || '')
+    .replace(/[^a-zA-Z0-9]/g, '_')
+    .substring(0, 40);
+}
+```
+
+Always returns an alphanumeric + underscore string. This makes it safe as:
+- HTML `id` attribute value (`grphdr_{gid}`)
+- CSS attribute selector value (`[data-group-children="{gid}"]`)
+- JavaScript `onclick` string argument (`toggleGroup('{gid}')`)
+
+Special characters in account names (slashes, spaces, parentheses) are replaced with `_` before use.
+
+---
+
+### Performance Approach
+
+Children are hidden with `style.display = 'none'` — **DOM nodes are not removed**. This was a deliberate correctness-over-performance decision:
+
+- `saveAllGrids()` uses `document.querySelectorAll('.account-grid-block')` — this traverses all DOM nodes regardless of CSS visibility. Hidden children are still found and their data is still saved.
+- Removing hidden children from the DOM would cause `saveAllGrids()` to silently skip them — a data-loss bug.
+- For the dataset sizes in historical comparatives (typically < 300 accounts), the DOM overhead of keeping hidden nodes is negligible.
+
+If performance becomes a concern with very large COAs (>500 accounts), a lazy-render approach could be introduced in a future session. For now, correctness takes priority.
+
+---
+
+### Expand All / Collapse All Buttons
+
+Two buttons added to the existing action row (alongside Validate, Finalize, Sync COA):
+
+```html
+<button type="button" class="btn btn-secondary btn-sm"
+        onclick="expandAllGroups()" title="Expand all account groups">
+  &#9660; Expand All
+</button>
+<button type="button" class="btn btn-secondary btn-sm"
+        onclick="collapseAllGroups()" title="Collapse all account groups">
+  &#9654; Collapse All
+</button>
+```
+
+---
+
+### CSS Additions
+
+```css
+.group-row-header { cursor: pointer; user-select: none; }
+.group-row-header:hover { background: #eef2ff; border-left-color: #6366f1; }
+.group-toggle-arrow {
+  font-size: 11px; color: #9ca3af; min-width: 14px;
+  display: inline-block; transition: color 0.15s; font-style: normal;
+}
+.group-row-header.expanded .group-toggle-arrow { color: #4f46e5; }
+```
+
+The `cursor: pointer` and `user-select: none` on `.group-row-header` prevent text selection when clicking to collapse/expand. The `expanded` class on the header drives the arrow colour transition (grey → indigo).
+
+---
+
+### Preserved Behaviours (not regressed)
+
+| Behaviour | Status |
+|-----------|--------|
+| `saveAllGrids()` saves all accounts including collapsed | ✅ CSS hide only — all DOM nodes intact |
+| Per-account Save button | ✅ Unchanged — inside `.account-grid-block`, always in DOM |
+| Validate / Finalize / Sync COA buttons | ✅ Not affected — separate action row elements |
+| Finalized batch — all inputs disabled | ✅ `isFinalized` flag passed through `buildGroupedRows` → `buildAccountGrid` as before |
+| Finalized banner | ✅ Rendered before `buildGroupedRows`, not inside it |
+| Report generation (Monthly P&L) | ✅ Reads from DB — no dependency on frontend DOM state |
+| Year/month data mapping in grids | ✅ `buildAccountGrid` is unchanged — only called from a new wrapper function |
+| Add Account (manual line) | ✅ Adds below the synced list — outside group wrappers, unaffected |
+| Keyboard navigation (Tab/Enter in grids) | ✅ Grid input structure unchanged |
+| No localStorage writes | ✅ `expandedGroups` is module-level JS only — never persisted |
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `frontend-accounting/historical-comparatives.html` | CSS additions; `expandedGroups` state variable; `buildGroupRowHeader` updated (arrow, id, onclick); `groupId()`, `buildGroupedRows()`, `toggleGroup()`, `expandAllGroups()`, `collapseAllGroups()` added; `allRows.map(...)` replaced with `buildGroupedRows(...)`; Expand All / Collapse All buttons added to action row |
+
+No backend files changed. No migration required.
