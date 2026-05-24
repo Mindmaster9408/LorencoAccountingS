@@ -693,6 +693,20 @@
         .info-message strong {
             color: #0066cc;
         }
+
+        .truth-badge-static {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid #93c5fd;
+            color: #1e3a8a;
+            background: #dbeafe;
+            margin-bottom: 16px;
+            white-space: nowrap;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <script src="js/polyfills.js"></script>
@@ -785,6 +799,7 @@
 
             <div class="summary-panel">
                 <h3>Reconciliation Summary</h3>
+                <span class="truth-badge-static" title="Reconciliation proof: compares two independent data sources. Differences flag items requiring investigation.">Diagnostic</span>
 
                 <div class="summary-row">
                     <span class="summary-label">Statement Balance</span>

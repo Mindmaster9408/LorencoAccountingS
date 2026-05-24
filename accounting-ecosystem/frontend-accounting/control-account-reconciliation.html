@@ -436,6 +436,28 @@
             color: #9aa0a6;
             font-size: 14px;
         }
+
+        .truth-badge-wrap {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 14px;
+            flex-wrap: wrap;
+        }
+        .truth-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+        .truth-badge-desc {
+            font-size: 12px;
+            color: #5f6368;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <script src="js/polyfills.js"></script>
@@ -465,6 +487,7 @@
         </div>
 
         <div id="errorBanner" class="error-banner ar-hidden"></div>
+        <div id="truthBadgeWrap" class="truth-badge-wrap"></div>
 
         <div id="reportArea" class="ar-hidden">
             <div class="report-card-outer">
@@ -511,6 +534,13 @@
 
         function hide(id) { document.getElementById(id).classList.add('ar-hidden'); }
         function show(id) { document.getElementById(id).classList.remove('ar-hidden'); }
+
+        function renderTruthBadge(badge) {
+            const wrap = document.getElementById('truthBadgeWrap');
+            if (!wrap || !badge) return;
+            wrap.innerHTML = `<span class="truth-badge" style="color:${escHtml(badge.color)};background:${escHtml(badge.bgColor)};border-color:${escHtml(badge.borderColor)};" title="${escHtml(badge.description)}">${escHtml(badge.label)}</span><span class="truth-badge-desc">${escHtml(badge.description)}</span>`;
+            wrap.style.display = 'flex';
+        }
 
         // ── Build one reconciliation card ────────────────────────────────────
         function buildReconCard(data, side) {
@@ -640,6 +670,7 @@
                 if (data.ar) grid.insertAdjacentHTML('beforeend', buildReconCard(data.ar, 'ar'));
                 if (data.ap) grid.insertAdjacentHTML('beforeend', buildReconCard(data.ap, 'ap'));
 
+                renderTruthBadge(data.reportTruth);
                 show('reportArea');
 
             } catch (e) {

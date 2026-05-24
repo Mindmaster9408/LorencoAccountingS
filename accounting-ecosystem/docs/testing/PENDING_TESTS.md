@@ -185,7 +185,48 @@ Every feature built in recent workstreams has been code-reviewed and architectur
 
 ---
 
-## 12. Pilot Blockers
+## 12. Reporting Forensic Hardening (Pack 01)
+
+**Source:** `REPORTING_FORENSIC_HARDENING_PACK_01_REPORT.md`
+
+### 12.1 Bank Reconciliation Tenant Safety
+
+| # | Test | Status | Notes |
+|---|------|--------|-------|
+| RPT-01 | `GET /bank-reconciliation` `lastTxn` query returns only company-scoped transactions | NOT TESTED | Log a bank transaction for Company B; query via Company A; confirm not returned |
+| RPT-02 | `GET /bank-reconciliation` `unrecon` query returns only company-scoped transactions | NOT TESTED | As above — unmatched transaction for Company B must not appear in Company A recon |
+
+### 12.2 Journal Source Mode Filtering
+
+| # | Test | Status | Notes |
+|---|------|--------|-------|
+| RPT-03 | TB `?journalSourceMode=manual` returns only manual journal lines | NOT TESTED | Create manual journal + system (bank allocation) journal; confirm TB manual-only excludes system journal |
+| RPT-04 | TB `?journalSourceMode=system` returns only system journal lines | NOT TESTED | As above — confirm manual journal excluded |
+| RPT-05 | TB `journalCount` matches source mode (counts only filtered journals) | NOT TESTED | Count reported in header must match journals matching the filter |
+| RPT-06 | GL `?journalSourceMode=manual` — opening balance reflects only manual journals | NOT TESTED | Opening balance must exclude system journals posted before `fromDate` |
+| RPT-07 | P&L `?journalSourceMode=system` returns only system-sourced income/expense lines | NOT TESTED | Manual expense journal excluded from system-only P&L |
+| RPT-14 | Invalid `journalSourceMode` value defaults to `all` server-side | NOT TESTED | Pass `?journalSourceMode=bogus`; confirm response is same as `?journalSourceMode=all` |
+
+### 12.3 Report Truth Badge
+
+| # | Test | Status | Notes |
+|---|------|--------|-------|
+| RPT-07 | All report API responses include `reportTruth` field | NOT TESTED | Hit each endpoint with valid params; confirm `reportTruth` in JSON |
+| RPT-08 | `reportTruth.type` is correct per endpoint (posted_gl_only / diagnostic / mixed) | NOT TESTED | Check type matches table in implementation report |
+| RPT-09 | Truth badge renders in trial-balance UI after report loads | NOT TESTED | Generate TB; confirm green badge appears below filter bar |
+| RPT-10 | Badge label updates when journal source filter changes | NOT TESTED | Switch to "Manual Only"; badge should show "Posted GL Only — Manual Journals Only" |
+| RPT-13 | `getBadge()` returns correct color scheme per type | NOT TESTED | Unit test or manual API inspection |
+
+### 12.4 VAT Source Classification
+
+| # | Test | Status | Notes |
+|---|------|--------|-------|
+| RPT-11 | VAT unclassified warning includes source type names and VAT amounts | NOT TESTED | Requires a journal with a non-standard `source_type` value posted to a VAT account |
+| RPT-12 | VAT output/input totals unchanged after unclassified source tracking improvement | NOT TESTED | Run VAT report before and after; confirm totals identical |
+
+---
+
+## 13. Pilot Blockers
 
 | Area | Blocker | Severity | Owner | Status | Notes |
 |------|---------|----------|-------|--------|-------|

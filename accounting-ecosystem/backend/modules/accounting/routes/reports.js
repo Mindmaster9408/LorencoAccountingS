@@ -2,13 +2,14 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const db = require('../config/database'); // direct pg Pool — avoids .in() URL-length limits
 const { authenticate, hasPermission } = require('../middleware/auth');
+const { getBadge } = require('../services/reportTruthBadge');
 
 const router = express.Router();
 
 // ─── Helper: fetch posted journal lines for a company within a date range ────
 // Uses a SQL JOIN instead of two-step Supabase fetch + .in(journalIds) to avoid
 // PostgREST URL-length limits that silently truncate results for large companies.
-async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, types, segmentValueId } = {}) {
+async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, types, segmentValueId, journalSourceMode } = {}) {
   // Accounts — small table, no .in() risk
   let acctQ = supabase.from('accounts').select('id, code, name, type, sub_type, reporting_group, parent_id, sort_order')
     .eq('company_id', companyId).eq('is_active', true);
@@ -33,19 +34,27 @@ async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, typ
     segClause = ` AND jl.segment_value_id = $${linesParams.length}`;
   }
 
+  // Journal source filter (no extra params — literal SQL conditions only)
+  let sourceClause = '';
+  if (journalSourceMode === 'manual') {
+    sourceClause = ` AND (j.source_type IS NULL OR j.source_type = 'manual')`;
+  } else if (journalSourceMode === 'system') {
+    sourceClause = ` AND j.source_type IS NOT NULL AND j.source_type != 'manual'`;
+  }
+
   // Lines via JOIN + journal count — run in parallel, no .in() batching
   const linesSql = `
     SELECT jl.account_id, jl.debit, jl.credit
     FROM journal_lines jl
     INNER JOIN journals j ON j.id = jl.journal_id
     WHERE j.company_id = $1
-      AND j.status = 'posted'${dateClauses}${segClause}
+      AND j.status = 'posted'${dateClauses}${segClause}${sourceClause}
   `;
   const countSql = `
     SELECT COUNT(DISTINCT j.id)::int AS count
     FROM journals j
     WHERE j.company_id = $1
-      AND j.status = 'posted'${dateClauses}
+      AND j.status = 'posted'${dateClauses}${sourceClause}
   `;
 
   const [linesResult, countResult] = await Promise.all([
@@ -77,12 +86,13 @@ function aggregateLines(lines) {
  */
 router.get('/trial-balance', authenticate, hasPermission('report.view'), async (req, res) => {
   try {
-    const { fromDate, toDate } = req.query;
+    const { fromDate, toDate, journalSourceMode: rawMode } = req.query;
     if (!fromDate || !toDate) {
       return res.status(400).json({ error: 'fromDate and toDate are required' });
     }
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
 
-    const { accounts, lines, journalCount } = await fetchAccountBalances(req.user.companyId, { fromDate, toDate });
+    const { accounts, lines, journalCount } = await fetchAccountBalances(req.user.companyId, { fromDate, toDate, journalSourceMode });
     const agg = aggregateLines(lines);
 
     const result = accounts.map(a => {
@@ -110,7 +120,8 @@ router.get('/trial-balance', authenticate, hasPermission('report.view'), async (
       accounts: result,
       summary,
       journalCount: journalCount || 0,
-      isBalanced: Math.abs(summary.total.debit - summary.total.credit) < 0.01
+      isBalanced: Math.abs(summary.total.debit - summary.total.credit) < 0.01,
+      reportTruth: getBadge('posted_gl_only', { journalSourceMode }),
     });
 
   } catch (error) {
@@ -124,8 +135,15 @@ router.get('/trial-balance', authenticate, hasPermission('report.view'), async (
  */
 router.get('/general-ledger', authenticate, hasPermission('report.view'), async (req, res) => {
   try {
-    const { accountId, fromDate, toDate } = req.query;
+    const { accountId, fromDate, toDate, journalSourceMode: rawMode } = req.query;
     if (!accountId) return res.status(400).json({ error: 'accountId is required' });
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
+    let glSourceClause = '';
+    if (journalSourceMode === 'manual') {
+      glSourceClause = ` AND (j.source_type IS NULL OR j.source_type = 'manual')`;
+    } else if (journalSourceMode === 'system') {
+      glSourceClause = ` AND j.source_type IS NOT NULL AND j.source_type != 'manual'`;
+    }
 
     const { data: account, error: aErr } = await supabase
       .from('accounts').select('*')
@@ -147,7 +165,7 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
              FROM journal_lines jl
              INNER JOIN journals j ON j.id = jl.journal_id
              WHERE j.company_id = $1 AND j.status = 'posted'
-               AND j.date < $2 AND jl.account_id = $3`,
+               AND j.date < $2 AND jl.account_id = $3${glSourceClause}`,
             obParams
           )
         : Promise.resolve({ rows: [] }),
@@ -158,7 +176,7 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
          FROM journal_lines jl
          INNER JOIN journals j ON j.id = jl.journal_id
          WHERE j.company_id = $1 AND j.status = 'posted'
-           AND jl.account_id = $2${periodDateClauses}`,
+           AND jl.account_id = $2${periodDateClauses}${glSourceClause}`,
         periodParams
       ),
     ]);
@@ -194,7 +212,8 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
     const closingBalance = openingBalance + totalDebit - totalCredit;
 
     res.json({ account, fromDate: fromDate || null, toDate: toDate || null,
-               openingBalance, transactions, totalDebit, totalCredit, closingBalance });
+               openingBalance, transactions, totalDebit, totalCredit, closingBalance,
+               reportTruth: getBadge('posted_gl_only', { journalSourceMode }) });
 
   } catch (error) {
     console.error('Error generating general ledger:', error);
@@ -223,6 +242,7 @@ router.get('/bank-reconciliation', authenticate, hasPermission('report.view'), a
     // Statement balance: most recent balance field on or before date
     const { data: lastTxn } = await supabase
       .from('bank_transactions').select('balance')
+      .eq('company_id', req.user.companyId)
       .eq('bank_account_id', bankAccountId).lte('date', date)
       .order('date', { ascending: false }).order('id', { ascending: false }).limit(1);
     const statementBalance = lastTxn && lastTxn.length > 0 && lastTxn[0].balance != null
@@ -249,6 +269,7 @@ router.get('/bank-reconciliation', authenticate, hasPermission('report.view'), a
 
     // Unreconciled transactions
     const { data: unrecon } = await supabase.from('bank_transactions').select('*')
+      .eq('company_id', req.user.companyId)
       .eq('bank_account_id', bankAccountId).lte('date', date)
       .in('status', ['unmatched', 'matched'])
       .order('date').order('id');
@@ -260,7 +281,8 @@ router.get('/bank-reconciliation', authenticate, hasPermission('report.view'), a
 
     res.json({ bankAccount, date, statementBalance, ledgerBalance,
                unreconciledTransactions, unreconciledTotal, reconciledBalance,
-               difference, isReconciled: Math.abs(difference) < 0.01 });
+               difference, isReconciled: Math.abs(difference) < 0.01,
+               reportTruth: getBadge('diagnostic_reconciliation') });
 
   } catch (error) {
     console.error('Error generating bank reconciliation:', error);
@@ -321,7 +343,8 @@ router.get('/balance-sheet', authenticate, hasPermission('report.view'), async (
       currentYearEarnings: netIncome,
       totals: { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity,
                 liabilitiesAndEquity: totalLiabilities + totalEquity },
-      isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
+      isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01,
+      reportTruth: getBadge('posted_gl_only'),
     });
 
   } catch (error) {
@@ -335,13 +358,14 @@ router.get('/balance-sheet', authenticate, hasPermission('report.view'), async (
  */
 router.get('/profit-loss', authenticate, hasPermission('report.view'), async (req, res) => {
   try {
-    const { fromDate, toDate, segmentValueId } = req.query;
+    const { fromDate, toDate, segmentValueId, journalSourceMode: rawMode } = req.query;
     if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
 
     const companyId = req.user.companyId;
     const { accounts, lines } = await fetchAccountBalances(companyId, {
       fromDate, toDate, types: ['income', 'expense'],
-      segmentValueId: segmentValueId || null
+      segmentValueId: segmentValueId || null, journalSourceMode
     });
     const agg = aggregateLines(lines);
 
@@ -387,6 +411,7 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
       income:  [...sections.operating_income, ...sections.other_income],
       expense: [...sections.cost_of_sales, ...sections.operating_expense,
                 ...sections.depreciation_amort, ...sections.finance_cost],
+      reportTruth: getBadge('posted_gl_only', { journalSourceMode }),
     });
 
   } catch (error) {
@@ -596,6 +621,7 @@ router.get('/unallocated-bank-transactions', authenticate, hasPermission('report
       count:       rows.length,
       totalAmount: Number(totalAmount.toFixed(2)),
       filters: { bankAccountId: bankAccountId || null, dateFrom: dateFrom || null, dateTo: dateTo || null },
+      reportTruth: getBadge('mixed_gl_operational'),
     });
 
   } catch (error) {
@@ -653,7 +679,7 @@ router.get('/bank-recon-history', authenticate, hasPermission('report.view'), as
     const { data: sessions, error } = await q;
     if (error) throw new Error(error.message);
 
-    res.json({ sessions: sessions || [] });
+    res.json({ sessions: sessions || [], reportTruth: getBadge('diagnostic_reconciliation') });
 
   } catch (error) {
     console.error('Error generating bank recon history:', error);
@@ -710,7 +736,7 @@ router.get('/bank-recon-history/:sessionId', authenticate, hasPermission('report
 
     if (txnErr) throw new Error(txnErr.message);
 
-    res.json({ session, transactions: txns || [] });
+    res.json({ session, transactions: txns || [], reportTruth: getBadge('diagnostic_reconciliation') });
 
   } catch (error) {
     console.error('Error fetching bank recon session:', error);
@@ -748,7 +774,7 @@ router.get('/control-account-reconciliation', authenticate, hasPermission('repor
     if (includeAR) result.ar = await buildARReconciliation(companyId, asAt);
     if (includeAP) result.ap = await buildAPReconciliation(companyId, asAt);
 
-    res.json(result);
+    res.json({ ...result, reportTruth: getBadge('diagnostic_reconciliation') });
   } catch (error) {
     console.error('[reports.control-account-recon] Error:', error.message);
     res.status(500).json({ error: 'Failed to generate control account reconciliation' });

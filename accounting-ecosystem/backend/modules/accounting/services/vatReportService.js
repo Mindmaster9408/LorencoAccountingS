@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { getBadge } = require('./reportTruthBadge');
 
 const PERIOD_KEY_CANONICAL = /^\d{4}-\d{2}$/;
 const PERIOD_KEY_LEGACY = /^\d{4}\.\d{2}$/;
@@ -229,7 +230,7 @@ class VATReportService {
       outOfPeriod: blankBucket(),
     };
 
-    let unclassifiedCount = 0;
+    const unclassifiedSources = {};
 
     const addToBucket = (bucket, input, output) => {
       sourceBreakdown[bucket].journalCount += 1;
@@ -257,7 +258,13 @@ class VATReportService {
       } else if (!sourceType || sourceType === 'manual') {
         addToBucket('manualJournals', inputVat, outputVat);
       } else {
-        unclassifiedCount += 1;
+        const key = row.source_type || '(blank)';
+        if (!unclassifiedSources[key]) {
+          unclassifiedSources[key] = { count: 0, inputVat: 0, outputVat: 0 };
+        }
+        unclassifiedSources[key].count += 1;
+        unclassifiedSources[key].inputVat  = round2(unclassifiedSources[key].inputVat  + inputVat);
+        unclassifiedSources[key].outputVat = round2(unclassifiedSources[key].outputVat + outputVat);
       }
     }
 
@@ -266,12 +273,26 @@ class VATReportService {
       sourceBreakdown.outOfPeriod = oopByPeriod;
     }
 
+    const totalUnclassified = Object.values(unclassifiedSources).reduce((s, b) => s + b.count, 0);
     const warnings = [];
-    if (unclassifiedCount > 0) {
-      warnings.push('Some VAT lines could not be classified by source type.');
+    if (totalUnclassified > 0) {
+      const typeList = Object.entries(unclassifiedSources)
+        .map(([src, b]) => `'${src}' (${b.count} journal${b.count !== 1 ? 's' : ''}, ` +
+          `output VAT R ${b.outputVat.toFixed(2)}, input VAT R ${b.inputVat.toFixed(2)})`)
+        .join('; ');
+      warnings.push(
+        `${totalUnclassified} journal${totalUnclassified !== 1 ? 's' : ''} with unrecognised source type` +
+        `${Object.keys(unclassifiedSources).length !== 1 ? 's' : ''} could not be classified: ${typeList}. ` +
+        `These are included in the VAT totals but not in any source breakdown category. ` +
+        `Check the source_type field on these journals.`
+      );
     }
 
-    return { sourceBreakdown, warnings };
+    return {
+      sourceBreakdown,
+      warnings,
+      unclassifiedSources: totalUnclassified > 0 ? unclassifiedSources : null,
+    };
   }
 
   async generateVatReport(companyId, periodKey, options = {}) {
@@ -323,6 +344,7 @@ class VATReportService {
       generatedAt: new Date().toISOString(),
       generatedBy: options.generatedBy || null,
       calculationVersion: 'VAT_ENGINE_V1', // TODO: hook this into immutable VAT snapshot persistence during period lock/submission.
+      reportTruth: getBadge('posted_gl_only'),
     };
   }
 }

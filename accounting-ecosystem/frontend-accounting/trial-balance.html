@@ -394,6 +394,29 @@
         .indent-2 {
             padding-left: 55px;
         }
+
+        .truth-badge-wrap {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 14px;
+            flex-wrap: wrap;
+        }
+        .truth-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+        .truth-badge-desc {
+            font-size: 12px;
+            color: #5f6368;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 </head>
@@ -414,10 +437,19 @@
                 <label>To Date</label>
                 <input type="date" id="tbToDate">
             </div>
+            <div class="control-group">
+                <label>Journal Source</label>
+                <select id="tbSourceMode" title="Journal Source Filter">
+                    <option value="all">All Journals</option>
+                    <option value="manual">Manual Only</option>
+                    <option value="system">System Only</option>
+                </select>
+            </div>
             <button class="btn-primary" onclick="generateReport()">Generate Report</button>
             <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
         </div>
         <div id="tbError" style="display:none;background:#fce4ec;color:#c62828;padding:10px 16px;border-radius:8px;margin:0 0 12px;font-weight:600;font-size:13px;"></div>
+        <div id="truthBadgeWrap" class="truth-badge-wrap"></div>
         
         <div class="report-card">
             <div class="report-header">
@@ -657,11 +689,20 @@
 
         let lastResult = null;
 
+        function renderTruthBadge(badge) {
+            const wrap = document.getElementById('truthBadgeWrap');
+            if (!wrap || !badge) return;
+            const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            wrap.innerHTML = `<span class="truth-badge" style="color:${esc(badge.color)};background:${esc(badge.bgColor)};border-color:${esc(badge.borderColor)};" title="${esc(badge.description)}">${esc(badge.label)}</span><span class="truth-badge-desc">${esc(badge.description)}</span>`;
+            wrap.style.display = 'flex';
+        }
+
         async function generateReport() {
-            const fromDate = document.getElementById('tbFromDate').value;
-            const toDate   = document.getElementById('tbToDate').value;
-            const errEl    = document.getElementById('tbError');
-            errEl.style.display = 'none';
+            const fromDate       = document.getElementById('tbFromDate').value;
+            const toDate         = document.getElementById('tbToDate').value;
+            const sourceMode     = document.getElementById('tbSourceMode').value;
+            const errEl          = document.getElementById('tbError');
+            errEl.style.display  = 'none';
 
             if (!fromDate || !toDate) { errEl.textContent = 'Please select From Date and To Date.'; errEl.style.display = 'block'; return; }
 
@@ -669,11 +710,13 @@
             tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:30px;color:#9aa0a6">Loading…</td></tr>';
 
             try {
-                const res = await fetch(`/api/accounting/reports/trial-balance?fromDate=${fromDate}&toDate=${toDate}`, { headers: authH() });
+                const url = `/api/accounting/reports/trial-balance?fromDate=${fromDate}&toDate=${toDate}&journalSourceMode=${sourceMode}`;
+                const res = await fetch(url, { headers: authH() });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
                 lastResult = data;
                 renderTrialBalance(data);
+                renderTruthBadge(data.reportTruth);
 
                 // Update report header date + journal count
                 const hdr = document.querySelector('.report-header p');

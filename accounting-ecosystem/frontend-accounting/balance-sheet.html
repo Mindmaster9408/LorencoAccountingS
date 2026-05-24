@@ -392,6 +392,27 @@
         .account-parent td {
             border-top: 1px solid #e8eaed;
         }
+        .truth-badge-wrap {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 14px;
+            flex-wrap: wrap;
+        }
+        .truth-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+        .truth-badge-desc {
+            font-size: 12px;
+            color: #5f6368;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 </head>
@@ -416,6 +437,7 @@
             <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
         </div>
         <div id="bsError" style="display:none;background:#fce4ec;color:#c62828;padding:10px 16px;border-radius:8px;margin:0 0 12px;font-weight:600;font-size:13px;"></div>
+        <div id="truthBadgeWrap" class="truth-badge-wrap"></div>
         
         <div class="report-card">
             <div class="report-header">
@@ -590,6 +612,14 @@
 
         let lastResult = null;
 
+        function renderTruthBadge(badge) {
+            const wrap = document.getElementById('truthBadgeWrap');
+            if (!wrap || !badge) return;
+            const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            wrap.innerHTML = `<span class="truth-badge" style="color:${esc(badge.color)};background:${esc(badge.bgColor)};border-color:${esc(badge.borderColor)};" title="${esc(badge.description)}">${esc(badge.label)}</span><span class="truth-badge-desc">${esc(badge.description)}</span>`;
+            wrap.style.display = 'flex';
+        }
+
         async function generateReport() {
             const asOfDate = document.getElementById('bsAsAtDate').value;
             const fromDate = document.getElementById('bsFromDate').value;
@@ -609,6 +639,7 @@
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
                 lastResult = data;
                 renderBalanceSheet(data);
+                renderTruthBadge(data.reportTruth);
 
                 const hdr = document.querySelector('.report-header p');
                 if (hdr) hdr.textContent = `Balance Sheet — As at ${asOfDate}`;

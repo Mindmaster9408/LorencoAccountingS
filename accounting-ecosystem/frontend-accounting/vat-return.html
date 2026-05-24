@@ -161,6 +161,28 @@
             .card .value { font-size: 22px; }
             th, td { font-size: 12px; }
         }
+
+        .truth-badge-wrap {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 14px;
+            flex-wrap: wrap;
+        }
+        .truth-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+        .truth-badge-desc {
+            font-size: 12px;
+            color: #5f6368;
+        }
     </style>
 </head>
 <body>
@@ -201,6 +223,8 @@
                 <div class="sub" id="netDirection">Payable/Refundable</div>
             </div>
         </div>
+
+        <div id="truthBadgeWrap" class="truth-badge-wrap"></div>
 
         <div class="panel" id="warningsPanel" style="display:none;">
             <h2>Warnings</h2>
@@ -367,10 +391,20 @@
             panel.style.display = 'block';
         }
 
+        function renderTruthBadge(badge) {
+            const wrap = document.getElementById('truthBadgeWrap');
+            if (!wrap || !badge) return;
+            const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            wrap.innerHTML = `<span class="truth-badge" style="color:${esc(badge.color)};background:${esc(badge.bgColor)};border-color:${esc(badge.borderColor)};" title="${esc(badge.description)}">${esc(badge.label)}</span><span class="truth-badge-desc">${esc(badge.description)}</span>`;
+            wrap.style.display = 'flex';
+        }
+
         function clearPanels() {
             document.getElementById('summaryCards').style.display = 'none';
             document.getElementById('warningsPanel').style.display = 'none';
             document.getElementById('sourcePanel').style.display = 'none';
+            const wrap = document.getElementById('truthBadgeWrap');
+            if (wrap) wrap.style.display = 'none';
         }
 
         async function loadReport() {
@@ -394,6 +428,7 @@
                 renderSummary(report);
                 renderWarnings(report);
                 renderSourceBreakdown(report);
+                renderTruthBadge(report.reportTruth);
             } catch (error) {
                 setState('error', error.message);
             }
