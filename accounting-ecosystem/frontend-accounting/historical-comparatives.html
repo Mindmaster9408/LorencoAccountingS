@@ -437,10 +437,12 @@
     .report-scroll-container .report-table thead th.sticky-col-3 { z-index: 7; }
     /* Hide-empty-rows toggle */
     #reportOutput.hide-empty tr[data-empty="1"] { display: none; }
+    /* Dark theme — all header cells must be opaque so content can't scroll through */
+    [data-theme="dark"] .report-scroll-container .report-table th { background: #1e1b3a !important; }
     /* Dark theme — sticky cells need solid dark backgrounds (not white) */
     [data-theme="dark"] .report-table th.sticky-col,
     [data-theme="dark"] .report-table th.sticky-col-2,
-    [data-theme="dark"] .report-table th.sticky-col-3 { background: #272447 !important; }
+    [data-theme="dark"] .report-table th.sticky-col-3 { background: #1e1b3a !important; }
     [data-theme="dark"] .report-table td.sticky-col,
     [data-theme="dark"] .report-table td.sticky-col-2,
     [data-theme="dark"] .report-table td.sticky-col-3 { background: #1e1b3a !important; }
