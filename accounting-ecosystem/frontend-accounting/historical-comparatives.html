@@ -435,6 +435,8 @@
     .report-scroll-container .report-table thead th.sticky-col,
     .report-scroll-container .report-table thead th.sticky-col-2,
     .report-scroll-container .report-table thead th.sticky-col-3 { z-index: 7; }
+    /* Hide-empty-rows toggle */
+    #reportOutput.hide-empty tr[data-empty="1"] { display: none; }
     /* Dark theme — sticky cells need solid dark backgrounds (not white) */
     [data-theme="dark"] .report-table th.sticky-col,
     [data-theme="dark"] .report-table th.sticky-col-2,
@@ -600,7 +602,10 @@
       <div class="card">
         <div class="card-header">
           <span class="card-title">Comparative Reports</span>
-          <button type="button" class="btn btn-secondary no-print rpt-print-btn" onclick="window.print()" id="rptPrintBtn" style="display:none;">Print / Export</button>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button type="button" class="btn btn-secondary no-print rpt-print-btn" onclick="toggleHideEmpty()" id="btnHideEmpty" style="display:none;">Hide Empty Rows</button>
+            <button type="button" class="btn btn-secondary no-print rpt-print-btn" onclick="window.print()" id="rptPrintBtn" style="display:none;">Print / Export</button>
+          </div>
         </div>
 
         <!-- Controls row -->
@@ -752,6 +757,9 @@
 
     // Save-in-progress flag: prevents concurrent Save All calls (double-click guard).
     let isSaving = false;
+
+    // Hide-empty-rows toggle state (persists across report regenerations).
+    let hideEmptyRows = false;
 
     // ── Tree expand/collapse state ────────────────────────────────────────
     // Tracks which group header IDs are currently expanded.
@@ -1669,10 +1677,14 @@
 
         document.getElementById('rptMsg').classList.remove('visible');
         document.getElementById('rptPrintBtn').style.display = '';
+        document.getElementById('btnHideEmpty').style.display = '';
+        // Re-apply hide-empty state if it was active before regeneration
+        document.getElementById('reportOutput').classList.toggle('hide-empty', hideEmptyRows);
       } catch (e) {
         showMsg('rptMsg', 'error', e.message);
         document.getElementById('reportOutput').innerHTML = '';
         document.getElementById('rptPrintBtn').style.display = 'none';
+        document.getElementById('btnHideEmpty').style.display = 'none';
       }
     }
 
@@ -1698,7 +1710,8 @@
 
       let rows = '';
       for (const acc of accounts) {
-        rows += `<tr><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
+        const _empty = years.every(y => monthOrder.every(m => !(acc.years && acc.years[y] && acc.years[y][m])));
+        rows += `<tr${_empty ? ' data-empty="1"' : ''}><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
         for (const y of years) {
           let yearTotal = 0;
           for (const m of monthOrder) {
@@ -1760,7 +1773,8 @@
 
       let rows = '';
       for (const acc of accounts) {
-        rows += `<tr><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
+        const _empty = years.every(y => monthOrder.every(m => !(acc.years && acc.years[y] && acc.years[y][m])));
+        rows += `<tr${_empty ? ' data-empty="1"' : ''}><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
 
         const yearTotals = {};
         for (const m of monthOrder) {
@@ -1817,16 +1831,18 @@
 
       let rows = '';
       for (const sec of sections) {
-        rows += `<tr class="report-section-header"><td colspan="${3 + years.length}">${escHtml(sec.type)}</td></tr>`;
+        const _secEmpty = sec.accounts.every(acc => years.every(y => !(acc.years && acc.years[y])));
+        rows += `<tr class="report-section-header"${_secEmpty ? ' data-empty="1"' : ''}><td colspan="${3 + years.length}">${escHtml(sec.type)}</td></tr>`;
         for (const acc of sec.accounts) {
-          rows += `<tr><td class="col-account sticky-col" style="padding-left:24px;">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td><td class="col-code sticky-col-3">${escHtml(acc.account_type || '')}</td>`;
+          const _accEmpty = years.every(y => !(acc.years && acc.years[y]));
+          rows += `<tr${_accEmpty ? ' data-empty="1"' : ''}><td class="col-account sticky-col" style="padding-left:24px;">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td><td class="col-code sticky-col-3">${escHtml(acc.account_type || '')}</td>`;
           for (const y of years) {
             const val = acc.years[y] || 0;
             rows += `<td>${val !== 0 ? formatCurrency(val) : '<span style="color:#d1d5db;">—</span>'}</td>`;
           }
           rows += '</tr>';
         }
-        rows += `<tr class="report-section-total"><td class="col-account sticky-col">Total ${escHtml(sec.type)}</td><td class="col-code sticky-col-2"></td><td class="col-code sticky-col-3"></td>`;
+        rows += `<tr class="report-section-total"${_secEmpty ? ' data-empty="1"' : ''}><td class="col-account sticky-col">Total ${escHtml(sec.type)}</td><td class="col-code sticky-col-2"></td><td class="col-code sticky-col-3"></td>`;
         for (const y of years) {
           rows += `<td class="rpt-total-cell">${formatCurrency(sec.yearTotals[y] || 0)}</td>`;
         }
@@ -1870,7 +1886,8 @@
 
       let rows = '';
       for (const acc of accounts) {
-        rows += `<tr><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
+        const _empty = years.every(y => !(acc.years && acc.years[y]));
+        rows += `<tr${_empty ? ' data-empty="1"' : ''}><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
         for (let i = 0; i < years.length; i++) {
           const y = years[i];
           const val = acc.years[y] || 0;
@@ -1915,6 +1932,12 @@
       if (theadRows.length < 2) return;
       const row1H = theadRows[0].getBoundingClientRect().height;
       theadRows[1].querySelectorAll('th').forEach(th => { th.style.top = row1H + 'px'; });
+    }
+
+    function toggleHideEmpty() {
+      hideEmptyRows = !hideEmptyRows;
+      document.getElementById('reportOutput').classList.toggle('hide-empty', hideEmptyRows);
+      document.getElementById('btnHideEmpty').textContent = hideEmptyRows ? 'Show All Rows' : 'Hide Empty Rows';
     }
 
     function formatCurrency(val) {
