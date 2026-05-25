@@ -475,14 +475,21 @@ class HistoricalComparativesService {
    * cells: [{ periodMonth, amount }] — 12 entries expected.
    * Blocks if batch is finalized.
    *
-   * PERFORMANCE: Uses bulk DB operations regardless of cell count.
-   * Previous implementation called saveManualLine per cell (6 round-trips × 84 cells = 504 queries).
-   * This implementation uses ~5 queries total for any number of cells.
+   * INTEGRITY: All cells are saved in a single PostgreSQL transaction.
+   * Either all cells persist or none do — no partial saves possible.
+   *
+   * account_id path: single multi-row INSERT ... ON CONFLICT DO UPDATE
+   *   (uses index uq_hcl_batch_account_period from migration 042)
+   *
+   * null-account path: SELECT FOR UPDATE + per-cell INSERT/UPDATE
+   *   (uses index uq_hcl_batch_account_snapshot_year_month from migration 049
+   *    as a concurrent-save guard; the FOR UPDATE lock prevents race conditions
+   *    within the transaction)
    */
   static async saveManualGrid({ companyId, batchId, userId, accountId,
     accountCode, accountName, accountType, financialYear, cells }) {
 
-    // 1. Get batch once — finalization guard
+    // 1. Get batch once — finalization guard (before acquiring a DB client)
     const batch = await this.getBatch({ companyId, batchId });
     if (!batch) throw new Error('Batch not found or access denied.');
     if (batch.is_finalized || batch.status === 'finalized') {
@@ -511,109 +518,166 @@ class HistoricalComparativesService {
       }
     }
 
-    // 3. Fetch all existing lines for this account + batch + year in ONE query
-    let existingQuery = supabase
-      .from('historical_comparative_lines')
-      .select('id, financial_year, period_month, amount, original_amount, entered_by, entered_at')
-      .eq('batch_id', batchId)
-      .eq('financial_year', financialYear);
-
-    if (accountId) {
-      existingQuery = existingQuery.eq('account_id', accountId);
-    } else {
-      existingQuery = existingQuery
-        .eq('account_name', accountName)
-        .eq('account_code', accountCode || '');
-    }
-
-    const { data: existingLines } = await existingQuery;
-    const existingMap = {};
-    if (existingLines) {
-      for (const line of existingLines) {
-        existingMap[`${line.period_month}`] = line;
-      }
-    }
-
-    // 4. Build all row data locally — _buildPeriodDates is pure, no DB calls
+    // 3. Build per-cell period dates — pure function, no DB calls
     const now = new Date().toISOString();
     const actorId = this._actorId(userId);
 
-    const toUpdate = [];
-    const toInsert = [];
-
-    for (const cell of cells) {
+    const rowData = cells.map(cell => {
       const { periodStart, periodEnd } = this._buildPeriodDates(financialYear, cell.periodMonth);
-      const existing = existingMap[`${cell.periodMonth}`];
+      return { periodMonth: cell.periodMonth, periodStart, periodEnd, amount: cell.amount };
+    });
 
-      const row = {
-        batch_id: batchId,
-        company_id: companyId,
-        account_id: accountId || null,
-        account_code: accountCode || null,
-        account_name: accountName,
-        account_type: accountType || null,
-        financial_year: financialYear,
-        period_month: cell.periodMonth,
-        period_start: periodStart,
-        period_end: periodEnd,
-        amount: cell.amount,
-        original_amount: existing ? (existing.original_amount ?? cell.amount) : cell.amount,
-        source_reference: null,
-        capture_method: 'manual',
-        entered_by: existing ? existing.entered_by : actorId,
-        entered_at: existing ? existing.entered_at : now,
-        updated_by: actorId,
-        updated_at: now,
-        is_finalized: false,
-        notes: null,
-        account_code_snapshot: accountCode || null,
-        account_name_snapshot: accountName || null,
-        account_type_snapshot: accountType || null,
-      };
-
-      if (existing) {
-        toUpdate.push({ id: existing.id, ...row });
-      } else {
-        toInsert.push(row);
-      }
-    }
-
-    // 5. Single batch update + single batch insert (max 2 queries for all cells)
+    // 4. Acquire a pg client and run all writes inside a single transaction
+    const client = await db.getClient();
     let savedLines = [];
 
-    if (toUpdate.length > 0) {
-      const { data, error } = await supabase
-        .from('historical_comparative_lines')
-        .upsert(toUpdate)
-        .select('id');
-      if (error) throw error;
-      if (data) savedLines = savedLines.concat(data);
+    try {
+      await client.query('BEGIN');
+
+      if (accountId) {
+        // ── account_id path ────────────────────────────────────────────────
+        // Single multi-row INSERT ... ON CONFLICT DO UPDATE
+        // Conflict target matches index uq_hcl_batch_account_period (migration 042).
+        // Does NOT update original_amount / entered_by / entered_at on conflict
+        // so the first-ever capture values are permanently preserved.
+
+        // Fixed params: $1–$9
+        const fixedParams = [
+          batchId,           // $1
+          companyId,         // $2
+          accountId,         // $3
+          accountCode || null, // $4
+          accountName,       // $5
+          accountType || null, // $6
+          financialYear,     // $7
+          actorId,           // $8
+          now,               // $9
+        ];
+
+        const valueRows = [];
+        const rowParams = [];
+        let pIdx = fixedParams.length; // 9 — next param is $10
+
+        for (const row of rowData) {
+          pIdx++;
+          const pmP  = pIdx;  // periodMonth
+          pIdx++;
+          const psP  = pIdx;  // periodStart
+          pIdx++;
+          const peP  = pIdx;  // periodEnd
+          pIdx++;
+          const amtP = pIdx;  // amount
+
+          rowParams.push(row.periodMonth, row.periodStart, row.periodEnd, row.amount);
+          // original_amount = amount on INSERT (same param); preserved on UPDATE
+          valueRows.push(
+            `($1, $2, $3, $4, $5, $6, $7, $${pmP}, $${psP}, $${peP}, ` +
+            `$${amtP}, $${amtP}, NULL, 'manual', $8, $9, $8, $9, false, NULL, $4, $5, $6)`
+          );
+        }
+
+        const upsertSql = `
+          INSERT INTO historical_comparative_lines (
+            batch_id, company_id, account_id, account_code, account_name, account_type,
+            financial_year, period_month, period_start, period_end,
+            amount, original_amount, source_reference, capture_method,
+            entered_by, entered_at, updated_by, updated_at, is_finalized, notes,
+            account_code_snapshot, account_name_snapshot, account_type_snapshot
+          ) VALUES ${valueRows.join(', ')}
+          ON CONFLICT (batch_id, account_id, financial_year, period_month)
+            WHERE account_id IS NOT NULL
+          DO UPDATE SET
+            amount                = EXCLUDED.amount,
+            updated_by            = EXCLUDED.updated_by,
+            updated_at            = EXCLUDED.updated_at,
+            account_code          = EXCLUDED.account_code,
+            account_name          = EXCLUDED.account_name,
+            account_type          = EXCLUDED.account_type,
+            account_code_snapshot = EXCLUDED.account_code_snapshot,
+            account_name_snapshot = EXCLUDED.account_name_snapshot,
+            account_type_snapshot = EXCLUDED.account_type_snapshot
+          RETURNING id, period_month
+        `;
+
+        const result = await client.query(upsertSql, [...fixedParams, ...rowParams]);
+        savedLines = result.rows;
+
+      } else {
+        // ── null-account path ──────────────────────────────────────────────
+        // SELECT FOR UPDATE locks existing rows, then INSERT/UPDATE per cell
+        // within the same transaction. All writes are atomic.
+        const existingResult = await client.query(
+          `SELECT id, period_month, original_amount
+           FROM historical_comparative_lines
+           WHERE batch_id = $1 AND company_id = $2 AND account_id IS NULL
+             AND account_name = $3
+             AND COALESCE(account_code, '') = COALESCE($4, '')
+             AND financial_year = $5
+           FOR UPDATE`,
+          [batchId, companyId, accountName, accountCode || null, financialYear]
+        );
+
+        const existingMap = {};
+        for (const row of existingResult.rows) existingMap[row.period_month] = row;
+
+        for (const row of rowData) {
+          const existing = existingMap[row.periodMonth];
+          if (existing) {
+            const r = await client.query(
+              `UPDATE historical_comparative_lines SET
+                 amount                = $1,
+                 updated_by            = $2,
+                 updated_at            = $3,
+                 account_code_snapshot = $4,
+                 account_name_snapshot = $5,
+                 account_type_snapshot = $6
+               WHERE id = $7 AND company_id = $8
+               RETURNING id, period_month`,
+              [row.amount, actorId, now,
+               accountCode || null, accountName, accountType || null,
+               existing.id, companyId]
+            );
+            if (r.rows[0]) savedLines.push(r.rows[0]);
+          } else {
+            const r = await client.query(
+              `INSERT INTO historical_comparative_lines (
+                 batch_id, company_id, account_id, account_code, account_name, account_type,
+                 financial_year, period_month, period_start, period_end,
+                 amount, original_amount, source_reference, capture_method,
+                 entered_by, entered_at, updated_by, updated_at, is_finalized, notes,
+                 account_code_snapshot, account_name_snapshot, account_type_snapshot
+               ) VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9,
+                         $10, $10, NULL, 'manual', $11, $12, $11, $12, false, NULL, $3, $4, $5)
+               RETURNING id, period_month`,
+              [batchId, companyId, accountCode || null, accountName, accountType || null,
+               financialYear, row.periodMonth, row.periodStart, row.periodEnd, row.amount,
+               actorId, now]
+            );
+            if (r.rows[0]) savedLines.push(r.rows[0]);
+          }
+        }
+      }
+
+      // Update batch updated_at inside the same transaction
+      await client.query(
+        `UPDATE historical_comparative_batches SET updated_at = $1 WHERE id = $2 AND company_id = $3`,
+        [now, batchId, companyId]
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
 
-    if (toInsert.length > 0) {
-      const { data, error } = await supabase
-        .from('historical_comparative_lines')
-        .insert(toInsert)
-        .select('id');
-      if (error) throw error;
-      if (data) savedLines = savedLines.concat(data);
-    }
-
-    // 6. Update batch updated_at once
-    await supabase
-      .from('historical_comparative_batches')
-      .update({ updated_at: now })
-      .eq('id', batchId);
-
-    // 7. One audit log entry for the whole grid save
+    // Audit log written outside the transaction — never throws, never blocks saves
     await this._writeAuditLog({
       companyId, batchId, lineId: null,
       action: 'GRID_SAVED',
       oldValue: null,
-      newValue: {
-        accountCode, accountName, financialYear,
-        updated: toUpdate.length, inserted: toInsert.length,
-      },
+      newValue: { accountCode, accountName, financialYear, saved: savedLines.length },
       performedBy: userId,
     });
 
@@ -742,50 +806,99 @@ class HistoricalComparativesService {
 
   /**
    * Finalize a batch — permanently locks it. No edits after this.
-   * Sets is_finalized = true on all lines.
+   * Sets is_finalized = true on all lines and status = 'finalized' on the batch.
    * IMMUTABLE after this point. Create a new batch for corrections.
+   *
+   * INTEGRITY: Lines update and batch update run inside a single PostgreSQL
+   * transaction. The batch row is locked with SELECT ... FOR UPDATE to prevent
+   * concurrent finalization races (TOCTOU guard). If either update fails the
+   * whole transaction is rolled back — the batch never ends up half-finalized
+   * (lines finalized but batch not, or vice versa).
+   *
+   * Throws with statusCode 422 if the batch has no saved lines.
    */
   static async finalizeBatch({ companyId, batchId, userId }) {
-    const batch = await this.getBatch({ companyId, batchId });
-    if (!batch) throw new Error('Batch not found or access denied.');
-    if (batch.status === 'finalized') {
+    // Pre-flight guard before acquiring a DB client.
+    // Full re-verification happens inside the transaction with FOR UPDATE.
+    const batchCheck = await this.getBatch({ companyId, batchId });
+    if (!batchCheck) throw new Error('Batch not found or access denied.');
+    if (batchCheck.status === 'finalized') {
       throw new Error('Batch is already finalized.');
     }
-    if (batch.status === 'draft') {
+    if (batchCheck.status === 'draft') {
       throw new Error('Batch must be validated before finalizing. Run validation first.');
     }
 
     const now = new Date().toISOString();
+    const actorId = this._actorId(userId);
 
-    // Mark all lines as finalized
-    const { error: linesError } = await supabase
-      .from('historical_comparative_lines')
-      .update({ is_finalized: true, updated_at: now })
-      .eq('batch_id', batchId)
-      .eq('company_id', companyId);
+    const client = await db.getClient();
+    let finalizedBatch = null;
 
-    if (linesError) throw linesError;
+    try {
+      await client.query('BEGIN');
 
-    // Mark the batch as finalized
-    const { data: finalizedBatch, error: batchError } = await supabase
-      .from('historical_comparative_batches')
-      .update({
-        status: 'finalized',
-        finalized_at: now,
-        finalized_by: this._actorId(userId),
-        updated_at: now,
-      })
-      .eq('id', batchId)
-      .eq('company_id', companyId)
-      .select()
-      .single();
+      // Re-verify batch status inside the transaction with FOR UPDATE (TOCTOU prevention).
+      // If another request finalized this batch concurrently, this lock will catch it.
+      const lockResult = await client.query(
+        `SELECT id, status FROM historical_comparative_batches
+         WHERE id = $1 AND company_id = $2
+         FOR UPDATE`,
+        [batchId, companyId]
+      );
+      if (!lockResult.rows[0]) throw new Error('Batch not found or access denied.');
+      const lockedStatus = lockResult.rows[0].status;
+      if (lockedStatus === 'finalized') throw new Error('Batch is already finalized.');
+      if (lockedStatus === 'draft') {
+        throw new Error('Batch must be validated before finalizing. Run validation first.');
+      }
 
-    if (batchError) throw batchError;
+      // Empty-batch guard — cannot finalize a batch with no saved lines
+      const countResult = await client.query(
+        `SELECT COUNT(*) AS line_count FROM historical_comparative_lines
+         WHERE batch_id = $1 AND company_id = $2`,
+        [batchId, companyId]
+      );
+      const lineCount = parseInt(countResult.rows[0].line_count, 10);
+      if (lineCount === 0) {
+        const emptyErr = new Error(
+          'Cannot finalize an empty historical comparative batch. Add at least one data line before finalizing.'
+        );
+        emptyErr.statusCode = 422;
+        throw emptyErr;
+      }
 
+      // Mark all lines as finalized
+      await client.query(
+        `UPDATE historical_comparative_lines
+           SET is_finalized = true, updated_at = $1
+         WHERE batch_id = $2 AND company_id = $3`,
+        [now, batchId, companyId]
+      );
+
+      // Mark the batch as finalized and return the updated row
+      const batchResult = await client.query(
+        `UPDATE historical_comparative_batches
+           SET status = 'finalized', finalized_at = $1, finalized_by = $2, updated_at = $1
+         WHERE id = $3 AND company_id = $4
+         RETURNING *`,
+        [now, actorId, batchId, companyId]
+      );
+      finalizedBatch = batchResult.rows[0];
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // Audit log written outside the transaction — never throws, never blocks finalization
     await this._writeAuditLog({
       companyId, batchId, lineId: null,
       action: 'BATCH_FINALIZED',
-      oldValue: { status: batch.status },
+      oldValue: { status: batchCheck.status },
       newValue: { status: 'finalized', finalized_at: now, finalized_by: userId },
       performedBy: userId,
     });

@@ -348,6 +348,9 @@ router.post('/batch/:batchId/finalize', authenticate, hasPermission('historical.
     });
     res.json({ batch });
   } catch (error) {
+    if (error.statusCode === 422) {
+      return res.status(422).json({ error: error.message });
+    }
     if (error.message && (error.message.includes('finalized') || error.message.includes('validated'))) {
       return res.status(403).json({ error: error.message });
     }

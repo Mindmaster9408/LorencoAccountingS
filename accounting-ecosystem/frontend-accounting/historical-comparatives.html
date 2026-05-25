@@ -367,13 +367,82 @@
       text-align: left;
       font-weight: 500;
       color: #111827;
+      min-width: 180px;
+      width: 180px;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
+    .report-table th.col-account { min-width: 180px; width: 180px; }
     .report-table td.col-code {
       text-align: left;
       color: #6b7280;
       font-size: 12px;
+      min-width: 80px;
+      width: 80px;
+      white-space: nowrap;
     }
+    .report-table th.col-code { min-width: 80px; width: 80px; }
     .report-table tr:hover td { background: #f9fafb; }
+
+    /* ── Report Scroll Container + Freeze Panes ─────────────────────── */
+    /* Wraps each report table in a scroll box so horizontal scroll is always
+       reachable without going to the bottom of the page. */
+    .report-scroll-container {
+      max-height: calc(100vh - 260px);
+      overflow: auto;
+      position: relative;
+      border-radius: 0 0 6px 6px;
+    }
+    /* Opaque sticky column backgrounds — must cover content scrolled behind them. */
+    .report-table th.sticky-col,
+    .report-table th.sticky-col-2,
+    .report-table th.sticky-col-3 { background: #f8fafc; }
+    .report-table td.sticky-col,
+    .report-table td.sticky-col-2,
+    .report-table td.sticky-col-3 { background: #ffffff; }
+    /* Section rows need their own matching background on sticky cells */
+    .report-section-header td.sticky-col,
+    .report-section-header td.sticky-col-2,
+    .report-section-header td.sticky-col-3 { background: #f1f5f9; }
+    .report-section-total td.sticky-col,
+    .report-section-total td.sticky-col-2,
+    .report-section-total td.sticky-col-3 { background: #f8fafc; }
+    /* Sticky column positions (offsets = Account width + Code width) */
+    .report-table .sticky-col  { position: sticky; left: 0;     z-index: 4; }
+    .report-table .sticky-col-2 {
+      position: sticky;
+      left: 180px;
+      z-index: 4;
+      /* Freeze-pane edge shadow. In TB (3 sticky cols) this shadow is hidden
+         behind sticky-col-3's opaque background, so only col-3's shadow shows. */
+      box-shadow: 3px 0 8px -2px rgba(0, 0, 0, 0.10);
+    }
+    .report-table .sticky-col-3 {
+      position: sticky;
+      left: 260px; /* 180 + 80 */
+      z-index: 4;
+      box-shadow: 3px 0 8px -2px rgba(0, 0, 0, 0.10);
+    }
+    /* Sticky header rows */
+    .report-scroll-container .report-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    /* Top-left corner (header row ∩ sticky col) — highest z-index */
+    .report-scroll-container .report-table thead th.sticky-col,
+    .report-scroll-container .report-table thead th.sticky-col-2,
+    .report-scroll-container .report-table thead th.sticky-col-3 { z-index: 7; }
+    /* Print — remove all sticky/scroll behaviour so the full table prints */
+    @media print {
+      .report-scroll-container { overflow: visible !important; max-height: none !important; }
+      .report-table .sticky-col,
+      .report-table .sticky-col-2,
+      .report-table .sticky-col-3 { position: static !important; box-shadow: none !important; }
+      .report-scroll-container .report-table thead th { position: static !important; }
+    }
 
     /* ── Empty States ────────────────────────────────────────────────── */
     .empty-state {
@@ -664,6 +733,13 @@
     let currentBatch = null;
     let currentLines = [];
 
+    // Dirty flag: set to true on any grid input, cleared after a successful save.
+    // Prevents finalization while there are unsaved edits.
+    let historicalDirty = false;
+
+    // Save-in-progress flag: prevents concurrent Save All calls (double-click guard).
+    let isSaving = false;
+
     // ── Tree expand/collapse state ────────────────────────────────────────
     // Tracks which group header IDs are currently expanded.
     // Reset on each fresh renderCaptureMain call so default is all-expanded.
@@ -683,15 +759,19 @@
       };
       if (body) opts.body = JSON.stringify(body);
       const res = await fetch(BASE + path, opts);
-      const json = await res.json();
+      // Check res.ok before res.json() — a non-JSON error body (e.g. 502 proxy page)
+      // would otherwise throw a SyntaxError that hides the real HTTP status.
       if (!res.ok) {
-        // Include detail from backend when available (e.g. DB column errors)
-        const msg = json.detail
-          ? `${json.error || 'Error'}: ${json.detail}`
-          : (json.error || `HTTP ${res.status}`);
-        throw new Error(msg);
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const json = await res.json();
+          errMsg = json.detail
+            ? `${json.error || 'Error'}: ${json.detail}`
+            : (json.error || errMsg);
+        } catch (_) { /* non-JSON body — keep HTTP status message */ }
+        throw new Error(errMsg);
       }
-      return json;
+      return res.json();
     }
 
     // ── Tab switching ────────────────────────────────────────────────────
@@ -870,7 +950,7 @@
             <div class="action-row">
               ${!isFinalized ? `
                 <button type="button" class="btn btn-secondary btn-sm" onclick="openAddAccountRow()">+ Add Account</button>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="saveAllGrids()">Save All</button>
+                <button type="button" id="btnSaveAll" class="btn btn-secondary btn-sm" onclick="saveAllGrids()">Save All</button>
                 <button type="button" class="btn btn-warning btn-sm" onclick="fixScaledAmounts()" title="Fix amounts that were saved 100× too large due to a number format bug">Fix ×100 amounts</button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="validateBatch()">Validate</button>
                 <button type="button" class="btn btn-success btn-sm" onclick="finalizeBatch()" ${batch.status !== 'validated' ? 'disabled title="Validate first"' : ''}>
@@ -1061,6 +1141,7 @@
               value="${formatCurrency(val)}"
               onfocus="onAmountFocus(this)"
               onblur="onAmountBlur(this)"
+              oninput="historicalDirty = true"
               onkeydown="handleGridKey(event, this)"
             />
           </td>`;
@@ -1250,91 +1331,140 @@
       const tbl = document.getElementById(`tbl_${gridId}`);
       if (!tbl) return;
 
-      const cells = [];
+      // Group DOM cells by year
+      const byYear = {};
       SA_MONTHS.forEach(month => {
         years.forEach(year => {
           const input = tbl.querySelector(`.amount-cell[data-month="${month}"][data-year="${year}"]`);
           if (input) {
-            cells.push({ periodMonth: month, amount: parseCurrency(input.value), year });
+            if (!byYear[year]) byYear[year] = [];
+            byYear[year].push({ periodMonth: month, amount: parseCurrency(input.value) });
           }
         });
       });
 
+      const yearEntries = Object.entries(byYear);
+      if (!yearEntries.length) return;
+
       showMsg('captureMsg', 'info', 'Saving…');
 
-      try {
-        // Group cells by year, then send all years in parallel
-        const byYear = {};
-        for (const c of cells) {
-          if (!byYear[c.year]) byYear[c.year] = [];
-          byYear[c.year].push({ periodMonth: c.periodMonth, amount: c.amount });
-        }
+      // Save each year sequentially so a failure on one year is clearly attributed
+      const yearErrors = [];
+      let totalSaved    = 0;
+      let totalExpected = 0;
 
-        await Promise.all(Object.entries(byYear).map(([year, yearCells]) =>
-          api('POST', `/batch/${currentBatch.id}/manual-grid`, {
-            accountId: acc.account_id || null,
-            accountCode: acc.account_code || null,
-            accountName: acc.account_name,
-            accountType: acc.account_type || null,
+      for (const [year, yearCells] of yearEntries) {
+        totalExpected += yearCells.length;
+        try {
+          const result = await api('POST', `/batch/${currentBatch.id}/manual-grid`, {
+            accountId:    acc.account_id    || null,
+            accountCode:  acc.account_code  || null,
+            accountName:  acc.account_name,
+            accountType:  acc.account_type  || null,
             financialYear: parseInt(year),
             cells: yearCells,
-          })
-        ));
+          });
+          const serverSaved = result.saved || 0;
+          totalSaved += serverSaved;
+          // Mismatch between server-confirmed count and DOM count signals a partial save
+          if (serverSaved !== yearCells.length) {
+            yearErrors.push(
+              `FY ${year}: server confirmed ${serverSaved} of ${yearCells.length} cells saved. Re-save to confirm.`
+            );
+          }
+        } catch (e) {
+          yearErrors.push(`FY ${year}: ${e.message}`);
+        }
+      }
 
-        showMsg('captureMsg', 'success', `Saved ${cells.length} cells for ${acc.account_name}.`);
-      } catch (e) {
-        showMsg('captureMsg', 'error', e.message);
+      if (yearErrors.length) {
+        showMsg('captureMsg', 'error',
+          `Saved ${totalSaved} of ${totalExpected} cells for ${escHtml(acc.account_name)}. Issues:<br>` +
+          yearErrors.map(m => `• ${escHtml(m)}`).join('<br>'),
+          true
+        );
+      } else {
+        historicalDirty = false;
+        showMsg('captureMsg', 'success', `Saved ${totalSaved} cells for ${escHtml(acc.account_name)}.`);
       }
     }
 
     async function saveAllGrids() {
+      // Double-save guard — if already saving, do nothing
+      if (isSaving) return;
+
       const gridBlocks = document.querySelectorAll('.account-grid-block');
       if (!gridBlocks.length) {
         showMsg('captureMsg', 'info', 'No grids to save.');
         return;
       }
+
+      isSaving = true;
+      const btn = document.getElementById('btnSaveAll');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
       showMsg('captureMsg', 'info', `Saving ${gridBlocks.length} account grid(s)…`);
 
-      // Iterate grids and extract data
       let saved = 0;
-      let errors = 0;
+      const failedItems = [];
+
       for (const block of gridBlocks) {
-        try {
-          const inputs = block.querySelectorAll('.amount-cell');
-          if (!inputs.length) continue;
-          const accountId = inputs[0].dataset.accountId || null;
-          const accountCode = inputs[0].dataset.accountCode || null;
-          const accountName = inputs[0].dataset.accountName;
-          const accountType = inputs[0].dataset.accountType || null;
+        const inputs = block.querySelectorAll('.amount-cell');
+        if (!inputs.length) continue;
 
-          // Group by year
-          const byYear = {};
-          for (const input of inputs) {
-            const year = parseInt(input.dataset.year);
-            const month = parseInt(input.dataset.month);
-            if (!byYear[year]) byYear[year] = [];
-            byYear[year].push({ periodMonth: month, amount: parseCurrency(input.value) });
-          }
+        const accountId   = inputs[0].dataset.accountId   || null;
+        const accountCode = inputs[0].dataset.accountCode || null;
+        const accountName = inputs[0].dataset.accountName;
+        const accountType = inputs[0].dataset.accountType || null;
+        const label       = accountCode ? `${accountCode} ${accountName}` : accountName;
 
-          await Promise.all(Object.entries(byYear).map(([year, yearCells]) =>
-            api('POST', `/batch/${currentBatch.id}/manual-grid`, {
-              accountId: accountId || null,
+        // Group cells by year
+        const byYear = {};
+        for (const input of inputs) {
+          const year  = parseInt(input.dataset.year);
+          const month = parseInt(input.dataset.month);
+          if (!byYear[year]) byYear[year] = [];
+          byYear[year].push({ periodMonth: month, amount: parseCurrency(input.value) });
+        }
+
+        let accountOk = true;
+        for (const [year, yearCells] of Object.entries(byYear)) {
+          try {
+            const result = await api('POST', `/batch/${currentBatch.id}/manual-grid`, {
+              accountId:     accountId || null,
               accountCode,
               accountName,
               accountType,
               financialYear: parseInt(year),
               cells: yearCells,
-            })
-          ));
-          saved++;
-        } catch (e) {
-          errors++;
+            });
+            const serverSaved = result.saved || 0;
+            if (serverSaved !== yearCells.length) {
+              accountOk = false;
+              const msg = `${label} FY ${year}: server confirmed ${serverSaved} of ${yearCells.length} cells`;
+              failedItems.push(msg);
+              console.error('[HistoricalComparatives] saveAllGrids count mismatch:', msg);
+            }
+          } catch (e) {
+            accountOk = false;
+            const msg = `${label} FY ${year}: ${e.message}`;
+            failedItems.push(msg);
+            console.error('[HistoricalComparatives] saveAllGrids error:', msg, e);
+          }
         }
+        if (accountOk) saved++;
       }
 
-      if (errors) {
-        showMsg('captureMsg', 'error', `Saved ${saved}, failed ${errors}. Check console for details.`);
+      isSaving = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Save All'; }
+
+      if (failedItems.length) {
+        showMsg('captureMsg', 'error',
+          `Saved ${saved} account(s) fully. Failed items:<br>` +
+          failedItems.map(m => `• ${escHtml(m)}`).join('<br>'),
+          true
+        );
       } else {
+        historicalDirty = false;
         showMsg('captureMsg', 'success', `All ${saved} account grid(s) saved successfully.`);
       }
     }
@@ -1364,6 +1494,15 @@
       if (!currentBatch) return;
       if (currentBatch.status !== 'validated') {
         showMsg('captureMsg', 'error', 'The batch must be validated before it can be finalized.');
+        return;
+      }
+      // Block finalization when there are unsaved grid edits.
+      // The user must Save All before finalizing — there is no "finalize anyway" bypass.
+      if (historicalDirty) {
+        showMsg('captureMsg', 'error',
+          'There are unsaved changes in the grid. Use <strong>Save All</strong> to save all changes before finalizing.',
+          true
+        );
         return;
       }
       if (!confirm(
@@ -1536,7 +1675,7 @@
         return;
       }
 
-      let headers = '<th class="col-account">Account</th><th class="col-code">Code</th>';
+      let headers = '<th class="col-account sticky-col">Account</th><th class="col-code sticky-col-2">Code</th>';
       for (const y of years) {
         for (const m of monthOrder) {
           headers += `<th style="min-width:80px;">${MONTH_SHORT[m]}<br><span style="font-size:10px;color:#9ca3af;">FY${y}</span></th>`;
@@ -1546,7 +1685,7 @@
 
       let rows = '';
       for (const acc of accounts) {
-        rows += `<tr><td class="col-account">${escHtml(acc.account_name)}</td><td class="col-code">${escHtml(acc.account_code || '')}</td>`;
+        rows += `<tr><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
         for (const y of years) {
           let yearTotal = 0;
           for (const m of monthOrder) {
@@ -1564,7 +1703,7 @@
         : `Showing finalized data for FY${yearFrom}–FY${yearTo}. Only data from finalized batches is included.`;
 
       out.innerHTML = `
-        <div style="overflow-x:auto;">
+        <div class="report-scroll-container">
           <table class="report-table">
             <thead><tr>${headers}</tr></thead>
             <tbody>${rows}</tbody>
@@ -1591,7 +1730,7 @@
 
       // Two-row header: row 1 = month name (spanning nYears cols), row 2 = FY labels
       // Plus Account / Code fixed cols, and a Total section at the end
-      let headerRow1 = '<th class="col-account" rowspan="2">Account</th><th class="col-code" rowspan="2">Code</th>';
+      let headerRow1 = '<th class="col-account sticky-col" rowspan="2">Account</th><th class="col-code sticky-col-2" rowspan="2">Code</th>';
       let headerRow2 = '';
 
       for (const m of monthOrder) {
@@ -1608,7 +1747,7 @@
 
       let rows = '';
       for (const acc of accounts) {
-        rows += `<tr><td class="col-account">${escHtml(acc.account_name)}</td><td class="col-code">${escHtml(acc.account_code || '')}</td>`;
+        rows += `<tr><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
 
         const yearTotals = {};
         for (const m of monthOrder) {
@@ -1631,7 +1770,7 @@
         : `Showing finalized data for FY${yearFrom}–FY${yearTo}. Each month column group compares the same month across all years.`;
 
       out.innerHTML = `
-        <div style="overflow-x:auto;">
+        <div class="report-scroll-container">
           <table class="report-table">
             <thead>
               <tr>${headerRow1}</tr>
@@ -1642,6 +1781,9 @@
         </div>
         <div style="font-size:12px; color:${isDraft ? '#92400e' : '#6b7280'}; margin-top:12px;">${footerNote}</div>
       `;
+      // Two-row header: set row-2 cells' top = row-1 height so they stick
+      // directly below row 1 instead of overlapping at top: 0.
+      fixStickyRow2(out.querySelector('.report-scroll-container'));
     }
 
     // ── Render: TB-Style ─────────────────────────────────────────────────
@@ -1655,7 +1797,7 @@
         return;
       }
 
-      let headers = '<th class="col-account">Account</th><th class="col-code">Code</th><th class="col-code">Type</th>';
+      let headers = '<th class="col-account sticky-col">Account</th><th class="col-code sticky-col-2">Code</th><th class="col-code sticky-col-3">Type</th>';
       for (const y of years) {
         headers += `<th style="min-width:110px;">FY${y}<br><span style="font-size:10px;color:#9ca3af;">Annual Total</span></th>`;
       }
@@ -1664,14 +1806,14 @@
       for (const sec of sections) {
         rows += `<tr class="report-section-header"><td colspan="${3 + years.length}">${escHtml(sec.type)}</td></tr>`;
         for (const acc of sec.accounts) {
-          rows += `<tr><td class="col-account" style="padding-left:24px;">${escHtml(acc.account_name)}</td><td class="col-code">${escHtml(acc.account_code || '')}</td><td class="col-code">${escHtml(acc.account_type || '')}</td>`;
+          rows += `<tr><td class="col-account sticky-col" style="padding-left:24px;">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td><td class="col-code sticky-col-3">${escHtml(acc.account_type || '')}</td>`;
           for (const y of years) {
             const val = acc.years[y] || 0;
             rows += `<td>${val !== 0 ? formatCurrency(val) : '<span style="color:#d1d5db;">—</span>'}</td>`;
           }
           rows += '</tr>';
         }
-        rows += `<tr class="report-section-total"><td class="col-account">Total ${escHtml(sec.type)}</td><td class="col-code"></td><td class="col-code"></td>`;
+        rows += `<tr class="report-section-total"><td class="col-account sticky-col">Total ${escHtml(sec.type)}</td><td class="col-code sticky-col-2"></td><td class="col-code sticky-col-3"></td>`;
         for (const y of years) {
           rows += `<td class="rpt-total-cell">${formatCurrency(sec.yearTotals[y] || 0)}</td>`;
         }
@@ -1683,7 +1825,7 @@
         : `Showing finalized data for FY${yearFrom}–FY${yearTo}. Only data from finalized batches is included.`;
 
       out.innerHTML = `
-        <div style="overflow-x:auto;">
+        <div class="report-scroll-container">
           <table class="report-table">
             <thead><tr>${headers}</tr></thead>
             <tbody>${rows}</tbody>
@@ -1704,7 +1846,7 @@
         return;
       }
 
-      let headers = '<th class="col-account">Account</th><th class="col-code">Code</th>';
+      let headers = '<th class="col-account sticky-col">Account</th><th class="col-code sticky-col-2">Code</th>';
       for (let i = 0; i < years.length; i++) {
         const y = years[i];
         headers += `<th style="min-width:110px;">FY${y}<br><span style="font-size:10px;color:#9ca3af;">Annual Total</span></th>`;
@@ -1715,7 +1857,7 @@
 
       let rows = '';
       for (const acc of accounts) {
-        rows += `<tr><td class="col-account">${escHtml(acc.account_name)}</td><td class="col-code">${escHtml(acc.account_code || '')}</td>`;
+        rows += `<tr><td class="col-account sticky-col">${escHtml(acc.account_name)}</td><td class="col-code sticky-col-2">${escHtml(acc.account_code || '')}</td>`;
         for (let i = 0; i < years.length; i++) {
           const y = years[i];
           const val = acc.years[y] || 0;
@@ -1739,7 +1881,7 @@
         : `Showing finalized data for FY${yearFrom}–FY${yearTo}. Only data from finalized batches is included.`;
 
       out.innerHTML = `
-        <div style="overflow-x:auto;">
+        <div class="report-scroll-container">
           <table class="report-table">
             <thead><tr>${headers}</tr></thead>
             <tbody>${rows}</tbody>
@@ -1750,6 +1892,18 @@
     }
 
     // ── Utilities ────────────────────────────────────────────────────────
+
+    // For two-row headers (renderPLReportMonthGroups): the second thead row's
+    // cells need top = <row-1 height> so they stick below row 1, not on top of it.
+    // Must be called after innerHTML is set (needs rendered dimensions).
+    function fixStickyRow2(container) {
+      if (!container) return;
+      const theadRows = container.querySelectorAll('thead tr');
+      if (theadRows.length < 2) return;
+      const row1H = theadRows[0].getBoundingClientRect().height;
+      theadRows[1].querySelectorAll('th').forEach(th => { th.style.top = row1H + 'px'; });
+    }
+
     function formatCurrency(val) {
       if (!val && val !== 0) return '0.00';
       const n = parseFloat(val);
