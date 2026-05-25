@@ -435,6 +435,19 @@
     .report-scroll-container .report-table thead th.sticky-col,
     .report-scroll-container .report-table thead th.sticky-col-2,
     .report-scroll-container .report-table thead th.sticky-col-3 { z-index: 7; }
+    /* Dark theme — sticky cells need solid dark backgrounds (not white) */
+    [data-theme="dark"] .report-table th.sticky-col,
+    [data-theme="dark"] .report-table th.sticky-col-2,
+    [data-theme="dark"] .report-table th.sticky-col-3 { background: #272447 !important; }
+    [data-theme="dark"] .report-table td.sticky-col,
+    [data-theme="dark"] .report-table td.sticky-col-2,
+    [data-theme="dark"] .report-table td.sticky-col-3 { background: #1e1b3a !important; }
+    [data-theme="dark"] .report-section-header td.sticky-col,
+    [data-theme="dark"] .report-section-header td.sticky-col-2,
+    [data-theme="dark"] .report-section-header td.sticky-col-3 { background: #29200a !important; }
+    [data-theme="dark"] .report-section-total td.sticky-col,
+    [data-theme="dark"] .report-section-total td.sticky-col-2,
+    [data-theme="dark"] .report-section-total td.sticky-col-3 { background: #252012 !important; }
     /* Print — remove all sticky/scroll behaviour so the full table prints */
     @media print {
       .report-scroll-container { overflow: visible !important; max-height: none !important; }
