@@ -238,7 +238,7 @@ async function finalizeWorkOrderCost(supabase, companyId, workOrderId, completed
 async function getStockValuation(supabase, companyId) {
   const { data, error } = await supabase
     .from('inventory_items')
-    .select('id, name, sku, category, current_stock, average_cost, cost_price, costing_method')
+    .select('id, name, sku, category, item_type, unit, current_stock, min_stock, average_cost, last_purchase_cost, cost_price, cost_updated_at, costing_method')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .order('name');
@@ -246,17 +246,32 @@ async function getStockValuation(supabase, companyId) {
   if (error) throw new Error(error.message);
 
   return (data || []).map(item => {
-    const qty      = parseFloat(item.current_stock) || 0;
-    const unitCost = parseFloat(item.average_cost) || parseFloat(item.cost_price) || 0;
+    const qty = parseFloat(item.current_stock) || 0;
+    const averageCost = parseFloat(item.average_cost);
+    const lastPurchaseCost = parseFloat(item.last_purchase_cost);
+    const fallbackCost = parseFloat(item.cost_price);
+    const unitCost = Number.isFinite(averageCost)
+      ? averageCost
+      : (Number.isFinite(lastPurchaseCost) ? lastPurchaseCost : (Number.isFinite(fallbackCost) ? fallbackCost : 0));
+    const hasCost = Number.isFinite(averageCost) || Number.isFinite(lastPurchaseCost) || Number.isFinite(fallbackCost);
     return {
       itemId:        item.id,
       name:          item.name,
       sku:           item.sku,
       category:      item.category,
+      itemType:      item.item_type,
+      unit:          item.unit,
       qty,
       unitCost,
       totalValue:    qty * unitCost,
-      costingMethod: item.costing_method || 'average'
+      currentStock:  qty,
+      averageCost:   Number.isFinite(averageCost) ? averageCost : null,
+      lastPurchaseCost: Number.isFinite(lastPurchaseCost) ? lastPurchaseCost : null,
+      minStock:      parseFloat(item.min_stock) || 0,
+      costUpdatedAt: item.cost_updated_at || null,
+      costingMethod: item.costing_method || 'average',
+      hasCost,
+      costMissing: !hasCost
     };
   });
 }

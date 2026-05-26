@@ -14,6 +14,7 @@ const bomRoutes = require('./routes/boms');
 const workOrderRoutes = require('./routes/work-orders');
 const inventoryReportsRoutes = require('./routes/reports');
 const costingService = require('./services/costingService');
+const { adjustStock } = require('./routes/stock-helpers');
 
 const router = express.Router();
 
@@ -49,6 +50,42 @@ router.get('/dashboard', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/demo-dashboard', async (req, res) => {
+  const cid = req.companyId;
+  try {
+    const [valuation, totalItems, lowStock, suppliers, openWOs, openPOs, bomCount, itemTypes] = await Promise.all([
+      costingService.getStockValuation(supabase, cid),
+      supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true),
+      supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true).filter('current_stock', 'lte', 'min_stock'),
+      supabase.from('suppliers').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true),
+      supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('company_id', cid).in('status', ['released', 'in_progress']),
+      supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('company_id', cid).in('status', ['sent', 'partial_receipt']),
+      supabase.from('bom_headers').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('status', 'active'),
+      supabase.from('inventory_items').select('item_type').eq('company_id', cid).eq('is_active', true)
+    ]);
+
+    const items = itemTypes.data || [];
+    const rawMaterialCount = items.filter(item => item.item_type === 'raw_material').length;
+    const finishedGoodsCount = items.filter(item => item.item_type === 'finished_good').length;
+    const totalStockValue = valuation.reduce((sum, row) => sum + (parseFloat(row.totalValue) || 0), 0);
+
+    res.json({
+      total_items: totalItems.count || 0,
+      total_stock_value: totalStockValue,
+      low_stock_count: lowStock.count || 0,
+      open_work_orders: openWOs.count || 0,
+      purchase_orders_awaiting_receipt: openPOs.count || 0,
+      finished_goods_count: finishedGoodsCount,
+      raw_material_count: rawMaterialCount,
+      active_boms: bomCount.count || 0,
+      total_suppliers: suppliers.count || 0,
+      valuation
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 
@@ -227,6 +264,111 @@ router.get('/movements', async (req, res) => {
   res.json({ movements: data || [] });
 });
 
+router.get('/items/:id/movements', async (req, res) => {
+  const itemId = parseInt(req.params.id);
+  if (Number.isNaN(itemId)) return res.status(400).json({ error: 'Invalid item id' });
+
+  const { data: item, error: itemErr } = await supabase
+    .from('inventory_items')
+    .select('id, name, sku, unit, current_stock, average_cost, last_purchase_cost, cost_price')
+    .eq('id', itemId)
+    .eq('company_id', req.companyId)
+    .single();
+
+  if (itemErr || !item) return res.status(404).json({ error: 'Item not found' });
+
+  const [movementResult, valuationResult] = await Promise.all([
+    supabase
+      .from('stock_movements')
+      .select('id, company_id, item_id, warehouse_id, movement_type, quantity, reference, notes, unit_cost, created_by, created_at, warehouses:warehouse_id(name)')
+      .eq('company_id', req.companyId)
+      .eq('item_id', itemId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('stock_valuation_movements')
+      .select('id, movement_id, movement_type, qty, unit_cost, total_cost, running_avg_cost, running_qty, reference, source_type, source_id, created_by, created_at')
+      .eq('company_id', req.companyId)
+      .eq('item_id', itemId)
+      .order('created_at', { ascending: false })
+  ]);
+
+  if (movementResult.error) return res.status(500).json({ error: movementResult.error.message });
+  if (valuationResult.error) return res.status(500).json({ error: valuationResult.error.message });
+
+  let history;
+  const movementMap = new Map((movementResult.data || []).map(row => [row.id, row]));
+
+  if (valuationResult.data && valuationResult.data.length > 0) {
+    // Primary path: build history from stock_valuation_movements (richest data)
+    history = valuationResult.data.map(row => {
+      const movement = movementMap.get(row.movement_id) || null;
+      return {
+        date: row.created_at,
+        movement_type: row.movement_type || movement?.movement_type || 'movement',
+        quantity: parseFloat(row.qty) || parseFloat(movement?.quantity) || 0,
+        reference: row.reference || movement?.reference || null,
+        notes: movement?.notes || null,
+        user_id: row.created_by || movement?.created_by || null,
+        resulting_stock: parseFloat(row.running_qty) || null,
+        unit_cost: parseFloat(row.unit_cost) || parseFloat(movement?.unit_cost) || 0,
+        total_cost: parseFloat(row.total_cost) || 0,
+        running_avg_cost: parseFloat(row.running_avg_cost) || null,
+        source_type: row.source_type || null,
+        source_id: row.source_id || null,
+        warehouse: movement?.warehouses?.name || null
+      };
+    });
+  } else {
+    // Fallback path: build history directly from stock_movements
+    // Used when stock_valuation_movements has no rows (e.g. after adjustStock bypass)
+    // Sort ascending by created_at so running totals are computed correctly
+    const sorted = [...(movementResult.data || [])].sort(
+      (a, b) => new Date(a.created_at) - new Date(b.created_at)
+    );
+    let runningQty = 0;
+    history = sorted.map(row => {
+      const qty = parseFloat(row.quantity) || 0;
+      const mtype = row.movement_type || 'movement';
+      if (mtype === 'in' || mtype === 'return') {
+        runningQty += qty;
+      } else if (mtype === 'out') {
+        runningQty -= qty;
+      }
+      // 'adjustment' omitted — sign unknown without sign column
+      const unitCost = parseFloat(row.unit_cost) || 0;
+      return {
+        date: row.created_at,
+        movement_type: mtype,
+        quantity: qty,
+        reference: row.reference || null,
+        notes: row.notes || null,
+        user_id: row.created_by || null,
+        resulting_stock: runningQty,
+        unit_cost: unitCost,
+        total_cost: qty * unitCost,
+        running_avg_cost: null,
+        source_type: null,
+        source_id: null,
+        warehouse: row.warehouses?.name || null
+      };
+    });
+  }
+
+  res.json({
+    item: {
+      id: item.id,
+      name: item.name,
+      sku: item.sku,
+      unit: item.unit,
+      current_stock: item.current_stock,
+      average_cost: item.average_cost,
+      last_purchase_cost: item.last_purchase_cost,
+      cost_price: item.cost_price
+    },
+    movements: history
+  });
+});
+
 router.post('/movements', async (req, res) => {
   const { item_id, warehouse_id, type, quantity, reference, notes, cost_price } = req.body;
   if (!item_id || !type || !quantity) {
@@ -247,27 +389,26 @@ router.post('/movements', async (req, res) => {
   const delta = ['in', 'return'].includes(type) ? qty : (type === 'out' ? -qty : 0);
 
   if (delta !== 0) {
-    // Use atomic RPC — stock update and movement record in one DB transaction
-    const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
-      p_company_id:    req.companyId,
-      p_item_id:       parseInt(item_id),
-      p_delta:         delta,
-      p_movement_type: type,
-      p_warehouse_id:  warehouse_id ? parseInt(warehouse_id) : null,
-      p_reference:     reference || null,
-      p_notes:         notes || null,
-      p_cost_price:    cost_price ? parseFloat(cost_price) : null,
-      p_created_by:    req.user.userId,
-      p_source_type:   'manual',
-      p_source_id:     null
+    // Use adjustStock helper (replaces broken adjust_inventory_stock RPC)
+    const result = await adjustStock(supabase, {
+      companyId:    req.companyId,
+      itemId:       parseInt(item_id),
+      delta,
+      movementType: type,
+      warehouseId:  warehouse_id ? parseInt(warehouse_id) : null,
+      reference:    reference || null,
+      notes:        notes || null,
+      costPrice:    cost_price ? parseFloat(cost_price) : null,
+      createdBy:    req.user.userId,
+      sourceType:   'manual',
+      sourceId:     null
     });
 
-    if (rpcErr) return res.status(500).json({ error: rpcErr.message });
-    if (!rpcResult.success) {
-      const status = rpcResult.error === 'Insufficient stock' ? 422 : 400;
+    if (!result.success) {
+      const status = result.error === 'Insufficient stock' ? 422 : 400;
       return res.status(status).json({
-        error:     rpcResult.error,
-        available: rpcResult.available,
+        error:     result.error,
+        available: result.available,
         requested: qty
       });
     }
@@ -278,7 +419,7 @@ router.post('/movements', async (req, res) => {
       .select('*')
       .eq('company_id', req.companyId)
       .eq('item_id', parseInt(item_id))
-      .eq('type', type)
+      .eq('movement_type', type)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -291,21 +432,100 @@ router.post('/movements', async (req, res) => {
   const { data: movement, error: mvErr } = await supabase
     .from('stock_movements')
     .insert({
-      company_id:  req.companyId,
-      item_id:     parseInt(item_id),
-      warehouse_id: warehouse_id ? parseInt(warehouse_id) : null,
-      type,
-      quantity:    qty,
-      reference:   reference || null,
-      notes:       notes || null,
-      cost_price:  cost_price ? parseFloat(cost_price) : null,
-      created_by:  req.user.userId
+      company_id:    req.companyId,
+      item_id:       parseInt(item_id),
+      warehouse_id:  warehouse_id ? parseInt(warehouse_id) : null,
+      movement_type: type,
+      quantity:      qty,
+      reference:     reference || null,
+      notes:         notes     || null,
+      unit_cost:     cost_price ? parseFloat(cost_price) : null,
+      created_by:    req.user.userId
     })
     .select().single();
   if (mvErr) return res.status(500).json({ error: mvErr.message });
 
   await auditFromReq(req, 'CREATE', 'stock_movement', movement.id, { module: 'inventory', metadata: { type, qty } });
   return res.status(201).json({ movement });
+});
+
+router.post('/quick-receive', async (req, res) => {
+  const { supplier_id, item_id, quantity, unit_cost, reference, notes, warehouse_id } = req.body;
+
+  if (!supplier_id) return res.status(400).json({ error: 'supplier_id is required' });
+  if (!item_id) return res.status(400).json({ error: 'item_id is required' });
+  if (!reference) return res.status(400).json({ error: 'reference is required' });
+
+  const qty = parseFloat(quantity);
+  const cost = parseFloat(unit_cost);
+  if (!qty || qty <= 0) return res.status(400).json({ error: 'quantity must be greater than 0' });
+  if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: 'unit_cost must be a valid number' });
+
+  const { data: supplier } = await supabase
+    .from('suppliers')
+    .select('id, name')
+    .eq('id', parseInt(supplier_id))
+    .eq('company_id', req.companyId)
+    .single();
+  if (!supplier) return res.status(404).json({ error: 'Supplier not found' });
+
+  const { data: item } = await supabase
+    .from('inventory_items')
+    .select('id, name, sku, current_stock, average_cost, last_purchase_cost, cost_price')
+    .eq('id', parseInt(item_id))
+    .eq('company_id', req.companyId)
+    .single();
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+
+  const result = await adjustStock(supabase, {
+    companyId:    req.companyId,
+    itemId:       parseInt(item_id),
+    delta:        qty,
+    movementType: 'in',
+    warehouseId:  warehouse_id ? parseInt(warehouse_id) : null,
+    reference,
+    notes:        notes || `Quick receive from ${supplier.name}`,
+    costPrice:    cost,
+    createdBy:    req.user.userId,
+    sourceType:   'quick_receive',
+    sourceId:     reference
+  });
+
+  if (!result.success) {
+    const status = result.error === 'Insufficient stock' ? 422 : 400;
+    return res.status(status).json({ error: result.error || 'Quick receive failed', available: result.available });
+  }
+
+  const { data: updatedItem } = await supabase
+    .from('inventory_items')
+    .select('id, name, sku, current_stock, average_cost, last_purchase_cost, cost_updated_at, cost_price')
+    .eq('id', parseInt(item_id))
+    .eq('company_id', req.companyId)
+    .single();
+
+  const { data: movement } = await supabase
+    .from('stock_movements')
+    .select('*')
+    .eq('company_id', req.companyId)
+    .eq('item_id', parseInt(item_id))
+    .eq('reference', reference)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  await auditFromReq(req, 'CREATE', 'stock_movement', movement?.id || null, {
+    module: 'inventory',
+    metadata: { action: 'quick_receive', supplier_id: supplier.id, item_id: item.id, quantity: qty, unit_cost: cost }
+  });
+
+  res.status(201).json({
+    success: true,
+    supplier,
+    item: updatedItem || item,
+    movement: movement || null,
+    new_stock: result.new_stock,
+    new_avg_cost: result.new_avg_cost ?? updatedItem?.average_cost ?? null
+  });
 });
 
 // ═══ SUPPLIERS ════════════════════════════════════════════════════════════════
@@ -322,12 +542,14 @@ router.get('/suppliers', async (req, res) => {
 });
 
 router.post('/suppliers', async (req, res) => {
-  const { name, email, phone, address, contact_name, vat_number, notes } = req.body;
+  const { name, supplier_code, email, phone, address, contact_name, vat_number, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'Supplier name is required' });
+  // Auto-generate supplier_code if not provided
+  const code = supplier_code || 'SUP-' + Date.now().toString(36).toUpperCase();
   const { data, error } = await supabase
     .from('suppliers')
     .insert({
-      company_id: req.companyId, name,
+      company_id: req.companyId, name, supplier_name: name, supplier_code: code,
       email: email || null, phone: phone || null,
       address: address || null, contact_name: contact_name || null,
       vat_number: vat_number || null, notes: notes || null, is_active: true

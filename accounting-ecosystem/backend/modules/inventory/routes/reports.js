@@ -28,28 +28,52 @@ const router = express.Router();
 //   min_value — hide items with total_value below threshold (optional)
 router.get('/stock-valuation', async (req, res) => {
   try {
-    const { category, min_value } = req.query;
+    const { category, item_type, min_value, low_stock, missing_cost, search } = req.query;
 
     let rows = await costingService.getStockValuation(supabase, req.companyId);
 
     if (category) {
       rows = rows.filter(r => r.category === category);
     }
+    if (item_type) {
+      rows = rows.filter(r => r.itemType === item_type);
+    }
     if (min_value) {
       const threshold = parseFloat(min_value);
       if (!isNaN(threshold)) rows = rows.filter(r => r.totalValue >= threshold);
+    }
+    if (low_stock === 'true') {
+      rows = rows.filter(r => r.currentStock <= r.minStock);
+    }
+    if (missing_cost === 'true') {
+      rows = rows.filter(r => !r.hasCost || r.unitCost === 0);
+    }
+    if (search) {
+      const term = String(search).toLowerCase();
+      rows = rows.filter(r =>
+        (r.name || '').toLowerCase().includes(term) ||
+        (r.sku || '').toLowerCase().includes(term)
+      );
     }
 
     const grandTotal = rows.reduce((sum, r) => sum + r.totalValue, 0);
     const totalItems = rows.length;
     const zeroValueItems = rows.filter(r => r.unitCost === 0).length;
+    const lowStockItems = rows.filter(r => r.currentStock <= r.minStock).length;
+    const rawMaterialValue = rows.filter(r => r.itemType === 'raw_material').reduce((sum, r) => sum + r.totalValue, 0);
+    const finishedGoodsValue = rows.filter(r => r.itemType === 'finished_good').reduce((sum, r) => sum + r.totalValue, 0);
+    const missingCostItems = rows.filter(r => !r.hasCost || r.unitCost === 0).length;
 
     res.json({
       report: {
         generated_at: new Date().toISOString(),
         total_items:  totalItems,
         grand_total:  grandTotal,
-        zero_cost_items: zeroValueItems
+        zero_cost_items: zeroValueItems,
+        raw_material_value: rawMaterialValue,
+        finished_goods_value: finishedGoodsValue,
+        low_stock_count: lowStockItems,
+        missing_cost_items: missingCostItems
       },
       items: rows
     });

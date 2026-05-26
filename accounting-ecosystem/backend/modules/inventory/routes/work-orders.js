@@ -19,6 +19,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { auditFromReq } = require('../../../middleware/audit');
 const costingService = require('../services/costingService');
+const { adjustStock } = require('./stock-helpers');
 
 const router = express.Router();
 
@@ -298,21 +299,20 @@ router.post('/:id/complete', async (req, res) => {
   );
 
   // Atomic stock-in for finished goods — cost basis from finalized WO cost
-  const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
-    p_company_id:    req.companyId,
-    p_item_id:       wo.item_id,
-    p_delta:         qtyProduced,
-    p_movement_type: 'in',
-    p_warehouse_id:  null,
-    p_reference:     `WO-${req.params.id}`,
-    p_notes:         'Received from work order completion',
-    p_cost_price:    woUnitCost || null,
-    p_created_by:    req.user.userId,
-    p_source_type:   'wo_complete',
-    p_source_id:     String(req.params.id)
+  const rpcResult = await adjustStock(supabase, {
+    companyId:    req.companyId,
+    itemId:       wo.item_id,
+    delta:        qtyProduced,
+    movementType: 'in',
+    warehouseId:  null,
+    reference:    `WO-${req.params.id}`,
+    notes:        'Received from work order completion',
+    costPrice:    woUnitCost || null,
+    createdBy:    req.user.userId,
+    sourceType:   'wo_complete',
+    sourceId:     String(req.params.id)
   });
 
-  if (rpcErr) return res.status(500).json({ error: rpcErr.message });
   if (!rpcResult.success) return res.status(500).json({ error: rpcResult.error || 'Stock update failed' });
 
   const { data, error } = await supabase
@@ -407,24 +407,24 @@ router.post('/:id/issue-materials', async (req, res) => {
     // Cost at time of issue = item's current weighted average (best available cost basis)
     const issueCost = parseFloat(itemRow.average_cost) || parseFloat(itemRow.cost_price) || null;
 
-    const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
-      p_company_id:    req.companyId,
-      p_item_id:       mat.item_id,
-      p_delta:         -qty,
-      p_movement_type: 'out',
-      p_warehouse_id:  null,
-      p_reference:     `WO-${req.params.id}`,
-      p_notes:         `Issued to work order ${req.params.id}`,
-      p_cost_price:    issueCost,
-      p_created_by:    req.user.userId,
-      p_source_type:   'wo_issue',
-      p_source_id:     String(req.params.id)
+    const issueResult = await adjustStock(supabase, {
+      companyId:    req.companyId,
+      itemId:       mat.item_id,
+      delta:        -qty,
+      movementType: 'out',
+      warehouseId:  null,
+      reference:    `WO-${req.params.id}`,
+      notes:        `Issued to work order ${req.params.id}`,
+      costPrice:    issueCost,
+      createdBy:    req.user.userId,
+      sourceType:   'wo_issue',
+      sourceId:     String(req.params.id)
     });
 
-    if (rpcErr || !rpcResult?.success) {
+    if (!issueResult.success) {
       return res.status(422).json({
-        error:     rpcResult?.error || rpcErr?.message || 'Stock deduction failed',
-        available: rpcResult?.available
+        error:     issueResult.error || 'Stock deduction failed',
+        available: issueResult.available
       });
     }
 
@@ -447,6 +447,72 @@ router.post('/:id/issue-materials', async (req, res) => {
     metadata: { action: 'issue_materials', count: issues.length }
   });
   res.json({ success: true });
+});
+
+// ─── Work order cost summary ─────────────────────────────────────────────────
+router.get('/:id/cost-summary', async (req, res) => {
+  const { data: wo, error: woErr } = await supabase
+    .from('work_orders')
+    .select('*, inventory_items:item_id(name, sku, unit, item_type), bom_headers:bom_id(name, version)')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+
+  if (woErr || !wo) return res.status(404).json({ error: 'Work order not found' });
+
+  const { data: materials, error: matErr } = await supabase
+    .from('work_order_materials')
+    .select('*, inventory_items:item_id(name, sku, unit, current_stock, average_cost, last_purchase_cost, cost_price)')
+    .eq('work_order_id', wo.id)
+    .order('id');
+
+  if (matErr) return res.status(500).json({ error: matErr.message });
+
+  const rows = (materials || []).map(material => {
+    const averageCost = parseFloat(material.inventory_items?.average_cost);
+    const lastPurchaseCost = parseFloat(material.inventory_items?.last_purchase_cost);
+    const fallbackCost = parseFloat(material.inventory_items?.cost_price);
+    const unitCost = Number.isFinite(averageCost)
+      ? averageCost
+      : (Number.isFinite(lastPurchaseCost) ? lastPurchaseCost : (Number.isFinite(fallbackCost) ? fallbackCost : null));
+    const issuedQty = parseFloat(material.issued_qty) || 0;
+    const requiredQty = parseFloat(material.required_qty) || 0;
+    const issuedCost = unitCost == null ? null : issuedQty * unitCost;
+    return {
+      id: material.id,
+      item_id: material.item_id,
+      item_name: material.inventory_items?.name || 'Unknown',
+      sku: material.inventory_items?.sku || null,
+      unit: material.inventory_items?.unit || null,
+      current_stock: parseFloat(material.inventory_items?.current_stock) || 0,
+      required_qty: requiredQty,
+      issued_qty: issuedQty,
+      unit_cost: unitCost,
+      issued_cost: issuedCost,
+      cost_missing: unitCost == null || issuedCost == null,
+      remaining_qty: Math.max(0, requiredQty - issuedQty)
+    };
+  });
+
+  const materialCost = rows.reduce((sum, row) => sum + (parseFloat(row.issued_cost) || 0), 0);
+  const quantityProduced = parseFloat(wo.quantity_produced) || 0;
+  const unitCost = quantityProduced > 0 ? materialCost / quantityProduced : null;
+
+  res.json({
+    work_order: {
+      id: wo.id,
+      wo_number: wo.wo_number,
+      status: wo.status,
+      item: wo.inventory_items,
+      bom: wo.bom_headers,
+      quantity_to_produce: parseFloat(wo.quantity_to_produce) || 0,
+      quantity_produced: quantityProduced,
+      material_cost: materialCost,
+      unit_cost: unitCost,
+      missing_cost: rows.some(row => row.cost_missing),
+      materials: rows
+    }
+  });
 });
 
 module.exports = router;

@@ -200,6 +200,68 @@ router.post('/:id/activate', async (req, res) => {
   res.json({ bom: data });
 });
 
+// ─── BOM cost summary ────────────────────────────────────────────────────────
+router.get('/:id/cost-summary', async (req, res) => {
+  const { data: header, error: hErr } = await supabase
+    .from('bom_headers')
+    .select('*, inventory_items:item_id(name, sku, unit, item_type)')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+
+  if (hErr || !header) return res.status(404).json({ error: 'BOM not found' });
+
+  const { data: lines, error: lErr } = await supabase
+    .from('bom_lines')
+    .select('*, inventory_items:item_id(name, sku, unit, item_type, current_stock, average_cost, last_purchase_cost, cost_price)')
+    .eq('bom_id', header.id)
+    .order('sort_order');
+
+  if (lErr) return res.status(500).json({ error: lErr.message });
+
+  const componentLines = (lines || []).map(line => {
+    const averageCost = parseFloat(line.inventory_items?.average_cost);
+    const lastPurchaseCost = parseFloat(line.inventory_items?.last_purchase_cost);
+    const fallbackCost = parseFloat(line.inventory_items?.cost_price);
+    const unitCost = Number.isFinite(averageCost)
+      ? averageCost
+      : (Number.isFinite(lastPurchaseCost) ? lastPurchaseCost : (Number.isFinite(fallbackCost) ? fallbackCost : null));
+    const estimatedCost = unitCost == null ? null : (parseFloat(line.quantity) || 0) * unitCost;
+    return {
+      id: line.id,
+      item_id: line.item_id,
+      item_name: line.inventory_items?.name || 'Unknown',
+      sku: line.inventory_items?.sku || null,
+      unit: line.inventory_items?.unit || null,
+      item_type: line.inventory_items?.item_type || null,
+      quantity: parseFloat(line.quantity) || 0,
+      scrap_percent: parseFloat(line.scrap_percent) || 0,
+      unit_cost: unitCost,
+      estimated_cost: estimatedCost,
+      cost_missing: unitCost == null,
+      current_stock: parseFloat(line.inventory_items?.current_stock) || 0
+    };
+  });
+
+  const totalRecipeCost = componentLines.reduce((sum, line) => sum + (parseFloat(line.estimated_cost) || 0), 0);
+  const outputQty = parseFloat(header.output_qty) || 1;
+
+  res.json({
+    bom: {
+      id: header.id,
+      name: header.name,
+      version: header.version,
+      status: header.status,
+      item: header.inventory_items,
+      output_qty: outputQty,
+      total_recipe_cost: totalRecipeCost,
+      estimated_cost_per_unit: outputQty > 0 ? totalRecipeCost / outputQty : null,
+      missing_cost: componentLines.some(line => line.cost_missing),
+      lines: componentLines
+    }
+  });
+});
+
 // ─── Deactivate / soft-delete BOM ────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   // Check no active work orders reference this BOM
