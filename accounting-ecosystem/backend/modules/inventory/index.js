@@ -13,15 +13,26 @@ const { auditFromReq } = require('../../middleware/audit');
 const bomRoutes = require('./routes/boms');
 const workOrderRoutes = require('./routes/work-orders');
 const inventoryReportsRoutes = require('./routes/reports');
+const stockCountRoutes = require('./routes/stock-counts');
+const reservationRoutes = require('./routes/reservations');
+const purchaseOrderRoutes = require('./routes/purchase-orders');
+const procurementRoutes = require('./routes/procurement');
+const productionRoutes = require('./routes/production-batches');
 const costingService = require('./services/costingService');
 const { adjustStockTx } = require('./services/stockMutationService');
+const reservationService = require('./services/reservationService');
 
 const router = express.Router();
 
-// ─── Sub-routers ──────────────────────────────────────────────────────────────
+// ─── Sub-routers ──────────────────────────────────────────────
 router.use('/boms', bomRoutes);
 router.use('/work-orders', workOrderRoutes);
 router.use('/reports', inventoryReportsRoutes);
+router.use('/stock-counts', stockCountRoutes);
+router.use('/reservations', reservationRoutes);
+router.use('/purchase-orders', purchaseOrderRoutes);
+router.use('/procurement', procurementRoutes);
+router.use('/production', productionRoutes);
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 router.get('/status', (req, res) => {
@@ -56,32 +67,66 @@ router.get('/dashboard', async (req, res) => {
 router.get('/demo-dashboard', async (req, res) => {
   const cid = req.companyId;
   try {
-    const [valuation, totalItems, lowStock, suppliers, openWOs, openPOs, bomCount, itemTypes] = await Promise.all([
+    const [valuation, totalItems, suppliers, openWOs, openPOs, bomCount, itemTypes, activeReservations] = await Promise.all([
       costingService.getStockValuation(supabase, cid),
       supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true),
-      supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true).filter('current_stock', 'lte', 'min_stock'),
       supabase.from('suppliers').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true),
       supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('company_id', cid).in('status', ['released', 'in_progress']),
-      supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('company_id', cid).in('status', ['sent', 'partial_receipt']),
+      supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('company_id', cid).in('status', ['approved', 'ordered', 'partial_receipt']),
       supabase.from('bom_headers').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('status', 'active'),
-      supabase.from('inventory_items').select('item_type').eq('company_id', cid).eq('is_active', true)
+      supabase.from('inventory_items').select('item_type').eq('company_id', cid).eq('is_active', true),
+      supabase.from('stock_reservations').select('item_id, quantity_reserved, quantity_released, quantity_consumed').eq('company_id', cid).in('reservation_status', ['active', 'partially_released'])
     ]);
 
     const items = itemTypes.data || [];
-    const rawMaterialCount = items.filter(item => item.item_type === 'raw_material').length;
+    const rawMaterialCount   = items.filter(item => item.item_type === 'raw_material').length;
     const finishedGoodsCount = items.filter(item => item.item_type === 'finished_good').length;
-    const totalStockValue = valuation.reduce((sum, row) => sum + (parseFloat(row.totalValue) || 0), 0);
+    const totalStockValue    = valuation.reduce((sum, row) => sum + (parseFloat(row.totalValue) || 0), 0);
+
+    // Compute reservation stats (Codebox 04)
+    const reservationRows = activeReservations.data || [];
+    const activeReservationCount = reservationRows.length;
+
+    // Aggregate net reserved per item for available_stock based low-stock and shortage counts
+    const reservedByItem = {};
+    let totalReservedValue = 0;
+    for (const r of reservationRows) {
+      const net = parseFloat(r.quantity_reserved) - parseFloat(r.quantity_released) - parseFloat(r.quantity_consumed);
+      if (net > 0) reservedByItem[r.item_id] = (reservedByItem[r.item_id] || 0) + net;
+    }
+
+    // Fetch all active items to compute available-based low stock + shortages
+    const { data: allItems } = await supabase
+      .from('inventory_items')
+      .select('id, current_stock, average_cost, min_stock')
+      .eq('company_id', cid)
+      .eq('is_active', true);
+
+    let lowStockCount     = 0;
+    let shortageItemCount = 0;
+    for (const item of (allItems || [])) {
+      const onHand    = parseFloat(item.current_stock) || 0;
+      const reserved  = reservedByItem[item.id] || 0;
+      const available = Math.max(0, onHand - reserved);
+      totalReservedValue += reserved * (parseFloat(item.average_cost) || 0);
+      if (available <= (parseFloat(item.min_stock) || 0)) lowStockCount++;
+      if (reserved > onHand) shortageItemCount++;
+    }
 
     res.json({
-      total_items: totalItems.count || 0,
-      total_stock_value: totalStockValue,
-      low_stock_count: lowStock.count || 0,
-      open_work_orders: openWOs.count || 0,
-      purchase_orders_awaiting_receipt: openPOs.count || 0,
-      finished_goods_count: finishedGoodsCount,
-      raw_material_count: rawMaterialCount,
-      active_boms: bomCount.count || 0,
-      total_suppliers: suppliers.count || 0,
+      total_items:                       totalItems.count || 0,
+      total_stock_value:                 totalStockValue,
+      low_stock_count:                   lowStockCount,
+      open_work_orders:                  openWOs.count || 0,
+      purchase_orders_awaiting_receipt:  openPOs.count || 0,
+      finished_goods_count:              finishedGoodsCount,
+      raw_material_count:                rawMaterialCount,
+      active_boms:                       bomCount.count || 0,
+      total_suppliers:                   suppliers.count || 0,
+      // Codebox 04 — Reservation stats
+      active_reservations:               activeReservationCount,
+      total_reserved_value:              totalReservedValue,
+      shortage_item_count:               shortageItemCount,
       valuation
     });
   } catch (err) {
@@ -156,8 +201,33 @@ router.get('/items', async (req, res) => {
       (i.sku && i.sku.toLowerCase().includes(s))
     );
   }
+
+  // Enrich with available_stock from active reservations (Codebox 04)
+  if (results.length > 0) {
+    const itemIds = results.map(i => i.id);
+    const { data: reservations } = await supabase
+      .from('stock_reservations')
+      .select('item_id, quantity_reserved, quantity_released, quantity_consumed')
+      .eq('company_id', req.companyId)
+      .in('item_id', itemIds)
+      .in('reservation_status', ['active', 'partially_released']);
+
+    const reservedByItem = {};
+    for (const r of (reservations || [])) {
+      const net = parseFloat(r.quantity_reserved) - parseFloat(r.quantity_released) - parseFloat(r.quantity_consumed);
+      reservedByItem[r.item_id] = (reservedByItem[r.item_id] || 0) + net;
+    }
+    results = results.map(item => ({
+      ...item,
+      reserved_qty:    reservedByItem[item.id] || 0,
+      available_stock: Math.max(0, (parseFloat(item.current_stock) || 0) - (reservedByItem[item.id] || 0))
+    }));
+  }
+
+  // Low stock filter uses available_stock (not current_stock) so that
+  // committed-but-not-yet-issued stock counts against reorder threshold.
   if (low_stock === 'true') {
-    results = results.filter(i => i.current_stock <= (i.min_stock || 0));
+    results = results.filter(i => i.available_stock <= (i.min_stock || 0));
   }
   res.json({ items: results, total: results.length });
 });
@@ -573,198 +643,13 @@ router.put('/suppliers/:id', async (req, res) => {
   res.json({ supplier: data });
 });
 
-// ═══ PURCHASE ORDERS ═════════════════════════════════════════════════════════
+// ═══ PURCHASE ORDERS — delegated to routes/purchase-orders.js (Codebox 05) ════
+// router.use('/purchase-orders', purchaseOrderRoutes) is mounted above.
 
-router.get('/purchase-orders', async (req, res) => {
-  const { status } = req.query;
-  let q = supabase
-    .from('purchase_orders')
-    .select('*, suppliers:supplier_id(name)')
-    .eq('company_id', req.companyId)
-    .order('created_at', { ascending: false });
-  if (status) q = q.eq('status', status);
-  const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ purchase_orders: data || [] });
-});
+// ═══ LEGACY QUICK-RECEIVE PLACEHOLDER (kept for backward compat) ════════════
+// The /quick-receive route below remains inline as it is not PO-based.
 
-router.get('/purchase-orders/:id', async (req, res) => {
-  const { data: po, error: poErr } = await supabase
-    .from('purchase_orders')
-    .select('*, suppliers:supplier_id(name, email, phone)')
-    .eq('id', req.params.id)
-    .eq('company_id', req.companyId)
-    .single();
-  if (poErr || !po) return res.status(404).json({ error: 'Purchase order not found' });
-
-  const { data: lines, error: linesErr } = await supabase
-    .from('purchase_order_items')
-    .select('*, inventory_items:item_id(name, sku, unit)')
-    .eq('po_id', po.id);
-  if (linesErr) return res.status(500).json({ error: linesErr.message });
-
-  res.json({ purchase_order: { ...po, lines: lines || [] } });
-});
-
-router.post('/purchase-orders', async (req, res) => {
-  const { supplier_id, notes, expected_date, items } = req.body;
-  if (!supplier_id) return res.status(400).json({ error: 'supplier_id is required' });
-
-  const total = Array.isArray(items) ? items.reduce((s, i) => s + (i.quantity * i.unit_price), 0) : 0;
-
-  const { data: po, error: poErr } = await supabase
-    .from('purchase_orders')
-    .insert({
-      company_id: req.companyId,
-      supplier_id: parseInt(supplier_id),
-      status: 'draft',
-      total_amount: total,
-      notes: notes || null,
-      expected_date: expected_date || null,
-      created_by: req.user.userId
-    })
-    .select().single();
-  if (poErr) return res.status(500).json({ error: poErr.message });
-
-  // Insert line items
-  if (Array.isArray(items) && items.length > 0) {
-    const lines = items.map(i => ({
-      po_id: po.id,
-      item_id: parseInt(i.item_id),
-      quantity: parseFloat(i.quantity),
-      unit_price: parseFloat(i.unit_price),
-      received_qty: 0
-    }));
-    await supabase.from('purchase_order_items').insert(lines);
-  }
-
-  await auditFromReq(req, 'CREATE', 'purchase_order', po.id, { module: 'inventory' });
-  res.status(201).json({ purchase_order: po });
-});
-
-router.put('/purchase-orders/:id', async (req, res) => {
-  const allowed = ['status', 'notes', 'expected_date', 'total_amount'];
-  const updates = { updated_at: new Date().toISOString() };
-  allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .update(updates)
-    .eq('id', req.params.id)
-    .eq('company_id', req.companyId)
-    .select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ purchase_order: data });
-});
-
-// ─── PO Receiving Flow ────────────────────────────────────────────────────────
-// POST /purchase-orders/:id/receive
-// Payload: { lines: [{ po_item_id, received_qty }], notes? }
-// Atomically receives goods: updates received_qty on each line, creates stock-in
-// movements via RPC, and updates PO status to partial_receipt or received.
-router.post('/purchase-orders/:id/receive', async (req, res) => {
-  const { lines, notes } = req.body;
-
-  if (!Array.isArray(lines) || lines.length === 0) {
-    return res.status(400).json({ error: 'lines array with at least one entry is required' });
-  }
-
-  // Verify PO belongs to this company and is in a receivable state
-  const { data: po, error: poErr } = await supabase
-    .from('purchase_orders')
-    .select('id, status, supplier_id')
-    .eq('id', req.params.id)
-    .eq('company_id', req.companyId)
-    .single();
-
-  if (poErr || !po) return res.status(404).json({ error: 'Purchase order not found' });
-  if (po.status === 'cancelled') return res.status(400).json({ error: 'Cannot receive against a cancelled purchase order' });
-  if (po.status === 'received')  return res.status(400).json({ error: 'Purchase order is already fully received' });
-
-  // Fetch all PO lines for this PO
-  const poItemIds = lines.map(l => parseInt(l.po_item_id)).filter(id => !isNaN(id));
-  const { data: poItems, error: itemsErr } = await supabase
-    .from('purchase_order_items')
-    .select('id, item_id, quantity, received_qty, unit_price')
-    .eq('po_id', req.params.id)
-    .in('id', poItemIds);
-
-  if (itemsErr) return res.status(500).json({ error: itemsErr.message });
-
-  // Pre-validate all lines before applying any changes
-  for (const line of lines) {
-    const poItem = (poItems || []).find(i => i.id === parseInt(line.po_item_id));
-    if (!poItem) {
-      return res.status(400).json({ error: `PO line ${line.po_item_id} not found on this purchase order` });
-    }
-    const recQty = parseFloat(line.received_qty);
-    if (isNaN(recQty) || recQty <= 0) {
-      return res.status(400).json({ error: `received_qty must be > 0 for line ${line.po_item_id}` });
-    }
-    const totalWouldReceive = (parseFloat(poItem.received_qty) || 0) + recQty;
-    if (totalWouldReceive > parseFloat(poItem.quantity)) {
-      return res.status(400).json({
-        error: `Over-receiving prevented on line ${line.po_item_id}. Ordered: ${poItem.quantity}, already received: ${poItem.received_qty}, trying to receive: ${recQty}`
-      });
-    }
-  }
-
-  // Apply all lines
-  for (const line of lines) {
-    const poItem = (poItems || []).find(i => i.id === parseInt(line.po_item_id));
-    const recQty = parseFloat(line.received_qty);
-    const newReceivedQty = (parseFloat(poItem.received_qty) || 0) + recQty;
-
-    // Update received_qty on PO line
-    const { error: lineUpdateErr } = await supabase
-      .from('purchase_order_items')
-      .update({ received_qty: newReceivedQty })
-      .eq('id', poItem.id);
-    if (lineUpdateErr) return res.status(500).json({ error: lineUpdateErr.message });
-
-    // Atomic stock-in via service — unit_price from PO line feeds weighted average costing
-    const rpcResult = await adjustStockTx(supabase, {
-      companyId:    req.companyId,
-      itemId:       poItem.item_id,
-      delta:        recQty,
-      movementType: 'in',
-      warehouseId:  null,
-      reference:    `PO-${req.params.id}`,
-      notes:        notes || `Received from PO #${req.params.id}`,
-      unitCost:     poItem.unit_price ? parseFloat(poItem.unit_price) : null,
-      createdBy:    req.user.userId,
-      sourceType:   'po_receive',
-      sourceId:     String(req.params.id)
-    });
-
-    if (!rpcResult.success) {
-      return res.status(500).json({ error: rpcResult.error || 'Stock update failed' });
-    }
-  }
-
-  // Determine new PO status — re-fetch all lines to check completion
-  const { data: allLines } = await supabase
-    .from('purchase_order_items')
-    .select('quantity, received_qty')
-    .eq('po_id', req.params.id);
-
-  const fullyReceived = (allLines || []).length > 0 &&
-    (allLines || []).every(l => (parseFloat(l.received_qty) || 0) >= parseFloat(l.quantity));
-  const newStatus = fullyReceived ? 'received' : 'partial_receipt';
-
-  const { data: updatedPo, error: updateErr } = await supabase
-    .from('purchase_orders')
-    .update({ status: newStatus, updated_at: new Date().toISOString() })
-    .eq('id', req.params.id)
-    .eq('company_id', req.companyId)
-    .select().single();
-  if (updateErr) return res.status(500).json({ error: updateErr.message });
-
-  await auditFromReq(req, 'UPDATE', 'purchase_order', req.params.id, {
-    module: 'inventory',
-    metadata: { action: 'receive', lines_count: lines.length, new_status: newStatus }
-  });
-  res.json({ purchase_order: updatedPo, status: newStatus });
-});
+// (inline legacy PO routes removed — handled by routes/purchase-orders.js via sub-router)
 
 // ═══ CATEGORIES ══════════════════════════════════════════════════════════════
 

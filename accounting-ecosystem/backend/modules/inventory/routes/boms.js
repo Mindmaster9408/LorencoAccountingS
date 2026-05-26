@@ -15,6 +15,7 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
 const { auditFromReq } = require('../../../middleware/audit');
+const { getIssueCostFromItemData } = require('../services/costingService');
 
 const router = express.Router();
 
@@ -213,19 +214,16 @@ router.get('/:id/cost-summary', async (req, res) => {
 
   const { data: lines, error: lErr } = await supabase
     .from('bom_lines')
-    .select('*, inventory_items:item_id(name, sku, unit, item_type, current_stock, average_cost, last_purchase_cost, cost_price)')
+    .select('*, inventory_items:item_id(name, sku, unit, item_type, current_stock, average_cost, last_purchase_cost, standard_cost, cost_price, costing_method)')
     .eq('bom_id', header.id)
     .order('sort_order');
 
   if (lErr) return res.status(500).json({ error: lErr.message });
 
   const componentLines = (lines || []).map(line => {
-    const averageCost = parseFloat(line.inventory_items?.average_cost);
-    const lastPurchaseCost = parseFloat(line.inventory_items?.last_purchase_cost);
-    const fallbackCost = parseFloat(line.inventory_items?.cost_price);
-    const unitCost = Number.isFinite(averageCost)
-      ? averageCost
-      : (Number.isFinite(lastPurchaseCost) ? lastPurchaseCost : (Number.isFinite(fallbackCost) ? fallbackCost : null));
+    // Use centralised costing dispatch instead of inline fallback chain.
+    // Respects each component's costing_method (average, fifo, standard, last_cost).
+    const { issueCost: unitCost } = getIssueCostFromItemData(line.inventory_items);
     const estimatedCost = unitCost == null ? null : (parseFloat(line.quantity) || 0) * unitCost;
     return {
       id: line.id,

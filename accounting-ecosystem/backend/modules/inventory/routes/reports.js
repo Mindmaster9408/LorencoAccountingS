@@ -7,6 +7,8 @@
  *   GET /reports/cost-history/:itemId    — cost change history for one item
  *   GET /reports/valuation-movements     — forensic cost ledger (date range)
  *   GET /reports/work-order-cost-summary — WO cost breakdown
+ *   GET /reports/stock-counts            — count session summary (Codebox 03)
+ *   GET /reports/variance-summary        — variance aggregate by reason/type (Codebox 03)
  * ============================================================================
  * All endpoints are company-scoped via req.companyId.
  * All data sourced from Phase 2A tables — no recalculation from live sales.
@@ -60,9 +62,11 @@ router.get('/stock-valuation', async (req, res) => {
     const totalItems = rows.length;
     const zeroValueItems = rows.filter(r => r.unitCost === 0).length;
     const lowStockItems = rows.filter(r => r.currentStock <= r.minStock).length;
-    const rawMaterialValue = rows.filter(r => r.itemType === 'raw_material').reduce((sum, r) => sum + r.totalValue, 0);
+    const rawMaterialValue   = rows.filter(r => r.itemType === 'raw_material').reduce((sum, r) => sum + r.totalValue, 0);
     const finishedGoodsValue = rows.filter(r => r.itemType === 'finished_good').reduce((sum, r) => sum + r.totalValue, 0);
-    const missingCostItems = rows.filter(r => !r.hasCost || r.unitCost === 0).length;
+    const consumablesValue   = rows.filter(r => r.itemType === 'consumable').reduce((sum, r) => sum + r.totalValue, 0);
+    const subAssemblyValue   = rows.filter(r => r.itemType === 'sub_assembly').reduce((sum, r) => sum + r.totalValue, 0);
+    const missingCostItems   = rows.filter(r => !r.hasCost || r.unitCost === 0).length;
 
     res.json({
       report: {
@@ -70,8 +74,10 @@ router.get('/stock-valuation', async (req, res) => {
         total_items:  totalItems,
         grand_total:  grandTotal,
         zero_cost_items: zeroValueItems,
-        raw_material_value: rawMaterialValue,
+        raw_material_value:   rawMaterialValue,
         finished_goods_value: finishedGoodsValue,
+        consumables_value:    consumablesValue,
+        sub_assembly_value:   subAssemblyValue,
         low_stock_count: lowStockItems,
         missing_cost_items: missingCostItems
       },
@@ -235,6 +241,181 @@ router.get('/work-order-cost-summary', async (req, res) => {
     },
     work_orders: rows
   });
+});
+
+// ─── GET /reports/stock-counts ───────────────────────────────────────────────
+// Stock count session summary report: list of sessions with line counts,
+// variance totals, and applied status.
+// Query params: status, from_date, to_date, limit
+router.get('/stock-counts', async (req, res) => {
+  try {
+    const { status, from_date, to_date, limit = 100 } = req.query;
+
+    let query = supabase
+      .from('stock_count_sessions')
+      .select('*')
+      .eq('company_id', req.companyId)
+      .order('created_at', { ascending: false })
+      .limit(Math.min(parseInt(limit) || 100, 500));
+
+    if (status)    query = query.eq('status', status);
+    if (from_date) query = query.gte('created_at', from_date);
+    if (to_date)   query = query.lte('created_at', to_date);
+
+    const { data: sessions, error: sessErr } = await query;
+    if (sessErr) return res.status(500).json({ error: sessErr.message });
+
+    if (!sessions || sessions.length === 0) {
+      return res.json({ report: { generated_at: new Date().toISOString(), total_sessions: 0 }, sessions: [] });
+    }
+
+    const sessionIds = sessions.map(s => s.id);
+
+    // Fetch line-level variance totals per session
+    const { data: lines } = await supabase
+      .from('stock_count_lines')
+      .select('session_id, counted_quantity, variance_quantity, variance_value')
+      .eq('company_id', req.companyId)
+      .in('session_id', sessionIds);
+
+    const lineMap = {};
+    for (const row of lines || []) {
+      if (!lineMap[row.session_id]) {
+        lineMap[row.session_id] = { total: 0, counted: 0, variance_value: 0, variant_count: 0 };
+      }
+      lineMap[row.session_id].total++;
+      if (row.counted_quantity !== null) lineMap[row.session_id].counted++;
+      if (row.variance_quantity !== null && row.variance_quantity !== 0) {
+        lineMap[row.session_id].variant_count++;
+        lineMap[row.session_id].variance_value += parseFloat(row.variance_value) || 0;
+      }
+    }
+
+    const enriched = sessions.map(s => ({
+      ...s,
+      line_count:          (lineMap[s.id] || {}).total         || 0,
+      counted_count:       (lineMap[s.id] || {}).counted       || 0,
+      variant_count:       (lineMap[s.id] || {}).variant_count || 0,
+      total_variance_value: (lineMap[s.id] || {}).variance_value || 0,
+    }));
+
+    const totalVarianceValue = enriched.reduce((sum, s) => sum + s.total_variance_value, 0);
+
+    res.json({
+      report: {
+        generated_at:        new Date().toISOString(),
+        total_sessions:      enriched.length,
+        total_variance_value: totalVarianceValue,
+        applied_count:       enriched.filter(s => s.status === 'applied').length,
+        pending_count:       enriched.filter(s => ['submitted', 'approved'].includes(s.status)).length,
+      },
+      sessions: enriched,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /reports/variance-summary ───────────────────────────────────────────
+// Aggregate variance by reason, item type, and date range.
+// Applied sessions only (status='applied').
+// Query params: from_date, to_date
+router.get('/variance-summary', async (req, res) => {
+  try {
+    const { from_date, to_date } = req.query;
+
+    // Get applied sessions in range
+    let sessionQuery = supabase
+      .from('stock_count_sessions')
+      .select('id, session_number, applied_at')
+      .eq('company_id', req.companyId)
+      .eq('status', 'applied');
+
+    if (from_date) sessionQuery = sessionQuery.gte('applied_at', from_date);
+    if (to_date)   sessionQuery = sessionQuery.lte('applied_at', to_date);
+
+    const { data: sessions, error: sessErr } = await sessionQuery;
+    if (sessErr) return res.status(500).json({ error: sessErr.message });
+
+    if (!sessions || sessions.length === 0) {
+      return res.json({
+        report:           { generated_at: new Date().toISOString(), total_variance_value: 0 },
+        by_reason:        [],
+        by_item_type:     [],
+        top_variance_items: [],
+      });
+    }
+
+    const sessionIds = sessions.map(s => s.id);
+
+    // Fetch all lines with variance from these sessions
+    const { data: lines, error: linesErr } = await supabase
+      .from('stock_count_lines')
+      .select('session_id, item_id, variance_quantity, variance_value, variance_reason, average_cost, inventory_items:item_id(name, sku, item_type)')
+      .eq('company_id', req.companyId)
+      .in('session_id', sessionIds)
+      .not('variance_quantity', 'is', null);
+
+    if (linesErr) return res.status(500).json({ error: linesErr.message });
+
+    const variantLines = (lines || []).filter(l => parseFloat(l.variance_quantity) !== 0);
+
+    // Aggregate by reason
+    const byReason = {};
+    for (const l of variantLines) {
+      const reason = l.variance_reason || 'unspecified';
+      if (!byReason[reason]) byReason[reason] = { reason, count: 0, total_variance_value: 0 };
+      byReason[reason].count++;
+      byReason[reason].total_variance_value += parseFloat(l.variance_value) || 0;
+    }
+
+    // Aggregate by item_type
+    const byItemType = {};
+    for (const l of variantLines) {
+      const itemType = l.inventory_items?.item_type || 'unknown';
+      if (!byItemType[itemType]) byItemType[itemType] = { item_type: itemType, count: 0, total_variance_value: 0 };
+      byItemType[itemType].count++;
+      byItemType[itemType].total_variance_value += parseFloat(l.variance_value) || 0;
+    }
+
+    // Top 10 items by absolute variance value
+    const itemMap = {};
+    for (const l of variantLines) {
+      const key = l.item_id;
+      if (!itemMap[key]) {
+        itemMap[key] = {
+          item_id:   l.item_id,
+          name:      l.inventory_items?.name  || 'Unknown',
+          sku:       l.inventory_items?.sku   || null,
+          item_type: l.inventory_items?.item_type || null,
+          total_variance_value: 0,
+          count: 0,
+        };
+      }
+      itemMap[key].count++;
+      itemMap[key].total_variance_value += parseFloat(l.variance_value) || 0;
+    }
+
+    const topItems = Object.values(itemMap)
+      .sort((a, b) => Math.abs(b.total_variance_value) - Math.abs(a.total_variance_value))
+      .slice(0, 10);
+
+    const totalVarianceValue = variantLines.reduce((sum, l) => sum + (parseFloat(l.variance_value) || 0), 0);
+
+    res.json({
+      report: {
+        generated_at:        new Date().toISOString(),
+        applied_sessions:    sessions.length,
+        total_variant_lines: variantLines.length,
+        total_variance_value: totalVarianceValue,
+      },
+      by_reason:          Object.values(byReason).sort((a, b) => Math.abs(b.total_variance_value) - Math.abs(a.total_variance_value)),
+      by_item_type:       Object.values(byItemType),
+      top_variance_items: topItems,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

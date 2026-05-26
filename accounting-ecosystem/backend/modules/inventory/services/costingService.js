@@ -15,6 +15,7 @@
 'use strict';
 
 const { createClient } = require('@supabase/supabase-js');
+const { adjustStockTx } = require('./stockMutationService');
 
 // Re-use the shared Supabase client passed in by callers rather than creating
 // a new instance — avoids connection pool bloat.
@@ -276,6 +277,248 @@ async function getStockValuation(supabase, companyId) {
   });
 }
 
+// ─── Codebox 02: Costing method dispatch ─────────────────────────────────────
+
+/**
+ * Pure function — derive the correct issue cost from an already-fetched item row.
+ *
+ * Selects the cost value based on the item's costing_method:
+ *   'average'   → average_cost (weighted average)
+ *   'fifo'      → average_cost (FIFO layer consumption not yet implemented in pilot —
+ *                  using average as a temporary proxy; documented in risk register R08)
+ *   'standard'  → standard_cost
+ *   'last_cost' → last_purchase_cost
+ *
+ * Falls back to cost_price (legacy field) if the primary cost is null / zero.
+ *
+ * @param {object|null} itemData  A row from inventory_items (or null)
+ * @returns {{ issueCost: number|null, costingMethod: string, source: string }}
+ */
+function getIssueCostFromItemData(itemData) {
+  if (!itemData) return { issueCost: null, costingMethod: 'average', source: 'not_found' };
+
+  const method = itemData.costing_method || 'average';
+  let issueCost = null;
+  let source    = method;
+
+  switch (method) {
+    case 'standard':
+      issueCost = parseFloat(itemData.standard_cost) || null;
+      break;
+    case 'last_cost':
+      issueCost = parseFloat(itemData.last_purchase_cost) || null;
+      break;
+    case 'fifo':
+      // FIFO layer consumption not fully implemented in the MrEasy pilot.
+      // Use weighted average as proxy until FIFO consumption is added (Codebox 05+).
+      issueCost = parseFloat(itemData.average_cost) || null;
+      source    = 'fifo_proxy_average';
+      break;
+    case 'average':
+    default:
+      issueCost = parseFloat(itemData.average_cost) || null;
+      break;
+  }
+
+  // Legacy fallback: if primary method yields null/zero, try cost_price
+  if ((issueCost == null || issueCost === 0) && itemData.cost_price) {
+    const fb = parseFloat(itemData.cost_price);
+    if (Number.isFinite(fb) && fb > 0) {
+      issueCost = fb;
+      source    = 'cost_price_fallback';
+    }
+  }
+
+  return { issueCost, costingMethod: method, source };
+}
+
+/**
+ * Async version — fetches the item row from DB then calls getIssueCostFromItemData.
+ *
+ * @param {object} supabase
+ * @param {number} companyId
+ * @param {number} itemId
+ * @returns {Promise<{ issueCost: number|null, costingMethod: string, source: string }>}
+ */
+async function getItemIssueCost(supabase, companyId, itemId) {
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('average_cost, last_purchase_cost, standard_cost, cost_price, costing_method')
+    .eq('id', itemId)
+    .eq('company_id', companyId)
+    .single();
+
+  if (error || !data) return { issueCost: null, costingMethod: 'average', source: 'not_found' };
+  return getIssueCostFromItemData(data);
+}
+
+// ─── Codebox 02: Safety guard ─────────────────────────────────────────────────
+
+/**
+ * Guard function that prevents any caller from directly inserting valuation
+ * movements. All stock mutations must flow through adjustStockTx → RPC.
+ *
+ * Call this anywhere a deprecated direct-insert path once existed to make
+ * any accidental re-introduction loud at call time.
+ *
+ * Throws unconditionally.
+ */
+function recordValuationMovement() {
+  throw new Error(
+    'Direct valuation movement insertion is forbidden. ' +
+    'All inventory movements must flow through stockMutationService.adjustStockTx(). ' +
+    'The adjust_inventory_stock() RPC writes the valuation ledger atomically.'
+  );
+}
+
+// ─── Codebox 02: Validated receipt wrapper ────────────────────────────────────
+
+/**
+ * Validated wrapper around adjustStockTx for stock-in (receipt) events.
+ *
+ * Applies stricter input validation than the raw adjustStockTx:
+ *  - receivedQty  must be > 0
+ *  - receivedUnitCost must be provided explicitly (null is rejected;
+ *    pass 0 explicitly for zero-cost receives)
+ *
+ * All 5 costing side-effects (stock update, weighted average, valuation ledger,
+ * FIFO layer, cost history) are handled atomically by the RPC.
+ *
+ * @param {object} supabase
+ * @param {object} params
+ * @param {number} params.companyId
+ * @param {number} params.itemId
+ * @param {number} params.receivedQty         Must be > 0
+ * @param {number} params.receivedUnitCost    Must not be null; pass 0 for zero-cost
+ * @param {string} [params.reference]
+ * @param {string} [params.notes]
+ * @param {number} [params.createdBy]
+ * @param {string} [params.sourceType]        e.g. 'po_receive', 'receipt', 'manual'
+ * @param {string} [params.sourceId]
+ * @param {number} [params.warehouseId]
+ * @returns {Promise<{success: boolean, new_stock?: number, new_avg_cost?: number, error?: string}>}
+ */
+async function updateAverageCostAfterReceipt(supabase, {
+  companyId, itemId,
+  receivedQty, receivedUnitCost,
+  reference, notes,
+  createdBy, sourceType, sourceId,
+  warehouseId = null
+}) {
+  if (!receivedQty || receivedQty <= 0)
+    return { success: false, error: 'receivedQty must be greater than zero' };
+  if (receivedUnitCost == null)
+    return { success: false, error: 'receivedUnitCost is required; pass 0 explicitly for zero-cost receives' };
+  if (receivedUnitCost < 0)
+    return { success: false, error: 'receivedUnitCost cannot be negative' };
+
+  return adjustStockTx(supabase, {
+    companyId,
+    itemId,
+    delta:        receivedQty,
+    movementType: 'in',
+    warehouseId,
+    reference,
+    notes,
+    unitCost:     receivedUnitCost,
+    createdBy,
+    sourceType:   sourceType || 'receipt',
+    sourceId
+  });
+}
+
+// ─── Codebox 02: WO cost reporting ───────────────────────────────────────────
+
+/**
+ * Compute a complete cost breakdown for a work order.
+ *
+ * For FINALIZED WOs: material cost is read from the authoritative accumulated
+ *   total in work_order_costs.material_cost. Unit costs per component come from
+ *   issue_unit_cost (frozen at issue time) where available.
+ *
+ * For IN-PROGRESS WOs: shows running accumulated total from work_order_costs,
+ *   with per-component estimates using current pricing where issue_unit_cost
+ *   is not yet available (pre-Codebox-02 issues).
+ *
+ * @param {object} supabase
+ * @param {number} companyId
+ * @param {number} workOrderId
+ * @returns {Promise<{
+ *   success: boolean,
+ *   status: string,
+ *   materialCost: number,
+ *   laborCost: number,
+ *   overheadCost: number,
+ *   totalCost: number,
+ *   completedQty: number,
+ *   unitCost: number|null,
+ *   components: Array
+ * }>}
+ */
+async function calculateWorkOrderCost(supabase, companyId, workOrderId) {
+  // Read the authoritative accumulated cost totals
+  const { data: woc } = await supabase
+    .from('work_order_costs')
+    .select('material_cost, labor_cost, overhead_cost, completed_qty, unit_cost, status')
+    .eq('work_order_id', workOrderId)
+    .eq('company_id', companyId)
+    .single();
+
+  const materialCost = parseFloat(woc?.material_cost)  || 0;
+  const laborCost    = parseFloat(woc?.labor_cost)     || 0;
+  const overheadCost = parseFloat(woc?.overhead_cost)  || 0;
+  const totalCost    = materialCost + laborCost + overheadCost;
+  const completedQty = parseFloat(woc?.completed_qty)  || 0;
+  const unitCost     = woc?.status === 'finalized'
+    ? (parseFloat(woc.unit_cost) || (completedQty > 0 ? totalCost / completedQty : null))
+    : (completedQty > 0 ? totalCost / completedQty : null);
+
+  // Read per-component data with issue-time cost and current cost
+  const { data: materials } = await supabase
+    .from('work_order_materials')
+    .select([
+      'id', 'item_id', 'required_qty', 'issued_qty', 'issue_unit_cost',
+      'inventory_items:item_id(name, sku, average_cost, last_purchase_cost, cost_price, costing_method)'
+    ].join(', '))
+    .eq('work_order_id', workOrderId);
+
+  const components = (materials || []).map(m => {
+    const frozenCost     = parseFloat(m.issue_unit_cost);
+    const { issueCost: currentCost } = getIssueCostFromItemData(m.inventory_items);
+    const issuedQty      = parseFloat(m.issued_qty)   || 0;
+    const requiredQty    = parseFloat(m.required_qty) || 0;
+    const hasFrozenCost  = Number.isFinite(frozenCost) && frozenCost >= 0;
+    const displayCost    = hasFrozenCost ? frozenCost : currentCost;
+
+    return {
+      item_id:          m.item_id,
+      item_name:        m.inventory_items?.name || 'Unknown',
+      sku:              m.inventory_items?.sku  || null,
+      required_qty:     requiredQty,
+      issued_qty:       issuedQty,
+      remaining_qty:    Math.max(0, requiredQty - issuedQty),
+      issue_unit_cost:  hasFrozenCost ? frozenCost   : null,
+      current_unit_cost: currentCost,
+      unit_cost:        displayCost,
+      issued_cost:      displayCost != null ? issuedQty * displayCost : null,
+      cost_basis:       hasFrozenCost ? 'frozen_at_issue' : 'current_estimate',
+      cost_missing:     displayCost == null
+    };
+  });
+
+  return {
+    success: true,
+    status: woc?.status || 'no_record',
+    materialCost,
+    laborCost,
+    overheadCost,
+    totalCost,
+    completedQty,
+    unitCost,
+    components
+  };
+}
+
 module.exports = {
   // Pure computation
   computeWeightedAverage,
@@ -285,9 +528,22 @@ module.exports = {
   getItemAverageCost,
   getItemCostingState,
 
+  // Codebox 02: costing method dispatch
+  getIssueCostFromItemData,
+  getItemIssueCost,
+
+  // Codebox 02: safety guard
+  recordValuationMovement,
+
+  // Codebox 02: validated receipt wrapper
+  updateAverageCostAfterReceipt,
+
   // Work order cost accumulation
   accumulateWorkOrderMaterialCost,
   finalizeWorkOrderCost,
+
+  // Codebox 02: WO cost reporting
+  calculateWorkOrderCost,
 
   // Reporting
   getStockValuation

@@ -57,7 +57,28 @@ body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, 
 .nav-tab.gold.active { color: var(--eco-gold); border-bottom-color: var(--eco-gold); }
 .nav-tab.manufacturing { color: var(--text-muted); }
 .nav-tab.manufacturing.active { color: var(--purple); border-bottom-color: var(--purple); }
+.nav-tab.teal { color: #22d3ee; }
+.nav-tab.teal.active { color: #22d3ee; border-bottom-color: #22d3ee; }
+.nav-tab.orange { color: #fb923c; }
+.nav-tab.orange.active { color: #fb923c; border-bottom-color: #fb923c; }
 .tab-sep { width: 1px; background: var(--border); margin: 8px 4px; align-self: stretch; }
+
+/* ── Count-specific ── */
+.count-status-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.count-line-table input[type=number] { width: 100px; padding: 4px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.85rem; }
+.count-line-table input[type=number].edited { border-color: var(--accent); }
+.variance-pos { color: #22d3ee; font-weight: 700; }
+.variance-neg { color: var(--danger); font-weight: 700; }
+.variance-zero { color: var(--text-muted); }
+
+/* ── Reservation-specific (Codebox 04) ── */
+.avail-ok   { color: var(--success); font-weight: 600; }
+.avail-low  { color: var(--warning); font-weight: 600; }
+.avail-none { color: var(--danger); font-weight: 600; }
+.reserved-qty { color: #fb923c; font-size: 0.8rem; }
+.shortage-badge { background: rgba(244,63,94,0.15); color: #fda4af; border: 1px solid rgba(244,63,94,0.3); padding: 1px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; }
+.stat-card.orange { border-color: rgba(251,146,60,0.3); }
+.stat-card.orange .stat-value { color: #fb923c; }
 
 /* ── Main ── */
 .main { max-width: 1360px; margin: 0 auto; padding: 28px 24px; }
@@ -237,8 +258,13 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   <div class="tab-sep"></div>
   <div class="nav-tab manufacturing" onclick="switchTab('boms')">📋 BOMs</div>
   <div class="nav-tab manufacturing" onclick="switchTab('workorders')">⚙️ Work Orders</div>
+  <div class="nav-tab manufacturing" onclick="switchTab('production')">🏭 Production</div>
   <div class="tab-sep"></div>
   <div class="nav-tab gold" onclick="switchTab('reports')">📊 Reports</div>
+  <div class="tab-sep"></div>
+  <div class="nav-tab teal" onclick="switchTab('stockcounts')">📦 Stock Counts</div>
+  <div class="nav-tab orange" onclick="switchTab('reservations')">🔒 Reservations</div>
+  <div class="nav-tab teal" onclick="switchTab('procurement')">🧾 Procurement</div>
 </div>
 
 <div class="main">
@@ -250,11 +276,14 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   <div class="stats-grid">
     <div class="stat-card" onclick="switchTab('items')"><div class="stat-value" id="statItems">–</div><div class="stat-label">Total Items</div></div>
     <div class="stat-card success" onclick="switchTab('items')"><div class="stat-value" id="statStockValue">–</div><div class="stat-label">Total Stock Value</div></div>
-    <div class="stat-card danger" onclick="switchTab('items')"><div class="stat-value" id="statLowStock">–</div><div class="stat-label">Low Stock Items</div></div>
+    <div class="stat-card danger" onclick="switchTab('items')"><div class="stat-value" id="statLowStock">–</div><div class="stat-label">Low Available Stock</div></div>
     <div class="stat-card warning" onclick="switchTab('workorders')"><div class="stat-value" id="statOpenWOs">–</div><div class="stat-label">Open Work Orders</div></div>
     <div class="stat-card" onclick="switchTab('orders')"><div class="stat-value" id="statAwaitingReceipt">–</div><div class="stat-label">POs Awaiting Receipt</div></div>
     <div class="stat-card purple" onclick="switchTab('items')"><div class="stat-value" id="statFinishedGoods">–</div><div class="stat-label">Finished Goods</div></div>
     <div class="stat-card" onclick="switchTab('items')"><div class="stat-value" id="statRawMaterials">–</div><div class="stat-label">Raw Materials</div></div>
+    <div class="stat-card orange" onclick="switchTab('reservations')"><div class="stat-value" id="statActiveReservations">–</div><div class="stat-label">Active Reservations</div></div>
+    <div class="stat-card orange" onclick="switchTab('reservations')"><div class="stat-value" id="statReservedValue">–</div><div class="stat-label">Reserved Stock Value</div></div>
+    <div class="stat-card danger" onclick="switchTab('reservations')"><div class="stat-value" id="statShortageItems">–</div><div class="stat-label">Shortage Items</div></div>
   </div>
   <div class="demo-flow-label">Demo Flow</div>
   <div class="quick-links">
@@ -344,14 +373,35 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       <select class="filter-select" id="poStatusFilter" onchange="loadOrders()">
         <option value="">All Statuses</option>
         <option value="draft">Draft</option>
-        <option value="sent">Sent</option>
+        <option value="approved">Approved</option>
+        <option value="ordered">Ordered</option>
         <option value="partial_receipt">Partial Receipt</option>
-        <option value="received">Received</option>
+        <option value="fully_received">Fully Received</option>
+        <option value="closed">Closed</option>
         <option value="cancelled">Cancelled</option>
       </select>
+      <button class="btn btn-primary" onclick="openCreatePoModal()">+ Create PO</button>
     </div>
   </div>
   <div class="table-wrap" id="ordersTable"><div class="empty"><div class="empty-icon">🛒</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     PROCUREMENT SUGGESTIONS (Codebox 05)
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-procurement">
+  <div class="section-header">
+    <div class="section-title">Procurement Suggestions</div>
+    <div class="toolbar">
+      <button class="btn btn-ghost btn-sm" onclick="loadProcurementSuggestions(true)">↺ Refresh</button>
+      <button class="btn btn-warning btn-sm" onclick="loadOverduePOs()">⚠ Overdue POs</button>
+    </div>
+  </div>
+  <div id="procSummaryBar" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--surface-alt,#1e293b);border-radius:8px;font-size:0.85rem;color:var(--text-muted);"></div>
+  <div class="table-wrap" id="procSuggestionsTable"><div class="empty"><div class="empty-icon">🤔</div><p>Click Refresh to load procurement suggestions.</p></div></div>
+
+  <div class="section-title" style="margin-top:28px;">Overdue Purchase Orders</div>
+  <div class="table-wrap" id="overduePoTable" style="margin-top:8px;"><div class="empty"><div class="empty-icon">🕑</div><p>Click "Overdue POs" above to load.</p></div></div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -386,7 +436,9 @@ tr:hover td { background: rgba(255,255,255,0.02); }
         <option value="draft">Draft</option>
         <option value="released">Released</option>
         <option value="in_progress">In Progress</option>
+        <option value="paused">Paused</option>
         <option value="completed">Completed</option>
+        <option value="closed">Closed</option>
         <option value="cancelled">Cancelled</option>
       </select>
       <button class="btn btn-ghost btn-sm" onclick="loadWorkOrders()">↺ Refresh</button>
@@ -394,6 +446,50 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     </div>
   </div>
   <div class="table-wrap" id="workordersTable"><div class="empty"><div class="empty-icon">⚙️</div><p>Loading…</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     PRODUCTION — Codebox 06 Manufacturing Execution
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-production">
+  <div class="section-header">
+    <div class="section-title">🏭 Production</div>
+    <div class="toolbar">
+      <select class="filter-select" id="productionSubView" onchange="onProductionSubViewChange()">
+        <option value="dashboard">Dashboard</option>
+        <option value="batches">Batch History</option>
+        <option value="wastage">Wastage Log</option>
+        <option value="variance">Variance Report</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="refreshProductionView()">↺ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Sub-view: Dashboard -->
+  <div id="prodview-dashboard">
+    <div class="stats-grid" id="productionDashCards" style="margin-bottom:16px">
+      <div class="stat-card"><div class="stat-value" id="prodStatBatchesToday">–</div><div class="stat-label">Batches Today</div></div>
+      <div class="stat-card success"><div class="stat-value" id="prodStatBatchesMonth">–</div><div class="stat-label">Batches This Month</div></div>
+      <div class="stat-card warning"><div class="stat-value" id="prodStatActiveWOs">–</div><div class="stat-label">Active Work Orders</div></div>
+      <div class="stat-card danger"><div class="stat-value" id="prodStatWastageMonth">–</div><div class="stat-label">Wastage This Month</div></div>
+    </div>
+    <div class="table-wrap" id="productionDashTable"><div class="empty"><div class="empty-icon">🏭</div><p>Click Refresh to load production data.</p></div></div>
+  </div>
+
+  <!-- Sub-view: Batch History -->
+  <div id="prodview-batches" style="display:none">
+    <div class="table-wrap" id="productionBatchTable"><div class="empty"><div class="empty-icon">📋</div><p>Loading batches…</p></div></div>
+  </div>
+
+  <!-- Sub-view: Wastage Log -->
+  <div id="prodview-wastage" style="display:none">
+    <div class="table-wrap" id="productionWastageTable"><div class="empty"><div class="empty-icon">🗑️</div><p>Loading wastage records…</p></div></div>
+  </div>
+
+  <!-- Sub-view: Variance Report -->
+  <div id="prodview-variance" style="display:none">
+    <div class="table-wrap" id="productionVarianceTable"><div class="empty"><div class="empty-icon">📊</div><p>Loading variance records…</p></div></div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -442,6 +538,63 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   <div id="reportSummary" class="report-summary"></div>
   <!-- Table output -->
   <div class="table-wrap" id="reportContainer"><div class="empty"><div class="empty-icon">📊</div><p>Select a report type and click Generate.</p></div></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     STOCK COUNTS — CODEBOX 03
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-stockcounts">
+  <div class="section-header">
+    <div class="section-title">📦 Stock Counts</div>
+    <div class="toolbar">
+      <select class="filter-select" id="countStatusFilter" onchange="loadCountSessions()">
+        <option value="">All Statuses</option>
+        <option value="in_progress">In Progress</option>
+        <option value="submitted">Submitted</option>
+        <option value="approved">Approved</option>
+        <option value="applied">Applied</option>
+        <option value="rejected">Rejected</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="loadCountSessions()">↺ Refresh</button>
+      <button class="btn" style="background:rgba(34,211,238,0.15);border:1px solid rgba(34,211,238,0.4);color:#22d3ee;" onclick="openStartCountModal()">+ Start Count</button>
+    </div>
+  </div>
+  <div id="countSessionsInfo" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;"></div>
+  <div class="table-wrap" id="countSessionsTable">
+    <div class="empty"><div class="empty-icon">📦</div><p>No count sessions yet. Click <strong>Start Count</strong> to begin.</p></div>
+  </div>
+</div>
+
+<!-- ── RESERVATIONS ──────────────────────────────────────────────────────── -->
+<div class="section" id="tab-reservations">
+  <div class="section-header">
+    <div>
+      <div class="section-title">🔒 Reservations &amp; Available Stock</div>
+      <div class="section-subtitle" id="reservationsSubtitle">Active stock commitments across all sources</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <select class="filter-select" id="resvStatusFilter" onchange="_tabLoaded['reservations']=false;loadReservations()">
+        <option value="">All Statuses</option>
+        <option value="active">Active</option>
+        <option value="partially_released">Partially Released</option>
+        <option value="released">Released</option>
+        <option value="consumed">Consumed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <select class="filter-select" id="resvSourceFilter" onchange="_tabLoaded['reservations']=false;loadReservations()">
+        <option value="">All Sources</option>
+        <option value="work_order">Work Orders</option>
+        <option value="manual_hold">Manual Hold</option>
+      </select>
+      <button class="btn btn-ghost" onclick="_tabLoaded['reservations']=false;loadReservations()">↺ Refresh</button>
+      <button class="btn" style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;" onclick="openManualHoldModal()">+ Manual Hold</button>
+    </div>
+  </div>
+  <div id="reservationsInfo" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;"></div>
+  <div class="table-wrap" id="reservationsTable">
+    <div class="empty"><div class="empty-icon">🔒</div><p>No reservations yet.</p></div>
+  </div>
 </div>
 
 </div><!-- /.main -->
@@ -703,6 +856,27 @@ tr:hover td { background: rgba(255,255,255,0.02); }
         <input id="woCompleteQty" type="number" step="0.001" min="0.001">
         <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">Leave as planned qty or enter actual produced quantity. Finished goods will be received into stock.</div>
       </div>
+      <div class="form-field" style="margin-bottom:12px;">
+        <label>Wastage Quantity (if any)</label>
+        <input id="woWastageQty" type="number" step="0.001" min="0" placeholder="0" oninput="onWastageQtyInput()">
+      </div>
+      <div class="form-field" id="woWastageReasonWrap" style="display:none;margin-bottom:12px;">
+        <label>Wastage Reason</label>
+        <select id="woWastageReason">
+          <option value="spoilage">Spoilage</option>
+          <option value="damage">Damage</option>
+          <option value="trimming_loss">Trimming Loss</option>
+          <option value="process_loss">Process Loss</option>
+          <option value="machine_error">Machine Error</option>
+          <option value="operator_error">Operator Error</option>
+          <option value="unknown">Unknown</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-field" style="margin-bottom:16px;">
+        <label>Operator Notes (optional)</label>
+        <textarea id="woOperatorNotes" rows="2" placeholder="Notes on run conditions, issues, etc."></textarea>
+      </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" onclick="closeModal('woCompleteModal')">Cancel</button>
         <button type="button" class="btn btn-success" onclick="confirmCompleteWo()">Receive & Complete</button>
@@ -771,8 +945,217 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
 </div>
 
+<!-- ════════════ CREATE PO MODAL (Codebox 05) ════════════ -->
+<div class="modal-overlay" id="createPoModal">
+  <div class="modal modal-xl" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Create Purchase Order</h3>
+      <button class="modal-close" onclick="closeModal('createPoModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="return submitCreatePo(event)">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Supplier *</label>
+            <select id="poSupplier" required><option value="">— Select Supplier —</option></select>
+          </div>
+          <div class="form-field">
+            <label>Expected Delivery Date</label>
+            <input id="poExpected" type="date">
+          </div>
+          <div class="form-field" style="grid-column:1/-1;">
+            <label>Notes</label>
+            <input id="poNotes" placeholder="e.g. Supplier ref, delivery instructions">
+          </div>
+        </div>
+
+        <div style="margin-top:18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong style="font-size:0.9rem;">Order Lines</strong>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="addPoLine()">+ Add Line</button>
+          </div>
+          <div id="poLinesContainer"></div>
+          <div id="poLinesEmpty" style="font-size:0.82rem;color:var(--text-muted);padding:8px 0;">No lines yet — click + Add Line.</div>
+          <div style="text-align:right;margin-top:10px;font-size:0.88rem;color:var(--text-muted);">
+            Subtotal: <strong id="poLineTotal">R 0.00</strong>
+          </div>
+        </div>
+
+        <div class="form-actions" style="margin-top:20px;">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('createPoModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save as Draft</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ PO DETAIL MODAL (Codebox 05) ════════════ -->
+<div class="modal-overlay" id="poDetailModal">
+  <div class="modal modal-xl" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="poDetailTitle">Purchase Order</h3>
+      <button class="modal-close" onclick="closeModal('poDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="poDetailBody">
+      <div style="text-align:center;padding:32px;color:var(--text-muted);">Loading…</div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
+
+<!-- ── Start Count Modal ─────────────────────────────────────────── -->
+<!-- ════════════ MANUAL HOLD MODAL (Codebox 04) ════════════ -->
+<div class="modal-overlay" id="manualHoldModal" onclick="closeModal('manualHoldModal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title">Manual Stock Hold</div>
+      <button class="modal-close" onclick="closeModal('manualHoldModal')">✕</button>
+    </div>
+    <form class="modal-body" id="manualHoldForm" onsubmit="submitManualHold(event)">
+      <div class="form-group">
+        <label class="form-label">Item *</label>
+        <select class="form-control" id="mhItemId" required></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Quantity to Hold *</label>
+          <input class="form-control" type="number" id="mhQty" min="0.0001" step="any" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reference</label>
+        <input class="form-control" id="mhRef" placeholder="e.g. Customer order #12345">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reason</label>
+        <input class="form-control" id="mhReason" placeholder="Why is this stock being held?">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('manualHoldModal')">Cancel</button>
+        <button type="submit" class="btn" style="background:rgba(251,146,60,0.2);border:1px solid rgba(251,146,60,0.5);color:#fb923c;">Create Hold</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="startCountModal" onclick="closeModal('startCountModal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-title">Start New Stock Count</div>
+      <button class="modal-close" onclick="closeModal('startCountModal')">✕</button>
+    </div>
+    <form class="modal-body" id="startCountForm" onsubmit="submitStartCount(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Count Type *</label>
+          <select class="form-control" id="scCountType" required>
+            <option value="full">Full Count — all items</option>
+            <option value="cycle">Cycle Count — category/subset</option>
+            <option value="spot">Spot Check — specific items</option>
+            <option value="recount">Recount — disputed items</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Warehouse (optional)</label>
+          <select class="form-control" id="scWarehouseId">
+            <option value="">All warehouses</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Item Scope</label>
+        <select class="form-control" id="scMode" onchange="_scModeChange()">
+          <option value="full">All Items</option>
+          <option value="low_stock">Low Stock Items Only</option>
+          <option value="category">By Category</option>
+          <option value="items">Specific Item IDs</option>
+        </select>
+      </div>
+      <div class="form-group" id="scCategoryRow" style="display:none;">
+        <label class="form-label">Category</label>
+        <select class="form-control" id="scCategory">
+          <option value="raw_material">Raw Material</option>
+          <option value="finished_good">Finished Good</option>
+          <option value="component">Component</option>
+          <option value="consumable">Consumable</option>
+          <option value="packaging">Packaging</option>
+          <option value="service">Service</option>
+          <option value="asset">Asset</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-group" id="scItemIdsRow" style="display:none;">
+        <label class="form-label">Item IDs (comma-separated)</label>
+        <input class="form-control" type="text" id="scItemIds" placeholder="e.g. 12,45,78">
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex-direction:row;align-items:center;gap:10px;">
+          <input type="checkbox" id="scBlindCount">
+          <label class="form-label" for="scBlindCount" style="margin:0;cursor:pointer;">Blind Count — counters cannot see system quantities</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-control" id="scNotes" rows="2" placeholder="Optional notes about this count session…"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('startCountModal')">Cancel</button>
+        <button type="submit" class="btn">Create Session &amp; Generate Lines</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Count Lines Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="countLinesModal" onclick="closeModal('countLinesModal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:1000px;width:96vw;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="countLinesTitle">Count Session</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);" id="countLinesSubtitle"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sm" id="btnSubmitCount" style="display:none;background:rgba(34,211,238,0.15);border:1px solid rgba(34,211,238,0.4);color:#22d3ee;" onclick="_submitCountFromModal()">Submit for Approval</button>
+        <button class="modal-close" onclick="closeModal('countLinesModal')">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:0;">
+      <div id="countLinesBody" style="padding:16px 20px;overflow-x:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Approve Count Modal ───────────────────────────────────────── -->
+<div class="modal-overlay" id="approveCountModal" onclick="closeModal('approveCountModal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:460px;">
+    <div class="modal-header">
+      <div class="modal-title" id="approveCountTitle">Review Count Session</div>
+      <button class="modal-close" onclick="closeModal('approveCountModal')">✕</button>
+    </div>
+    <form class="modal-body" id="approveCountForm" onsubmit="submitApproval(event)">
+      <input type="hidden" id="approveCountSessionId">
+      <div class="form-group">
+        <label class="form-label">Decision *</label>
+        <select class="form-control" id="approveCountAction" required>
+          <option value="approved">Approve — allow variance to be applied</option>
+          <option value="rejected">Reject — do not apply variance</option>
+          <option value="recount_required">Request Recount — return to in-progress</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-control" id="approveCountNotes" rows="3" placeholder="Reason for decision (recommended)…"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('approveCountModal')">Cancel</button>
+        <button type="submit" class="btn">Confirm Decision</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <script>
 // ════════════════════════════════════════════════════════════════════════════
@@ -868,6 +1251,10 @@ async function switchTab(name) {
     if (name === 'boms')       await loadBoms();
     if (name === 'workorders') await loadWorkOrders();
     if (name === 'reports')    onReportTypeChange();
+    if (name === 'stockcounts') await loadCountSessions();
+    if (name === 'reservations') await loadReservations();
+    if (name === 'procurement') await loadProcurementSuggestions();
+    if (name === 'production') await loadProductionDashboard();
   }
 }
 
@@ -879,11 +1266,15 @@ async function loadDashboard() {
     const d = await apiFetch('/demo-dashboard').catch(() => apiFetch('/dashboard'));
     document.getElementById('statItems').textContent           = d.total_items ?? 0;
     document.getElementById('statStockValue').textContent      = fmtR(d.total_stock_value ?? (d.valuation || []).reduce((sum, row) => sum + (parseFloat(row.totalValue) || 0), 0));
-    document.getElementById('statLowStock').textContent         = d.low_stock_count ?? 0;
+    document.getElementById('statLowStock').textContent        = d.low_stock_count ?? 0;
     document.getElementById('statOpenWOs').textContent         = d.open_work_orders ?? 0;
     document.getElementById('statAwaitingReceipt').textContent  = d.purchase_orders_awaiting_receipt ?? 0;
     document.getElementById('statFinishedGoods').textContent   = d.finished_goods_count ?? 0;
     document.getElementById('statRawMaterials').textContent    = d.raw_material_count ?? 0;
+    // Codebox 04 — Reservation stats
+    document.getElementById('statActiveReservations').textContent = d.active_reservations ?? 0;
+    document.getElementById('statReservedValue').textContent      = fmtR(d.total_reserved_value ?? 0);
+    document.getElementById('statShortageItems').textContent      = d.shortage_item_count ?? 0;
   } catch(e) { console.error('Dashboard load failed', e); }
 }
 
@@ -1013,19 +1404,23 @@ function renderItemsTable(items) {
   const wrap = document.getElementById('itemsTable');
   if (!items.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><p>No items found.</p></div>'; return; }
   wrap.innerHTML = `<table><thead><tr>
-    <th>Name / SKU</th><th>Type</th><th>Stock</th><th title="Weighted average cost">Avg Cost</th><th>Last Purchase</th><th>Stock Value</th><th>Min</th><th>Active</th><th>Actions</th>
+    <th>Name / SKU</th><th>Type</th><th>On Hand</th><th class="reserved-qty">Reserved</th><th title="On Hand minus Reserved">Available</th><th title="Weighted average cost">Avg Cost</th><th>Stock Value</th><th>Min</th><th>Active</th><th>Actions</th>
   </tr></thead><tbody>${items.map(i=>{
-    const low = parseFloat(i.current_stock||0) <= parseFloat(i.min_stock||0);
-    const avgCost = Number.isFinite(parseFloat(i.average_cost)) ? parseFloat(i.average_cost) : (Number.isFinite(parseFloat(i.cost_price)) ? parseFloat(i.cost_price) : 0);
-    const lastCost = Number.isFinite(parseFloat(i.last_purchase_cost)) ? parseFloat(i.last_purchase_cost) : null;
-    const totalVal = avgCost * (parseFloat(i.current_stock) || 0);
-    const noCost = !Number.isFinite(parseFloat(i.average_cost)) && !Number.isFinite(parseFloat(i.last_purchase_cost)) && !Number.isFinite(parseFloat(i.cost_price));
+    const reserved   = parseFloat(i.reserved_qty || 0);
+    const available  = parseFloat(i.available_stock != null ? i.available_stock : Math.max(0, (parseFloat(i.current_stock)||0) - reserved));
+    const low        = available <= parseFloat(i.min_stock||0);
+    const shortage   = reserved > parseFloat(i.current_stock||0);
+    const avgCost    = Number.isFinite(parseFloat(i.average_cost)) ? parseFloat(i.average_cost) : (Number.isFinite(parseFloat(i.cost_price)) ? parseFloat(i.cost_price) : 0);
+    const totalVal   = avgCost * (parseFloat(i.current_stock) || 0);
+    const noCost     = !Number.isFinite(parseFloat(i.average_cost)) && !Number.isFinite(parseFloat(i.last_purchase_cost)) && !Number.isFinite(parseFloat(i.cost_price));
+    const availClass = shortage ? 'avail-none' : (low ? 'avail-low' : 'avail-ok');
     return `<tr>
-      <td><div style="font-weight:700">${esc(i.name)}</div>${i.sku?`<div style="font-size:0.72rem;color:var(--text-muted)">${esc(i.sku)}</div>`:''}${i.barcode?`<div style="font-size:0.7rem;color:var(--text-muted)">🔲 ${esc(i.barcode)}</div>`:''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${i.item_type==='raw_material' ? '<span class="badge badge-warning">Raw Material</span>' : ''}${i.item_type==='finished_good' ? '<span class="badge badge-success">Finished Good</span>' : ''}${low ? '<span class="badge badge-danger">Low Stock</span>' : ''}${noCost ? '<span class="badge badge-danger">No Cost</span>' : ''}${parseFloat(i.current_stock||0) === 0 ? '<span class="badge badge-neutral">No Stock</span>' : ''}</div></td>
+      <td><div style="font-weight:700">${esc(i.name)}</div>${i.sku?`<div style="font-size:0.72rem;color:var(--text-muted)">${esc(i.sku)}</div>`:''}${i.barcode?`<div style="font-size:0.7rem;color:var(--text-muted)">🔲 ${esc(i.barcode)}</div>`:''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${i.item_type==='raw_material' ? '<span class="badge badge-warning">Raw Material</span>' : ''}${i.item_type==='finished_good' ? '<span class="badge badge-success">Finished Good</span>' : ''}${shortage ? '<span class="shortage-badge">⚠ Shortage</span>' : (low ? '<span class="badge badge-danger">Low Stock</span>' : '')}${noCost ? '<span class="badge badge-danger">No Cost</span>' : ''}${parseFloat(i.current_stock||0) === 0 ? '<span class="badge badge-neutral">No Stock</span>' : ''}</div></td>
       <td>${itemTypeBadge(i.item_type)}</td>
-      <td class="${low?'low-stock':''}">${fmtQty(i.current_stock)}</td>
+      <td>${fmtQty(i.current_stock)}</td>
+      <td class="reserved-qty">${reserved > 0 ? fmtQty(reserved) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td class="${availClass}">${fmtQty(available)}</td>
       <td>${fmtR(avgCost)}</td>
-      <td>${lastCost == null ? '<span class="badge badge-danger">No Cost</span>' : fmtR(lastCost)}</td>
       <td style="font-size:0.82rem;color:var(--eco-cyan)">${fmtR(totalVal)}</td>
       <td>${fmtQty(i.min_stock)}</td>
       <td>${i.is_active === false ? '<span class="badge badge-danger">Inactive</span>' : '<span class="badge badge-success">Active</span>'}</td>
@@ -1332,7 +1727,7 @@ async function saveSupplier(e) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// PURCHASE ORDERS
+// PURCHASE ORDERS (Codebox 05)
 // ════════════════════════════════════════════════════════════════════════════
 async function loadOrders() {
   const status = document.getElementById('poStatusFilter').value;
@@ -1341,16 +1736,32 @@ async function loadOrders() {
     const pos = d.purchase_orders||[];
     const wrap = document.getElementById('ordersTable');
     if (!pos.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">🛒</div><p>No purchase orders found.</p></div>'; return; }
+
+    const receivable = ['approved','ordered','partial_receipt'];
+    const today = new Date().toISOString().slice(0,10);
+
     wrap.innerHTML = `<table><thead><tr>
-      <th>Date</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th><th>Actions</th>
-    </tr></thead><tbody>${pos.map(p=>`<tr>
-      <td>${fmtDate(p.created_at)}</td>
-      <td>${esc(p.suppliers?.name||'—')}</td>
-      <td>${statusBadge(p.status)}</td>
-      <td>${fmtR(p.total_amount)}</td>
-      <td>${fmtDate(p.expected_date)}</td>
-      <td class="td-actions">${['draft','sent','partial_receipt'].includes(p.status) ? `<button class="btn btn-success btn-xs" onclick="openReceivePoModal(${p.id})">Receive</button>` : '—'}</td>
-    </tr>`).join('')}</tbody></table>`;
+      <th>PO #</th><th>Supplier</th><th>Status</th><th>Total</th><th>Expected</th><th>Received%</th><th>Actions</th>
+    </tr></thead><tbody>${pos.map(p=>{
+      const overdue = p.expected_date && p.expected_date < today && !['cancelled','closed','fully_received'].includes(p.status);
+      const rcvPct = p.received_pct != null ? `<div style="font-size:0.75rem;color:var(--text-muted);">${Math.round(p.received_pct*100)}%</div>` : '—';
+      const actions = [];
+      if (p.status === 'draft') actions.push(`<button class="btn btn-success btn-xs" onclick="approvePO(${p.id})">Approve</button>`);
+      if (p.status === 'approved') actions.push(`<button class="btn btn-primary btn-xs" onclick="markOrdered(${p.id})">Mark Ordered</button>`);
+      if (receivable.includes(p.status)) actions.push(`<button class="btn btn-success btn-xs" onclick="openReceivePoModal(${p.id})">Receive</button>`);
+      if (['fully_received'].includes(p.status)) actions.push(`<button class="btn btn-ghost btn-xs" onclick="closePO(${p.id})">Close</button>`);
+      if (['draft','approved','ordered'].includes(p.status)) actions.push(`<button class="btn btn-danger btn-xs" onclick="cancelPO(${p.id})">Cancel</button>`);
+      actions.push(`<button class="btn btn-ghost btn-xs" onclick="viewPoDetail(${p.id})">View</button>`);
+      return `<tr>
+        <td><strong>${esc(p.po_number||'—')}</strong></td>
+        <td>${esc(p.suppliers?.name||'—')}</td>
+        <td>${statusBadge(p.status)}${overdue?'<span class="badge badge-danger" style="margin-left:4px;font-size:0.65rem;">OVERDUE</span>':''}</td>
+        <td>${fmtR(p.total_amount)}</td>
+        <td>${fmtDate(p.expected_date)}</td>
+        <td>${rcvPct}</td>
+        <td class="td-actions">${actions.join('')}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
   } catch(e) { showToast('Failed to load purchase orders', true); }
 }
 
@@ -1372,12 +1783,16 @@ async function openReceivePoModal(poId) {
     _poReceiveLinesData = lines;
     const rows = lines.map((l, i) => {
       const remaining = parseFloat(l.quantity) - parseFloat(l.received_qty || 0);
-      return `<div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+      return `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
         <div>
           <strong style="font-size:0.9rem;">${esc(l.inventory_items?.name || 'Unknown Item')}</strong>
           <div style="font-size:0.75rem;color:var(--text-muted);">Ordered: ${l.quantity} | Received: ${l.received_qty||0} | Remaining: ${remaining.toFixed(3)}</div>
         </div>
         <div style="font-size:0.8rem;color:var(--text-muted);">${esc(l.inventory_items?.unit || '')}</div>
+        <input type="number" step="0.01" min="0" placeholder="Unit Cost"
+          id="rcvCost_${l.id}" value="${l.unit_price||''}"
+          style="width:100px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;"
+          ${remaining <= 0 ? 'disabled' : ''}>
         <input type="number" step="0.001" min="0" max="${remaining}"
           id="rcvQty_${l.id}" value="${remaining > 0 ? remaining : 0}"
           style="width:90px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;"
@@ -1399,7 +1814,9 @@ async function submitPoReceive() {
     if (!input || input.disabled) continue;
     const qty = parseFloat(input.value);
     if (isNaN(qty) || qty <= 0) continue;
-    lines.push({ po_item_id: l.id, received_qty: qty });
+    const costInput = document.getElementById('rcvCost_' + l.id);
+    const unit_cost = costInput ? parseFloat(costInput.value)||undefined : undefined;
+    lines.push({ po_item_id: l.id, received_qty: qty, unit_cost });
   }
   if (!lines.length) { showToast('Enter a received quantity for at least one line', true); return; }
   try {
@@ -1412,6 +1829,278 @@ async function submitPoReceive() {
     await loadOrders();
     await loadDashboard();
   } catch(e) { showToast(e.message, true); }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// PO LIFECYCLE ACTIONS (Codebox 05)
+// ────────────────────────────────────────────────────────────────────────────
+async function approvePO(id) {
+  if (!confirm('Approve this purchase order?')) return;
+  try {
+    await apiFetch('/purchase-orders/'+id+'/approve', { method:'POST' });
+    showToast('PO approved.');
+    await loadOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function markOrdered(id) {
+  if (!confirm('Mark this PO as Ordered? (Sent to supplier)')) return;
+  try {
+    await apiFetch('/purchase-orders/'+id+'/mark-ordered', { method:'POST' });
+    showToast('PO marked as ordered.');
+    await loadOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function closePO(id) {
+  if (!confirm('Close this purchase order? This cannot be undone.')) return;
+  try {
+    await apiFetch('/purchase-orders/'+id+'/close', { method:'POST' });
+    showToast('PO closed.');
+    await loadOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function cancelPO(id) {
+  if (!confirm('Cancel this purchase order? This cannot be undone.')) return;
+  try {
+    await apiFetch('/purchase-orders/'+id+'/cancel', { method:'POST' });
+    showToast('PO cancelled.');
+    await loadOrders();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function viewPoDetail(id) {
+  document.getElementById('poDetailTitle').textContent = 'Purchase Order';
+  document.getElementById('poDetailBody').innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-muted);">Loading…</div>';
+  openModal('poDetailModal');
+  try {
+    const d = await apiFetch('/purchase-orders/'+id);
+    const po = d.purchase_order;
+    document.getElementById('poDetailTitle').textContent = 'PO ' + (po.po_number||('#'+id));
+
+    const linesHtml = (po.lines||[]).map(l=>`<tr>
+      <td>${esc(l.inventory_items?.name||'?')}</td>
+      <td>${fmtQty(l.quantity, l.inventory_items?.unit||'')}</td>
+      <td>${fmtQty(l.received_qty||0, l.inventory_items?.unit||'')}</td>
+      <td>${fmtR(l.unit_price)}</td>
+      <td>${fmtR(l.unit_price * l.quantity)}</td>
+    </tr>`).join('');
+
+    const rcptsHtml = await _buildReceiptHistoryHtml(id);
+
+    document.getElementById('poDetailBody').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;font-size:0.85rem;">
+        <div><span style="color:var(--text-muted);">Supplier</span><br><strong>${esc(po.supplier?.name||'—')}</strong></div>
+        <div><span style="color:var(--text-muted);">Status</span><br>${statusBadge(po.status)}</div>
+        <div><span style="color:var(--text-muted);">Expected</span><br>${fmtDate(po.expected_date)}</div>
+        <div><span style="color:var(--text-muted);">Total</span><br><strong>${fmtR(po.total_amount)}</strong></div>
+        <div><span style="color:var(--text-muted);">Created</span><br>${fmtDate(po.created_at)}</div>
+        <div><span style="color:var(--text-muted);">Notes</span><br>${esc(po.notes||'—')}</div>
+      </div>
+      <strong>Order Lines</strong>
+      <table style="margin-top:8px;"><thead><tr><th>Item</th><th>Ordered</th><th>Received</th><th>Unit Price</th><th>Line Total</th></tr></thead>
+      <tbody>${linesHtml}</tbody></table>
+      <strong style="display:block;margin-top:20px;">Receipt History</strong>
+      ${rcptsHtml}`;
+  } catch(e) {
+    document.getElementById('poDetailBody').innerHTML = `<p style="color:var(--danger);">${esc(e.message)}</p>`;
+  }
+}
+
+async function _buildReceiptHistoryHtml(poId) {
+  try {
+    const d = await apiFetch('/purchase-orders/'+poId+'/receipts');
+    const receipts = d.receipts||[];
+    if (!receipts.length) return '<div style="color:var(--text-muted);font-size:0.83rem;margin-top:8px;">No receipts yet.</div>';
+    return receipts.map(r=>{
+      const linesHtml = (r.lines||[]).map(l=>`<tr>
+        <td>${esc(l.inventory_items?.name||'?')}</td>
+        <td>${fmtQty(l.qty_received, l.inventory_items?.unit||'')}</td>
+        <td>${fmtR(l.unit_cost)}</td>
+        <td>${fmtR(l.line_value)}</td>
+      </tr>`).join('');
+      return `<div style="margin-top:12px;padding:12px;background:var(--surface-alt,#1e293b);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;">
+          <span>${fmtDate(r.receipt_date)}</span><span>Total: <strong>${fmtR(r.total_value)}</strong></span>
+        </div>
+        ${r.notes?`<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">${esc(r.notes)}</div>`:''}
+        <table><thead><tr><th>Item</th><th>Qty</th><th>Unit Cost</th><th>Line Value</th></tr></thead>
+        <tbody>${linesHtml}</tbody></table>
+      </div>`;
+    }).join('');
+  } catch(e) { return `<div style="color:var(--danger);font-size:0.82rem;margin-top:8px;">Could not load receipt history.</div>`; }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// CREATE PO MODAL (Codebox 05)
+// ────────────────────────────────────────────────────────────────────────────
+let _poLineCount = 0;
+
+function openCreatePoModal(prefill) {
+  _poLineCount = 0;
+  // Populate supplier dropdown
+  const sel = document.getElementById('poSupplier');
+  sel.innerHTML = '<option value="">— Select Supplier —</option>';
+  _suppliersCache.forEach(s=>{
+    const o = document.createElement('option');
+    o.value = s.id;
+    o.textContent = s.name;
+    sel.appendChild(o);
+  });
+
+  document.getElementById('poExpected').value = prefill?.expected_date||'';
+  document.getElementById('poNotes').value = prefill?.notes||'';
+  document.getElementById('poLinesContainer').innerHTML = '';
+  document.getElementById('poLinesEmpty').style.display = 'block';
+  recalcPoTotal();
+
+  if (prefill?.supplier_id) sel.value = prefill.supplier_id;
+  if (prefill?.lines) prefill.lines.forEach(l=>addPoLine(l));
+
+  openModal('createPoModal');
+}
+
+function addPoLine(prefill) {
+  _poLineCount++;
+  const id = _poLineCount;
+  document.getElementById('poLinesEmpty').style.display = 'none';
+  const row = document.createElement('div');
+  row.id = 'po-line-'+id;
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 110px auto;gap:8px;align-items:center;margin-bottom:8px;';
+  const itemOpts = allItems.map(i=>`<option value="${i.id}" ${prefill&&prefill.item_id==i.id?'selected':''}>${esc(i.name)}${i.sku?' ('+esc(i.sku)+')':''}</option>`).join('');
+  row.innerHTML = `
+    <select class="form-control" id="poLineItem_${id}" onchange="recalcPoTotal()">
+      <option value="">— Item —</option>${itemOpts}</select>
+    <input class="form-control" type="number" step="0.001" min="0.001" placeholder="Qty"
+      id="poLineQty_${id}" value="${prefill?.qty||''}" oninput="recalcPoTotal()">
+    <input class="form-control" type="number" step="0.01" min="0" placeholder="Unit Price"
+      id="poLinePrice_${id}" value="${prefill?.unit_price||''}" oninput="recalcPoTotal()">
+    <button type="button" class="btn btn-danger btn-xs" onclick="removePoLine(${id})">✕</button>`;
+  document.getElementById('poLinesContainer').appendChild(row);
+}
+
+function removePoLine(id) {
+  const row = document.getElementById('po-line-'+id);
+  if (row) row.remove();
+  if (!document.getElementById('poLinesContainer').children.length) {
+    document.getElementById('poLinesEmpty').style.display = 'block';
+  }
+  recalcPoTotal();
+}
+
+function recalcPoTotal() {
+  let total = 0;
+  for (let i = 1; i <= _poLineCount; i++) {
+    const qty = parseFloat(document.getElementById('poLineQty_'+i)?.value)||0;
+    const price = parseFloat(document.getElementById('poLinePrice_'+i)?.value)||0;
+    total += qty * price;
+  }
+  document.getElementById('poLineTotal').textContent = fmtR(total);
+}
+
+async function submitCreatePo(e) {
+  e.preventDefault();
+  const supplier_id = document.getElementById('poSupplier').value;
+  if (!supplier_id) { showToast('Select a supplier', true); return false; }
+
+  const lines = [];
+  for (let i = 1; i <= _poLineCount; i++) {
+    const el = document.getElementById('po-line-'+i);
+    if (!el) continue;
+    const item_id = document.getElementById('poLineItem_'+i)?.value;
+    const quantity = parseFloat(document.getElementById('poLineQty_'+i)?.value);
+    const unit_price = parseFloat(document.getElementById('poLinePrice_'+i)?.value)||0;
+    if (!item_id || !quantity || quantity <= 0) continue;
+    lines.push({ item_id: parseInt(item_id), quantity, unit_price });
+  }
+  if (!lines.length) { showToast('Add at least one line item', true); return false; }
+
+  const body = {
+    supplier_id: parseInt(supplier_id),
+    expected_date: document.getElementById('poExpected').value||undefined,
+    notes: document.getElementById('poNotes').value.trim()||undefined,
+    lines
+  };
+  try {
+    const d = await apiFetch('/purchase-orders', { method:'POST', body: JSON.stringify(body) });
+    closeModal('createPoModal');
+    showToast('PO created — ' + (d.po_number||''));
+    await loadOrders();
+    await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+  return false;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// PROCUREMENT SUGGESTIONS (Codebox 05)
+// ────────────────────────────────────────────────────────────────────────────
+let _tabLoadedProcurement = false;
+
+async function loadProcurementSuggestions(force) {
+  if (!force && _tabLoadedProcurement) return;
+  _tabLoadedProcurement = true;
+  const wrap = document.getElementById('procSuggestionsTable');
+  const bar = document.getElementById('procSummaryBar');
+  wrap.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div><p>Loading suggestions…</p></div>';
+  bar.style.display = 'none';
+  try {
+    const d = await apiFetch('/procurement/suggestions');
+    const suggs = d.suggestions||[];
+    if (d.summary) {
+      bar.textContent = `${d.summary.total} suggestion(s) — ${d.summary.shortage_count||0} shortage(s), ${d.summary.reorder_count||0} reorder(s)`;
+      bar.style.display = 'block';
+    }
+    if (!suggs.length) {
+      wrap.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No procurement actions needed right now.</p></div>';
+      return;
+    }
+    wrap.innerHTML = `<table><thead><tr>
+      <th>Item</th><th>Type</th><th>Stock</th><th>Min</th><th>Suggested Qty</th><th>Preferred Supplier</th><th>Actions</th>
+    </tr></thead><tbody>${suggs.map(s=>`<tr>
+      <td><strong>${esc(s.item_name)}</strong>${s.sku?`<div style="font-size:0.72rem;color:var(--text-muted);">${esc(s.sku)}</div>`:''}</td>
+      <td><span class="badge ${s.type==='shortage'?'badge-danger':'badge-warning'}">${s.type==='shortage'?'SHORTAGE':'REORDER'}</span></td>
+      <td>${fmtQty(s.current_stock, s.unit)}</td>
+      <td>${fmtQty(s.min_stock, s.unit)}</td>
+      <td><strong>${fmtQty(s.suggested_qty, s.unit)}</strong></td>
+      <td>${esc(s.preferred_supplier_name||'—')}</td>
+      <td class="td-actions">
+        <button class="btn btn-primary btn-xs" onclick='createPOFromSuggestion(${JSON.stringify(s).replace(/'/g,"&#39;")})'>Create PO</button>
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch(e) { wrap.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><p>${esc(e.message)}</p></div>`; }
+}
+
+function createPOFromSuggestion(s) {
+  switchTab('orders');
+  openCreatePoModal({
+    supplier_id: s.preferred_supplier_id||undefined,
+    lines: [{ item_id: s.item_id, qty: s.suggested_qty, unit_price: s.last_purchase_cost||0 }]
+  });
+}
+
+async function loadOverduePOs() {
+  const wrap = document.getElementById('overduePoTable');
+  wrap.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div><p>Loading…</p></div>';
+  try {
+    const d = await apiFetch('/procurement/overdue-pos');
+    const pos = d.purchase_orders||[];
+    if (!pos.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No overdue purchase orders.</p></div>'; return; }
+    wrap.innerHTML = `<table><thead><tr>
+      <th>PO #</th><th>Supplier</th><th>Status</th><th>Expected</th><th>Days Overdue</th><th>Actions</th>
+    </tr></thead><tbody>${pos.map(p=>{
+      const days = Math.floor((Date.now()-new Date(p.expected_date))/(86400000));
+      return `<tr>
+        <td><strong>${esc(p.po_number||'—')}</strong></td>
+        <td>${esc(p.suppliers?.name||'—')}</td>
+        <td>${statusBadge(p.status)}</td>
+        <td>${fmtDate(p.expected_date)}</td>
+        <td><span style="color:var(--danger);">${days}d</span></td>
+        <td class="td-actions"><button class="btn btn-ghost btn-xs" onclick="viewPoDetail(${p.id})">View</button></td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+  } catch(e) { wrap.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><p>${esc(e.message)}</p></div>`; }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1666,9 +2355,14 @@ function renderWoTable() {
 }
 
 function woActionBtn(w) {
-  if (w.status==='draft')       return `<button class="btn btn-info btn-xs" onclick="releaseWo(${w.id})" style="background:rgba(34,211,238,0.15);border:1px solid rgba(34,211,238,0.3);color:var(--accent)">Release</button>`;
-  if (w.status==='released')    return `<button class="btn btn-warning btn-xs" onclick="startWo(${w.id})" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24">Start</button>`;
-  if (w.status==='in_progress') return `<button class="btn btn-success btn-xs" onclick="openCompleteModal(${w.id},${w.quantity_to_produce})">Complete</button>`;
+  if (w.status === 'draft')       return `<button class="btn btn-info btn-xs" onclick="releaseWo(${w.id})" style="background:rgba(34,211,238,0.15);border:1px solid rgba(34,211,238,0.3);color:var(--accent)">Release</button>`;
+  if (w.status === 'released')    return `<button class="btn btn-warning btn-xs" onclick="startWo(${w.id})" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24">Start</button>`;
+  if (w.status === 'in_progress') return `
+    <button class="btn btn-ghost btn-xs" onclick="pauseWo(${w.id})" title="Pause">⏸ Pause</button>
+    <button class="btn btn-success btn-xs" onclick="openCompleteModal(${w.id},${w.quantity_to_produce})">Complete</button>`;
+  if (w.status === 'paused')      return `
+    <button class="btn btn-warning btn-xs" onclick="resumeWo(${w.id})" title="Resume">▶ Resume</button>`;
+  if (w.status === 'completed')   return `<button class="btn btn-ghost btn-xs" onclick="closeWo(${w.id})" title="Archive as Closed">🔒 Close</button>`;
   return '';
 }
 
@@ -1802,10 +2496,25 @@ async function viewWo(id) {
 
 async function releaseWo(id) {
   try {
-    await apiFetch('/work-orders/'+id+'/release', { method:'POST' });
-    showToast('Work order released.');
+    const r = await apiFetch('/work-orders/'+id+'/release', { method:'POST' });
+    showToast(`Work order released. ${r.reservations_created || 0} reservation(s) created.`);
     await loadWorkOrders(); await loadDashboard();
-  } catch(e) { showToast(e.message, true); }
+  } catch(e) {
+    // Attempt to surface shortage details from a 422 response
+    try {
+      const errData = JSON.parse(e.message || '{}');
+      if (errData.shortages && errData.shortages.length > 0) {
+        const lines = errData.shortages.map(s =>
+          `• ${esc(s.item_name)} (need ${fmtQty(s.required_qty)}, available ${fmtQty(s.available ?? 0)})`
+        ).join('\n');
+        showToast('Cannot release — insufficient stock:\n' + lines, true);
+      } else {
+        showToast(errData.error || e.message || 'Release failed', true);
+      }
+    } catch {
+      showToast(e.message || 'Release failed', true);
+    }
+  }
 }
 async function startWo(id) {
   try {
@@ -1826,20 +2535,65 @@ async function cancelWo(id) {
 function openCompleteModal(id, qtyPlanned) {
   _woCompleteId = id;
   document.getElementById('woCompleteQty').value = qtyPlanned;
+  document.getElementById('woWastageQty').value = '';
+  document.getElementById('woWastageReason').value = 'spoilage';
+  document.getElementById('woWastageReasonWrap').style.display = 'none';
+  document.getElementById('woOperatorNotes').value = '';
   openModal('woCompleteModal');
+}
+
+function onWastageQtyInput() {
+  const v = parseFloat(document.getElementById('woWastageQty').value) || 0;
+  document.getElementById('woWastageReasonWrap').style.display = v > 0 ? '' : 'none';
 }
 
 async function confirmCompleteWo() {
   const qty = document.getElementById('woCompleteQty').value;
   if (!qty || parseFloat(qty) <= 0) { showToast('Enter a valid quantity.', true); return; }
+  const wastageQty    = parseFloat(document.getElementById('woWastageQty').value) || 0;
+  const wastageReason = document.getElementById('woWastageReason').value || 'unknown';
+  const operatorNotes = document.getElementById('woOperatorNotes').value.trim() || null;
   try {
     await apiFetch('/work-orders/'+_woCompleteId+'/complete', {
-      method:'POST',
-      body: JSON.stringify({ quantity_produced: parseFloat(qty) })
+      method: 'POST',
+      body: JSON.stringify({
+        quantity_produced: parseFloat(qty),
+        wastage_qty:       wastageQty,
+        wastage_reason:    wastageReason,
+        operator_notes:    operatorNotes
+      })
     });
     closeModal('woCompleteModal');
     showToast('Work order completed. Stock updated.');
+    _tabLoaded['production'] = false; // invalidate production cache
     await loadWorkOrders(); await loadItems(); await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function pauseWo(id) {
+  if (!confirm('Pause this work order? Reservations will be preserved.')) return;
+  try {
+    await apiFetch('/work-orders/'+id+'/pause', { method: 'POST', body: '{}' });
+    showToast('Work order paused.');
+    await loadWorkOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function resumeWo(id) {
+  try {
+    await apiFetch('/work-orders/'+id+'/resume', { method: 'POST', body: '{}' });
+    showToast('Work order resumed.');
+    await loadWorkOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function closeWo(id) {
+  if (!confirm('Close this work order? This archives it as completed and cannot be undone.')) return;
+  try {
+    await apiFetch('/work-orders/'+id+'/close', { method: 'POST', body: '{}' });
+    showToast('Work order closed.');
+    _tabLoaded['production'] = false;
+    await loadWorkOrders();
   } catch(e) { showToast(e.message, true); }
 }
 
@@ -2047,6 +2801,573 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
     if (e.target === overlay) overlay.classList.remove('show');
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// STOCK COUNTS — CODEBOX 03
+// ════════════════════════════════════════════════════════════════════════════
+
+let _currentCountSessionId = null;
+
+// ── List sessions ────────────────────────────────────────────────────────────
+async function loadCountSessions() {
+  const status = document.getElementById('countStatusFilter')?.value || '';
+  const params = status ? `?status=${encodeURIComponent(status)}` : '';
+  const wrap = document.getElementById('countSessionsTable');
+  const info = document.getElementById('countSessionsInfo');
+  wrap.innerHTML = '<div class="loading">Loading count sessions…</div>';
+  try {
+    const data = await apiFetch(`/stock-counts${params}`);
+    if (!data.success) throw new Error(data.error || 'Failed');
+    const { sessions = [], summary = {} } = data;
+    if (info) {
+      info.textContent = `${summary.total_sessions || 0} total · ${summary.applied_count || 0} applied · ${summary.pending_count || 0} pending · Total variance applied: R ${fmtR(summary.total_variance_value || 0)}`;
+    }
+    if (!sessions.length) {
+      wrap.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><p>No count sessions found.</p></div>';
+      return;
+    }
+    wrap.innerHTML = `<table class="table"><thead><tr>
+      <th>Session #</th><th>Type</th><th>Status</th><th>Lines</th><th>Started</th><th>Variance Value</th><th>Actions</th>
+    </tr></thead><tbody>${sessions.map(s => {
+      const prog = s.counted_count != null ? `${s.counted_count}/${s.line_count}` : `0/${s.line_count || 0}`;
+      const canEdit = ['draft','in_progress'].includes(s.status);
+      const canSubmit = s.status === 'in_progress';
+      const canApprove = s.status === 'submitted';
+      const canApply = s.status === 'approved';
+      const canCancel = ['draft','in_progress'].includes(s.status);
+      return `<tr>
+        <td><span style="font-family:monospace;font-size:0.82rem;">${esc(s.session_number)}</span></td>
+        <td>${esc(s.count_type)}</td>
+        <td>${statusBadge(s.status)}</td>
+        <td style="font-size:0.82rem;">${prog} counted</td>
+        <td>${fmtDate(s.started_at)}</td>
+        <td>${s.total_variance_value != null ? `<span class="${s.total_variance_value >= 0 ? 'variance-pos' : 'variance-neg'}">R ${fmtR(s.total_variance_value)}</span>` : '—'}</td>
+        <td>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="openCountLinesModal(${s.id})">📋 View/Count</button>
+            ${canApprove ? `<button class="btn btn-sm" style="background:rgba(34,211,238,0.12);border:1px solid rgba(34,211,238,0.35);color:#22d3ee;" onclick="openApproveModal(${s.id},'${esc(s.session_number)}')">✅ Approve</button>` : ''}
+            ${canApply ? `<button class="btn btn-sm" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.35);color:#22c55e;" onclick="applyCountVariance(${s.id})">⚡ Apply</button>` : ''}
+            ${canCancel ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="cancelCountSession(${s.id})">Cancel</button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`;
+  }
+}
+
+// ── Open start count modal ────────────────────────────────────────────────────
+async function openStartCountModal() {
+  // Populate warehouse select
+  const sel = document.getElementById('scWarehouseId');
+  if (sel && sel.options.length <= 1) {
+    try {
+      const d = await apiFetch('/warehouses');
+      if (d.success) {
+        (d.warehouses || []).forEach(w => {
+          const o = document.createElement('option');
+          o.value = w.id; o.textContent = esc(w.name);
+          sel.appendChild(o);
+        });
+      }
+    } catch(e) {}
+  }
+  document.getElementById('startCountForm').reset();
+  _scModeChange();
+  openModal('startCountModal');
+}
+
+function _scModeChange() {
+  const mode = document.getElementById('scMode')?.value;
+  document.getElementById('scCategoryRow').style.display = mode === 'category' ? '' : 'none';
+  document.getElementById('scItemIdsRow').style.display = mode === 'items' ? '' : 'none';
+}
+
+async function submitStartCount(e) {
+  e.preventDefault();
+  const body = {
+    count_type: document.getElementById('scCountType').value,
+    warehouse_id: document.getElementById('scWarehouseId').value || undefined,
+    blind_count: document.getElementById('scBlindCount').checked,
+    notes: document.getElementById('scNotes').value.trim() || undefined,
+    mode: document.getElementById('scMode').value,
+    category: document.getElementById('scCategory').value || undefined,
+    item_ids: document.getElementById('scMode').value === 'items'
+      ? document.getElementById('scItemIds').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+      : undefined
+  };
+  try {
+    const d = await apiFetch('/stock-counts', { method: 'POST', body: JSON.stringify(body) });
+    if (!d.success) throw new Error(d.error || 'Failed');
+    showToast(`Count session ${d.session.session_number} created with ${d.line_count} lines`);
+    closeModal('startCountModal');
+    _tabLoaded['stockcounts'] = false;
+    await loadCountSessions();
+  } catch(e) {
+    showToast(e.message, true);
+  }
+}
+
+// ── Open count lines modal ────────────────────────────────────────────────────
+async function openCountLinesModal(sessionId) {
+  _currentCountSessionId = sessionId;
+  document.getElementById('countLinesTitle').textContent = 'Loading…';
+  document.getElementById('countLinesSubtitle').textContent = '';
+  document.getElementById('countLinesBody').innerHTML = '<div class="loading">Loading lines…</div>';
+  document.getElementById('btnSubmitCount').style.display = 'none';
+  openModal('countLinesModal');
+  try {
+    const d = await apiFetch(`/stock-counts/${sessionId}`);
+    if (!d.success) throw new Error(d.error || 'Failed');
+    const { session, lines = [], approvals = [] } = d;
+    document.getElementById('countLinesTitle').textContent = `${session.session_number} — ${session.count_type.toUpperCase()} COUNT`;
+    document.getElementById('countLinesSubtitle').textContent = `Status: ${session.status} · ${lines.length} lines · Blind: ${session.blind_count ? 'Yes' : 'No'}`;
+    const canEdit = ['draft','in_progress'].includes(session.status);
+    const isBlind = session.blind_count && !['submitted','approved','rejected','applied'].includes(session.status);
+    if (canEdit || session.status === 'submitted') {
+      document.getElementById('btnSubmitCount').style.display = canEdit ? 'inline-flex' : 'none';
+    }
+    renderCountLines(sessionId, session, lines, canEdit, isBlind);
+    // Show approvals
+    if (approvals.length) {
+      const appHtml = `<div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);margin-bottom:8px;">APPROVAL HISTORY</div>
+        ${approvals.map(a => `<div style="font-size:0.82rem;margin-bottom:4px;">
+          <strong>${esc(a.approval_action)}</strong> by User ${esc(a.approved_by)} on ${fmtDate(a.created_at)}
+          ${a.approval_notes ? ` — ${esc(a.approval_notes)}` : ''}
+        </div>`).join('')}
+      </div>`;
+      document.getElementById('countLinesBody').insertAdjacentHTML('beforeend', appHtml);
+    }
+  } catch(e) {
+    document.getElementById('countLinesBody').innerHTML = `<p style="color:var(--danger)">${esc(e.message)}</p>`;
+  }
+}
+
+function renderCountLines(sessionId, session, lines, canEdit, isBlind) {
+  if (!lines.length) {
+    document.getElementById('countLinesBody').innerHTML = '<p style="color:var(--text-muted)">No lines in this session.</p>';
+    return;
+  }
+  const counted = lines.filter(l => l.counted_quantity != null).length;
+  const html = `
+    <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">${counted}/${lines.length} lines counted</div>
+    <table class="table count-line-table" style="font-size:0.83rem;">
+      <thead><tr>
+        <th>SKU</th><th>Item</th>
+        ${!isBlind ? '<th>System Qty</th>' : ''}
+        <th>Counted Qty</th>
+        ${!isBlind ? '<th>Variance</th>' : ''}
+        ${canEdit ? '<th>Reason</th><th>Notes</th><th></th>' : ''}
+      </tr></thead>
+      <tbody>
+        ${lines.map(l => {
+          const vqty = l.variance_quantity;
+          const varClass = vqty == null ? '' : vqty > 0 ? 'variance-pos' : vqty < 0 ? 'variance-neg' : 'variance-zero';
+          return `<tr id="cl-row-${l.id}">
+            <td style="font-family:monospace;font-size:0.79rem;">${esc(l.item_sku || '')}</td>
+            <td>${esc(l.item_name || l.item_id)}</td>
+            ${!isBlind ? `<td>${l.system_quantity != null ? l.system_quantity : '—'}</td>` : ''}
+            <td><input type="number" id="cl-qty-${l.id}" value="${l.counted_quantity != null ? l.counted_quantity : ''}" placeholder="Enter qty" step="0.001" min="0" style="${canEdit ? '' : 'pointer-events:none;opacity:0.7;'}" onchange="document.getElementById('cl-qty-${l.id}').classList.add('edited')"></td>
+            ${!isBlind ? `<td class="${varClass}">${vqty != null ? (vqty > 0 ? '+' : '') + vqty : '—'}</td>` : ''}
+            ${canEdit ? `
+            <td><select id="cl-rsn-${l.id}" class="form-control" style="padding:3px 6px;font-size:0.8rem;">
+              <option value="">—</option>
+              <option value="damaged" ${l.variance_reason === 'damaged' ? 'selected' : ''}>Damaged</option>
+              <option value="theft" ${l.variance_reason === 'theft' ? 'selected' : ''}>Theft</option>
+              <option value="data_entry_error" ${l.variance_reason === 'data_entry_error' ? 'selected' : ''}>Data Entry Error</option>
+              <option value="receiving_error" ${l.variance_reason === 'receiving_error' ? 'selected' : ''}>Receiving Error</option>
+              <option value="production_waste" ${l.variance_reason === 'production_waste' ? 'selected' : ''}>Production Waste</option>
+              <option value="found_stock" ${l.variance_reason === 'found_stock' ? 'selected' : ''}>Found Stock</option>
+              <option value="system_error" ${l.variance_reason === 'system_error' ? 'selected' : ''}>System Error</option>
+              <option value="other" ${l.variance_reason === 'other' ? 'selected' : ''}>Other</option>
+            </select></td>
+            <td><input type="text" id="cl-note-${l.id}" class="form-control" style="padding:3px 6px;font-size:0.8rem;width:140px;" value="${esc(l.variance_notes || '')}" placeholder="notes…"></td>
+            <td><button class="btn btn-sm" style="padding:3px 10px;font-size:0.8rem;" onclick="saveCountLine(${sessionId},${l.id})">Save</button></td>` : ''}
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  document.getElementById('countLinesBody').innerHTML = html;
+}
+
+async function saveCountLine(sessionId, lineId) {
+  const qty = document.getElementById(`cl-qty-${lineId}`)?.value;
+  const reason = document.getElementById(`cl-rsn-${lineId}`)?.value;
+  const notes = document.getElementById(`cl-note-${lineId}`)?.value;
+  if (qty === '' || qty == null) { showToast('Enter a counted quantity', true); return; }
+  try {
+    const d = await apiFetch(`/stock-counts/${sessionId}/lines/${lineId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ counted_quantity: parseFloat(qty), variance_reason: reason || undefined, variance_notes: notes || undefined })
+    });
+    if (!d.success) throw new Error(d.error || 'Failed');
+    showToast('Line saved');
+    // Refresh the modal
+    await openCountLinesModal(sessionId);
+  } catch(e) {
+    showToast(e.message, true);
+  }
+}
+
+async function _submitCountFromModal() {
+  if (!_currentCountSessionId) return;
+  await submitCountSession(_currentCountSessionId);
+}
+
+async function submitCountSession(sessionId) {
+  if (!confirm('Submit this count session for approval? Make sure all lines are counted.')) return;
+  try {
+    const d = await apiFetch(`/stock-counts/${sessionId}/submit`, { method: 'POST' });
+    if (!d.success) throw new Error(d.error || 'Failed');
+    showToast('Count submitted for approval');
+    closeModal('countLinesModal');
+    _tabLoaded['stockcounts'] = false;
+    await loadCountSessions();
+  } catch(e) {
+    showToast(e.message, true);
+  }
+}
+
+// ── Approve modal ─────────────────────────────────────────────────────────────
+function openApproveModal(sessionId, sessionNumber) {
+  document.getElementById('approveCountSessionId').value = sessionId;
+  document.getElementById('approveCountTitle').textContent = `Review: ${sessionNumber}`;
+  document.getElementById('approveCountForm').reset();
+  document.getElementById('approveCountSessionId').value = sessionId;
+  openModal('approveCountModal');
+}
+
+async function submitApproval(e) {
+  e.preventDefault();
+  const sessionId = document.getElementById('approveCountSessionId').value;
+  const action = document.getElementById('approveCountAction').value;
+  const notes = document.getElementById('approveCountNotes').value.trim();
+  try {
+    const d = await apiFetch(`/stock-counts/${sessionId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ action, notes: notes || undefined })
+    });
+    if (!d.success) throw new Error(d.error || 'Failed');
+    showToast(`Decision recorded: ${action}`);
+    closeModal('approveCountModal');
+    _tabLoaded['stockcounts'] = false;
+    await loadCountSessions();
+  } catch(e) {
+    showToast(e.message, true);
+  }
+}
+
+// ── Apply variance ────────────────────────────────────────────────────────────
+async function applyCountVariance(sessionId) {
+  if (!confirm('Apply approved variance to stock? This will create stock movements and cannot be undone.')) return;
+  try {
+    const d = await apiFetch(`/stock-counts/${sessionId}/apply`, { method: 'POST' });
+    if (!d.success) throw new Error(d.error || 'Failed');
+    showToast(`Variance applied: ${d.applied || 0} movements created, ${d.skipped || 0} skipped`);
+    _tabLoaded['stockcounts'] = false;
+    await loadCountSessions();
+  } catch(e) {
+    showToast(e.message, true);
+  }
+}
+
+// ── Cancel session ────────────────────────────────────────────────────────────
+async function cancelCountSession(sessionId) {
+  if (!confirm('Cancel this count session? This cannot be undone.')) return;
+  try {
+    const d = await apiFetch(`/stock-counts/${sessionId}`, { method: 'DELETE' });
+    if (!d.success) throw new Error(d.error || 'Failed');
+    showToast('Session cancelled');
+    _tabLoaded['stockcounts'] = false;
+    await loadCountSessions();
+  } catch(e) {
+    showToast(e.message, true);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RESERVATIONS (Codebox 04 — Reservations & Available Stock)
+// ════════════════════════════════════════════════════════════════════════════
+
+async function loadReservations() {
+  const status     = document.getElementById('resvStatusFilter')?.value  || '';
+  const sourceType = document.getElementById('resvSourceFilter')?.value  || '';
+  let url = '/reservations?limit=300';
+  if (status)     url += '&status='      + encodeURIComponent(status);
+  if (sourceType) url += '&source_type=' + encodeURIComponent(sourceType);
+  try {
+    const d = await apiFetch(url);
+    renderReservationsTable(d.reservations || []);
+    const infoEl = document.getElementById('reservationsInfo');
+    if (infoEl) infoEl.textContent = `${d.total || 0} reservation(s)`;
+  } catch(e) { showToast(e.message, true); }
+}
+
+function renderReservationsTable(rows) {
+  const wrap = document.getElementById('reservationsTable');
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="empty"><div class="empty-icon">🔒</div><p>No reservations found. Reservations are created when a work order is released.</p></div>';
+    return;
+  }
+  wrap.innerHTML = `<table><thead><tr>
+    <th>Item</th>
+    <th>Source</th>
+    <th>Reserved</th>
+    <th>Released</th>
+    <th>Consumed</th>
+    <th>Net Active</th>
+    <th>Status</th>
+    <th>Reference</th>
+    <th>Created</th>
+    <th>Actions</th>
+  </tr></thead><tbody>${rows.map(r => {
+    const net        = Math.max(0, parseFloat(r.quantity_reserved||0) - parseFloat(r.quantity_released||0) - parseFloat(r.quantity_consumed||0));
+    const canRelease = ['active','partially_released'].includes(r.reservation_status);
+    const itemName   = r.inventory_items?.name || '?';
+    const itemSku    = r.inventory_items?.sku  || '';
+    const unit       = r.inventory_items?.unit || '';
+    return `<tr>
+      <td>
+        <div style="font-weight:600">${esc(itemName)}</div>
+        ${itemSku ? `<div style="font-size:0.72rem;color:var(--text-muted)">${esc(itemSku)}</div>` : ''}
+      </td>
+      <td>
+        <span class="badge">${esc(r.source_type.replace('_',' '))}</span>
+        <div style="font-size:0.72rem;color:var(--text-muted)">Src #${r.source_id}</div>
+        ${r.source_line_id ? `<div style="font-size:0.7rem;color:var(--text-muted)">Line #${r.source_line_id}</div>` : ''}
+      </td>
+      <td>${fmtQty(r.quantity_reserved)} ${esc(unit)}</td>
+      <td>${parseFloat(r.quantity_released||0) > 0 ? fmtQty(r.quantity_released) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td>${parseFloat(r.quantity_consumed||0) > 0 ? fmtQty(r.quantity_consumed) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td style="font-weight:700;color:${net > 0 ? '#fb923c' : 'var(--text-muted)'}">${net > 0 ? fmtQty(net) : '—'}</td>
+      <td>${statusBadge(r.reservation_status)}</td>
+      <td style="font-size:0.82rem">${esc(r.reference||'—')}</td>
+      <td style="font-size:0.75rem;color:var(--text-muted)">${r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</td>
+      <td class="td-actions">${canRelease ? `<button class="btn btn-ghost btn-xs" onclick="releaseReservationRow(${r.id})">Release</button>` : ''}</td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+async function releaseReservationRow(id) {
+  if (!confirm('Release this reservation? The reserved quantity will be returned to available stock.')) return;
+  try {
+    await apiFetch('/reservations/' + id + '/release', { method: 'POST' });
+    showToast('Reservation released. Stock is now available.');
+    _tabLoaded['reservations'] = false;
+    await Promise.all([loadReservations(), loadDashboard()]);
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function openManualHoldModal() {
+  const sel = document.getElementById('mhItemId');
+  sel.innerHTML = '<option value="">Loading items…</option>';
+  openModal('manualHoldModal');
+  try {
+    const d = await apiFetch('/items');
+    sel.innerHTML = '<option value="">Select item…</option>';
+    (d.items || []).forEach(i => {
+      const opt  = document.createElement('option');
+      opt.value  = i.id;
+      const avail = i.available_stock != null ? i.available_stock : i.current_stock;
+      opt.textContent = `${i.name}${i.sku ? ' ('+i.sku+')' : ''} — avail: ${fmtQty(avail)}`;
+      sel.appendChild(opt);
+    });
+  } catch(e) {
+    sel.innerHTML = '<option value="">Failed to load items</option>';
+  }
+  document.getElementById('mhQty').value   = '';
+  document.getElementById('mhRef').value   = '';
+  document.getElementById('mhReason').value = '';
+}
+
+async function submitManualHold(e) {
+  e.preventDefault();
+  const item_id  = parseInt(document.getElementById('mhItemId').value);
+  const quantity = parseFloat(document.getElementById('mhQty').value);
+  const reference = document.getElementById('mhRef').value.trim() || null;
+  const reason   = document.getElementById('mhReason').value.trim() || null;
+  if (!item_id || !quantity) { showToast('Item and quantity are required.', true); return false; }
+  try {
+    await apiFetch('/reservations/manual-hold', {
+      method: 'POST',
+      body: JSON.stringify({ item_id, quantity, reference, reason })
+    });
+    closeModal('manualHoldModal');
+    showToast('Manual hold created.');
+    _tabLoaded['reservations'] = false;
+    await Promise.all([loadReservations(), loadDashboard(), loadItems()]);
+  } catch(e) { showToast(e.message, true); }
+  return false;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PRODUCTION — Codebox 06 Manufacturing Execution
+// ════════════════════════════════════════════════════════════════════════════
+
+function onProductionSubViewChange() {
+  const view = document.getElementById('productionSubView').value;
+  ['dashboard','batches','wastage','variance'].forEach(v => {
+    document.getElementById('prodview-'+v).style.display = (v === view) ? '' : 'none';
+  });
+  if (view === 'batches')  loadBatchHistory();
+  if (view === 'wastage')  loadWastageLog();
+  if (view === 'variance') loadVarianceReport();
+  if (view === 'dashboard') loadProductionDashboard(true);
+}
+
+function refreshProductionView() {
+  _tabLoaded['production'] = false;
+  onProductionSubViewChange();
+}
+
+async function loadProductionDashboard(force) {
+  try {
+    const d = await apiFetch('/production/summary');
+    document.getElementById('prodStatBatchesToday').textContent  = d.batches_today   ?? '–';
+    document.getElementById('prodStatBatchesMonth').textContent  = d.batches_this_month ?? '–';
+    document.getElementById('prodStatActiveWOs').textContent     = d.active_work_orders ?? '–';
+    const wastage = typeof d.wastage_qty_month === 'number'
+      ? d.wastage_qty_month.toFixed(3) + (d.wastage_value_month > 0 ? ` (${fmtR(d.wastage_value_month)})` : '')
+      : '–';
+    document.getElementById('prodStatWastageMonth').textContent  = wastage;
+
+    // Recent batches table
+    const batches = await apiFetch('/production/batches?limit=10');
+    const rows = (batches.batches || []);
+    if (rows.length === 0) {
+      document.getElementById('productionDashTable').innerHTML = '<div class="empty"><div class="empty-icon">🏭</div><p>No production batches yet.</p></div>';
+    } else {
+      let html = `<table class="data-table"><thead><tr>
+        <th>Batch #</th><th>WO #</th><th>Product</th>
+        <th>Produced</th><th>Expected</th><th>Yield %</th><th>Wastage</th><th>Completed</th>
+      </tr></thead><tbody>`;
+      for (const b of rows) {
+        const yp = b.yield_percent != null ? parseFloat(b.yield_percent).toFixed(1) + '%' : '–';
+        const ypClass = b.yield_percent != null && parseFloat(b.yield_percent) < 98 ? 'danger' : (b.yield_percent != null && parseFloat(b.yield_percent) > 102 ? 'warning' : '');
+        html += `<tr>
+          <td>${esc(b.batch_number)}</td>
+          <td>${esc(b.work_orders?.wo_number||'–')}</td>
+          <td>${esc(b.work_orders?.inventory_items?.name||'–')}</td>
+          <td>${parseFloat(b.produced_qty).toFixed(3)}</td>
+          <td>${parseFloat(b.expected_qty).toFixed(3)}</td>
+          <td class="${ypClass}">${yp}</td>
+          <td>${parseFloat(b.wastage_qty||0).toFixed(3)}</td>
+          <td>${b.completed_at ? b.completed_at.split('T')[0] : '–'}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('productionDashTable').innerHTML = html;
+    }
+  } catch(e) {
+    document.getElementById('productionDashTable').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>${esc(e.message)}</p></div>`;
+  }
+}
+
+async function loadBatchHistory() {
+  const el = document.getElementById('productionBatchTable');
+  el.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  try {
+    const d = await apiFetch('/production/batches?limit=200');
+    const rows = d.batches || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty"><p>No batches found.</p></div>'; return; }
+    let html = `<table class="data-table"><thead><tr>
+      <th>Batch #</th><th>WO #</th><th>Product</th>
+      <th>Produced</th><th>Expected</th><th>Yield %</th>
+      <th>Wastage</th><th>Unit Cost</th><th>Completed</th>
+    </tr></thead><tbody>`;
+    for (const b of rows) {
+      const yp = b.yield_percent != null ? parseFloat(b.yield_percent).toFixed(1)+'%' : '–';
+      html += `<tr>
+        <td>${esc(b.batch_number)}</td>
+        <td>${esc(b.work_orders?.wo_number||'–')}</td>
+        <td>${esc(b.work_orders?.inventory_items?.name||'–')}</td>
+        <td>${parseFloat(b.produced_qty).toFixed(3)}</td>
+        <td>${parseFloat(b.expected_qty).toFixed(3)}</td>
+        <td>${yp}</td>
+        <td>${parseFloat(b.wastage_qty||0).toFixed(3)}</td>
+        <td>${b.unit_cost != null ? fmtR(b.unit_cost) : '–'}</td>
+        <td>${b.completed_at ? b.completed_at.split('T')[0] : '–'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = `<div class="empty"><p>${esc(e.message)}</p></div>`; }
+}
+
+async function loadWastageLog() {
+  const el = document.getElementById('productionWastageTable');
+  el.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  try {
+    const d = await apiFetch('/production/wastage-report?limit=200');
+    const rows = d.wastage_records || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty"><p>No wastage records found.</p></div>'; return; }
+    let html = `<p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px">
+      Total: ${d.total_qty?.toFixed(3)} units — ${fmtR(d.total_value||0)}
+    </p>
+    <table class="data-table"><thead><tr>
+      <th>Batch #</th><th>WO #</th><th>Item</th>
+      <th>Qty</th><th>Reason</th><th>Est. Value</th><th>Date</th>
+    </tr></thead><tbody>`;
+    const REASON_COLOURS = {
+      spoilage:'danger', damage:'danger', machine_error:'warning', operator_error:'warning',
+      process_loss:'warning', trimming_loss:'', unknown:'', other:''
+    };
+    for (const r of rows) {
+      const cls = REASON_COLOURS[r.wastage_reason] || '';
+      html += `<tr>
+        <td>${esc(r.production_batches?.batch_number||'–')}</td>
+        <td>${esc(r.production_batches?.work_orders?.wo_number||'–')}</td>
+        <td>${esc(r.inventory_items?.name||'Finished Good')}</td>
+        <td>${parseFloat(r.wastage_qty).toFixed(3)}</td>
+        <td class="${cls}">${esc(r.wastage_reason.replace('_',' '))}</td>
+        <td>${fmtR(r.estimated_value||0)}</td>
+        <td>${r.created_at ? r.created_at.split('T')[0] : '–'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = `<div class="empty"><p>${esc(e.message)}</p></div>`; }
+}
+
+async function loadVarianceReport() {
+  const el = document.getElementById('productionVarianceTable');
+  el.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  try {
+    const d = await apiFetch('/production/variance-report?limit=200');
+    const rows = d.variances || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty"><p>No variance records found.</p></div>'; return; }
+    let html = `<p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px">
+      Over-consumed: ${d.over_count} lines — Under-consumed: ${d.under_count} lines — Total variance value: ${fmtR(d.total_variance_value||0)}
+    </p>
+    <table class="data-table"><thead><tr>
+      <th>Batch #</th><th>WO #</th><th>Material</th>
+      <th>Required</th><th>Actual</th><th>Variance</th><th>Direction</th><th>Value</th>
+    </tr></thead><tbody>`;
+    for (const r of rows) {
+      const cls = r.variance_direction === 'over' ? 'warning' : (r.variance_direction === 'under' ? 'info' : '');
+      const vQty = parseFloat(r.variance_qty||0);
+      html += `<tr>
+        <td>${esc(r.production_batches?.batch_number||'–')}</td>
+        <td>${esc(r.production_batches?.work_orders?.wo_number||'–')}</td>
+        <td>${esc(r.inventory_items?.name||'–')}</td>
+        <td>${parseFloat(r.required_qty).toFixed(3)}</td>
+        <td>${parseFloat(r.actual_qty).toFixed(3)}</td>
+        <td class="${cls}">${vQty > 0 ? '+' : ''}${vQty.toFixed(3)}</td>
+        <td class="${cls}">${r.variance_direction}</td>
+        <td>${fmtR(r.variance_value||0)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = `<div class="empty"><p>${esc(e.message)}</p></div>`; }
+}
+
+// Escape helper (used above) — defined centrally but guarded for duplicate definition
+if (typeof esc !== 'function') {
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+}
 </script>
 </body>
 </html>
