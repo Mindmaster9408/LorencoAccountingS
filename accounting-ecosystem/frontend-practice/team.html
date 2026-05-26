@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Team</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div class="section-title">Team Members</div>
+        <div class="controls">
+            <input type="text" class="search-input" id="fSearch" placeholder="Search name, email, title…" oninput="applyFilters()">
+            <select class="filter-select" id="fRole" aria-label="Filter by role" onchange="applyFilters()">
+                <option value="">All Roles</option>
+                <option value="owner">Owner</option>
+                <option value="partner">Partner</option>
+                <option value="manager">Manager</option>
+                <option value="senior">Senior</option>
+                <option value="staff">Staff</option>
+                <option value="admin">Admin</option>
+                <option value="reviewer">Reviewer</option>
+                <option value="viewer">Viewer</option>
+            </select>
+            <select class="filter-select" id="fActive" aria-label="Filter by status" onchange="loadTeam()">
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+                <option value="all">All</option>
+            </select>
+            <button type="button" class="btn btn-primary" onclick="openModal()">+ Add Member</button>
+        </div>
+    </div>
+
+    <div id="teamWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading team…</p></div>
+    </div>
+
+</div>
+
+<!-- TEAM MEMBER MODAL -->
+<div class="modal-overlay" id="teamModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="tmModalTitle">Add Team Member</h3>
+            <button type="button" class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveMember(event)">
+
+                <!-- Identity -->
+                <div class="section-label" style="margin-top:0;">Identity</div>
+                <div class="form-grid" style="margin-bottom:16px;">
+                    <div class="form-field form-full">
+                        <label for="tmDisplayName">Display Name *</label>
+                        <input id="tmDisplayName" required placeholder="e.g. Sarah Johnson">
+                    </div>
+                    <div class="form-field">
+                        <label for="tmEmail">Email</label>
+                        <input type="email" id="tmEmail" placeholder="sarah@practice.co.za">
+                    </div>
+                    <div class="form-field">
+                        <label for="tmPhone">Phone</label>
+                        <input type="tel" id="tmPhone" placeholder="+27 11 000 0000">
+                    </div>
+                </div>
+
+                <!-- Role & Position -->
+                <div class="section-label">Role &amp; Position</div>
+                <div class="form-grid" style="margin-bottom:16px;">
+                    <div class="form-field">
+                        <label for="tmRole">Role *</label>
+                        <select id="tmRole" aria-label="Role">
+                            <option value="staff">Staff</option>
+                            <option value="senior">Senior</option>
+                            <option value="reviewer">Reviewer</option>
+                            <option value="manager">Manager</option>
+                            <option value="partner">Partner</option>
+                            <option value="owner">Owner</option>
+                            <option value="admin">Admin</option>
+                            <option value="viewer">Viewer</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tmJobTitle">Job Title</label>
+                        <input id="tmJobTitle" placeholder="e.g. Tax Consultant">
+                    </div>
+                    <div class="form-field">
+                        <label for="tmDepartment">Department</label>
+                        <input id="tmDepartment" placeholder="e.g. Tax, Audit, Admin">
+                    </div>
+                    <div class="form-field">
+                        <label for="tmHourlyRate">Default Hourly Rate (ZAR)</label>
+                        <input type="number" id="tmHourlyRate" min="0" step="0.01" placeholder="e.g. 650.00">
+                    </div>
+                </div>
+
+                <!-- Login Account Link -->
+                <div class="section-label">Login Account Link</div>
+                <div class="form-grid" style="margin-bottom:16px;">
+                    <div class="form-field form-full">
+                        <label for="tmUserId">Link to Login Account</label>
+                        <select id="tmUserId" aria-label="Link to login account">
+                            <option value="">Not linked (roster only — cannot receive tasks)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Permissions -->
+                <div class="section-label">Permissions</div>
+                <div class="form-grid" style="margin-bottom:16px;">
+                    <div class="form-field">
+                        <label for="tmCanReceiveTasks">Can Receive Tasks</label>
+                        <select id="tmCanReceiveTasks" aria-label="Can receive tasks">
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tmCanReview">Can Review Work</label>
+                        <select id="tmCanReview" aria-label="Can review work">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tmCanApprove">Can Approve Work</label>
+                        <select id="tmCanApprove" aria-label="Can approve work">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tmIsActive">Status</label>
+                        <select id="tmIsActive" aria-label="Active status">
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                <div class="section-label">Notes</div>
+                <div class="form-grid full" style="margin-bottom:16px;">
+                    <div class="form-field">
+                        <label for="tmNotes">Internal Notes</label>
+                        <textarea id="tmNotes" rows="2" placeholder="Optional notes…"></textarea>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm mr-auto hidden" id="tmDeactivateBtn" onclick="deactivateFromModal()">Deactivate</button>
+                    <button type="button" class="btn btn-success btn-sm mr-auto hidden" id="tmReactivateBtn" onclick="reactivateFromModal()">Reactivate</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="tmSaveBtn">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/team.js"></script>
+</body>
+</html>

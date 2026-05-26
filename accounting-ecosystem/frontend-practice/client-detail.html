@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Client Profile</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div>
+            <div class="section-title" id="pageTitle">Client Profile</div>
+            <div class="col-muted" id="pageSubtitle" style="font-size:0.82rem;margin-top:2px;"></div>
+        </div>
+        <div class="controls">
+            <a href="/practice/clients.html" class="btn btn-ghost">← All Clients</a>
+            <button type="button" class="btn btn-danger hidden" id="archiveBtn" onclick="archiveClient()">Archive Client</button>
+        </div>
+    </div>
+
+    <div class="loading" id="pageLoading">
+        <div class="loading-spinner"></div>
+        <p>Loading client profile…</p>
+    </div>
+
+    <div class="error-banner hidden" id="pageError">
+        ⚠️ Failed to load client. Please refresh.
+    </div>
+
+    <form id="clientForm" class="hidden" onsubmit="return saveClientDetail(event)">
+
+        <!-- ── 1. Identity ── -->
+        <div class="section-label" style="margin-top:0;">Identity</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field form-full">
+                    <label for="dName">Client Name *</label>
+                    <input type="text" id="dName" required placeholder="e.g. Pennygrow (Pty) Ltd">
+                </div>
+                <div class="form-field">
+                    <label for="dClientType">Entity Type</label>
+                    <select id="dClientType" onchange="toggleIndividualFields()">
+                        <option value="company">Company (Pty Ltd)</option>
+                        <option value="cc">Close Corporation (CC)</option>
+                        <option value="trust">Trust</option>
+                        <option value="partnership">Partnership</option>
+                        <option value="sole_proprietor">Sole Proprietor</option>
+                        <option value="individual">Individual</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="dIndustry">Industry</label>
+                    <input type="text" id="dIndustry" placeholder="e.g. Retail, Manufacturing">
+                </div>
+                <div class="form-field">
+                    <label for="dFYEMonth">Financial Year End</label>
+                    <select id="dFYEMonth">
+                        <option value="">Select month…</option>
+                        <option value="1">January</option><option value="2">February</option>
+                        <option value="3">March</option><option value="4">April</option>
+                        <option value="5">May</option><option value="6">June</option>
+                        <option value="7">July</option><option value="8">August</option>
+                        <option value="9">September</option><option value="10">October</option>
+                        <option value="11">November</option><option value="12">December</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 2. Registration Numbers ── -->
+        <div class="section-label">Registration Numbers</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="dRegNumber">Company Reg Number</label>
+                    <input type="text" id="dRegNumber" placeholder="2000/000000/07">
+                </div>
+                <div class="form-field">
+                    <label for="dVatNumber">VAT Number</label>
+                    <input type="text" id="dVatNumber" placeholder="4xxxxxxxxx">
+                </div>
+                <div class="form-field">
+                    <label for="dIncomeTax">Income Tax Number</label>
+                    <input type="text" id="dIncomeTax" placeholder="e.g. 1234567890">
+                </div>
+                <div class="form-field">
+                    <label for="dPayeRef">PAYE Reference Number</label>
+                    <input type="text" id="dPayeRef" placeholder="e.g. 7xxxxxxxxx">
+                </div>
+                <div class="form-field">
+                    <label for="dUifRef">UIF Reference Number</label>
+                    <input type="text" id="dUifRef" placeholder="UIF ref">
+                </div>
+                <div class="form-field">
+                    <label for="dSdlRef">SDL Reference Number</label>
+                    <input type="text" id="dSdlRef" placeholder="SDL ref">
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 3. Individual Taxpayer (shown only for 'individual') ── -->
+        <div id="individualSection" class="hidden">
+            <div class="section-label">Individual Taxpayer</div>
+            <div class="inline-form" style="margin-bottom:22px;">
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="dIdNumber">SA ID Number</label>
+                        <input type="text" id="dIdNumber" placeholder="13-digit SA ID number">
+                    </div>
+                    <div class="form-field">
+                        <label for="dPassport">Passport Number</label>
+                        <input type="text" id="dPassport" placeholder="Passport (if foreign national)">
+                    </div>
+                    <div class="form-field">
+                        <label for="dDOB">Date of Birth</label>
+                        <input type="date" id="dDOB">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 4. Contact Details ── -->
+        <div class="section-label">Contact Details</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="dEmail">Primary Email</label>
+                    <input type="email" id="dEmail" placeholder="client@example.com">
+                </div>
+                <div class="form-field">
+                    <label for="dPhone">Primary Phone</label>
+                    <input type="text" id="dPhone" placeholder="+27 11 000 0000">
+                </div>
+                <div class="form-field">
+                    <label for="dSecondaryPhone">Secondary Phone</label>
+                    <input type="text" id="dSecondaryPhone" placeholder="+27 82 000 0000">
+                </div>
+                <div class="form-field">
+                    <label for="dWebsite">Website</label>
+                    <input type="text" id="dWebsite" placeholder="https://example.com">
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 5. Physical Address ── -->
+        <div class="section-label">Physical Address</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field form-full">
+                    <label for="dAddrLine1">Street Address</label>
+                    <input type="text" id="dAddrLine1" placeholder="123 Main Street">
+                </div>
+                <div class="form-field form-full">
+                    <label for="dAddrLine2">Suite / Building</label>
+                    <input type="text" id="dAddrLine2" placeholder="Suite 4, Block B">
+                </div>
+                <div class="form-field">
+                    <label for="dAddrCity">City</label>
+                    <input type="text" id="dAddrCity" placeholder="Johannesburg">
+                </div>
+                <div class="form-field">
+                    <label for="dAddrProvince">Province</label>
+                    <select id="dAddrProvince">
+                        <option value="">Select province…</option>
+                        <option>Eastern Cape</option><option>Free State</option><option>Gauteng</option>
+                        <option>KwaZulu-Natal</option><option>Limpopo</option><option>Mpumalanga</option>
+                        <option>Northern Cape</option><option>North West</option><option>Western Cape</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="dAddrPostal">Postal Code</label>
+                    <input type="text" id="dAddrPostal" placeholder="2000">
+                </div>
+                <div class="form-field">
+                    <label for="dAddrCountry">Country</label>
+                    <input type="text" id="dAddrCountry" placeholder="South Africa" value="South Africa">
+                </div>
+                <div class="form-field form-full">
+                    <label>
+                        <input type="checkbox" id="dPostalSame" onchange="togglePostalAddress()" checked>
+                        Postal address same as physical
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 5b. Postal Address (shown when not same as physical) ── -->
+        <div id="postalSection" class="hidden">
+            <div class="section-label">Postal Address</div>
+            <div class="inline-form" style="margin-bottom:22px;">
+                <div class="form-grid">
+                    <div class="form-field form-full">
+                        <label for="dPostalLine1">Postal Address</label>
+                        <input type="text" id="dPostalLine1" placeholder="PO Box 1234 or street">
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="dPostalLine2">Line 2</label>
+                        <input type="text" id="dPostalLine2">
+                    </div>
+                    <div class="form-field">
+                        <label for="dPostalCity">City</label>
+                        <input type="text" id="dPostalCity">
+                    </div>
+                    <div class="form-field">
+                        <label for="dPostalProvince">Province</label>
+                        <select id="dPostalProvince">
+                            <option value="">Select province…</option>
+                            <option>Eastern Cape</option><option>Free State</option><option>Gauteng</option>
+                            <option>KwaZulu-Natal</option><option>Limpopo</option><option>Mpumalanga</option>
+                            <option>Northern Cape</option><option>North West</option><option>Western Cape</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="dPostalCode">Postal Code</label>
+                        <input type="text" id="dPostalCode">
+                    </div>
+                    <div class="form-field">
+                        <label for="dPostalCountry">Country</label>
+                        <input type="text" id="dPostalCountry" placeholder="South Africa">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 6. Practice Ownership ── -->
+        <div class="section-label">Practice Ownership</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="dResponsible">Responsible Team Member</label>
+                    <select id="dResponsible">
+                        <option value="">Not assigned</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="dReviewer">Reviewer</label>
+                    <select id="dReviewer">
+                        <option value="">Not assigned</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="dPartner">Partner</label>
+                    <select id="dPartner">
+                        <option value="">Not assigned</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 7. Compliance Flags ── -->
+        <div class="section-label">Compliance & Registration</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label>
+                        <input type="checkbox" id="dVatReg">
+                        VAT Registered
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label>
+                        <input type="checkbox" id="dPayeReg">
+                        PAYE Registered (Employer)
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label>
+                        <input type="checkbox" id="dProvTax">
+                        Provisional Taxpayer
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label>
+                        <input type="checkbox" id="dUifReg">
+                        UIF Registered
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label>
+                        <input type="checkbox" id="dSdlReg">
+                        SDL Registered
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label>
+                        <input type="checkbox" id="dCoidaReg">
+                        COIDA Registered
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label>
+                        <input type="checkbox" id="dCipcReg">
+                        CIPC Annual Return Required
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 8. Workflow ── -->
+        <div class="section-label">Workflow Status</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="dOnboarding">Onboarding Status</label>
+                    <select id="dOnboarding">
+                        <option value="prospect">Prospect</option>
+                        <option value="onboarding">Onboarding</option>
+                        <option value="active">Active</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="dRisk">Risk Rating</label>
+                    <select id="dRisk">
+                        <option value="low">Low</option>
+                        <option value="normal">Normal</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="flagged">Flagged</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="dStatus">Active Status</label>
+                    <select id="dStatus">
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 9. Billing ── -->
+        <div class="section-label">Billing Defaults</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="dBillingRate">Rate Override (R/hr)</label>
+                    <input type="number" id="dBillingRate" min="0" step="0.01" placeholder="Leave blank to use practice default">
+                </div>
+                <div class="form-field">
+                    <label for="dCurrency">Currency</label>
+                    <select id="dCurrency">
+                        <option value="ZAR">ZAR (South African Rand)</option>
+                        <option value="USD">USD (US Dollar)</option>
+                        <option value="EUR">EUR (Euro)</option>
+                        <option value="GBP">GBP (British Pound)</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="dPaymentTerms">Payment Terms (days)</label>
+                    <input type="number" id="dPaymentTerms" min="0" step="1" placeholder="30">
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 10. Notes ── -->
+        <div class="section-label">Notes</div>
+        <div class="inline-form" style="margin-bottom:22px;">
+            <div class="form-grid">
+                <div class="form-field form-full">
+                    <label for="dNotes">Client Notes</label>
+                    <textarea id="dNotes" rows="3" placeholder="Notes visible to all practice staff working on this client…"></textarea>
+                </div>
+                <div class="form-field form-full">
+                    <label for="dInternalNotes">Internal Notes</label>
+                    <textarea id="dInternalNotes" rows="3" placeholder="Internal practice notes (billing, risk, history)…"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Bar -->
+        <div class="form-actions" style="margin-bottom:32px;">
+            <a href="/practice/clients.html" class="btn btn-ghost">Cancel</a>
+            <button type="submit" class="btn btn-primary" id="saveBtn">Save Changes</button>
+        </div>
+
+    </form>
+
+    <!-- ── 11. Contact Persons (outside form — separate save) ── -->
+    <div id="contactsSection" class="hidden">
+        <div class="section-header" style="margin-top:0;">
+            <div class="section-title" style="font-size:1rem;">Contact Persons</div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openContactModal()">+ Add Contact</button>
+        </div>
+        <div id="contactsWrap">
+            <div class="loading"><div class="loading-spinner"></div><p>Loading contacts…</p></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- CONTACT MODAL -->
+<div class="modal-overlay" id="contactModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="contactModalTitle">Add Contact Person</h3>
+            <button type="button" class="modal-close" onclick="closeContactModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveContact(event)">
+                <div class="form-grid">
+                    <div class="form-field form-full">
+                        <label for="ctName">Name *</label>
+                        <input id="ctName" required placeholder="e.g. Jane Smith">
+                    </div>
+                    <div class="form-field">
+                        <label for="ctRole">Role / Title</label>
+                        <input id="ctRole" placeholder="e.g. Financial Director">
+                    </div>
+                    <div class="form-field">
+                        <label for="ctEmail">Email</label>
+                        <input id="ctEmail" type="email" placeholder="jane@example.com">
+                    </div>
+                    <div class="form-field">
+                        <label for="ctPhone">Phone</label>
+                        <input id="ctPhone" placeholder="+27 11 000 0000">
+                    </div>
+                    <div class="form-field">
+                        <label for="ctMobile">Mobile</label>
+                        <input id="ctMobile" placeholder="+27 82 000 0000">
+                    </div>
+                    <div class="form-field">
+                        <label>
+                            <input type="checkbox" id="ctPrimary">
+                            Primary Contact
+                        </label>
+                    </div>
+                    <div class="form-field">
+                        <label>
+                            <input type="checkbox" id="ctTax">
+                            Receives Tax Correspondence
+                        </label>
+                    </div>
+                    <div class="form-field">
+                        <label>
+                            <input type="checkbox" id="ctBilling">
+                            Receives Billing / Invoices
+                        </label>
+                    </div>
+                    <div class="form-field">
+                        <label>
+                            <input type="checkbox" id="ctPayroll">
+                            Receives Payroll
+                        </label>
+                    </div>
+                    <div class="form-field">
+                        <label>
+                            <input type="checkbox" id="ctCipc">
+                            Receives CIPC Correspondence
+                        </label>
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="ctNotes">Notes</label>
+                        <textarea id="ctNotes" rows="2" placeholder="Additional notes about this contact…"></textarea>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" id="ctDeactivateBtn" class="btn btn-danger hidden" onclick="deactivateContact()">Remove</button>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" class="btn btn-ghost" onclick="closeContactModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="ctSaveBtn">Save Contact</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/client-detail.js"></script>
+</body>
+</html>

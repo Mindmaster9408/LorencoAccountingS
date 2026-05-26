@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Clients</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div class="section-title">Practice Clients</div>
+        <div class="controls">
+            <input class="search-input" id="clientSearch" placeholder="Search name, email, VAT…" aria-label="Search clients" oninput="filterAndRender()">
+            <select class="filter-select" id="typeFilter" aria-label="Filter by client type" onchange="filterAndRender()">
+                <option value="">All Types</option>
+                <option value="company">Company</option>
+                <option value="cc">CC</option>
+                <option value="trust">Trust</option>
+                <option value="partnership">Partnership</option>
+                <option value="sole_proprietor">Sole Proprietor</option>
+                <option value="individual">Individual</option>
+                <option value="other">Other</option>
+            </select>
+            <select class="filter-select" id="statusFilter" aria-label="Filter by status" onchange="filterAndRender()">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="all">All</option>
+            </select>
+            <button type="button" class="btn btn-primary" onclick="openClientModal()">+ Add Client</button>
+        </div>
+    </div>
+
+    <div id="clientsWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading clients…</p></div>
+    </div>
+
+</div>
+
+<!-- CLIENT MODAL (quick-add / quick-edit) -->
+<div class="modal-overlay" id="clientModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="clientModalTitle">Add Client</h3>
+            <button type="button" class="modal-close" onclick="closeModal('clientModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveClient(event)">
+                <div class="form-grid">
+
+                    <div class="form-field form-full">
+                        <label for="cName">Name *</label>
+                        <input id="cName" required placeholder="e.g. Pennygrow (Pty) Ltd">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="cType">Client Type</label>
+                        <select id="cType" aria-label="Client type">
+                            <option value="company">Company (Pty Ltd)</option>
+                            <option value="cc">Close Corporation (CC)</option>
+                            <option value="trust">Trust</option>
+                            <option value="partnership">Partnership</option>
+                            <option value="sole_proprietor">Sole Proprietor</option>
+                            <option value="individual">Individual</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="cIndustry">Industry</label>
+                        <input id="cIndustry" placeholder="e.g. Retail">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="cEmail">Primary Email</label>
+                        <input id="cEmail" type="email" placeholder="client@example.com">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="cPhone">Primary Phone</label>
+                        <input id="cPhone" placeholder="+27 11 000 0000">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="cVat">VAT Number</label>
+                        <input id="cVat" placeholder="4xxxxxxxxx">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="cReg">Registration Number</label>
+                        <input id="cReg" placeholder="2000/000000/07">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="cFYEMonth">Financial Year End</label>
+                        <select id="cFYEMonth" aria-label="Financial year end month">
+                            <option value="">Select month…</option>
+                            <option value="1">January</option><option value="2">February</option>
+                            <option value="3">March</option><option value="4">April</option>
+                            <option value="5">May</option><option value="6">June</option>
+                            <option value="7">July</option><option value="8">August</option>
+                            <option value="9">September</option><option value="10">October</option>
+                            <option value="11">November</option><option value="12">December</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="cResponsible">Responsible Team Member</label>
+                        <select id="cResponsible" aria-label="Responsible team member">
+                            <option value="">Not assigned</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field form-full">
+                        <label for="cNotes">Notes</label>
+                        <textarea id="cNotes" rows="2" placeholder="Additional notes…"></textarea>
+                    </div>
+
+                    <div class="form-field hidden" id="cStatusField">
+                        <label for="cActive">Status</label>
+                        <select id="cActive" aria-label="Client status">
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+
+                </div>
+
+                <div class="form-actions" style="justify-content:space-between;align-items:center;">
+                    <div id="cViewLink" class="hidden">
+                        <a id="cViewLinkAnchor" href="#" class="btn btn-ghost btn-sm">Open Full Profile →</a>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" class="btn btn-ghost" onclick="closeModal('clientModal')">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="clientSaveBtn">Save Client</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script>
+(function () {
+    var esc = PracticeAPI.escHtml;
+    var allClients = [], allTeam = [];
+    var editingId = null;
+    var PAGE_SIZE = 20;
+    var currentPage = 1;
+
+    var TYPE_LABEL = {
+        company: 'Company', cc: 'CC', trust: 'Trust', partnership: 'Partnership',
+        sole_proprietor: 'Sole Prop.', individual: 'Individual', other: 'Other'
+    };
+    var TYPE_BADGE = {
+        company: 'badge-info', cc: 'badge-pending', trust: 'badge-review',
+        partnership: 'badge-in-progress', sole_proprietor: 'badge-open',
+        individual: 'badge-billable', other: 'badge-inactive'
+    };
+
+    // ── Auth + init ─────────────────────────────────────────────────────────────
+
+    async function init() {
+        var token = localStorage.getItem('token') || localStorage.getItem('practice_token');
+        if (!token) { window.location.href = '/'; return; }
+        try {
+            var res = await PracticeAPI.fetch('/api/auth/me');
+            if (!res.ok) { window.location.href = '/'; return; }
+        } catch(e) { window.location.href = '/'; return; }
+        LAYOUT.init('clients');
+        await Promise.all([loadTeam(), loadClients()]);
+    }
+
+    async function loadTeam() {
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/team?active=true');
+            if (!res.ok) return;
+            var d = await res.json();
+            allTeam = d.members || [];
+            var opts = allTeam.map(function(m) {
+                return '<option value="' + m.id + '">' + esc(m.display_name) +
+                    (m.job_title ? ' — ' + esc(m.job_title) : '') + '</option>';
+            }).join('');
+            document.getElementById('cResponsible').innerHTML =
+                '<option value="">Not assigned</option>' + opts;
+        } catch(e) {}
+    }
+
+    async function loadClients() {
+        document.getElementById('clientsWrap').innerHTML =
+            '<div class="loading"><div class="loading-spinner"></div><p>Loading clients…</p></div>';
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/clients?is_active=all');
+            if (!res.ok) throw new Error('Failed to load');
+            var d = await res.json();
+            allClients = d.clients || [];
+            currentPage = 1;
+            filterAndRender();
+        } catch(e) {
+            document.getElementById('clientsWrap').innerHTML =
+                '<div class="error-banner">⚠️ Failed to load clients. Please refresh.</div>';
+        }
+    }
+
+    // ── Filters ─────────────────────────────────────────────────────────────────
+
+    function getFiltered() {
+        var search = (document.getElementById('clientSearch').value || '').toLowerCase().trim();
+        var status  = document.getElementById('statusFilter').value;
+        var type    = document.getElementById('typeFilter').value;
+        return allClients.filter(function(c) {
+            if (status === 'active'   && !c.is_active)  return false;
+            if (status === 'inactive' &&  c.is_active)  return false;
+            if (type && c.client_type !== type)          return false;
+            if (search && !(
+                (c.name  || '').toLowerCase().includes(search) ||
+                (c.email || '').toLowerCase().includes(search) ||
+                (c.vat_number || '').toLowerCase().includes(search) ||
+                (c.registration_number || '').toLowerCase().includes(search)
+            )) return false;
+            return true;
+        });
+    }
+
+    function filterAndRender() {
+        currentPage = 1;
+        renderClients();
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────────────
+
+    function getTeamName(teamMemberId) {
+        if (!teamMemberId) return '–';
+        var m = allTeam.find(function(x) { return x.id === teamMemberId; });
+        return m ? esc(m.display_name) : '–';
+    }
+
+    function renderClients() {
+        var filtered   = getFiltered();
+        var totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        if (currentPage > totalPages) currentPage = totalPages;
+        var start = (currentPage - 1) * PAGE_SIZE;
+        var page  = filtered.slice(start, start + PAGE_SIZE);
+        var wrap  = document.getElementById('clientsWrap');
+
+        if (!filtered.length) {
+            wrap.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><h3>No clients found</h3><p>Adjust the search or add a new client.</p></div>';
+            return;
+        }
+
+        var rows = page.map(function(c) {
+            var typeLabel = TYPE_LABEL[c.client_type] || (c.client_type || 'Company');
+            var typeBadge = TYPE_BADGE[c.client_type] || 'badge-info';
+            var contact = (c.email || c.phone)
+                ? (c.email ? '<div>' + esc(c.email) + '</div>' : '') +
+                  (c.phone ? '<div style="font-size:0.78rem;">' + esc(c.phone) + '</div>' : '')
+                : '–';
+            var complianceBadges = [];
+            if (c.vat_registered)        complianceBadges.push('<span class="badge badge-info" title="VAT Registered">VAT</span>');
+            if (c.paye_registered)       complianceBadges.push('<span class="badge badge-pending" title="PAYE Registered">PAYE</span>');
+            if (c.provisional_taxpayer)  complianceBadges.push('<span class="badge badge-review" title="Provisional Taxpayer">PT</span>');
+            var fyeStr = c.financial_year_end_month
+                ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][c.financial_year_end_month - 1]
+                : (c.fiscal_year_end ? esc(c.fiscal_year_end).substring(0, 3) : '–');
+            var statusBadge = c.is_active
+                ? '<span class="badge badge-active">Active</span>'
+                : '<span class="badge badge-inactive">Inactive</span>';
+
+            return '<tr>' +
+                '<td>' +
+                    '<strong>' + esc(c.name) + '</strong>' +
+                    '<div style="margin-top:2px;"><span class="badge ' + typeBadge + '" style="font-size:0.7rem;">' + esc(typeLabel) + '</span></div>' +
+                '</td>' +
+                '<td class="col-muted">' + contact + '</td>' +
+                '<td class="col-muted col-small">' + getTeamName(c.responsible_team_member_id) + '</td>' +
+                '<td>' + (complianceBadges.length ? complianceBadges.join(' ') : '<span class="col-muted">–</span>') + '</td>' +
+                '<td class="col-muted col-small">' + fyeStr + '</td>' +
+                '<td>' + statusBadge + '</td>' +
+                '<td><div class="td-actions">' +
+                    '<a href="/practice/client-detail.html?id=' + c.id + '" class="btn btn-ghost btn-sm">View</a>' +
+                    '<button type="button" class="btn btn-ghost btn-sm" onclick="openClientModal(' + c.id + ')">Edit</button>' +
+                '</div></td>' +
+            '</tr>';
+        }).join('');
+
+        var tableHtml =
+            '<div class="table-wrap">' +
+            '<table><thead><tr>' +
+                '<th>Client</th><th>Contact</th><th>Responsible</th><th>Compliance</th><th>FY End</th><th>Status</th><th>Actions</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>' +
+            renderPagination(filtered.length, totalPages) +
+            '</div>';
+
+        wrap.innerHTML = tableHtml;
+    }
+
+    function renderPagination(total, totalPages) {
+        if (totalPages <= 1) return '';
+        var start = (currentPage - 1) * PAGE_SIZE + 1;
+        var end   = Math.min(currentPage * PAGE_SIZE, total);
+        var pages = '';
+        for (var i = 1; i <= totalPages; i++) {
+            pages += '<button type="button" class="page-btn' + (i === currentPage ? ' active' : '') + '" onclick="window._goPage(' + i + ')">' + i + '</button>';
+        }
+        return '<div class="pagination">' +
+            '<span>Showing ' + start + '–' + end + ' of ' + total + ' clients</span>' +
+            '<div class="pagination-pages">' +
+                '<button type="button" class="page-btn" onclick="window._goPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>‹</button>' +
+                pages +
+                '<button type="button" class="page-btn" onclick="window._goPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>›</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    window._goPage = function(p) {
+        var filtered   = getFiltered();
+        var totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+        if (p < 1 || p > totalPages) return;
+        currentPage = p;
+        renderClients();
+    };
+
+    // ── Modal ────────────────────────────────────────────────────────────────────
+
+    function openClientModal(id) {
+        editingId = id || null;
+        var c = id ? allClients.find(function(x) { return x.id === id; }) : null;
+        document.getElementById('clientModalTitle').textContent = id ? 'Edit Client' : 'Add Client';
+
+        document.getElementById('cName').value      = c ? c.name || '' : '';
+        document.getElementById('cType').value      = c ? (c.client_type || 'company') : 'company';
+        document.getElementById('cEmail').value     = c ? c.email || '' : '';
+        document.getElementById('cPhone').value     = c ? c.phone || '' : '';
+        document.getElementById('cIndustry').value  = c ? c.industry || '' : '';
+        document.getElementById('cVat').value       = c ? c.vat_number || '' : '';
+        document.getElementById('cReg').value       = c ? c.registration_number || '' : '';
+        document.getElementById('cFYEMonth').value  = c ? (c.financial_year_end_month || '') : '';
+        document.getElementById('cResponsible').value = c && c.responsible_team_member_id ? c.responsible_team_member_id : '';
+        document.getElementById('cNotes').value     = c ? c.notes || '' : '';
+
+        var statusField = document.getElementById('cStatusField');
+        var viewLink    = document.getElementById('cViewLink');
+        var viewAnchor  = document.getElementById('cViewLinkAnchor');
+        if (id) {
+            statusField.classList.remove('hidden');
+            document.getElementById('cActive').value = c && c.is_active !== false ? 'true' : 'false';
+            viewLink.classList.remove('hidden');
+            viewAnchor.href = '/practice/client-detail.html?id=' + id;
+        } else {
+            statusField.classList.add('hidden');
+            viewLink.classList.add('hidden');
+        }
+        document.getElementById('clientModal').classList.add('show');
+    }
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).classList.remove('show');
+    }
+
+    // ── Save ─────────────────────────────────────────────────────────────────────
+
+    async function saveClient(e) {
+        e.preventDefault();
+        var btn = document.getElementById('clientSaveBtn');
+        btn.disabled = true;
+
+        var fyeRaw       = document.getElementById('cFYEMonth').value;
+        var responsibleRaw = document.getElementById('cResponsible').value;
+        var body = {
+            name:                    document.getElementById('cName').value.trim(),
+            client_type:             document.getElementById('cType').value,
+            email:                   document.getElementById('cEmail').value.trim() || null,
+            phone:                   document.getElementById('cPhone').value.trim() || null,
+            industry:                document.getElementById('cIndustry').value.trim() || null,
+            vat_number:              document.getElementById('cVat').value.trim() || null,
+            registration_number:     document.getElementById('cReg').value.trim() || null,
+            financial_year_end_month: fyeRaw ? parseInt(fyeRaw) : null,
+            responsible_team_member_id: responsibleRaw ? parseInt(responsibleRaw) : null,
+            notes:                   document.getElementById('cNotes').value.trim() || null
+        };
+        if (editingId) body.is_active = document.getElementById('cActive').value === 'true';
+
+        try {
+            var url = editingId ? '/api/practice/clients/' + editingId : '/api/practice/clients';
+            var res = await PracticeAPI.fetch(url, {
+                method: editingId ? 'PUT' : 'POST',
+                body: JSON.stringify(body)
+            });
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Save failed');
+            closeModal('clientModal');
+            PracticeAPI.showToast(editingId ? 'Client updated!' : body.name + ' added!');
+            await loadClients();
+        } catch(err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+        } finally {
+            btn.disabled = false;
+        }
+        return false;
+    }
+
+    window.filterAndRender   = filterAndRender;
+    window.openClientModal   = openClientModal;
+    window.closeModal        = closeModal;
+    window.saveClient        = saveClient;
+
+    init();
+})();
+</script>
+</body>
+</html>

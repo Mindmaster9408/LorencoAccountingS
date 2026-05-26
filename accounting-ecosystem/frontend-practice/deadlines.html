@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Deadlines</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div class="section-title">Deadlines</div>
+        <div class="controls">
+            <select class="filter-select" id="fStatus" aria-label="Filter by status" onchange="loadDeadlines()">
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="submitted">Submitted</option>
+                <option value="completed">Completed</option>
+                <option value="missed">Missed</option>
+            </select>
+            <select class="filter-select" id="fClient" aria-label="Filter by client" onchange="loadDeadlines()">
+                <option value="">All Clients</option>
+            </select>
+            <select class="filter-select" id="fType" aria-label="Filter by type" onchange="applyTypeFilter()">
+                <option value="">All Types</option>
+                <option value="vat_return">VAT Return</option>
+                <option value="tax_return">Tax Return</option>
+                <option value="paye">PAYE</option>
+                <option value="uif">UIF</option>
+                <option value="sdl">SDL</option>
+                <option value="annual_financial">Annual Financial</option>
+                <option value="provisional_tax_p1">Prov Tax P1</option>
+                <option value="provisional_tax_p2">Prov Tax P2</option>
+                <option value="provisional_tax_top_up">Prov Tax Top-Up</option>
+                <option value="cipc_annual_return">CIPC Annual Return</option>
+                <option value="beneficial_ownership">Beneficial Ownership</option>
+                <option value="general">General</option>
+                <option value="other">Other</option>
+            </select>
+            <button type="button" class="btn btn-primary" onclick="openModal()">+ Add Deadline</button>
+        </div>
+    </div>
+
+    <div id="deadlinesWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading deadlines…</p></div>
+    </div>
+
+</div>
+
+<!-- DEADLINE MODAL -->
+<div class="modal-overlay" id="deadlineModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <h3 id="dlModalTitle">Add Deadline</h3>
+            <button type="button" class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveDeadline(event)">
+                <div class="form-grid full">
+                    <div class="form-field">
+                        <label for="dlTitle">Title *</label>
+                        <input id="dlTitle" required placeholder="e.g. VAT201 Submission">
+                    </div>
+                    <div class="form-field">
+                        <label for="dlClient">Client</label>
+                        <select id="dlClient" aria-label="Client">
+                            <option value="">General (no client)</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="dlType">Type</label>
+                        <select id="dlType" aria-label="Deadline type">
+                            <option value="general">General</option>
+                            <option value="vat_return">VAT Return</option>
+                            <option value="tax_return">Tax Return</option>
+                            <option value="paye">PAYE</option>
+                            <option value="uif">UIF</option>
+                            <option value="sdl">SDL</option>
+                            <option value="annual_financial">Annual Financial Statements</option>
+                            <option value="provisional_tax_p1">Provisional Tax P1</option>
+                            <option value="provisional_tax_p2">Provisional Tax P2</option>
+                            <option value="provisional_tax_top_up">Provisional Tax Top-Up</option>
+                            <option value="cipc_annual_return">CIPC Annual Return</option>
+                            <option value="beneficial_ownership">Beneficial Ownership</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="dlStatus">Status</label>
+                        <select id="dlStatus" aria-label="Status">
+                            <option value="pending">Pending</option>
+                            <option value="submitted">Submitted to SARS</option>
+                            <option value="completed">Completed</option>
+                            <option value="missed">Missed</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="dlDueDate">Due Date *</label>
+                        <input type="date" id="dlDueDate" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="dlNotes">Notes</label>
+                        <textarea id="dlNotes" rows="2" placeholder="Optional notes…"></textarea>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm mr-auto hidden" id="dlDeleteBtn" onclick="deleteCurrentDeadline()">Delete</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="dlSaveBtn">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script>
+var esc = PracticeAPI.escHtml;
+var allDeadlines = [], allClients = [], filteredDeadlines = [];
+var editingId = null;
+var PAGE_SIZE = 30;
+var currentPage = 1;
+
+var TYPE_LABEL = {
+    general: 'General', vat_return: 'VAT Return', tax_return: 'Tax Return',
+    paye: 'PAYE', uif: 'UIF', sdl: 'SDL',
+    annual_financial: 'Annual Financial', provisional_tax_p1: 'Prov Tax P1',
+    provisional_tax_p2: 'Prov Tax P2', provisional_tax_top_up: 'Prov Tax Top-Up',
+    cipc_annual_return: 'CIPC Annual Return', beneficial_ownership: 'Beneficial Ownership', other: 'Other'
+};
+var STATUS_BADGE  = { pending: 'badge-pending', submitted: 'badge-submitted', completed: 'badge-completed', missed: 'badge-missed' };
+var STATUS_LABEL  = { pending: 'Pending', submitted: 'Submitted', completed: 'Completed', missed: 'Missed' };
+
+async function init() {
+    var token = localStorage.getItem('token') || localStorage.getItem('practice_token');
+    if (!token) { window.location.href = '/'; return; }
+    try {
+        var res = await PracticeAPI.fetch('/api/auth/me');
+        if (!res.ok) { window.location.href = '/'; return; }
+    } catch(e) { window.location.href = '/'; return; }
+    LAYOUT.init('deadlines');
+    await loadClients();
+    loadDeadlines();
+}
+
+async function loadClients() {
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/clients?is_active=true');
+        if (!res.ok) return;
+        var d = await res.json();
+        allClients = d.clients || [];
+        var opts = allClients.map(function(c) {
+            return '<option value="' + c.id + '">' + esc(c.name) + '</option>';
+        }).join('');
+        document.getElementById('fClient').innerHTML  = '<option value="">All Clients</option>' + opts;
+        document.getElementById('dlClient').innerHTML = '<option value="">General (no client)</option>' + opts;
+    } catch(e) {}
+}
+
+async function loadDeadlines() {
+    document.getElementById('deadlinesWrap').innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>';
+    var status   = document.getElementById('fStatus').value;
+    var clientId = document.getElementById('fClient').value;
+    var params   = [];
+    if (status)   params.push('status='    + status);
+    if (clientId) params.push('client_id=' + clientId);
+    var url = '/api/practice/deadlines' + (params.length ? '?' + params.join('&') : '');
+    try {
+        var res = await PracticeAPI.fetch(url);
+        if (!res.ok) throw new Error('Load failed');
+        var d = await res.json();
+        allDeadlines = d.deadlines || [];
+        applyTypeFilter();
+    } catch(e) {
+        document.getElementById('deadlinesWrap').innerHTML = '<div class="error-banner">⚠️ Failed to load deadlines. Please refresh.</div>';
+    }
+}
+
+function applyTypeFilter() {
+    var type = document.getElementById('fType').value;
+    filteredDeadlines = type
+        ? allDeadlines.filter(function(dl) { return dl.type === type; })
+        : allDeadlines.slice();
+    currentPage = 1;
+    renderDeadlines();
+}
+
+function renderDeadlines() {
+    var today = new Date().toISOString().split('T')[0];
+    var totalPages = Math.max(1, Math.ceil(filteredDeadlines.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    var start = (currentPage - 1) * PAGE_SIZE;
+    var page  = filteredDeadlines.slice(start, start + PAGE_SIZE);
+    var wrap  = document.getElementById('deadlinesWrap');
+
+    if (!filteredDeadlines.length) {
+        wrap.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><h3>No deadlines</h3><p>Add a deadline to start tracking compliance.</p></div>';
+        return;
+    }
+
+    var rows = page.map(function(dl) {
+        var isOverdue  = dl.due_date < today && dl.status !== 'completed' && dl.status !== 'submitted';
+        var clientName = dl.practice_clients && dl.practice_clients.name ? dl.practice_clients.name : 'General';
+        var overdueTag = isOverdue ? ' <span class="badge badge-overdue">OVERDUE</span>' : '';
+        var submitBtn  = dl.status === 'pending'
+            ? '<button type="button" class="btn btn-ghost btn-sm" onclick="quickStatus(' + dl.id + ',\'submitted\')">→ Submit</button>' : '';
+        var doneBtn    = dl.status !== 'completed'
+            ? '<button type="button" class="btn btn-success btn-sm" onclick="quickStatus(' + dl.id + ',\'completed\')">✓ Done</button>' : '';
+        return '<tr' + (isOverdue ? ' class="overdue-row"' : '') + '>' +
+            '<td><strong>' + esc(dl.title) + '</strong>' + overdueTag + '</td>' +
+            '<td>' + esc(clientName) + '</td>' +
+            '<td>' + (TYPE_LABEL[dl.type] || dl.type) + '</td>' +
+            '<td><strong>' + esc(dl.due_date) + '</strong></td>' +
+            '<td><span class="badge ' + (STATUS_BADGE[dl.status] || 'badge-pending') + '">' + (STATUS_LABEL[dl.status] || dl.status) + '</span></td>' +
+            '<td class="col-muted">' + esc(dl.notes || '–') + '</td>' +
+            '<td><div class="td-actions">' + submitBtn + doneBtn +
+                '<button type="button" class="btn btn-ghost btn-sm" onclick="openModal(' + dl.id + ')">Edit</button>' +
+            '</div></td>' +
+        '</tr>';
+    }).join('');
+
+    var tableHtml =
+        '<div class="table-wrap"><table><thead><tr>' +
+            '<th>Title</th><th>Client</th><th>Type</th><th>Due Date</th><th>Status</th><th>Notes</th><th>Actions</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>' +
+        renderPagination(totalPages) + '</div>';
+
+    wrap.innerHTML = tableHtml;
+}
+
+function renderPagination(totalPages) {
+    if (totalPages <= 1) return '';
+    var s = (currentPage - 1) * PAGE_SIZE + 1;
+    var e = Math.min(currentPage * PAGE_SIZE, filteredDeadlines.length);
+    var pages = '';
+    for (var i = 1; i <= totalPages; i++) {
+        pages += '<button type="button" class="page-btn' + (i === currentPage ? ' active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
+    }
+    return '<div class="pagination">' +
+        '<span>Showing ' + s + '–' + e + ' of ' + filteredDeadlines.length + ' deadlines</span>' +
+        '<div class="pagination-pages">' +
+            '<button type="button" class="page-btn" onclick="goPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>‹</button>' +
+            pages +
+            '<button type="button" class="page-btn" onclick="goPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>›</button>' +
+        '</div>' +
+    '</div>';
+}
+
+function goPage(p) {
+    var totalPages = Math.ceil(filteredDeadlines.length / PAGE_SIZE);
+    if (p < 1 || p > totalPages) return;
+    currentPage = p;
+    renderDeadlines();
+}
+
+async function quickStatus(id, status) {
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/deadlines/' + id, {
+            method: 'PUT', body: JSON.stringify({ status: status })
+        });
+        if (!res.ok) throw new Error('Update failed');
+        PracticeAPI.showToast('Marked as ' + STATUS_LABEL[status] + '!');
+        loadDeadlines();
+    } catch(e) {
+        PracticeAPI.showToast('❌ ' + e.message, true);
+    }
+}
+
+function openModal(id) {
+    editingId = id || null;
+    var dl = id ? allDeadlines.find(function(x) { return x.id === id; }) : null;
+    document.getElementById('dlModalTitle').textContent = id ? 'Edit Deadline' : 'Add Deadline';
+    document.getElementById('dlTitle').value    = dl ? dl.title    || '' : '';
+    document.getElementById('dlType').value     = dl ? dl.type     || 'general' : 'general';
+    document.getElementById('dlStatus').value   = dl ? dl.status   || 'pending' : 'pending';
+    document.getElementById('dlDueDate').value  = dl ? dl.due_date || '' : '';
+    document.getElementById('dlNotes').value    = dl ? dl.notes    || '' : '';
+    document.getElementById('dlClient').value   = dl ? dl.client_id || '' : '';
+    var delBtn = document.getElementById('dlDeleteBtn');
+    if (id) { delBtn.classList.remove('hidden'); } else { delBtn.classList.add('hidden'); }
+    document.getElementById('deadlineModal').classList.add('show');
+}
+
+function closeModal() { document.getElementById('deadlineModal').classList.remove('show'); }
+
+async function saveDeadline(e) {
+    e.preventDefault();
+    var btn = document.getElementById('dlSaveBtn');
+    btn.disabled = true;
+    var clientVal = document.getElementById('dlClient').value;
+    var body = {
+        title:     document.getElementById('dlTitle').value.trim(),
+        client_id: clientVal ? parseInt(clientVal) : null,
+        type:      document.getElementById('dlType').value,
+        status:    document.getElementById('dlStatus').value,
+        due_date:  document.getElementById('dlDueDate').value,
+        notes:     document.getElementById('dlNotes').value.trim() || null
+    };
+    try {
+        var url = editingId ? '/api/practice/deadlines/' + editingId : '/api/practice/deadlines';
+        var res = await PracticeAPI.fetch(url, { method: editingId ? 'PUT' : 'POST', body: JSON.stringify(body) });
+        var d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Save failed');
+        closeModal();
+        PracticeAPI.showToast('Deadline saved!');
+        loadDeadlines();
+    } catch(err) {
+        PracticeAPI.showToast('❌ ' + err.message, true);
+    } finally {
+        btn.disabled = false;
+    }
+    return false;
+}
+
+async function deleteCurrentDeadline() {
+    if (!editingId) return;
+    var dl = allDeadlines.find(function(x) { return x.id === editingId; });
+    if (!confirm('Delete deadline "' + (dl ? dl.title : editingId) + '"?')) return;
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/deadlines/' + editingId, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+        closeModal();
+        PracticeAPI.showToast('Deadline deleted.');
+        loadDeadlines();
+    } catch(e) {
+        PracticeAPI.showToast('❌ ' + e.message, true);
+    }
+}
+
+init();
+</script>
+</body>
+</html>

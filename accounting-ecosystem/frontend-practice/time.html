@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Time Tracking</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <!-- Log Time Form -->
+    <div class="inline-form">
+        <div class="inline-form-title">⏱ Log Time</div>
+        <div class="form-grid">
+            <div class="form-field">
+                <label for="teClient">Client</label>
+                <select id="teClient" aria-label="Client" onchange="loadTasksForClient()">
+                    <option value="">Select client…</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="teTask">Task (optional)</label>
+                <select id="teTask" aria-label="Task"><option value="">None</option></select>
+            </div>
+            <div class="form-field">
+                <label for="teDate">Date *</label>
+                <input type="date" id="teDate">
+            </div>
+            <div class="form-field">
+                <label for="teHours">Hours *</label>
+                <input type="number" id="teHours" step="0.25" min="0.25" max="24" placeholder="e.g. 1.5">
+            </div>
+            <div class="form-field">
+                <label for="teRate">Rate (R/hr)</label>
+                <input type="number" id="teRate" step="0.01" placeholder="Optional">
+            </div>
+            <div class="form-field">
+                <label for="teDesc">Description</label>
+                <input id="teDesc" placeholder="What was done…">
+            </div>
+        </div>
+        <div class="log-time-footer">
+            <label class="billable-check">
+                <input type="checkbox" id="teBillable" checked> Billable
+            </label>
+            <button type="button" class="btn btn-primary btn-sm" id="logBtn" onclick="logTime()">Log Time</button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="section-header">
+        <div class="section-title">Time Entries</div>
+        <div class="controls">
+            <select class="filter-select" id="fClient" aria-label="Filter by client" onchange="loadEntries()">
+                <option value="">All Clients</option>
+            </select>
+            <select class="filter-select" id="fYear" aria-label="Filter by year" onchange="loadEntries()"></select>
+            <select class="filter-select" id="fMonthSel" aria-label="Filter by month" onchange="loadEntries()">
+                <option value="01">January</option><option value="02">February</option>
+                <option value="03">March</option><option value="04">April</option>
+                <option value="05">May</option><option value="06">June</option>
+                <option value="07">July</option><option value="08">August</option>
+                <option value="09">September</option><option value="10">October</option>
+                <option value="11">November</option><option value="12">December</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="summaryBar" class="summary-bar hidden">
+        <div class="summary-item"><div class="summary-value" id="sumTotal">0.00</div><div class="summary-label">Total Hours</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumBillable">0.00</div><div class="summary-label">Billable Hours</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumNonBillable">0.00</div><div class="summary-label">Non-Billable</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumValue">R0</div><div class="summary-label">Billable Value</div></div>
+    </div>
+
+    <div id="timeWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading entries…</p></div>
+    </div>
+
+</div>
+
+<!-- EDIT TIME ENTRY MODAL -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Edit Time Entry</h3>
+            <button type="button" class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveEdit(event)">
+                <div class="form-grid full">
+                    <div class="form-field">
+                        <label for="eClient">Client</label>
+                        <select id="eClient" aria-label="Client"><option value="">None</option></select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eDate">Date *</label>
+                        <input type="date" id="eDate" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="eHours">Hours *</label>
+                        <input type="number" id="eHours" step="0.25" min="0.25" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="eRate">Rate (R/hr)</label>
+                        <input type="number" id="eRate" step="0.01" placeholder="Optional">
+                    </div>
+                    <div class="form-field">
+                        <label for="eDesc">Description</label>
+                        <input id="eDesc" placeholder="What was done…">
+                    </div>
+                    <div class="form-field">
+                        <label for="eBillable">Billable</label>
+                        <select id="eBillable" aria-label="Billable">
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm mr-auto" id="eDeleteBtn" onclick="deleteCurrentEntry()">Delete</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="editSaveBtn">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script>
+var esc = PracticeAPI.escHtml;
+var allClients = [];
+var editingEntryId = null;
+var cachedEntries = [];
+
+async function init() {
+    var token = localStorage.getItem('token') || localStorage.getItem('practice_token');
+    if (!token) { window.location.href = '/'; return; }
+    try {
+        var res = await PracticeAPI.fetch('/api/auth/me');
+        if (!res.ok) { window.location.href = '/'; return; }
+    } catch(e) { window.location.href = '/'; return; }
+
+    LAYOUT.init('time');
+    document.getElementById('teDate').valueAsDate = new Date();
+    var now = new Date();
+    var yearSel = document.getElementById('fYear');
+    for (var y = now.getFullYear(); y >= now.getFullYear() - 3; y--) {
+        var o = document.createElement('option');
+        o.value = y; o.textContent = y;
+        if (y === now.getFullYear()) o.selected = true;
+        yearSel.appendChild(o);
+    }
+    document.getElementById('fMonthSel').value = String(now.getMonth() + 1).padStart(2, '0');
+    await loadClients();
+    loadEntries();
+}
+
+async function loadClients() {
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/clients?is_active=true');
+        if (!res.ok) return;
+        var d = await res.json();
+        allClients = d.clients || [];
+        var opts = allClients.map(function(c) {
+            return '<option value="' + c.id + '">' + esc(c.name) + '</option>';
+        }).join('');
+        document.getElementById('teClient').innerHTML = '<option value="">Select client…</option>' + opts;
+        document.getElementById('fClient').innerHTML  = '<option value="">All Clients</option>' + opts;
+        document.getElementById('eClient').innerHTML  = '<option value="">None</option>' + opts;
+    } catch(e) {}
+}
+
+async function loadTasksForClient() {
+    var clientId = document.getElementById('teClient').value;
+    var sel = document.getElementById('teTask');
+    sel.innerHTML = '<option value="">None</option>';
+    if (!clientId) return;
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/tasks?client_id=' + clientId + '&status=open');
+        if (!res.ok) return;
+        var d = await res.json();
+        (d.tasks || []).forEach(function(t) {
+            var o = document.createElement('option');
+            o.value = t.id;
+            o.textContent = t.title;
+            sel.appendChild(o);
+        });
+    } catch(e) {}
+}
+
+async function logTime() {
+    var hours = document.getElementById('teHours').value;
+    var date  = document.getElementById('teDate').value;
+    if (!hours || !date) { PracticeAPI.showToast('Hours and date are required', true); return; }
+    var btn = document.getElementById('logBtn');
+    btn.disabled = true;
+    try {
+        var clientId = document.getElementById('teClient').value;
+        var taskId   = document.getElementById('teTask').value;
+        var rate     = document.getElementById('teRate').value;
+        var res = await PracticeAPI.fetch('/api/practice/time-entries', {
+            method: 'POST',
+            body: JSON.stringify({
+                client_id:   clientId ? parseInt(clientId) : null,
+                task_id:     taskId   ? parseInt(taskId)   : null,
+                hours:       parseFloat(hours),
+                date:        date,
+                description: document.getElementById('teDesc').value.trim() || null,
+                billable:    document.getElementById('teBillable').checked,
+                rate:        rate ? parseFloat(rate) : null
+            })
+        });
+        var d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Log failed');
+        PracticeAPI.showToast(hours + 'h logged!');
+        document.getElementById('teHours').value = '';
+        document.getElementById('teDesc').value  = '';
+        loadEntries();
+    } catch(err) {
+        PracticeAPI.showToast('❌ ' + err.message, true);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function loadEntries() {
+    document.getElementById('timeWrap').innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>';
+    document.getElementById('summaryBar').classList.add('hidden');
+    var clientId = document.getElementById('fClient').value;
+    var year     = document.getElementById('fYear').value;
+    var month    = document.getElementById('fMonthSel').value;
+    var params   = [];
+    if (clientId) params.push('client_id=' + clientId);
+    if (year && month) {
+        var lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+        params.push('date_from=' + year + '-' + month + '-01');
+        params.push('date_to='   + year + '-' + month + '-' + lastDay);
+    }
+    var url = '/api/practice/time-entries' + (params.length ? '?' + params.join('&') : '');
+    try {
+        var res = await PracticeAPI.fetch(url);
+        if (!res.ok) throw new Error('Load failed');
+        var d = await res.json();
+        cachedEntries = d.time_entries || [];
+        renderEntries(cachedEntries, d.total_hours || 0);
+    } catch(e) {
+        document.getElementById('timeWrap').innerHTML = '<div class="error-banner">⚠️ Failed to load time entries. Please refresh.</div>';
+    }
+}
+
+function renderEntries(entries, totalHours) {
+    var wrap = document.getElementById('timeWrap');
+    if (!entries.length) {
+        wrap.innerHTML = '<div class="empty"><div class="empty-icon">⏱</div><h3>No time entries</h3><p>Log some time above.</p></div>';
+        return;
+    }
+
+    var billableHours = 0, nonBillableHours = 0, billableValue = 0;
+    entries.forEach(function(e) {
+        if (e.billable) {
+            billableHours += e.hours || 0;
+            if (e.rate) billableValue += (e.hours || 0) * e.rate;
+        } else {
+            nonBillableHours += e.hours || 0;
+        }
+    });
+
+    document.getElementById('sumTotal').textContent       = totalHours.toFixed(2);
+    document.getElementById('sumBillable').textContent    = billableHours.toFixed(2);
+    document.getElementById('sumNonBillable').textContent = nonBillableHours.toFixed(2);
+    document.getElementById('sumValue').textContent       = 'R' + billableValue.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById('summaryBar').classList.remove('hidden');
+
+    var rows = entries.map(function(e) {
+        var clientName = e.practice_clients && e.practice_clients.name ? e.practice_clients.name : '–';
+        var taskTitle  = e.practice_tasks   && e.practice_tasks.title  ? e.practice_tasks.title  : '–';
+        return '<tr>' +
+            '<td class="col-muted col-nowrap">' + esc(e.date) + '</td>' +
+            '<td>' + esc(clientName) + '</td>' +
+            '<td class="col-muted col-small">' + esc(taskTitle) + '</td>' +
+            '<td><strong>' + e.hours + 'h</strong></td>' +
+            '<td>' + esc(e.description || '–') + '</td>' +
+            '<td><span class="badge ' + (e.billable ? 'badge-billable' : 'badge-inactive') + '">' + (e.billable ? 'Billable' : 'Non-bill.') + '</span></td>' +
+            '<td class="col-muted">' + (e.rate ? 'R' + parseFloat(e.rate).toFixed(2) : '–') + '</td>' +
+            '<td><button type="button" class="btn btn-ghost btn-sm" onclick="openEditModal(' + e.id + ')">Edit</button></td>' +
+        '</tr>';
+    }).join('');
+
+    wrap.innerHTML =
+        '<div class="table-wrap"><table><thead><tr>' +
+            '<th>Date</th><th>Client</th><th>Task</th><th>Hours</th><th>Description</th><th>Billable</th><th>Rate</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function openEditModal(id) {
+    editingEntryId = id;
+    var entry = cachedEntries.find(function(e) { return e.id === id; });
+    document.getElementById('eClient').value   = entry ? entry.client_id   || '' : '';
+    document.getElementById('eDate').value     = entry ? entry.date        || '' : '';
+    document.getElementById('eHours').value    = entry ? entry.hours       || '' : '';
+    document.getElementById('eRate').value     = entry ? entry.rate        || '' : '';
+    document.getElementById('eDesc').value     = entry ? entry.description || '' : '';
+    document.getElementById('eBillable').value = entry && entry.billable === false ? 'false' : 'true';
+    document.getElementById('editModal').classList.add('show');
+}
+
+function closeModal() { document.getElementById('editModal').classList.remove('show'); }
+
+async function saveEdit(e) {
+    e.preventDefault();
+    if (!editingEntryId) return false;
+    var btn = document.getElementById('editSaveBtn');
+    btn.disabled = true;
+    var clientVal = document.getElementById('eClient').value;
+    var rateVal   = document.getElementById('eRate').value;
+    var body = {
+        client_id:   clientVal ? parseInt(clientVal) : null,
+        date:        document.getElementById('eDate').value,
+        hours:       parseFloat(document.getElementById('eHours').value),
+        rate:        rateVal ? parseFloat(rateVal) : null,
+        description: document.getElementById('eDesc').value.trim() || null,
+        billable:    document.getElementById('eBillable').value === 'true'
+    };
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/time-entries/' + editingEntryId, {
+            method: 'PUT', body: JSON.stringify(body)
+        });
+        var d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Update failed');
+        closeModal();
+        PracticeAPI.showToast('Entry updated!');
+        loadEntries();
+    } catch(err) {
+        PracticeAPI.showToast('❌ ' + err.message, true);
+    } finally {
+        btn.disabled = false;
+    }
+    return false;
+}
+
+async function deleteCurrentEntry() {
+    if (!editingEntryId) return;
+    if (!confirm('Delete this time entry?')) return;
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/time-entries/' + editingEntryId, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+        closeModal();
+        PracticeAPI.showToast('Entry deleted.');
+        loadEntries();
+    } catch(e) {
+        PracticeAPI.showToast('❌ ' + e.message, true);
+    }
+}
+
+init();
+</script>
+</body>
+</html>

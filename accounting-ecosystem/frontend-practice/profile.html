@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Practice Profile</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div class="section-title">Practice Profile</div>
+    </div>
+
+    <!-- Loading state -->
+    <div class="loading" id="profileLoading">
+        <div class="loading-spinner"></div>
+        <p>Loading profile…</p>
+    </div>
+
+    <!-- Error state -->
+    <div class="error-banner hidden" id="profileError">
+        ⚠️ Failed to load profile. Please refresh.
+    </div>
+
+    <!-- New profile notice (shown when no profile exists yet) -->
+    <div class="notice-banner hidden" id="createNotice">
+        ℹ️ No practice profile has been set up yet. Fill in the details below and save to create your profile.
+    </div>
+
+    <!-- Profile Form -->
+    <form id="profileForm" class="hidden" onsubmit="return saveProfile(event)">
+
+        <!-- ── Section 1: Practice Identity ── -->
+        <div class="section-label" style="margin-top: 0;">Practice Identity</div>
+        <div class="inline-form" style="margin-bottom: 22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="pTaxPractitionerNumber">Tax Practitioner Number</label>
+                    <input type="text" id="pTaxPractitionerNumber" placeholder="e.g. PR-0001234">
+                </div>
+                <div class="form-field">
+                    <label for="pVatNumber">VAT Registration Number</label>
+                    <input type="text" id="pVatNumber" placeholder="e.g. 4123456789">
+                </div>
+                <div class="form-field">
+                    <label for="pPracticeType">Practice Type</label>
+                    <select id="pPracticeType" aria-label="Practice type">
+                        <option value="">— Select type —</option>
+                        <option value="sole_proprietor">Sole Proprietor</option>
+                        <option value="partnership">Partnership</option>
+                        <option value="company">Company (Pty) Ltd</option>
+                        <option value="cc">Close Corporation (CC)</option>
+                        <option value="trust">Trust</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Section 2: Contact ── -->
+        <div class="section-label">Contact Details</div>
+        <div class="inline-form" style="margin-bottom: 22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="pEmail">Practice Email</label>
+                    <input type="email" id="pEmail" placeholder="practice@example.com">
+                </div>
+                <div class="form-field">
+                    <label for="pPhone">Practice Phone</label>
+                    <input type="tel" id="pPhone" placeholder="+27 11 000 0000">
+                </div>
+                <div class="form-field form-full">
+                    <label for="pWebsite">Website</label>
+                    <input type="url" id="pWebsite" placeholder="https://yourpractice.co.za">
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Section 3: Address ── -->
+        <div class="section-label">Physical Address</div>
+        <div class="inline-form" style="margin-bottom: 22px;">
+            <div class="form-grid">
+                <div class="form-field form-full">
+                    <label for="pLine1">Address Line 1</label>
+                    <input type="text" id="pLine1" placeholder="Street number and name">
+                </div>
+                <div class="form-field form-full">
+                    <label for="pLine2">Address Line 2</label>
+                    <input type="text" id="pLine2" placeholder="Unit, suite, building (optional)">
+                </div>
+                <div class="form-field">
+                    <label for="pCity">City</label>
+                    <input type="text" id="pCity" placeholder="e.g. Johannesburg">
+                </div>
+                <div class="form-field">
+                    <label for="pProvince">Province</label>
+                    <select id="pProvince" aria-label="Province">
+                        <option value="">— Select province —</option>
+                        <option value="Gauteng">Gauteng</option>
+                        <option value="Western Cape">Western Cape</option>
+                        <option value="Eastern Cape">Eastern Cape</option>
+                        <option value="KwaZulu-Natal">KwaZulu-Natal</option>
+                        <option value="Free State">Free State</option>
+                        <option value="Limpopo">Limpopo</option>
+                        <option value="Mpumalanga">Mpumalanga</option>
+                        <option value="North West">North West</option>
+                        <option value="Northern Cape">Northern Cape</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="pPostal">Postal Code</label>
+                    <input type="text" id="pPostal" placeholder="e.g. 2196" maxlength="10">
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Section 4: Workflow Defaults ── -->
+        <div class="section-label">Workflow Defaults</div>
+        <div class="inline-form" style="margin-bottom: 22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="pHourlyRate">Default Hourly Rate (ZAR)</label>
+                    <input type="number" id="pHourlyRate" min="0" step="0.01" placeholder="e.g. 750.00">
+                </div>
+                <div class="form-field">
+                    <label for="pCurrency">Currency</label>
+                    <select id="pCurrency" aria-label="Currency">
+                        <option value="ZAR">ZAR — South African Rand</option>
+                        <option value="USD">USD — US Dollar</option>
+                        <option value="EUR">EUR — Euro</option>
+                        <option value="GBP">GBP — British Pound</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="pFiscalMonth">Fiscal Year End Month</label>
+                    <select id="pFiscalMonth" aria-label="Fiscal year end month">
+                        <option value="">— Select month —</option>
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March (SARS default)</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="pDefaultAssignee">Default Task Assignee</label>
+                    <select id="pDefaultAssignee" aria-label="Default task assignee">
+                        <option value="">No default assignee</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Section 5: Branding ── -->
+        <div class="section-label">Branding</div>
+        <div class="inline-form" style="margin-bottom: 22px;">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="pPrimaryColour">Primary Colour (hex)</label>
+                    <input type="text" id="pPrimaryColour" placeholder="#7c3aed" maxlength="7">
+                </div>
+                <div class="form-field">
+                    <label for="pLogoUrl">Logo URL</label>
+                    <input type="url" id="pLogoUrl" placeholder="https://cdn.example.com/logo.png">
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Section 6: Notes ── -->
+        <div class="section-label">Compliance &amp; Notes</div>
+        <div class="inline-form" style="margin-bottom: 22px;">
+            <div class="form-grid full">
+                <div class="form-field">
+                    <label for="pComplianceNotes">Internal Notes</label>
+                    <textarea id="pComplianceNotes" rows="4" placeholder="SARS registration details, professional body memberships, compliance reminders, internal notes…"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="profileSaveBtn">Save Profile</button>
+        </div>
+
+    </form>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/profile.js"></script>
+</body>
+</html>
