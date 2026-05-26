@@ -768,7 +768,7 @@
             <div id="billingReportError" style="display:none;color:#f87171;font-size:0.8rem;margin-bottom:12px;"></div>
             <div class="modal-footer">
                 <button class="btn-cancel" onclick="closeBillingReportModal()">Kanselleer</button>
-                <button class="btn-submit" id="btnGenerateReport" onclick="generateBillingReport()">&#128202; Genereer XLSX</button>
+                <button class="btn-submit" id="btnGenerateReport" onclick="generateBillingReport()">&#128438; Genereer PDF</button>
             </div>
         </div>
     </div>
@@ -1835,7 +1835,7 @@
 
             const btn = document.getElementById('btnGenerateReport');
             btn.disabled    = false;
-            btn.textContent = '📊 Genereer XLSX';
+            btn.textContent = '📊 Maak Verslag Oop';
 
             document.getElementById('billingReportModal').classList.add('open');
         }
@@ -1857,7 +1857,18 @@
 
             const btn = document.getElementById('btnGenerateReport');
             btn.disabled    = true;
-            btn.textContent = '⏳ Besig om te genereer…';
+            btn.textContent = '⏳ Besig…';
+
+            // Open a blank tab NOW — must be synchronous (direct response to user click)
+            // to avoid popup blockers. Content is written in after the fetch completes.
+            const reportWin = window.open('about:blank', '_blank');
+            if (!reportWin) {
+                errEl.textContent   = '❌ Popup blocker het die venster geblokkeer. Laat asseblief popups toe vir hierdie bladsy.';
+                errEl.style.display = 'block';
+                btn.disabled    = false;
+                btn.textContent = '🖨️ Genereer PDF';
+                return;
+            }
 
             try {
                 const url = `${API_BASE}/api/ecosystem/billing-report/practice/${encodeURIComponent(_billingReportFirmId)}?month=${month}&year=${year}`;
@@ -1866,36 +1877,28 @@
                 });
 
                 if (!res.ok) {
+                    reportWin.close();
                     let errMsg = `Fout ${res.status}`;
                     try {
                         const errData = await res.json();
                         errMsg = errData.error || errMsg;
-                    } catch (_) { /* response was not JSON */ }
+                    } catch (_) { /* not JSON */ }
                     throw new Error(errMsg);
                 }
 
-                // Trigger browser download from the blob
-                const blob     = await res.blob();
-                const blobUrl  = URL.createObjectURL(blob);
-                const anchor   = document.createElement('a');
-                anchor.href    = blobUrl;
-                // Extract filename from Content-Disposition header if present
-                const disposition = res.headers.get('Content-Disposition') || '';
-                const fnMatch     = disposition.match(/filename="?([^";\n]+)"?/);
-                anchor.download   = fnMatch ? fnMatch[1] : `Billing_Report_${year}_${String(month).padStart(2,'0')}.xlsx`;
-                document.body.appendChild(anchor);
-                anchor.click();
-                document.body.removeChild(anchor);
-                URL.revokeObjectURL(blobUrl);
+                const html = await res.text();
+                reportWin.document.open();
+                reportWin.document.write(html);
+                reportWin.document.close();
 
-                showToast('&#9989; Verslag afgelaai');
+                showToast('&#9989; Verslag oopgemaak');
                 closeBillingReportModal();
             } catch (err) {
                 errEl.textContent   = '❌ ' + err.message;
                 errEl.style.display = 'block';
             } finally {
                 btn.disabled    = false;
-                btn.textContent = '📊 Genereer XLSX';
+                btn.textContent = '🖨️ Genereer PDF';
             }
         }
 
