@@ -89,7 +89,7 @@ router.get('/practice/:practiceId', async (req, res) => {
       clientCompanyIds.length > 0
         ? supabase
             .from('employees')
-            .select('company_id, employee_id, is_active')
+            .select('company_id, is_active')
             .in('company_id', clientCompanyIds)
         : Promise.resolve({ data: [], error: null }),
 
