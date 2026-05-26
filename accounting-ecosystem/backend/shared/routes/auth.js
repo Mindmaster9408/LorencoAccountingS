@@ -291,6 +291,58 @@ router.post('/register', async (req, res) => {
         is_active: true
       });
 
+      // ── Provision Paytime 30-day demo company (idempotent — one per practice) ──
+      try {
+        const { data: existingDemo } = await supabase
+          .from('eco_clients')
+          .select('id')
+          .eq('company_id', company.id)
+          .eq('name', 'Demo Company')
+          .limit(1);
+
+        if (!existingDemo || existingDemo.length === 0) {
+          const demoExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+          const { data: demoCompany, error: demoCompErr } = await supabase
+            .from('companies')
+            .insert({
+              company_name:          'Demo Company',
+              trading_name:          'Demo Company',
+              is_active:             true,
+              is_demo:               true,
+              modules_enabled:       ['payroll'],
+              subscription_status:   'demo',
+              subscription_expires_at: demoExpiresAt,
+            })
+            .select()
+            .single();
+
+          if (!demoCompErr && demoCompany) {
+            // Grant the new user access to the demo company data silo
+            await supabase.from('user_company_access').insert({
+              user_id:    mainUser.id,
+              company_id: demoCompany.id,
+              role:       'business_owner',
+              is_primary: false,
+              is_active:  true,
+            });
+
+            // Register demo company as a Paytime client of the practice
+            await supabase.from('eco_clients').insert({
+              company_id:        company.id,
+              name:              'Demo Company',
+              apps:              ['payroll'],
+              client_company_id: demoCompany.id,
+              is_active:         true,
+            });
+          } else if (demoCompErr) {
+            console.error('[register] Demo company creation error:', demoCompErr.message);
+          }
+        }
+      } catch (demoErr) {
+        console.error('[register] Demo provisioning error:', demoErr.message);
+      }
+
       // Create team members if provided
       if (Array.isArray(users) && users.length > 0) {
         for (const member of users) {
