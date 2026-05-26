@@ -56,6 +56,7 @@ const ocrRoutes          = require('./shared/routes/ocr');
 const featureFlagsRoutes = require('./shared/routes/featureFlags');
 const pdfImportRoutes    = require('./shared/routes/pdfImport');
 const adminPanelRoutes   = require('./shared/routes/admin-panel');
+const qaHubRoutes        = require('./shared/routes/qa-hub.routes');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
@@ -237,6 +238,9 @@ app.use('/api/import', pdfImportRoutes);
 // Admin Panel — super admin only routes (entity classification, user management)
 // authenticateToken + requireSuperAdmin are applied inside adminPanelRoutes
 app.use('/api/admin', adminPanelRoutes);
+// QA Hub — internal smoke-testing session management (super admin only)
+// authenticateToken + requireSuperAdmin are applied inside qaHubRoutes
+app.use('/api/ecosystem/qa-sessions', qaHubRoutes);
 
 // ─── Top-level POS-related Routes (receipts, barcodes, reports, analytics) ──
 if (receiptsRoutes) {
@@ -251,11 +255,16 @@ if (reportsRoutes) {
 }
 
 // ─── Inventory alias (frontend calls /api/inventory) ────────────────────────
+// POS inventory routes are tried first. If they don't handle the request,
+// req.url is restored so the Storehouse inventory module receives the correct path.
 if (posRoutes) {
   app.use('/api/inventory', authenticateToken, (req, res, next) => {
-    // Forward to POS inventory routes
+    const savedUrl = req.url;
     req.url = '/inventory' + req.url;
-    posRoutes(req, res, next);
+    posRoutes(req, res, () => {
+      req.url = savedUrl; // restore path for Storehouse inventory module
+      next();
+    });
   });
 }
 
@@ -437,6 +446,7 @@ app.use('/dashboard', express.static(ecosystemFrontendPath, staticOptions));
 app.get('/dashboard', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'dashboard.html')));
 
 app.get('/admin',     (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'admin.html')));
+app.get('/qa-hub',    (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'ecosystem-qa-hub.html')));
 app.get('/client/:id', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'client-detail.html')));
 
 // ── App frontends ─────────────────────────────────────────────────────────────
@@ -517,17 +527,6 @@ app.get('/inventory/*', (req, res) => {
     if (err) {
       console.error('[inventory] sendFile error:', err.message, '| path:', filePath);
       res.status(500).json({ error: 'Inventory frontend not found', path: filePath });
-    }
-  });
-});
-
-// TEMP DEBUG — remove after confirming /inventory works
-app.get('/inventory-test', (req, res) => {
-  const filePath = path.join(__dirname, 'frontend-inventory', 'index.html');
-  res.sendFile(filePath, (err) => {
-    if (err) {
-      console.error('[inventory-test] error:', err.message, '| path:', filePath);
-      res.status(500).send('FAIL: ' + err.message + ' | path: ' + filePath);
     }
   });
 });

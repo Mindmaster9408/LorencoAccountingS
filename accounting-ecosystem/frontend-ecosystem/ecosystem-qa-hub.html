@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QA Hub — Lorenco Ecosystem</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg:           #0a0818;
+            --surface:      rgba(255,255,255,0.05);
+            --surface-hover:rgba(255,255,255,0.08);
+            --border:       rgba(255,255,255,0.08);
+            --text:         #fff;
+            --text-muted:   rgba(255,255,255,0.45);
+            --accent:       #667eea;
+            --accent-glow:  rgba(102,126,234,0.2);
+            --success:      #10b981;
+            --danger:       #ef4444;
+            --warning:      #f59e0b;
+            --pass:         #10b981;
+            --fail:         #ef4444;
+            --blocked:      #f59e0b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0818 0%, #1a1535 50%, #0f0c29 100%);
+            min-height: 100vh;
+            color: var(--text);
+        }
+
+        /* ── Topbar ── */
+        .topbar {
+            background: rgba(0,0,0,0.4);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(102,126,234,0.2);
+            padding: 0 24px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 12px; }
+        .topbar-logo {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem;
+        }
+        .topbar-title { font-weight: 700; font-size: 0.97rem; }
+        .topbar-badge {
+            font-size: 0.68rem;
+            background: rgba(102,126,234,0.15);
+            border: 1px solid rgba(102,126,234,0.25);
+            color: #a5b4fc;
+            padding: 2px 8px; border-radius: 20px;
+        }
+        .topbar-right { display: flex; align-items: center; gap: 8px; }
+        .btn-nav {
+            padding: 6px 13px; border-radius: 7px; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text-muted);
+            font-size: 0.78rem; cursor: pointer; transition: all 0.15s;
+        }
+        .btn-nav:hover { background: var(--surface-hover); color: var(--text); }
+        .btn-logout {
+            padding: 6px 13px; border-radius: 7px; border: 1px solid rgba(239,68,68,0.2);
+            background: rgba(239,68,68,0.07); color: #fca5a5;
+            font-size: 0.78rem; cursor: pointer; transition: all 0.15s;
+        }
+        .btn-logout:hover { background: rgba(239,68,68,0.14); }
+
+        /* ── Main content ── */
+        .main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+
+        .page-title {
+            font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #fff, rgba(255,255,255,0.65));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 4px;
+        }
+        .page-sub { font-size: 0.83rem; color: var(--text-muted); margin-bottom: 24px; }
+
+        /* ── Cards / panels ── */
+        .panel {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .panel-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 10px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s;
+        }
+        .panel-header:hover { background: rgba(255,255,255,0.03); }
+        .panel-header-icon { font-size: 1rem; }
+        .panel-header-title { flex: 1; font-weight: 700; font-size: 0.92rem; }
+        .panel-header-count {
+            font-size: 0.72rem; padding: 2px 9px; border-radius: 20px;
+            background: var(--accent-glow); color: #a5b4fc; border: 1px solid rgba(102,126,234,0.2);
+        }
+        .panel-header-toggle { color: var(--text-muted); font-size: 0.75rem; transition: transform 0.2s; }
+        .panel-header-toggle.open { transform: rotate(180deg); }
+        .panel-body { padding: 20px; display: none; }
+        .panel-body.open { display: block; }
+
+        /* ── Form ── */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-full { grid-column: 1 / -1; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group label { font-size: 0.8rem; font-weight: 600; color: rgba(255,255,255,0.7); }
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            padding: 8px 11px; border-radius: 8px; border: 1px solid var(--border);
+            background: rgba(255,255,255,0.06); color: var(--text);
+            font-size: 0.87rem; font-family: inherit; transition: border-color 0.13s;
+        }
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none; border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .form-group textarea { resize: vertical; min-height: 70px; }
+        .form-group select option { background: #1a1535; }
+
+        /* ── App / company checkboxes ── */
+        .app-check-grid {
+            display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;
+        }
+        .app-check-label {
+            display: flex; align-items: center; gap: 6px;
+            padding: 5px 11px; border-radius: 8px; border: 1px solid var(--border);
+            background: rgba(255,255,255,0.04);
+            font-size: 0.8rem; cursor: pointer;
+            transition: all 0.13s; user-select: none;
+        }
+        .app-check-label:hover { background: rgba(255,255,255,0.08); }
+        .app-check-label input[type="checkbox"] { accent-color: var(--accent); }
+        .app-check-label.coaching-restricted {
+            border-color: rgba(239,68,68,0.25); color: rgba(255,255,255,0.4);
+        }
+
+        /* ── Buttons ── */
+        .btn-primary {
+            padding: 9px 20px; border-radius: 9px; border: none;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff; font-weight: 700; font-size: 0.85rem; cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+        }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-primary:active { transform: scale(0.98); }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .btn-danger-sm {
+            padding: 5px 12px; border-radius: 7px; border: 1px solid rgba(239,68,68,0.25);
+            background: rgba(239,68,68,0.08); color: #fca5a5;
+            font-size: 0.75rem; cursor: pointer; transition: background 0.13s;
+        }
+        .btn-danger-sm:hover { background: rgba(239,68,68,0.16); }
+
+        .btn-copy {
+            padding: 9px 20px; border-radius: 9px;
+            border: 1px solid rgba(102,126,234,0.3);
+            background: rgba(102,126,234,0.1); color: #a5b4fc;
+            font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: all 0.15s;
+        }
+        .btn-copy:hover { background: rgba(102,126,234,0.18); }
+
+        /* ── Sessions table ── */
+        .sessions-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .sessions-table th {
+            padding: 8px 12px; text-align: left; color: var(--text-muted);
+            font-weight: 600; font-size: 0.73rem; text-transform: uppercase;
+            letter-spacing: 0.05em; border-bottom: 1px solid var(--border);
+        }
+        .sessions-table td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
+        .sessions-table tr:last-child td { border-bottom: none; }
+        .sessions-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+        .status-chip {
+            display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
+        }
+        .chip-active   { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
+        .chip-expired  { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+        .chip-revoked  { background: rgba(239,68,68,0.1); color: #fca5a5; }
+
+        .mode-chip {
+            display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.71rem; font-weight: 600;
+            background: rgba(102,126,234,0.12); color: #a5b4fc; border: 1px solid rgba(102,126,234,0.2);
+        }
+        .apps-pill-row { display: flex; flex-wrap: wrap; gap: 4px; }
+        .apps-pill {
+            font-size: 0.68rem; padding: 1px 7px; border-radius: 4px;
+            background: rgba(255,255,255,0.07); color: var(--text-muted);
+        }
+
+        .empty-state {
+            text-align: center; padding: 40px 20px;
+            color: var(--text-muted); font-size: 0.87rem;
+        }
+        .empty-icon { font-size: 2.5rem; display: block; margin-bottom: 10px; }
+
+        /* ── Smoke Tests ── */
+        .app-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+        .app-tab {
+            padding: 7px 15px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text-muted);
+            font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.13s;
+        }
+        .app-tab:hover { background: var(--surface-hover); }
+        .app-tab.active {
+            background: var(--accent-glow); border-color: rgba(102,126,234,0.35);
+            color: #c7d2fe;
+        }
+        .app-tab .tab-pass-count { font-size: 0.68rem; opacity: 0.75; margin-left: 5px; }
+
+        .checklist { display: flex; flex-direction: column; gap: 8px; }
+        .check-item {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 10px; padding: 12px 14px;
+            display: flex; align-items: flex-start; gap: 12px;
+        }
+        .check-item.status-pass    { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.04); }
+        .check-item.status-fail    { border-color: rgba(239,68,68,0.3);  background: rgba(239,68,68,0.04); }
+        .check-item.status-blocked { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.04); }
+
+        .check-id   { font-size: 0.68rem; color: var(--text-muted); font-family: monospace; white-space: nowrap; padding-top: 2px; }
+        .check-body { flex: 1; min-width: 0; }
+        .check-label { font-size: 0.87rem; font-weight: 500; margin-bottom: 8px; }
+        .check-actions { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+        .status-btn {
+            padding: 4px 11px; border-radius: 6px; font-size: 0.73rem; font-weight: 700;
+            border: 1px solid transparent; cursor: pointer; transition: all 0.13s;
+        }
+        .status-btn.btn-not-tested { background: rgba(255,255,255,0.06); color: var(--text-muted); border-color: var(--border); }
+        .status-btn.btn-not-tested.active { background: rgba(255,255,255,0.12); color: var(--text); }
+        .status-btn.btn-pass   { background: rgba(16,185,129,0.1); color: #34d399; border-color: rgba(16,185,129,0.2); }
+        .status-btn.btn-pass.active  { background: rgba(16,185,129,0.22); }
+        .status-btn.btn-fail   { background: rgba(239,68,68,0.1);  color: #fca5a5; border-color: rgba(239,68,68,0.2); }
+        .status-btn.btn-fail.active  { background: rgba(239,68,68,0.22); }
+        .status-btn.btn-blocked{ background: rgba(245,158,11,0.1); color: #fcd34d; border-color: rgba(245,158,11,0.2); }
+        .status-btn.btn-blocked.active { background: rgba(245,158,11,0.22); }
+
+        .check-notes input {
+            width: 100%; padding: 5px 9px; border-radius: 6px;
+            border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+            color: var(--text); font-size: 0.78rem; font-family: inherit;
+        }
+        .check-notes input:focus { outline: none; border-color: var(--accent); }
+
+        /* ── Summary bar ── */
+        .summary-bar {
+            display: flex; align-items: center; gap: 20px;
+            padding: 12px 16px; border-radius: 10px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            margin-bottom: 16px; flex-wrap: wrap;
+        }
+        .sum-item { display: flex; flex-direction: column; align-items: center; min-width: 48px; }
+        .sum-val { font-size: 1.4rem; font-weight: 800; line-height: 1.1; }
+        .sum-lbl { font-size: 0.63rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .sum-pass    { color: var(--pass); }
+        .sum-fail    { color: var(--fail); }
+        .sum-blocked { color: var(--blocked); }
+        .sum-total   { color: var(--text); }
+        .sum-pct     { color: var(--accent); }
+        .sum-divider { width: 1px; height: 32px; background: var(--border); }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+            padding: 10px 18px; border-radius: 10px; font-size: 0.84rem; font-weight: 600;
+            background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25);
+            color: #34d399;
+            transform: translateY(80px); opacity: 0;
+            transition: all 0.25s;
+            pointer-events: none;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.25); color: #fca5a5; }
+
+        /* ── Restricted warning ── */
+        .restricted-notice {
+            padding: 10px 14px; border-radius: 8px;
+            background: rgba(239,68,68,0.07); border: 1px solid rgba(239,68,68,0.15);
+            color: rgba(255,255,255,0.45); font-size: 0.78rem; margin-top: 8px;
+        }
+
+        @media (max-width: 600px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .sessions-table thead { display: none; }
+            .sessions-table td { display: block; padding: 6px 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <div class="topbar-left">
+        <div class="topbar-logo">🧪</div>
+        <span class="topbar-title">Ecosystem QA Hub</span>
+        <span class="topbar-badge">Internal Only</span>
+    </div>
+    <div class="topbar-right">
+        <button class="btn-nav" onclick="window.location.href='/admin'">&#8592; Admin</button>
+        <button class="btn-nav" onclick="window.location.href='/dashboard'">Dashboard</button>
+        <button class="btn-logout" onclick="logout()">Sign Out</button>
+    </div>
+</div>
+
+<div class="main">
+    <h1 class="page-title">🧪 QA / Smoke Test Hub</h1>
+    <p class="page-sub">Create time-limited, scoped access sessions for internal testers. Run smoke tests across all apps.</p>
+
+    <!-- ── Create QA Session panel ── -->
+    <div class="panel" id="createPanel">
+        <div class="panel-header" onclick="togglePanel('createPanel')">
+            <span class="panel-header-icon">➕</span>
+            <span class="panel-header-title">Create QA Session</span>
+            <span class="panel-header-toggle" id="createPanel-toggle">▼</span>
+        </div>
+        <div class="panel-body open" id="createPanel-body">
+            <form id="createForm" onsubmit="createSession(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>QA Tester Email <span style="color:#ef4444">*</span></label>
+                        <input type="email" id="f-email" placeholder="tester@example.com" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Access Mode <span style="color:#ef4444">*</span></label>
+                        <select id="f-mode">
+                            <option value="VIEW_ONLY">VIEW_ONLY — Read-only navigation</option>
+                            <option value="TEST_ASSISTED">TEST_ASSISTED — Guided smoke checklist</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Expiry Date &amp; Time <span style="color:#ef4444">*</span></label>
+                        <input type="datetime-local" id="f-expiry" required />
+                    </div>
+                    <div class="form-group form-full">
+                        <label>Allowed Apps</label>
+                        <div class="app-check-grid" id="appCheckGrid">
+                            <label class="app-check-label"><input type="checkbox" value="accounting" /> 📊 Accounting</label>
+                            <label class="app-check-label"><input type="checkbox" value="paytime" /> 💼 Paytime</label>
+                            <label class="app-check-label"><input type="checkbox" value="pos" /> 🛒 POS</label>
+                            <label class="app-check-label"><input type="checkbox" value="inventory" /> 📦 Inventory</label>
+                            <label class="app-check-label"><input type="checkbox" value="practice" /> 🏢 Practice Manager</label>
+                            <label class="app-check-label"><input type="checkbox" value="sean" /> 🧠 Sean AI</label>
+                            <label class="app-check-label coaching-restricted" id="coachingCheckWrapper"
+                                   title="Only available when both creator and tester are Ruan">
+                                <input type="checkbox" value="coaching" id="coachingCheck" disabled />
+                                ✈️ Coaching (Ruan only)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group form-full">
+                        <label>Allowed Companies</label>
+                        <div id="companiesCheckGrid" class="app-check-grid" style="min-height:32px">
+                            <span style="color:var(--text-muted);font-size:0.8rem">Loading companies…</span>
+                        </div>
+                    </div>
+                    <div class="form-group form-full">
+                        <label>Instructions / Scope Notes</label>
+                        <textarea id="f-instructions" placeholder="e.g. Test bank import and VAT pages only. Do not post any entries."></textarea>
+                    </div>
+                </div>
+                <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+                    <button type="submit" class="btn-primary" id="createBtn">Create QA Session</button>
+                    <span id="createMsg" style="font-size:0.8rem;color:var(--text-muted)"></span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── All sessions panel ── -->
+    <div class="panel" id="sessionsPanel">
+        <div class="panel-header" onclick="togglePanel('sessionsPanel')">
+            <span class="panel-header-icon">📋</span>
+            <span class="panel-header-title">QA Sessions</span>
+            <span class="panel-header-count" id="sessionsCount">0</span>
+            <span class="panel-header-toggle open" id="sessionsPanel-toggle">▼</span>
+        </div>
+        <div class="panel-body open" id="sessionsPanel-body">
+            <div id="sessionsTableWrap">
+                <div class="empty-state"><span class="empty-icon">📋</span>Loading sessions…</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Smoke Tests panel ── -->
+    <div class="panel" id="smokePanel">
+        <div class="panel-header" onclick="togglePanel('smokePanel')">
+            <span class="panel-header-icon">✅</span>
+            <span class="panel-header-title">Smoke Test Packs</span>
+            <span class="panel-header-count" id="smokeCount">0 / 0 passing</span>
+            <span class="panel-header-toggle open" id="smokePanel-toggle">▼</span>
+        </div>
+        <div class="panel-body open" id="smokePanel-body">
+            <div class="app-tabs" id="appTabs"></div>
+            <div class="summary-bar" id="summaryBar"></div>
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
+                <button class="btn-copy" onclick="copyMarkdownReport()">📋 Copy Markdown Report</button>
+                <button class="btn-nav" onclick="resetChecklist()" style="font-size:0.75rem">Reset All</button>
+            </div>
+            <div class="checklist" id="checklist"></div>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+const API_BASE = window.location.origin;
+const token    = localStorage.getItem('eco_token');
+
+// ── Auth Guard ────────────────────────────────────────────────────────────────
+(function authGuard() {
+    if (!token) { window.location.href = '/login.html'; return; }
+    let isSA = false;
+    if (localStorage.getItem('eco_super_admin') === 'true') isSA = true;
+    if (!isSA) {
+        try { isSA = !!JSON.parse(atob(token.split('.')[1])).isSuperAdmin; } catch(e) {}
+    }
+    if (!isSA) { window.location.href = '/dashboard'; }
+})();
+
+function hdr() { return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }; }
+
+// ── Smoke Test Definitions ────────────────────────────────────────────────────
+const SMOKE_PACKS = {
+    accounting: { label: 'Accounting App',        icon: '📊', tests: [
+        { id: 'acc-01', label: 'App opens, login page renders' },
+        { id: 'acc-02', label: 'Company context badge visible on high-risk pages' },
+        { id: 'acc-03', label: 'Bank page loads with transaction list' },
+        { id: 'acc-04', label: 'Reports page opens (P&L / balance sheet)' },
+        { id: 'acc-05', label: 'VAT page opens with period selector' },
+        { id: 'acc-06', label: 'Audit trail loads with activity log' },
+    ]},
+    paytime: { label: 'Paytime Payroll',          icon: '💼', tests: [
+        { id: 'pay-01', label: 'Company opens and employee list loads' },
+        { id: 'pay-02', label: 'Payroll items page opens' },
+        { id: 'pay-03', label: 'Payrun screen renders' },
+        { id: 'pay-04', label: 'Payslip view renders for an employee' },
+        { id: 'pay-05', label: 'Payroll reports page opens' },
+    ]},
+    pos: { label: 'Checkout Charlie (POS)',        icon: '🛒', tests: [
+        { id: 'pos-01', label: 'Products load on POS screen' },
+        { id: 'pos-02', label: 'Till screen opens and renders' },
+        { id: 'pos-03', label: 'Add item to basket and remove it' },
+        { id: 'pos-04', label: 'Cashup page opens' },
+        { id: 'pos-05', label: 'POS reports page opens' },
+    ]},
+    inventory: { label: 'Inventory / Storehouse',  icon: '📦', tests: [
+        { id: 'inv-01', label: 'Items list loads (raw materials + finished goods)' },
+        { id: 'inv-02', label: 'Stock valuation dashboard opens' },
+        { id: 'inv-03', label: 'BOM / recipe page opens' },
+        { id: 'inv-04', label: 'Work order page opens and status flows work' },
+    ]},
+    practice: { label: 'Practice Manager',         icon: '🏢', tests: [
+        { id: 'pm-01', label: 'Clients list loads' },
+        { id: 'pm-02', label: 'Task / to-do list loads' },
+        { id: 'pm-03', label: 'Billing / admin pages open' },
+        { id: 'pm-04', label: 'Client detail view opens' },
+    ]},
+    sean: { label: 'Sean AI',                      icon: '🧠', tests: [
+        { id: 'sean-01', label: 'Sean webapp opens and auth works' },
+        { id: 'sean-02', label: 'Governance / settings page opens' },
+        { id: 'sean-03', label: 'Suggestions / intelligence logs visible' },
+    ]},
+    coaching: { label: 'Coaching App',             icon: '✈️', restricted: true, tests: [
+        { id: 'coa-01', label: 'Coaching app opens and login works' },
+        { id: 'coa-02', label: 'Client / pilot list loads on dashboard' },
+        { id: 'coa-03', label: 'Journey steps render for a pilot' },
+    ]},
+};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let checklistState = {};   // { [testId]: { status: 'not-tested'|'pass'|'fail'|'blocked', notes: '' } }
+let activeAppTab   = 'accounting';
+let allSessions    = [];
+let currentUserEmail = '';
+
+// Detect if current user is Ruan (Coaching App access)
+const COACHING_ALLOWED = 'ruanvlog@lorenco.co.za';
+try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    currentUserEmail = (payload.email || '').toLowerCase();
+} catch(e) {}
+const isRuan = currentUserEmail === COACHING_ALLOWED;
+
+// Enable Coaching App checkbox only for Ruan
+if (isRuan) {
+    const wrapper = document.getElementById('coachingCheckWrapper');
+    const chk     = document.getElementById('coachingCheck');
+    wrapper.classList.remove('coaching-restricted');
+    chk.disabled = false;
+}
+
+// ── Init all checklist state ──────────────────────────────────────────────────
+function initChecklistState() {
+    Object.values(SMOKE_PACKS).forEach(pack => {
+        pack.tests.forEach(t => {
+            if (!checklistState[t.id]) {
+                checklistState[t.id] = { status: 'not-tested', notes: '' };
+            }
+        });
+    });
+}
+initChecklistState();
+
+// ── Panel toggle ──────────────────────────────────────────────────────────────
+function togglePanel(panelId) {
+    const body    = document.getElementById(panelId + '-body');
+    const toggle  = document.getElementById(panelId + '-toggle');
+    const isOpen  = body.classList.contains('open');
+    body.classList.toggle('open', !isOpen);
+    toggle.classList.toggle('open', !isOpen);
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isError ? ' error' : '') + ' show';
+    setTimeout(() => { t.className = 'toast' + (isError ? ' error' : ''); }, 3000);
+}
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+function logout() {
+    localStorage.removeItem('eco_token');
+    localStorage.removeItem('eco_user');
+    localStorage.removeItem('eco_super_admin');
+    window.location.href = '/login.html';
+}
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+function fmtExpiry(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = d - now;
+    if (diff < 0) return `Expired ${d.toLocaleDateString()}`;
+    if (diff < 3600000) return `Expires in ${Math.floor(diff/60000)}m`;
+    if (diff < 86400000) return `Expires in ${Math.floor(diff/3600000)}h`;
+    return d.toLocaleString();
+}
+
+// ── Load companies for the create form ───────────────────────────────────────
+async function loadCompanies() {
+    try {
+        const res  = await fetch(`${API_BASE}/api/companies`, { headers: hdr() });
+        const data = await res.json();
+        const companies = (data.companies || []).sort((a,b) => a.company_name.localeCompare(b.company_name));
+        const grid = document.getElementById('companiesCheckGrid');
+        if (!companies.length) {
+            grid.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem">No companies found</span>';
+            return;
+        }
+        grid.innerHTML = companies.map(c => `
+            <label class="app-check-label">
+                <input type="checkbox" name="company" value="${c.id}" />
+                ${c.trading_name || c.company_name}
+            </label>
+        `).join('');
+    } catch(e) {
+        document.getElementById('companiesCheckGrid').innerHTML =
+            '<span style="color:var(--text-muted);font-size:0.8rem">Could not load companies</span>';
+    }
+}
+
+// ── Load sessions ─────────────────────────────────────────────────────────────
+async function loadSessions() {
+    try {
+        const res  = await fetch(`${API_BASE}/api/ecosystem/qa-sessions`, { headers: hdr() });
+        const data = await res.json();
+        allSessions = data.sessions || [];
+        renderSessionsTable();
+    } catch(e) {
+        document.getElementById('sessionsTableWrap').innerHTML =
+            '<div class="empty-state"><span class="empty-icon">⚠️</span>Failed to load sessions</div>';
+    }
+}
+
+function renderSessionsTable() {
+    const wrap = document.getElementById('sessionsTableWrap');
+    document.getElementById('sessionsCount').textContent = allSessions.length;
+
+    if (!allSessions.length) {
+        wrap.innerHTML = '<div class="empty-state"><span class="empty-icon">📋</span>No QA sessions yet. Create one above.</div>';
+        return;
+    }
+
+    const rows = allSessions.map(s => {
+        const apps = (s.allowed_apps || []).map(a =>
+            `<span class="apps-pill">${SMOKE_PACKS[a] ? SMOKE_PACKS[a].icon + ' ' + a : a}</span>`
+        ).join('');
+        const revokeBtn = s.status === 'active'
+            ? `<button class="btn-danger-sm" onclick="revokeSession('${s.id}')">Revoke</button>`
+            : '';
+        return `
+            <tr>
+                <td style="font-family:monospace;font-size:0.71rem;color:var(--text-muted)">${s.id.substring(0,8)}…</td>
+                <td>${s.qa_user_email}</td>
+                <td><span class="mode-chip">${s.access_mode}</span></td>
+                <td><div class="apps-pill-row">${apps || '<span style="color:var(--text-muted)">None</span>'}</div></td>
+                <td style="font-size:0.78rem;color:var(--text-muted)">${fmtExpiry(s.expires_at)}</td>
+                <td><span class="status-chip chip-${s.status}">${s.status}</span></td>
+                <td>${revokeBtn}</td>
+            </tr>
+        `;
+    }).join('');
+
+    wrap.innerHTML = `
+        <table class="sessions-table">
+            <thead><tr>
+                <th>ID</th><th>Tester</th><th>Mode</th><th>Apps</th><th>Expiry</th><th>Status</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+// ── Create session ────────────────────────────────────────────────────────────
+async function createSession(e) {
+    e.preventDefault();
+    const btn = document.getElementById('createBtn');
+    const msg = document.getElementById('createMsg');
+    btn.disabled = true;
+    msg.textContent = 'Creating…';
+
+    const allowedApps = [...document.querySelectorAll('#appCheckGrid input[type=checkbox]:checked')]
+        .map(cb => cb.value);
+    const allowedCompanyIds = [...document.querySelectorAll('#companiesCheckGrid input[name=company]:checked')]
+        .map(cb => parseInt(cb.value));
+
+    const payload = {
+        qaUserEmail:       document.getElementById('f-email').value.trim(),
+        accessMode:        document.getElementById('f-mode').value,
+        allowedApps,
+        allowedCompanyIds,
+        expiresAt:         new Date(document.getElementById('f-expiry').value).toISOString(),
+        instructions:      document.getElementById('f-instructions').value.trim() || null,
+    };
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/ecosystem/qa-sessions`, {
+            method: 'POST', headers: hdr(), body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to create session');
+        showToast('✅ QA session created');
+        msg.textContent = '';
+        document.getElementById('createForm').reset();
+        await loadSessions();
+    } catch(err) {
+        msg.textContent = err.message;
+        showToast(err.message, true);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ── Revoke session ────────────────────────────────────────────────────────────
+async function revokeSession(id) {
+    if (!confirm('Revoke this QA session? The tester will lose access immediately.')) return;
+    try {
+        const res  = await fetch(`${API_BASE}/api/ecosystem/qa-sessions/${id}/revoke`, {
+            method: 'POST', headers: hdr()
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to revoke');
+        showToast('Session revoked');
+        await loadSessions();
+    } catch(err) {
+        showToast(err.message, true);
+    }
+}
+
+// ── Smoke Tests ───────────────────────────────────────────────────────────────
+function getVisiblePacks() {
+    return Object.entries(SMOKE_PACKS).filter(([key, pack]) => {
+        if (pack.restricted && !isRuan) return false;
+        return true;
+    });
+}
+
+function renderAppTabs() {
+    const tabs = document.getElementById('appTabs');
+    tabs.innerHTML = getVisiblePacks().map(([key, pack]) => {
+        const total  = pack.tests.length;
+        const passed = pack.tests.filter(t => checklistState[t.id]?.status === 'pass').length;
+        const isActive = key === activeAppTab;
+        return `
+            <button class="app-tab ${isActive ? 'active' : ''}" onclick="switchTab('${key}')">
+                ${pack.icon} ${pack.label}
+                <span class="tab-pass-count">${passed}/${total}</span>
+            </button>
+        `;
+    }).join('');
+}
+
+function switchTab(appKey) {
+    activeAppTab = appKey;
+    renderAppTabs();
+    renderChecklist();
+    renderSummary();
+}
+
+function renderChecklist() {
+    const pack = SMOKE_PACKS[activeAppTab];
+    if (!pack) return;
+
+    const list = document.getElementById('checklist');
+    list.innerHTML = pack.tests.map(t => {
+        const state  = checklistState[t.id] || { status: 'not-tested', notes: '' };
+        const s      = state.status;
+        return `
+            <div class="check-item status-${s}" id="ci-${t.id}">
+                <span class="check-id">${t.id}</span>
+                <div class="check-body">
+                    <div class="check-label">${t.label}</div>
+                    <div class="check-actions">
+                        <button class="status-btn btn-not-tested ${s==='not-tested'?'active':''}"
+                            onclick="setStatus('${t.id}','not-tested')">Not Tested</button>
+                        <button class="status-btn btn-pass ${s==='pass'?'active':''}"
+                            onclick="setStatus('${t.id}','pass')">✓ Pass</button>
+                        <button class="status-btn btn-fail ${s==='fail'?'active':''}"
+                            onclick="setStatus('${t.id}','fail')">✗ Fail</button>
+                        <button class="status-btn btn-blocked ${s==='blocked'?'active':''}"
+                            onclick="setStatus('${t.id}','blocked')">⚠ Blocked</button>
+                    </div>
+                    <div class="check-notes">
+                        <input type="text" placeholder="Notes / issue ref…"
+                            value="${escHtml(state.notes)}"
+                            oninput="setNotes('${t.id}', this.value)" />
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function setStatus(testId, status) {
+    if (!checklistState[testId]) checklistState[testId] = { status: 'not-tested', notes: '' };
+    checklistState[testId].status = status;
+    const item = document.getElementById('ci-' + testId);
+    if (item) {
+        item.className = 'check-item status-' + status;
+        item.querySelectorAll('.status-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.classList.contains('btn-' + status)) btn.classList.add('active');
+        });
+    }
+    renderSummary();
+    renderAppTabs();
+    updateSmokeCount();
+}
+
+function setNotes(testId, notes) {
+    if (!checklistState[testId]) checklistState[testId] = { status: 'not-tested', notes: '' };
+    checklistState[testId].notes = notes;
+}
+
+function renderSummary() {
+    const pack = SMOKE_PACKS[activeAppTab];
+    if (!pack) return;
+    let total = 0, pass = 0, fail = 0, blocked = 0, notTested = 0;
+    pack.tests.forEach(t => {
+        const s = checklistState[t.id]?.status || 'not-tested';
+        total++;
+        if (s === 'pass')       pass++;
+        else if (s === 'fail')  fail++;
+        else if (s === 'blocked') blocked++;
+        else notTested++;
+    });
+    const pct = total ? Math.round((pass / total) * 100) : 0;
+    document.getElementById('summaryBar').innerHTML = `
+        <div class="sum-item"><div class="sum-val sum-total">${total}</div><div class="sum-lbl">Total</div></div>
+        <div class="sum-divider"></div>
+        <div class="sum-item"><div class="sum-val sum-pass">${pass}</div><div class="sum-lbl">Pass</div></div>
+        <div class="sum-item"><div class="sum-val sum-fail">${fail}</div><div class="sum-lbl">Fail</div></div>
+        <div class="sum-item"><div class="sum-val sum-blocked">${blocked}</div><div class="sum-lbl">Blocked</div></div>
+        <div class="sum-item"><div class="sum-val" style="color:var(--text-muted)">${notTested}</div><div class="sum-lbl">Not Tested</div></div>
+        <div class="sum-divider"></div>
+        <div class="sum-item"><div class="sum-val sum-pct">${pct}%</div><div class="sum-lbl">Pass Rate</div></div>
+    `;
+}
+
+function updateSmokeCount() {
+    let totalPass = 0, totalAll = 0;
+    getVisiblePacks().forEach(([key, pack]) => {
+        pack.tests.forEach(t => {
+            totalAll++;
+            if (checklistState[t.id]?.status === 'pass') totalPass++;
+        });
+    });
+    document.getElementById('smokeCount').textContent = `${totalPass} / ${totalAll} passing`;
+}
+
+function resetChecklist() {
+    if (!confirm('Reset all checklist results? This cannot be undone.')) return;
+    Object.keys(checklistState).forEach(k => { checklistState[k] = { status: 'not-tested', notes: '' }; });
+    renderChecklist();
+    renderSummary();
+    renderAppTabs();
+    updateSmokeCount();
+}
+
+// ── Copy Markdown Report ──────────────────────────────────────────────────────
+function copyMarkdownReport() {
+    const now = new Date().toLocaleString();
+    let md = `# Lorenco Ecosystem — QA Smoke Test Report\n\n**Generated:** ${now}\n\n`;
+    md += `---\n\n`;
+
+    let grandTotal = 0, grandPass = 0, grandFail = 0, grandBlocked = 0;
+
+    getVisiblePacks().forEach(([key, pack]) => {
+        let pass = 0, fail = 0, blocked = 0, notTested = 0;
+        const rows = pack.tests.map(t => {
+            const state  = checklistState[t.id] || { status: 'not-tested', notes: '' };
+            const s      = state.status;
+            if (s === 'pass')    pass++;
+            else if (s === 'fail')    fail++;
+            else if (s === 'blocked') blocked++;
+            else notTested++;
+            const statusEmoji = { 'pass':'✅', 'fail':'❌', 'blocked':'⚠️', 'not-tested':'⬜' }[s];
+            const notesCell = state.notes ? ` — _${state.notes}_` : '';
+            return `| ${t.id} | ${t.label} | ${statusEmoji} ${s.toUpperCase()}${notesCell} |`;
+        });
+        const total = pack.tests.length;
+        grandTotal   += total;
+        grandPass    += pass;
+        grandFail    += fail;
+        grandBlocked += blocked;
+
+        md += `## ${pack.icon} ${pack.label}\n\n`;
+        md += `**Summary:** ${pass}/${total} passing`;
+        if (fail)    md += ` | ${fail} failed`;
+        if (blocked) md += ` | ${blocked} blocked`;
+        if (notTested) md += ` | ${notTested} not tested`;
+        md += `\n\n| ID | Test | Result |\n|---|---|---|\n`;
+        md += rows.join('\n') + '\n\n';
+    });
+
+    md += `---\n\n## Overall Summary\n\n`;
+    md += `| Total | Pass | Fail | Blocked | Pass Rate |\n|---|---|---|---|---|\n`;
+    const pct = grandTotal ? Math.round((grandPass/grandTotal)*100) : 0;
+    md += `| ${grandTotal} | ${grandPass} | ${grandFail} | ${grandBlocked} | ${pct}% |\n`;
+
+    navigator.clipboard.writeText(md)
+        .then(() => showToast('📋 Markdown report copied to clipboard'))
+        .catch(() => {
+            const ta = document.createElement('textarea');
+            ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+            document.body.removeChild(ta);
+            showToast('📋 Markdown report copied');
+        });
+}
+
+function escHtml(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Set default expiry (24h from now) ────────────────────────────────────────
+(function setDefaultExpiry() {
+    const d = new Date(Date.now() + 86400000);
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+        .toISOString().slice(0, 16);
+    document.getElementById('f-expiry').value = local;
+})();
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+(async function init() {
+    await Promise.all([ loadCompanies(), loadSessions() ]);
+    renderAppTabs();
+    renderChecklist();
+    renderSummary();
+    updateSmokeCount();
+})();
+</script>
+</body>
+</html>
