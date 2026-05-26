@@ -201,21 +201,30 @@ router.get('/practice/:practiceId', async (req, res) => {
                + `<td style="text-align:center">${actEmps}</td><td>${payTag}</td></tr>`;
         }).join('');
 
-    // ── Payroll detail rows ───────────────────────────────────────────────────
-    const payrollClients   = clients.filter(c => Array.isArray(c.apps) && c.apps.includes('payroll'));
-    const payrollTableBody = payrollClients.length === 0
-      ? '<tr><td colspan="8" class="empty-row">Geen payroll-kli\u00ebnte vir hierdie praktyk.</td></tr>'
+    // -- Payroll detail rows ----------------------------------------------------------
+    const payrollClients = clients.filter(c => Array.isArray(c.apps) && c.apps.includes('payroll'));
+
+    let totActEmps = 0, totPaidCt = 0, totRunCt = 0, totSnapCt = 0;
+
+    const payrollRows = payrollClients.length === 0
+      ? '<tr><td colspan="8" class="empty-row">Geen payroll-kliënte vir hierdie praktyk.</td></tr>'
       : payrollClients.map(client => {
           const cid        = client.client_company_id;
           const actEmps    = cid ? (activeEmpCount[cid] || 0) : 0;
           const runCt      = cid ? (payrollRunCount[cid] || 0) : 0;
           const snapCt     = cid ? (payslipCount[cid] || 0) : 0;
           const paidCt     = cid ? (uniquePaidSet[cid]?.size || 0) : 0;
-          const uifStr     = cid != null ? (uifMap[cid] !== false ? 'Ja' : 'Nee') : '\u2014';
-          const sdlStr     = cid != null ? (sdlMap[cid] !== false ? 'Ja' : 'Nee') : '\u2014';
+          const uifStr     = cid != null ? (uifMap[cid] !== false ? 'Ja' : 'Nee') : '—';
+          const sdlStr     = cid != null ? (sdlMap[cid] !== false ? 'Ja' : 'Nee') : '—';
           const clientName = cid ? (companyNameMap[cid] || client.name) : client.name;
           const notes      = runCt === 0 ? 'Geen lopie hierdie tydperk' : '';
           const rowCls     = runCt === 0 ? ' class="row-warn"' : '';
+
+          totActEmps += actEmps;
+          totPaidCt  += paidCt;
+          totRunCt   += runCt;
+          totSnapCt  += snapCt;
+
           return `<tr${rowCls}>`
                + `<td>${e(clientName)}</td>`
                + `<td style="text-align:center">${actEmps}</td>`
@@ -224,9 +233,21 @@ router.get('/practice/:practiceId', async (req, res) => {
                + `<td style="text-align:center">${snapCt}</td>`
                + `<td style="text-align:center">${uifStr}</td>`
                + `<td style="text-align:center">${sdlStr}</td>`
-               + `<td>${notes ? `<em style="color:#a0aec0;font-size:11px">${e(notes)}</em>` : ''}</td>`
+               + `<td>${notes ? `<em style="color:#a0aec0;font-size:11px">${e(notes)}</em>` : ""}</td>`
                + `</tr>`;
         }).join('');
+
+    const payrollTotalsRow = payrollClients.length === 0 ? '' :
+        '<tr class="totals-row">'
+      + '<td><strong>Totaal (' + payrollClients.length + ' kliënte)</strong></td>'
+      + `<td style="text-align:center"><strong>${totActEmps}</strong></td>`
+      + `<td style="text-align:center"><strong>${totPaidCt}</strong></td>`
+      + `<td style="text-align:center"><strong>${totRunCt}</strong></td>`
+      + `<td style="text-align:center"><strong>${totSnapCt}</strong></td>`
+      + '<td colspan="3"></td>'
+      + '</tr>';
+
+    const payrollTableBody = payrollRows + payrollTotalsRow;
 
     // ── HTML page assembly ────────────────────────────────────────────────────
     const pending = mod =>
@@ -266,6 +287,7 @@ router.get('/practice/:practiceId', async (req, res) => {
       'td{padding:8px 12px;border-bottom:1px solid #edf2f7;color:#2d3748;vertical-align:top}',
       'tr:last-child td{border-bottom:none}',
       '.row-warn td{background:#fffff8}',
+      '.totals-row td{background:#edf2f7;border-top:2px solid #cbd5e0;font-size:12px}',
       '.empty-row{color:#718096;font-style:italic;text-align:center!important;padding:24px}',
       '.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:500}',
       '.tag-ok{background:#c6f6d5;color:#276749}.tag-warn{background:#fef3c7;color:#92400e}.tag-none{background:#edf2f7;color:#718096}',
