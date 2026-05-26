@@ -276,6 +276,10 @@
             background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.2); color: #6ee7b7;
         }
         .btn-adopt-action:hover { background: rgba(16,185,129,0.16); border-color: rgba(16,185,129,0.4); }
+        .btn-report-action {
+            background: rgba(99,179,237,0.08); border-color: rgba(99,179,237,0.22); color: #90cdf4;
+        }
+        .btn-report-action:hover { background: rgba(99,179,237,0.18); border-color: rgba(99,179,237,0.45); }
         /* Unclassified type badge — shown when account_holder_type is null (heuristic fallback) */
         .holder-type-unclassified {
             background: rgba(245,158,11,0.12) !important;
@@ -735,6 +739,40 @@
         </div>
     </div>
 
+    <!-- Billing Report Modal -->
+    <div class="modal-overlay" id="billingReportModal">
+        <div class="modal">
+            <h2>&#128202; Trek Verslag</h2>
+            <p id="billingReportModalSubtitle" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:20px;margin-top:-14px;"></p>
+            <div class="form-group">
+                <label>Maand</label>
+                <select id="billingReportMonth">
+                    <option value="1">Januarie</option>
+                    <option value="2">Februarie</option>
+                    <option value="3">Maart</option>
+                    <option value="4">April</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Junie</option>
+                    <option value="7">Julie</option>
+                    <option value="8">Augustus</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Jaar</label>
+                <select id="billingReportYear"></select>
+            </div>
+            <div id="billingReportError" style="display:none;color:#f87171;font-size:0.8rem;margin-bottom:12px;"></div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeBillingReportModal()">Kanselleer</button>
+                <button class="btn-submit" id="btnGenerateReport" onclick="generateBillingReport()">&#128202; Genereer XLSX</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
@@ -1051,6 +1089,10 @@
                         <button class="btn-holder-action btn-adopt-action"
                             onclick="openAdoptModal(${firmId}, '${esc(firmName).replace(/'/g,"\\'")}')">
                             &#8853; Adopt
+                        </button>
+                        <button class="btn-holder-action btn-report-action"
+                            onclick="openBillingReportModal(${firmId}, '${esc(firmName).replace(/'/g,"\\'")}')">
+                            &#128202; Trek Verslag
                         </button>
                     </span>
                     <span class="holder-arrow ${isExpanded ? 'open' : ''}">&#9660;</span>
@@ -1754,6 +1796,106 @@
                 applyFilters();
             } catch(err) {
                 console.error('reloadClientsData error:', err.message);
+            }
+        }
+
+        // ── Billing Report Modal ──────────────────────────────────────────────
+        let _billingReportFirmId   = null;
+        let _billingReportFirmName = null;
+
+        function openBillingReportModal(firmId, firmName) {
+            _billingReportFirmId   = firmId;
+            _billingReportFirmName = firmName;
+
+            document.getElementById('billingReportModalSubtitle').textContent =
+                `Praktyk: ${firmName}`;
+            document.getElementById('billingReportError').style.display = 'none';
+            document.getElementById('billingReportError').textContent   = '';
+
+            // Populate year dropdown: current year - 2 through current year + 1
+            const yearSel    = document.getElementById('billingReportYear');
+            const currentYear = new Date().getFullYear();
+            yearSel.innerHTML = '';
+            for (let y = currentYear + 1; y >= currentYear - 2; y--) {
+                const opt = document.createElement('option');
+                opt.value       = y;
+                opt.textContent = y;
+                if (y === currentYear) opt.selected = true;
+                yearSel.appendChild(opt);
+            }
+
+            // Pre-select previous month as default
+            const prevMonth = new Date();
+            prevMonth.setDate(1);
+            prevMonth.setMonth(prevMonth.getMonth() - 1);
+            document.getElementById('billingReportMonth').value = prevMonth.getMonth() + 1;
+            if (prevMonth.getFullYear() !== currentYear) {
+                yearSel.value = prevMonth.getFullYear();
+            }
+
+            const btn = document.getElementById('btnGenerateReport');
+            btn.disabled    = false;
+            btn.textContent = '📊 Genereer XLSX';
+
+            document.getElementById('billingReportModal').classList.add('open');
+        }
+
+        function closeBillingReportModal() {
+            document.getElementById('billingReportModal').classList.remove('open');
+            _billingReportFirmId   = null;
+            _billingReportFirmName = null;
+        }
+
+        async function generateBillingReport() {
+            if (!_billingReportFirmId) return;
+
+            const month = parseInt(document.getElementById('billingReportMonth').value, 10);
+            const year  = parseInt(document.getElementById('billingReportYear').value, 10);
+            const errEl = document.getElementById('billingReportError');
+            errEl.style.display = 'none';
+            errEl.textContent   = '';
+
+            const btn = document.getElementById('btnGenerateReport');
+            btn.disabled    = true;
+            btn.textContent = '⏳ Besig om te genereer…';
+
+            try {
+                const url = `${API_BASE}/api/ecosystem/billing-report/practice/${encodeURIComponent(_billingReportFirmId)}?month=${month}&year=${year}`;
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) {
+                    let errMsg = `Fout ${res.status}`;
+                    try {
+                        const errData = await res.json();
+                        errMsg = errData.error || errMsg;
+                    } catch (_) { /* response was not JSON */ }
+                    throw new Error(errMsg);
+                }
+
+                // Trigger browser download from the blob
+                const blob     = await res.blob();
+                const blobUrl  = URL.createObjectURL(blob);
+                const anchor   = document.createElement('a');
+                anchor.href    = blobUrl;
+                // Extract filename from Content-Disposition header if present
+                const disposition = res.headers.get('Content-Disposition') || '';
+                const fnMatch     = disposition.match(/filename="?([^";\n]+)"?/);
+                anchor.download   = fnMatch ? fnMatch[1] : `Billing_Report_${year}_${String(month).padStart(2,'0')}.xlsx`;
+                document.body.appendChild(anchor);
+                anchor.click();
+                document.body.removeChild(anchor);
+                URL.revokeObjectURL(blobUrl);
+
+                showToast('&#9989; Verslag afgelaai');
+                closeBillingReportModal();
+            } catch (err) {
+                errEl.textContent   = '❌ ' + err.message;
+                errEl.style.display = 'block';
+            } finally {
+                btn.disabled    = false;
+                btn.textContent = '📊 Genereer XLSX';
             }
         }
 

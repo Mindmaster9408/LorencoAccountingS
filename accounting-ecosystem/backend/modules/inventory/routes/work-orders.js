@@ -19,7 +19,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { auditFromReq } = require('../../../middleware/audit');
 const costingService = require('../services/costingService');
-const { adjustStock } = require('./stock-helpers');
+const { adjustStockTx } = require('../services/stockMutationService');
 
 const router = express.Router();
 
@@ -299,7 +299,7 @@ router.post('/:id/complete', async (req, res) => {
   );
 
   // Atomic stock-in for finished goods — cost basis from finalized WO cost
-  const rpcResult = await adjustStock(supabase, {
+  const rpcResult = await adjustStockTx(supabase, {
     companyId:    req.companyId,
     itemId:       wo.item_id,
     delta:        qtyProduced,
@@ -307,7 +307,7 @@ router.post('/:id/complete', async (req, res) => {
     warehouseId:  null,
     reference:    `WO-${req.params.id}`,
     notes:        'Received from work order completion',
-    costPrice:    woUnitCost || null,
+    unitCost:     woUnitCost || null,
     createdBy:    req.user.userId,
     sourceType:   'wo_complete',
     sourceId:     String(req.params.id)
@@ -407,7 +407,7 @@ router.post('/:id/issue-materials', async (req, res) => {
     // Cost at time of issue = item's current weighted average (best available cost basis)
     const issueCost = parseFloat(itemRow.average_cost) || parseFloat(itemRow.cost_price) || null;
 
-    const issueResult = await adjustStock(supabase, {
+    const issueResult = await adjustStockTx(supabase, {
       companyId:    req.companyId,
       itemId:       mat.item_id,
       delta:        -qty,
@@ -415,7 +415,7 @@ router.post('/:id/issue-materials', async (req, res) => {
       warehouseId:  null,
       reference:    `WO-${req.params.id}`,
       notes:        `Issued to work order ${req.params.id}`,
-      costPrice:    issueCost,
+      unitCost:     issueCost,
       createdBy:    req.user.userId,
       sourceType:   'wo_issue',
       sourceId:     String(req.params.id)

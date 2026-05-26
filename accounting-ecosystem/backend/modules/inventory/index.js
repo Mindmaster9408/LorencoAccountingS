@@ -14,7 +14,7 @@ const bomRoutes = require('./routes/boms');
 const workOrderRoutes = require('./routes/work-orders');
 const inventoryReportsRoutes = require('./routes/reports');
 const costingService = require('./services/costingService');
-const { adjustStock } = require('./routes/stock-helpers');
+const { adjustStockTx } = require('./services/stockMutationService');
 
 const router = express.Router();
 
@@ -389,8 +389,7 @@ router.post('/movements', async (req, res) => {
   const delta = ['in', 'return'].includes(type) ? qty : (type === 'out' ? -qty : 0);
 
   if (delta !== 0) {
-    // Use adjustStock helper (replaces broken adjust_inventory_stock RPC)
-    const result = await adjustStock(supabase, {
+    const result = await adjustStockTx(supabase, {
       companyId:    req.companyId,
       itemId:       parseInt(item_id),
       delta,
@@ -398,7 +397,7 @@ router.post('/movements', async (req, res) => {
       warehouseId:  warehouse_id ? parseInt(warehouse_id) : null,
       reference:    reference || null,
       notes:        notes || null,
-      costPrice:    cost_price ? parseFloat(cost_price) : null,
+      unitCost:     cost_price ? parseFloat(cost_price) : null,
       createdBy:    req.user.userId,
       sourceType:   'manual',
       sourceId:     null
@@ -477,7 +476,7 @@ router.post('/quick-receive', async (req, res) => {
     .single();
   if (!item) return res.status(404).json({ error: 'Item not found' });
 
-  const result = await adjustStock(supabase, {
+  const result = await adjustStockTx(supabase, {
     companyId:    req.companyId,
     itemId:       parseInt(item_id),
     delta:        qty,
@@ -485,7 +484,7 @@ router.post('/quick-receive', async (req, res) => {
     warehouseId:  warehouse_id ? parseInt(warehouse_id) : null,
     reference,
     notes:        notes || `Quick receive from ${supplier.name}`,
-    costPrice:    cost,
+    unitCost:     cost,
     createdBy:    req.user.userId,
     sourceType:   'quick_receive',
     sourceId:     reference
@@ -722,23 +721,23 @@ router.post('/purchase-orders/:id/receive', async (req, res) => {
       .eq('id', poItem.id);
     if (lineUpdateErr) return res.status(500).json({ error: lineUpdateErr.message });
 
-    // Atomic stock-in via RPC — unit_price from PO line feeds weighted average costing
-    const { data: rpcResult, error: rpcErr } = await supabase.rpc('adjust_inventory_stock', {
-      p_company_id:    req.companyId,
-      p_item_id:       poItem.item_id,
-      p_delta:         recQty,
-      p_movement_type: 'in',
-      p_warehouse_id:  null,
-      p_reference:     `PO-${req.params.id}`,
-      p_notes:         notes || `Received from PO #${req.params.id}`,
-      p_cost_price:    poItem.unit_price ? parseFloat(poItem.unit_price) : null,
-      p_created_by:    req.user.userId,
-      p_source_type:   'po_receive',
-      p_source_id:     String(req.params.id)
+    // Atomic stock-in via service — unit_price from PO line feeds weighted average costing
+    const rpcResult = await adjustStockTx(supabase, {
+      companyId:    req.companyId,
+      itemId:       poItem.item_id,
+      delta:        recQty,
+      movementType: 'in',
+      warehouseId:  null,
+      reference:    `PO-${req.params.id}`,
+      notes:        notes || `Received from PO #${req.params.id}`,
+      unitCost:     poItem.unit_price ? parseFloat(poItem.unit_price) : null,
+      createdBy:    req.user.userId,
+      sourceType:   'po_receive',
+      sourceId:     String(req.params.id)
     });
 
-    if (rpcErr || !rpcResult?.success) {
-      return res.status(500).json({ error: rpcErr?.message || rpcResult?.error || 'Stock update failed' });
+    if (!rpcResult.success) {
+      return res.status(500).json({ error: rpcResult.error || 'Stock update failed' });
     }
   }
 

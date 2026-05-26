@@ -1,5 +1,10 @@
 # Session Handoff — Inventory Demo 1 Month
 
+> **CLOUD-ONLY OPERATING RULE:**  
+> Lorenco Storehouse must be demonstrated and operated through the deployed Lorenco Ecosystem cloud app only:  
+> **https://lorenco.zeabur.app/inventory**  
+> This is not a localhost demo and not a separate app. All future work builds into the existing deployed Storehouse app.
+
 **Date:** 2026-05-26  
 **Status: DEMO LOCKED — 20/20 TESTS PASS — READY FOR CLIENT PRESENTATION**
 
@@ -66,24 +71,23 @@ All inventory queries company-scoped via JWT `companyId`.
 
 ## Deployment State
 
-- Server runs locally: `node backend/server.js` from `accounting-ecosystem/backend/`
+- **Live cloud URL:** `https://lorenco.zeabur.app/inventory`
 - Hosted on Zeabur (production). Zeabur rules: see `CLAUDE.md` Part C. Do not add `zbpack.json`.
 - No new migrations required for this demo session.
 - No new environment variables required.
+
+> **Developer note (not for demo/client use):** To run locally for development, `cd accounting-ecosystem/backend && node server.js`.
 
 ---
 
 ## How to Run the Demo
 
-1. Start the server:
-   ```
-   cd accounting-ecosystem/backend
-   node server.js
-   ```
-2. Open browser: `http://localhost:3000/inventory`
-3. Log in as `ruanvlog@lorenco.co.za`
-4. Pre-load demo data if needed (see `05_client_demo_script.md` — "Before the Demo" section)
-5. Follow the click-by-click walkthrough in `05_client_demo_script.md`
+> **CLOUD-ONLY:** Demo runs through the live deployed app. No local server required.
+
+1. Open browser: `https://lorenco.zeabur.app/inventory`
+2. Log in as `ruanvlog@lorenco.co.za`
+3. Pre-load demo data if needed (see `05_client_demo_script.md` — "Before the Demo" section)
+4. Follow the click-by-click walkthrough in `05_client_demo_script.md`
 
 ---
 

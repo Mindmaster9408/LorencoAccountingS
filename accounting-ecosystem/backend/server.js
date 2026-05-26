@@ -49,7 +49,8 @@ const usersRoutes = require('./shared/routes/users');
 const employeesRoutes = require('./shared/routes/employees');
 const auditRoutes = require('./shared/routes/audit');
 const customersRoutes = require('./shared/routes/customers');
-const ecoClientsRoutes = require('./shared/routes/eco-clients');
+const ecoClientsRoutes    = require('./shared/routes/eco-clients');
+const billingReportRoutes = require('./shared/routes/billing-report');
 // Global KV store — all ecosystem frontend business data (NEVER in localStorage)
 const globalKvRoutes = require('./shared/routes/kv');
 const ocrRoutes          = require('./shared/routes/ocr');
@@ -225,6 +226,8 @@ app.use('/api/users', authenticateToken, usersRoutes);
 app.use('/api/employees', authenticateToken, employeesRoutes);
 app.use('/api/audit', authenticateToken, auditRoutes);
 app.use('/api/eco-clients', authenticateToken, ecoClientsRoutes);
+// Billing report — super admin only (requireSuperAdmin applied inside billingReportRoutes)
+app.use('/api/ecosystem/billing-report', authenticateToken, billingReportRoutes);
 app.use('/api/customers', authenticateToken, customersRoutes);
 // Global KV store — ecosystem-wide cloud persistence (NO browser localStorage for business data)
 app.use('/api/kv', globalKvRoutes);

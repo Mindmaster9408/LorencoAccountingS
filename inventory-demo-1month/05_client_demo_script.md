@@ -1,5 +1,10 @@
 # Lorenco Storehouse — Client Demo Script
 
+> **CLOUD-ONLY OPERATING RULE:**  
+> Lorenco Storehouse must be demonstrated and operated through the deployed Lorenco Ecosystem cloud app only:  
+> **https://lorenco.zeabur.app/inventory**  
+> This is not a localhost demo and not a separate app. All future work builds into the existing deployed Storehouse app.
+
 **For:** Ruan — client-facing demo presentation  
 **Date prepared:** 2026-05-26  
 **Demo duration:** 20–30 minutes  
@@ -13,7 +18,7 @@
 
 The system has live data from the test run. For a clean named demo, do this before the client sits down:
 
-1. Open the app at `http://localhost:3000/inventory`
+1. Open the app at `https://lorenco.zeabur.app/inventory`
 2. Create a raw material: **"Steel Rod 10mm"** — unit: `kg`, item type: Raw Material, SKU: `STL-001`
 3. Create a finished good: **"Cabinet Frame"** — unit: `unit`, item type: Finished Good, SKU: `CAB-001`
 4. Receive 200 kg of Steel Rod at R45.00/kg (quick-receive)
@@ -39,7 +44,7 @@ The system has live data from the test run. For a clean named demo, do this befo
 
 ### Step 1 — Open Storehouse
 
-- Navigate to: `http://localhost:3000/inventory`
+- Navigate to: `https://lorenco.zeabur.app/inventory`
 - The dashboard loads with the **Items** tab open.
 
 **Say:**
@@ -189,7 +194,7 @@ After confirming, point to the updated row:
 
 | Problem | What to do |
 |---|---|
-| Page doesn't load | Refresh. Server runs on `localhost:3000`. |
-| Stock numbers look unexpected | This is a test database — numbers may be cumulative. Explain it is demo data. |
-| API error appears | Note it, continue. "In production this would be connected to your live data." |
-| Question about mobile / cloud | "The app runs in the browser. It can be hosted — we will configure access when we go live." |
+| Page doesn't load | Refresh the browser. The app is cloud-hosted at `https://lorenco.zeabur.app/inventory`. |
+| Stock numbers look unexpected | This is a shared live database — numbers are cumulative from all sessions. Explain it is a live system. |
+| API error appears | Note it, continue. The system is live — all data is real and cloud-backed. |
+| Question about mobile / cloud | "Yes — the app is already live in the cloud. Accessible from any browser, any device. No installation needed." |
