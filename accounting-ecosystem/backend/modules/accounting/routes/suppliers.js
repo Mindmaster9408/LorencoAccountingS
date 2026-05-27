@@ -16,9 +16,10 @@ const multer  = require('multer');
 const path    = require('path');
 const router  = express.Router();
 const { supabase }       = require('../../../config/database');
+const db                 = require('../config/database');
 const JournalService     = require('../services/journalService');
 const InvoiceOcrService  = require('../../../sean/invoice-ocr-service');
-const { hasPermission }  = require('../middleware/auth');
+const { authenticate, hasPermission } = require('../middleware/auth');
 const AuditLogger        = require('../services/auditLogger');
 
 // ── Multer: in-memory file upload for OCR invoice scanning ────────────────────
@@ -101,7 +102,7 @@ function invoiceStatus(totalIncVat, amountPaid) {
 
 // ─── Dashboard Stats ──────────────────────────────────────────────────────────
 
-router.get('/stats', async (req, res) => {
+router.get('/stats', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   try {
     const today = new Date().toISOString().split('T')[0];
@@ -165,7 +166,7 @@ router.get('/stats', async (req, res) => {
 
 // ─── Suppliers CRUD ───────────────────────────────────────────────────────────
 
-router.get('/', async (req, res) => {
+router.get('/', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   const { search, status } = req.query;
   try {
@@ -215,7 +216,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', authenticate, hasPermission('ap.invoice.create'), async (req, res) => {
   const companyId = req.companyId;
   const {
     code, name, type, contactName, email, phone,
@@ -287,7 +288,7 @@ router.post('/', async (req, res) => {
 
 // ─── Supplier Invoices ────────────────────────────────────────────────────────
 
-router.get('/invoices', async (req, res) => {
+router.get('/invoices', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   const { supplierId, status, fromDate, toDate } = req.query;
   try {
@@ -321,7 +322,7 @@ router.get('/invoices', async (req, res) => {
   }
 });
 
-router.post('/invoices', hasPermission('ap.manage'), async (req, res) => {
+router.post('/invoices', authenticate, hasPermission('ap.invoice.create'), async (req, res) => {
   const companyId = req.companyId;
   const {
     supplierId, invoiceNumber, reference, invoiceDate, dueDate,
@@ -417,44 +418,76 @@ router.post('/invoices', hasPermission('ap.manage'), async (req, res) => {
       }
     }
 
-    // Insert invoice header
-    const { data: invoice, error: invErr } = await supabase
-      .from('supplier_invoices')
-      .insert({
-        company_id:          companyId,
-        supplier_id:         parseInt(supplierId),
-        invoice_number:      invoiceNumber || null,
-        reference:           reference || null,
-        invoice_date:        invoiceDate,
-        due_date:            dueDate || null,
-        vat_inclusive:       vatInclusive === true,
-        subtotal_ex_vat:     totals.subtotalExVat,
-        vat_amount:          totals.vatAmount,
-        total_inc_vat:       totals.totalIncVat,
-        amount_paid:         0,
-        status:              'unpaid',
-        notes:               notes || null,
-        created_by_user_id:  userId,
-      })
-      .select()
-      .single();
-    if (invErr) throw new Error(invErr.message);
+    // ── Atomic create: header + lines in a single pg transaction ─────────────
+    // Both inserts succeed or both are rolled back. No orphan header rows.
+    // GL posting happens AFTER commit — JournalService must not run inside
+    // the pg transaction (it issues its own DB operations on separate connections).
+    const dbClient = await db.getClient();
+    let invoice;
+    try {
+      await dbClient.query('BEGIN');
 
-    // Insert invoice lines
-    const lineInserts = processedLines.map(l => ({
-      invoice_id:           invoice.id,
-      description:          l.description,
-      account_id:           l.accountId,
-      quantity:             l.quantity,
-      unit_price:           l.unitPrice,
-      line_subtotal_ex_vat: l.lineSubtotalExVat,
-      vat_rate:             l.vatRate,
-      vat_amount:           l.vatAmount,
-      line_total_inc_vat:   l.lineTotalIncVat,
-      sort_order:           l.sortOrder,
-    }));
-    const { error: linesErr } = await supabase.from('supplier_invoice_lines').insert(lineInserts);
-    if (linesErr) throw new Error(linesErr.message);
+      const hdrResult = await dbClient.query(
+        `INSERT INTO supplier_invoices
+           (company_id, supplier_id, invoice_number, reference, invoice_date,
+            due_date, vat_inclusive, subtotal_ex_vat, vat_amount, total_inc_vat,
+            amount_paid, status, notes, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         RETURNING *`,
+        [
+          companyId,
+          parseInt(supplierId),
+          invoiceNumber || null,
+          reference || null,
+          invoiceDate,
+          dueDate || null,
+          vatInclusive === true,
+          totals.subtotalExVat,
+          totals.vatAmount,
+          totals.totalIncVat,
+          0,
+          'unpaid',
+          notes || null,
+          userId,
+        ]
+      );
+      invoice = hdrResult.rows[0];
+
+      // Bulk-insert all lines in one statement
+      const lineVals = [];
+      const lineParams = [];
+      let p = 1;
+      for (const l of processedLines) {
+        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        lineParams.push(
+          invoice.id,
+          l.description,
+          l.accountId || null,
+          l.quantity,
+          l.unitPrice,
+          l.lineSubtotalExVat,
+          l.vatRate,
+          l.vatAmount,
+          l.lineTotalIncVat,
+          l.sortOrder
+        );
+      }
+      await dbClient.query(
+        `INSERT INTO supplier_invoice_lines
+           (invoice_id, description, account_id, quantity, unit_price,
+            line_subtotal_ex_vat, vat_rate, vat_amount, line_total_inc_vat, sort_order)
+         VALUES ${lineVals.join(',')}`,
+        lineParams
+      );
+
+      await dbClient.query('COMMIT');
+    } catch (txErr) {
+      await dbClient.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      dbClient.release();
+    }
+    // ── End atomic create ─────────────────────────────────────────────────────
 
     // ── GL Posting (AP) ───────────────────────────────────────────────────
     // Attempt to post journal atomically with the invoice.
@@ -509,11 +542,70 @@ router.post('/invoices', hasPermission('ap.manage'), async (req, res) => {
           lines: glLines,
         });
         await JournalService.postJournal(glJournal.id, companyId, userId);
+
         const { error: jidErr } = await supabase
           .from('supplier_invoices')
           .update({ journal_id: glJournal.id })
-          .eq('id', invoice.id);
-        if (jidErr) console.warn(`[Suppliers] Failed to link journal_id to invoice ${invoice.id}:`, jidErr.message);
+          .eq('id', invoice.id)
+          .eq('company_id', companyId);
+
+        if (jidErr) {
+          // GL posted but journal_id link failed.
+          // Reverse the journal immediately and cancel the newly-created invoice so
+          // it does not appear as a valid unpaid invoice without GL backing.
+          let reversalResult = 'not_attempted';
+          let reversalError = null;
+          try {
+            await JournalService.reverseJournal(
+              glJournal.id, companyId, userId,
+              `Auto-reversal: supplier invoice ${invoice.id} journal_id link failed after GL post`
+            );
+            reversalResult = 'reversed';
+          } catch (revErr) {
+            reversalResult = 'reversal_failed';
+            reversalError = revErr.message;
+            console.error(`[Suppliers] CRITICAL: journal ${glJournal.id} posted but invoice ${invoice.id} journal_id link failed AND reversal failed:`, revErr.message);
+          }
+
+          await supabase
+            .from('supplier_invoices')
+            .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+            .eq('id', invoice.id)
+            .eq('company_id', companyId)
+            .catch(cErr => console.error(`[Suppliers] Failed to cancel invoice ${invoice.id} during cleanup:`, cErr.message));
+
+          await AuditLogger.log({
+            companyId,
+            actorType: 'SYSTEM',
+            actorId: userId,
+            actionType: reversalResult === 'reversed'
+              ? 'SUPPLIER_INVOICE_POST_FAILED_REVERSED'
+              : 'SUPPLIER_INVOICE_POST_FAILED_REVERSAL_FAILED',
+            entityType: 'SUPPLIER_INVOICE',
+            entityId: invoice.id,
+            beforeJson: null,
+            afterJson: {
+              invoiceId: invoice.id,
+              journalId: glJournal.id,
+              jidUpdateError: jidErr.message,
+              reversalResult,
+              reversalError,
+              invoiceCancelled: true,
+            },
+            reason: reversalResult === 'reversed'
+              ? `Supplier invoice GL journal_id link failed after GL post. Journal ${glJournal.id} reversed. Invoice ${invoice.id} cancelled.`
+              : `CRITICAL: Supplier invoice GL journal_id link failed AND reversal failed. Journal ${glJournal.id} may be dangling. Invoice ${invoice.id} cancelled. Manual investigation required.`,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+          });
+
+          return res.status(500).json({
+            error: reversalResult === 'reversed'
+              ? 'Invoice posting failed after GL journal creation. The journal was reversed to prevent double posting. Please retry.'
+              : 'Invoice posting failed after GL journal creation and automatic reversal failed. Manual investigation required.',
+            ...(reversalResult === 'reversal_failed' ? { journalId: glJournal.id } : {}),
+          });
+        }
       }
     }
     // ── End GL Posting ────────────────────────────────────────────────────
@@ -574,7 +666,7 @@ router.post('/invoices', hasPermission('ap.manage'), async (req, res) => {
   }
 });
 
-router.get('/invoices/:id', async (req, res) => {
+router.get('/invoices/:id', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
   try {
@@ -616,7 +708,7 @@ router.get('/invoices/:id', async (req, res) => {
   }
 });
 
-router.put('/invoices/:id', async (req, res) => {
+router.put('/invoices/:id', authenticate, hasPermission('ap.invoice.edit'), async (req, res) => {
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
   const {
@@ -852,51 +944,89 @@ router.put('/invoices/:id', async (req, res) => {
       newJournalId = replacementJournalId;
     }
 
-    // ── Update invoice record ─────────────────────────────────────────────────
-    // Runs after GL correction completes (or after confirming no GL change needed).
-    // Includes journal_id update so invoice always points to the active journal.
-    const { error: updErr } = await supabase
-      .from('supplier_invoices')
-      .update({
-        supplier_id:     supplierId ? parseInt(supplierId) : existing.supplier_id,
-        invoice_number:  invoiceNumber || null,
-        reference:       reference || null,
-        invoice_date:    invoiceDate,
-        due_date:        dueDate || null,
-        vat_inclusive:   vatInclusive === true,
-        subtotal_ex_vat: newTotals.subtotalExVat,
-        vat_amount:      newTotals.vatAmount,
-        total_inc_vat:   newTotals.totalIncVat,
-        notes:           notes || null,
-        status:          status || existing.status,
-        journal_id:      newJournalId,
-        updated_at:      new Date().toISOString(),
-      })
-      .eq('id', invoiceId)
-      .eq('company_id', companyId);
-    if (updErr) throw new Error(updErr.message);
+    // ── Atomic update: header + lines in a single pg transaction ─────────────
+    // GL correction (above) already ran and is committed. Now the invoice record
+    // update, line deletion and line re-insertion are wrapped atomically so that
+    // a line-insert failure cannot leave the header updated with zero lines.
+    const dbClient = await db.getClient();
+    try {
+      await dbClient.query('BEGIN');
 
-    // Replace invoice lines
-    const { error: delErr } = await supabase
-      .from('supplier_invoice_lines')
-      .delete()
-      .eq('invoice_id', invoiceId);
-    if (delErr) throw new Error(delErr.message);
+      await dbClient.query(
+        `UPDATE supplier_invoices
+         SET supplier_id      = $1,
+             invoice_number   = $2,
+             reference        = $3,
+             invoice_date     = $4,
+             due_date         = $5,
+             vat_inclusive    = $6,
+             subtotal_ex_vat  = $7,
+             vat_amount       = $8,
+             total_inc_vat    = $9,
+             notes            = $10,
+             status           = $11,
+             journal_id       = $12,
+             updated_at       = $13
+         WHERE id = $14 AND company_id = $15`,
+        [
+          supplierId ? parseInt(supplierId) : existing.supplier_id,
+          invoiceNumber || null,
+          reference || null,
+          invoiceDate,
+          dueDate || null,
+          vatInclusive === true,
+          newTotals.subtotalExVat,
+          newTotals.vatAmount,
+          newTotals.totalIncVat,
+          notes || null,
+          status || existing.status,
+          newJournalId,
+          new Date().toISOString(),
+          invoiceId,
+          companyId,
+        ]
+      );
 
-    const lineInserts = processedLines.map(l => ({
-      invoice_id:           invoiceId,
-      description:          l.description,
-      account_id:           l.accountId,
-      quantity:             l.quantity,
-      unit_price:           l.unitPrice,
-      line_subtotal_ex_vat: l.lineSubtotalExVat,
-      vat_rate:             l.vatRate,
-      vat_amount:           l.vatAmount,
-      line_total_inc_vat:   l.lineTotalIncVat,
-      sort_order:           l.sortOrder,
-    }));
-    const { error: lInsErr } = await supabase.from('supplier_invoice_lines').insert(lineInserts);
-    if (lInsErr) throw new Error(lInsErr.message);
+      // Delete all existing lines then re-insert the new set
+      await dbClient.query(
+        `DELETE FROM supplier_invoice_lines WHERE invoice_id = $1`,
+        [invoiceId]
+      );
+
+      const lineVals = [];
+      const lineParams = [];
+      let p = 1;
+      for (const l of processedLines) {
+        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        lineParams.push(
+          invoiceId,
+          l.description,
+          l.accountId || null,
+          l.quantity,
+          l.unitPrice,
+          l.lineSubtotalExVat,
+          l.vatRate,
+          l.vatAmount,
+          l.lineTotalIncVat,
+          l.sortOrder
+        );
+      }
+      await dbClient.query(
+        `INSERT INTO supplier_invoice_lines
+           (invoice_id, description, account_id, quantity, unit_price,
+            line_subtotal_ex_vat, vat_rate, vat_amount, line_total_inc_vat, sort_order)
+         VALUES ${lineVals.join(',')}`,
+        lineParams
+      );
+
+      await dbClient.query('COMMIT');
+    } catch (txErr) {
+      await dbClient.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      dbClient.release();
+    }
+    // ── End atomic update ─────────────────────────────────────────────────────
 
     // Fetch updated invoice with lines for response
     const { data: fullInv, error: fullErr } = await supabase
@@ -962,7 +1092,7 @@ router.put('/invoices/:id', async (req, res) => {
 
 // ─── Purchase Orders ──────────────────────────────────────────────────────────
 
-router.get('/orders', async (req, res) => {
+router.get('/orders', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   const { supplierId, status } = req.query;
   try {
@@ -990,7 +1120,7 @@ router.get('/orders', async (req, res) => {
   }
 });
 
-router.post('/orders', async (req, res) => {
+router.post('/orders', authenticate, hasPermission('ap.invoice.create'), async (req, res) => {
   const companyId = req.companyId;
   const { supplierId, poNumber, poDate, expectedDate, vatInclusive, lines, notes } = req.body;
 
@@ -1097,7 +1227,7 @@ router.post('/orders', async (req, res) => {
   }
 });
 
-router.get('/orders/:id', async (req, res) => {
+router.get('/orders/:id', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   const poId = parseInt(req.params.id);
   try {
@@ -1125,7 +1255,7 @@ router.get('/orders/:id', async (req, res) => {
   }
 });
 
-router.put('/orders/:id/status', async (req, res) => {
+router.put('/orders/:id/status', authenticate, hasPermission('ap.purchase_order.approve'), async (req, res) => {
   const companyId = req.companyId;
   const poId = parseInt(req.params.id);
   const { status } = req.body;
@@ -1169,7 +1299,7 @@ router.put('/orders/:id/status', async (req, res) => {
 
 // ─── Supplier Payments ────────────────────────────────────────────────────────
 
-router.get('/payments', async (req, res) => {
+router.get('/payments', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   const { supplierId, fromDate, toDate } = req.query;
   try {
@@ -1201,7 +1331,7 @@ router.get('/payments', async (req, res) => {
 // STRICT mode: GL journal is created BEFORE payment is inserted.
 // If GL posting fails the payment and allocations are never saved.
 // bankLedgerAccountId is required — no silent GL skip.
-router.post('/payments', async (req, res) => {
+router.post('/payments', authenticate, hasPermission('ap.payment.record'), async (req, res) => {
   const companyId = req.companyId;
   const {
     supplierId, paymentDate, paymentMethod, reference, amount, notes,
@@ -1389,7 +1519,7 @@ router.post('/payments', async (req, res) => {
 
 // ─── Supplier Aging Report ────────────────────────────────────────────────────
 
-router.get('/aging', async (req, res) => {
+router.get('/aging', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   try {
     // Fetch unpaid / part-paid invoices with supplier details
@@ -1462,7 +1592,7 @@ router.get('/aging', async (req, res) => {
 
 // ─── Supplier GET/:id and PUT/:id — must be last to avoid shadowing named routes ─
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   const supplierId = parseInt(req.params.id);
   if (isNaN(supplierId)) return res.status(400).json({ error: 'Invalid supplier ID' });
@@ -1500,7 +1630,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticate, hasPermission('ap.invoice.edit'), async (req, res) => {
   const companyId = req.companyId;
   const supplierId = parseInt(req.params.id);
   if (isNaN(supplierId)) return res.status(400).json({ error: 'Invalid supplier ID' });
@@ -1590,7 +1720,8 @@ router.put('/:id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post(
   '/invoices/ocr',
-  hasPermission('ap.manage'),
+  authenticate,
+  hasPermission('ap.invoice.create'),
   invoiceUpload.single('file'),
   async (req, res) => {
     try {

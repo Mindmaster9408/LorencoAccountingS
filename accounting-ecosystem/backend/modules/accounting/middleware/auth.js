@@ -149,7 +149,23 @@ const PERMISSIONS = {
   'pos.manage':    ['admin', 'accountant', 'bookkeeper'],
   'pos.reconcile': ['admin', 'accountant'],
 
-  // Accounts Payable / Supplier invoices
+  // Accounts Receivable / Customer invoices
+  'ar.invoice.view':   ['admin', 'accountant', 'bookkeeper', 'viewer'],
+  'ar.invoice.create': ['admin', 'accountant', 'bookkeeper'],
+  'ar.invoice.edit':   ['admin', 'accountant', 'bookkeeper'],
+  'ar.invoice.post':   ['admin', 'accountant'],
+  'ar.invoice.void':   ['admin', 'accountant'],
+  'ar.payment.record': ['admin', 'accountant', 'bookkeeper'],
+
+  // Accounts Payable / Supplier invoices (granular)
+  'ap.invoice.view':           ['admin', 'accountant', 'bookkeeper', 'viewer'],
+  'ap.invoice.create':         ['admin', 'accountant', 'bookkeeper'],
+  'ap.invoice.edit':           ['admin', 'accountant', 'bookkeeper'],
+  'ap.invoice.void':           ['admin', 'accountant'],
+  'ap.payment.record':         ['admin', 'accountant', 'bookkeeper'],
+  'ap.purchase_order.approve': ['admin', 'accountant'],
+
+  // Kept for backward compatibility — new routes use the granular keys above
   'ap.manage': ['admin', 'accountant', 'bookkeeper'],
 
   // Diagnostics & repair tooling
@@ -184,8 +200,16 @@ function hasPermission(permission) {
     const allowedRoles = PERMISSIONS[permission];
 
     if (!allowedRoles) {
-      console.warn(`Unknown permission: ${permission}`);
-      return next(); // Allow unknown permissions to pass through
+      // SECURITY: Unknown permissions must NEVER silently pass. Hard-fail with 403.
+      console.error('[accounting] Unknown permission', {
+        permission,
+        path: req.originalUrl,
+        userId: req.user?.id
+      });
+      return res.status(403).json({
+        error: 'Unknown permission configuration',
+        permission
+      });
     }
 
     if (!allowedRoles.includes(req.user.role)) {
@@ -250,11 +274,49 @@ function enforceCompanyScope(req, res, next) {
   next();
 }
 
+/**
+ * Startup validation — verifies the PERMISSIONS map is structurally sound.
+ * Call once at server startup (e.g. in accounting routes index) to catch
+ * misconfigured or empty permission entries before any request is served.
+ *
+ * TODO (future): extend to scan all accounting route files and cross-check
+ * every hasPermission('x') call against the PERMISSIONS map so that a
+ * missing key is caught at startup rather than at request time.
+ */
+function validatePermissionMap() {
+  const validRoles = new Set(['admin', 'accountant', 'bookkeeper', 'viewer']);
+  const errors = [];
+
+  for (const [key, roles] of Object.entries(PERMISSIONS)) {
+    if (!Array.isArray(roles) || roles.length === 0) {
+      errors.push(`PERMISSIONS['${key}'] is empty or not an array`);
+      continue;
+    }
+    for (const role of roles) {
+      if (!validRoles.has(role)) {
+        errors.push(`PERMISSIONS['${key}'] contains unknown role '${role}'`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    console.error('[accounting] PERMISSIONS map validation FAILED:');
+    errors.forEach(e => console.error('  -', e));
+    // Not a fatal throw — alerts on startup but does not kill the process.
+    // Upgrade to throw if you want a hard startup gate.
+  } else {
+    console.log(`[accounting] PERMISSIONS map OK — ${Object.keys(PERMISSIONS).length} entries validated`);
+  }
+
+  return errors;
+}
+
 module.exports = {
   authenticate,
   authorize,
   hasPermission,
   enforceCompanyScope,
+  validatePermissionMap,
   PERMISSIONS,
   GLOBAL_ADMIN_EMAILS
 };

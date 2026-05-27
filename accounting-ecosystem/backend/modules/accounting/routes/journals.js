@@ -1,5 +1,6 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
+const db = require('../config/database'); // direct pg Pool — used for atomic draft-delete transaction
 const { authenticate, hasPermission } = require('../middleware/auth');
 const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
@@ -285,54 +286,75 @@ router.post('/:id/reverse', authenticate, hasPermission('journal.reverse'), asyn
  * Delete a draft journal
  */
 router.delete('/:id', authenticate, hasPermission('journal.delete'), async (req, res) => {
+  const journalId = parseInt(req.params.id, 10);
+  const companyId = req.user.companyId;
+
+  if (isNaN(journalId)) {
+    return res.status(400).json({ error: 'Invalid journal ID' });
+  }
+
+  let journalSnapshot = null;
+  const client = await db.getClient();
   try {
-    const { data: journal, error: fetchErr } = await supabase
-      .from('journals')
-      .select('*')
-      .eq('id', req.params.id)
-      .eq('company_id', req.user.companyId)
-      .single();
+    await client.query('BEGIN');
 
-    if (fetchErr || !journal) {
-      return res.status(404).json({ error: 'Journal not found' });
-    }
-
-    if (journal.status !== 'draft') {
-      return res.status(403).json({ error: 'Can only delete draft journals' });
-    }
-
-    // Delete journal lines first
-    const { error: linesErr } = await supabase
-      .from('journal_lines')
-      .delete()
-      .eq('journal_id', req.params.id);
-
-    if (linesErr) throw new Error(linesErr.message);
-
-    // Delete journal
-    const { error: journalErr } = await supabase
-      .from('journals')
-      .delete()
-      .eq('id', req.params.id);
-
-    if (journalErr) throw new Error(journalErr.message);
-
-    await AuditLogger.logUserAction(
-      req,
-      'DELETE',
-      'JOURNAL',
-      journal.id,
-      { date: journal.date, reference: journal.reference, description: journal.description },
-      null,
-      'Draft journal deleted'
+    // Fetch and lock the row — confirms ownership and prevents concurrent delete races
+    const { rows } = await client.query(
+      `SELECT id, status, date, reference, description
+         FROM journals
+        WHERE id = $1 AND company_id = $2
+          FOR UPDATE`,
+      [journalId, companyId]
     );
 
-    res.json({ message: 'Journal deleted successfully' });
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Draft journal not found.' });
+    }
+
+    const journal = rows[0];
+    if (journal.status !== 'draft') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Only draft journals can be deleted. Posted journals must be reversed.',
+      });
+    }
+
+    journalSnapshot = journal;
+
+    await client.query('DELETE FROM journal_lines WHERE journal_id = $1', [journalId]);
+
+    const deleteResult = await client.query(
+      `DELETE FROM journals WHERE id = $1 AND company_id = $2 AND status = 'draft'`,
+      [journalId, companyId]
+    );
+
+    if (deleteResult.rowCount !== 1) {
+      throw new Error('Draft journal delete failed. No changes were saved.');
+    }
+
+    await client.query('COMMIT');
 
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Error deleting journal:', error);
-    res.status(500).json({ error: 'Failed to delete journal' });
+    return res.status(500).json({ error: error.message || 'Draft journal delete failed. No changes were saved.' });
+  } finally {
+    client.release();
   }
+
+  // Audit log outside transaction — same pattern as rest of codebase
+  await AuditLogger.logUserAction(
+    req,
+    'DELETE',
+    'JOURNAL',
+    journalSnapshot.id,
+    { date: journalSnapshot.date, reference: journalSnapshot.reference, description: journalSnapshot.description },
+    null,
+    'Draft journal deleted'
+  ).catch(auditErr => { console.error('Audit log failed for journal delete:', auditErr.message); });
+
+  res.json({ message: 'Journal deleted successfully' });
 });
 
 module.exports = router;

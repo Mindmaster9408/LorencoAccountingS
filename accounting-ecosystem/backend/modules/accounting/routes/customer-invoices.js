@@ -18,8 +18,10 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../../config/database');
+const db = require('../config/database');
 const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
+const { authenticate, hasPermission } = require('../middleware/auth');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -64,7 +66,7 @@ function userId(req) {
 
 // ─── Customer List (for dropdowns) ───────────────────────────────────────────
 
-router.get('/customers', async (req, res) => {
+router.get('/customers', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   try {
@@ -105,7 +107,7 @@ router.get('/customers', async (req, res) => {
 
 // ─── List Invoices ───────────────────────────────────────────────────────────
 
-router.get('/', async (req, res) => {
+router.get('/', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const { status, customerId, fromDate, toDate, limit = 100, offset = 0 } = req.query;
@@ -135,7 +137,7 @@ router.get('/', async (req, res) => {
 
 // ─── Get Invoice Detail ───────────────────────────────────────────────────────
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
@@ -175,7 +177,7 @@ router.get('/:id', async (req, res) => {
 
 // ─── Create Invoice (draft) ──────────────────────────────────────────────────
 
-router.post('/', async (req, res) => {
+router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const {
@@ -243,44 +245,66 @@ router.post('/', async (req, res) => {
       invNum = `INV-${String((count || 0) + 1).padStart(4, '0')}`;
     }
 
-    const { data: invoice, error: invErr } = await supabase
-      .from('customer_invoices')
-      .insert({
-        company_id:         companyId,
-        customer_id:        customerId ? parseInt(customerId) : null,
-        customer_name:      customerName,
-        invoice_number:     invNum,
-        reference:          reference || null,
-        invoice_date:       invoiceDate,
-        due_date:           dueDate || null,
-        status:             'draft',
-        subtotal_ex_vat:    totals.subtotalExVat,
-        vat_amount:         totals.vatAmount,
-        total_inc_vat:      totals.totalIncVat,
-        amount_paid:        0,
-        notes:              notes || null,
-        created_by_user_id: userId(req),
-      })
-      .select()
-      .single();
+    // ── Atomic create: header + lines in a single pg transaction ─────────────
+    // Both inserts succeed or both are rolled back. No orphan header rows.
+    const dbClient = await db.getClient();
+    let invoice;
+    try {
+      await dbClient.query('BEGIN');
 
-    if (invErr) throw new Error(invErr.message);
+      const hdrResult = await dbClient.query(
+        `INSERT INTO customer_invoices
+           (company_id, customer_id, customer_name, invoice_number, reference,
+            invoice_date, due_date, status, subtotal_ex_vat, vat_amount, total_inc_vat,
+            amount_paid, notes, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         RETURNING *`,
+        [
+          companyId,
+          customerId ? parseInt(customerId) : null,
+          customerName,
+          invNum,
+          reference || null,
+          invoiceDate,
+          dueDate || null,
+          'draft',
+          totals.subtotalExVat,
+          totals.vatAmount,
+          totals.totalIncVat,
+          0,
+          notes || null,
+          userId(req),
+        ]
+      );
+      invoice = hdrResult.rows[0];
 
-    const lineInserts = processedLines.map(l => ({
-      invoice_id:      invoice.id,
-      description:     l.description,
-      account_id:      l.accountId,
-      quantity:        l.quantity,
-      unit_price:      l.unitPrice,
-      vat_rate:        l.vatRate,
-      subtotal_ex_vat: l.subtotalExVat,
-      vat_amount:      l.vatAmount,
-      total_inc_vat:   l.totalIncVat,
-      sort_order:      l.sortOrder,
-    }));
+      // Bulk-insert all lines in one statement
+      const lineVals = [];
+      const lineParams = [];
+      let p = 1;
+      for (const l of processedLines) {
+        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        lineParams.push(
+          invoice.id, l.description, l.accountId || null, l.quantity, l.unitPrice,
+          l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder
+        );
+      }
+      await dbClient.query(
+        `INSERT INTO customer_invoice_lines
+           (invoice_id, description, account_id, quantity, unit_price,
+            vat_rate, subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
+         VALUES ${lineVals.join(',')}`,
+        lineParams
+      );
 
-    const { error: linesErr } = await supabase.from('customer_invoice_lines').insert(lineInserts);
-    if (linesErr) throw new Error(linesErr.message);
+      await dbClient.query('COMMIT');
+    } catch (txErr) {
+      await dbClient.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      dbClient.release();
+    }
+    // ── End atomic create ─────────────────────────────────────────────────────
 
     await AuditLogger.log({
       companyId,
@@ -313,7 +337,7 @@ router.post('/', async (req, res) => {
 
 // ─── Update Invoice (draft only) ─────────────────────────────────────────────
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
@@ -367,51 +391,84 @@ router.put('/:id', async (req, res) => {
       { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 }
     );
 
-    const updatePayload = {
-      subtotal_ex_vat: totals.subtotalExVat,
-      vat_amount:      totals.vatAmount,
-      total_inc_vat:   totals.totalIncVat,
-      reference:       reference || null,
-      due_date:        dueDate || null,
-      notes:           notes || null,
-      updated_at:      new Date().toISOString(),
-    };
-    if (customerName)   updatePayload.customer_name   = customerName;
-    if (invoiceNumber)  updatePayload.invoice_number  = invoiceNumber;
-    if (invoiceDate)    updatePayload.invoice_date     = invoiceDate;
+    // Resolve effective values for fields that are optional in the update payload
+    const effectiveCustomerName  = customerName  || existing.customer_name;
+    const effectiveInvoiceNumber = invoiceNumber || existing.invoice_number;
+    const effectiveInvoiceDate   = invoiceDate   || existing.invoice_date;
 
-    const { error: updateErr } = await supabase
-      .from('customer_invoices')
-      .update(updatePayload)
-      .eq('id', invoiceId)
-      .eq('company_id', companyId);
+    // ── Atomic update: header + lines in a single pg transaction ─────────────
+    // The header UPDATE and the line DELETE + INSERT are wrapped in one BEGIN/COMMIT.
+    // If any step fails the transaction is rolled back and the invoice remains in
+    // its pre-edit state — no partial updates, no zero-line invoices.
+    const dbClient = await db.getClient();
+    try {
+      await dbClient.query('BEGIN');
 
-    if (updateErr) throw new Error(updateErr.message);
+      await dbClient.query(
+        `UPDATE customer_invoices
+         SET customer_name    = $1,
+             invoice_number   = $2,
+             invoice_date     = $3,
+             subtotal_ex_vat  = $4,
+             vat_amount       = $5,
+             total_inc_vat    = $6,
+             reference        = $7,
+             due_date         = $8,
+             notes            = $9,
+             updated_at       = $10
+         WHERE id = $11 AND company_id = $12`,
+        [
+          effectiveCustomerName,
+          effectiveInvoiceNumber,
+          effectiveInvoiceDate,
+          totals.subtotalExVat,
+          totals.vatAmount,
+          totals.totalIncVat,
+          reference || null,
+          dueDate || null,
+          notes || null,
+          new Date().toISOString(),
+          invoiceId,
+          companyId,
+        ]
+      );
 
-    if (lines) {
-      const { error: delErr } = await supabase
-        .from('customer_invoice_lines')
-        .delete()
-        .eq('invoice_id', invoiceId);
-      if (delErr) throw new Error(delErr.message);
+      if (lines) {
+        // Delete all existing lines then re-insert the new set
+        await dbClient.query(
+          `DELETE FROM customer_invoice_lines WHERE invoice_id = $1`,
+          [invoiceId]
+        );
 
-      if (processedLines.length) {
-        const lineInserts = processedLines.map(l => ({
-          invoice_id:      invoiceId,
-          description:     l.description,
-          account_id:      l.accountId,
-          quantity:        l.quantity,
-          unit_price:      l.unitPrice,
-          vat_rate:        l.vatRate,
-          subtotal_ex_vat: l.subtotalExVat,
-          vat_amount:      l.vatAmount,
-          total_inc_vat:   l.totalIncVat,
-          sort_order:      l.sortOrder,
-        }));
-        const { error: insErr } = await supabase.from('customer_invoice_lines').insert(lineInserts);
-        if (insErr) throw new Error(insErr.message);
+        if (processedLines.length) {
+          const lineVals = [];
+          const lineParams = [];
+          let p = 1;
+          for (const l of processedLines) {
+            lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+            lineParams.push(
+              invoiceId, l.description, l.accountId || null, l.quantity, l.unitPrice,
+              l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder
+            );
+          }
+          await dbClient.query(
+            `INSERT INTO customer_invoice_lines
+               (invoice_id, description, account_id, quantity, unit_price,
+                vat_rate, subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
+             VALUES ${lineVals.join(',')}`,
+            lineParams
+          );
+        }
       }
+
+      await dbClient.query('COMMIT');
+    } catch (txErr) {
+      await dbClient.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      dbClient.release();
     }
+    // ── End atomic update ─────────────────────────────────────────────────────
 
     // Fetch updated invoice + lines
     const { data: updated, error: updFetchErr } = await supabase
@@ -468,7 +525,7 @@ router.put('/:id', async (req, res) => {
 
 // ─── Post Invoice to GL ───────────────────────────────────────────────────────
 
-router.post('/:id/post', async (req, res) => {
+router.post('/:id/post', authenticate, hasPermission('ar.invoice.post'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
@@ -495,6 +552,25 @@ router.post('/:id/post', async (req, res) => {
         ipAddress: req.ip, userAgent: req.get('user-agent'),
       });
       return res.status(409).json({ error: `Invoice is already ${invoice.status}` });
+    }
+
+    // Double-post guard: journal_id already set means a GL entry exists for this invoice.
+    // Block immediately — re-running the post would create a second GL entry.
+    if (invoice.journal_id != null) {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: userId(req),
+        actionType: 'CUSTOMER_INVOICE_DOUBLE_POST_BLOCKED',
+        entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+        beforeJson: null,
+        afterJson: { invoiceId, journalId: invoice.journal_id, status: invoice.status, reasonCode: 'JOURNAL_ALREADY_LINKED' },
+        reason: 'Customer invoice double-post blocked: journal already linked',
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(409).json({
+        error: 'Invoice already has a linked journal and cannot be posted again.',
+        journalId: invoice.journal_id,
+      });
     }
 
     const { data: lines, error: linesErr } = await supabase
@@ -571,7 +647,43 @@ router.post('/:id/post', async (req, res) => {
       .eq('company_id', companyId);
 
     if (updErr) {
-      console.warn(`[CustomerAR] Invoice ${invoiceId} posted to GL (journal ${glJournal.id}) but status update failed:`, updErr.message);
+      // GL posted but invoice status update failed.
+      // Reverse the journal immediately — a posted journal must not remain linked to a draft invoice.
+      try {
+        await JournalService.reverseJournal(
+          glJournal.id, companyId, userId(req),
+          `Auto-reversal: invoice ${invoiceId} status update failed after GL post`
+        );
+        await AuditLogger.log({
+          companyId,
+          actorType: 'SYSTEM', actorId: userId(req),
+          actionType: 'CUSTOMER_INVOICE_POST_FAILED_REVERSED',
+          entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+          beforeJson: { status: 'draft' },
+          afterJson: { invoiceId, journalId: glJournal.id, updateError: updErr.message, reversalResult: 'reversed' },
+          reason: `Invoice post failed after GL creation. Journal ${glJournal.id} reversed. Invoice remains draft.`,
+          ipAddress: req.ip, userAgent: req.get('user-agent'),
+        });
+        return res.status(500).json({
+          error: 'Invoice posting failed after GL journal creation. The journal was reversed to prevent double posting. Please retry.',
+        });
+      } catch (revErr) {
+        console.error(`[CustomerAR] CRITICAL: journal ${glJournal.id} posted for invoice ${invoiceId}, status update failed, AND reversal failed:`, revErr.message);
+        await AuditLogger.log({
+          companyId,
+          actorType: 'SYSTEM', actorId: userId(req),
+          actionType: 'CUSTOMER_INVOICE_POST_FAILED_REVERSAL_FAILED',
+          entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+          beforeJson: { status: 'draft' },
+          afterJson: { invoiceId, journalId: glJournal.id, updateError: updErr.message, reversalError: revErr.message },
+          reason: `CRITICAL: Invoice post failed AND reversal failed. Journal ${glJournal.id} may be dangling. Manual investigation required.`,
+          ipAddress: req.ip, userAgent: req.get('user-agent'),
+        });
+        return res.status(500).json({
+          error: 'Invoice posting failed after GL journal creation and automatic reversal failed. Manual investigation required.',
+          journalId: glJournal.id,
+        });
+      }
     }
 
     await AuditLogger.log({
@@ -602,7 +714,7 @@ router.post('/:id/post', async (req, res) => {
 
 // ─── Void Invoice ─────────────────────────────────────────────────────────────
 
-router.post('/:id/void', async (req, res) => {
+router.post('/:id/void', authenticate, hasPermission('ar.invoice.void'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
@@ -707,7 +819,7 @@ router.post('/:id/void', async (req, res) => {
 // If GL posting fails for any reason the payment is never saved and the
 // invoice amount_paid is never updated. No silent GL failures are permitted.
 
-router.post('/payments', async (req, res) => {
+router.post('/payments', authenticate, hasPermission('ar.payment.record'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const {
@@ -899,7 +1011,7 @@ router.post('/payments', async (req, res) => {
 // into ageing periods.  Null due_date → current (with noDueDateCount flag).
 // Grouping: customer_id when set, fallback to normalised customer_name.
 
-router.get('/aging', async (req, res) => {
+router.get('/aging', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId       = req.companyId;
   const asAt            = req.query.asAt || new Date().toISOString().slice(0, 10);
