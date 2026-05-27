@@ -21,7 +21,7 @@ const router  = express.Router();
 
 const { adjustStockTx }           = require('../services/stockMutationService');
 const { updateSupplierItemHistory } = require('../services/procurementService');
-const { auditFromReq }            = require('../../../shared/utils/audit');
+const { auditFromReq }            = require('../../../middleware/audit');
 
 // ---------------------------------------------------------------------------
 // Helpers
