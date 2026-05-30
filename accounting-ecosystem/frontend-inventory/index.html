@@ -252,7 +252,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   <div class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</div>
   <div class="nav-tab" onclick="switchTab('items')">Items</div>
   <div class="nav-tab" onclick="switchTab('movements')">Movements</div>
-  <div class="nav-tab" onclick="switchTab('warehouses')">Locations</div>
+  <div class="nav-tab" onclick="switchTab('warehouses')">🏭 Warehouses</div>
   <div class="nav-tab" onclick="switchTab('suppliers')">Suppliers</div>
   <div class="nav-tab" onclick="switchTab('orders')">Purchase Orders</div>
   <div class="tab-sep"></div>
@@ -265,6 +265,8 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   <div class="nav-tab teal" onclick="switchTab('stockcounts')">📦 Stock Counts</div>
   <div class="nav-tab orange" onclick="switchTab('reservations')">🔒 Reservations</div>
   <div class="nav-tab teal" onclick="switchTab('procurement')">🧾 Procurement</div>
+  <div class="nav-tab" style="color:#818cf8" onclick="switchTab('transfers')">🔄 Transfers</div>
+  <div class="nav-tab" style="color:#f472b6" onclick="switchTab('salesorders')">🧾 Sales Orders</div>
 </div>
 
 <div class="main">
@@ -287,12 +289,33 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
   <div class="demo-flow-label">Demo Flow</div>
   <div class="quick-links">
-    <div class="quick-card" onclick="switchTab('items'); openItemModal()"><div class="quick-card-icon">➕</div><div><div class="quick-card-label">Add Item</div><div class="quick-card-sub">Create a new inventory master item</div></div></div>
-    <div class="quick-card" onclick="switchTab('items'); openQuickReceiveModal()"><div class="quick-card-icon">📥</div><div><div class="quick-card-label">Receive Stock</div><div class="quick-card-sub">Quick supplier receipt with costing</div></div></div>
+    <div class="quick-card" data-perm="CONFIGURE" onclick="switchTab('items'); openItemModal()"><div class="quick-card-icon">➕</div><div><div class="quick-card-label">Add Item</div><div class="quick-card-sub">Create a new inventory master item</div></div></div>
+    <div class="quick-card" data-perm="RECEIVE" onclick="switchTab('items'); openQuickReceiveModal()"><div class="quick-card-icon">📥</div><div><div class="quick-card-label">Receive Stock</div><div class="quick-card-sub">Quick supplier receipt with costing</div></div></div>
     <div class="quick-card manufacturing" onclick="switchTab('boms'); openBomModal()"><div class="quick-card-icon">📋</div><div><div class="quick-card-label">Create Recipe</div><div class="quick-card-sub">Define the components of a finished product</div></div></div>
     <div class="quick-card manufacturing" onclick="switchTab('workorders'); openWoModal()"><div class="quick-card-icon">⚙️</div><div><div class="quick-card-label">Produce Stock</div><div class="quick-card-sub">Issue materials and complete a work order</div></div></div>
     <div class="quick-card" onclick="switchTab('items')"><div class="quick-card-icon">💰</div><div><div class="quick-card-label">View Product Cost</div><div class="quick-card-sub">See BOM and work order cost summaries</div></div></div>
     <div class="quick-card" onclick="switchTab('reports')"><div class="quick-card-icon">📊</div><div><div class="quick-card-label">View Valuation</div><div class="quick-card-sub">Inspect stock value and missing-cost items</div></div></div>
+  </div>
+
+  <!-- Codebox 12 — Onboarding Checklist (shown when setup is incomplete) -->
+  <div id="onboardingPanel" style="display:none;margin:18px 0;background:linear-gradient(135deg,#1e3a5f 0%,#0f2744 100%);border:1px solid #3b82f6;border-radius:12px;padding:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <div style="font-size:1rem;font-weight:700;color:#93c5fd;">Getting Started</div>
+        <div id="onboardingProgress" style="font-size:0.78rem;color:#94a3b8;margin-top:2px;"></div>
+      </div>
+      <button class="btn btn-ghost btn-xs" onclick="document.getElementById('onboardingPanel').style.display='none'" style="color:#94a3b8">Dismiss</button>
+    </div>
+    <div id="onboardingStepsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+
+  <!-- Codebox 12 — Operational Health Panel -->
+  <div id="healthPanel" style="margin:18px 0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="font-size:0.9rem;font-weight:600;color:var(--text-muted);">Operational Health</div>
+      <button class="btn btn-ghost btn-xs" onclick="loadHealth()" style="color:var(--text-muted);">↺ Refresh</button>
+    </div>
+    <div id="healthContent" style="font-size:0.82rem;color:var(--text-muted);">Loading diagnostics…</div>
   </div>
 </div>
 
@@ -314,7 +337,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       </select>
       <select class="filter-select" id="itemFilterWarehouse" onchange="filterItems()"><option value="">All Locations</option></select>
       <button class="btn btn-ghost btn-sm" onclick="loadItems(true)">↺ Refresh</button>
-      <button class="btn btn-primary" onclick="openItemModal()">+ Add Item</button>
+      <button class="btn btn-primary" data-perm="CONFIGURE" onclick="openItemModal()">+ Add Item</button>
     </div>
   </div>
   <div class="table-wrap" id="itemsTable"><div class="empty"><div class="empty-icon">📦</div><p>Loading…</p></div></div>
@@ -335,21 +358,117 @@ tr:hover td { background: rgba(255,255,255,0.02); }
         <option value="transfer">Transfer</option>
         <option value="return">Return</option>
       </select>
-      <button class="btn btn-primary" onclick="openMovementModal()">+ Record Movement</button>
+      <button class="btn btn-primary" data-perm="ADJUST" onclick="openMovementModal()">+ Record Movement</button>
     </div>
   </div>
   <div class="table-wrap" id="movementsTable"><div class="empty"><div class="empty-icon">🔄</div><p>Loading…</p></div></div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
-     WAREHOUSES / LOCATIONS
+     WAREHOUSES — CB-08
 ══════════════════════════════════════════════════════════ -->
 <div class="section" id="tab-warehouses">
   <div class="section-header">
-    <div class="section-title">Warehouses & Locations</div>
-    <button class="btn btn-primary" onclick="openWarehouseModal()">+ Add Location</button>
+    <div class="section-title">🏭 Warehouses</div>
+    <div class="toolbar">
+      <select class="filter-select" id="whSubView" onchange="onWhSubViewChange()">
+        <option value="warehouses">Warehouse List</option>
+        <option value="locations">Location Bins</option>
+        <option value="availability">Availability</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="refreshWhView()">↺ Refresh</button>
+      <button class="btn btn-primary" id="btnAddWarehouse" onclick="openWarehouseModal()">+ Warehouse</button>
+    </div>
   </div>
-  <div class="table-wrap" id="warehousesTable"><div class="empty"><div class="empty-icon">🏭</div><p>Loading…</p></div></div>
+  <!-- Sub-view: Warehouse list -->
+  <div id="whview-warehouses">
+    <div class="table-wrap" id="warehousesTable"><div class="empty"><div class="empty-icon">🏭</div><p>Loading…</p></div></div>
+  </div>
+  <!-- Sub-view: Location bins -->
+  <div id="whview-locations" style="display:none">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <select class="filter-select" id="locWarehouseFilter" onchange="loadLocationsForWarehouse(this.value)">
+        <option value="">— Select Warehouse —</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="openLocationModal()">+ Add Location</button>
+    </div>
+    <div class="table-wrap" id="locationsTable"><div class="empty"><div class="empty-icon">📍</div><p>Select a warehouse above to view its locations.</p></div></div>
+  </div>
+  <!-- Sub-view: Availability per warehouse -->
+  <div id="whview-availability" style="display:none">
+    <div id="whAvailabilityContainer"><div class="empty"><div class="empty-icon">📊</div><p>Click Refresh to load warehouse availability.</p></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     SALES ORDERS — CB-09
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-salesorders">
+  <div class="section-header">
+    <div class="section-title">🧾 Sales Orders</div>
+    <div class="toolbar">
+      <select class="filter-select" id="soSubView" onchange="onSOSubViewChange()">
+        <option value="list">Sales Order List</option>
+        <option value="demand">Demand Dashboard</option>
+        <option value="atp">ATP Lookup</option>
+      </select>
+      <select class="filter-select" id="soStatusFilter" onchange="loadSalesOrders()">
+        <option value="">All Statuses</option>
+        <option value="draft">Draft</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="allocated">Allocated</option>
+        <option value="partially_fulfilled">Partially Fulfilled</option>
+        <option value="fulfilled">Fulfilled</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="refreshSOView()">↺ Refresh</button>
+      <button class="btn btn-primary" id="btnAddSO" onclick="openCreateSOModal()">+ New Order</button>
+    </div>
+  </div>
+
+  <!-- Sub-view: SO list -->
+  <div id="soview-list">
+    <div class="table-wrap" id="salesOrdersTable"><div class="empty"><div class="empty-icon">🧾</div><p>Loading…</p></div></div>
+  </div>
+
+  <!-- Sub-view: Demand dashboard -->
+  <div id="soview-demand" style="display:none">
+    <div id="demandDashboardContainer"><div class="empty"><div class="empty-icon">📊</div><p>Click Refresh to load demand dashboard.</p></div></div>
+  </div>
+
+  <!-- Sub-view: ATP lookup -->
+  <div id="soview-atp" style="display:none">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+      <select class="filter-select" id="atpItemFilter" style="min-width:250px">
+        <option value="">— Select Item —</option>
+      </select>
+      <input type="number" id="atpDays" class="filter-select" style="width:100px" placeholder="Days (30)" min="1" max="365" value="30">
+      <button class="btn btn-primary btn-sm" onclick="loadATPForItem()">Check ATP</button>
+    </div>
+    <div id="atpResultContainer"><div class="empty"><div class="empty-icon">🔮</div><p>Select an item and click Check ATP.</p></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     WAREHOUSE TRANSFERS — CB-08
+══════════════════════════════════════════════════════════ -->
+<div class="section" id="tab-transfers">
+  <div class="section-header">
+    <div class="section-title">🔄 Warehouse Transfers</div>
+    <div class="toolbar">
+      <select class="filter-select" id="transferStatusFilter" onchange="loadTransfers()">
+        <option value="">All Statuses</option>
+        <option value="draft">Draft</option>
+        <option value="approved">Approved</option>
+        <option value="in_transit">In Transit</option>
+        <option value="received">Received</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="loadTransfers()">↺ Refresh</button>
+      <button class="btn btn-primary" data-perm="TRANSFER_CREATE" onclick="openCreateTransferModal()">+ New Transfer</button>
+    </div>
+  </div>
+  <div class="table-wrap" id="transfersTable"><div class="empty"><div class="empty-icon">🔄</div><p>Loading transfers…</p></div></div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -380,7 +499,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
         <option value="closed">Closed</option>
         <option value="cancelled">Cancelled</option>
       </select>
-      <button class="btn btn-primary" onclick="openCreatePoModal()">+ Create PO</button>
+      <button class="btn btn-primary" data-perm="PO_CREATE" onclick="openCreatePoModal()">+ Create PO</button>
     </div>
   </div>
   <div class="table-wrap" id="ordersTable"><div class="empty"><div class="empty-icon">🛒</div><p>Loading…</p></div></div>
@@ -493,28 +612,64 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
-     REPORTS — PHASE 2A COSTING
+     REPORTS & DASHBOARD — Codebox 07
 ══════════════════════════════════════════════════════════ -->
 <div class="section" id="tab-reports">
   <div class="section-header">
-    <div class="section-title">Inventory Reports</div>
+    <div class="section-title">📊 Reports &amp; Dashboard</div>
     <div class="toolbar">
       <select class="filter-select" id="reportType" onchange="onReportTypeChange()">
-        <option value="stock-valuation">Stock Valuation</option>
-        <option value="valuation-movements">Valuation Movements</option>
-        <option value="work-order-costs">Work Order Costs</option>
+        <optgroup label="Dashboard">
+          <option value="operational-dashboard">🗂 Operational Dashboard</option>
+          <option value="alerts">⚠ Alerts Panel</option>
+        </optgroup>
+        <optgroup label="Stock">
+          <option value="stock-valuation">Stock Valuation</option>
+          <option value="valuation-movements">Valuation Movements</option>
+          <option value="shortages">Shortages</option>
+          <option value="overcommitted">Overcommitted Items</option>
+        </optgroup>
+        <optgroup label="Reservations">
+          <option value="reservations">Reservation Report</option>
+        </optgroup>
+        <optgroup label="Procurement">
+          <option value="purchase-orders">Purchase Orders</option>
+          <option value="overdue-pos">Overdue POs</option>
+          <option value="supplier-history">Supplier History</option>
+          <option value="procurement-suggestions">Procurement Suggestions</option>
+        </optgroup>
+        <optgroup label="Production">
+          <option value="production-summary">Production Summary</option>
+          <option value="wastage">Wastage Log</option>
+          <option value="yield-variance">Yield Variance</option>
+          <option value="work-order-costs">Work Order Costs</option>
+        </optgroup>
+        <optgroup label="Warehouses (CB-08)">
+          <option value="warehouse-stock">Warehouse Stock</option>
+          <option value="transfer-history">Transfer History</option>
+          <option value="warehouse-shortages">Warehouse Shortages</option>
+        </optgroup>
+        <optgroup label="Demand Planning (CB-09)">
+          <option value="open-sales-orders">Open Sales Orders</option>
+          <option value="atp-report">ATP Report</option>
+          <option value="future-demand">Future Demand</option>
+          <option value="demand-shortages">Demand Shortages</option>
+        </optgroup>
       </select>
       <button class="btn btn-ghost btn-sm" onclick="loadSelectedReport()">↺ Refresh</button>
-      <button class="btn btn-gold" onclick="loadSelectedReport()" id="btnGenReport">Generate Report</button>
+      <button class="btn btn-gold" onclick="loadSelectedReport()" id="btnGenReport">Generate</button>
     </div>
   </div>
-  <!-- Date range filter (shown for movement/WO cost reports, hidden for stock valuation) -->
-  <div id="reportDateBar" style="display:none;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-    <label style="font-size:0.82rem;color:var(--text-muted)">From</label>
+
+  <!-- Date range (valuation-movements, work-order-costs, purchase-orders, wastage, yield-variance) -->
+  <div id="reportDateBar" class="report-filter-bar hidden">
+    <span class="report-filter-label">From</span>
     <input type="date" id="reportFrom" class="filter-select" style="width:150px">
-    <label style="font-size:0.82rem;color:var(--text-muted)">To</label>
+    <span class="report-filter-label">To</span>
     <input type="date" id="reportTo" class="filter-select" style="width:150px">
   </div>
+
+  <!-- Stock valuation filters -->
   <div id="reportFilterBar" class="report-filter-bar hidden">
     <select class="filter-select" id="reportItemTypeFilter" onchange="loadSelectedReport()">
       <option value="">All item types</option>
@@ -534,10 +689,86 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     </select>
     <input class="search-input" id="reportSearchFilter" placeholder="Search item or SKU…" oninput="loadSelectedReport()">
   </div>
-  <!-- Summary banner populated by each report -->
+
+  <!-- PO status filter (purchase-orders) -->
+  <div id="reportPoFilterBar" class="report-filter-bar hidden">
+    <span class="report-filter-label">Status</span>
+    <select class="filter-select" id="reportPoStatus" onchange="loadSelectedReport()">
+      <option value="">All Statuses</option>
+      <option value="draft">Draft</option>
+      <option value="approved">Approved</option>
+      <option value="ordered">Ordered</option>
+      <option value="partial_receipt">Partial Receipt</option>
+      <option value="fully_received">Fully Received</option>
+      <option value="closed">Closed</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  </div>
+
+  <!-- Reservation filters (reservations) -->
+  <div id="reportResvFilterBar" class="report-filter-bar hidden">
+    <span class="report-filter-label">Status</span>
+    <select class="filter-select" id="reportResvStatus" onchange="loadSelectedReport()">
+      <option value="">All Statuses</option>
+      <option value="active">Active</option>
+      <option value="partially_released">Partially Released</option>
+      <option value="released">Released</option>
+      <option value="consumed">Consumed</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+    <span class="report-filter-label">Source</span>
+    <select class="filter-select" id="reportResvSource" onchange="loadSelectedReport()">
+      <option value="">All Sources</option>
+      <option value="work_order">Work Order</option>
+      <option value="manual_hold">Manual Hold</option>
+    </select>
+  </div>
+
+  <!-- Yield direction filter (yield-variance) -->
+  <div id="reportYieldFilterBar" class="report-filter-bar hidden">
+    <span class="report-filter-label">Direction</span>
+    <select class="filter-select" id="reportYieldDirection" onchange="loadSelectedReport()">
+      <option value="">All</option>
+      <option value="over">Over Yield</option>
+      <option value="under">Under Yield</option>
+    </select>
+  </div>
+
+  <!-- Demand planning filter (future-demand, open-sales-orders) -->
+  <div id="reportDemandFilterBar" class="report-filter-bar hidden">
+    <span class="report-filter-label">Days</span>
+    <input type="number" id="reportDemandDays" class="filter-select" style="width:80px" value="30" min="1" max="365">
+    <select class="filter-select" id="reportDemandStatus" onchange="loadSelectedReport()">
+      <option value="">All SO Statuses</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="allocated">Allocated</option>
+    </select>
+    <input class="search-input" id="reportDemandCustomer" placeholder="Filter by customer…" style="width:180px" oninput="loadSelectedReport()">
+  </div>
+
+  <!-- Warehouse filter (warehouse-stock, transfer-history) -->
+  <div id="reportWhFilterBar" class="report-filter-bar hidden">
+    <span class="report-filter-label">Warehouse</span>
+    <select class="filter-select" id="reportWarehouseFilter" onchange="loadSelectedReport()">
+      <option value="">All Warehouses</option>
+    </select>
+    <select class="filter-select" id="reportTransferStatus" onchange="loadSelectedReport()" style="display:none">
+      <option value="">All Statuses</option>
+      <option value="draft">Draft</option>
+      <option value="approved">Approved</option>
+      <option value="in_transit">In Transit</option>
+      <option value="received">Received</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  </div>
+
+  <!-- Summary banner -->
   <div id="reportSummary" class="report-summary"></div>
-  <!-- Table output -->
-  <div class="table-wrap" id="reportContainer"><div class="empty"><div class="empty-icon">📊</div><p>Select a report type and click Generate.</p></div></div>
+
+  <!-- Main output — table-wrap for tabular reports; plain div for dashboard layouts -->
+  <div id="reportContainer">
+    <div class="empty"><div class="empty-icon">📊</div><p>Select a report and click Generate.</p></div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -653,6 +884,34 @@ tr:hover td { background: rgba(255,255,255,0.02); }
             <label class="checkbox-row"><input type="checkbox" id="iTrackSerials"> Track Serial Numbers</label>
           </div>
         </div>
+        <div class="form-section">
+          <div class="form-section-title">Unit of Measure (Codebox 10)</div>
+          <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px;">
+            Base unit = stock truth. Purchase/recipe/output units convert into base unit.
+          </div>
+          <div class="form-grid cols3">
+            <div class="form-field">
+              <label>Base Unit <span style="color:var(--text-muted);font-size:0.75rem;">(stock unit)</span></label>
+              <input id="iBaseUnit" placeholder="e.g. kg, g, each, L">
+            </div>
+            <div class="form-field">
+              <label>Default Purchase Unit</label>
+              <input id="iDefaultPurchaseUnit" placeholder="e.g. bag_25kg, case, box">
+            </div>
+            <div class="form-field">
+              <label>Default Recipe Unit</label>
+              <input id="iDefaultRecipeUnit" placeholder="e.g. g, ml, each">
+            </div>
+            <div class="form-field">
+              <label>Default Output Unit</label>
+              <input id="iDefaultOutputUnit" placeholder="e.g. box, tray, pan">
+            </div>
+          </div>
+          <div id="itemUomConversionsPanel" style="display:none;margin-top:12px;">
+            <div style="font-size:0.82rem;font-weight:600;margin-bottom:6px;">Pack Size Conversions</div>
+            <div id="itemUomConversionsList" style="font-size:0.82rem;color:var(--text-muted);">Save item first to manage conversions.</div>
+          </div>
+        </div>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" onclick="closeModal('itemModal')">Cancel</button>
           <button type="submit" class="btn btn-primary" id="itemSaveBtn">Save Item</button>
@@ -698,34 +957,175 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 </div>
 
 <!-- WAREHOUSE MODAL -->
+<!-- WAREHOUSE MODAL — CB-08 extended -->
 <div class="modal-overlay" id="warehouseModal">
-  <div class="modal">
+  <div class="modal modal-lg">
     <div class="modal-header">
-      <h3 id="whModalTitle">Add Location</h3>
+      <h3 id="whModalTitle">Add Warehouse</h3>
       <button class="modal-close" onclick="closeModal('warehouseModal')">✕</button>
     </div>
     <div class="modal-body">
       <form onsubmit="return saveWarehouse(event)">
-        <div class="form-grid full">
-          <div class="form-field"><label>Name *</label><input id="whName" required placeholder="e.g. Main Warehouse"></div>
-          <div class="form-field"><label>Location Type</label>
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1"><label>Warehouse Name *</label><input id="whName" required placeholder="e.g. Main Warehouse"></div>
+          <div class="form-field"><label>Warehouse Code</label><input id="whCode" placeholder="e.g. WH-MAIN" style="text-transform:uppercase"></div>
+          <div class="form-field"><label>Type</label>
             <select id="whType">
-              <option value="warehouse">Warehouse</option>
-              <option value="store">Store</option>
-              <option value="wip">WIP (Work In Progress)</option>
+              <option value="main">Main</option>
+              <option value="production">Production</option>
               <option value="quarantine">Quarantine</option>
-              <option value="dispatch">Dispatch</option>
+              <option value="transit">Transit</option>
+              <option value="retail">Retail</option>
+              <option value="overflow">Overflow</option>
+              <option value="other">Other</option>
             </select>
           </div>
-          <div class="form-field"><label>Address</label><input id="whAddress" placeholder="Physical address"></div>
-          <div class="form-field"><label>Notes</label><textarea id="whNotes" rows="2"></textarea></div>
+          <div class="form-field"><label>Address Line 1</label><input id="whAddr1" placeholder="Street address"></div>
+          <div class="form-field"><label>Address Line 2</label><input id="whAddr2" placeholder="Unit, building…"></div>
+          <div class="form-field"><label>City</label><input id="whCity" placeholder="City"></div>
+          <div class="form-field"><label>Postal Code</label><input id="whPostal" placeholder="Postal code"></div>
+          <div class="form-field"><label>Contact Name</label><input id="whContactName" placeholder="Warehouse manager"></div>
+          <div class="form-field"><label>Contact Phone</label><input id="whContactPhone" placeholder="+27 xx xxx xxxx"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Contact Email</label><input id="whContactEmail" type="email" placeholder="warehouse@example.com"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="whNotes" rows="2"></textarea></div>
+          <div class="form-field checkbox-row" style="grid-column:1/-1"><input type="checkbox" id="whIsDefault"><label for="whIsDefault">Set as default warehouse</label></div>
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" onclick="closeModal('warehouseModal')">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="whSaveBtn">Save</button>
+          <button type="submit" class="btn btn-primary" id="whSaveBtn">Save Warehouse</button>
         </div>
       </form>
     </div>
+  </div>
+</div>
+
+<!-- CREATE SALES ORDER MODAL — CB-09 -->
+<div class="modal-overlay" id="createSOModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3>New Sales Order</h3>
+      <button class="modal-close" onclick="closeModal('createSOModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="return submitCreateSO(event)">
+        <div class="form-grid">
+          <div class="form-field" style="grid-column:1/-1"><label>Customer Name *</label><input id="soCustomerName" required placeholder="e.g. ABC Retailers"></div>
+          <div class="form-field"><label>Customer Email</label><input id="soCustomerEmail" type="email" placeholder="customer@example.com"></div>
+          <div class="form-field"><label>Customer Phone</label><input id="soCustomerPhone" placeholder="+27 xx xxx xxxx"></div>
+          <div class="form-field"><label>Customer Reference</label><input id="soCustomerRef" placeholder="Their PO number"></div>
+          <div class="form-field"><label>Required By Date</label><input id="soRequiredDate" type="date"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="soNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">Order Lines</div>
+          <div class="bom-lines-header" style="grid-template-columns:1fr 90px 100px 32px">
+            <div>Item</div><div>Qty</div><div>Unit Price</div><div></div>
+          </div>
+          <div id="soLineRows"></div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addSOLine()" style="margin-top:8px">+ Add Item</button>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('createSOModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Sales Order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- SALES ORDER DETAIL MODAL — CB-09 -->
+<div class="modal-overlay" id="soDetailModal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <h3 id="soDetailTitle">Sales Order</h3>
+      <button class="modal-close" onclick="closeModal('soDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="soDetailBody"></div>
+  </div>
+</div>
+
+<!-- LOCATION MODAL — CB-08 -->
+<div class="modal-overlay" id="locationModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="locModalTitle">Add Location</h3>
+      <button class="modal-close" onclick="closeModal('locationModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="return saveLocation(event)">
+        <div class="form-grid">
+          <div class="form-field"><label>Location Code *</label><input id="locCode" required placeholder="e.g. A1-BIN-03" style="text-transform:uppercase"></div>
+          <div class="form-field"><label>Location Name *</label><input id="locName" required placeholder="e.g. Aisle A, Bin 3"></div>
+          <div class="form-field"><label>Type</label>
+            <select id="locType">
+              <option value="bin">Bin</option>
+              <option value="shelf">Shelf</option>
+              <option value="bulk">Bulk</option>
+              <option value="staging">Staging</option>
+              <option value="quarantine">Quarantine</option>
+              <option value="production">Production</option>
+              <option value="dispatch">Dispatch</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-field"><label>Max Capacity</label><input id="locCapacity" type="number" min="0" step="0.001" placeholder="0"></div>
+          <div class="form-field"><label>Capacity Unit</label><input id="locCapUnit" placeholder="e.g. pallets, kg"></div>
+          <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="locNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('locationModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="locSaveBtn">Save Location</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE TRANSFER MODAL — CB-08 -->
+<div class="modal-overlay" id="createTransferModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3>New Warehouse Transfer</h3>
+      <button class="modal-close" onclick="closeModal('createTransferModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="return submitCreateTransfer(event)">
+        <div class="form-grid">
+          <div class="form-field"><label>From Warehouse *</label>
+            <select id="tFromWarehouse" required onchange="onTransferWhChange()"><option value="">— Select —</option></select>
+          </div>
+          <div class="form-field"><label>To Warehouse *</label>
+            <select id="tToWarehouse" required><option value="">— Select —</option></select>
+          </div>
+          <div class="form-field" style="grid-column:1/-1"><label>Notes</label><textarea id="tNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">Transfer Lines</div>
+          <div id="transferLinesEditor">
+            <div class="bom-lines-header" style="grid-template-columns:1fr 100px 32px">
+              <div>Item</div><div>Qty</div><div></div>
+            </div>
+            <div id="transferLineRows"></div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addTransferLine()" style="margin-top:8px">+ Add Item</button>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('createTransferModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Transfer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- TRANSFER DETAIL MODAL — CB-08 -->
+<div class="modal-overlay" id="transferDetailModal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <h3 id="tDetailTitle">Transfer</h3>
+      <button class="modal-close" onclick="closeModal('transferDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="tDetailBody"></div>
   </div>
 </div>
 
@@ -917,17 +1317,84 @@ tr:hover td { background: rgba(255,255,255,0.02); }
       <form onsubmit="return submitQuickReceive(event)">
         <div class="form-grid full">
           <div class="form-field"><label>Supplier *</label><select id="quickReceiveSupplier" required><option value="">— Select Supplier —</option></select></div>
-          <div class="form-field"><label>Item *</label><select id="quickReceiveItem" required><option value="">— Select Item —</option></select></div>
+          <div class="form-field"><label>Item *</label><select id="quickReceiveItem" required onchange="onQuickReceiveItemChange()"><option value="">— Select Item —</option></select></div>
           <div class="form-grid cols3">
-            <div class="form-field"><label>Quantity *</label><input id="quickReceiveQty" type="number" step="0.001" min="0.001" required></div>
-            <div class="form-field"><label>Unit Cost (R) *</label><input id="quickReceiveCost" type="number" step="0.01" min="0" required></div>
+            <div class="form-field"><label>Quantity *</label><input id="quickReceiveQty" type="number" step="0.001" min="0.001" required oninput="updateQrConvPreview()"></div>
+            <div class="form-field"><label>Unit Cost (R) per pack *</label><input id="quickReceiveCost" type="number" step="0.01" min="0" required oninput="updateQrConvPreview()"></div>
             <div class="form-field"><label>Reference / Invoice # *</label><input id="quickReceiveRef" required placeholder="e.g. INV-1042"></div>
+          </div>
+          <!-- Codebox 10 — purchase unit (pack size) -->
+          <div style="border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--bg-hover,#f8f8fa);margin-top:4px;">
+            <div style="font-size:0.8rem;font-weight:600;margin-bottom:8px;color:var(--text-muted);">Pack Size / UOM Conversion (optional)</div>
+            <div class="form-grid cols3">
+              <div class="form-field">
+                <label>Purchase Unit <span style="font-size:0.72rem;color:var(--text-muted);">(leave blank = base unit)</span></label>
+                <input id="qrPurchaseUnit" placeholder="e.g. bag_25kg" oninput="updateQrConvPreview()">
+              </div>
+              <div class="form-field">
+                <label>Base Qty (auto)</label>
+                <input id="qrBaseQtyPreview" readonly placeholder="Will calculate" style="background:var(--bg-alt);font-weight:600;">
+              </div>
+              <div class="form-field">
+                <label>Cost per Base Unit (auto)</label>
+                <input id="qrCostPerBasePreview" readonly placeholder="Will calculate" style="background:var(--bg-alt);font-weight:600;">
+              </div>
+            </div>
+            <div id="qrUomStatus" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;"></div>
           </div>
           <div class="form-field"><label>Notes</label><textarea id="quickReceiveNotes" rows="2"></textarea></div>
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" onclick="closeModal('quickReceiveModal')">Cancel</button>
           <button type="submit" class="btn btn-success">Receive Stock</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- UOM CONVERSIONS MODAL (Codebox 10) -->
+<div class="modal-overlay" id="uomConvModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 id="uomConvModalTitle">Pack Size Conversions</h3>
+      <button class="modal-close" onclick="closeModal('uomConvModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="uomConvList" style="margin-bottom:16px;font-size:0.85rem;"></div>
+      <form onsubmit="return saveUomConversion(event)">
+        <div class="form-section-title" style="margin-bottom:8px;">Add Conversion</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">
+          1 &lt;from_unit&gt; = factor × &lt;to_unit (base)&gt;&nbsp;&nbsp;
+          Example: 1 bag_25kg = 25 kg
+        </div>
+        <div class="form-grid cols3">
+          <div class="form-field">
+            <label>From Unit *</label>
+            <input id="ucFromUnit" required placeholder="e.g. bag_25kg">
+          </div>
+          <div class="form-field">
+            <label>To Unit (base) *</label>
+            <input id="ucToUnit" required placeholder="e.g. kg">
+          </div>
+          <div class="form-field">
+            <label>Factor *</label>
+            <input id="ucFactor" type="number" step="any" min="0.000001" required placeholder="e.g. 25">
+          </div>
+          <div class="form-field" style="grid-column:1/-1">
+            <label>Description</label>
+            <input id="ucDescription" placeholder="e.g. 1 bag_25kg = 25 kg of flour">
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0;">
+          <label class="checkbox-row"><input type="checkbox" id="ucIsPurchase"> Purchase unit</label>
+          <label class="checkbox-row"><input type="checkbox" id="ucIsRecipe"> Recipe unit</label>
+          <label class="checkbox-row"><input type="checkbox" id="ucIsOutput"> Output unit</label>
+        </div>
+        <input type="hidden" id="ucItemId">
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('uomConvModal')">Close</button>
+          <button type="submit" class="btn btn-primary">Add Conversion</button>
         </div>
       </form>
     </div>
@@ -1166,6 +1633,109 @@ let token = null;
 let allItems = [];
 let allWarehouses = [];
 let _itemEditId = null;
+
+// Codebox 11 — permission state (loaded from backend on init)
+// Backend is authoritative; this is UX-only to hide inaccessible actions.
+let _userPerms = {};
+let _userRole  = 'cashier';
+
+/** True if the current user has the given inventory permission key. */
+function canDo(permKey) { return !!_userPerms[permKey]; }
+
+// ─── Codebox 12: Stability Hardening ─────────────────────────────────────────
+
+/**
+ * Submit guard — prevents double-submit on async form handlers.
+ * Disables the button, shows a loading label, then restores on completion.
+ *
+ * Usage:
+ *   async function saveItem(e) {
+ *     e.preventDefault();
+ *     await withSubmitGuard('itemSaveBtn', async () => {
+ *       await apiFetch(...);
+ *     });
+ *   }
+ *
+ * @param {string}   btnId   — element id of the submit button
+ * @param {Function} asyncFn — the async work to protect
+ */
+async function withSubmitGuard(btnId, asyncFn) {
+  const btn = btnId ? document.getElementById(btnId) : null;
+  const orig = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    await asyncFn();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
+
+/**
+ * Set a container's content to a loading state.
+ * Prevents stale data from showing during async refresh.
+ */
+function setLoading(elementId, msg = 'Loading…') {
+  const el = document.getElementById(elementId);
+  if (el) el.innerHTML = `<div class="empty"><p>${esc(msg)}</p></div>`;
+}
+
+/**
+ * Set a container's content to an error state.
+ */
+function setError(elementId, msg) {
+  const el = document.getElementById(elementId);
+  if (el) el.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p style="color:var(--danger)">${esc(msg)}</p></div>`;
+}
+
+/** Load inventory permissions for this user from the backend. */
+async function loadUserPerms() {
+  try {
+    const d = await apiFetch('/my-permissions');
+    _userPerms = d.permissions || {};
+    _userRole  = d.role || 'cashier';
+  } catch(e) {
+    _userPerms = {};
+  }
+  applyPermissions();
+}
+
+/**
+ * Apply permission-based visibility to static UI elements.
+ * Called once after permissions load. Dynamic renders (tables, modals)
+ * check canDo() inline when they generate HTML.
+ */
+function applyPermissions() {
+  // Show/hide top-level action buttons that are always visible in the DOM
+  const setVis = (sel, show) => {
+    document.querySelectorAll(sel).forEach(el => {
+      el.style.display = show ? '' : 'none';
+    });
+  };
+
+  // Quick receive button → RECEIVE
+  setVis('[data-perm="RECEIVE"]', canDo('RECEIVE'));
+  // Add Item, Add Supplier, Add Warehouse, UOM config → CONFIGURE
+  setVis('[data-perm="CONFIGURE"]', canDo('CONFIGURE'));
+  // Manual stock adjustments → ADJUST
+  setVis('[data-perm="ADJUST"]', canDo('ADJUST'));
+  // Create PO → PO_CREATE
+  setVis('[data-perm="PO_CREATE"]', canDo('PO_CREATE'));
+  // Create WO → WO_MANAGE
+  setVis('[data-perm="WO_MANAGE"]', canDo('WO_MANAGE'));
+  // Create SO → SO_MANAGE
+  setVis('[data-perm="SO_MANAGE"]', canDo('SO_MANAGE'));
+  // Create Transfer → TRANSFER_CREATE
+  setVis('[data-perm="TRANSFER_CREATE"]', canDo('TRANSFER_CREATE'));
+
+  // Cost-sensitive tabs: hide if no COST_VIEW
+  setVis('[data-perm="COST_VIEW"]', canDo('COST_VIEW'));
+
+  // Stock count create → COUNT_CONDUCT
+  setVis('[data-perm="COUNT_CONDUCT"]', canDo('COUNT_CONDUCT'));
+
+  // Reports nav item
+  setVis('[data-perm="REPORTS_VIEW"]', canDo('REPORTS_VIEW'));
+}
 let _whEditId = null;
 let _supEditId = null;
 let _bomEditId = null;
@@ -1224,7 +1794,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     const user = JSON.parse(atob((getToken().split('.')[1]||'e30=')));
     document.getElementById('companyBadge').textContent = user.companyName || user.company || 'Company';
+    _userRole = user.role || 'cashier';
   } catch(e) {}
+
+  // Load user permissions first (Codebox 11) so UI governs correctly
+  await loadUserPerms();
 
   await loadDashboard();
   await loadWarehouses();
@@ -1242,6 +1816,9 @@ async function switchTab(name) {
   if (tabEl) tabEl.classList.add('active');
   const sec = document.getElementById('tab-' + name);
   if (sec) sec.classList.add('active');
+  // Refresh health panel whenever returning to dashboard
+  if (name === 'dashboard') { loadHealth().catch(() => {}); loadOnboarding().catch(() => {}); }
+
   if (!_tabLoaded[name]) {
     _tabLoaded[name] = true;
     if (name === 'movements')  await loadMovements();
@@ -1250,7 +1827,9 @@ async function switchTab(name) {
     if (name === 'orders')     await loadOrders();
     if (name === 'boms')       await loadBoms();
     if (name === 'workorders') await loadWorkOrders();
-    if (name === 'reports')    onReportTypeChange();
+    if (name === 'reports')    { onReportTypeChange(); loadSelectedReport(); populateReportWarehouseFilter(); }
+    if (name === 'transfers')   await loadTransfers();
+    if (name === 'salesorders') { await loadSalesOrders(); populateATPItemFilter(); }
     if (name === 'stockcounts') await loadCountSessions();
     if (name === 'reservations') await loadReservations();
     if (name === 'procurement') await loadProcurementSuggestions();
@@ -1276,32 +1855,169 @@ async function loadDashboard() {
     document.getElementById('statReservedValue').textContent      = fmtR(d.total_reserved_value ?? 0);
     document.getElementById('statShortageItems').textContent      = d.shortage_item_count ?? 0;
   } catch(e) { console.error('Dashboard load failed', e); }
+  // Codebox 12 — load health + onboarding in parallel, non-blocking
+  loadHealth().catch(() => {});
+  loadOnboarding().catch(() => {});
+}
+
+// ─── Codebox 12: Operational Health ──────────────────────────────────────────
+
+const SEVERITY_STYLE = {
+  critical: { bg: '#7f1d1d', border: '#ef4444', icon: '🔴', label: 'Critical' },
+  warning:  { bg: '#78350f', border: '#f59e0b', icon: '🟡', label: 'Warning'  },
+  info:     { bg: '#1e3a5f', border: '#3b82f6', icon: '🔵', label: 'Info'     }
+};
+
+async function loadHealth() {
+  const panel = document.getElementById('healthContent');
+  if (!panel) return;
+  try {
+    const d = await apiFetch('/health');
+    const issues = d.issues || [];
+
+    if (!issues.length) {
+      panel.innerHTML = '<div style="color:#22c55e;font-weight:600;">✓ All systems operational — no issues detected.</div>';
+      return;
+    }
+
+    const severityOrder = { critical: 0, warning: 1, info: 2 };
+    const sorted = [...issues].sort((a, b) => (severityOrder[a.severity] || 2) - (severityOrder[b.severity] || 2));
+
+    panel.innerHTML = sorted.map(issue => {
+      const s = SEVERITY_STYLE[issue.severity] || SEVERITY_STYLE.info;
+      const affectedHtml = issue.affected?.length
+        ? `<div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">
+             Affected: ${issue.affected.map(a => esc(a.name || a.po_number || a.wo_number || a.batch || String(a.id))).join(', ')}
+             ${issue.count > 5 ? ` (+${issue.count - 5} more)` : ''}
+           </div>`
+        : '';
+      return `<div style="background:${s.bg};border:1px solid ${s.border};border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <span>${s.icon}</span>
+          <strong style="font-size:0.85rem;">${esc(issue.title)}</strong>
+          <span style="margin-left:auto;font-size:0.72rem;background:${s.border};color:#000;border-radius:4px;padding:1px 6px;">${issue.count}</span>
+        </div>
+        <div style="font-size:0.78rem;color:#cbd5e1;">${esc(issue.recommendation)}</div>
+        ${affectedHtml}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    panel.innerHTML = '<div style="color:var(--text-muted);font-size:0.78rem;">Health diagnostics unavailable.</div>';
+  }
+}
+
+// ─── Codebox 12: Onboarding Checklist ────────────────────────────────────────
+
+async function loadOnboarding() {
+  try {
+    const d = await apiFetch('/onboarding');
+    const steps = d.steps || [];
+    const panel = document.getElementById('onboardingPanel');
+    const stepsList = document.getElementById('onboardingStepsList');
+    const progress  = document.getElementById('onboardingProgress');
+    if (!panel || !stepsList) return;
+
+    // Only show panel if setup is incomplete
+    if (d.ready_for_pilot) { panel.style.display = 'none'; return; }
+
+    panel.style.display = '';
+    progress.textContent = `${d.complete_count} of ${d.total} steps complete`;
+
+    stepsList.innerHTML = steps.map(step => {
+      const priorityColor = step.priority === 'required' ? '#f59e0b' : step.priority === 'recommended' ? '#818cf8' : '#6b7280';
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:rgba(255,255,255,0.05);border-radius:6px;">
+        <div style="flex-shrink:0;width:20px;height:20px;border-radius:50%;background:${step.done ? '#22c55e' : 'rgba(255,255,255,0.1)'};display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:#fff;margin-top:1px;">
+          ${step.done ? '✓' : step.step}
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:0.82rem;font-weight:600;color:${step.done ? '#22c55e' : '#e2e8f0'};${step.done ? 'text-decoration:line-through;opacity:0.7' : ''};">${esc(step.title)}</div>
+          ${!step.done ? `<div style="font-size:0.72rem;color:#94a3b8;margin-top:2px;">${esc(step.action)}</div>` : ''}
+        </div>
+        ${!step.done ? `<span style="font-size:0.65rem;background:${priorityColor}22;color:${priorityColor};border:1px solid ${priorityColor}44;border-radius:4px;padding:1px 5px;white-space:nowrap;">${step.priority}</span>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) { /* non-fatal — hide panel */ }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 // WAREHOUSES
 // ════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+// WAREHOUSES — CB-08
+// ════════════════════════════════════════════════════════════════════════════
+
+function onWhSubViewChange() {
+  const v = document.getElementById('whSubView').value;
+  document.getElementById('whview-warehouses').style.display   = v === 'warehouses'   ? '' : 'none';
+  document.getElementById('whview-locations').style.display    = v === 'locations'    ? '' : 'none';
+  document.getElementById('whview-availability').style.display = v === 'availability' ? '' : 'none';
+  const addBtn = document.getElementById('btnAddWarehouse');
+  if (v === 'warehouses') { addBtn.textContent = '+ Warehouse'; addBtn.onclick = () => openWarehouseModal(); }
+  else if (v === 'locations') { addBtn.textContent = '+ Location'; addBtn.onclick = () => openLocationModal(); }
+  else { addBtn.style.display = 'none'; return; }
+  addBtn.style.display = '';
+
+  if (v === 'locations') populateLocWarehouseFilter();
+  if (v === 'availability') loadWarehouseAvailability();
+}
+
+function refreshWhView() {
+  const v = document.getElementById('whSubView').value;
+  if (v === 'warehouses') loadWarehouses();
+  else if (v === 'locations') { const wid = document.getElementById('locWarehouseFilter').value; if (wid) loadLocationsForWarehouse(wid); }
+  else loadWarehouseAvailability();
+}
+
 async function loadWarehouses() {
   try {
     const d = await apiFetch('/warehouses');
     allWarehouses = d.warehouses || [];
     populateWarehouseSelects();
     renderWarehousesTable();
+    populateLocWarehouseFilter();
+    populateTransferWarehouseSelects();
   } catch(e) { console.error('Warehouses load failed', e); }
 }
 
 function populateWarehouseSelects() {
-  const selects = [
-    document.getElementById('itemFilterWarehouse'),
-    document.getElementById('iWarehouse'),
-    document.getElementById('mWarehouse')
-  ];
-  selects.forEach(sel => {
+  const selIds = ['itemFilterWarehouse','iWarehouse','mWarehouse'];
+  selIds.forEach(id => {
+    const sel = document.getElementById(id);
     if (!sel) return;
     const cur = sel.value;
-    const firstOpt = sel.querySelector('option[value=""]');
+    const first = sel.querySelector('option[value=""]');
     sel.innerHTML = '';
-    if (firstOpt) sel.appendChild(firstOpt);
+    if (first) sel.appendChild(first);
+    allWarehouses.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w.id;
+      o.textContent = w.name + (w.warehouse_code ? ` [${esc(w.warehouse_code)}]` : '');
+      sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+  });
+}
+
+function populateLocWarehouseFilter() {
+  const sel = document.getElementById('locWarehouseFilter');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select Warehouse —</option>';
+  allWarehouses.forEach(w => {
+    const o = document.createElement('option');
+    o.value = w.id;
+    o.textContent = w.name;
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+}
+
+function populateTransferWarehouseSelects() {
+  ['tFromWarehouse','tToWarehouse'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Select —</option>';
     allWarehouses.forEach(w => {
       const o = document.createElement('option');
       o.value = w.id;
@@ -1312,67 +2028,422 @@ function populateWarehouseSelects() {
   });
 }
 
+function populateReportWarehouseFilter() {
+  const sel = document.getElementById('reportWarehouseFilter');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">All Warehouses</option>';
+  allWarehouses.forEach(w => {
+    const o = document.createElement('option');
+    o.value = w.id;
+    o.textContent = w.name;
+    sel.appendChild(o);
+  });
+}
+
 function renderWarehousesTable() {
   const wrap = document.getElementById('warehousesTable');
-  if (!allWarehouses.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">🏭</div><p>No locations yet.</p></div>'; return; }
+  if (!allWarehouses.length) {
+    wrap.innerHTML = '<div class="empty"><div class="empty-icon">🏭</div><p>No warehouses yet. Click "+ Warehouse" to add one.</p></div>';
+    return;
+  }
   wrap.innerHTML = `<table><thead><tr>
-    <th>Name</th><th>Type</th><th>Address</th><th>Actions</th>
-  </tr></thead><tbody>${allWarehouses.map(w=>`<tr>
-    <td><strong>${esc(w.name)}</strong></td>
-    <td>${statusBadge(w.location_type||'warehouse')}</td>
-    <td>${esc(w.address||'—')}</td>
+    <th>Name</th><th>Code</th><th>Type</th><th>City</th><th>Contact</th><th>Default</th><th>Actions</th>
+  </tr></thead><tbody>${allWarehouses.map(w => `<tr>
+    <td style="font-weight:600">${esc(w.name)}</td>
+    <td style="font-family:monospace;font-size:0.82rem;color:var(--accent)">${esc(w.warehouse_code||'—')}</td>
+    <td>${statusBadge(w.warehouse_type||'main')}</td>
+    <td style="color:var(--text-muted);font-size:0.82rem">${esc(w.city||'—')}</td>
+    <td style="font-size:0.8rem;color:var(--text-muted)">${esc(w.contact_name||'—')}</td>
+    <td>${w.is_default ? '<span class="badge badge-success">Default</span>' : ''}</td>
     <td class="td-actions">
       <button class="btn btn-ghost btn-xs" onclick="editWarehouse(${w.id})">Edit</button>
+      <button class="btn btn-ghost btn-xs" onclick="viewWarehouseLocations(${w.id})">Locations</button>
     </td>
   </tr>`).join('')}</tbody></table>`;
 }
 
-function openWarehouseModal(id) {
+function viewWarehouseLocations(warehouseId) {
+  document.getElementById('whSubView').value = 'locations';
+  onWhSubViewChange();
+  document.getElementById('locWarehouseFilter').value = warehouseId;
+  loadLocationsForWarehouse(warehouseId);
+}
+
+function openWarehouseModal() {
   _whEditId = null;
-  document.getElementById('whModalTitle').textContent = 'Add Location';
-  document.getElementById('whSaveBtn').textContent = 'Save';
-  document.getElementById('whName').value = '';
-  document.getElementById('whType').value = 'warehouse';
-  document.getElementById('whAddress').value = '';
-  document.getElementById('whNotes').value = '';
+  document.getElementById('whModalTitle').textContent = 'Add Warehouse';
+  document.getElementById('whSaveBtn').textContent = 'Save Warehouse';
+  ['whName','whCode','whAddr1','whAddr2','whCity','whPostal','whContactName','whContactPhone','whContactEmail','whNotes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('whType').value = 'main';
+  document.getElementById('whIsDefault').checked = false;
   openModal('warehouseModal');
 }
 
 async function editWarehouse(id) {
-  const w = allWarehouses.find(x=>x.id===id);
+  const w = allWarehouses.find(x => x.id === id);
   if (!w) return;
   _whEditId = id;
-  document.getElementById('whModalTitle').textContent = 'Edit Location';
+  document.getElementById('whModalTitle').textContent = 'Edit Warehouse';
   document.getElementById('whSaveBtn').textContent = 'Save Changes';
-  document.getElementById('whName').value = w.name||'';
-  document.getElementById('whType').value = w.location_type||'warehouse';
-  document.getElementById('whAddress').value = w.address||'';
-  document.getElementById('whNotes').value = w.notes||'';
+  document.getElementById('whName').value           = w.name || '';
+  document.getElementById('whCode').value           = w.warehouse_code || '';
+  document.getElementById('whType').value           = w.warehouse_type || 'main';
+  document.getElementById('whAddr1').value          = w.address_line1 || '';
+  document.getElementById('whAddr2').value          = w.address_line2 || '';
+  document.getElementById('whCity').value           = w.city || '';
+  document.getElementById('whPostal').value         = w.postal_code || '';
+  document.getElementById('whContactName').value    = w.contact_name || '';
+  document.getElementById('whContactPhone').value   = w.contact_phone || '';
+  document.getElementById('whContactEmail').value   = w.contact_email || '';
+  document.getElementById('whNotes').value          = w.notes || '';
+  document.getElementById('whIsDefault').checked    = !!w.is_default;
   openModal('warehouseModal');
 }
 
 async function saveWarehouse(e) {
   e.preventDefault();
   const body = {
-    name: document.getElementById('whName').value.trim(),
-    location_type: document.getElementById('whType').value,
-    address: document.getElementById('whAddress').value.trim(),
-    notes: document.getElementById('whNotes').value.trim()
+    name:           document.getElementById('whName').value.trim(),
+    warehouse_code: document.getElementById('whCode').value.trim() || null,
+    warehouse_type: document.getElementById('whType').value,
+    is_default:     document.getElementById('whIsDefault').checked,
+    address_line1:  document.getElementById('whAddr1').value.trim() || null,
+    address_line2:  document.getElementById('whAddr2').value.trim() || null,
+    city:           document.getElementById('whCity').value.trim() || null,
+    postal_code:    document.getElementById('whPostal').value.trim() || null,
+    contact_name:   document.getElementById('whContactName').value.trim() || null,
+    contact_phone:  document.getElementById('whContactPhone').value.trim() || null,
+    contact_email:  document.getElementById('whContactEmail').value.trim() || null,
+    notes:          document.getElementById('whNotes').value.trim() || null
   };
   try {
-    if (_whEditId) await apiFetch('/warehouses/'+_whEditId, { method:'PUT', body: JSON.stringify(body) });
-    else await apiFetch('/warehouses', { method:'POST', body: JSON.stringify(body) });
+    if (_whEditId) await apiFetch('/warehouses/'+_whEditId, { method: 'PUT', body: JSON.stringify(body) });
+    else           await apiFetch('/warehouses',              { method: 'POST', body: JSON.stringify(body) });
     closeModal('warehouseModal');
-    showToast('Location saved.');
+    showToast('Warehouse saved.');
     await loadWarehouses();
   } catch(e) { showToast(e.message, true); }
   return false;
+}
+
+// ─── Warehouse Locations ──────────────────────────────────────────────────────
+
+let _locEditId = null;
+let _locWarehouseId = null;
+
+async function loadLocationsForWarehouse(warehouseId) {
+  _locWarehouseId = warehouseId ? parseInt(warehouseId) : null;
+  const wrap = document.getElementById('locationsTable');
+  if (!_locWarehouseId) { wrap.innerHTML = '<div class="empty"><p>Select a warehouse above.</p></div>'; return; }
+  wrap.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  try {
+    const d = await apiFetch(`/warehouses/${_locWarehouseId}/locations`);
+    const locs = d.locations || [];
+    if (!locs.length) {
+      wrap.innerHTML = '<div class="empty"><div class="empty-icon">📍</div><p>No locations in this warehouse. Click "+ Add Location".</p></div>';
+      return;
+    }
+    wrap.innerHTML = `<table><thead><tr>
+      <th>Code</th><th>Name</th><th>Type</th><th>Capacity</th><th>Active</th><th>Actions</th>
+    </tr></thead><tbody>${locs.map(l => `<tr>
+      <td style="font-family:monospace;font-weight:600;color:var(--accent)">${esc(l.location_code)}</td>
+      <td>${esc(l.location_name)}</td>
+      <td>${statusBadge(l.location_type)}</td>
+      <td style="font-size:0.82rem;color:var(--text-muted)">${l.max_capacity ? fmtQty(l.max_capacity) + (l.capacity_unit ? ' '+esc(l.capacity_unit) : '') : '—'}</td>
+      <td>${l.is_active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-neutral">Inactive</span>'}</td>
+      <td><button class="btn btn-ghost btn-xs" onclick="editLocation(${l.id}, ${_locWarehouseId})">Edit</button></td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch(e) { wrap.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`; }
+}
+
+function openLocationModal() {
+  if (!_locWarehouseId) { showToast('Select a warehouse first.', true); return; }
+  _locEditId = null;
+  document.getElementById('locModalTitle').textContent = 'Add Location';
+  document.getElementById('locSaveBtn').textContent = 'Save Location';
+  ['locCode','locName','locCapacity','locCapUnit','locNotes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('locType').value = 'bin';
+  openModal('locationModal');
+}
+
+async function editLocation(locId, warehouseId) {
+  _locWarehouseId = warehouseId;
+  _locEditId = locId;
+  try {
+    const d = await apiFetch(`/warehouses/${warehouseId}/locations`);
+    const loc = (d.locations||[]).find(l => l.id === locId);
+    if (!loc) return showToast('Location not found', true);
+    document.getElementById('locModalTitle').textContent = 'Edit Location';
+    document.getElementById('locSaveBtn').textContent = 'Save Changes';
+    document.getElementById('locCode').value     = loc.location_code || '';
+    document.getElementById('locName').value     = loc.location_name || '';
+    document.getElementById('locType').value     = loc.location_type || 'bin';
+    document.getElementById('locCapacity').value = loc.max_capacity || '';
+    document.getElementById('locCapUnit').value  = loc.capacity_unit || '';
+    document.getElementById('locNotes').value    = loc.notes || '';
+    openModal('locationModal');
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function saveLocation(e) {
+  e.preventDefault();
+  if (!_locWarehouseId) { showToast('No warehouse selected', true); return false; }
+  const body = {
+    location_code: document.getElementById('locCode').value.trim(),
+    location_name: document.getElementById('locName').value.trim(),
+    location_type: document.getElementById('locType').value,
+    max_capacity:  document.getElementById('locCapacity').value || null,
+    capacity_unit: document.getElementById('locCapUnit').value.trim() || null,
+    notes:         document.getElementById('locNotes').value.trim() || null
+  };
+  try {
+    const url = _locEditId
+      ? `/warehouses/${_locWarehouseId}/locations/${_locEditId}`
+      : `/warehouses/${_locWarehouseId}/locations`;
+    const method = _locEditId ? 'PUT' : 'POST';
+    await apiFetch(url, { method, body: JSON.stringify(body) });
+    closeModal('locationModal');
+    showToast('Location saved.');
+    await loadLocationsForWarehouse(_locWarehouseId);
+  } catch(e) { showToast(e.message, true); }
+  return false;
+}
+
+// ─── Warehouse Availability ───────────────────────────────────────────────────
+
+async function loadWarehouseAvailability() {
+  const container = document.getElementById('whAvailabilityContainer');
+  container.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  try {
+    const d = await apiFetch('/warehouses/availability');
+    const warehouses = d.warehouses || [];
+    if (!warehouses.length) {
+      container.innerHTML = '<div class="empty"><p>No warehouse stock location data yet. Process a warehouse transfer to populate this view.</p></div>';
+      return;
+    }
+    container.innerHTML = warehouses.map(w => {
+      const items = w.items || [];
+      return `<div style="margin-bottom:20px">
+        <div style="display:flex;gap:16px;align-items:center;margin-bottom:10px">
+          <span style="font-weight:700;font-size:1rem">${esc(w.name)}</span>
+          ${w.warehouse_code ? `<span class="badge badge-info">${esc(w.warehouse_code)}</span>` : ''}
+          ${statusBadge(w.warehouse_type||'main')}
+          <span style="font-size:0.8rem;color:var(--text-muted)">Stock Value: <strong style="color:var(--eco-cyan)">${fmtR(w.total_value)}</strong></span>
+          ${w.low_stock_count > 0 ? `<span class="badge badge-danger">⚠ ${w.low_stock_count} low stock</span>` : '<span class="badge badge-success">All stocked</span>'}
+        </div>
+        ${items.length ? `<div class="table-wrap"><table><thead><tr>
+          <th>Item</th><th>Type</th>
+          <th style="text-align:right">On Hand</th>
+          <th style="text-align:right">Reserved</th>
+          <th style="text-align:right">Available</th>
+          <th style="text-align:right">Min Stock</th>
+          <th style="text-align:right">Value</th>
+        </tr></thead><tbody>${items.map(i => `<tr>
+          <td style="font-weight:600">${esc(i.item_name||'—')}</td>
+          <td>${itemTypeBadge(i.item_type)}</td>
+          <td style="text-align:right">${fmtQty(i.quantity_on_hand)}</td>
+          <td style="text-align:right;color:var(--eco-gold)">${fmtQty(i.quantity_reserved)}</td>
+          <td style="text-align:right;color:${i.quantity_available<=i.min_stock?'var(--eco-red)':'var(--eco-green)'};font-weight:700">${fmtQty(i.quantity_available)}</td>
+          <td style="text-align:right;font-size:0.8rem;color:var(--text-muted)">${fmtQty(i.min_stock)}</td>
+          <td style="text-align:right;font-size:0.82rem">${fmtR(i.value)}</td>
+        </tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty" style="padding:16px"><p>No stock data for this warehouse.</p></div>'}
+      </div>`;
+    }).join('');
+  } catch(e) { container.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`; }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WAREHOUSE TRANSFERS — CB-08
+// ════════════════════════════════════════════════════════════════════════════
+
+let _transferLineCount = 0;
+
+async function loadTransfers() {
+  const wrap = document.getElementById('transfersTable');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  const status = document.getElementById('transferStatusFilter')?.value || '';
+  try {
+    const url = '/transfers' + (status ? `?status=${encodeURIComponent(status)}` : '');
+    const d = await apiFetch(url);
+    const rows = d.transfers || [];
+    if (!rows.length) {
+      wrap.innerHTML = '<div class="empty"><div class="empty-icon">🔄</div><p>No transfers found. Click "+ New Transfer" to create one.</p></div>';
+      return;
+    }
+    const statusColour = { draft:'badge-neutral', approved:'badge-info', in_transit:'badge-warning', received:'badge-success', cancelled:'badge-danger' };
+    wrap.innerHTML = `<table><thead><tr>
+      <th>Transfer #</th><th>From</th><th>To</th><th>Status</th>
+      <th>Shipped</th><th>Received</th><th>Created</th><th>Actions</th>
+    </tr></thead><tbody>${rows.map(t => {
+      const from = t.from_warehouses || {};
+      const to   = t.to_warehouses   || {};
+      return `<tr>
+        <td style="font-weight:600;font-family:monospace">${esc(t.transfer_number)}</td>
+        <td>${esc(from.name||'—')}</td>
+        <td>${esc(to.name||'—')}</td>
+        <td><span class="badge ${statusColour[t.transfer_status]||'badge-neutral'}">${esc(t.transfer_status)}</span></td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(t.shipped_at)}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(t.received_at)}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(t.created_at)}</td>
+        <td class="td-actions">
+          <button class="btn btn-ghost btn-xs" onclick="viewTransfer(${t.id})">View</button>
+          ${t.transfer_status === 'draft' ? `<button class="btn btn-success btn-xs" onclick="approveTransfer(${t.id})">Approve</button>` : ''}
+          ${['draft','approved'].includes(t.transfer_status) ? `<button class="btn btn-danger btn-xs" onclick="cancelTransfer(${t.id})">Cancel</button>` : ''}
+          ${t.transfer_status === 'in_transit' ? `<button class="btn btn-primary btn-xs" onclick="receiveTransferAction(${t.id})">Receive</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+  } catch(e) { wrap.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`; }
+}
+
+function openCreateTransferModal() {
+  if (!allWarehouses.length) { showToast('Load warehouses first (visit Warehouses tab).', true); return; }
+  populateTransferWarehouseSelects();
+  _transferLineCount = 0;
+  document.getElementById('transferLineRows').innerHTML = '';
+  document.getElementById('tNotes').value = '';
+  addTransferLine();
+  openModal('createTransferModal');
+}
+
+function onTransferWhChange() { /* could later filter available stock */ }
+
+function addTransferLine() {
+  _transferLineCount++;
+  const row = document.createElement('div');
+  row.className = 'bom-line-row';
+  row.style.gridTemplateColumns = '1fr 100px 32px';
+  row.id = `tLine_${_transferLineCount}`;
+  row.innerHTML = `
+    <select class="form-field" style="padding:7px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;width:100%">
+      <option value="">— Select Item —</option>
+      ${allItems.map(i => `<option value="${i.id}">${esc(i.name)}${i.sku ? ` (${esc(i.sku)})`:''}</option>`).join('')}
+    </select>
+    <input type="number" min="0.001" step="0.001" placeholder="Qty" style="padding:7px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;width:100%">
+    <button type="button" class="bom-line-remove" onclick="this.parentElement.remove()">✕</button>`;
+  document.getElementById('transferLineRows').appendChild(row);
+}
+
+async function submitCreateTransfer(e) {
+  e.preventDefault();
+  const fromWh = document.getElementById('tFromWarehouse').value;
+  const toWh   = document.getElementById('tToWarehouse').value;
+  const notes  = document.getElementById('tNotes').value.trim();
+  if (!fromWh || !toWh) { showToast('Select both warehouses', true); return false; }
+  if (fromWh === toWh)  { showToast('From and To warehouses must be different', true); return false; }
+
+  const lineRows = document.querySelectorAll('#transferLineRows .bom-line-row');
+  const lines = [];
+  for (const row of lineRows) {
+    const sel = row.querySelector('select');
+    const qty = row.querySelector('input[type=number]');
+    if (!sel.value || !qty.value || parseFloat(qty.value) <= 0) continue;
+    lines.push({ item_id: parseInt(sel.value), quantity_requested: parseFloat(qty.value) });
+  }
+  if (!lines.length) { showToast('Add at least one item line', true); return false; }
+
+  try {
+    await apiFetch('/transfers', { method: 'POST', body: JSON.stringify({ from_warehouse_id: parseInt(fromWh), to_warehouse_id: parseInt(toWh), notes, lines }) });
+    closeModal('createTransferModal');
+    showToast('Transfer created.');
+    await loadTransfers();
+  } catch(e) { showToast(e.message, true); }
+  return false;
+}
+
+async function viewTransfer(id) {
+  try {
+    const d = await apiFetch(`/transfers/${id}`);
+    const t = d.transfer || {};
+    const lines = t.warehouse_transfer_lines || [];
+    const from = t.from_warehouses || {};
+    const to   = t.to_warehouses   || {};
+    document.getElementById('tDetailTitle').textContent = `Transfer ${esc(t.transfer_number)}`;
+
+    const statusColor = { draft:'badge-neutral', approved:'badge-info', in_transit:'badge-warning', received:'badge-success', cancelled:'badge-danger' };
+    const canShip    = ['draft','approved'].includes(t.transfer_status);
+    const canReceive = t.transfer_status === 'in_transit';
+
+    document.getElementById('tDetailBody').innerHTML = `
+      <div class="detail-grid" style="margin-bottom:16px">
+        <div class="detail-row"><div class="label">Status</div><div class="value"><span class="badge ${statusColor[t.transfer_status]}">${esc(t.transfer_status)}</span></div></div>
+        <div class="detail-row"><div class="label">From</div><div class="value">${esc(from.name||'—')}</div></div>
+        <div class="detail-row"><div class="label">To</div><div class="value">${esc(to.name||'—')}</div></div>
+        <div class="detail-row"><div class="label">Notes</div><div class="value">${esc(t.notes||'—')}</div></div>
+        <div class="detail-row"><div class="label">Created</div><div class="value">${fmtDate(t.created_at)}</div></div>
+        <div class="detail-row"><div class="label">Received</div><div class="value">${t.received_at ? fmtDate(t.received_at) : '—'}</div></div>
+      </div>
+      <div class="table-wrap" style="margin-bottom:16px"><table><thead><tr>
+        <th>Item</th><th>SKU</th>
+        <th style="text-align:right">Requested</th>
+        <th style="text-align:right">Shipped</th>
+        <th style="text-align:right">Received</th>
+      </tr></thead><tbody>${lines.map(l => {
+        const item = l.inventory_items || {};
+        return `<tr>
+          <td style="font-weight:600">${esc(item.name||l.item_id)}</td>
+          <td style="color:var(--text-muted);font-size:0.8rem">${esc(item.sku||'—')}</td>
+          <td style="text-align:right">${fmtQty(l.quantity_requested)}</td>
+          <td style="text-align:right;color:${l.quantity_shipped!=null?'var(--eco-gold)':'var(--text-muted)'}">${l.quantity_shipped != null ? fmtQty(l.quantity_shipped) : '—'}</td>
+          <td style="text-align:right;color:${l.quantity_received!=null?'var(--eco-green)':'var(--text-muted)'}">${l.quantity_received != null ? fmtQty(l.quantity_received) : '—'}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${t.transfer_status === 'draft' ? `<button class="btn btn-success btn-sm" onclick="approveTransfer(${t.id},true)">Approve</button>` : ''}
+        ${canShip    ? `<button class="btn btn-primary btn-sm" onclick="shipTransferAction(${t.id},true)">Ship (Mark In Transit)</button>` : ''}
+        ${canReceive ? `<button class="btn btn-success btn-sm" onclick="receiveTransferAction(${t.id},true)">Receive</button>` : ''}
+        ${['draft','approved'].includes(t.transfer_status) ? `<button class="btn btn-danger btn-sm" onclick="cancelTransfer(${t.id},true)">Cancel</button>` : ''}
+      </div>`;
+    openModal('transferDetailModal');
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function approveTransfer(id, fromDetail = false) {
+  try {
+    await apiFetch(`/transfers/${id}/approve`, { method: 'PUT', body: '{}' });
+    showToast('Transfer approved.');
+    if (fromDetail) closeModal('transferDetailModal');
+    await loadTransfers();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function shipTransferAction(id, fromDetail = false) {
+  if (!confirm('Ship this transfer? Stock will be deducted from the source warehouse.')) return;
+  try {
+    await apiFetch(`/transfers/${id}/ship`, { method: 'PUT', body: '{}' });
+    showToast('Transfer shipped. Stock deducted from source.');
+    if (fromDetail) closeModal('transferDetailModal');
+    await loadTransfers();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function receiveTransferAction(id, fromDetail = false) {
+  if (!confirm('Receive this transfer? Stock will be added to the destination warehouse.')) return;
+  try {
+    await apiFetch(`/transfers/${id}/receive`, { method: 'PUT', body: '{}' });
+    showToast('Transfer received. Stock added to destination.');
+    if (fromDetail) closeModal('transferDetailModal');
+    await loadTransfers();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function cancelTransfer(id, fromDetail = false) {
+  if (!confirm('Cancel this transfer?')) return;
+  try {
+    await apiFetch(`/transfers/${id}/cancel`, { method: 'PUT', body: '{}' });
+    showToast('Transfer cancelled.');
+    if (fromDetail) closeModal('transferDetailModal');
+    await loadTransfers();
+  } catch(e) { showToast(e.message, true); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 // STOCK ITEMS
 // ════════════════════════════════════════════════════════════════════════════
 async function loadItems(force) {
+  setLoading('itemsTable', 'Loading items…');
   try {
     const d = await apiFetch('/items');
     allItems = d.items || [];
@@ -1426,8 +2497,9 @@ function renderItemsTable(items) {
       <td>${i.is_active === false ? '<span class="badge badge-danger">Inactive</span>' : '<span class="badge badge-success">Active</span>'}</td>
       <td class="td-actions">
         <button class="btn btn-ghost btn-xs" onclick="openItemHistoryModal(${i.id})">History</button>
-        <button class="btn btn-ghost btn-xs" onclick="editItem(${i.id})">Edit</button>
-        <button class="btn btn-danger btn-xs" onclick="deleteItem(${i.id})">Remove</button>
+        ${canDo('CONFIGURE') ? `<button class="btn btn-ghost btn-xs" onclick="openUomConversions(${i.id})" title="Manage pack size conversions">UOM</button>` : ''}
+        ${canDo('CONFIGURE') ? `<button class="btn btn-ghost btn-xs" onclick="editItem(${i.id})">Edit</button>` : ''}
+        ${canDo('CONFIGURE') ? `<button class="btn btn-danger btn-xs" onclick="deleteItem(${i.id})">Remove</button>` : ''}
       </td>
     </tr>`;
   }).join('')}</tbody></table>`;
@@ -1473,29 +2545,46 @@ function openQuickReceiveModal() {
   document.getElementById('quickReceiveCost').value = '';
   document.getElementById('quickReceiveRef').value = '';
   document.getElementById('quickReceiveNotes').value = '';
+  document.getElementById('qrPurchaseUnit').value = '';
+  document.getElementById('qrBaseQtyPreview').value = '';
+  document.getElementById('qrCostPerBasePreview').value = '';
+  document.getElementById('qrUomStatus').textContent = '';
   openModal('quickReceiveModal');
 }
 
 async function submitQuickReceive(e) {
   e.preventDefault();
+  const purchaseUnit = (document.getElementById('qrPurchaseUnit').value||'').trim();
   const body = {
     supplier_id: document.getElementById('quickReceiveSupplier').value,
-    item_id: document.getElementById('quickReceiveItem').value,
-    quantity: document.getElementById('quickReceiveQty').value,
-    unit_cost: document.getElementById('quickReceiveCost').value,
-    reference: document.getElementById('quickReceiveRef').value.trim(),
-    notes: document.getElementById('quickReceiveNotes').value.trim()
+    item_id:     document.getElementById('quickReceiveItem').value,
+    quantity:    document.getElementById('quickReceiveQty').value,
+    unit_cost:   document.getElementById('quickReceiveCost').value,
+    reference:   document.getElementById('quickReceiveRef').value.trim(),
+    notes:       document.getElementById('quickReceiveNotes').value.trim()
   };
-  try {
-    await apiFetch('/quick-receive', { method: 'POST', body: JSON.stringify(body) });
-    closeModal('quickReceiveModal');
-    showToast('Stock received and costs updated.');
-    await loadItems();
-    await loadDashboard();
-    await loadMovements();
-  } catch (err) {
-    showToast(err.message, true);
-  }
+  // Codebox 10 — send purchase_unit only when set
+  if (purchaseUnit) body.purchase_unit = purchaseUnit;
+  await withSubmitGuard(null, async () => {
+    // Find the submit button inside the quick-receive form dynamically
+    const submitBtn = document.querySelector('#quickReceiveModal button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Receiving…'; }
+    try {
+      const result = await apiFetch('/quick-receive', { method: 'POST', body: JSON.stringify(body) });
+      closeModal('quickReceiveModal');
+      const costNote = result.unit_cost_per_base != null
+        ? ` Cost per base unit: R${parseFloat(result.unit_cost_per_base).toFixed(4)}.`
+        : '';
+      showToast('Stock received.' + costNote);
+      await loadItems();
+      await loadDashboard();
+      await loadMovements();
+    } catch (err) {
+      showToast(err.message, true);
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Receive Stock'; }
+    }
+  });
   return false;
 }
 
@@ -1553,38 +2642,198 @@ function editItem(id) {
   document.getElementById('iTrackLots').checked = !!i.track_lots;
   document.getElementById('iTrackSerials').checked = !!i.track_serials;
   document.getElementById('iWarehouse').value = i.warehouse_id||'';
+  // Codebox 10 — UOM fields
+  document.getElementById('iBaseUnit').value = i.base_unit||'';
+  document.getElementById('iDefaultPurchaseUnit').value = i.default_purchase_unit||'';
+  document.getElementById('iDefaultRecipeUnit').value = i.default_recipe_unit||'';
+  document.getElementById('iDefaultOutputUnit').value = i.default_output_unit||'';
   openModal('itemModal');
+}
+
+// ─── Codebox 10: UOM conversion management ─────────────────────────────────
+
+async function openUomConversions(itemId) {
+  document.getElementById('ucItemId').value = itemId;
+  const item = allItems.find(x=>x.id===itemId);
+  document.getElementById('uomConvModalTitle').textContent =
+    'Pack Size Conversions — ' + (item?.name || 'Item');
+  document.getElementById('uomConvList').innerHTML = '<em>Loading…</em>';
+  ['ucFromUnit','ucToUnit','ucFactor','ucDescription'].forEach(id=>document.getElementById(id).value='');
+  ['ucIsPurchase','ucIsRecipe','ucIsOutput'].forEach(id=>document.getElementById(id).checked=false);
+  openModal('uomConvModal');
+  await refreshUomConvList(itemId);
+}
+
+async function refreshUomConvList(itemId) {
+  try {
+    const d = await apiFetch('/items/'+itemId+'/uom-conversions');
+    const convs = d.conversions || [];
+    const list = document.getElementById('uomConvList');
+    if (!convs.length) {
+      list.innerHTML = '<em style="color:var(--text-muted)">No conversions yet.</em>';
+      return;
+    }
+    list.innerHTML = `<table style="width:100%;font-size:0.82rem;">
+      <thead><tr>
+        <th>From Unit</th><th>→ To Unit</th><th>Factor</th><th>Description</th><th>Flags</th><th></th>
+      </tr></thead>
+      <tbody>${convs.map(c=>`<tr>
+        <td><strong>${esc(c.from_unit)}</strong></td>
+        <td>${esc(c.to_unit)}</td>
+        <td>${parseFloat(c.conversion_factor).toFixed(6).replace(/\.?0+$/,'')}</td>
+        <td style="color:var(--text-muted)">${esc(c.conversion_description||'')}</td>
+        <td style="font-size:0.72rem;color:var(--text-muted)">
+          ${c.is_purchase_unit?'purchase ':''}${c.is_recipe_unit?'recipe ':''}${c.is_output_unit?'output':''}
+        </td>
+        <td>
+          ${c.is_active
+            ? `<button class="btn btn-xs btn-ghost" style="color:var(--danger)" onclick="deactivateUomConv(${itemId},${c.id})">Remove</button>`
+            : '<span style="color:var(--text-muted);font-size:0.72rem">inactive</span>'}
+        </td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch(e) {
+    document.getElementById('uomConvList').innerHTML = '<em style="color:var(--danger)">'+esc(e.message)+'</em>';
+  }
+}
+
+async function saveUomConversion(e) {
+  e.preventDefault();
+  const itemId = parseInt(document.getElementById('ucItemId').value);
+  const body = {
+    from_unit:              document.getElementById('ucFromUnit').value.trim(),
+    to_unit:                document.getElementById('ucToUnit').value.trim(),
+    conversion_factor:      parseFloat(document.getElementById('ucFactor').value),
+    conversion_description: document.getElementById('ucDescription').value.trim()||null,
+    is_purchase_unit:       document.getElementById('ucIsPurchase').checked,
+    is_recipe_unit:         document.getElementById('ucIsRecipe').checked,
+    is_output_unit:         document.getElementById('ucIsOutput').checked
+  };
+  try {
+    await apiFetch('/items/'+itemId+'/uom-conversions', { method:'POST', body: JSON.stringify(body) });
+    showToast('Conversion saved.');
+    ['ucFromUnit','ucToUnit','ucFactor','ucDescription'].forEach(id=>document.getElementById(id).value='');
+    await refreshUomConvList(itemId);
+  } catch(e) { showToast(e.message, true); }
+  return false;
+}
+
+async function deactivateUomConv(itemId, convId) {
+  if (!confirm('Remove this conversion?')) return;
+  try {
+    await apiFetch('/items/'+itemId+'/uom-conversions/'+convId, { method:'DELETE' });
+    showToast('Conversion removed.');
+    await refreshUomConvList(itemId);
+  } catch(e) { showToast(e.message, true); }
+}
+
+// Quick-receive UOM preview (Codebox 10)
+// Shows base_qty and cost_per_base after user enters purchase_unit
+async function onQuickReceiveItemChange() {
+  const sel = document.getElementById('quickReceiveItem');
+  const itemId = sel.value;
+  document.getElementById('qrPurchaseUnit').value = '';
+  document.getElementById('qrBaseQtyPreview').value = '';
+  document.getElementById('qrCostPerBasePreview').value = '';
+  document.getElementById('qrUomStatus').textContent = '';
+  if (!itemId) return;
+  // Pre-fill purchase unit from item default
+  const item = allItems.find(x=>String(x.id)===String(itemId));
+  if (item?.default_purchase_unit) {
+    document.getElementById('qrPurchaseUnit').value = item.default_purchase_unit;
+    updateQrConvPreview();
+  }
+}
+
+async function updateQrConvPreview() {
+  const itemId = document.getElementById('quickReceiveItem').value;
+  const purchaseUnit = document.getElementById('qrPurchaseUnit').value.trim();
+  const qty = parseFloat(document.getElementById('quickReceiveQty').value)||0;
+  const cost = parseFloat(document.getElementById('quickReceiveCost').value)||0;
+  const status = document.getElementById('qrUomStatus');
+
+  if (!purchaseUnit || !itemId || qty <= 0) {
+    document.getElementById('qrBaseQtyPreview').value = qty > 0 ? qty.toFixed(4) : '';
+    document.getElementById('qrCostPerBasePreview').value = cost > 0 ? 'R '+cost.toFixed(4) : '';
+    status.textContent = purchaseUnit ? 'Looking up conversion…' : '';
+    return;
+  }
+
+  try {
+    const d = await apiFetch('/items/'+itemId+'/uom-conversions');
+    const convs = (d.conversions||[]).filter(c=>c.is_active);
+
+    const item = allItems.find(x=>String(x.id)===String(itemId));
+    const baseUnit = item?.base_unit || item?.unit || 'unit';
+
+    if (purchaseUnit === baseUnit) {
+      document.getElementById('qrBaseQtyPreview').value = qty.toFixed(4);
+      document.getElementById('qrCostPerBasePreview').value = 'R '+cost.toFixed(4);
+      status.textContent = 'No conversion needed — same as base unit.';
+      return;
+    }
+
+    const conv = convs.find(c=> (c.from_unit===purchaseUnit && c.to_unit===baseUnit));
+    const revConv = !conv && convs.find(c=> (c.from_unit===baseUnit && c.to_unit===purchaseUnit));
+
+    let factor = null;
+    if (conv)    factor = parseFloat(conv.conversion_factor);
+    if (revConv) factor = 1 / parseFloat(revConv.conversion_factor);
+
+    if (factor === null) {
+      document.getElementById('qrBaseQtyPreview').value = '';
+      document.getElementById('qrCostPerBasePreview').value = '';
+      status.textContent = '⚠ No conversion found for '+purchaseUnit+' → '+baseUnit+'. Add it in item UOM settings.';
+      return;
+    }
+
+    const baseQty = qty * factor;
+    const costPerBase = factor > 0 ? cost / factor : 0;
+    document.getElementById('qrBaseQtyPreview').value = baseQty.toFixed(4) + ' ' + baseUnit;
+    document.getElementById('qrCostPerBasePreview').value = 'R '+costPerBase.toFixed(4)+'/'+baseUnit;
+    status.textContent = '✓ 1 '+purchaseUnit+' = '+factor.toFixed(6).replace(/\.?0+$/,'')+' '+baseUnit;
+    status.style.color = 'var(--success,#28a745)';
+  } catch(err) {
+    status.textContent = 'Lookup error: '+esc(err.message);
+    status.style.color = 'var(--danger)';
+  }
 }
 
 async function saveItem(e) {
   e.preventDefault();
   const body = {
-    name:           document.getElementById('iName').value.trim(),
-    sku:            document.getElementById('iSku').value.trim(),
-    barcode:        document.getElementById('iBarcode').value.trim(),
-    category:       document.getElementById('iCategory').value.trim(),
-    item_type:      document.getElementById('iItemType').value,
-    unit:           document.getElementById('iUnit').value,
-    costing_method: document.getElementById('iCostingMethod').value,
-    cost_price:     document.getElementById('iCostPrice').value,
-    sell_price:     document.getElementById('iSellPrice').value,
-    min_stock:      document.getElementById('iMinStock').value,
-    warehouse_id:   document.getElementById('iWarehouse').value||null,
-    track_lots:     document.getElementById('iTrackLots').checked,
-    track_serials:  document.getElementById('iTrackSerials').checked,
-    lead_time_days: document.getElementById('iLeadTime').value||0
+    name:                   document.getElementById('iName').value.trim(),
+    sku:                    document.getElementById('iSku').value.trim(),
+    barcode:                document.getElementById('iBarcode').value.trim(),
+    category:               document.getElementById('iCategory').value.trim(),
+    item_type:              document.getElementById('iItemType').value,
+    unit:                   document.getElementById('iUnit').value,
+    costing_method:         document.getElementById('iCostingMethod').value,
+    cost_price:             document.getElementById('iCostPrice').value,
+    sell_price:             document.getElementById('iSellPrice').value,
+    min_stock:              document.getElementById('iMinStock').value,
+    warehouse_id:           document.getElementById('iWarehouse').value||null,
+    track_lots:             document.getElementById('iTrackLots').checked,
+    track_serials:          document.getElementById('iTrackSerials').checked,
+    lead_time_days:         document.getElementById('iLeadTime').value||0,
+    // Codebox 10 — UOM
+    base_unit:              document.getElementById('iBaseUnit').value.trim()||null,
+    default_purchase_unit:  document.getElementById('iDefaultPurchaseUnit').value.trim()||null,
+    default_recipe_unit:    document.getElementById('iDefaultRecipeUnit').value.trim()||null,
+    default_output_unit:    document.getElementById('iDefaultOutputUnit').value.trim()||null
   };
   if (!_itemEditId) {
     body.current_stock = document.getElementById('iStock').value||0;
   }
-  try {
-    if (_itemEditId) await apiFetch('/items/'+_itemEditId, { method:'PUT', body: JSON.stringify(body) });
-    else await apiFetch('/items', { method:'POST', body: JSON.stringify(body) });
-    closeModal('itemModal');
-    showToast('Item saved.');
-    await loadItems();
-    await loadDashboard();
-  } catch(e) { showToast(e.message, true); }
+  await withSubmitGuard('itemSaveBtn', async () => {
+    try {
+      if (_itemEditId) await apiFetch('/items/'+_itemEditId, { method:'PUT', body: JSON.stringify(body) });
+      else await apiFetch('/items', { method:'POST', body: JSON.stringify(body) });
+      closeModal('itemModal');
+      showToast('Item saved.');
+      await loadItems();
+      await loadDashboard();
+    } catch(e) { showToast(e.message, true); }
+  });
   return false;
 }
 
@@ -1731,6 +2980,7 @@ async function saveSupplier(e) {
 // ════════════════════════════════════════════════════════════════════════════
 async function loadOrders() {
   const status = document.getElementById('poStatusFilter').value;
+  setLoading('ordersTable', 'Loading purchase orders…');
   try {
     const d = await apiFetch('/purchase-orders' + (status ? '?status='+status : ''));
     const pos = d.purchase_orders||[];
@@ -2327,11 +3577,12 @@ let _woCache = [];
 
 async function loadWorkOrders() {
   const status = document.getElementById('woStatusFilter').value;
+  setLoading('woTable', 'Loading work orders…');
   try {
     const d = await apiFetch('/work-orders' + (status ? '?status='+status : ''));
     _woCache = d.work_orders||[];
     renderWoTable();
-  } catch(e) { showToast('Failed to load work orders', true); }
+  } catch(e) { setError('woTable', 'Failed to load work orders: ' + e.message); }
 }
 
 function renderWoTable() {
@@ -2598,32 +3849,209 @@ async function closeWo(id) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// INVENTORY REPORTS — Phase 2A Costing
+// INVENTORY REPORTS & DASHBOARD — Codebox 07
 // ════════════════════════════════════════════════════════════════════════════
+
+const _REPORT_NEEDS_DATES = new Set(['valuation-movements','work-order-costs','purchase-orders','wastage','yield-variance']);
 
 function onReportTypeChange() {
   const type = document.getElementById('reportType').value;
-  const dateBar = document.getElementById('reportDateBar');
-  const filterBar = document.getElementById('reportFilterBar');
-  // Show date bar for reports that need a date range
-  dateBar.style.display = (type === 'valuation-movements' || type === 'work-order-costs') ? 'flex' : 'none';
-  if (filterBar) {
-    filterBar.classList.toggle('hidden', type !== 'stock-valuation');
-  }
-  // Set default dates if empty
-  if (!document.getElementById('reportFrom').value) {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
+  const needsDates = _REPORT_NEEDS_DATES.has(type);
+
+  // Show/hide date bar
+  document.getElementById('reportDateBar').classList.toggle('hidden', !needsDates);
+
+  // Set default dates if date bar is visible and fields are empty
+  if (needsDates && !document.getElementById('reportFrom').value) {
+    const d = new Date(); d.setDate(d.getDate() - 30);
     document.getElementById('reportFrom').value = d.toISOString().split('T')[0];
-    document.getElementById('reportTo').value = new Date().toISOString().split('T')[0];
+    document.getElementById('reportTo').value   = new Date().toISOString().split('T')[0];
   }
+
+  // Show/hide specific filter bars
+  document.getElementById('reportFilterBar').classList.toggle('hidden',   type !== 'stock-valuation');
+  document.getElementById('reportPoFilterBar').classList.toggle('hidden',  type !== 'purchase-orders');
+  document.getElementById('reportResvFilterBar').classList.toggle('hidden', type !== 'reservations');
+  document.getElementById('reportYieldFilterBar').classList.toggle('hidden', type !== 'yield-variance');
+  const whFilterBar = document.getElementById('reportWhFilterBar');
+  whFilterBar.classList.toggle('hidden', !['warehouse-stock','transfer-history'].includes(type));
+  const demandFilterBar = document.getElementById('reportDemandFilterBar');
+  demandFilterBar.classList.toggle('hidden', !['future-demand','open-sales-orders'].includes(type));
+  const tStatusSel = document.getElementById('reportTransferStatus');
+  if (tStatusSel) tStatusSel.style.display = type === 'transfer-history' ? '' : 'none';
+
+  // Clear previous summary
+  const summary = document.getElementById('reportSummary');
+  summary.style.display = 'none';
+  summary.innerHTML = '';
 }
 
 async function loadSelectedReport() {
   const type = document.getElementById('reportType').value;
-  if (type === 'stock-valuation')      await loadStockValuationReport();
-  else if (type === 'valuation-movements') await loadValuationMovementsReport();
-  else if (type === 'work-order-costs')    await loadWoCostReport();
+  const dispatch = {
+    'operational-dashboard':  loadOperationalDashboard,
+    'alerts':                 loadAlertsPanel,
+    'stock-valuation':        loadStockValuationReport,
+    'valuation-movements':    loadValuationMovementsReport,
+    'shortages':              loadShortagesReport,
+    'overcommitted':          loadOvercommittedReport,
+    'reservations':           loadReservationReport,
+    'purchase-orders':        loadPurchaseOrderReport,
+    'overdue-pos':            loadOverduePOsReport,
+    'supplier-history':       loadSupplierHistoryReport,
+    'procurement-suggestions':loadProcurementSuggestionsReport,
+    'production-summary':     loadProductionSummaryReport,
+    'wastage':                loadWastageReport,
+    'yield-variance':         loadYieldVarianceReport,
+    'work-order-costs':       loadWoCostReport,
+    'warehouse-stock':        loadWarehouseStockReport,
+    'transfer-history':       loadTransferHistoryReport,
+    'warehouse-shortages':    loadWarehouseShortagesReport,
+    'open-sales-orders':      loadOpenSOsReport,
+    'atp-report':             loadATPReport,
+    'future-demand':          loadFutureDemandReport,
+    'demand-shortages':       loadDemandShortagesReport,
+  };
+  const fn = dispatch[type];
+  if (fn) await fn();
+}
+
+// ── Helper: render a stat-row summary bar ────────────────────────────────────
+function renderSummaryBar(stats) {
+  const el = document.getElementById('reportSummary');
+  el.style.display = 'block';
+  el.innerHTML = `<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;">
+    ${stats.map(s => `<div>
+      <div style="font-size:1.4rem;font-weight:800;color:${s.color||'var(--eco-cyan)'}">${s.value}</div>
+      <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">${esc(s.label)}</div>
+    </div>`).join('')}
+    <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString('en-ZA')}</div>
+  </div>`;
+}
+
+function setReportLoading() {
+  document.getElementById('reportContainer').innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  const el = document.getElementById('reportSummary');
+  el.style.display = 'none'; el.innerHTML = '';
+}
+
+function setReportError(msg) {
+  document.getElementById('reportContainer').innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(msg)}</p></div>`;
+}
+
+// ── Operational Dashboard ─────────────────────────────────────────────────────
+async function loadOperationalDashboard() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/operational-dashboard');
+    const rep = d.report || {};
+    const lowStock = d.top_low_stock_items || [];
+    const shortages = d.top_shortage_items || [];
+
+    renderSummaryBar([
+      { label: 'Active Items',        value: rep.total_items || 0 },
+      { label: 'Total Stock Value',   value: fmtR(rep.total_stock_value || 0), color: 'var(--eco-green)' },
+      { label: 'Open Work Orders',    value: rep.open_work_orders || 0, color: 'var(--warning)' },
+      { label: 'POs Awaiting Receipt',value: rep.purchase_orders_awaiting_receipt || 0 },
+      { label: 'Overdue POs',         value: rep.overdue_purchase_orders || 0, color: rep.overdue_purchase_orders > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Active Reservations', value: rep.active_reservations || 0, color: 'var(--eco-gold)' },
+      { label: 'Reserved Value',      value: fmtR(rep.total_reserved_value || 0), color: 'var(--eco-gold)' },
+      { label: 'Low Stock Items',     value: rep.low_stock_count || 0, color: rep.low_stock_count > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Shortage Items',      value: rep.shortage_item_count || 0, color: rep.shortage_item_count > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+    ]);
+
+    const lowStockHtml = lowStock.length
+      ? `<table><thead><tr><th>Item</th><th>SKU</th><th style="text-align:right">On Hand</th><th style="text-align:right">Min Stock</th><th style="text-align:right">Gap</th></tr></thead><tbody>
+          ${lowStock.map(i => `<tr>
+            <td style="font-weight:600">${esc(i.name)}</td>
+            <td style="color:var(--text-muted);font-size:0.8rem">${esc(i.sku||'—')}</td>
+            <td style="text-align:right;color:var(--eco-red);font-weight:700">${fmtQty(i.currentStock)}</td>
+            <td style="text-align:right">${fmtQty(i.minStock)}</td>
+            <td style="text-align:right;color:var(--eco-gold)">${fmtQty(i.currentStock - i.minStock)}</td>
+          </tr>`).join('')}
+        </tbody></table>`
+      : '<div class="empty" style="padding:20px"><p>No low-stock items.</p></div>';
+
+    const shortageHtml = shortages.length
+      ? `<table><thead><tr><th>Item</th><th>SKU</th><th style="text-align:right">On Hand</th><th style="text-align:right">Reserved</th><th style="text-align:right">Shortage</th></tr></thead><tbody>
+          ${shortages.map(i => `<tr>
+            <td style="font-weight:600">${esc(i.name)}</td>
+            <td style="color:var(--text-muted);font-size:0.8rem">${esc(i.sku||'—')}</td>
+            <td style="text-align:right">${fmtQty(i.current_stock)}</td>
+            <td style="text-align:right;color:var(--eco-gold)">${fmtQty(i.reserved_qty)}</td>
+            <td style="text-align:right;color:var(--eco-red);font-weight:700">${fmtQty(i.shortage_qty)}</td>
+          </tr>`).join('')}
+        </tbody></table>`
+      : '<div class="empty" style="padding:20px"><p>No shortage items.</p></div>';
+
+    document.getElementById('reportContainer').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <div style="font-size:0.78rem;font-weight:700;color:var(--eco-red);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">⚠ Top Low-Stock Items</div>
+          <div class="table-wrap">${lowStockHtml}</div>
+        </div>
+        <div>
+          <div style="font-size:0.78rem;font-weight:700;color:var(--eco-red);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">⚠ Top Shortage Items</div>
+          <div class="table-wrap">${shortageHtml}</div>
+        </div>
+      </div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ── Alerts Panel ─────────────────────────────────────────────────────────────
+async function loadAlertsPanel() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/alerts');
+    const rep = d.report || {};
+    const alerts = d.alerts || {};
+
+    renderSummaryBar([
+      { label: 'Low-Stock Alerts',      value: rep.low_stock_alerts || 0,          color: rep.low_stock_alerts > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Overdue PO Alerts',     value: rep.overdue_po_alerts || 0,         color: rep.overdue_po_alerts > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Shortage Alerts',       value: rep.reservation_shortage_alerts||0, color: rep.reservation_shortage_alerts > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Under-Yield Batches',   value: rep.under_yield_batches || 0,       color: rep.under_yield_batches > 0 ? 'var(--warning)' : 'var(--eco-green)' },
+    ]);
+
+    function alertTable(rows, cols) {
+      if (!rows.length) return '<div class="empty" style="padding:16px"><p>No alerts.</p></div>';
+      return `<table><thead><tr>${cols.map(c=>`<th${c.right?' style="text-align:right"':''}>${c.label}</th>`).join('')}</tr></thead><tbody>
+        ${rows.map(r => `<tr>${cols.map(c=>`<td${c.right?' style="text-align:right"':''}>${c.render(r)}</td>`).join('')}</tr>`).join('')}
+      </tbody></table>`;
+    }
+
+    const lowStockHtml = alertTable(alerts.low_stock_items || [], [
+      { label:'Item', render: r => `<span style="font-weight:600">${esc(r.name)}</span>` },
+      { label:'SKU', render: r => `<span style="color:var(--text-muted);font-size:0.8rem">${esc(r.sku||'—')}</span>` },
+      { label:'On Hand', right:true, render: r => `<span style="color:var(--eco-red);font-weight:700">${fmtQty(r.currentStock)}</span>` },
+      { label:'Min Stock', right:true, render: r => fmtQty(r.minStock) },
+    ]);
+    const overduePoHtml = alertTable(alerts.overdue_purchase_orders || [], [
+      { label:'PO #', render: r => `<span style="font-weight:600">${esc(r.po_number||r.id)}</span>` },
+      { label:'Supplier', render: r => esc(r.suppliers?.name||'—') },
+      { label:'Due Date', render: r => `<span style="color:var(--eco-red)">${fmtDate(r.expected_date)}</span>` },
+      { label:'Amount', right:true, render: r => fmtR(r.total_amount) },
+    ]);
+    const shortageHtml = alertTable(alerts.reservation_shortages || [], [
+      { label:'Item', render: r => `<span style="font-weight:600">${esc(r.name||r.item_name||'—')}</span>` },
+      { label:'On Hand', right:true, render: r => fmtQty(r.current_stock) },
+      { label:'Shortage', right:true, render: r => `<span style="color:var(--eco-red);font-weight:700">${fmtQty(r.shortage_qty)}</span>` },
+    ]);
+    const underYieldHtml = alertTable(alerts.under_yield_batches || [], [
+      { label:'Batch', render: r => `<span style="font-weight:600">${esc(r.batch_number||'—')}</span>` },
+      { label:'WO', render: r => esc(r.work_orders?.wo_number||'—') },
+      { label:'Yield %', right:true, render: r => `<span style="color:var(--warning);font-weight:700">${(parseFloat(r.yield_percent)||0).toFixed(1)}%</span>` },
+      { label:'Completed', render: r => fmtDate(r.completed_at) },
+    ]);
+
+    document.getElementById('reportContainer').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div><div style="font-size:0.78rem;font-weight:700;color:var(--eco-red);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Low-Stock Items</div><div class="table-wrap">${lowStockHtml}</div></div>
+        <div><div style="font-size:0.78rem;font-weight:700;color:var(--eco-red);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Overdue Purchase Orders</div><div class="table-wrap">${overduePoHtml}</div></div>
+        <div><div style="font-size:0.78rem;font-weight:700;color:var(--eco-red);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Reservation Shortages</div><div class="table-wrap">${shortageHtml}</div></div>
+        <div><div style="font-size:0.78rem;font-weight:700;color:var(--warning);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Under-Yield Batches (&lt;98%)</div><div class="table-wrap">${underYieldHtml}</div></div>
+      </div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
 }
 
 // ─── Stock Valuation ─────────────────────────────────────────────────────────
@@ -2785,6 +4213,936 @@ async function loadWoCostReport() {
     container.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`;
     showToast(e.message, true);
   }
+}
+
+// ─── Shortages ───────────────────────────────────────────────────────────────
+async function loadShortagesReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/shortages');
+    const rows = d.shortages || [];
+    renderSummaryBar([
+      { label: 'Items with Shortages', value: rows.filter(r=>r.has_shortage||r.shortage_qty>0).length, color: 'var(--eco-red)' },
+      { label: 'Total Reserved Value', value: fmtR(d.total_reserved_value||0), color: 'var(--eco-gold)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No shortage items.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Item</th><th>SKU</th>
+      <th style="text-align:right">On Hand</th>
+      <th style="text-align:right">Reserved</th>
+      <th style="text-align:right">Available</th>
+      <th style="text-align:right">Shortage</th>
+    </tr></thead><tbody>${rows.map(r => `<tr>
+      <td style="font-weight:600">${esc(r.name||r.item_name||'—')}</td>
+      <td style="color:var(--text-muted);font-size:0.8rem">${esc(r.sku||'—')}</td>
+      <td style="text-align:right">${fmtQty(r.current_stock)}</td>
+      <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.reserved_qty)}</td>
+      <td style="text-align:right;color:${(r.available_qty||0)<0?'var(--eco-red)':'var(--eco-green)'}">${fmtQty(r.available_qty)}</td>
+      <td style="text-align:right;font-weight:700;color:${(r.shortage_qty||0)>0?'var(--eco-red)':'var(--text-muted)'}">${fmtQty(r.shortage_qty||0)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Overcommitted ───────────────────────────────────────────────────────────
+async function loadOvercommittedReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/overcommitted');
+    const rep = d.report || {};
+    const items = d.overcommitted_items || [];
+    renderSummaryBar([
+      { label: 'Overcommitted Items', value: rep.total_overcommitted_items || items.length, color: items.length > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Total Reserved Value', value: fmtR(rep.total_reserved_value||0), color: 'var(--eco-gold)' },
+    ]);
+    if (!items.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No overcommitted items.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Item</th><th>SKU</th>
+      <th style="text-align:right">On Hand</th>
+      <th style="text-align:right">Reserved</th>
+      <th style="text-align:right">Shortage</th>
+    </tr></thead><tbody>${items.map(r => `<tr>
+      <td style="font-weight:600">${esc(r.name||r.item_name||'—')}</td>
+      <td style="color:var(--text-muted);font-size:0.8rem">${esc(r.sku||'—')}</td>
+      <td style="text-align:right">${fmtQty(r.current_stock)}</td>
+      <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.reserved_qty)}</td>
+      <td style="text-align:right;font-weight:700;color:var(--eco-red)">${fmtQty(r.shortage_qty)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Reservation Report ───────────────────────────────────────────────────────
+async function loadReservationReport() {
+  setReportLoading();
+  try {
+    const status = document.getElementById('reportResvStatus').value;
+    const source = document.getElementById('reportResvSource').value;
+    let url = '/reports/reservation-report';
+    const q = new URLSearchParams();
+    if (status) q.set('status', status);
+    if (source) q.set('source_type', source);
+    if (q.toString()) url += '?' + q.toString();
+    const d = await apiFetch(url);
+    const rep = d.report || {};
+    const rows = d.reservations || [];
+    renderSummaryBar([
+      { label: 'Total Reservations', value: rep.total_reservations||0 },
+      { label: 'Active',             value: rep.active||0,              color: 'var(--eco-gold)' },
+      { label: 'Partially Released', value: rep.partially_released||0 },
+      { label: 'Released',           value: rep.released||0,            color: 'var(--eco-green)' },
+      { label: 'Consumed',           value: rep.consumed||0,            color: 'var(--text-muted)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">🔒</div><p>No reservations found.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Item</th><th>Source</th><th>Status</th>
+      <th style="text-align:right">Reserved</th>
+      <th style="text-align:right">Released</th>
+      <th style="text-align:right">Consumed</th>
+      <th>Created</th>
+    </tr></thead><tbody>${rows.map(r => {
+      const item = r.inventory_items || {};
+      return `<tr>
+        <td style="font-weight:600">${esc(item.name||r.item_id||'—')}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${esc(r.source_type||'—')} ${r.source_id?`#${esc(r.source_id)}`:''}</td>
+        <td>${statusBadge(r.reservation_status)}</td>
+        <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.quantity_reserved)}</td>
+        <td style="text-align:right">${fmtQty(r.quantity_released)}</td>
+        <td style="text-align:right">${fmtQty(r.quantity_consumed)}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(r.created_at)}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Purchase Orders ─────────────────────────────────────────────────────────
+async function loadPurchaseOrderReport() {
+  setReportLoading();
+  try {
+    const from   = document.getElementById('reportFrom').value;
+    const to     = document.getElementById('reportTo').value;
+    const status = document.getElementById('reportPoStatus').value;
+    const q = new URLSearchParams();
+    if (from)   q.set('from', from);
+    if (to)     q.set('to', to);
+    if (status) q.set('status', status);
+    const d = await apiFetch('/reports/purchase-order-report' + (q.toString() ? '?' + q.toString() : ''));
+    const rep = d.report || {};
+    const pos = d.purchase_orders || [];
+    renderSummaryBar([
+      { label: 'Purchase Orders', value: rep.total_purchase_orders||0 },
+      { label: 'Total Amount',    value: fmtR(rep.total_amount||0), color: 'var(--eco-cyan)' },
+      { label: 'Overdue',         value: rep.overdue_count||0, color: rep.overdue_count > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+    ]);
+    if (!pos.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">🛒</div><p>No purchase orders found.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>PO #</th><th>Supplier</th><th>Status</th>
+      <th>Order Date</th><th>Expected</th>
+      <th style="text-align:right">Amount</th>
+      <th style="text-align:right">Received</th>
+    </tr></thead><tbody>${pos.map(po => {
+      const sup = po.suppliers || {};
+      return `<tr>
+        <td style="font-weight:600">${esc(po.po_number||po.id)}</td>
+        <td>${esc(sup.name||'—')}</td>
+        <td>${statusBadge(po.status)}${po.is_overdue ? ' <span class="badge badge-danger">Overdue</span>' : ''}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(po.order_date)}</td>
+        <td style="font-size:0.8rem;color:${po.is_overdue?'var(--eco-red)':'var(--text-muted)'}">${fmtDate(po.expected_date)}</td>
+        <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(po.total_amount)}</td>
+        <td style="text-align:right;color:var(--eco-green)">${fmtR(po.total_received_value)}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Overdue POs ─────────────────────────────────────────────────────────────
+async function loadOverduePOsReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/overdue-purchase-orders');
+    const rows = d.overdue_pos || [];
+    renderSummaryBar([
+      { label: 'Overdue POs', value: d.count || rows.length, color: rows.length > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No overdue purchase orders.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>PO #</th><th>Supplier</th><th>Status</th>
+      <th>Expected Date</th>
+      <th style="text-align:right">Amount</th>
+    </tr></thead><tbody>${rows.map(po => {
+      const sup = po.suppliers || {};
+      return `<tr>
+        <td style="font-weight:600">${esc(po.po_number||po.id)}</td>
+        <td>${esc(sup.name||'—')}</td>
+        <td>${statusBadge(po.status)}</td>
+        <td style="color:var(--eco-red);font-weight:700">${fmtDate(po.expected_date)}</td>
+        <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(po.total_amount)}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Supplier History ─────────────────────────────────────────────────────────
+async function loadSupplierHistoryReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/supplier-history');
+    const rows = d.supplier_history || [];
+    renderSummaryBar([
+      { label: 'History Records', value: rows.length },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">📦</div><p>No supplier history records.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Item</th><th>Supplier</th>
+      <th style="text-align:right">Last Cost</th>
+      <th style="text-align:right">Avg Cost</th>
+      <th>Last Purchase</th>
+      <th style="text-align:right">Lead Days</th>
+      <th style="text-align:right">Purchases</th>
+      <th>Preferred</th>
+    </tr></thead><tbody>${rows.map(r => {
+      const item = r.inventory_items || {};
+      const sup  = r.suppliers || {};
+      return `<tr>
+        <td style="font-weight:600">${esc(item.name||'—')}</td>
+        <td>${esc(sup.name||'—')}</td>
+        <td style="text-align:right;color:var(--eco-cyan)">${fmtR(r.last_purchase_cost)}</td>
+        <td style="text-align:right">${fmtR(r.average_supplier_cost)}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(r.last_purchase_date)}</td>
+        <td style="text-align:right">${r.lead_time_days != null ? r.lead_time_days : '—'}</td>
+        <td style="text-align:right">${r.purchase_count||0}</td>
+        <td>${r.preferred_supplier ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-neutral">No</span>'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Procurement Suggestions ──────────────────────────────────────────────────
+async function loadProcurementSuggestionsReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/procurement-suggestions');
+    const rep = d.summary || {};
+    const suggestions = d.suggestions || [];
+    renderSummaryBar([
+      { label: 'Total Suggestions',  value: rep.total || suggestions.length },
+      { label: 'Reorder Triggers',   value: rep.reorder_count||0, color: 'var(--eco-gold)' },
+      { label: 'Shortage Triggers',  value: rep.shortage_count||0, color: 'var(--eco-red)' },
+    ]);
+    if (!suggestions.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No procurement suggestions at this time.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Item</th><th>SKU</th><th>Reason</th>
+      <th style="text-align:right">On Hand</th>
+      <th style="text-align:right">Reorder Point</th>
+      <th style="text-align:right">Suggested Qty</th>
+    </tr></thead><tbody>${suggestions.map(s => `<tr>
+      <td style="font-weight:600">${esc(s.item_name||s.name||'—')}</td>
+      <td style="color:var(--text-muted);font-size:0.8rem">${esc(s.sku||'—')}</td>
+      <td>${(s.sources||[]).map(src => `<span class="badge ${src==='shortage'?'badge-danger':'badge-warning'}">${esc(src)}</span>`).join(' ')}</td>
+      <td style="text-align:right">${fmtQty(s.current_stock)}</td>
+      <td style="text-align:right;color:var(--text-muted)">${fmtQty(s.reorder_point)}</td>
+      <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtQty(s.recommended_qty)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Production Summary ───────────────────────────────────────────────────────
+async function loadProductionSummaryReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/production-summary');
+    const s = d.summary || {};
+    renderSummaryBar([
+      { label: 'Batches Today',       value: s.batches_today || 0 },
+      { label: 'Batches This Month',  value: s.batches_this_month || 0, color: 'var(--eco-cyan)' },
+      { label: 'Total Batches',       value: s.total_batches || 0 },
+      { label: 'Active WOs',          value: s.active_work_orders || 0, color: 'var(--warning)' },
+      { label: 'Wastage Qty (Month)', value: fmtQty(s.wastage_qty_month || 0), color: s.wastage_qty_month > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Wastage Value (Month)',value: fmtR(s.wastage_value_month || 0), color: s.wastage_value_month > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+    ]);
+    document.getElementById('reportContainer').innerHTML = '<div class="empty" style="padding:24px"><p style="color:var(--text-muted)">Summary loaded above. Use the Wastage Log or Yield Variance report for detailed records.</p></div>';
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Wastage Log ─────────────────────────────────────────────────────────────
+async function loadWastageReport() {
+  setReportLoading();
+  try {
+    const from = document.getElementById('reportFrom').value;
+    const to   = document.getElementById('reportTo').value;
+    const q = new URLSearchParams();
+    if (from) q.set('from', from);
+    if (to)   q.set('to', to);
+    const d = await apiFetch('/reports/wastage' + (q.toString() ? '?' + q.toString() : ''));
+    const rep  = d.report || {};
+    const rows = d.wastage_records || [];
+    const byReason = d.by_reason || [];
+    renderSummaryBar([
+      { label: 'Records',        value: rep.total_records||0 },
+      { label: 'Total Qty',      value: fmtQty(rep.total_qty||0), color: 'var(--eco-red)' },
+      { label: 'Total Value',    value: fmtR(rep.total_value||0),  color: 'var(--eco-red)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No wastage records for this period.</p></div>'; return; }
+
+    const reasonHtml = byReason.length ? `
+      <div style="margin-bottom:20px">
+        <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">By Reason</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          ${byReason.map(r => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;">
+            <div style="font-size:1.1rem;font-weight:800;color:var(--eco-red)">${fmtR(r.total_value)}</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">${esc(r.reason)} (${r.count})</div>
+          </div>`).join('')}
+        </div>
+      </div>` : '';
+
+    document.getElementById('reportContainer').innerHTML = reasonHtml + `<div class="table-wrap"><table><thead><tr>
+      <th>Item</th><th>Batch</th><th>Reason</th>
+      <th style="text-align:right">Qty</th>
+      <th style="text-align:right">Est. Value</th>
+      <th>Date</th>
+    </tr></thead><tbody>${rows.map(r => {
+      const item  = r.inventory_items || {};
+      const batch = r.production_batches || {};
+      const wo    = batch.work_orders || {};
+      return `<tr>
+        <td style="font-weight:600">${esc(item.name||'—')}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${esc(batch.batch_number||'—')} ${wo.wo_number?`/ ${esc(wo.wo_number)}`:''}</td>
+        <td><span class="badge badge-danger">${esc(r.wastage_reason||'unspecified')}</span></td>
+        <td style="text-align:right;color:var(--eco-red);font-weight:700">${fmtQty(r.wastage_qty)}</td>
+        <td style="text-align:right">${fmtR(r.estimated_value)}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(r.created_at)}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Yield Variance ───────────────────────────────────────────────────────────
+async function loadYieldVarianceReport() {
+  setReportLoading();
+  try {
+    const from      = document.getElementById('reportFrom').value;
+    const to        = document.getElementById('reportTo').value;
+    const direction = document.getElementById('reportYieldDirection').value;
+    const q = new URLSearchParams();
+    if (from)      q.set('from', from);
+    if (to)        q.set('to', to);
+    if (direction) q.set('direction', direction);
+    const d = await apiFetch('/reports/yield-variance' + (q.toString() ? '?' + q.toString() : ''));
+    const rep      = d.report || {};
+    const batches  = d.batches || [];
+    const variances = d.variances || [];
+    renderSummaryBar([
+      { label: 'Batches',         value: rep.batch_count||0 },
+      { label: 'Avg Yield %',     value: rep.average_yield != null ? rep.average_yield.toFixed(1)+'%' : '—', color: (rep.average_yield||0) >= 98 ? 'var(--eco-green)' : 'var(--eco-red)' },
+      { label: 'Over Yield',      value: rep.over_yield_count||0,  color: 'var(--eco-green)' },
+      { label: 'Under Yield',     value: rep.under_yield_count||0, color: 'var(--eco-red)' },
+      { label: 'Variance Records',value: rep.variance_count||0 },
+      { label: 'Total Variance',  value: fmtR(rep.total_variance_value||0), color: (rep.total_variance_value||0) < 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+    ]);
+    if (!batches.length && !variances.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><p>No yield data for this period.</p></div>'; return; }
+    const batchHtml = batches.length ? `
+      <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin:0 0 10px">Production Batches</div>
+      <div class="table-wrap" style="margin-bottom:20px"><table><thead><tr>
+        <th>Batch</th><th>WO</th><th>Item</th>
+        <th style="text-align:right">Produced</th>
+        <th style="text-align:right">Expected</th>
+        <th style="text-align:right">Wastage</th>
+        <th style="text-align:right">Yield %</th>
+        <th>Completed</th>
+      </tr></thead><tbody>${batches.map(r => {
+        const wo   = r.work_orders || {};
+        const item = wo.inventory_items || {};
+        const yld  = parseFloat(r.yield_percent)||0;
+        return `<tr>
+          <td style="font-weight:600">${esc(r.batch_number||'—')}</td>
+          <td style="font-size:0.8rem;color:var(--text-muted)">${esc(wo.wo_number||'—')}</td>
+          <td>${esc(item.name||'—')}</td>
+          <td style="text-align:right">${fmtQty(r.produced_qty)}</td>
+          <td style="text-align:right">${fmtQty(r.expected_qty)}</td>
+          <td style="text-align:right;color:var(--eco-red)">${fmtQty(r.wastage_qty)}</td>
+          <td style="text-align:right;font-weight:700;color:${yld>=98?'var(--eco-green)':yld>=90?'var(--warning)':'var(--eco-red)'}">${yld.toFixed(1)}%</td>
+          <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(r.completed_at)}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>` : '';
+
+    const varHtml = variances.length ? `
+      <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Variance Records</div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Item</th><th>Batch</th><th>Direction</th>
+        <th style="text-align:right">Qty</th>
+        <th style="text-align:right">Value</th>
+        <th>Date</th>
+      </tr></thead><tbody>${variances.map(v => {
+        const item  = v.inventory_items  || {};
+        const batch = v.production_batches || {};
+        const wo    = batch.work_orders || {};
+        return `<tr>
+          <td style="font-weight:600">${esc(item.name||'—')}</td>
+          <td style="font-size:0.8rem;color:var(--text-muted)">${esc(batch.batch_number||'—')} ${wo.wo_number?`/ ${esc(wo.wo_number)}`:''}</td>
+          <td><span class="badge ${v.variance_direction==='over'?'badge-success':'badge-danger'}">${esc(v.variance_direction||'—')}</span></td>
+          <td style="text-align:right">${fmtQty(v.variance_qty)}</td>
+          <td style="text-align:right;font-weight:700;color:${v.variance_direction==='under'?'var(--eco-red)':'var(--eco-green)'}">${fmtR(v.variance_value)}</td>
+          <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(v.created_at)}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>` : '';
+
+    document.getElementById('reportContainer').innerHTML = batchHtml + varHtml;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SALES ORDERS & DEMAND PLANNING — CB-09
+// ════════════════════════════════════════════════════════════════════════════
+
+let _soLineCount = 0;
+
+function onSOSubViewChange() {
+  const v = document.getElementById('soSubView').value;
+  document.getElementById('soview-list').style.display    = v === 'list'   ? '' : 'none';
+  document.getElementById('soview-demand').style.display  = v === 'demand' ? '' : 'none';
+  document.getElementById('soview-atp').style.display     = v === 'atp'    ? '' : 'none';
+  const addBtn = document.getElementById('btnAddSO');
+  const statusFilter = document.getElementById('soStatusFilter');
+  addBtn.style.display = v === 'list' ? '' : 'none';
+  statusFilter.style.display = v === 'list' ? '' : 'none';
+  if (v === 'demand') loadDemandDashboard();
+}
+
+function refreshSOView() {
+  const v = document.getElementById('soSubView').value;
+  if (v === 'list')   loadSalesOrders();
+  else if (v === 'demand') loadDemandDashboard();
+  else { const itemId = document.getElementById('atpItemFilter').value; if (itemId) loadATPForItem(); }
+}
+
+function populateATPItemFilter() {
+  const sel = document.getElementById('atpItemFilter');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select Item —</option>';
+  allItems.forEach(i => {
+    const o = document.createElement('option');
+    o.value = i.id;
+    o.textContent = i.name + (i.sku ? ` (${esc(i.sku)})` : '');
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+}
+
+// ─── Sales Order List ─────────────────────────────────────────────────────────
+
+async function loadSalesOrders() {
+  const wrap = document.getElementById('salesOrdersTable');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  const status = document.getElementById('soStatusFilter')?.value || '';
+  try {
+    const url = '/sales-orders' + (status ? `?status=${encodeURIComponent(status)}` : '');
+    const d = await apiFetch(url);
+    const rows = d.sales_orders || [];
+    if (!rows.length) {
+      wrap.innerHTML = '<div class="empty"><div class="empty-icon">🧾</div><p>No sales orders found. Click "+ New Order" to create one.</p></div>';
+      return;
+    }
+    const sc = { draft:'badge-neutral', confirmed:'badge-info', allocated:'badge-success', partially_fulfilled:'badge-warning', fulfilled:'badge-purple', cancelled:'badge-danger' };
+    wrap.innerHTML = `<table><thead><tr>
+      <th>SO #</th><th>Customer</th><th>Ref</th><th>Status</th>
+      <th>Required By</th><th style="text-align:right">Value</th>
+      <th>Created</th><th>Actions</th>
+    </tr></thead><tbody>${rows.map(so => `<tr>
+      <td style="font-weight:600;font-family:monospace">${esc(so.so_number)}</td>
+      <td style="font-weight:600">${esc(so.customer_name)}</td>
+      <td style="font-size:0.8rem;color:var(--text-muted)">${esc(so.customer_ref||'—')}</td>
+      <td><span class="badge ${sc[so.so_status]||'badge-neutral'}">${esc(so.so_status)}</span></td>
+      <td style="font-size:0.8rem;color:${so.required_date && new Date(so.required_date)<new Date()?'var(--eco-red)':'var(--text-muted)'}">${fmtDate(so.required_date)}</td>
+      <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(so.total_amount)}</td>
+      <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(so.created_at)}</td>
+      <td class="td-actions">
+        <button class="btn btn-ghost btn-xs" onclick="viewSalesOrder(${so.id})">View</button>
+        ${so.so_status === 'draft' ? `<button class="btn btn-success btn-xs" onclick="confirmSO(${so.id})">Confirm</button>` : ''}
+        ${so.so_status === 'confirmed' ? `<button class="btn btn-primary btn-xs" onclick="allocateSO(${so.id})">Allocate</button>` : ''}
+        ${['draft','confirmed','allocated'].includes(so.so_status) ? `<button class="btn btn-danger btn-xs" onclick="cancelSO(${so.id})">Cancel</button>` : ''}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch(e) { wrap.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`; }
+}
+
+// ─── Sales Order Actions ──────────────────────────────────────────────────────
+
+async function viewSalesOrder(id) {
+  try {
+    const d = await apiFetch(`/sales-orders/${id}`);
+    const so = d.sales_order || {};
+    const lines = so.sales_order_lines || [];
+    const history = so.sales_order_status_history || [];
+    document.getElementById('soDetailTitle').textContent = `${esc(so.so_number)} — ${esc(so.customer_name)}`;
+    const sc = { draft:'badge-neutral', confirmed:'badge-info', allocated:'badge-success', partially_fulfilled:'badge-warning', fulfilled:'badge-purple', cancelled:'badge-danger' };
+    const canConfirm  = so.so_status === 'draft';
+    const canAllocate = ['confirmed','draft'].includes(so.so_status);
+    const canCancel   = !['fulfilled','cancelled'].includes(so.so_status);
+
+    document.getElementById('soDetailBody').innerHTML = `
+      <div class="detail-grid" style="margin-bottom:16px">
+        <div class="detail-row"><div class="label">Status</div><div class="value"><span class="badge ${sc[so.so_status]}">${esc(so.so_status)}</span></div></div>
+        <div class="detail-row"><div class="label">Customer</div><div class="value">${esc(so.customer_name)}</div></div>
+        <div class="detail-row"><div class="label">Required By</div><div class="value">${fmtDate(so.required_date)}</div></div>
+        <div class="detail-row"><div class="label">Total Value</div><div class="value" style="color:var(--eco-cyan);font-weight:700">${fmtR(so.total_amount)}</div></div>
+        ${so.customer_ref ? `<div class="detail-row"><div class="label">Cust. Ref</div><div class="value">${esc(so.customer_ref)}</div></div>` : ''}
+        ${so.notes ? `<div class="detail-row" style="grid-column:1/-1"><div class="label">Notes</div><div class="value">${esc(so.notes)}</div></div>` : ''}
+      </div>
+      <div class="table-wrap" style="margin-bottom:16px"><table><thead><tr>
+        <th>#</th><th>Item</th><th style="text-align:right">Ordered</th>
+        <th style="text-align:right">Allocated</th><th style="text-align:right">Fulfilled</th>
+        <th style="text-align:right">Unit Price</th><th style="text-align:right">Line Total</th>
+        <th>Actions</th>
+      </tr></thead><tbody>${lines.map(l => {
+        const item = l.inventory_items || {};
+        const canFulfill = ['allocated','partially_fulfilled'].includes(so.so_status) && parseFloat(l.quantity_allocated) > parseFloat(l.quantity_fulfilled);
+        return `<tr>
+          <td style="color:var(--text-muted)">${l.line_number}</td>
+          <td style="font-weight:600">${esc(item.name||'—')}</td>
+          <td style="text-align:right">${fmtQty(l.quantity_ordered)}</td>
+          <td style="text-align:right;color:${parseFloat(l.quantity_allocated)>=parseFloat(l.quantity_ordered)?'var(--eco-green)':'var(--warning)'}">${fmtQty(l.quantity_allocated)}</td>
+          <td style="text-align:right;color:${parseFloat(l.quantity_fulfilled)>=parseFloat(l.quantity_ordered)?'var(--eco-green)':'var(--text-muted)'}">${fmtQty(l.quantity_fulfilled)}</td>
+          <td style="text-align:right">${fmtR(l.unit_price)}</td>
+          <td style="text-align:right;font-weight:700">${l.line_total ? fmtR(l.line_total) : fmtR(parseFloat(l.quantity_ordered)*parseFloat(l.unit_price))}</td>
+          <td>${canFulfill ? `<button class="btn btn-success btn-xs" onclick="fulfillSOLine(${so.id},${l.id})">Fulfill</button>` : ''}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        ${canConfirm  ? `<button class="btn btn-success btn-sm" onclick="confirmSO(${so.id},true)">Confirm</button>` : ''}
+        ${canAllocate ? `<button class="btn btn-primary btn-sm" onclick="allocateSO(${so.id},true)">Allocate Stock</button>` : ''}
+        ${canCancel   ? `<button class="btn btn-danger btn-sm" onclick="cancelSO(${so.id},true)">Cancel Order</button>` : ''}
+      </div>
+      ${history.length ? `<div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Status History</div>
+        <div style="display:flex;flex-direction:column;gap:4px">${history.map(h => `
+          <div style="font-size:0.8rem;color:var(--text-muted)">
+            ${fmtDate(h.created_at)} — <strong>${esc(h.from_status||'—')}</strong> → <strong style="color:var(--eco-cyan)">${esc(h.to_status)}</strong>${h.notes ? ` (${esc(h.notes)})` : ''}
+          </div>`).join('')}</div>` : ''}`;
+    openModal('soDetailModal');
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function confirmSO(id, fromDetail = false) {
+  try {
+    await apiFetch(`/sales-orders/${id}/confirm`, { method: 'PUT', body: '{}' });
+    showToast('Sales order confirmed.');
+    if (fromDetail) closeModal('soDetailModal');
+    await loadSalesOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function allocateSO(id, fromDetail = false) {
+  try {
+    const d = await apiFetch(`/sales-orders/${id}/allocate`, { method: 'PUT', body: '{}' });
+    const errors = d.errors || [];
+    if (errors.length) {
+      showToast(`Allocation partial: ${errors.length} line(s) failed. ${errors[0]?.error || ''}`, true);
+    } else {
+      showToast(`Stock allocated — SO status: ${d.so_status}`);
+    }
+    if (fromDetail) closeModal('soDetailModal');
+    await loadSalesOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function fulfillSOLine(soId, lineId) {
+  const qty = prompt('Quantity to fulfill (leave blank for full remaining):');
+  if (qty === null) return;
+  try {
+    const body = qty.trim() ? JSON.stringify({ quantity: parseFloat(qty) }) : JSON.stringify({});
+    const d = await apiFetch(`/sales-orders/${soId}/lines/${lineId}/fulfill`, { method: 'PUT', body });
+    showToast(`Fulfilled ${fmtQty(d.fulfilled_qty)} — SO: ${d.so_status}`);
+    closeModal('soDetailModal');
+    await loadSalesOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function cancelSO(id, fromDetail = false) {
+  if (!confirm('Cancel this sales order? All stock reservations will be released.')) return;
+  try {
+    await apiFetch(`/sales-orders/${id}/cancel`, { method: 'PUT', body: '{}' });
+    showToast('Sales order cancelled.');
+    if (fromDetail) closeModal('soDetailModal');
+    await loadSalesOrders();
+  } catch(e) { showToast(e.message, true); }
+}
+
+// ─── Create Sales Order ───────────────────────────────────────────────────────
+
+function openCreateSOModal() {
+  _soLineCount = 0;
+  document.getElementById('soLineRows').innerHTML = '';
+  ['soCustomerName','soCustomerEmail','soCustomerPhone','soCustomerRef','soRequiredDate','soNotes'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  addSOLine();
+  openModal('createSOModal');
+}
+
+function addSOLine() {
+  _soLineCount++;
+  const row = document.createElement('div');
+  row.className = 'bom-line-row';
+  row.style.gridTemplateColumns = '1fr 90px 100px 32px';
+  row.innerHTML = `
+    <select style="padding:7px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;width:100%">
+      <option value="">— Select Item —</option>
+      ${allItems.map(i => `<option value="${i.id}" data-price="${i.sell_price||0}">${esc(i.name)}${i.sku ? ` (${esc(i.sku)})` : ''}</option>`).join('')}
+    </select>
+    <input type="number" min="0.001" step="0.001" placeholder="Qty" style="padding:7px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;width:100%">
+    <input type="number" min="0" step="0.01" placeholder="Price" style="padding:7px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.82rem;width:100%">
+    <button type="button" class="bom-line-remove" onclick="this.parentElement.remove()">✕</button>`;
+  // Auto-fill price when item selected
+  const sel = row.querySelector('select');
+  const priceInput = row.querySelectorAll('input')[1];
+  sel.addEventListener('change', () => {
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.dataset.price) priceInput.value = opt.dataset.price;
+  });
+  document.getElementById('soLineRows').appendChild(row);
+}
+
+async function submitCreateSO(e) {
+  e.preventDefault();
+  const customerName = document.getElementById('soCustomerName').value.trim();
+  if (!customerName) { showToast('Customer name is required', true); return false; }
+
+  const lineRows = document.querySelectorAll('#soLineRows .bom-line-row');
+  const lines = [];
+  for (const row of lineRows) {
+    const sel   = row.querySelector('select');
+    const inputs = row.querySelectorAll('input');
+    const qty   = inputs[0];
+    const price = inputs[1];
+    if (!sel.value || !qty.value || parseFloat(qty.value) <= 0) continue;
+    lines.push({ item_id: parseInt(sel.value), quantity_ordered: parseFloat(qty.value), unit_price: parseFloat(price.value)||0 });
+  }
+  if (!lines.length) { showToast('Add at least one item line', true); return false; }
+
+  const body = {
+    customer_name:  customerName,
+    customer_email: document.getElementById('soCustomerEmail').value.trim() || null,
+    customer_phone: document.getElementById('soCustomerPhone').value.trim() || null,
+    customer_ref:   document.getElementById('soCustomerRef').value.trim()   || null,
+    required_date:  document.getElementById('soRequiredDate').value || null,
+    notes:          document.getElementById('soNotes').value.trim() || null,
+    lines
+  };
+  try {
+    await apiFetch('/sales-orders', { method: 'POST', body: JSON.stringify(body) });
+    closeModal('createSOModal');
+    showToast('Sales order created.');
+    await loadSalesOrders();
+  } catch(e) { showToast(e.message, true); }
+  return false;
+}
+
+// ─── Demand Dashboard ─────────────────────────────────────────────────────────
+
+async function loadDemandDashboard() {
+  const container = document.getElementById('demandDashboardContainer');
+  container.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  try {
+    const d = await apiFetch('/sales-orders/demand-dashboard');
+    const s = d.summary || {};
+    const bySource = d.demand_by_source || {};
+    container.innerHTML = `
+      <div class="stats-grid" style="margin-bottom:20px">
+        <div class="stat-card"><div class="stat-value" style="color:var(--eco-cyan)">${s.open_sales_orders||0}</div><div class="stat-label">Open Sales Orders</div></div>
+        <div class="stat-card success"><div class="stat-value">${fmtR(s.open_so_value||0)}</div><div class="stat-label">Open SO Value</div></div>
+        <div class="stat-card warning"><div class="stat-value">${s.confirmed_count||0}</div><div class="stat-label">Confirmed (Unallocated)</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--eco-green)">${s.allocated_count||0}</div><div class="stat-label">Fully Allocated</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--eco-gold)">${s.partially_fulfilled||0}</div><div class="stat-label">Partial Fulfillment</div></div>
+        <div class="stat-card danger"><div class="stat-value">${s.at_risk_items||0}</div><div class="stat-label">At-Risk Items</div></div>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:0.88rem">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 20px">
+          <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Demand by Source</div>
+          ${Object.entries(bySource).map(([k,v]) => `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:var(--text-muted)">${esc(k)}</span><strong>${fmtQty(v)}</strong></div>`).join('')}
+        </div>
+      </div>`;
+  } catch(e) { container.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`; }
+}
+
+// ─── ATP Lookup ───────────────────────────────────────────────────────────────
+
+async function loadATPForItem() {
+  const itemId = document.getElementById('atpItemFilter').value;
+  const days   = parseInt(document.getElementById('atpDays').value) || 30;
+  if (!itemId) { showToast('Select an item first', true); return; }
+  const container = document.getElementById('atpResultContainer');
+  container.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+  try {
+    const [atpD, projD] = await Promise.all([
+      apiFetch(`/sales-orders/atp/${itemId}`),
+      apiFetch(`/sales-orders/atp/${itemId}/projected?days=${days}`)
+    ]);
+
+    const bd = atpD.demand_breakdown || {};
+    container.innerHTML = `
+      <div class="stats-grid" style="margin-bottom:20px">
+        <div class="stat-card success"><div class="stat-value">${fmtQty(atpD.current_stock)}</div><div class="stat-label">On Hand</div></div>
+        <div class="stat-card warning"><div class="stat-value">${fmtQty(atpD.active_reserved)}</div><div class="stat-label">Total Reserved</div></div>
+        <div class="stat-card ${atpD.atp<=0?'danger':atpD.is_low?'warning':'success'}"><div class="stat-value">${fmtQty(atpD.atp)}</div><div class="stat-label">ATP Now</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--eco-gold)">${fmtQty(bd.sales_order||0)}</div><div class="stat-label">Customer Reserved</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--purple)">${fmtQty(bd.work_order||0)}</div><div class="stat-label">Production Reserved</div></div>
+        <div class="stat-card ${projD.will_go_negative?'danger':'success'}"><div class="stat-value">${fmtQty(projD.final_projected)}</div><div class="stat-label">Projected (${days}d)</div></div>
+      </div>
+      ${projD.timeline && projD.timeline.length ? `
+        <div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Projected Timeline</div>
+        <div class="table-wrap"><table><thead><tr>
+          <th>Date</th><th>Event</th><th style="text-align:right">Projected Stock</th>
+        </tr></thead><tbody>${projD.timeline.map(t => `<tr>
+          <td style="color:var(--text-muted)">${fmtDate(t.date)}</td>
+          <td style="font-size:0.8rem">${(t.events_before_this||[]).map(ev => `<span style="color:${ev.type==='demand'?'var(--eco-red)':'var(--eco-green)'}">${ev.type==='demand'?'▼':'▲'} ${fmtQty(ev.qty)}</span>`).join(' ')}</td>
+          <td style="text-align:right;font-weight:700;color:${t.projected_stock<0?'var(--eco-red)':'var(--eco-cyan)'}">${fmtQty(t.projected_stock)}</td>
+        </tr>`).join('')}</tbody></table></div>` : '<div class="empty" style="padding:16px"><p>No future events in this window.</p></div>'}`;
+  } catch(e) { container.innerHTML = `<div class="empty"><p style="color:var(--danger)">${esc(e.message)}</p></div>`; }
+}
+
+// ─── CB-09 Report Functions ───────────────────────────────────────────────────
+
+async function loadOpenSOsReport() {
+  setReportLoading();
+  try {
+    const status   = document.getElementById('reportDemandStatus').value;
+    const customer = document.getElementById('reportDemandCustomer').value.trim();
+    const q = new URLSearchParams();
+    if (status)   q.set('status', status);
+    if (customer) q.set('customer', customer);
+    const d = await apiFetch('/reports/open-sales-orders' + (q.toString() ? '?' + q.toString() : ''));
+    const rep = d.report || {}; const rows = d.sales_orders || [];
+    renderSummaryBar([
+      { label: 'Orders',      value: rep.total_orders || rows.length },
+      { label: 'Total Value', value: fmtR(rep.total_value||0), color: 'var(--eco-cyan)' },
+      { label: 'Draft',       value: rep.draft_count||0, color: 'var(--text-muted)' },
+      { label: 'Confirmed',   value: rep.confirmed_count||0, color: 'var(--eco-gold)' },
+      { label: 'Allocated',   value: rep.allocated_count||0, color: 'var(--eco-green)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><p>No sales orders found.</p></div>'; return; }
+    const sc = { draft:'badge-neutral', confirmed:'badge-info', allocated:'badge-success', partially_fulfilled:'badge-warning', fulfilled:'badge-purple', cancelled:'badge-danger' };
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>SO #</th><th>Customer</th><th>Status</th><th>Required</th>
+      <th style="text-align:right">Value</th><th>Created</th>
+    </tr></thead><tbody>${rows.map(so => `<tr>
+      <td style="font-weight:600;font-family:monospace">${esc(so.so_number)}</td>
+      <td>${esc(so.customer_name)}</td>
+      <td><span class="badge ${sc[so.so_status]||'badge-neutral'}">${esc(so.so_status)}</span></td>
+      <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(so.required_date)}</td>
+      <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(so.total_amount)}</td>
+      <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(so.created_at)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+async function loadATPReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/atp');
+    const rep = d.report || {}; const rows = d.items || [];
+    renderSummaryBar([
+      { label: 'Items',     value: rep.item_count || rows.length },
+      { label: 'Shortages', value: rep.shortage_count||0, color: rep.shortage_count>0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Low ATP',   value: rep.low_count||0, color: rep.low_count>0 ? 'var(--warning)' : 'var(--eco-green)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><p>No demand commitments found.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Item</th><th>Type</th>
+      <th style="text-align:right">On Hand</th>
+      <th style="text-align:right">Reserved</th>
+      <th style="text-align:right">ATP</th>
+      <th style="text-align:right">Customer</th>
+      <th style="text-align:right">Production</th>
+    </tr></thead><tbody>${rows.map(r => `<tr>
+      <td style="font-weight:600">${esc(r.name)}</td>
+      <td>${itemTypeBadge(r.item_type)}</td>
+      <td style="text-align:right">${fmtQty(r.current_stock)}</td>
+      <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.active_reserved)}</td>
+      <td style="text-align:right;font-weight:700;color:${r.has_shortage?'var(--eco-red)':r.is_low?'var(--warning)':'var(--eco-green)'}">${fmtQty(r.atp)}</td>
+      <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.sales_reserved)}</td>
+      <td style="text-align:right;color:var(--purple)">${fmtQty(r.wo_reserved)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+async function loadFutureDemandReport() {
+  setReportLoading();
+  try {
+    const days   = document.getElementById('reportDemandDays')?.value || 30;
+    const status = document.getElementById('reportDemandStatus')?.value || '';
+    const q = new URLSearchParams({ days });
+    if (status) q.set('status', status);
+    const d = await apiFetch('/reports/future-demand?' + q.toString());
+    const rep = d.report || {}; const rows = d.demand_lines || [];
+    renderSummaryBar([
+      { label: `Demand Lines (${rep.horizon_days||30}d)`, value: rep.total_demand_lines||rows.length },
+      { label: 'Total Demand',   value: fmtQty(rep.total_demand_qty||0), color: 'var(--eco-gold)' },
+      { label: 'Allocated',      value: fmtQty(rep.total_allocated||0), color: 'var(--eco-green)' },
+      { label: 'Unallocated',    value: fmtQty(rep.unallocated||0), color: rep.unallocated>0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><p>No future demand in this window.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>SO #</th><th>Customer</th><th>Item</th><th>Status</th>
+      <th>Required</th>
+      <th style="text-align:right">Ordered</th>
+      <th style="text-align:right">Allocated</th>
+      <th style="text-align:right">Outstanding</th>
+    </tr></thead><tbody>${rows.map(r => `<tr>
+      <td style="font-family:monospace">${esc(r.so_number||'—')}</td>
+      <td>${esc(r.customer_name||'—')}</td>
+      <td style="font-weight:600">${esc(r.item_name||'—')}</td>
+      <td>${statusBadge(r.so_status)}</td>
+      <td style="font-size:0.8rem;color:${r.required_date && new Date(r.required_date)<new Date()?'var(--eco-red)':'var(--text-muted)'}">${fmtDate(r.required_date)}</td>
+      <td style="text-align:right">${fmtQty(r.quantity_ordered)}</td>
+      <td style="text-align:right;color:${r.quantity_allocated>=r.quantity_ordered?'var(--eco-green)':'var(--warning)'}">${fmtQty(r.quantity_allocated)}</td>
+      <td style="text-align:right;font-weight:700;color:${r.outstanding>0?'var(--eco-red)':'var(--eco-green)'}">${fmtQty(r.outstanding)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+async function loadDemandShortagesReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/demand-shortages');
+    const rep = d.report || {}; const rows = d.shortages || [];
+    renderSummaryBar([
+      { label: 'Shortages',   value: rep.shortage_count||0, color: rep.shortage_count>0?'var(--eco-red)':'var(--eco-green)' },
+      { label: 'At Risk',     value: rep.at_risk_count||0, color: rep.at_risk_count>0?'var(--warning)':'var(--eco-green)' },
+      { label: 'Total Shortage Value', value: fmtR(rep.total_shortage_value||0), color: 'var(--eco-red)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No demand shortages.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Item</th><th>Type</th>
+      <th style="text-align:right">On Hand</th>
+      <th style="text-align:right">Total Reserved</th>
+      <th style="text-align:right">ATP</th>
+      <th style="text-align:right">Shortage</th>
+      <th style="text-align:right">Customer</th>
+      <th style="text-align:right">Production</th>
+      <th style="text-align:right">Manual</th>
+    </tr></thead><tbody>${rows.map(r => `<tr>
+      <td style="font-weight:600">${esc(r.name)}</td>
+      <td>${itemTypeBadge(r.item_type)}</td>
+      <td style="text-align:right">${fmtQty(r.current_stock)}</td>
+      <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.total_reserved)}</td>
+      <td style="text-align:right;font-weight:700;color:${r.atp<=0?'var(--eco-red)':'var(--eco-green)'}">${fmtQty(r.atp)}</td>
+      <td style="text-align:right;font-weight:700;color:${r.has_shortage?'var(--eco-red)':'var(--text-muted)'}">${fmtQty(r.shortage_qty)}</td>
+      <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.customer_demand)}</td>
+      <td style="text-align:right;color:var(--purple)">${fmtQty(r.production_demand)}</td>
+      <td style="text-align:right;color:var(--text-muted)">${fmtQty(r.manual_hold)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Warehouse Stock Report (CB-08) ──────────────────────────────────────────
+async function loadWarehouseStockReport() {
+  setReportLoading();
+  try {
+    const wh = document.getElementById('reportWarehouseFilter').value;
+    const url = '/reports/warehouse-stock' + (wh ? `?warehouse_id=${wh}` : '');
+    const d = await apiFetch(url);
+    const rep = d.report || {};
+    const rows = d.stock || [];
+    renderSummaryBar([
+      { label: 'Stock Rows',       value: rep.total_rows || rows.length },
+      { label: 'Warehouses',       value: rep.warehouse_count || 0 },
+      { label: 'Total Stock Value',value: fmtR(rep.total_value || 0), color: 'var(--eco-cyan)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">🏭</div><p>No warehouse stock data. Process a transfer to populate.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Warehouse</th><th>Location</th><th>Item</th><th>Type</th>
+      <th style="text-align:right">On Hand</th>
+      <th style="text-align:right">Reserved</th>
+      <th style="text-align:right">Available</th>
+      <th style="text-align:right">Value</th>
+    </tr></thead><tbody>${rows.map(r => {
+      const whs = r.warehouses || {}; const item = r.inventory_items || {}; const loc = r.warehouse_locations || {};
+      return `<tr>
+        <td style="font-weight:600">${esc(whs.name||'—')}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${loc.location_code ? esc(loc.location_code) : '—'}</td>
+        <td>${esc(item.name||'—')}</td>
+        <td>${itemTypeBadge(item.item_type)}</td>
+        <td style="text-align:right">${fmtQty(r.quantity_on_hand)}</td>
+        <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.quantity_reserved)}</td>
+        <td style="text-align:right;font-weight:700;color:${(r.quantity_available||0)<=0?'var(--eco-red)':'var(--eco-green)'}">${fmtQty(r.quantity_available)}</td>
+        <td style="text-align:right">${fmtR(r.stock_value)}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Transfer History Report (CB-08) ─────────────────────────────────────────
+async function loadTransferHistoryReport() {
+  setReportLoading();
+  try {
+    const from   = document.getElementById('reportFrom').value;
+    const to     = document.getElementById('reportTo').value;
+    const wh     = document.getElementById('reportWarehouseFilter').value;
+    const status = document.getElementById('reportTransferStatus')?.value || '';
+    const q = new URLSearchParams();
+    if (from)   q.set('from_date', from);
+    if (to)     q.set('to_date', to);
+    if (wh)     q.set('from_warehouse_id', wh);
+    if (status) q.set('status', status);
+    const d = await apiFetch('/reports/transfer-history' + (q.toString() ? '?' + q.toString() : ''));
+    const rep = d.report || {}; const rows = d.transfers || [];
+    renderSummaryBar([
+      { label: 'Total',      value: rep.total_transfers || rows.length },
+      { label: 'In Transit', value: rep.in_transit || 0, color: 'var(--warning)' },
+      { label: 'Received',   value: rep.received || 0, color: 'var(--eco-green)' },
+      { label: 'Cancelled',  value: rep.cancelled || 0, color: 'var(--text-muted)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><p>No transfers found.</p></div>'; return; }
+    const sc = { draft:'badge-neutral', approved:'badge-info', in_transit:'badge-warning', received:'badge-success', cancelled:'badge-danger' };
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Transfer #</th><th>From</th><th>To</th><th>Status</th><th>Lines</th>
+      <th>Shipped</th><th>Received</th><th>Created</th>
+    </tr></thead><tbody>${rows.map(t => {
+      const from = t.from_warehouses||{}; const to = t.to_warehouses||{};
+      const lines = t.warehouse_transfer_lines||[];
+      return `<tr>
+        <td style="font-weight:600;font-family:monospace">${esc(t.transfer_number)}</td>
+        <td>${esc(from.name||'—')}</td>
+        <td>${esc(to.name||'—')}</td>
+        <td><span class="badge ${sc[t.transfer_status]||'badge-neutral'}">${esc(t.transfer_status)}</span></td>
+        <td style="text-align:center">${lines.length}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(t.shipped_at)}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(t.received_at)}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(t.created_at)}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
+}
+
+// ─── Warehouse Shortages Report (CB-08) ──────────────────────────────────────
+async function loadWarehouseShortagesReport() {
+  setReportLoading();
+  try {
+    const d = await apiFetch('/reports/warehouse-shortages');
+    const rep = d.report || {}; const rows = d.warehouse_shortages || [];
+    renderSummaryBar([
+      { label: 'Shortages',  value: rep.shortage_count || 0, color: rep.shortage_count > 0 ? 'var(--eco-red)' : 'var(--eco-green)' },
+      { label: 'Low Stock',  value: rep.low_stock_count || 0, color: rep.low_stock_count > 0 ? 'var(--warning)' : 'var(--eco-green)' },
+    ]);
+    if (!rows.length) { document.getElementById('reportContainer').innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>No warehouse shortages.</p></div>'; return; }
+    document.getElementById('reportContainer').innerHTML = `<div class="table-wrap"><table><thead><tr>
+      <th>Warehouse</th><th>Item</th><th>Type</th>
+      <th style="text-align:right">On Hand</th>
+      <th style="text-align:right">Reserved</th>
+      <th style="text-align:right">Available</th>
+      <th>Status</th>
+    </tr></thead><tbody>${rows.map(r => {
+      const wh = r.warehouse||{}; const item = r.item||{};
+      return `<tr>
+        <td style="font-weight:600">${esc(wh.name||'—')}</td>
+        <td>${esc(item.name||'—')}</td>
+        <td>${itemTypeBadge(item.item_type)}</td>
+        <td style="text-align:right">${fmtQty(r.quantity_on_hand)}</td>
+        <td style="text-align:right;color:var(--eco-gold)">${fmtQty(r.quantity_reserved)}</td>
+        <td style="text-align:right;font-weight:700;color:${r.quantity_available<=0?'var(--eco-red)':'var(--eco-green)'}">${fmtQty(r.quantity_available)}</td>
+        <td>${r.is_overcommitted?'<span class="badge badge-danger">Shortage</span>':''}${r.is_low_stock?'<span class="badge badge-warning">Low Stock</span>':''}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  } catch(e) { setReportError(e.message); showToast(e.message, true); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3364,10 +5722,7 @@ async function loadVarianceReport() {
   } catch(e) { el.innerHTML = `<div class="empty"><p>${esc(e.message)}</p></div>`; }
 }
 
-// Escape helper (used above) — defined centrally but guarded for duplicate definition
-if (typeof esc !== 'function') {
-  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-}
+// esc() is defined centrally above — this duplicate is removed (H01-006 fix)
 </script>
 </body>
 </html>

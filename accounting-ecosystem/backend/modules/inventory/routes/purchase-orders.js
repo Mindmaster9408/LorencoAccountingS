@@ -2,6 +2,7 @@
 // ============================================================================
 // routes/purchase-orders.js — Lorenco Storehouse PO & Receipt Routes
 // Codebox 05 — Purchasing & Supplier Procurement
+// Codebox 10 — UOM pack-size conversion on receive
 // ============================================================================
 // Mounted at: /api/inventory/purchase-orders
 //
@@ -14,6 +15,7 @@
 //  - purchase_receipts rows are immutable (INSERT only, never UPDATE/DELETE)
 //  - All queries must include company_id for multi-tenant isolation
 //  - No localStorage for any business data
+//  - UOM conversion happens BEFORE adjustStockTx — stock is always in base units
 // ============================================================================
 
 const express = require('express');
@@ -22,6 +24,12 @@ const router  = express.Router();
 const { adjustStockTx }           = require('../services/stockMutationService');
 const { updateSupplierItemHistory } = require('../services/procurementService');
 const { auditFromReq }            = require('../../../middleware/audit');
+const {
+  convertToBaseUnit,
+  computeCostPerBaseUnit,
+  getEffectiveBaseUnit
+}                                  = require('../services/uomService');
+const { requirePerm, PERM }        = require('../permissions');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,7 +60,7 @@ function canTransition(from, to) {
 // ---------------------------------------------------------------------------
 // GET /  — List purchase orders with enrichment
 // ---------------------------------------------------------------------------
-router.get('/', async (req, res) => {
+router.get('/', requirePerm(PERM.VIEW), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
 
@@ -114,7 +122,7 @@ router.get('/', async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /:id — PO detail with lines and receipt history
 // ---------------------------------------------------------------------------
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePerm(PERM.VIEW), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const poId      = parseInt(req.params.id, 10);
@@ -180,7 +188,7 @@ router.get('/:id', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /  — Create purchase order with lines
 // ---------------------------------------------------------------------------
-router.post('/', async (req, res) => {
+router.post('/', requirePerm(PERM.PO_CREATE), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const userId    = req.user?.userId || null;
@@ -246,16 +254,17 @@ router.post('/', async (req, res) => {
 
     // Create PO lines
     const lineRows = lines.map(l => ({
-      po_id:        po.id,
+      po_id:         po.id,
       purchase_order_id: po.id,   // backfill both column names for compat
-      item_id:      l.item_id,
-      description:  l.description || '',
-      quantity:     parseFloat(l.quantity),
-      unit_cost:    parseFloat(l.unit_cost || 0),
-      received_qty: 0,
-      supplier_sku: l.supplier_sku || null,
-      expected_date:l.expected_date || null,
-      notes:        l.notes || null,
+      item_id:       l.item_id,
+      description:   l.description || '',
+      quantity:      parseFloat(l.quantity),
+      unit_cost:     parseFloat(l.unit_cost || 0),
+      received_qty:  0,
+      supplier_sku:  l.supplier_sku  || null,
+      expected_date: l.expected_date || null,
+      notes:         l.notes         || null,
+      purchase_unit: l.purchase_unit || null, // Codebox 10 — pack size unit
     }));
 
     const { error: lineErr } = await supabase
@@ -277,7 +286,7 @@ router.post('/', async (req, res) => {
 // ---------------------------------------------------------------------------
 // PUT /:id — Update PO (limited fields; lifecycle guards)
 // ---------------------------------------------------------------------------
-router.put('/:id', async (req, res) => {
+router.put('/:id', requirePerm(PERM.PO_CREATE), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const poId      = parseInt(req.params.id, 10);
@@ -329,7 +338,7 @@ router.put('/:id', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /:id/approve — Transition to approved
 // ---------------------------------------------------------------------------
-router.post('/:id/approve', async (req, res) => {
+router.post('/:id/approve', requirePerm(PERM.PO_APPROVE), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const userId    = req.user?.userId || null;
@@ -369,7 +378,7 @@ router.post('/:id/approve', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /:id/mark-ordered — Transition to ordered
 // ---------------------------------------------------------------------------
-router.post('/:id/mark-ordered', async (req, res) => {
+router.post('/:id/mark-ordered', requirePerm(PERM.PO_APPROVE), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const poId      = parseInt(req.params.id, 10);
@@ -408,7 +417,7 @@ router.post('/:id/mark-ordered', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /:id/receive — Receive stock against PO (creates immutable receipt)
 // ---------------------------------------------------------------------------
-router.post('/:id/receive', async (req, res) => {
+router.post('/:id/receive', requirePerm(PERM.RECEIVE), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const userId    = req.user?.userId || null;
@@ -448,7 +457,27 @@ router.post('/:id/receive', async (req, res) => {
     const lineMap = {};
     (poLines || []).forEach(l => { lineMap[l.id] = l; });
 
-    // ── 3. Validate each receive line ────────────────────────────────────
+    // ── 3. Fetch item base units for UOM conversion ──────────────────────
+    // Collect unique item IDs from PO lines that have receive qty > 0
+    const itemIdsNeeded = [...new Set(
+      lines
+        .filter(rl => parseFloat(rl.received_qty || 0) > 0 && lineMap[rl.po_item_id]?.item_id)
+        .map(rl => lineMap[rl.po_item_id].item_id)
+    )];
+
+    const itemBaseUnitMap = {};
+    if (itemIdsNeeded.length > 0) {
+      const { data: itemRows } = await supabase
+        .from('inventory_items')
+        .select('id, unit, base_unit, default_purchase_unit')
+        .eq('company_id', companyId)
+        .in('id', itemIdsNeeded);
+      for (const r of (itemRows || [])) {
+        itemBaseUnitMap[r.id] = r;
+      }
+    }
+
+    // ── 4. Validate each receive line + apply UOM conversion ─────────────
     const validLines = [];
     for (const rl of lines) {
       const poLine = lineMap[rl.po_item_id];
@@ -457,6 +486,7 @@ router.post('/:id/receive', async (req, res) => {
       const qtyRcv = parseFloat(rl.received_qty || 0);
       if (isNaN(qtyRcv) || qtyRcv <= 0) continue; // skip zero-qty lines silently
 
+      // remaining is in PO purchase units (same unit as quantity/received_qty on the PO line)
       const remaining = parseFloat(poLine.quantity) - parseFloat(poLine.received_qty || 0);
       if (qtyRcv > remaining + 0.0001) {
         return res.status(400).json({
@@ -464,12 +494,48 @@ router.post('/:id/receive', async (req, res) => {
         });
       }
 
+      const rawUnitCost = parseFloat(rl.unit_cost !== undefined ? rl.unit_cost : poLine.unit_cost) || 0;
+
+      // ── UOM conversion (Codebox 10) ──────────────────────────────────
+      // purchaseUnit from: (1) receive line override, (2) PO line purchase_unit, (3) none
+      const purchaseUnit = rl.purchase_unit || poLine.purchase_unit || null;
+      const itemRow = poLine.item_id ? itemBaseUnitMap[poLine.item_id] : null;
+      const baseUnit = itemRow ? getEffectiveBaseUnit(itemRow) : null;
+
+      let baseQty = qtyRcv;
+      let conversionFactor = 1;
+      let costPerBaseUnit = rawUnitCost;
+
+      if (purchaseUnit && baseUnit && purchaseUnit !== baseUnit) {
+        try {
+          const conv = await convertToBaseUnit(
+            supabase, companyId, poLine.item_id, qtyRcv, purchaseUnit, itemRow
+          );
+          baseQty = conv.baseQty;
+          conversionFactor = conv.factor;
+          costPerBaseUnit = computeCostPerBaseUnit(rawUnitCost, conversionFactor);
+        } catch (convErr) {
+          return res.status(400).json({
+            error: `UOM conversion failed for PO line ${rl.po_item_id}: ${convErr.message}`
+          });
+        }
+      }
+
       validLines.push({
-        po_item_id:   poLine.id,
-        item_id:      poLine.item_id,
-        qty_received: qtyRcv,
-        unit_cost:    parseFloat(rl.unit_cost !== undefined ? rl.unit_cost : poLine.unit_cost) || 0,
-        line_value:   qtyRcv * (parseFloat(rl.unit_cost !== undefined ? rl.unit_cost : poLine.unit_cost) || 0),
+        po_item_id:               poLine.id,
+        item_id:                  poLine.item_id,
+        // qty_received = purchase qty (what was physically delivered, in purchase units)
+        qty_received:             qtyRcv,
+        purchase_unit:            purchaseUnit,
+        purchase_qty:             qtyRcv,
+        base_qty:                 baseQty,
+        unit_cost:                rawUnitCost,
+        unit_cost_per_base_unit:  costPerBaseUnit,
+        // line_value in purchase-unit terms for the receipt header total
+        line_value:               qtyRcv * rawUnitCost,
+        // delta for stock: always in base units
+        stock_delta:              baseQty,
+        stock_unit_cost:          costPerBaseUnit,
       });
     }
 
@@ -477,7 +543,7 @@ router.post('/:id/receive', async (req, res) => {
       return res.status(400).json({ error: 'No valid quantities to receive' });
     }
 
-    // ── 4. Create immutable purchase_receipts header ──────────────────────
+    // ── 5. Create immutable purchase_receipts header ──────────────────────
     const totalQty   = validLines.reduce((s, l) => s + l.qty_received, 0);
     const totalValue = validLines.reduce((s, l) => s + l.line_value, 0);
 
@@ -497,7 +563,12 @@ router.post('/:id/receive', async (req, res) => {
 
     if (rcptErr) throw rcptErr;
 
-    // ── 5. Process each line: adjustStockTx + create receipt line ─────────
+    // ── 6. Process each line: UOM-converted adjustStockTx + receipt line ──
+    //
+    // Stock delta is ALWAYS in base units (Codebox 10 rule):
+    //   rl.stock_delta = base_qty after UOM conversion
+    //   rl.stock_unit_cost = cost_per_base_unit (used for weighted average)
+    //
     const receiptLineInserts = [];
     for (const rl of validLines) {
       let movementId = null;
@@ -506,12 +577,12 @@ router.post('/:id/receive', async (req, res) => {
         const result = await adjustStockTx(supabase, {
           companyId,
           itemId:      rl.item_id,
-          delta:       rl.qty_received,
+          delta:       rl.stock_delta,          // base_qty — always base units
           movementType:'in',
           warehouseId: warehouse_id || null,
           reference:   po.po_number || `PO-${poId}`,
           notes:       `PO receipt #${receipt.id}${notes ? ': ' + notes : ''}`,
-          unitCost:    rl.unit_cost,
+          unitCost:    rl.stock_unit_cost,       // cost_per_base_unit — correct for weighted avg
           createdBy:   userId,
           sourceType:  'po_receive',
           sourceId:    receipt.id,
@@ -520,24 +591,30 @@ router.post('/:id/receive', async (req, res) => {
       }
 
       receiptLineInserts.push({
-        receipt_id:  receipt.id,
-        po_item_id:  rl.po_item_id,
-        item_id:     rl.item_id,
-        qty_received:rl.qty_received,
-        unit_cost:   rl.unit_cost,
-        line_value:  rl.line_value,
-        movement_id: movementId,
-        warehouse_id:warehouse_id || null,
+        receipt_id:               receipt.id,
+        po_item_id:               rl.po_item_id,
+        item_id:                  rl.item_id,
+        qty_received:             rl.qty_received,      // purchase qty (forensic record)
+        unit_cost:                rl.unit_cost,         // cost per purchase unit (forensic record)
+        line_value:               rl.line_value,
+        movement_id:              movementId,
+        warehouse_id:             warehouse_id || null,
+        // UOM fields (Codebox 10)
+        purchase_unit:            rl.purchase_unit     || null,
+        purchase_qty:             rl.purchase_qty,
+        base_qty:                 rl.base_qty,
+        unit_cost_per_purchase_unit: rl.unit_cost,
+        unit_cost_per_base_unit:  rl.unit_cost_per_base_unit,
       });
     }
 
-    // ── 6. Insert receipt lines ──────────────────────────────────────────
+    // ── 7. Insert receipt lines ──────────────────────────────────────────
     const { error: prlErr } = await supabase
       .from('purchase_receipt_lines')
       .insert(receiptLineInserts);
     if (prlErr) throw prlErr;
 
-    // ── 7. Update received_qty on each PO line ────────────────────────────
+    // ── 8. Update received_qty on each PO line ────────────────────────────
     for (const rl of validLines) {
       const existing = lineMap[rl.po_item_id];
       const newReceivedQty = parseFloat(existing.received_qty || 0) + rl.qty_received;
@@ -547,7 +624,7 @@ router.post('/:id/receive', async (req, res) => {
         .eq('id', rl.po_item_id);
     }
 
-    // ── 8. Recalculate PO status ──────────────────────────────────────────
+    // ── 9. Recalculate PO status ──────────────────────────────────────────
     // Re-fetch lines with updated received_qty
     const { data: updatedLines } = await supabase
       .from('purchase_order_items')
@@ -571,7 +648,7 @@ router.post('/:id/receive', async (req, res) => {
       .eq('company_id', companyId)
       .eq('id', poId);
 
-    // ── 9. Update supplier_item_history ───────────────────────────────────
+    // ── 10. Update supplier_item_history ──────────────────────────────────
     if (po.supplier_id) {
       for (const rl of validLines) {
         if (!rl.item_id) continue;
@@ -582,7 +659,7 @@ router.post('/:id/receive', async (req, res) => {
       }
     }
 
-    // ── 10. Audit ─────────────────────────────────────────────────────────
+    // ── 11. Audit ─────────────────────────────────────────────────────────
     await auditFromReq(req, 'RECEIVE', 'purchase_orders', poId, {
       receipt_id:  receipt.id,
       po_number:   po.po_number,
@@ -604,7 +681,7 @@ router.post('/:id/receive', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /:id/close — Transition to closed
 // ---------------------------------------------------------------------------
-router.post('/:id/close', async (req, res) => {
+router.post('/:id/close', requirePerm(PERM.PO_APPROVE), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const poId      = parseInt(req.params.id, 10);
@@ -643,7 +720,7 @@ router.post('/:id/close', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /:id/cancel — Cancel PO (blocked if any receipts exist)
 // ---------------------------------------------------------------------------
-router.post('/:id/cancel', async (req, res) => {
+router.post('/:id/cancel', requirePerm(PERM.PO_APPROVE), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const poId      = parseInt(req.params.id, 10);
@@ -697,7 +774,7 @@ router.post('/:id/cancel', async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /:id/receipts — Receipt history for a PO
 // ---------------------------------------------------------------------------
-router.get('/:id/receipts', async (req, res) => {
+router.get('/:id/receipts', requirePerm(PERM.VIEW), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const poId      = parseInt(req.params.id, 10);

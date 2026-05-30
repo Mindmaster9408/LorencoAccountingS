@@ -147,7 +147,15 @@ async function createProductionBatch(supabase, {
   producedQty, expectedQty, wastageQty,
   totalMaterialCost, unitCost,
   movementId, executedBy,
-  notes, operatorNotes
+  notes, operatorNotes,
+  // Codebox 10 — UOM output fields (all optional; null = not using UOM output costing)
+  expectedOutputQty     = null,
+  expectedOutputUnit    = null,
+  actualOutputQty       = null,
+  actualOutputUnit      = null,
+  outputConversionFactor = null,
+  costPerExpectedUnit   = null,
+  costPerActualUnit     = null
 }) {
   const yieldPct   = calculateYieldPercent(producedQty, expectedQty);
   const batchNum   = await nextBatchNumber(supabase, workOrderId, woNumber);
@@ -156,25 +164,33 @@ async function createProductionBatch(supabase, {
   const { data, error } = await supabase
     .from('production_batches')
     .insert({
-      company_id:          companyId,
-      work_order_id:       workOrderId,
-      batch_number:        batchNum,
-      expected_qty:        expectedQty,
-      produced_qty:        producedQty,
-      wastage_qty:         wastageQty || 0,
-      yield_percent:       yieldPct !== null ? parseFloat(yieldPct.toFixed(4)) : null,
-      total_material_cost: totalMaterialCost || 0,
-      total_labour_cost:   0,
-      total_machine_cost:  0,
-      unit_cost:           unitCost || null,
-      status:              'completed',
-      started_at:          now,
-      completed_at:        now,
-      executed_by:         executedBy || null,
-      movement_id:         movementId || null,
-      notes:               notes      || null,
-      operator_notes:      operatorNotes || null,
-      created_at:          now
+      company_id:             companyId,
+      work_order_id:          workOrderId,
+      batch_number:           batchNum,
+      expected_qty:           expectedQty,
+      produced_qty:           producedQty,
+      wastage_qty:            wastageQty || 0,
+      yield_percent:          yieldPct !== null ? parseFloat(yieldPct.toFixed(4)) : null,
+      total_material_cost:    totalMaterialCost || 0,
+      total_labour_cost:      0,
+      total_machine_cost:     0,
+      unit_cost:              unitCost || null,
+      status:                 'completed',
+      started_at:             now,
+      completed_at:           now,
+      executed_by:            executedBy || null,
+      movement_id:            movementId || null,
+      notes:                  notes      || null,
+      operator_notes:         operatorNotes || null,
+      created_at:             now,
+      // Codebox 10 — bakery batch output costing
+      expected_output_qty:    expectedOutputQty,
+      expected_output_unit:   expectedOutputUnit,
+      actual_output_qty:      actualOutputQty,
+      actual_output_unit:     actualOutputUnit,
+      output_conversion_factor: outputConversionFactor,
+      cost_per_expected_unit: costPerExpectedUnit,
+      cost_per_actual_unit:   costPerActualUnit
     })
     .select()
     .single();

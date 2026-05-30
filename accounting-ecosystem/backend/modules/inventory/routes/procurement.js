@@ -18,11 +18,12 @@ const {
   generateReorderRecommendations,
   generateShortageRecommendations,
 } = require('../services/procurementService');
+const { requirePerm, PERM } = require('../permissions'); // H01-001 fix
 
 // ---------------------------------------------------------------------------
 // GET /suggestions — Combined shortage + reorder recommendations
 // ---------------------------------------------------------------------------
-router.get('/suggestions', async (req, res) => {
+router.get('/suggestions', requirePerm(PERM.REPORTS_VIEW), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
 
@@ -72,7 +73,7 @@ router.get('/suggestions', async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /supplier-history — Supplier item history for this company
 // ---------------------------------------------------------------------------
-router.get('/supplier-history', async (req, res) => {
+router.get('/supplier-history', requirePerm(PERM.COST_VIEW), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
 
@@ -109,7 +110,7 @@ router.get('/supplier-history', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /supplier-history/:id/set-preferred — Mark preferred supplier for item
 // ---------------------------------------------------------------------------
-router.post('/supplier-history/:id/set-preferred', async (req, res) => {
+router.post('/supplier-history/:id/set-preferred', requirePerm(PERM.PO_APPROVE), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
   const histId    = parseInt(req.params.id, 10);
@@ -154,7 +155,7 @@ router.post('/supplier-history/:id/set-preferred', async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /overdue-pos — POs past expected_date and not closed/cancelled
 // ---------------------------------------------------------------------------
-router.get('/overdue-pos', async (req, res) => {
+router.get('/overdue-pos', requirePerm(PERM.REPORTS_VIEW), async (req, res) => {
   const supabase  = req.supabase;
   const companyId = req.companyId;
 

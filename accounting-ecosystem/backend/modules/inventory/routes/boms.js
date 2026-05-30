@@ -16,11 +16,38 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { auditFromReq } = require('../../../middleware/audit');
 const { getIssueCostFromItemData } = require('../services/costingService');
+const { convertToBaseUnit } = require('../services/uomService');
+const { requirePerm, PERM } = require('../permissions');
 
 const router = express.Router();
 
+/**
+ * Resolve a BOM line's base_qty from its input_unit/input_qty.
+ * If input_unit is provided and differs from the item's base_unit,
+ * looks up the conversion and returns the converted qty.
+ * Falls back to the raw quantity (backward compatible).
+ *
+ * @param {number} qty          Raw quantity as entered
+ * @param {string|null} inputUnit  Unit the qty is expressed in
+ * @param {number} itemId
+ * @param {number} companyId
+ * @returns {Promise<{baseQty: number, conversionApplied: boolean}>}
+ */
+async function resolveBomLineBaseQty(qty, inputUnit, itemId, companyId) {
+  if (!inputUnit) {
+    return { baseQty: qty, conversionApplied: false };
+  }
+  try {
+    const { baseQty } = await convertToBaseUnit(supabase, companyId, itemId, qty, inputUnit);
+    return { baseQty, conversionApplied: true };
+  } catch {
+    // Conversion not defined — store qty as-is, flag for follow-up
+    return { baseQty: qty, conversionApplied: false };
+  }
+}
+
 // ─── List BOMs ────────────────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', requirePerm(PERM.VIEW), async (req, res) => {
   const { item_id, status } = req.query;
   let q = supabase
     .from('bom_headers')
@@ -37,7 +64,7 @@ router.get('/', async (req, res) => {
 });
 
 // ─── Get single BOM with lines ────────────────────────────────────────────────
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePerm(PERM.VIEW), async (req, res) => {
   const { data: header, error: hErr } = await supabase
     .from('bom_headers')
     .select('*, inventory_items:item_id(name, sku, unit)')
@@ -59,7 +86,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // ─── Create BOM ───────────────────────────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const { item_id, name, version, output_qty, scrap_percent, notes, lines } = req.body;
 
   if (!item_id) return res.status(400).json({ error: 'item_id is required' });
@@ -91,23 +118,33 @@ router.post('/', async (req, res) => {
 
   if (hErr) return res.status(500).json({ error: hErr.message });
 
-  // Insert lines
+  // Insert lines (Codebox 10: resolve input_unit → base_qty)
   if (Array.isArray(lines) && lines.length > 0) {
-    const lineRows = lines.map((l, idx) => {
-      if (!l.item_id || !l.quantity) throw new Error(`Line ${idx + 1}: item_id and quantity are required`);
-      return {
+    const lineRows = [];
+    for (let idx = 0; idx < lines.length; idx++) {
+      const l = lines[idx];
+      if (!l.item_id || !l.quantity) {
+        await supabase.from('bom_headers').delete().eq('id', header.id);
+        return res.status(400).json({ error: `Line ${idx + 1}: item_id and quantity are required` });
+      }
+      const rawQty = parseFloat(l.quantity);
+      const inputUnit = l.input_unit || null;
+      const { baseQty } = await resolveBomLineBaseQty(rawQty, inputUnit, parseInt(l.item_id), req.companyId);
+      lineRows.push({
         bom_id:        header.id,
         item_id:       parseInt(l.item_id),
-        quantity:      parseFloat(l.quantity),
+        quantity:      rawQty,           // raw entry qty (in input_unit or base_unit)
+        input_unit:    inputUnit,        // unit the recipe quantity is expressed in
+        input_qty:     rawQty,           // same as quantity — explicit for clarity
+        base_qty:      baseQty,          // converted to item base_unit (for costing)
         scrap_percent: parseFloat(l.scrap_percent) || 0,
         notes:         l.notes || null,
         sort_order:    l.sort_order !== undefined ? parseInt(l.sort_order) : idx
-      };
-    });
+      });
+    }
 
     const { error: lErr } = await supabase.from('bom_lines').insert(lineRows);
     if (lErr) {
-      // Clean up header if lines fail
       await supabase.from('bom_headers').delete().eq('id', header.id);
       return res.status(500).json({ error: 'Failed to save BOM lines: ' + lErr.message });
     }
@@ -118,7 +155,7 @@ router.post('/', async (req, res) => {
 });
 
 // ─── Update BOM header + replace lines ───────────────────────────────────────
-router.put('/:id', async (req, res) => {
+router.put('/:id', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const { name, version, output_qty, scrap_percent, notes, lines } = req.body;
 
   // Verify ownership
@@ -148,19 +185,29 @@ router.put('/:id', async (req, res) => {
     .select().single();
   if (hErr) return res.status(500).json({ error: hErr.message });
 
-  // Replace lines if provided
+  // Replace lines if provided (Codebox 10: resolve input_unit → base_qty)
   if (Array.isArray(lines)) {
     await supabase.from('bom_lines').delete().eq('bom_id', header.id);
 
     if (lines.length > 0) {
-      const lineRows = lines.map((l, idx) => ({
-        bom_id:        header.id,
-        item_id:       parseInt(l.item_id),
-        quantity:      parseFloat(l.quantity),
-        scrap_percent: parseFloat(l.scrap_percent) || 0,
-        notes:         l.notes || null,
-        sort_order:    l.sort_order !== undefined ? parseInt(l.sort_order) : idx
-      }));
+      const lineRows = [];
+      for (let idx = 0; idx < lines.length; idx++) {
+        const l = lines[idx];
+        const rawQty = parseFloat(l.quantity);
+        const inputUnit = l.input_unit || null;
+        const { baseQty } = await resolveBomLineBaseQty(rawQty, inputUnit, parseInt(l.item_id), req.companyId);
+        lineRows.push({
+          bom_id:        header.id,
+          item_id:       parseInt(l.item_id),
+          quantity:      rawQty,
+          input_unit:    inputUnit,
+          input_qty:     rawQty,
+          base_qty:      baseQty,
+          scrap_percent: parseFloat(l.scrap_percent) || 0,
+          notes:         l.notes || null,
+          sort_order:    l.sort_order !== undefined ? parseInt(l.sort_order) : idx
+        });
+      }
       const { error: lErr } = await supabase.from('bom_lines').insert(lineRows);
       if (lErr) return res.status(500).json({ error: 'Failed to save BOM lines: ' + lErr.message });
     }
@@ -171,7 +218,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // ─── Activate BOM (one active per item) ──────────────────────────────────────
-router.post('/:id/activate', async (req, res) => {
+router.post('/:id/activate', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const { data: bom } = await supabase
     .from('bom_headers')
     .select('id, item_id, status')
@@ -202,7 +249,7 @@ router.post('/:id/activate', async (req, res) => {
 });
 
 // ─── BOM cost summary ────────────────────────────────────────────────────────
-router.get('/:id/cost-summary', async (req, res) => {
+router.get('/:id/cost-summary', requirePerm(PERM.COST_VIEW), async (req, res) => {
   const { data: header, error: hErr } = await supabase
     .from('bom_headers')
     .select('*, inventory_items:item_id(name, sku, unit, item_type)')
@@ -221,23 +268,31 @@ router.get('/:id/cost-summary', async (req, res) => {
   if (lErr) return res.status(500).json({ error: lErr.message });
 
   const componentLines = (lines || []).map(line => {
-    // Use centralised costing dispatch instead of inline fallback chain.
-    // Respects each component's costing_method (average, fifo, standard, last_cost).
+    // Costing uses base_qty when available (Codebox 10: UOM conversion applied).
+    // Falls back to quantity for lines without input_unit (backward compatible).
     const { issueCost: unitCost } = getIssueCostFromItemData(line.inventory_items);
-    const estimatedCost = unitCost == null ? null : (parseFloat(line.quantity) || 0) * unitCost;
+    const costingQty   = parseFloat(line.base_qty ?? line.quantity) || 0;
+    const estimatedCost = unitCost == null ? null : costingQty * unitCost;
+
     return {
-      id: line.id,
-      item_id: line.item_id,
-      item_name: line.inventory_items?.name || 'Unknown',
-      sku: line.inventory_items?.sku || null,
-      unit: line.inventory_items?.unit || null,
-      item_type: line.inventory_items?.item_type || null,
-      quantity: parseFloat(line.quantity) || 0,
-      scrap_percent: parseFloat(line.scrap_percent) || 0,
-      unit_cost: unitCost,
+      id:             line.id,
+      item_id:        line.item_id,
+      item_name:      line.inventory_items?.name || 'Unknown',
+      sku:            line.inventory_items?.sku  || null,
+      unit:           line.inventory_items?.unit || null,
+      base_unit:      line.inventory_items?.base_unit || line.inventory_items?.unit || null,
+      item_type:      line.inventory_items?.item_type || null,
+      // Recipe entry (what the user typed)
+      quantity:       parseFloat(line.quantity) || 0,
+      input_unit:     line.input_unit || null,
+      input_qty:      parseFloat(line.input_qty ?? line.quantity) || 0,
+      // Costing qty — always in item base unit
+      base_qty:       parseFloat(line.base_qty ?? line.quantity) || 0,
+      scrap_percent:  parseFloat(line.scrap_percent) || 0,
+      unit_cost:      unitCost,
       estimated_cost: estimatedCost,
-      cost_missing: unitCost == null,
-      current_stock: parseFloat(line.inventory_items?.current_stock) || 0
+      cost_missing:   unitCost == null,
+      current_stock:  parseFloat(line.inventory_items?.current_stock) || 0
     };
   });
 
@@ -246,22 +301,23 @@ router.get('/:id/cost-summary', async (req, res) => {
 
   res.json({
     bom: {
-      id: header.id,
-      name: header.name,
-      version: header.version,
-      status: header.status,
-      item: header.inventory_items,
-      output_qty: outputQty,
-      total_recipe_cost: totalRecipeCost,
-      estimated_cost_per_unit: outputQty > 0 ? totalRecipeCost / outputQty : null,
-      missing_cost: componentLines.some(line => line.cost_missing),
-      lines: componentLines
+      id:                       header.id,
+      name:                     header.name,
+      version:                  header.version,
+      status:                   header.status,
+      item:                     header.inventory_items,
+      output_qty:               outputQty,
+      total_recipe_cost:        totalRecipeCost,
+      estimated_cost_per_unit:  outputQty > 0 ? totalRecipeCost / outputQty : null,
+      missing_cost:             componentLines.some(line => line.cost_missing),
+      uom_conversions_applied:  componentLines.some(line => line.input_unit != null),
+      lines:                    componentLines
     }
   });
 });
 
 // ─── Deactivate / soft-delete BOM ────────────────────────────────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePerm(PERM.CONFIGURE), async (req, res) => {
   // Check no active work orders reference this BOM
   const { count } = await supabase
     .from('work_orders')

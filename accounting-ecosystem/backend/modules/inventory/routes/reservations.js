@@ -16,11 +16,12 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
 const reservationService = require('../services/reservationService');
+const { requirePerm, PERM } = require('../permissions'); // H01-002 fix
 
 const router = express.Router();
 
 // ─── List reservations ────────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', requirePerm(PERM.VIEW), async (req, res) => {
   const { status, source_type, item_id, limit = 200 } = req.query;
 
   let q = supabase
@@ -41,7 +42,7 @@ router.get('/', async (req, res) => {
 
 // ─── Available stock for a single item ───────────────────────────────────────
 // NOTE: Must be declared before /:id to avoid route collision.
-router.get('/availability/:itemId', async (req, res) => {
+router.get('/availability/:itemId', requirePerm(PERM.VIEW), async (req, res) => {
   const { warehouse_id } = req.query;
   const result = await reservationService.getAvailableStock(
     supabase,
@@ -57,14 +58,14 @@ router.get('/availability/:itemId', async (req, res) => {
 
 // ─── Shortage report ──────────────────────────────────────────────────────────
 // NOTE: Must be declared before /:id to avoid route collision.
-router.get('/reports/shortages', async (req, res) => {
+router.get('/reports/shortages', requirePerm(PERM.REPORTS_VIEW), async (req, res) => {
   const result = await reservationService.getShortageReport(supabase, req.companyId);
   if (!result.success) return res.status(500).json({ error: result.error });
   res.json(result);
 });
 
 // ─── Reservations for one item ────────────────────────────────────────────────
-router.get('/item/:itemId', async (req, res) => {
+router.get('/item/:itemId', requirePerm(PERM.VIEW), async (req, res) => {
   const { status } = req.query;
   let q = supabase
     .from('stock_reservations')
@@ -81,7 +82,7 @@ router.get('/item/:itemId', async (req, res) => {
 });
 
 // ─── Reservations for a source ────────────────────────────────────────────────
-router.get('/source/:sourceType/:sourceId', async (req, res) => {
+router.get('/source/:sourceType/:sourceId', requirePerm(PERM.VIEW), async (req, res) => {
   const result = await reservationService.getReservationsForSource(
     supabase,
     req.companyId,
@@ -93,7 +94,9 @@ router.get('/source/:sourceType/:sourceId', async (req, res) => {
 });
 
 // ─── Create a manual hold ─────────────────────────────────────────────────────
-router.post('/manual-hold', async (req, res) => {
+// Requires ADJUST permission — creates a stock hold that reduces available stock.
+// H01-004 fix: sourceId was incorrectly set to companyId; now uses reference or null.
+router.post('/manual-hold', requirePerm(PERM.ADJUST), async (req, res) => {
   const { item_id, warehouse_id, quantity, reference, reason } = req.body;
 
   if (!item_id)   return res.status(400).json({ error: 'item_id is required' });
@@ -104,7 +107,7 @@ router.post('/manual-hold', async (req, res) => {
     itemId:      parseInt(item_id),
     warehouseId: warehouse_id ? parseInt(warehouse_id) : null,
     sourceType:  'manual_hold',
-    sourceId:    req.companyId,   // company_id as sourceId for manual holds
+    sourceId:    reference || null,  // H01-004 fix: use reference as sourceId, not companyId
     quantity:    parseFloat(quantity),
     reference:   reference || null,
     reason:      reason || null,
@@ -122,7 +125,7 @@ router.post('/manual-hold', async (req, res) => {
 });
 
 // ─── Release a reservation ────────────────────────────────────────────────────
-router.post('/:id/release', async (req, res) => {
+router.post('/:id/release', requirePerm(PERM.VIEW), async (req, res) => {
   const { quantity } = req.body;
   const result = await reservationService.releaseReservation(
     supabase,

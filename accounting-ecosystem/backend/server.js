@@ -38,7 +38,7 @@ const { supabase, checkConnection, ensureDefaultCompany } = require('./config/da
 const { isModuleEnabled, getEnabledModules, getAllModules } = require('./config/modules');
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
-const { authenticateToken } = require('./middleware/auth');
+const { authenticateToken, requireCompany } = require('./middleware/auth');
 const { auditMiddleware } = require('./middleware/audit');
 const { requireModule } = require('./middleware/module-check');
 
@@ -366,6 +366,7 @@ if (coachingRoutes) {
 if (inventoryRoutes) {
   app.use('/api/inventory',
     authenticateToken,
+    requireCompany,              // Codebox 11: block all inventory access without company context
     requireModule('inventory'),
     auditMiddleware,
     inventoryRoutes

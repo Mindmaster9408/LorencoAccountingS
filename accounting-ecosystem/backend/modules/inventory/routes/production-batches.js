@@ -20,12 +20,13 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { auditFromReq } = require('../../../middleware/audit');
 const productionService = require('../services/productionService');
+const { requirePerm, PERM } = require('../permissions');
 
 const router = express.Router();
 
 
 // ─── Production Dashboard Summary ────────────────────────────────────────────
-router.get('/summary', async (req, res) => {
+router.get('/summary', requirePerm(PERM.REPORTS_VIEW), async (req, res) => {
   try {
     const summary = await productionService.getProductionSummary(supabase, req.companyId);
     res.json(summary);
@@ -36,7 +37,7 @@ router.get('/summary', async (req, res) => {
 
 
 // ─── List Batches ─────────────────────────────────────────────────────────────
-router.get('/batches', async (req, res) => {
+router.get('/batches', requirePerm(PERM.REPORTS_VIEW), async (req, res) => {
   const { work_order_id, limit = 100 } = req.query;
 
   let q = supabase
@@ -61,7 +62,7 @@ router.get('/batches', async (req, res) => {
 
 
 // ─── Get Single Batch ─────────────────────────────────────────────────────────
-router.get('/batches/:id', async (req, res) => {
+router.get('/batches/:id', requirePerm(PERM.REPORTS_VIEW), async (req, res) => {
   const batchId = parseInt(req.params.id);
 
   const { data: batch, error: bErr } = await supabase
@@ -120,7 +121,7 @@ router.get('/batches/:id', async (req, res) => {
 
 
 // ─── Yield Report ─────────────────────────────────────────────────────────────
-router.get('/yield-report', async (req, res) => {
+router.get('/yield-report', requirePerm(PERM.COST_VIEW), async (req, res) => {
   const { from, to, limit = 200 } = req.query;
 
   let q = supabase
@@ -168,7 +169,7 @@ router.get('/yield-report', async (req, res) => {
 
 
 // ─── Wastage Report ───────────────────────────────────────────────────────────
-router.get('/wastage-report', async (req, res) => {
+router.get('/wastage-report', requirePerm(PERM.COST_VIEW), async (req, res) => {
   const { from, to, limit = 200 } = req.query;
 
   let q = supabase
@@ -215,7 +216,7 @@ router.get('/wastage-report', async (req, res) => {
 
 
 // ─── Variance Report ──────────────────────────────────────────────────────────
-router.get('/variance-report', async (req, res) => {
+router.get('/variance-report', requirePerm(PERM.COST_VIEW), async (req, res) => {
   const { from, to, direction, limit = 200 } = req.query;
 
   let q = supabase
@@ -254,7 +255,7 @@ router.get('/variance-report', async (req, res) => {
 
 
 // ─── Add Labour Entry ─────────────────────────────────────────────────────────
-router.post('/batches/:id/labour', async (req, res) => {
+router.post('/batches/:id/labour', requirePerm(PERM.PRODUCTION_MANAGE), async (req, res) => {
   const batchId = parseInt(req.params.id);
   const { duration_minutes, notes } = req.body;
 
@@ -295,7 +296,7 @@ router.post('/batches/:id/labour', async (req, res) => {
 
 
 // ─── Add Machine Entry ────────────────────────────────────────────────────────
-router.post('/batches/:id/machine', async (req, res) => {
+router.post('/batches/:id/machine', requirePerm(PERM.PRODUCTION_MANAGE), async (req, res) => {
   const batchId = parseInt(req.params.id);
   const { duration_minutes, machine_id, notes } = req.body;
 

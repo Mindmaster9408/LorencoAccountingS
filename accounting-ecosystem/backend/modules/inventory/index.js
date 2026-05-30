@@ -18,9 +18,27 @@ const reservationRoutes = require('./routes/reservations');
 const purchaseOrderRoutes = require('./routes/purchase-orders');
 const procurementRoutes = require('./routes/procurement');
 const productionRoutes = require('./routes/production-batches');
+const warehouseTransferRoutes = require('./routes/warehouse-transfers');
+const warehouseLocationRoutes = require('./routes/warehouse-locations');
+const salesOrderRoutes        = require('./routes/sales-orders');
 const costingService = require('./services/costingService');
 const { adjustStockTx } = require('./services/stockMutationService');
 const reservationService = require('./services/reservationService');
+const warehouseTransferService = require('./services/warehouseTransferService');
+const {
+  getItemUomProfile,
+  convertToBaseUnit,
+  computeCostPerBaseUnit,
+  getEffectiveBaseUnit
+} = require('./services/uomService');
+const { requirePerm, PERM, getInventoryPermsForRole } = require('./permissions');
+const { runHealthChecks, buildOnboardingChecklist } = require('./services/operationalHealthService');
+const {
+  getInsight,
+  getInsightsForIssues,
+  buildSeanContext,
+  listInsightTypes
+} = require('./services/inventoryInsightService');
 
 const router = express.Router();
 
@@ -33,10 +51,90 @@ router.use('/reservations', reservationRoutes);
 router.use('/purchase-orders', purchaseOrderRoutes);
 router.use('/procurement', procurementRoutes);
 router.use('/production', productionRoutes);
+router.use('/transfers', warehouseTransferRoutes);
+router.use('/sales-orders', salesOrderRoutes);
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 router.get('/status', (req, res) => {
   res.json({ module: 'inventory', status: 'active', version: '2.0.0' });
+});
+
+// ─── Permission profile (Codebox 11) ─────────────────────────────────────────
+// Returns the calling user's inventory permission set.
+// Frontend uses this to show/hide UI — backend still enforces each action.
+router.get('/my-permissions', (req, res) => {
+  const role = req.user?.role || 'cashier';
+  const perms = getInventoryPermsForRole(role);
+  res.json({ role, permissions: perms });
+});
+
+// ─── Operational Health Engine (Codebox 12) ───────────────────────────────────
+// Read-only diagnostic endpoint. Returns issues grouped by severity.
+// No mutations. Company-scoped. Safe to call on page load.
+router.get('/health', requirePerm(PERM.VIEW), async (req, res) => {
+  try {
+    const result = await runHealthChecks(supabase, req.companyId);
+    const insights = getInsightsForIssues(result.issues);
+    res.json({
+      severity: result.overallSeverity,
+      issue_count: result.issues.length,
+      issues:   result.issues,
+      insights,
+      generated_at: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Onboarding Checklist (Codebox 12) ───────────────────────────────────────
+// Returns company-scoped setup progress checklist.
+router.get('/onboarding', requirePerm(PERM.VIEW), async (req, res) => {
+  try {
+    const steps = await buildOnboardingChecklist(supabase, req.companyId);
+    const doneCount  = steps.filter(s => s.done).length;
+    const requiredSteps = steps.filter(s => s.priority === 'required');
+    const requiredDone  = requiredSteps.filter(s => s.done).length;
+    res.json({
+      steps,
+      total:             steps.length,
+      complete_count:    doneCount,
+      required_complete: requiredDone === requiredSteps.length,
+      ready_for_pilot:   requiredDone === requiredSteps.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Operational Insight (Codebox 12) ────────────────────────────────────────
+// Returns a specific operational insight by type.
+// Read-only. Safe for Sean AI to consume.
+router.get('/insights/:type', requirePerm(PERM.VIEW), (req, res) => {
+  const insight = getInsight(req.params.type);
+  if (!insight) return res.status(404).json({ error: 'Insight type not found' });
+  res.json({ insight });
+});
+
+router.get('/insights', requirePerm(PERM.VIEW), (req, res) => {
+  res.json({ types: listInsightTypes() });
+});
+
+// ─── Sean AI Context Endpoint (Codebox 12) ────────────────────────────────────
+// Read-only operational summary for Sean AI integration.
+// Sean can fetch this to understand current state before giving guidance.
+// HARD RULE: This endpoint never mutates data.
+router.get('/sean-context', requirePerm(PERM.VIEW), async (req, res) => {
+  try {
+    const [healthResult, onboarding] = await Promise.all([
+      runHealthChecks(supabase, req.companyId),
+      buildOnboardingChecklist(supabase, req.companyId)
+    ]);
+    const seanContext = buildSeanContext(healthResult, onboarding);
+    res.json(seanContext);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Dashboard Stats ─────────────────────────────────────────────────────────
@@ -134,51 +232,116 @@ router.get('/demo-dashboard', async (req, res) => {
   }
 });
 
-// ═══ WAREHOUSES ══════════════════════════════════════════════════════════════
+// ═══ WAREHOUSES (CB-08 extended) ═════════════════════════════════════════════
 
-router.get('/warehouses', async (req, res) => {
-  const { data, error } = await supabase
+router.get('/warehouses', requirePerm(PERM.VIEW), async (req, res) => {
+  const includeInactive = req.query.include_inactive === 'true';
+  let q = supabase
     .from('warehouses')
     .select('*')
     .eq('company_id', req.companyId)
-    .eq('is_active', true)
     .order('name');
+  if (!includeInactive) q = q.eq('is_active', true);
+  const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
   res.json({ warehouses: data || [] });
 });
 
-router.post('/warehouses', async (req, res) => {
-  const { name, address, notes } = req.body;
+router.post('/warehouses', requirePerm(PERM.CONFIGURE), async (req, res) => {
+  const {
+    name, warehouse_code, warehouse_type, is_default,
+    address_line1, address_line2, city, postal_code,
+    contact_name, contact_phone, contact_email, notes
+  } = req.body;
   if (!name) return res.status(400).json({ error: 'Warehouse name is required' });
+
+  const validTypes = ['main','production','quarantine','transit','retail','overflow','other'];
+  if (warehouse_type && !validTypes.includes(warehouse_type)) {
+    return res.status(400).json({ error: `warehouse_type must be one of: ${validTypes.join(', ')}` });
+  }
+
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from('warehouses')
-    .insert({ company_id: req.companyId, name, address: address || null, notes: notes || null, is_active: true })
-    .select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  await auditFromReq(req, 'CREATE', 'warehouse', data.id, { module: 'inventory' });
+    .insert({
+      company_id:    req.companyId,
+      name,
+      warehouse_code: warehouse_code ? warehouse_code.toUpperCase().trim() : null,
+      warehouse_type: warehouse_type || 'main',
+      is_default:    is_default === true || is_default === 'true',
+      address_line1: address_line1 || null,
+      address_line2: address_line2 || null,
+      city:          city          || null,
+      postal_code:   postal_code   || null,
+      contact_name:  contact_name  || null,
+      contact_phone: contact_phone || null,
+      contact_email: contact_email || null,
+      notes:         notes         || null,
+      is_active:     true,
+      created_at:    now,
+      updated_at:    now
+    })
+    .select()
+    .single();
+  if (error) {
+    if (error.message?.includes('unique') || error.code === '23505') {
+      return res.status(409).json({ error: 'Warehouse code already exists for this company' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+  await auditFromReq(req, 'CREATE', 'warehouse', data.id, { module: 'inventory', name });
   res.status(201).json({ warehouse: data });
 });
 
-router.put('/warehouses/:id', async (req, res) => {
-  const { name, address, notes, is_active } = req.body;
+router.put('/warehouses/:id', requirePerm(PERM.CONFIGURE), async (req, res) => {
+  const {
+    name, warehouse_code, warehouse_type, is_default,
+    address_line1, address_line2, city, postal_code,
+    contact_name, contact_phone, contact_email, notes, is_active
+  } = req.body;
   const updates = { updated_at: new Date().toISOString() };
-  if (name !== undefined) updates.name = name;
-  if (address !== undefined) updates.address = address;
-  if (notes !== undefined) updates.notes = notes;
-  if (is_active !== undefined) updates.is_active = is_active;
+  if (name          !== undefined) updates.name          = name;
+  if (warehouse_code !== undefined) updates.warehouse_code = warehouse_code ? warehouse_code.toUpperCase().trim() : null;
+  if (warehouse_type !== undefined) updates.warehouse_type = warehouse_type;
+  if (is_default     !== undefined) updates.is_default     = is_default;
+  if (address_line1  !== undefined) updates.address_line1  = address_line1;
+  if (address_line2  !== undefined) updates.address_line2  = address_line2;
+  if (city           !== undefined) updates.city           = city;
+  if (postal_code    !== undefined) updates.postal_code    = postal_code;
+  if (contact_name   !== undefined) updates.contact_name   = contact_name;
+  if (contact_phone  !== undefined) updates.contact_phone  = contact_phone;
+  if (contact_email  !== undefined) updates.contact_email  = contact_email;
+  if (notes          !== undefined) updates.notes          = notes;
+  if (is_active      !== undefined) updates.is_active      = is_active;
+
   const { data, error } = await supabase
     .from('warehouses')
     .update(updates)
     .eq('id', req.params.id)
     .eq('company_id', req.companyId)
-    .select().single();
+    .select()
+    .single();
   if (error) return res.status(500).json({ error: error.message });
   res.json({ warehouse: data });
 });
 
+// GET /warehouses/:id/locations  (handled by warehouse-locations router)
+// GET /warehouses/:id/stock      (handled by warehouse-locations router)
+// GET /warehouses/availability   (handled by warehouse-locations router)
+router.use('/warehouses', warehouseLocationRoutes);
+
+// GET /warehouses/:id/availability — warehouse-level stock availability
+router.get('/warehouses/:id/availability', async (req, res) => {
+  const result = await warehouseTransferService.getWarehouseStock(
+    supabase, req.companyId, parseInt(req.params.id)
+  );
+  if (!result.success) return res.status(500).json({ error: result.error });
+  res.json({ stock: result.stock });
+});
+
 // ═══ STOCK ITEMS ═════════════════════════════════════════════════════════════
 
-router.get('/items', async (req, res) => {
+router.get('/items', requirePerm(PERM.VIEW), async (req, res) => {
   const { search, category, warehouse_id, low_stock } = req.query;
   let q = supabase
     .from('inventory_items')
@@ -232,7 +395,7 @@ router.get('/items', async (req, res) => {
   res.json({ items: results, total: results.length });
 });
 
-router.get('/items/:id', async (req, res) => {
+router.get('/items/:id', requirePerm(PERM.VIEW), async (req, res) => {
   const { data, error } = await supabase
     .from('inventory_items')
     .select('*, warehouses:warehouse_id(name)')
@@ -243,13 +406,15 @@ router.get('/items/:id', async (req, res) => {
   res.json({ item: data });
 });
 
-router.post('/items', async (req, res) => {
+router.post('/items', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const {
     name, sku, description, category, unit,
     cost_price, sell_price, current_stock, min_stock, warehouse_id,
     // Manufacturing fields
     item_type, barcode, track_lots, track_serials,
-    costing_method, lead_time_days
+    costing_method, lead_time_days,
+    // Codebox 10 — UOM fields
+    base_unit, default_purchase_unit, default_recipe_unit, default_output_unit
   } = req.body;
   if (!name) return res.status(400).json({ error: 'Item name is required' });
 
@@ -279,7 +444,12 @@ router.post('/items', async (req, res) => {
       track_lots:     track_lots === true || track_lots === 'true',
       track_serials:  track_serials === true || track_serials === 'true',
       costing_method: costing_method || 'average',
-      lead_time_days: parseInt(lead_time_days) || 0
+      lead_time_days: parseInt(lead_time_days) || 0,
+      // Codebox 10 — UOM
+      base_unit:             base_unit             || null,
+      default_purchase_unit: default_purchase_unit || null,
+      default_recipe_unit:   default_recipe_unit   || null,
+      default_output_unit:   default_output_unit   || null
     })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -287,12 +457,14 @@ router.post('/items', async (req, res) => {
   res.status(201).json({ item: data });
 });
 
-router.put('/items/:id', async (req, res) => {
+router.put('/items/:id', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const allowed = [
     'name', 'sku', 'description', 'category', 'unit',
     'cost_price', 'sell_price', 'min_stock', 'warehouse_id', 'is_active',
     // Manufacturing fields
-    'item_type', 'barcode', 'track_lots', 'track_serials', 'costing_method', 'lead_time_days'
+    'item_type', 'barcode', 'track_lots', 'track_serials', 'costing_method', 'lead_time_days',
+    // Codebox 10 — UOM fields
+    'base_unit', 'default_purchase_unit', 'default_recipe_unit', 'default_output_unit'
   ];
   const updates = { updated_at: new Date().toISOString() };
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
@@ -306,7 +478,7 @@ router.put('/items/:id', async (req, res) => {
   res.json({ item: data });
 });
 
-router.delete('/items/:id', async (req, res) => {
+router.delete('/items/:id', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const { error } = await supabase
     .from('inventory_items')
     .update({ is_active: false, updated_at: new Date().toISOString() })
@@ -319,7 +491,7 @@ router.delete('/items/:id', async (req, res) => {
 
 // ═══ STOCK MOVEMENTS ═════════════════════════════════════════════════════════
 
-router.get('/movements', async (req, res) => {
+router.get('/movements', requirePerm(PERM.VIEW), async (req, res) => {
   const { item_id, type, limit = 50 } = req.query;
   let q = supabase
     .from('stock_movements')
@@ -334,7 +506,7 @@ router.get('/movements', async (req, res) => {
   res.json({ movements: data || [] });
 });
 
-router.get('/items/:id/movements', async (req, res) => {
+router.get('/items/:id/movements', requirePerm(PERM.VIEW), async (req, res) => {
   const itemId = parseInt(req.params.id);
   if (Number.isNaN(itemId)) return res.status(400).json({ error: 'Invalid item id' });
 
@@ -439,7 +611,7 @@ router.get('/items/:id/movements', async (req, res) => {
   });
 });
 
-router.post('/movements', async (req, res) => {
+router.post('/movements', requirePerm(PERM.ADJUST), async (req, res) => {
   const { item_id, warehouse_id, type, quantity, reference, notes, cost_price } = req.body;
   if (!item_id || !type || !quantity) {
     return res.status(400).json({ error: 'item_id, type, and quantity are required' });
@@ -518,8 +690,10 @@ router.post('/movements', async (req, res) => {
   return res.status(201).json({ movement });
 });
 
-router.post('/quick-receive', async (req, res) => {
-  const { supplier_id, item_id, quantity, unit_cost, reference, notes, warehouse_id } = req.body;
+router.post('/quick-receive', requirePerm(PERM.RECEIVE), async (req, res) => {
+  // Codebox 10: supports purchase_unit for pack-size receiving.
+  // If purchase_unit is provided, converts qty to base_unit before stock mutation.
+  const { supplier_id, item_id, quantity, unit_cost, reference, notes, warehouse_id, purchase_unit } = req.body;
 
   if (!supplier_id) return res.status(400).json({ error: 'supplier_id is required' });
   if (!item_id) return res.status(400).json({ error: 'item_id is required' });
@@ -540,21 +714,40 @@ router.post('/quick-receive', async (req, res) => {
 
   const { data: item } = await supabase
     .from('inventory_items')
-    .select('id, name, sku, current_stock, average_cost, last_purchase_cost, cost_price')
+    .select('id, name, sku, unit, base_unit, current_stock, average_cost, last_purchase_cost, cost_price')
     .eq('id', parseInt(item_id))
     .eq('company_id', req.companyId)
     .single();
   if (!item) return res.status(404).json({ error: 'Item not found' });
 
+  // ── UOM conversion (Codebox 10) ─────────────────────────────────────
+  let stockDelta = qty;
+  let stockUnitCost = cost;
+  let baseQty = qty;
+  let conversionFactor = 1;
+  const effectiveBaseUnit = getEffectiveBaseUnit(item);
+
+  if (purchase_unit && purchase_unit !== effectiveBaseUnit) {
+    try {
+      const conv = await convertToBaseUnit(supabase, req.companyId, parseInt(item_id), qty, purchase_unit, item);
+      baseQty = conv.baseQty;
+      conversionFactor = conv.factor;
+      stockDelta = baseQty;
+      stockUnitCost = computeCostPerBaseUnit(cost, conversionFactor);
+    } catch (convErr) {
+      return res.status(400).json({ error: `UOM conversion failed: ${convErr.message}` });
+    }
+  }
+
   const result = await adjustStockTx(supabase, {
     companyId:    req.companyId,
     itemId:       parseInt(item_id),
-    delta:        qty,
+    delta:        stockDelta,       // base qty
     movementType: 'in',
     warehouseId:  warehouse_id ? parseInt(warehouse_id) : null,
     reference,
     notes:        notes || `Quick receive from ${supplier.name}`,
-    unitCost:     cost,
+    unitCost:     stockUnitCost,    // cost per base unit
     createdBy:    req.user.userId,
     sourceType:   'quick_receive',
     sourceId:     reference
@@ -584,22 +777,38 @@ router.post('/quick-receive', async (req, res) => {
 
   await auditFromReq(req, 'CREATE', 'stock_movement', movement?.id || null, {
     module: 'inventory',
-    metadata: { action: 'quick_receive', supplier_id: supplier.id, item_id: item.id, quantity: qty, unit_cost: cost }
+    metadata: {
+      action:           'quick_receive',
+      supplier_id:      supplier.id,
+      item_id:          item.id,
+      purchase_qty:     qty,
+      purchase_unit:    purchase_unit || effectiveBaseUnit,
+      base_qty:         baseQty,
+      unit_cost:        cost,
+      unit_cost_base:   stockUnitCost,
+      conversion_factor: conversionFactor
+    }
   });
 
   res.status(201).json({
-    success: true,
+    success:            true,
     supplier,
-    item: updatedItem || item,
-    movement: movement || null,
-    new_stock: result.new_stock,
-    new_avg_cost: result.new_avg_cost ?? updatedItem?.average_cost ?? null
+    item:               updatedItem || item,
+    movement:           movement || null,
+    new_stock:          result.new_stock,
+    new_avg_cost:       result.new_avg_cost ?? updatedItem?.average_cost ?? null,
+    // UOM fields for display
+    purchase_qty:       qty,
+    purchase_unit:      purchase_unit || effectiveBaseUnit,
+    base_qty:           baseQty,
+    unit_cost_per_base: stockUnitCost,
+    conversion_factor:  conversionFactor
   });
 });
 
 // ═══ SUPPLIERS ════════════════════════════════════════════════════════════════
 
-router.get('/suppliers', async (req, res) => {
+router.get('/suppliers', requirePerm(PERM.VIEW), async (req, res) => {
   const { data, error } = await supabase
     .from('suppliers')
     .select('*')
@@ -610,7 +819,7 @@ router.get('/suppliers', async (req, res) => {
   res.json({ suppliers: data || [] });
 });
 
-router.post('/suppliers', async (req, res) => {
+router.post('/suppliers', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const { name, supplier_code, email, phone, address, contact_name, vat_number, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'Supplier name is required' });
   // Auto-generate supplier_code if not provided
@@ -629,7 +838,7 @@ router.post('/suppliers', async (req, res) => {
   res.status(201).json({ supplier: data });
 });
 
-router.put('/suppliers/:id', async (req, res) => {
+router.put('/suppliers/:id', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const allowed = ['name', 'email', 'phone', 'address', 'contact_name', 'vat_number', 'notes', 'is_active'];
   const updates = { updated_at: new Date().toISOString() };
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
@@ -650,6 +859,187 @@ router.put('/suppliers/:id', async (req, res) => {
 // The /quick-receive route below remains inline as it is not PO-based.
 
 // (inline legacy PO routes removed — handled by routes/purchase-orders.js via sub-router)
+
+// ═══ UOM — UNIT OF MEASURE (CODEBOX 10) ══════════════════════════════════════
+
+// GET /uom — list all UOM for company
+router.get('/uom', requirePerm(PERM.VIEW), async (req, res) => {
+  const { data, error } = await supabase
+    .from('unit_of_measure')
+    .select('*')
+    .eq('company_id', req.companyId)
+    .order('unit_code');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ units: data || [] });
+});
+
+// POST /uom — create a UOM for company
+router.post('/uom', requirePerm(PERM.CONFIGURE), async (req, res) => {
+  const { unit_code, unit_name, unit_type, base_dimension } = req.body;
+  if (!unit_code) return res.status(400).json({ error: 'unit_code is required' });
+  if (!unit_name) return res.status(400).json({ error: 'unit_name is required' });
+  const validTypes = ['weight','volume','count','package','production_output'];
+  if (unit_type && !validTypes.includes(unit_type)) {
+    return res.status(400).json({ error: `unit_type must be one of: ${validTypes.join(', ')}` });
+  }
+  const { data, error } = await supabase
+    .from('unit_of_measure')
+    .insert({
+      company_id:     req.companyId,
+      unit_code:      unit_code.trim(),
+      unit_name:      unit_name.trim(),
+      unit_type:      unit_type || 'count',
+      base_dimension: base_dimension || null,
+      is_active:      true
+    })
+    .select().single();
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'Unit code already exists for this company' });
+    return res.status(500).json({ error: error.message });
+  }
+  res.status(201).json({ unit: data });
+});
+
+// PUT /uom/:id — update UOM
+router.put('/uom/:id', requirePerm(PERM.CONFIGURE), async (req, res) => {
+  const allowed = ['unit_name', 'unit_type', 'base_dimension', 'is_active'];
+  const updates = {};
+  allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'No updatable fields provided' });
+  const { data, error } = await supabase
+    .from('unit_of_measure')
+    .update(updates)
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ unit: data });
+});
+
+// GET /items/:id/uom-profile — full UOM profile for an item
+router.get('/items/:id/uom-profile', async (req, res) => {
+  const itemId = parseInt(req.params.id);
+  if (Number.isNaN(itemId)) return res.status(400).json({ error: 'Invalid item id' });
+  try {
+    const profile = await getItemUomProfile(supabase, req.companyId, itemId);
+    res.json({ uom_profile: profile });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+// GET /items/:id/uom-conversions — list conversions for an item
+router.get('/items/:id/uom-conversions', async (req, res) => {
+  const itemId = parseInt(req.params.id);
+  if (Number.isNaN(itemId)) return res.status(400).json({ error: 'Invalid item id' });
+  const { data, error } = await supabase
+    .from('item_uom_conversions')
+    .select('*')
+    .eq('company_id', req.companyId)
+    .eq('item_id', itemId)
+    .order('from_unit');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ conversions: data || [] });
+});
+
+// POST /items/:id/uom-conversions — add a conversion for an item
+router.post('/items/:id/uom-conversions', requirePerm(PERM.CONFIGURE), async (req, res) => {
+  const itemId = parseInt(req.params.id);
+  if (Number.isNaN(itemId)) return res.status(400).json({ error: 'Invalid item id' });
+
+  const {
+    from_unit, to_unit, conversion_factor, conversion_description,
+    is_purchase_unit, is_recipe_unit, is_output_unit
+  } = req.body;
+
+  if (!from_unit)           return res.status(400).json({ error: 'from_unit is required' });
+  if (!to_unit)             return res.status(400).json({ error: 'to_unit is required' });
+  if (!conversion_factor)   return res.status(400).json({ error: 'conversion_factor is required' });
+
+  const factor = parseFloat(conversion_factor);
+  if (!Number.isFinite(factor) || factor <= 0) {
+    return res.status(400).json({ error: 'conversion_factor must be a positive number' });
+  }
+
+  // Verify item belongs to this company
+  const { data: item } = await supabase
+    .from('inventory_items')
+    .select('id')
+    .eq('id', itemId)
+    .eq('company_id', req.companyId)
+    .single();
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('item_uom_conversions')
+    .insert({
+      company_id:             req.companyId,
+      item_id:                itemId,
+      from_unit:              from_unit.trim(),
+      to_unit:                to_unit.trim(),
+      conversion_factor:      factor,
+      conversion_description: conversion_description || null,
+      is_purchase_unit:       is_purchase_unit === true || is_purchase_unit === 'true',
+      is_recipe_unit:         is_recipe_unit   === true || is_recipe_unit   === 'true',
+      is_output_unit:         is_output_unit   === true || is_output_unit   === 'true',
+      is_active:              true,
+      created_at:             now,
+      updated_at:             now
+    })
+    .select().single();
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'Conversion already exists for this unit pair' });
+    return res.status(500).json({ error: error.message });
+  }
+  res.status(201).json({ conversion: data });
+});
+
+// PUT /items/:id/uom-conversions/:convId — update a conversion
+router.put('/items/:id/uom-conversions/:convId', requirePerm(PERM.CONFIGURE), async (req, res) => {
+  const itemId = parseInt(req.params.id);
+  const convId = parseInt(req.params.convId);
+  if (Number.isNaN(itemId) || Number.isNaN(convId)) return res.status(400).json({ error: 'Invalid id' });
+
+  const allowed = ['conversion_factor', 'conversion_description', 'is_purchase_unit', 'is_recipe_unit', 'is_output_unit', 'is_active'];
+  const updates = { updated_at: new Date().toISOString() };
+  allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+
+  if (updates.conversion_factor !== undefined) {
+    const factor = parseFloat(updates.conversion_factor);
+    if (!Number.isFinite(factor) || factor <= 0) {
+      return res.status(400).json({ error: 'conversion_factor must be a positive number' });
+    }
+    updates.conversion_factor = factor;
+  }
+
+  const { data, error } = await supabase
+    .from('item_uom_conversions')
+    .update(updates)
+    .eq('id', convId)
+    .eq('item_id', itemId)
+    .eq('company_id', req.companyId)
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'Conversion not found' });
+  res.json({ conversion: data });
+});
+
+// DELETE /items/:id/uom-conversions/:convId — deactivate a conversion
+router.delete('/items/:id/uom-conversions/:convId', requirePerm(PERM.CONFIGURE), async (req, res) => {
+  const itemId = parseInt(req.params.id);
+  const convId = parseInt(req.params.convId);
+  if (Number.isNaN(itemId) || Number.isNaN(convId)) return res.status(400).json({ error: 'Invalid id' });
+
+  const { error } = await supabase
+    .from('item_uom_conversions')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('id', convId)
+    .eq('item_id', itemId)
+    .eq('company_id', req.companyId);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
 
 // ═══ CATEGORIES ══════════════════════════════════════════════════════════════
 

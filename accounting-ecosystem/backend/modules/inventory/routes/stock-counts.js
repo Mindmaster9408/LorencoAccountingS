@@ -26,13 +26,14 @@
 const express  = require('express');
 const { supabase } = require('../../../config/database');
 const stockCountService = require('../services/stockCountService');
+const { requirePerm, PERM } = require('../permissions');
 
 const router = express.Router();
 
 // ─── GET /stock-counts ────────────────────────────────────────────────────────
 // List count sessions for this company.
 // Query params: status, count_type, warehouse_id, from_date, to_date, limit
-router.get('/', async (req, res) => {
+router.get('/', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
   try {
     const { status, count_type, warehouse_id, from_date, to_date, limit = 50 } = req.query;
 
@@ -88,7 +89,7 @@ router.get('/', async (req, res) => {
 // Create a new count session and snapshot item quantities.
 // Body: { count_type, warehouse_id?, notes?, blind_count?, freeze_inventory?,
 //         mode?, category?, item_ids? }
-router.post('/', async (req, res) => {
+router.post('/', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
   try {
     const {
       count_type     = 'full',
@@ -127,7 +128,7 @@ router.post('/', async (req, res) => {
 // ─── GET /stock-counts/:id ────────────────────────────────────────────────────
 // Get session with all lines and approval history.
 // Blind count: system_quantity hidden until session is submitted.
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
   try {
     const sessionId = parseInt(req.params.id);
     if (isNaN(sessionId)) return res.status(400).json({ error: 'Invalid session ID' });
@@ -144,7 +145,7 @@ router.get('/:id', async (req, res) => {
 // ─── PATCH /stock-counts/:id/lines/:lineId ────────────────────────────────────
 // Update counted_quantity (and optionally variance_reason/notes) on one line.
 // Body: { counted_quantity, variance_reason?, variance_notes? }
-router.patch('/:id/lines/:lineId', async (req, res) => {
+router.patch('/:id/lines/:lineId', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
   try {
     const sessionId = parseInt(req.params.id);
     const lineId    = parseInt(req.params.lineId);
@@ -168,7 +169,7 @@ router.patch('/:id/lines/:lineId', async (req, res) => {
 // ─── POST /stock-counts/:id/submit ───────────────────────────────────────────
 // Submit a count for approval. Calculates all variances.
 // All lines must have counted_quantity before submission.
-router.post('/:id/submit', async (req, res) => {
+router.post('/:id/submit', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
   try {
     const sessionId = parseInt(req.params.id);
     if (isNaN(sessionId)) return res.status(400).json({ error: 'Invalid session ID' });
@@ -188,7 +189,7 @@ router.post('/:id/submit', async (req, res) => {
 // ─── POST /stock-counts/:id/approve ──────────────────────────────────────────
 // Approve, reject, or request recount on a submitted session.
 // Body: { action: 'approved'|'rejected'|'recount_required', notes? }
-router.post('/:id/approve', async (req, res) => {
+router.post('/:id/approve', requirePerm(PERM.COUNT_APPROVE), async (req, res) => {
   try {
     const sessionId = parseInt(req.params.id);
     if (isNaN(sessionId)) return res.status(400).json({ error: 'Invalid session ID' });
@@ -212,7 +213,7 @@ router.post('/:id/approve', async (req, res) => {
 // Apply approved variances to live stock via adjustStockTx.
 // Guard: session must be status='approved'. Idempotency: status flipped to
 // 'applied' before processing so duplicate calls fail cleanly.
-router.post('/:id/apply', async (req, res) => {
+router.post('/:id/apply', requirePerm(PERM.COUNT_APPROVE), async (req, res) => {
   try {
     const sessionId = parseInt(req.params.id);
     if (isNaN(sessionId)) return res.status(400).json({ error: 'Invalid session ID' });
@@ -232,7 +233,7 @@ router.post('/:id/apply', async (req, res) => {
 // ─── GET /stock-counts/:id/history ───────────────────────────────────────────
 // Fetch stock movements that were created by this count session.
 // Uses source_type='stock_count' and source_id=sessionId.
-router.get('/:id/history', async (req, res) => {
+router.get('/:id/history', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
   try {
     const sessionId = parseInt(req.params.id);
     if (isNaN(sessionId)) return res.status(400).json({ error: 'Invalid session ID' });
@@ -271,7 +272,7 @@ router.get('/:id/history', async (req, res) => {
 // ─── DELETE /stock-counts/:id ─────────────────────────────────────────────────
 // Cancel a session. Only allowed when status is 'draft' or 'in_progress'.
 // No stock mutations occur. Lines are removed (CASCADE on foreign key).
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
   try {
     const sessionId = parseInt(req.params.id);
     if (isNaN(sessionId)) return res.status(400).json({ error: 'Invalid session ID' });

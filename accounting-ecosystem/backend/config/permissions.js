@@ -87,10 +87,53 @@ const PERMISSIONS = {
     EDIT: SUPERVISOR_ROLES,
     DELETE: MANAGEMENT_ROLES,
   },
+  // ===== STOREHOUSE / INVENTORY MODULE (Codebox 11) =====
+  // Each permission maps to the ecosystem roles allowed to perform that action.
+  // Role hierarchy: super_admin(100) > business_owner/practice_manager/administrator(95) >
+  //   accountant/corporate_admin(90) > store_manager/payroll_admin(70) >
+  //   assistant_manager(50) > shift_supervisor(40) > ...
   INVENTORY: {
-    VIEW: SUPERVISOR_ROLES,
-    ADJUST: MANAGEMENT_ROLES,
-    TRANSFER: MANAGEMENT_ROLES,
+    // Basic read access — items, stock levels, movement history
+    VIEW:              SUPERVISOR_ROLES,
+
+    // Receive stock (quick receive, PO receive)
+    RECEIVE:           [...MANAGEMENT_ROLES, 'assistant_manager', 'shift_supervisor'],
+
+    // Manual stock adjustments — high-risk, restricted to management
+    ADJUST:            MANAGEMENT_ROLES,
+
+    // Create/edit/deactivate items, warehouses, suppliers, UOM config
+    CONFIGURE:         MANAGEMENT_ROLES,
+
+    // Purchase order lifecycle
+    PO_CREATE:         [...MANAGEMENT_ROLES, 'assistant_manager'],
+    PO_APPROVE:        MANAGEMENT_ROLES,
+
+    // Work order lifecycle — create/update/release/start/pause/resume
+    WO_MANAGE:         [...MANAGEMENT_ROLES, 'assistant_manager'],
+    // WO complete + close finalize cost — restricted to management
+    WO_COMPLETE:       MANAGEMENT_ROLES,
+    WO_CLOSE:          MANAGEMENT_ROLES,
+
+    // Stock counts — conduct = create/record/submit, approve = approve/reject/apply
+    COUNT_CONDUCT:     SUPERVISOR_ROLES,
+    COUNT_APPROVE:     MANAGEMENT_ROLES,
+
+    // Costing and valuation visibility — restricted to management
+    COST_VIEW:         MANAGEMENT_ROLES,
+
+    // Reports — operational reports for supervisors, cost reports gated by COST_VIEW
+    REPORTS_VIEW:      SUPERVISOR_ROLES,
+
+    // Warehouse transfers
+    TRANSFER:          MANAGEMENT_ROLES,     // approve/receive transfers
+    TRANSFER_CREATE:   [...MANAGEMENT_ROLES, 'assistant_manager'],  // create transfers
+
+    // Sales orders and fulfillment
+    SO_MANAGE:         [...MANAGEMENT_ROLES, 'assistant_manager'],
+
+    // Production — issue materials, manage batches
+    PRODUCTION_MANAGE: [...MANAGEMENT_ROLES, 'assistant_manager'],
   },
   TILLS: {
     VIEW: ALL_ROLES,

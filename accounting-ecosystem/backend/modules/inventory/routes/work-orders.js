@@ -26,6 +26,8 @@ const { getIssueCostFromItemData } = costingService;
 const { adjustStockTx } = require('../services/stockMutationService');
 const reservationService = require('../services/reservationService');
 const productionService = require('../services/productionService');
+const { computeBatchOutputCost } = require('../services/uomService');
+const { requirePerm, PERM } = require('../permissions');
 
 const router = express.Router();
 
@@ -61,7 +63,7 @@ async function nextWoNumber(companyId) {
 }
 
 // ─── List Work Orders ─────────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', requirePerm(PERM.VIEW), async (req, res) => {
   const { status, item_id, limit = 100 } = req.query;
 
   let q = supabase
@@ -80,7 +82,7 @@ router.get('/', async (req, res) => {
 });
 
 // ─── Get single WO with materials ────────────────────────────────────────────
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePerm(PERM.VIEW), async (req, res) => {
   const { data: wo, error: wErr } = await supabase
     .from('work_orders')
     .select('*, inventory_items:item_id(name, sku, unit), bom_headers:bom_id(name, version)')
@@ -101,7 +103,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // ─── Create Work Order ────────────────────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', requirePerm(PERM.WO_MANAGE), async (req, res) => {
   const {
     item_id, bom_id, quantity_to_produce,
     planned_start_date, planned_end_date, notes
@@ -140,7 +142,7 @@ router.post('/', async (req, res) => {
 
     const { data: lines } = await supabase
       .from('bom_lines')
-      .select('item_id, quantity, scrap_percent')
+      .select('item_id, quantity, base_qty, input_unit, scrap_percent')
       .eq('bom_id', bom.id);
     bomLines = lines || [];
   }
@@ -166,16 +168,20 @@ router.post('/', async (req, res) => {
 
   if (wErr) return res.status(500).json({ error: wErr.message });
 
-  // Auto-populate material requirements from BOM lines
+  // Auto-populate material requirements from BOM lines.
+  // Codebox 10 fix (A7): use base_qty when set (UOM-converted to item's base unit).
+  // Falls back to quantity for non-UOM lines (base_qty is null) — backward compatible.
   if (bomLines.length > 0) {
     const multiplier = qty / bomOutputQty;
-    const materialRows = bomLines.map(l => ({
-      work_order_id: wo.id,
-      item_id:       l.item_id,
-      // required_qty accounts for per-line scrap allowance
-      required_qty:  parseFloat(((l.quantity * multiplier) * (1 + (l.scrap_percent || 0) / 100)).toFixed(4)),
-      issued_qty:    0
-    }));
+    const materialRows = bomLines.map(l => {
+      const effectiveQty = parseFloat(l.base_qty ?? l.quantity);
+      return {
+        work_order_id: wo.id,
+        item_id:       l.item_id,
+        required_qty:  parseFloat((effectiveQty * multiplier * (1 + (l.scrap_percent || 0) / 100)).toFixed(4)),
+        issued_qty:    0
+      };
+    });
     await supabase.from('work_order_materials').insert(materialRows);
   }
 
@@ -184,7 +190,7 @@ router.post('/', async (req, res) => {
 });
 
 // ─── Update WO header (draft only for most fields) ────────────────────────────
-router.put('/:id', async (req, res) => {
+router.put('/:id', requirePerm(PERM.WO_MANAGE), async (req, res) => {
   const { data: existing } = await supabase
     .from('work_orders')
     .select('id, status')
@@ -245,7 +251,7 @@ async function transitionStatus(req, res, toStatus, extraUpdates = {}) {
 // Creates a stock_reservation for every work_order_materials line.
 // BLOCKS release if any material has insufficient available stock.
 // Design decision: block-on-shortage — the pilot requires hard availability gates.
-router.post('/:id/release', async (req, res) => {
+router.post('/:id/release', requirePerm(PERM.WO_MANAGE), async (req, res) => {
   const { data: wo } = await supabase
     .from('work_orders')
     .select('id, status, wo_number')
@@ -328,7 +334,7 @@ router.post('/:id/release', async (req, res) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-router.post('/:id/start', async (req, res) => {
+router.post('/:id/start', requirePerm(PERM.WO_MANAGE), async (req, res) => {
   const result = await transitionStatus(req, res, 'in_progress', {
     actual_start_date: new Date().toISOString().split('T')[0]
   });
@@ -342,13 +348,20 @@ router.post('/:id/start', async (req, res) => {
 //   - Creates production_wastage record if wastage_qty > 0 (immutable)
 //   - Creates production_variances records for each material (immutable)
 //   - Updates WO: actual_yield_percent, total_wastage_qty, batch_count
-router.post('/:id/complete', async (req, res) => {
+router.post('/:id/complete', requirePerm(PERM.WO_COMPLETE), async (req, res) => {
   const {
     quantity_produced,
-    wastage_qty      = 0,
-    wastage_reason   = 'unknown',
-    wastage_notes    = null,
-    operator_notes   = null
+    wastage_qty        = 0,
+    wastage_reason     = 'unknown',
+    wastage_notes      = null,
+    operator_notes     = null,
+    // Codebox 10 — bakery batch output costing (all optional)
+    // actual_output_qty:  the count of output units (e.g. 18 tart shells, or 11 boxes)
+    // actual_output_unit: the unit those are counted in (e.g. 'tart_shell', 'box')
+    // output_conversion_factor: how many WO-item units per output unit (e.g. 20 shells→1 box → factor=20)
+    actual_output_qty       = null,
+    actual_output_unit      = null,
+    output_conversion_factor = null
   } = req.body;
 
   const { data: wo } = await supabase
@@ -417,8 +430,27 @@ router.post('/:id/complete', async (req, res) => {
 
   if (!rpcResult.success) return res.status(500).json({ error: rpcResult.error || 'Stock update failed' });
 
-  // ─── CODEBOX 06: Production Batch Recording ───────────────────────────────
-  // Create immutable batch record (after stock-in confirmed)
+  // ─── CODEBOX 06+10: Production Batch Recording ────────────────────────────
+  // Codebox 10: compute per-output-unit costs when actual_output_qty is provided.
+  // actual_output_qty = how many output units were made (e.g. 18 tart shells or 11 boxes)
+  // If not provided, falls back to qtyProduced as the output count.
+  const resolvedActualOutputQty = actual_output_qty != null
+    ? parseFloat(actual_output_qty)
+    : qtyProduced;
+
+  // H01-007 fix: reject zero/negative actual output qty
+  if (actual_output_qty != null && resolvedActualOutputQty <= 0) {
+    return res.status(400).json({ error: 'actual_output_qty must be greater than 0 when provided' });
+  }
+
+  const resolvedExpectedOutputQty = wo.quantity_to_produce;
+
+  const { costPerExpected, costPerActual } = computeBatchOutputCost(
+    totalMaterialCost || 0,
+    resolvedExpectedOutputQty,
+    resolvedActualOutputQty
+  );
+
   const yieldPct    = productionService.calculateYieldPercent(qtyProduced, wo.quantity_to_produce);
   const newBatchNum = (parseInt(wo.batch_count) || 0) + 1;
 
@@ -434,7 +466,15 @@ router.post('/:id/complete', async (req, res) => {
     movementId:        rpcResult.movementId || null,
     executedBy:        req.user.userId,
     notes:             null,
-    operatorNotes:     operator_notes || null
+    operatorNotes:     operator_notes || null,
+    // Codebox 10 — output costing
+    expectedOutputQty:      resolvedExpectedOutputQty,
+    expectedOutputUnit:     actual_output_unit || null,
+    actualOutputQty:        resolvedActualOutputQty,
+    actualOutputUnit:       actual_output_unit || null,
+    outputConversionFactor: output_conversion_factor ? parseFloat(output_conversion_factor) : null,
+    costPerExpectedUnit:    costPerExpected,
+    costPerActualUnit:      costPerActual
   });
 
   if (!batchResult.success) {
@@ -493,19 +533,33 @@ router.post('/:id/complete', async (req, res) => {
   await auditFromReq(req, 'UPDATE', 'work_order', wo.id, {
     module: 'inventory',
     metadata: {
-      action:        'complete',
-      qty_produced:  qtyProduced,
-      wastage_qty:   wastageQtyNum,
-      yield_percent: yieldPct,
-      batch_id:      batchId
+      action:               'complete',
+      qty_produced:         qtyProduced,
+      wastage_qty:          wastageQtyNum,
+      yield_percent:        yieldPct,
+      batch_id:             batchId,
+      actual_output_qty:    resolvedActualOutputQty,
+      cost_per_actual_unit: costPerActual
     }
   });
-  res.json({ work_order: data, batch_id: batchId });
+  res.json({
+    work_order:           data,
+    batch_id:             batchId,
+    // Codebox 10 — output costing summary for UI display
+    output_costing: {
+      total_material_cost:     totalMaterialCost || 0,
+      expected_output_qty:     resolvedExpectedOutputQty,
+      actual_output_qty:       resolvedActualOutputQty,
+      output_unit:             actual_output_unit || null,
+      cost_per_expected_unit:  costPerExpected,
+      cost_per_actual_unit:    costPerActual
+    }
+  });
 });
 
 // ─── Pause (in_progress → paused) ────────────────────────────────────────────
 // Preserves all active reservations. No stock change.
-router.post('/:id/pause', async (req, res) => {
+router.post('/:id/pause', requirePerm(PERM.WO_MANAGE), async (req, res) => {
   const result = await transitionStatus(req, res, 'paused', {
     updated_at: new Date().toISOString()
   });
@@ -513,7 +567,7 @@ router.post('/:id/pause', async (req, res) => {
 });
 
 // ─── Resume (paused → in_progress) ────────────────────────────────────────────
-router.post('/:id/resume', async (req, res) => {
+router.post('/:id/resume', requirePerm(PERM.WO_MANAGE), async (req, res) => {
   const result = await transitionStatus(req, res, 'in_progress', {
     updated_at: new Date().toISOString()
   });
@@ -522,7 +576,7 @@ router.post('/:id/resume', async (req, res) => {
 
 // ─── Close (completed → closed) ──────────────────────────────────────────────
 // Final archival state. No stock change.
-router.post('/:id/close', async (req, res) => {
+router.post('/:id/close', requirePerm(PERM.WO_CLOSE), async (req, res) => {
   const { data: wo } = await supabase
     .from('work_orders')
     .select('id, status')
@@ -557,7 +611,7 @@ router.post('/:id/close', async (req, res) => {
 
 // ─── Cancel (with reservation release) ──────────────────────────────────────
 // Releases all active reservations created for this WO before cancelling.
-router.post('/:id/cancel', async (req, res) => {
+router.post('/:id/cancel', requirePerm(PERM.WO_MANAGE), async (req, res) => {
   const { data: wo } = await supabase
     .from('work_orders')
     .select('id, status')
@@ -603,7 +657,7 @@ router.post('/:id/cancel', async (req, res) => {
 // Records that materials have been physically taken from stock for this WO.
 // All-or-nothing: ALL materials are pre-validated before ANY stock is changed.
 // Returns 422 if any material has insufficient stock.
-router.post('/:id/issue-materials', async (req, res) => {
+router.post('/:id/issue-materials', requirePerm(PERM.PRODUCTION_MANAGE), async (req, res) => {
   const { issues } = req.body; // Array of { material_id, qty }
 
   if (!Array.isArray(issues) || issues.length === 0) {
@@ -729,7 +783,7 @@ router.post('/:id/issue-materials', async (req, res) => {
 });
 
 // ─── Work order cost summary ─────────────────────────────────────────────────
-router.get('/:id/cost-summary', async (req, res) => {
+router.get('/:id/cost-summary', requirePerm(PERM.COST_VIEW), async (req, res) => {
   const { data: wo, error: woErr } = await supabase
     .from('work_orders')
     .select('*, inventory_items:item_id(name, sku, unit, item_type), bom_headers:bom_id(name, version)')
