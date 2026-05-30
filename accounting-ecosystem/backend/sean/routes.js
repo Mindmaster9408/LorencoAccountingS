@@ -29,11 +29,15 @@ const SeanEncryption = require('./encryption');
 const { ALLOCATION_CATEGORIES, suggestCategoryLocal, getAlternativeSuggestions, normalizeDescription } = require('./allocations');
 const { processCalculation, parseCalculationRequest, formatZAR } = require('./calculations');
 const { parseTeachMessage } = require('./knowledge-base');
+const TeachPaytimeService  = require('./teach-paytime-service');
 
 // ─── Data Store ─────────────────────────────────────────────────────────────
 
 const { supabaseSeanStore } = require('./supabase-store');
 const dataStore = supabaseSeanStore;
+
+// Direct Supabase client — used by teach routes for store writes
+const { supabase: supabaseDb } = require('../config/database');
 
 // ─── Helper: Get Engine for Request ──────────────────────────────────────────
 
@@ -872,6 +876,212 @@ router.post('/bank-learning/proposals/:id/reject', requireSuperAdmin, async (req
   } catch (err) {
     console.error('SEAN /bank-learning/proposals/:id/reject error:', err.message);
     res.status(400).json({ error: err.message || 'Failed to reject proposal' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEACH SEAN — Paytime Learning Proposals
+//
+// GOVERNANCE (CLAUDE.md Part B — Rules B1–B9):
+//   - /parse  : pure text parsing, NO database writes
+//   - /proposals : creates PENDING proposals in sean_transaction_store ONLY
+//   - Creating proposals does NOT approve, does NOT sync, does NOT modify Paytime
+//   - Approval and sync are separate super-admin actions via /api/sean/store/:id/approve
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/sean/teach/paytime/parse
+ * Parse raw text and return a structured preview of Paytime learning items.
+ * NO database writes — user must confirm via /proposals to persist.
+ *
+ * Body: { text: "..." }
+ * Response: { success, format, importBatchId, items, warnings, duplicatesInBatch }
+ */
+router.post('/teach/paytime/parse', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !String(text).trim()) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+
+    const result = TeachPaytimeService.parseInput(text);
+    if (!result.success) {
+      return res.status(422).json({ error: result.error });
+    }
+
+    // Audit the parse event (non-blocking)
+    const companyId = getCompanyId(req);
+    supabaseDb?.from('sean_sync_log').insert({
+      action:            'teach_sean_parsed',
+      target_company_id: companyId,
+      field_written:     'n/a',
+      value_written:     JSON.stringify({
+        format:     result.format,
+        item_count: result.items.length,
+        batch_id:   result.importBatchId,
+      }).slice(0, 255),
+      authorized_by: req.user?.email || 'authenticated_user',
+      notes: `Teach Sean parse: ${result.items.length} item(s) extracted (format: ${result.format})`,
+    }).then(() => {}).catch(() => {});
+
+    return res.json(result);
+  } catch (err) {
+    console.error('[SEAN teach/paytime/parse] Error:', err.message);
+    res.status(500).json({ error: 'Failed to parse Paytime knowledge: ' + err.message });
+  }
+});
+
+/**
+ * POST /api/sean/teach/paytime/proposals
+ * Confirm a parsed preview and create pending Paytime learning proposals
+ * in sean_transaction_store. Does NOT approve. Does NOT sync to Paytime.
+ *
+ * Body: { items: [...], importBatchId: "uuid", sourceText: "original text" }
+ * Response: { success, created, skipped, skippedDetails, batchId }
+ */
+router.post('/teach/paytime/proposals', async (req, res) => {
+  try {
+    const { items, importBatchId, sourceText } = req.body;
+    const companyId = getCompanyId(req);
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'items array is required and must not be empty' });
+    }
+    if (items.length > 200) {
+      return res.status(400).json({ error: 'Maximum 200 items per batch' });
+    }
+
+    // Check existing pending proposals to skip real duplicates
+    const existingKeys = await TeachPaytimeService.checkExistingProposals(supabaseDb, companyId);
+
+    const created       = [];
+    const skippedDetails = [];
+
+    for (const item of items) {
+      const itemName = String(item.item_name || '').trim();
+      if (!itemName) {
+        skippedDetails.push({ item_name: '', reason: 'Empty item name — skipped' });
+        continue;
+      }
+
+      const itemKey  = TeachPaytimeService.normalizeKey(itemName);
+      const irp5Code = item.irp5_code ? String(item.irp5_code).trim() : null;
+      const batchKey = `${itemKey}|${irp5Code || ''}`;
+
+      // Skip cross-batch duplicates (already pending in DB for this company)
+      if (existingKeys.has(batchKey)) {
+        skippedDetails.push({
+          item_name: itemName,
+          reason:    'Already exists as a pending proposal — skipped to avoid duplicate',
+        });
+        continue;
+      }
+
+      const payload = {
+        item_name:           itemName,
+        irp5_code:           irp5Code,
+        taxable:             item.taxable    ?? null,
+        affects_uif:         item.affects_uif ?? null,
+        affects_sdl:         item.affects_sdl ?? null,
+        notes:               item.notes       || null,
+        source_text:         item.source_text || null,
+        confidence:          item.confidence  ?? null,
+        import_batch_id:     importBatchId    || null,
+        extracted_by:        'teach_sean',
+        review_status:       'pending_review',
+        source_app:          'paytime',
+        created_by:          req.user?.email || null,
+      };
+
+      const { data: row, error: insertErr } = await supabaseDb
+        .from('sean_transaction_store')
+        .insert({
+          entity_type:    'paytime_learning',
+          source_app:     'paytime',
+          company_id:     companyId,
+          item_name:      itemName,
+          item_key:       itemKey,
+          payload,
+          proposed_field: irp5Code ? 'irp5_code' : null,
+          proposed_value: irp5Code,
+          previous_value: null,
+          change_type:    'suggested_mapping',
+          submitted_by:   req.user?.email || null,
+          status:         'pending',
+          source_channel: 'teach_sean',
+          confidence:     item.confidence ?? null,
+          import_batch_id: importBatchId ? importBatchId : null,
+        })
+        .select()
+        .single();
+
+      if (insertErr) {
+        skippedDetails.push({ item_name: itemName, reason: 'Insert failed: ' + insertErr.message });
+        console.error('[SEAN teach/paytime/proposals] Insert error for', itemName, insertErr.message);
+        continue;
+      }
+
+      created.push(row);
+      existingKeys.add(batchKey); // prevent within-request duplicates
+    }
+
+    // Audit log
+    supabaseDb.from('sean_sync_log').insert({
+      action:            'teach_sean_proposals_created',
+      target_company_id: companyId,
+      field_written:     'entity_type',
+      value_written:     'paytime_learning',
+      authorized_by:     req.user?.email || 'authenticated_user',
+      notes: JSON.stringify({
+        created:        created.length,
+        skipped:        skippedDetails.length,
+        import_batch_id: importBatchId || null,
+      }).slice(0, 255),
+    }).then(() => {}).catch(() => {});
+
+    return res.status(201).json({
+      success:        true,
+      created:        created.length,
+      skipped:        skippedDetails.length,
+      skippedDetails,
+      batchId:        importBatchId || null,
+      message: `${created.length} learning proposal(s) created as pending. ${skippedDetails.length > 0 ? skippedDetails.length + ' skipped.' : ''}`,
+    });
+  } catch (err) {
+    console.error('[SEAN teach/paytime/proposals] Error:', err.message);
+    res.status(500).json({ error: 'Failed to create Paytime learning proposals: ' + err.message });
+  }
+});
+
+/**
+ * GET /api/sean/teach/paytime/proposals
+ * List pending Paytime learning proposals for the current company.
+ * Filters to entity_type='paytime_learning' for the authenticated company only.
+ */
+router.get('/teach/paytime/proposals', async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    const { status, batchId, limit } = req.query;
+    const maxLimit = Math.min(parseInt(limit) || 100, 500);
+
+    let q = supabaseDb
+      .from('sean_transaction_store')
+      .select('*')
+      .eq('entity_type', 'paytime_learning')
+      .eq('company_id', companyId)
+      .order('submitted_at', { ascending: false })
+      .limit(maxLimit);
+
+    if (status)  q = q.eq('status', status);
+    if (batchId) q = q.eq('import_batch_id', batchId);
+
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+
+    res.json({ count: data?.length || 0, items: data || [] });
+  } catch (err) {
+    console.error('[SEAN teach/paytime/proposals GET] Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch Paytime learning proposals: ' + err.message });
   }
 });
 

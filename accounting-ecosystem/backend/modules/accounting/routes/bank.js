@@ -12,6 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 const PdfStatementImportService = require('../../../sean/pdf-statement-import-service');
 const ImageStatementImportService = require('../../../sean/image-statement-import-service');
 const bankLearning = require('../../../sean/bank-learning');
+const OFXParserService = require('../services/ofxParserService');
 
 const router = express.Router();
 
@@ -117,6 +118,17 @@ const pdfUpload = multer({
       path.extname(file.originalname).toLowerCase() === '.pdf';
     if (isPdf) return cb(null, true);
     cb(new Error('Only PDF files are accepted for PDF import'));
+  }
+});
+
+// ─── Multer: memory storage for OFX/QFX parsing (buffer only, no disk write) ──
+const ofxUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB — OFX files are text, rarely > 1 MB
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.ofx' || ext === '.qfx') return cb(null, true);
+    cb(new Error('Only OFX and QFX files are accepted for OFX import'));
   }
 });
 
@@ -506,7 +518,7 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
 router.post('/import', authenticate, hasPermission('bank.import'), async (req, res) => {
   try {
     const { bankAccountId, transactions, importSource, fileHash, importBatchId } = req.body;
-    const resolvedSource = ['pdf', 'image', 'csv', 'manual'].includes(importSource)
+    const resolvedSource = ['pdf', 'image', 'csv', 'manual', 'ofx'].includes(importSource)
       ? importSource : 'csv';
 
     if (!bankAccountId || !transactions || !Array.isArray(transactions)) {
@@ -845,6 +857,114 @@ router.post('/import/image',
         return res.status(400).json({ error: err.message });
       }
       return res.status(500).json({ error: 'Failed to process image statement' });
+    }
+  }
+);
+
+/**
+ * POST /api/bank/import/ofx
+ * Parse an OFX or QFX bank statement and return structured transactions for review.
+ * Does NOT write to the database — user confirms via POST /api/bank/import.
+ *
+ * Request: multipart/form-data
+ *   file          — OFX or QFX file (max 10 MB)
+ *   bankAccountId — (optional) for batch duplicate detection
+ *
+ * Response 200:
+ *   { success, format, transactions, closingBalance, statementPeriod,
+ *     warnings, skippedLines, fileHash, batchDuplicateWarning }
+ *
+ * Response 400:
+ *   { error } — missing file or wrong file type
+ *
+ * Response 422:
+ *   { error, warnings } — file is OFX but contains no parseable transactions
+ */
+router.post('/import/ofx',
+  authenticate,
+  hasPermission('bank.import'),
+  ofxUpload.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No OFX file uploaded' });
+      }
+
+      // Belt-and-suspenders: verify extension (multer fileFilter already checks)
+      if (!OFXParserService.isAllowedFile(req.file.mimetype, req.file.originalname)) {
+        return res.status(400).json({
+          error: 'Unsupported file type. Please upload an OFX or QFX file exported from your bank.'
+        });
+      }
+
+      const bankAccountId = req.body.bankAccountId
+        ? parseInt(req.body.bankAccountId, 10)
+        : null;
+
+      // Verify bankAccountId belongs to this company before using it for dedup
+      let verifiedBankAccountId = null;
+      if (bankAccountId) {
+        const { data: check } = await supabase
+          .from('bank_accounts')
+          .select('id')
+          .eq('id', bankAccountId)
+          .eq('company_id', req.user.companyId)
+          .single();
+        if (check) verifiedBankAccountId = bankAccountId;
+      }
+
+      // File hash for batch-level duplicate detection
+      const fileHash = OFXParserService.computeFileHash(req.file.buffer);
+
+      // Parse OFX — pure in-memory, no DB writes
+      const result = OFXParserService.parse(req.file.buffer, req.file.originalname);
+
+      if (!result.success) {
+        return res.status(422).json({
+          error:    result.error,
+          warnings: result.warnings || []
+        });
+      }
+
+      // Batch duplicate check (non-blocking warning only)
+      const batchDupCheck = await DuplicateDetectionService.detectBatchDuplicate(
+        supabase,
+        req.user.companyId,
+        fileHash,
+        verifiedBankAccountId
+      );
+
+      await AuditLogger.logUserAction(
+        req,
+        'PARSE',
+        'OFX_STATEMENT',
+        verifiedBankAccountId,
+        null,
+        {
+          filename:         req.file.originalname,
+          format:           result.format,
+          transactionCount: result.transactions.length,
+          skippedLines:     result.skippedLines,
+          warnings:         result.warnings,
+        },
+        'OFX bank statement parsed for review'
+      );
+
+      return res.json({
+        ...result,
+        fileHash,
+        batchDuplicateWarning: batchDupCheck.isDuplicate ? {
+          existingBatchId: batchDupCheck.existingBatchId,
+          reason:          batchDupCheck.reason,
+        } : null,
+      });
+
+    } catch (err) {
+      console.error('[ofx import] Error:', err);
+      if (err.message && err.message.includes('Only OFX and QFX')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: 'Failed to process OFX statement' });
     }
   }
 );

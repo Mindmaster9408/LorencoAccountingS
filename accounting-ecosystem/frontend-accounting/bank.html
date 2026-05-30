@@ -2377,31 +2377,35 @@ Click OK to simulate uploading a file.`;
         // IMPORT MODE (CSV vs PDF)
         // ===================================
 
-        let importMode = 'csv';  // 'csv' | 'pdf' | 'image'
+        let importMode = 'csv';  // 'csv' | 'pdf' | 'image' | 'ofx'
         let pdfParseResult = null;
         let imageParseResult = null;
+        let ofxParseResult = null;
 
         function switchImportMode(mode) {
             importMode = mode;
             document.getElementById('importTypeCSV').classList.toggle('active', mode === 'csv');
             document.getElementById('importTypePDF').classList.toggle('active', mode === 'pdf');
             document.getElementById('importTypeImage').classList.toggle('active', mode === 'image');
+            document.getElementById('importTypeOFX').classList.toggle('active', mode === 'ofx');
             document.getElementById('csvImportSection').style.display = mode === 'csv' ? 'block' : 'none';
             document.getElementById('pdfImportSection').style.display = mode === 'pdf' ? 'block' : 'none';
             document.getElementById('imageImportSection').style.display = mode === 'image' ? 'block' : 'none';
+            document.getElementById('ofxImportSection').style.display = mode === 'ofx' ? 'block' : 'none';
             const step2Label = document.getElementById('step2Label');
             if (step2Label) {
-                if (mode === 'pdf' || mode === 'image') step2Label.textContent = 'Review';
+                if (mode === 'pdf' || mode === 'image' || mode === 'ofx') step2Label.textContent = 'Review';
                 else step2Label.textContent = 'Map Columns';
             }
             const nextBtn = document.getElementById('step1NextBtn');
             if (nextBtn) {
                 if (mode === 'pdf') nextBtn.textContent = 'Parse PDF →';
                 else if (mode === 'image') nextBtn.textContent = 'Extract Transactions →';
+                else if (mode === 'ofx') nextBtn.textContent = 'Parse OFX →';
                 else nextBtn.textContent = 'Next: Map Columns →';
             }
-            // Populate bank accounts list when switching to PDF
             if (mode === 'pdf') loadBankAccountsForPdfImport();
+            if (mode === 'ofx') loadBankAccountsForOfxImport();
         }
 
         async function loadBankAccountsForPdfImport() {
@@ -2598,6 +2602,126 @@ Click OK to simulate uploading a file.`;
             document.getElementById('importStep2Pdf').style.display = 'none';
             document.getElementById('importStep1').style.display = 'block';
             updateStepIndicators(1);
+        }
+
+        // ===================================
+        // OFX IMPORT FUNCTIONS
+        // ===================================
+
+        async function loadBankAccountsForOfxImport() {
+            const sel = document.getElementById('ofxBankAccountSelect');
+            if (!sel) return;
+            while (sel.options.length > 1) sel.remove(1);
+            const accounts = bankAccountsData.length ? bankAccountsData : await (async () => {
+                try {
+                    const r = await fetch('/api/accounting/bank/accounts', { headers: { 'Authorization': 'Bearer ' + token } });
+                    return r.ok ? (await r.json()).bankAccounts || [] : [];
+                } catch (_) { return []; }
+            })();
+            accounts.forEach(acct => {
+                const opt = document.createElement('option');
+                opt.value = acct.id;
+                opt.textContent = acct.name + (acct.bank_name ? ' (' + acct.bank_name + ')' : '');
+                sel.appendChild(opt);
+            });
+            if (selectedBankAccountId) sel.value = selectedBankAccountId;
+        }
+
+        function triggerOfxUpload() {
+            document.getElementById('ofxFileInput').click();
+        }
+
+        function handleOfxFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const ext = file.name.toLowerCase().split('.').pop();
+            if (ext !== 'ofx' && ext !== 'qfx') {
+                alert('Please select an OFX or QFX file exported from your bank.');
+                event.target.value = '';
+                return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                alert('OFX file is too large. Maximum allowed size is 10 MB.');
+                event.target.value = '';
+                return;
+            }
+            importData.file = file;
+            document.getElementById('ofxUploadArea').style.display = 'none';
+            document.getElementById('ofxFileInfo').style.display = 'flex';
+            document.getElementById('ofxFileName').textContent = file.name;
+            document.getElementById('ofxFileMeta').textContent = formatFileSize(file.size) + ' • ' + ext.toUpperCase() + ' Statement';
+        }
+
+        function removeOfxFile() {
+            importData.file = null;
+            ofxParseResult = null;
+            document.getElementById('ofxFileInput').value = '';
+            document.getElementById('ofxFileInfo').style.display = 'none';
+            document.getElementById('ofxUploadArea').style.display = 'block';
+            document.getElementById('ofxParseStatus').style.display = 'none';
+        }
+
+        async function goToStep2Ofx() {
+            const bankAccountId = document.getElementById('ofxBankAccountSelect').value;
+            if (!bankAccountId) {
+                alert('Please select a bank account before importing.');
+                return;
+            }
+            if (!importData.file) {
+                alert('Please upload an OFX or QFX file first.');
+                return;
+            }
+
+            document.getElementById('ofxParseStatus').style.display = 'block';
+            document.getElementById('ofxParseStatusText').textContent = 'Parsing OFX statement... please wait.';
+            document.getElementById('step1NextBtn').disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('file', importData.file);
+                formData.append('bankAccountId', bankAccountId);
+
+                const resp = await fetch('/api/accounting/bank/import/ofx', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: formData
+                });
+
+                const result = await resp.json();
+
+                if (!resp.ok || !result.success) {
+                    document.getElementById('ofxParseStatusText').textContent =
+                        '❌ ' + (result.error || 'Failed to parse OFX file.');
+                    document.getElementById('step1NextBtn').disabled = false;
+                    return;
+                }
+
+                document.getElementById('ofxParseStatus').style.display = 'none';
+
+                // Store result — OFX reuses pdfParseResult so pdfGoToConfirm/completePdfImport work unchanged
+                ofxParseResult = result;
+                pdfParseResult  = result;
+                pdfParseResult._bankAccountId = parseInt(bankAccountId, 10);
+
+                document.getElementById('importStep1').style.display = 'none';
+                document.getElementById('importStep2Pdf').style.display = 'block';
+                updateStepIndicators(2);
+
+                // Render using the shared PDF review table, then override the header badge for OFX
+                renderPdfReview(result);
+                const bankEl = document.getElementById('pdfBankDetected');
+                const txnCount = (result.transactions || []).length;
+                const periodText = result.statementPeriod ? ` &nbsp;•&nbsp; Period: ${result.statementPeriod}` : '';
+                bankEl.innerHTML = `<div style="background:#e3f2fd;border:1px solid #1e88e5;border-radius:8px;padding:10px 14px;font-size:13px;">` +
+                    `📂 <strong>OFX Statement</strong> — ${txnCount} transaction(s) parsed${periodText}` +
+                    (result.format === 'ofx1' ? ' &nbsp;<span style="color:#5f6368;">(OFX 1.x format)</span>' : '') +
+                    `</div>`;
+
+            } catch (err) {
+                document.getElementById('ofxParseStatusText').textContent = '❌ Network error. Please try again.';
+            } finally {
+                document.getElementById('step1NextBtn').disabled = false;
+            }
         }
 
         // ===================================
@@ -2870,7 +2994,7 @@ Click OK to simulate uploading a file.`;
                     body: JSON.stringify({
                         bankAccountId,
                         transactions,
-                        importSource: 'pdf',
+                        importSource: importMode === 'ofx' ? 'ofx' : 'pdf',
                         fileHash: result.fileHash || null
                     })
                 });
@@ -2959,14 +3083,17 @@ Click OK to simulate uploading a file.`;
             importData = { file: null, rows: [], headers: [], mapping: {}, bankFormat: 'custom' };
             pdfParseResult = null;
             imageParseResult = null;
+            ofxParseResult = null;
             // Reset mode to CSV
             importMode = 'csv';
             document.getElementById('importTypeCSV').classList.add('active');
             document.getElementById('importTypePDF').classList.remove('active');
             document.getElementById('importTypeImage').classList.remove('active');
+            document.getElementById('importTypeOFX').classList.remove('active');
             document.getElementById('csvImportSection').style.display = 'block';
             document.getElementById('pdfImportSection').style.display = 'none';
             document.getElementById('imageImportSection').style.display = 'none';
+            document.getElementById('ofxImportSection').style.display = 'none';
             const step2Label = document.getElementById('step2Label');
             if (step2Label) step2Label.textContent = 'Map Columns';
             const nextBtn = document.getElementById('step1NextBtn');
@@ -2994,6 +3121,15 @@ Click OK to simulate uploading a file.`;
             if (imgUploadArea) imgUploadArea.style.display = 'block';
             const imgOcrStatus = document.getElementById('imageOcrStatus');
             if (imgOcrStatus) imgOcrStatus.style.display = 'none';
+            // Reset OFX file state
+            const ofxInput = document.getElementById('ofxFileInput');
+            if (ofxInput) ofxInput.value = '';
+            const ofxFileInfo = document.getElementById('ofxFileInfo');
+            if (ofxFileInfo) ofxFileInfo.style.display = 'none';
+            const ofxUploadArea = document.getElementById('ofxUploadArea');
+            if (ofxUploadArea) ofxUploadArea.style.display = 'block';
+            const ofxParseStatusEl = document.getElementById('ofxParseStatus');
+            if (ofxParseStatusEl) ofxParseStatusEl.style.display = 'none';
         }
 
         function updateStepIndicators(step) {
@@ -3101,6 +3237,10 @@ Click OK to simulate uploading a file.`;
             }
             if (importMode === 'image') {
                 goToStep2Image();
+                return;
+            }
+            if (importMode === 'ofx') {
+                goToStep2Ofx();
                 return;
             }
 
@@ -3274,7 +3414,7 @@ Click OK to simulate uploading a file.`;
 
         function goBackToStep2() {
             document.getElementById('importStep3').style.display = 'none';
-            if (importMode === 'pdf') {
+            if (importMode === 'pdf' || importMode === 'ofx') {
                 document.getElementById('importStep2Pdf').style.display = 'block';
             } else {
                 document.getElementById('importStep2').style.display = 'block';
@@ -3283,8 +3423,8 @@ Click OK to simulate uploading a file.`;
         }
 
         async function completeImport() {
-            // PDF mode uses its own import function
-            if (importMode === 'pdf') {
+            // PDF and OFX modes use the shared pdf import function
+            if (importMode === 'pdf' || importMode === 'ofx') {
                 completePdfImport();
                 return;
             }
@@ -4887,16 +5027,6 @@ Click OK to simulate uploading a file.`;
                 saveAllocationsToStorage();
                 updateBulkActions();
 
-                // Clean up manual transactions from localStorage
-                if (manualItems.length > 0) {
-                    var stored = JSON.parse(safeLocalStorage.getItem(storageKey('bank_manual_transactions')) || '[]');
-                    if (stored.length > 0) {
-                        var deletedManualIds = manualItems.map(function (x) { return x.id; });
-                        stored = stored.filter(function (t) { return !deletedManualIds.includes(t.id); });
-                        safeLocalStorage.setItem(storageKey('bank_manual_transactions'), JSON.stringify(stored));
-                    }
-                }
-
                 if (errors.length > 0) {
                     alert('Some transactions could not be deleted:\n\n' + errors.join('\n'));
                 }
@@ -5313,7 +5443,7 @@ Click OK to simulate uploading a file.`;
                 <!-- Step 1: Upload -->
                 <div id="importStep1" class="import-content">
 
-                    <!-- Import type toggle: CSV / PDF / Photo -->
+                    <!-- Import type toggle: CSV / PDF / Photo / OFX -->
                     <div class="import-type-toggle">
                         <button id="importTypeCSV" class="import-type-btn active" onclick="switchImportMode('csv')">
                             📊 CSV / Excel
@@ -5323,6 +5453,9 @@ Click OK to simulate uploading a file.`;
                         </button>
                         <button id="importTypeImage" class="import-type-btn" onclick="switchImportMode('image')">
                             📸 Photo / Image
+                        </button>
+                        <button id="importTypeOFX" class="import-type-btn" onclick="switchImportMode('ofx')">
+                            📂 OFX / QFX
                         </button>
                     </div>
 
@@ -5398,6 +5531,50 @@ Click OK to simulate uploading a file.`;
                         <div id="pdfParseStatus" style="display: none;" class="pdf-parse-status">
                             <div class="status-icon">⏳</div>
                             <div id="pdfParseStatusText">Parsing PDF statement...</div>
+                        </div>
+                    </div>
+
+                    <!-- OFX / QFX section -->
+                    <div id="ofxImportSection" style="display: none;">
+                        <div class="bank-format-select">
+                            <label>Bank Account</label>
+                            <select id="ofxBankAccountSelect">
+                                <option value="">-- Select bank account --</option>
+                            </select>
+                            <small style="color: #5f6368; display: block; margin-top: 5px;">
+                                Select which bank account this statement belongs to. Required for import.
+                            </small>
+                        </div>
+                        <div class="info-box" style="border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px;">
+                            <strong>OFX / QFX Bank Statement Import</strong><br>
+                            Export your statement as an <strong>OFX</strong> or <strong>QFX</strong> file from your bank's online portal.
+                            Most South African banks support OFX export under "Download transactions" or similar.
+                            <br><br>
+                            Transactions will be staged for review — nothing posts to your accounts until you confirm.
+                        </div>
+
+                        <div id="ofxUploadArea" class="upload-area" onclick="triggerOfxUpload()">
+                            <div class="upload-icon">📂</div>
+                            <div><strong>Click to upload</strong> or drag and drop</div>
+                            <div style="font-size: 12px; color: #5f6368; margin-top: 5px;">
+                                OFX or QFX file (max 10 MB)
+                            </div>
+                        </div>
+                        <input type="file" id="ofxFileInput" style="display: none;"
+                               onchange="handleOfxFile(event)" accept=".ofx,.qfx">
+
+                        <div id="ofxFileInfo" class="file-info" style="display: none;">
+                            <div class="file-info-icon">📂</div>
+                            <div class="file-info-details">
+                                <div class="file-info-name" id="ofxFileName"></div>
+                                <div class="file-info-meta" id="ofxFileMeta"></div>
+                            </div>
+                            <span class="file-info-remove" onclick="removeOfxFile()" title="Remove file">×</span>
+                        </div>
+
+                        <div id="ofxParseStatus" style="display: none;" class="pdf-parse-status">
+                            <div class="status-icon">⏳</div>
+                            <div id="ofxParseStatusText">Parsing OFX statement...</div>
                         </div>
                     </div>
 

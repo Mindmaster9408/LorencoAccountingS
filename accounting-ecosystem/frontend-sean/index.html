@@ -218,6 +218,34 @@
             .nav-tab { padding: 12px 14px; font-size: 0.8rem; }
         }
 
+        /* ─── Teach Paytime ─────────────────────────────────────── */
+        .teach-step { display: none; }
+        .teach-step.active { display: block; }
+        .teach-step-indicator {
+            display: flex; gap: 0; margin-bottom: 20px; border-radius: 8px; overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .teach-step-pill {
+            flex: 1; padding: 10px 14px; font-size: 0.82rem; font-weight: 600; text-align: center;
+            background: #f8fafc; color: var(--text-muted); border-right: 1px solid var(--border);
+        }
+        .teach-step-pill:last-child { border-right: none; }
+        .teach-step-pill.active { background: var(--primary); color: white; }
+        .teach-step-pill.done   { background: var(--primary-light); color: var(--primary-dark); }
+        .preview-warn { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 6px; padding: 8px 12px; font-size: 0.82rem; color: #92400e; margin-bottom: 4px; }
+        .preview-warn.error { background: #fee2e2; border-color: #f87171; color: #991b1b; }
+        .preview-dup { background: #fef3c7; }
+        .teach-badge-conf { display: inline-block; width: 42px; height: 6px; background: #e2e8f0; border-radius: 3px; vertical-align: middle; }
+        .teach-badge-conf-fill { height: 100%; border-radius: 3px; }
+        .teach-format-chip {
+            display: inline-block; font-size: 0.73rem; font-weight: 700; padding: 2px 8px;
+            border-radius: 12px; background: var(--accent-light); color: var(--accent); margin-left: 8px;
+        }
+        .teach-result-box {
+            padding: 16px; border-radius: 8px; text-align: center;
+            background: var(--primary-light); border: 1px solid var(--primary);
+        }
+
         /* ─── Loading ───────────────────────────────────────────── */
         .loading-spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top: 2px solid var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -276,6 +304,7 @@
         <button class="nav-tab" data-tab="knowledge" onclick="switchTab('knowledge')">📚 Codex</button>
         <button class="nav-tab" data-tab="categories" onclick="switchTab('categories')">🏷️ Categories</button>
         <button class="nav-tab" data-tab="coaching" onclick="switchTab('coaching')">🧘 Coaching</button>
+        <button class="nav-tab" data-tab="teach" onclick="switchTab('teach')">📝 Teach Paytime</button>
     </div>
 
     <div class="content">
@@ -374,7 +403,8 @@
                             <h3 style="margin:0;">📋 Pending Review Queue</h3>
                             <div style="display:flex;gap:8px;align-items:center;">
                                 <select id="storeEntityFilter" onchange="loadIRP5StoreItems()" style="font-size:0.82rem;padding:4px 8px;">
-                                    <option value="payroll_item">Payroll Items</option>
+                                    <option value="payroll_item">Payroll Items (Paytime)</option>
+                                    <option value="paytime_learning">Teach Sean Proposals</option>
                                     <option value="">All entity types</option>
                                 </select>
                                 <button class="btn btn-outline btn-sm" onclick="loadIRP5StoreItems()">🔄 Refresh</button>
@@ -598,6 +628,138 @@
             </div>
 
         </div><!-- /tab-coaching -->
+
+        <!-- ═══════ TEACH PAYTIME TAB ═══════ -->
+        <!--
+            GOVERNANCE (CLAUDE.md Part B — Rules B1–B9):
+            This flow creates PENDING proposals only.
+            It does NOT approve, does NOT sync, does NOT mutate Paytime data.
+            Approval and sync are separate super-admin actions in the Transactions tab.
+        -->
+        <div id="tab-teach" class="tab-content">
+
+            <!-- Step indicator -->
+            <div class="teach-step-indicator">
+                <div id="teachPill1" class="teach-step-pill active">1 · Paste Knowledge</div>
+                <div id="teachPill2" class="teach-step-pill">2 · Review Preview</div>
+                <div id="teachPill3" class="teach-step-pill">3 · Proposals Created</div>
+            </div>
+
+            <!-- ── Step 1: Input ── -->
+            <div id="teachStep1" class="teach-step active">
+                <div class="card">
+                    <h3 style="margin-bottom:8px;">📝 Teach Sean — Paytime Payroll Knowledge</h3>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">
+                        Paste a list of payroll items with their IRP5 codes. Sean will parse the input,
+                        show you a preview, and then create <strong>pending learning proposals</strong>
+                        in the Transactions queue. Nothing is approved or synced until you explicitly do so.
+                    </p>
+
+                    <div style="background:#e0e7ff;border:1px solid #818cf8;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:0.82rem;color:#3730a3;">
+                        <strong>Supported formats:</strong><br>
+                        <strong>CSV:</strong> <code>Item Name, IRP5 Code</code> — one row per item<br>
+                        <strong>Table:</strong> <code>Item Name | IRP5 Code | Taxable | UIF</code><br>
+                        <strong>Bullet/text:</strong> <code>- Commission uses IRP5 3606 and is taxable.</code>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:16px;">
+                        <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px;">
+                            Payroll Knowledge
+                            <span style="font-weight:400;color:var(--text-muted);">(paste CSV, table, or bullet list)</span>
+                        </label>
+                        <textarea id="teachInputText" rows="10"
+                            style="width:100%;padding:12px;border:2px solid var(--border);border-radius:8px;
+                                   font-size:0.88rem;font-family:monospace;resize:vertical;box-sizing:border-box;"
+                            placeholder="Item Name, IRP5 Code&#10;Commission, 3606&#10;Travel Allowance, 3701&#10;Provident Fund, 3801"></textarea>
+                    </div>
+
+                    <div id="teachParseStatus" style="display:none;margin-bottom:12px;padding:10px 14px;
+                         background:#f8fafc;border-radius:6px;font-size:0.85rem;color:var(--text-muted);">
+                        Parsing...
+                    </div>
+
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="btn btn-outline btn-sm" onclick="clearTeachInput()">Clear</button>
+                        <button class="btn btn-primary btn-sm" style="width:auto;" onclick="parseTeachInput()">
+                            Parse &amp; Preview →
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Step 2: Preview ── -->
+            <div id="teachStep2" class="teach-step">
+                <div class="card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                        <h3 style="margin:0;">
+                            Review Extracted Items
+                            <span id="teachFormatChip" class="teach-format-chip"></span>
+                        </h3>
+                        <span id="teachItemCount" style="font-size:0.85rem;color:var(--text-muted);"></span>
+                    </div>
+
+                    <div id="teachGlobalWarnings" style="display:none;margin-bottom:12px;"></div>
+
+                    <div class="table-wrap" style="max-height:440px;overflow-y:auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width:32px;"></th>
+                                    <th>Item Name</th>
+                                    <th>IRP5 Code</th>
+                                    <th>Taxable</th>
+                                    <th>UIF</th>
+                                    <th>Confidence</th>
+                                    <th>Notes / Warnings</th>
+                                </tr>
+                            </thead>
+                            <tbody id="teachPreviewBody"></tbody>
+                        </table>
+                    </div>
+
+                    <p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;">
+                        Click ✕ to remove a row before creating proposals.
+                        Missing optional fields can be completed later via Edit in the Transactions tab.
+                    </p>
+
+                    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm" onclick="backToTeachStep1()">← Back</button>
+                        <button class="btn btn-outline btn-sm" onclick="cancelTeach()">Cancel</button>
+                        <button class="btn btn-primary btn-sm" style="width:auto;" id="createProposalsBtn"
+                            onclick="confirmCreateProposals()">
+                            ✅ Create Learning Proposals
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Step 3: Result ── -->
+            <div id="teachStep3" class="teach-step">
+                <div class="card">
+                    <div id="teachResultBox" class="teach-result-box" style="margin-bottom:20px;">
+                        <!-- Populated by confirmCreateProposals() -->
+                    </div>
+
+                    <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;
+                                padding:12px 16px;font-size:0.82rem;color:#4c1d95;margin-bottom:16px;">
+                        ⚠️ <strong>These proposals are pending review.</strong>
+                        They do <em>not</em> change Paytime until a super-admin reviews, edits, and
+                        explicitly approves them in the <strong>Transactions</strong> tab.
+                    </div>
+
+                    <div id="teachSkippedDetails" style="display:none;margin-bottom:16px;"></div>
+
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm" onclick="resetTeachFlow()">Teach More Items</button>
+                        <button class="btn btn-primary btn-sm" style="width:auto;"
+                            onclick="switchTab('transactions')">
+                            View in Transactions →
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /tab-teach -->
 
     </div><!-- /content -->
 </div><!-- /app -->
@@ -852,11 +1014,12 @@ function showApp() {
 function switchTab(tabId) {
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === `tab-${tabId}`));
-    if (tabId === 'dashboard') loadDashboard();
+    if (tabId === 'dashboard')    loadDashboard();
     if (tabId === 'transactions') { loadTransactions(); loadEcosystemApps(); }
-    if (tabId === 'knowledge') loadKnowledge();
-    if (tabId === 'categories') loadCategories();
-    if (tabId === 'coaching') loadCoachingTab();
+    if (tabId === 'knowledge')    loadKnowledge();
+    if (tabId === 'categories')   loadCategories();
+    if (tabId === 'coaching')     loadCoachingTab();
+    if (tabId === 'teach')        resetTeachFlow();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2226,6 +2389,224 @@ function _renderGaugeHighlights(highlights) {
         (c ? '<div style="margin-bottom:4px;"><strong style="color:#dc2626;">Aandag nodig:</strong> ' + c + '</div>' : '') +
         (s ? '<div><strong style="color:#059669;">Sterkpunte:</strong> ' + s + '</div>' : '') + '</div>';
 }
+// ═══════════════════════════════════════════════════════════
+// TEACH PAYTIME — Parse → Preview → Create Proposals
+//
+// GOVERNANCE (CLAUDE.md Part B — Rules B1–B9):
+//   - parseTeachInput()       → calls /api/sean/teach/paytime/parse (NO DB write)
+//   - confirmCreateProposals() → calls /api/sean/teach/paytime/proposals (pending only)
+//   - No automatic approval. No sync. No Paytime mutation.
+//   - All in-memory UI state (_teachParseResult, _teachRows) is cleared on reset.
+//   - No localStorage/sessionStorage used for any part of this flow.
+// ═══════════════════════════════════════════════════════════
+
+let _teachParseResult = null;  // in-memory parse result from backend (not persisted)
+let _teachRows        = [];    // current preview rows (user may remove rows before confirming)
+
+function resetTeachFlow() {
+    _teachParseResult = null;
+    _teachRows        = [];
+    document.getElementById('teachInputText').value = '';
+    document.getElementById('teachParseStatus').style.display = 'none';
+    _showTeachStep(1);
+}
+
+function clearTeachInput() {
+    document.getElementById('teachInputText').value = '';
+    document.getElementById('teachParseStatus').style.display = 'none';
+}
+
+function backToTeachStep1() {
+    _showTeachStep(1);
+}
+
+function cancelTeach() {
+    if (!confirm('Cancel? Your parsed items will be lost.')) return;
+    resetTeachFlow();
+}
+
+function _showTeachStep(n) {
+    [1, 2, 3].forEach(i => {
+        document.getElementById('teachStep' + i).classList.toggle('active', i === n);
+        const pill = document.getElementById('teachPill' + i);
+        pill.classList.remove('active', 'done');
+        if (i < n)  pill.classList.add('done');
+        if (i === n) pill.classList.add('active');
+    });
+}
+
+async function parseTeachInput() {
+    const text = (document.getElementById('teachInputText').value || '').trim();
+    if (!text) { alert('Please paste some payroll knowledge before parsing.'); return; }
+
+    const statusEl = document.getElementById('teachParseStatus');
+    statusEl.style.display = 'block';
+    statusEl.textContent   = 'Parsing...';
+
+    try {
+        const result = await api('/sean/teach/paytime/parse', {
+            method: 'POST',
+            body: JSON.stringify({ text })
+        });
+
+        _teachParseResult = result;
+        _teachRows = (result.items || []).map((item, idx) => ({ ...item, _idx: idx, _removed: false }));
+
+        statusEl.style.display = 'none';
+        _renderTeachPreview(result);
+        _showTeachStep(2);
+
+    } catch (err) {
+        statusEl.textContent = '❌ ' + (err.message || 'Failed to parse');
+    }
+}
+
+function _renderTeachPreview(result) {
+    // Format chip
+    const chip = document.getElementById('teachFormatChip');
+    if (chip) chip.textContent = result.format === 'csv' ? 'CSV' : result.format === 'table' ? 'TABLE' : 'TEXT';
+
+    // Item count
+    const countEl = document.getElementById('teachItemCount');
+    if (countEl) countEl.textContent = _teachRows.length + ' item(s) extracted';
+
+    // Global warnings
+    const warnEl = document.getElementById('teachGlobalWarnings');
+    if (warnEl) {
+        const warns = result.warnings || [];
+        if (warns.length) {
+            warnEl.style.display = 'block';
+            warnEl.innerHTML = warns.map(w => `<div class="preview-warn">${escHtml(w)}</div>`).join('');
+        } else {
+            warnEl.style.display = 'none';
+        }
+    }
+
+    _renderTeachTable();
+}
+
+function _renderTeachTable() {
+    const tbody = document.getElementById('teachPreviewBody');
+    if (!tbody) return;
+
+    const visible = _teachRows.filter(r => !r._removed);
+
+    // Update count
+    const countEl = document.getElementById('teachItemCount');
+    if (countEl) countEl.textContent = visible.length + ' item(s) to import';
+
+    if (!visible.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--text-muted);">All rows removed. Go back to paste new content.</td></tr>';
+        const btn = document.getElementById('createProposalsBtn');
+        if (btn) btn.disabled = true;
+        return;
+    }
+
+    const btn = document.getElementById('createProposalsBtn');
+    if (btn) btn.disabled = false;
+
+    tbody.innerHTML = visible.map(row => {
+        const confPct  = Math.round((row.confidence || 0) * 100);
+        const confColor = confPct >= 90 ? '#10b981' : confPct >= 70 ? '#f59e0b' : '#ef4444';
+        const confBar  = `<div class="teach-badge-conf"><div class="teach-badge-conf-fill" style="width:${confPct}%;background:${confColor};"></div></div>`;
+        const rowWarn  = (row.warnings || []).join(' ');
+        const irp5Html = row.irp5_code
+            ? `<code style="font-family:monospace;font-weight:600;font-size:0.9rem;">${escHtml(row.irp5_code)}</code>`
+            : `<span style="color:#9ca3af;font-size:0.8rem;">— not set</span>`;
+        const boolBadge = (v) => v === true ? '<span class="badge badge-green">Yes</span>'
+            : v === false ? '<span class="badge" style="background:#fee2e2;color:#dc2626;">No</span>'
+            : '<span style="color:#9ca3af;font-size:0.78rem;">—</span>';
+        return `<tr class="${row.isDuplicate ? 'preview-dup' : ''}">
+            <td>
+                <button type="button" onclick="removeTeachRow(${row._idx})"
+                        style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:1rem;padding:0 2px;"
+                        title="Remove this row">✕</button>
+            </td>
+            <td><strong>${escHtml(row.item_name)}</strong>
+                ${row.isDuplicate ? '<span class="badge badge-yellow" style="font-size:0.7rem;margin-left:6px;">DUPLICATE</span>' : ''}
+            </td>
+            <td>${irp5Html}</td>
+            <td>${boolBadge(row.taxable)}</td>
+            <td>${boolBadge(row.affects_uif)}</td>
+            <td>${confBar} <span style="font-size:0.75rem;color:${confColor};">${confPct}%</span></td>
+            <td style="font-size:0.78rem;color:#92400e;max-width:200px;">${rowWarn ? escHtml(rowWarn) : ''}</td>
+        </tr>`;
+    }).join('');
+}
+
+function removeTeachRow(idx) {
+    const row = _teachRows.find(r => r._idx === idx);
+    if (row) { row._removed = true; _renderTeachTable(); }
+}
+
+async function confirmCreateProposals() {
+    const items = _teachRows.filter(r => !r._removed);
+    if (!items.length) { alert('No items to import.'); return; }
+
+    const confirmed = confirm(
+        `Create ${items.length} learning proposal(s)?\n\n` +
+        'These will be created as PENDING in the Transactions queue.\n' +
+        'Nothing is approved or synced to Paytime until you explicitly do so.'
+    );
+    if (!confirmed) return;
+
+    const btn = document.getElementById('createProposalsBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+
+    try {
+        const payload = items.map(r => ({
+            item_name:   r.item_name,
+            irp5_code:   r.irp5_code   || null,
+            taxable:     r.taxable     ?? null,
+            affects_uif: r.affects_uif ?? null,
+            affects_sdl: r.affects_sdl ?? null,
+            notes:       r.notes       || null,
+            source_text: r.source_text || null,
+            confidence:  r.confidence  ?? null,
+        }));
+
+        const data = await api('/sean/teach/paytime/proposals', {
+            method: 'POST',
+            body: JSON.stringify({
+                items: payload,
+                importBatchId: _teachParseResult?.importBatchId || null,
+                sourceText:    null,  // not sent — avoid large payload; stored in item source_text
+            })
+        });
+
+        // Render result
+        const resultBox = document.getElementById('teachResultBox');
+        if (resultBox) {
+            resultBox.innerHTML =
+                `<div style="font-size:2rem;margin-bottom:8px;">✅</div>` +
+                `<div style="font-size:1.1rem;font-weight:700;color:var(--primary-dark);margin-bottom:6px;">` +
+                    `${data.created} learning proposal(s) created` +
+                `</div>` +
+                `<div style="font-size:0.85rem;color:var(--text-muted);">` +
+                    (data.skipped > 0 ? `${data.skipped} skipped (already pending or invalid).` : 'All items staged for review.') +
+                `</div>`;
+        }
+
+        // Skipped details
+        const skipEl = document.getElementById('teachSkippedDetails');
+        if (skipEl && data.skippedDetails && data.skippedDetails.length) {
+            skipEl.style.display = 'block';
+            skipEl.innerHTML = '<div style="font-size:0.82rem;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:10px 14px;">' +
+                '<strong>Skipped items:</strong><ul style="margin:6px 0 0 18px;">' +
+                data.skippedDetails.map(d => `<li>${escHtml(d.item_name || '—')}: ${escHtml(d.reason)}</li>`).join('') +
+                '</ul></div>';
+        } else if (skipEl) {
+            skipEl.style.display = 'none';
+        }
+
+        _showTeachStep(3);
+
+    } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Create Learning Proposals'; }
+        alert('Error creating proposals: ' + err.message);
+    }
+}
+
 // ═══════════════════════════════════════════════════════════
 // UTILITIES
 // ═══════════════════════════════════════════════════════════
