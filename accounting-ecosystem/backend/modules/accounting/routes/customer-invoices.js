@@ -64,6 +64,45 @@ function userId(req) {
   return req.user && req.user.userId ? req.user.userId : null;
 }
 
+// ── Tenant ownership validators ───────────────────────────────────────────────
+
+// Verifies that a POS customer ID belongs to companyId.
+// Returns true  = valid (customer exists and belongs to this company).
+// Returns false = rejected (ID exists but belongs to another company, or is malformed).
+// Returns null  = no validation needed (customerId is null/falsy).
+async function validateCustomerId(companyId, customerId) {
+  if (!customerId) return null;
+  const parsed = parseInt(customerId);
+  if (!Number.isFinite(parsed) || parsed <= 0) return false;
+  const { data } = await supabase
+    .from('pos_customers')
+    .select('id')
+    .eq('id', parsed)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  return !!data;
+}
+
+// Verifies that every non-null accountId in the lines array belongs to companyId.
+// Returns null  = all valid (or no account IDs provided).
+// Returns array = one or more foreign/unknown account IDs found (the bad IDs).
+async function validateLineAccountIds(companyId, lines) {
+  const ids = [...new Set(
+    (lines || [])
+      .map(l => (l.accountId != null ? parseInt(l.accountId) : null))
+      .filter(id => Number.isFinite(id) && id > 0)
+  )];
+  if (ids.length === 0) return null;
+  const { data } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('company_id', companyId)
+    .in('id', ids);
+  const valid   = new Set((data || []).map(a => a.id));
+  const foreign = ids.filter(id => !valid.has(id));
+  return foreign.length > 0 ? foreign : null;
+}
+
 // ─── Customer List (for dropdowns) ───────────────────────────────────────────
 
 router.get('/customers', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
@@ -190,6 +229,41 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
   if (!lines || !lines.length) return res.status(400).json({ error: 'At least one line item is required' });
 
   try {
+    // ── Tenant ownership guards ────────────────────────────────────────────────
+    // These run before any expensive work so a bad payload is rejected cheaply.
+
+    // Guard 1: if a customer_id is supplied it MUST belong to this company.
+    // A null/missing customer_id is valid (name-only invoices are supported).
+    if (customerId) {
+      const custOk = await validateCustomerId(companyId, customerId);
+      if (custOk === false) {
+        await AuditLogger.log({
+          companyId,
+          actorType: 'USER', actorId: userId(req),
+          actionType: 'CUSTOMER_INVOICE_TENANT_VIOLATION',
+          entityType: 'CUSTOMER_INVOICE', entityId: null,
+          beforeJson: null,
+          afterJson: { suppliedCustomerId: customerId, reasonCode: 'CUSTOMER_TENANT_VIOLATION' },
+          reason: 'Invoice create blocked: supplied customer_id does not belong to this company',
+          ipAddress: req.ip, userAgent: req.get('user-agent'),
+        });
+        return res.status(403).json({
+          error: 'Customer not found or does not belong to this company.',
+          errorCode: 'CUSTOMER_TENANT_VIOLATION',
+        });
+      }
+    }
+
+    // Guard 2: every line account_id must belong to this company.
+    // Prevents cross-tenant account injection into invoice line items.
+    const foreignLineAccounts = await validateLineAccountIds(companyId, lines);
+    if (foreignLineAccounts) {
+      return res.status(403).json({
+        error: 'One or more line item accounts do not belong to this company.',
+        errorCode: 'ACCOUNT_TENANT_VIOLATION',
+      });
+    }
+
     // ── Duplicate invoice guard ────────────────────────────────────────────────
     // If an explicit invoice number is provided, reject a second creation for the
     // same company + invoice number. Covers accidental double-submission.
@@ -391,6 +465,19 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
       { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 }
     );
 
+    // ── Tenant guard: all supplied line account_ids must belong to this company ─
+    // Runs after status check and before the transaction so a bad payload is
+    // rejected without opening a DB transaction.
+    if (lines && lines.length > 0) {
+      const foreignLineAccounts = await validateLineAccountIds(companyId, lines);
+      if (foreignLineAccounts) {
+        return res.status(403).json({
+          error: 'One or more line item accounts do not belong to this company.',
+          errorCode: 'ACCOUNT_TENANT_VIOLATION',
+        });
+      }
+    }
+
     // Resolve effective values for fields that are optional in the update payload
     const effectiveCustomerName  = customerName  || existing.customer_name;
     const effectiveInvoiceNumber = invoiceNumber || existing.invoice_number;
@@ -470,11 +557,12 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
     }
     // ── End atomic update ─────────────────────────────────────────────────────
 
-    // Fetch updated invoice + lines
+    // Fetch updated invoice + lines — company_id filter is defense-in-depth
     const { data: updated, error: updFetchErr } = await supabase
       .from('customer_invoices')
       .select('*')
       .eq('id', invoiceId)
+      .eq('company_id', companyId)
       .single();
     if (updFetchErr) throw new Error(updFetchErr.message);
 
