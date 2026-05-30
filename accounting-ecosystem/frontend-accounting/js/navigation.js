@@ -90,7 +90,6 @@ function createNavigation() {
         <div class="dropdown">
           <div class="dropdown-header">Sales</div>
           <a href="/accounting/customer-list.html">Customer List</a>
-          <a href="#">New Customer</a>
           <a href="/accounting/invoices.html">Invoices</a>
           <a href="#">Quotes</a>
           <a href="#">Credit Notes</a>

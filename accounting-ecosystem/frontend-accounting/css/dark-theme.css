@@ -1724,3 +1724,37 @@ tr.error-row th {
 [data-theme="dark"] .account-parent td {
     border-top-color: var(--border) !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * AUDIT TRAIL PAGE — filter-card / results-card safety net
+ * These class names are NOT white-listed in the card selector above.
+ * Adding them here prevents any future page using these names from going white.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+.filter-card,
+.results-card {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
+    color: var(--text) !important;
+}
+.results-header {
+    border-bottom-color: var(--border) !important;
+}
+.results-header h2 {
+    color: var(--text) !important;
+}
+.results-meta {
+    color: var(--text-muted) !important;
+}
+.page-btn {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+.page-btn:hover:not(:disabled) {
+    background: var(--surface-hover) !important;
+    border-color: rgba(255,255,255,0.2) !important;
+}
+.page-btn:disabled {
+    opacity: 0.3 !important;
+}

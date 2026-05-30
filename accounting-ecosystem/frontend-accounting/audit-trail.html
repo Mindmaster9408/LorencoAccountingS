@@ -11,8 +11,6 @@
 
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f0f2f5;
-      color: #1a1a2e;
     }
 
     .page-wrapper { max-width: 1500px; margin: 24px auto; padding: 0 24px; }
@@ -24,15 +22,15 @@
       margin-bottom: 20px;
     }
 
-    .page-header h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; }
-    .page-header p  { font-size: 14px; color: #6b7280; margin-top: 4px; }
+    .page-header h1 { font-size: 24px; font-weight: 700; color: #fff; }
+    .page-header p  { font-size: 14px; color: rgba(255,255,255,0.5); margin-top: 4px; }
 
     .page-header-meta {
       display: flex;
       align-items: center;
       gap: 10px;
       font-size: 13px;
-      color: #6b7280;
+      color: rgba(255,255,255,0.5);
     }
 
     .live-badge {
@@ -40,26 +38,26 @@
       align-items: center;
       gap: 5px;
       padding: 3px 10px;
-      background: #f0fdf4;
-      border: 1px solid #86efac;
+      background: rgba(16,185,129,0.15);
+      border: 1px solid rgba(16,185,129,0.3);
       border-radius: 20px;
       font-size: 12px;
       font-weight: 600;
-      color: #15803d;
+      color: #6ee7b7;
     }
 
     .live-dot {
       width: 7px; height: 7px;
-      background: #22c55e;
+      background: #34d058;
       border-radius: 50%;
     }
 
     /* ── Filter card ──────────────────────────────────────────────────────── */
     .filter-card {
-      background: white;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
       border-radius: 12px;
       padding: 18px 22px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
       margin-bottom: 18px;
     }
 
@@ -83,7 +81,7 @@
     .filter-group label {
       font-size: 11px;
       font-weight: 700;
-      color: #6b7280;
+      color: rgba(255,255,255,0.6);
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -91,41 +89,48 @@
     .filter-group input,
     .filter-group select {
       padding: 8px 10px;
-      border: 1px solid #d1d5db;
+      border: 1px solid rgba(255,255,255,0.12);
       border-radius: 8px;
       font-size: 13px;
-      background: white;
-      color: #1a1a2e;
+      background: #1e1b3a;
+      color: #fff;
       outline: none;
       transition: border-color 0.15s;
       width: 100%;
     }
 
+    .filter-group input::placeholder { color: rgba(255,255,255,0.35); }
+
     .filter-group input:focus,
-    .filter-group select:focus { border-color: #0066cc; }
+    .filter-group select:focus {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 3px rgba(245,158,11,0.3);
+    }
+
+    .filter-group select option { background: #1e1b3a; color: #fff; }
 
     /* ── Buttons ──────────────────────────────────────────────────────────── */
     .btn-primary {
       padding: 9px 20px;
-      background: #0066cc;
-      color: white;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #1a1a2e;
       border: none;
       border-radius: 8px;
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: box-shadow 0.15s;
       white-space: nowrap;
     }
 
-    .btn-primary:hover { background: #0055aa; }
-    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+    .btn-primary:hover { box-shadow: 0 4px 15px rgba(245,158,11,0.4); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .btn-secondary {
       padding: 9px 18px;
-      background: white;
-      color: #374151;
-      border: 1px solid #d1d5db;
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.8);
+      border: 1px solid rgba(255,255,255,0.12);
       border-radius: 8px;
       font-size: 13px;
       font-weight: 500;
@@ -134,13 +139,13 @@
       white-space: nowrap;
     }
 
-    .btn-secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
     /* ── Results card ─────────────────────────────────────────────────────── */
     .results-card {
-      background: white;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
       border-radius: 12px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
 
     .results-header {
@@ -148,18 +153,18 @@
       justify-content: space-between;
       align-items: center;
       padding: 14px 22px;
-      border-bottom: 1px solid #f3f4f6;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
     }
 
-    .results-header h2 { font-size: 15px; font-weight: 600; color: #374151; }
-    .results-meta { font-size: 13px; color: #6b7280; }
+    .results-header h2 { font-size: 15px; font-weight: 600; color: #fff; }
+    .results-meta { font-size: 13px; color: rgba(255,255,255,0.5); }
 
     /* ── Table ────────────────────────────────────────────────────────────── */
     .table-wrap { overflow-x: auto; }
 
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
-    thead tr { background: #f9fafb; }
+    thead tr { background: rgba(255,255,255,0.06); }
 
     th {
       padding: 9px 14px;
@@ -168,20 +173,20 @@
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      color: #6b7280;
-      border-bottom: 1px solid #e5e7eb;
+      color: rgba(255,255,255,0.6);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
       white-space: nowrap;
     }
 
     td {
       padding: 11px 14px;
-      border-bottom: 1px solid #f3f4f6;
-      color: #374151;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.85);
       vertical-align: top;
     }
 
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #fafafa; }
+    tr:hover td { background: rgba(255,255,255,0.05); }
 
     /* ── Severity badges ──────────────────────────────────────────────────── */
     .sev-badge {
@@ -197,10 +202,10 @@
       letter-spacing: 0.3px;
     }
 
-    .sev-info     { background: #eff6ff; color: #1d4ed8; }
-    .sev-warning  { background: #fffbeb; color: #92400e; }
-    .sev-high     { background: #fff7ed; color: #c2410c; }
-    .sev-critical { background: #fee2e2; color: #991b1b; }
+    .sev-info     { background: rgba(59,130,246,0.2);  color: #93c5fd; }
+    .sev-warning  { background: rgba(245,158,11,0.2);  color: #fbbf24; }
+    .sev-high     { background: rgba(249,115,22,0.2);  color: #fb923c; }
+    .sev-critical { background: rgba(239,68,68,0.2);   color: #fca5a5; }
 
     /* left border on the row itself for critical/high visibility */
     tr.row-critical td:first-child { border-left: 3px solid #ef4444; }
@@ -217,46 +222,46 @@
       white-space: nowrap;
     }
 
-    .mod-bank             { background: #ccfbf1; color: #0f766e; }
-    .mod-journals         { background: #ede9fe; color: #6d28d9; }
-    .mod-vat              { background: #fef3c7; color: #92400e; }
-    .mod-ar               { background: #dbeafe; color: #1d4ed8; }
-    .mod-ap               { background: #fee2e2; color: #991b1b; }
-    .mod-accounts         { background: #dcfce7; color: #166534; }
-    .mod-historical       { background: #e0e7ff; color: #4338ca; }
-    .mod-opening_balances { background: #cffafe; color: #0e7490; }
-    .mod-system           { background: #f3f4f6; color: #374151; }
-    .mod-ai               { background: #fdf4ff; color: #7e22ce; }
+    .mod-bank             { background: rgba(20,184,166,0.2);  color: #5eead4; }
+    .mod-journals         { background: rgba(139,92,246,0.2);  color: #c4b5fd; }
+    .mod-vat              { background: rgba(245,158,11,0.2);  color: #fbbf24; }
+    .mod-ar               { background: rgba(59,130,246,0.2);  color: #93c5fd; }
+    .mod-ap               { background: rgba(239,68,68,0.2);   color: #fca5a5; }
+    .mod-accounts         { background: rgba(34,197,94,0.2);   color: #86efac; }
+    .mod-historical       { background: rgba(99,102,241,0.2);  color: #a5b4fc; }
+    .mod-opening_balances { background: rgba(6,182,212,0.2);   color: #67e8f9; }
+    .mod-system           { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
+    .mod-ai               { background: rgba(168,85,247,0.2);  color: #d8b4fe; }
 
     /* ── Event type ────────────────────────────────────────────────────────── */
     .event-type {
       font-family: 'Courier New', monospace;
       font-size: 11px;
-      color: #374151;
+      color: rgba(255,255,255,0.85);
       font-weight: 600;
     }
 
     /* ── Actor cell ───────────────────────────────────────────────────────── */
-    .actor-system { color: #9ca3af; font-style: italic; }
-    .actor-ai     { color: #7e22ce; font-weight: 600; }
-    .actor-id     { font-family: 'Courier New', monospace; font-size: 11px; color: #9ca3af; }
+    .actor-system { color: rgba(255,255,255,0.35); font-style: italic; }
+    .actor-ai     { color: #d8b4fe; font-weight: 600; }
+    .actor-id     { font-family: 'Courier New', monospace; font-size: 11px; color: rgba(255,255,255,0.35); }
 
     /* ── Source badge ─────────────────────────────────────────────────────── */
     .source-badge {
       font-size: 10px;
-      color: #9ca3af;
+      color: rgba(255,255,255,0.35);
       font-family: 'Courier New', monospace;
     }
 
     /* ── Timestamp ────────────────────────────────────────────────────────── */
-    .ts { font-size: 12px; white-space: nowrap; color: #374151; }
-    .ts-date { color: #6b7280; }
+    .ts { font-size: 12px; white-space: nowrap; color: rgba(255,255,255,0.85); }
+    .ts-date { color: rgba(255,255,255,0.45); }
 
     /* ── Detail drawer ────────────────────────────────────────────────────── */
     .detail-btn {
       background: none;
       border: none;
-      color: #0066cc;
+      color: #fbbf24;
       font-size: 12px;
       cursor: pointer;
       padding: 0;
@@ -284,7 +289,7 @@
     .drawer-section { margin-bottom: 10px; }
     .drawer-key     { color: #7dd3fc; }
     .drawer-val     { color: #a7f3d0; }
-    .drawer-null    { color: #6b7280; font-style: italic; }
+    .drawer-null    { color: rgba(255,255,255,0.35); font-style: italic; }
     .drawer-label   { color: #f0abfc; font-weight: bold; margin-bottom: 4px; display: block; }
 
     /* ── Pagination ───────────────────────────────────────────────────────── */
@@ -293,33 +298,33 @@
       justify-content: space-between;
       align-items: center;
       padding: 12px 22px;
-      border-top: 1px solid #f3f4f6;
+      border-top: 1px solid rgba(255,255,255,0.08);
     }
 
-    .pagination-info { font-size: 13px; color: #6b7280; }
+    .pagination-info { font-size: 13px; color: rgba(255,255,255,0.5); }
 
     .pagination-btns { display: flex; gap: 8px; align-items: center; }
 
     .page-btn {
       padding: 6px 14px;
-      background: white;
-      border: 1px solid #d1d5db;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
       border-radius: 6px;
       font-size: 13px;
       cursor: pointer;
       transition: all 0.15s;
-      color: #374151;
+      color: rgba(255,255,255,0.8);
     }
 
-    .page-btn:hover:not(:disabled) { background: #f9fafb; border-color: #9ca3af; }
-    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .page-info-num { font-size: 13px; color: #374151; padding: 0 6px; }
+    .page-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+    .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .page-info-num { font-size: 13px; color: rgba(255,255,255,0.7); padding: 0 6px; }
 
     /* ── State boxes ──────────────────────────────────────────────────────── */
     .state-box {
       padding: 48px 24px;
       text-align: center;
-      color: #6b7280;
+      color: rgba(255,255,255,0.4);
     }
 
     .state-box .icon { font-size: 36px; margin-bottom: 10px; }
@@ -334,8 +339,8 @@
       display: none;
     }
 
-    .banner-error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-    .banner-info  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .banner-error { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .banner-info  { background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); }
 
     /* ── Desc cell ───────────────────────────────────────────────────────── */
     .desc-cell { max-width: 280px; }
@@ -371,15 +376,15 @@
     <div class="filter-row">
       <div class="filter-group">
         <label>From Date</label>
-        <input type="date" id="fromDate">
+        <input type="date" id="fromDate" title="From Date">
       </div>
       <div class="filter-group">
         <label>To Date</label>
-        <input type="date" id="toDate">
+        <input type="date" id="toDate" title="To Date">
       </div>
       <div class="filter-group">
         <label>Module</label>
-        <select id="modFilter">
+        <select id="modFilter" title="Filter by module">
           <option value="">— All Modules —</option>
           <option value="bank">Bank</option>
           <option value="journals">Journals</option>
@@ -395,7 +400,7 @@
       </div>
       <div class="filter-group">
         <label>Severity</label>
-        <select id="sevFilter">
+        <select id="sevFilter" title="Filter by severity">
           <option value="">— All Severities —</option>
           <option value="info">Info</option>
           <option value="warning">Warning</option>
@@ -417,8 +422,8 @@
         <label>Search (description / event / entity)</label>
         <input type="text" id="searchFilter" placeholder="Free-text search…" onkeydown="if(event.key==='Enter')loadEvents(true)">
       </div>
-      <button class="btn-primary" id="searchBtn" onclick="loadEvents(true)">Search</button>
-      <button class="btn-secondary" onclick="resetFilters()">Reset</button>
+      <button type="button" class="btn-primary" id="searchBtn" onclick="loadEvents(true)">Search</button>
+      <button type="button" class="btn-secondary" onclick="resetFilters()">Reset</button>
     </div>
   </div>
 
@@ -457,9 +462,9 @@
     <div class="pagination" id="pagination" style="display:none;">
       <span class="pagination-info" id="paginationInfo">—</span>
       <div class="pagination-btns">
-        <button class="page-btn" id="prevBtn" onclick="prevPage()" disabled>&#8592; Previous</button>
+        <button type="button" class="page-btn" id="prevBtn" onclick="prevPage()" disabled>&#8592; Previous</button>
         <span class="page-info-num" id="pageNum">Page 1</span>
-        <button class="page-btn" id="nextBtn" onclick="nextPage()">Next &#8594;</button>
+        <button type="button" class="page-btn" id="nextBtn" onclick="nextPage()">Next &#8594;</button>
       </div>
     </div>
   </div>

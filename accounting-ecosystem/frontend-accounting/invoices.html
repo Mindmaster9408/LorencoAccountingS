@@ -121,6 +121,9 @@
     .totals-divider  { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 6px 0; }
     .totals-grand    { font-size: 16px; font-weight: 700; color: #fbbf24; }
 
+    /* ── Invoice modal success message ───────────────────────────────── */
+    .inv-success-msg { flex: 1; font-size: 13px; color: #34d058; display: none; }
+
     /* ── Payment alloc ────────────────────────────────────────────────── */
     .open-inv-row    { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; }
     .open-inv-row:last-child { border-bottom: none; }
@@ -304,9 +307,10 @@
       </div>
     </div>
     <div class="modal-footer">
+      <span id="invSuccessMsg" class="inv-success-msg">&#10003; Invoice saved. Ready for next invoice.</span>
       <button class="btn btn-secondary" onclick="closeModal('modalInvoice')">Cancel</button>
-      <button class="btn btn-warning" id="invSaveDraftBtn" onclick="saveInvoice('draft')">Save Draft</button>
-      <button class="btn btn-primary" id="invPostBtn" onclick="saveInvoice('post')">Save &amp; Post to GL</button>
+      <button class="btn btn-warning" id="invSaveBtn" onclick="saveInvoice('save')">Save</button>
+      <button class="btn btn-primary" id="invSaveNewBtn" onclick="saveInvoice('saveNew')">Save &amp; New</button>
     </div>
   </div>
 </div>
@@ -595,6 +599,8 @@ function openInvoiceModal(inv) {
     addInvLine();
   }
   updateInvTotals();
+  const msgEl = document.getElementById('invSuccessMsg');
+  if (msgEl) msgEl.style.display = 'none';
   document.getElementById('modalInvoice').classList.add('show');
 }
 
@@ -684,7 +690,7 @@ function updateInvTotals() {
 }
 
 async function saveInvoice(mode) {
-  const invId       = document.getElementById('editInvId').value;
+  const invId        = document.getElementById('editInvId').value;
   const customerName = document.getElementById('invCustomerName').value.trim();
   const invoiceDate  = document.getElementById('invDate').value;
   if (!customerName) { alert('Customer name is required'); return; }
@@ -705,7 +711,7 @@ async function saveInvoice(mode) {
     notes:         document.getElementById('invNotes').value || null,
   };
 
-  const btn = document.getElementById(mode === 'post' ? 'invPostBtn' : 'invSaveDraftBtn');
+  const btn = document.getElementById(mode === 'saveNew' ? 'invSaveNewBtn' : 'invSaveBtn');
   btn.disabled = true;
   btn.textContent = 'Saving…';
 
@@ -721,20 +727,28 @@ async function saveInvoice(mode) {
       invoiceId = r.data.invoice?.id;
     }
 
-    if (mode === 'post' && invoiceId) {
-      const pr = await apiPost(`${BASE}/${invoiceId}/post`, {});
-      if (!pr.ok) throw new Error(pr.data.error || 'GL posting failed');
-      alert(`Invoice posted to General Ledger.\nJournal ID: ${pr.data.journalId}`);
-    }
-
-    closeModal('modalInvoice');
     await loadInvoices();
+
+    if (mode === 'saveNew') {
+      openInvoiceModal();
+      showInvSuccess();
+      document.getElementById('invCustomerName').focus();
+    } else {
+      closeModal('modalInvoice');
+    }
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = mode === 'post' ? 'Save & Post to GL' : 'Save Draft';
+    btn.textContent = mode === 'saveNew' ? 'Save & New' : 'Save';
   }
+}
+
+function showInvSuccess() {
+  const el = document.getElementById('invSuccessMsg');
+  if (!el) return;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
 async function postInvoice(id) {
