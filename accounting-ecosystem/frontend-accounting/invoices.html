@@ -124,6 +124,17 @@
     /* ── Invoice modal success message ───────────────────────────────── */
     .inv-success-msg { flex: 1; font-size: 13px; color: #34d058; display: none; }
 
+    /* ── Customer typeahead ───────────────────────────────────────────── */
+    .cust-wrap     { position: relative; }
+    .cust-dropdown { position: fixed; z-index: 9000; background: #1e1b3a; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; max-height: 220px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; }
+    .cust-item     { padding: 9px 14px; cursor: pointer; font-size: 13px; color: rgba(255,255,255,0.85); border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .cust-item:last-child { border-bottom: none; }
+    .cust-item:hover,
+    .cust-item.focused { background: rgba(245,158,11,0.12); color: #fbbf24; }
+    .cust-no-results { padding: 10px 14px; font-size: 12px; color: rgba(255,255,255,0.4); font-style: italic; }
+    .cust-warn     { font-size: 11px; color: #fbbf24; margin-top: 5px; display: none; }
+    .cust-invalid  { border-color: rgba(245,158,11,0.5) !important; }
+
     /* ── Payment alloc ────────────────────────────────────────────────── */
     .open-inv-row    { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; }
     .open-inv-row:last-child { border-bottom: none; }
@@ -244,8 +255,11 @@
       <div class="form-row-3">
         <div class="form-group">
           <label>Customer *</label>
-          <input type="text" id="invCustomerName" placeholder="Customer name" list="customerSuggestions">
-          <datalist id="customerSuggestions"></datalist>
+          <div class="cust-wrap">
+            <input type="text" id="invCustomerName" placeholder="Type to search customers…" autocomplete="off">
+            <input type="hidden" id="invCustomerId">
+          </div>
+          <span id="invCustWarn" class="cust-warn">Select a customer from the list</span>
         </div>
         <div class="form-group">
           <label>Invoice Number</label>
@@ -384,10 +398,14 @@
 // ═══════════════════════════════════════════════════════
 
 const BASE = '/api/accounting/customer-invoices';
-let allInvoices  = [];
+let allInvoices     = [];
 let cachedAccounts  = [];
 let cachedCustomers = [];
-let openInvCache = [];
+let openInvCache    = [];
+
+// ── Customer typeahead state ────────────────────────────────────────────────
+let _invCustomerSelected = false;  // true only when user picked from dropdown
+let _custFocusIdx        = -1;     // keyboard highlight index
 
 function authH() {
   return {
@@ -427,7 +445,124 @@ async function init() {
   ['invDate','invDueDate'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = today; });
   document.getElementById('payDate').value = today;
   await Promise.all([loadInvoices(), loadCustomers(), loadAccounts(), loadBankAccounts()]);
+  initCustTypeahead();
   addInvLine();
+}
+
+// ═══════════════════════════════════════════════════════
+//  CUSTOMER TYPEAHEAD
+// ═══════════════════════════════════════════════════════
+
+function initCustTypeahead() {
+  const inp = document.getElementById('invCustomerName');
+  if (!inp) return;
+
+  // Dropdown lives on <body> — position:fixed is never clipped by modal overflow
+  let drop = document.getElementById('invCustDrop');
+  if (!drop) {
+    drop = document.createElement('div');
+    drop.id = 'invCustDrop';
+    drop.className = 'cust-dropdown';
+    document.body.appendChild(drop);
+  }
+
+  inp.addEventListener('input', () => {
+    _invCustomerSelected = false;
+    document.getElementById('invCustomerId').value = '';
+    inp.classList.add('cust-invalid');
+    const warn = document.getElementById('invCustWarn');
+    if (warn) warn.style.display = inp.value.trim() ? 'block' : 'none';
+    renderCustDrop(inp.value.trim());
+  });
+
+  inp.addEventListener('focus', () => {
+    renderCustDrop(inp.value.trim());
+  });
+
+  inp.addEventListener('keydown', e => {
+    const d = document.getElementById('invCustDrop');
+    if (!d || d.style.display === 'none') return;
+    const items = d.querySelectorAll('.cust-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      _custFocusIdx = Math.min(_custFocusIdx + 1, items.length - 1);
+      updateCustFocus(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      _custFocusIdx = Math.max(_custFocusIdx - 1, 0);
+      updateCustFocus(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const focused = d.querySelector('.cust-item.focused');
+      if (focused) selectCustEl(focused);
+    } else if (e.key === 'Escape') {
+      closeCustDrop();
+    }
+  });
+
+  // Close when clicking outside the input or dropdown
+  document.addEventListener('mousedown', e => {
+    const d = document.getElementById('invCustDrop');
+    if (d && !inp.contains(e.target) && !d.contains(e.target)) closeCustDrop();
+  }, true);
+}
+
+function renderCustDrop(query) {
+  const inp  = document.getElementById('invCustomerName');
+  const drop = document.getElementById('invCustDrop');
+  if (!drop || !inp) return;
+  // Only show when the invoice modal is open
+  if (!document.getElementById('modalInvoice').classList.contains('show')) return;
+
+  _custFocusIdx = -1;
+  const q = (query || '').toLowerCase();
+  const matches = q.length === 0
+    ? cachedCustomers.slice(0, 8)
+    : cachedCustomers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 10);
+
+  if (!matches.length) {
+    drop.innerHTML = '<div class="cust-no-results">No customers found</div>';
+  } else {
+    drop.innerHTML = matches.map(c => {
+      const badge = c.source === 'pos'
+        ? `<span style="font-size:10px;opacity:0.4;margin-left:6px;">POS</span>`
+        : '';
+      return `<div class="cust-item"
+                   data-id="${c.id != null ? c.id : ''}"
+                   data-name="${esc(c.name)}"
+                   onmousedown="selectCustEl(this)">${esc(c.name)}${badge}</div>`;
+    }).join('');
+  }
+
+  // Position flush below the input using viewport-relative coords
+  const rect = inp.getBoundingClientRect();
+  drop.style.top   = (rect.bottom + 2) + 'px';
+  drop.style.left  = rect.left + 'px';
+  drop.style.width = rect.width + 'px';
+  drop.style.display = 'block';
+}
+
+function updateCustFocus(items) {
+  items.forEach((el, i) => el.classList.toggle('focused', i === _custFocusIdx));
+}
+
+function selectCustEl(el) {
+  const name = el.dataset.name;
+  const id   = el.dataset.id;
+  const inp  = document.getElementById('invCustomerName');
+  const warn = document.getElementById('invCustWarn');
+  inp.value  = name;
+  document.getElementById('invCustomerId').value = id || '';
+  _invCustomerSelected = true;
+  inp.classList.remove('cust-invalid');
+  if (warn) warn.style.display = 'none';
+  closeCustDrop();
+}
+
+function closeCustDrop() {
+  const drop = document.getElementById('invCustDrop');
+  if (drop) drop.style.display = 'none';
+  _custFocusIdx = -1;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -581,14 +716,20 @@ async function loadPayments() {
 // ═══════════════════════════════════════════════════════
 
 function openInvoiceModal(inv) {
-  document.getElementById('editInvId').value         = inv ? inv.id : '';
-  document.getElementById('invModalTitle').textContent = inv ? 'Edit Invoice' : 'New Invoice';
-  document.getElementById('invCustomerName').value   = inv ? inv.customer_name : '';
-  document.getElementById('invNumber').value         = inv ? inv.invoice_number : '';
-  document.getElementById('invRef').value            = inv ? (inv.reference || '') : '';
-  document.getElementById('invDate').value           = inv ? inv.invoice_date?.split('T')[0] : new Date().toISOString().split('T')[0];
-  document.getElementById('invDueDate').value        = inv ? (inv.due_date?.split('T')[0] || '') : '';
-  document.getElementById('invNotes').value          = inv ? (inv.notes || '') : '';
+  document.getElementById('editInvId').value          = inv ? inv.id : '';
+  document.getElementById('invModalTitle').textContent  = inv ? 'Edit Invoice' : 'New Invoice';
+  document.getElementById('invCustomerName').value    = inv ? inv.customer_name : '';
+  document.getElementById('invCustomerId').value      = inv ? (inv.customer_id || '') : '';
+  document.getElementById('invCustomerName').classList.remove('cust-invalid');
+  const _warnEl = document.getElementById('invCustWarn');
+  if (_warnEl) _warnEl.style.display = 'none';
+  _invCustomerSelected = !!inv;  // editing an existing invoice = customer already valid
+  closeCustDrop();
+  document.getElementById('invNumber').value          = inv ? inv.invoice_number : '';
+  document.getElementById('invRef').value             = inv ? (inv.reference || '') : '';
+  document.getElementById('invDate').value            = inv ? inv.invoice_date?.split('T')[0] : new Date().toISOString().split('T')[0];
+  document.getElementById('invDueDate').value         = inv ? (inv.due_date?.split('T')[0] || '') : '';
+  document.getElementById('invNotes').value           = inv ? (inv.notes || '') : '';
 
   document.querySelector('input[name="invVatMode"][value="exclusive"]').checked = true;
 
@@ -693,15 +834,21 @@ async function saveInvoice(mode) {
   const invId        = document.getElementById('editInvId').value;
   const customerName = document.getElementById('invCustomerName').value.trim();
   const invoiceDate  = document.getElementById('invDate').value;
-  if (!customerName) { alert('Customer name is required'); return; }
-  if (!invoiceDate)  { alert('Invoice date is required'); return; }
+  if (!_invCustomerSelected || !customerName) {
+    alert('Please select a customer from the list.');
+    document.getElementById('invCustomerName').focus();
+    return;
+  }
+  if (!invoiceDate) { alert('Invoice date is required'); return; }
 
   const lines = collectLines();
   if (!lines.length) { alert('Add at least one line item'); return; }
 
-  const inclusive = document.querySelector('input[name="invVatMode"]:checked')?.value === 'inclusive';
+  const inclusive   = document.querySelector('input[name="invVatMode"]:checked')?.value === 'inclusive';
+  const custIdRaw   = document.getElementById('invCustomerId').value;
   const payload = {
     customerName,
+    customerId:    custIdRaw ? parseInt(custIdRaw) : null,
     invoiceNumber: document.getElementById('invNumber').value || null,
     reference:     document.getElementById('invRef').value || null,
     invoiceDate,
