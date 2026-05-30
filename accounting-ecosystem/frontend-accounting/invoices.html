@@ -407,6 +407,13 @@ let openInvCache    = [];
 let _invCustomerSelected = false;  // true only when user picked from dropdown
 let _custFocusIdx        = -1;     // keyboard highlight index
 
+// ── Payment idempotency ─────────────────────────────────────────────────────
+// UUID generated in-memory when the payment modal opens. The same key is
+// reused on retry so the backend recognises a duplicate and returns the
+// existing result. Cleared on modal close or successful save.
+// Never stored in localStorage — in-memory only.
+let _custPaymentKey = null;
+
 function authH() {
   return {
     'Authorization': 'Bearer ' + (localStorage.getItem('token') || ''),
@@ -924,6 +931,7 @@ async function voidInvoice(id) {
 // ═══════════════════════════════════════════════════════
 
 function openPaymentModal() {
+  _custPaymentKey = crypto.randomUUID();  // new key per modal open — same key on retry
   document.getElementById('payCustomer').value    = '';
   document.getElementById('payAmount').value      = '';
   document.getElementById('payRef').value         = '';
@@ -1004,6 +1012,7 @@ async function submitPayment() {
     bankLedgerAccountId: parseInt(bankLedgerAccountId),
     notes:             document.getElementById('payNotes').value || null,
     allocations,
+    idempotencyKey:    _custPaymentKey,
   };
 
   const btn = document.getElementById('paySubmitBtn');
@@ -1024,11 +1033,16 @@ async function submitPayment() {
 
 function closeModal(id) {
   document.getElementById(id)?.classList.remove('show');
+  // Clear the payment idempotency key so the next open generates a fresh one
+  if (id === 'modalPayment') _custPaymentKey = null;
 }
 
 // Close modals on outside click
 document.addEventListener('click', e => {
-  if (e.target.classList.contains('modal')) e.target.classList.remove('show');
+  if (e.target.classList.contains('modal')) {
+    if (e.target.id === 'modalPayment') _custPaymentKey = null;
+    e.target.classList.remove('show');
+  }
 });
 
 // ═══════════════════════════════════════════════════════

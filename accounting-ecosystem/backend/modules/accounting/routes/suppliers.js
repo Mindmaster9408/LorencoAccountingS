@@ -1335,7 +1335,7 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
   const companyId = req.companyId;
   const {
     supplierId, paymentDate, paymentMethod, reference, amount, notes,
-    allocations, bankLedgerAccountId,
+    allocations, bankLedgerAccountId, idempotencyKey,
   } = req.body;
 
   if (!supplierId)  return res.status(400).json({ error: 'Supplier is required' });
@@ -1349,6 +1349,21 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
   const reqUserId     = req.user && req.user.userId ? req.user.userId : null;
 
   try {
+    // ── Step 0: Idempotency pre-check ────────────────────────────────────────
+    // Fast path: if this key was already committed, return the existing payment
+    // without touching GL. Handles sequential retries and slow-network replays.
+    if (idempotencyKey) {
+      const { data: existingPay } = await supabase
+        .from('supplier_payments')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+      if (existingPay) {
+        return res.status(200).json({ payment: existingPay, idempotentReplay: true });
+      }
+    }
+
     // ── Step 1: Verify supplier belongs to company ───────────────────────────
     const { data: supRow, error: supErr } = await supabase
       .from('suppliers')
@@ -1442,12 +1457,30 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
         bank_ledger_account_id: parseInt(bankLedgerAccountId),
         created_by_user_id:     reqUserId,
         journal_id:             glJournal.id,
+        idempotency_key:        idempotencyKey || null,
       })
       .select()
       .single();
 
     if (payErr) {
-      // GL posted but payment row failed — reverse journal to keep GL clean.
+      // Handle idempotency key conflict: a concurrent request already committed
+      // this payment. Reverse the duplicate GL journal we just posted and return
+      // the winning payment record.
+      if (idempotencyKey && payErr.code === '23505') {
+        await JournalService.reverseJournal(glJournal.id, companyId, reqUserId).catch(rErr => {
+          console.error(`[Suppliers] IDEMPOTENCY: journal ${glJournal.id} reversed for concurrent duplicate key ${idempotencyKey}:`, rErr.message);
+        });
+        const { data: winnerPay } = await supabase
+          .from('supplier_payments')
+          .select('*')
+          .eq('company_id', companyId)
+          .eq('idempotency_key', idempotencyKey)
+          .maybeSingle();
+        if (winnerPay) {
+          return res.status(200).json({ payment: winnerPay, idempotentReplay: true });
+        }
+      }
+      // GL posted but payment row failed for a non-idempotency reason — reverse journal.
       await JournalService.reverseJournal(glJournal.id, companyId, reqUserId).catch(rErr => {
         console.error(`[Suppliers] CRITICAL: journal ${glJournal.id} posted but payment insert failed AND reversal failed:`, rErr.message);
       });

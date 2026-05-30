@@ -758,6 +758,11 @@
 const BASE = '/api/accounting/suppliers';
 let cachedAccounts = [];
 
+// ── Payment idempotency ─────────────────────────────────────────────────────
+// UUID generated in-memory when the payment modal opens. Same key on retry.
+// Cleared on modal close or successful save. Never stored in localStorage.
+let _supPaymentKey = null;
+
 function authH() {
   return {
     'Authorization': 'Bearer ' + (localStorage.getItem('token') || ''),
@@ -1447,6 +1452,7 @@ async function savePO() {
 let openInvCache = [];
 
 async function openNewPaymentModal(supplierId) {
+  _supPaymentKey = crypto.randomUUID();  // new key per modal open — same key on retry
   document.getElementById('paySupplier').value = supplierId || '';
   document.getElementById('payAmount').value   = '';
   document.getElementById('payRef').value      = '';
@@ -1552,6 +1558,7 @@ async function savePayment() {
     notes:                document.getElementById('payNotes').value,
     allocations,
     bankLedgerAccountId:  document.getElementById('payBankAccount')?.value || null,
+    idempotencyKey:       _supPaymentKey,
   };
 
   const btn = document.getElementById('savePaymentBtn');
@@ -1559,7 +1566,7 @@ async function savePayment() {
   const data = await apiPost(`${BASE}/payments`, payload);
   btn.disabled = false; btn.textContent = 'Record Payment';
   if (data?.error) { alert('Error: ' + data.error); return; }
-  closeModal('modalPayment');
+  closeModal('modalPayment');  // also clears _supPaymentKey
   await Promise.all([loadStats(), loadPayments(), loadInvoices()]);
 }
 
@@ -1569,6 +1576,7 @@ async function savePayment() {
 
 function closeModal(id) {
   document.getElementById(id)?.classList.remove('show');
+  if (id === 'modalPayment') _supPaymentKey = null;
 }
 
 function fmtR(n) {
