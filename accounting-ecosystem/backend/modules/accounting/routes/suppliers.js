@@ -1454,37 +1454,79 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
       throw new Error(payErr.message);
     }
 
-    // ── Step 7: Apply allocations to invoices ────────────────────────────────
+    // ── Step 7: Apply allocations atomically under row-level locks ─────────────
+    // Uses SELECT FOR UPDATE to serialize concurrent allocation writes on the
+    // same invoice row. All allocations for this payment commit as one unit —
+    // no partial states, no stale-read balance corruption.
+    //
+    // Why here and not in Step 4: Step 4 is a fast pre-check. Step 7 is the
+    // authoritative check — the balance is validated inside the lock so two
+    // concurrent payments cannot both pass Step 4 and then both over-allocate.
     if (allocations && allocations.length) {
-      for (const alloc of allocations) {
-        if (!alloc.invoiceId || !alloc.amount) continue;
+      const allocClient = await db.getClient();
+      try {
+        await allocClient.query('BEGIN');
 
-        const { error: allocErr } = await supabase
-          .from('supplier_payment_allocations')
-          .insert({
-            payment_id: payment.id,
-            invoice_id: parseInt(alloc.invoiceId),
-            amount:     parseFloat(alloc.amount),
-          });
-        if (allocErr) throw new Error(allocErr.message);
+        for (const alloc of allocations) {
+          if (!alloc.invoiceId || !alloc.amount) continue;
 
-        const { data: invRow, error: invFetchErr } = await supabase
-          .from('supplier_invoices')
-          .select('total_inc_vat, amount_paid')
-          .eq('id', parseInt(alloc.invoiceId))
-          .eq('company_id', companyId)
-          .maybeSingle();
-        if (invFetchErr) throw new Error(invFetchErr.message);
-        if (invRow) {
-          const newAmountPaid = parseFloat(invRow.amount_paid) + parseFloat(alloc.amount);
-          const newStatus = invoiceStatus(invRow.total_inc_vat, newAmountPaid);
-          const { error: invUpdErr } = await supabase
-            .from('supplier_invoices')
-            .update({ amount_paid: newAmountPaid, status: newStatus, updated_at: new Date().toISOString() })
-            .eq('id', parseInt(alloc.invoiceId))
-            .eq('company_id', companyId);
-          if (invUpdErr) throw new Error(invUpdErr.message);
+          const allocAmount    = parseFloat(alloc.amount);
+          const allocInvoiceId = parseInt(alloc.invoiceId);
+
+          // Lock the invoice row — no other transaction can update amount_paid
+          // for this invoice until this transaction commits or rolls back.
+          const { rows: lockRows } = await allocClient.query(
+            `SELECT id, amount_paid, total_inc_vat
+             FROM supplier_invoices
+             WHERE id = $1 AND company_id = $2
+             FOR UPDATE`,
+            [allocInvoiceId, companyId]
+          );
+          if (!lockRows.length) {
+            await allocClient.query('ROLLBACK');
+            return res.status(422).json({ error: `Supplier invoice ${allocInvoiceId} not found — allocation aborted.` });
+          }
+
+          const inv               = lockRows[0];
+          const currentAmountPaid = parseFloat(inv.amount_paid || 0);
+          const newAmountPaid     = Math.round((currentAmountPaid + allocAmount) * 100) / 100;
+          const totalIncVat       = parseFloat(inv.total_inc_vat);
+
+          // Authoritative overpayment guard — checked with locked, current data.
+          if (newAmountPaid > totalIncVat + 0.015) {
+            await allocClient.query('ROLLBACK');
+            const remaining = Math.round((totalIncVat - currentAmountPaid) * 100) / 100;
+            return res.status(422).json({
+              error: `Allocation of ${allocAmount.toFixed(2)} would exceed the outstanding balance of ${remaining.toFixed(2)} on invoice ${allocInvoiceId}. A concurrent payment may have already been applied.`,
+              errorCode: 'ALLOCATION_OVERPAYMENT',
+            });
+          }
+
+          const newStatus = invoiceStatus(totalIncVat, newAmountPaid);
+
+          await allocClient.query(
+            `UPDATE supplier_invoices
+             SET amount_paid = $1, status = $2, updated_at = NOW()
+             WHERE id = $3 AND company_id = $4`,
+            [newAmountPaid, newStatus, allocInvoiceId, companyId]
+          );
+
+          // Idempotent insert: ON CONFLICT replaces amount so a replayed
+          // request does not create a duplicate allocation row.
+          await allocClient.query(
+            `INSERT INTO supplier_payment_allocations (payment_id, invoice_id, amount)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (payment_id, invoice_id) DO UPDATE SET amount = EXCLUDED.amount`,
+            [payment.id, allocInvoiceId, allocAmount]
+          );
         }
+
+        await allocClient.query('COMMIT');
+      } catch (allocTxErr) {
+        await allocClient.query('ROLLBACK');
+        throw allocTxErr;
+      } finally {
+        allocClient.release();
       }
     }
 
