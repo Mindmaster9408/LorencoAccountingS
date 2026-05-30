@@ -880,6 +880,101 @@ router.post('/bank-learning/proposals/:id/reject', requireSuperAdmin, async (req
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PAYTIME MODULE — Aggregation endpoints for the Sean Paytime UI
+//
+// These are lightweight company-scoped read endpoints that feed the
+// Paytime module's Pending Review, Approved Knowledge, and Audit sections.
+// No governance logic lives here — this is data aggregation only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/sean/paytime/pending-review
+ * All Paytime-sourced items from sean_transaction_store for the current company.
+ * No super-admin required — scoped to the authenticated company.
+ *
+ * Query params:
+ *   status     — 'pending' | 'approved' | 'discarded' | (blank = all)
+ *   entityType — 'payroll_item' | 'paytime_learning' | (blank = all Paytime)
+ *   limit      — max rows (default 100, max 500)
+ */
+router.get('/paytime/pending-review', async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    const { status, entityType, limit } = req.query;
+    const maxLimit = Math.min(parseInt(limit) || 100, 500);
+
+    let q = supabaseDb
+      .from('sean_transaction_store')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('source_app', 'paytime')
+      .order('submitted_at', { ascending: false })
+      .limit(maxLimit);
+
+    if (status)     q = q.eq('status', status);
+    if (entityType) q = q.eq('entity_type', entityType);
+
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+
+    res.json({ count: data?.length || 0, items: data || [] });
+  } catch (err) {
+    console.error('[SEAN paytime/pending-review] Error:', err.message);
+    res.status(500).json({ error: 'Failed to load Paytime pending review: ' + err.message });
+  }
+});
+
+/**
+ * GET /api/sean/paytime/approved-knowledge
+ * Approved global library entries for Paytime entity types.
+ * Returns all entity types: payroll_item, paytime_learning.
+ * No super-admin required — library is read-only global data.
+ */
+router.get('/paytime/approved-knowledge', async (req, res) => {
+  try {
+    const { data, error } = await supabaseDb
+      .from('sean_global_library')
+      .select('*')
+      .in('entity_type', ['payroll_item', 'paytime_learning'])
+      .order('item_name');
+
+    if (error) throw new Error(error.message);
+    res.json({ count: data?.length || 0, items: data || [] });
+  } catch (err) {
+    console.error('[SEAN paytime/approved-knowledge] Error:', err.message);
+    res.status(500).json({ error: 'Failed to load approved knowledge: ' + err.message });
+  }
+});
+
+/**
+ * GET /api/sean/paytime/audit
+ * Sync log entries scoped to the current company, ordered newest first.
+ * Read-only. No super-admin required for company's own audit trail.
+ *
+ * Query params:
+ *   limit — max rows (default 100, max 500)
+ */
+router.get('/paytime/audit', async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    const maxLimit  = Math.min(parseInt(req.query.limit) || 100, 500);
+
+    const { data, error } = await supabaseDb
+      .from('sean_sync_log')
+      .select('id, target_company_id, action, field_written, value_written, previous_value, authorized_by, notes, created_at')
+      .eq('target_company_id', companyId)
+      .order('created_at', { ascending: false })
+      .limit(maxLimit);
+
+    if (error) throw new Error(error.message);
+    res.json({ count: data?.length || 0, log: data || [] });
+  } catch (err) {
+    console.error('[SEAN paytime/audit] Error:', err.message);
+    res.status(500).json({ error: 'Failed to load audit history: ' + err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TEACH SEAN — Paytime Learning Proposals
 //
 // GOVERNANCE (CLAUDE.md Part B — Rules B1–B9):

@@ -218,6 +218,50 @@
             .nav-tab { padding: 12px 14px; font-size: 0.8rem; }
         }
 
+        /* ─── Paytime Module ────────────────────────────────────── */
+        .paytime-module-header { margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+        .paytime-module-header h2 { font-size:1.2rem; margin:0 0 4px; color:var(--primary-dark); display:flex; align-items:center; gap:8px; }
+        .paytime-module-header p  { font-size:0.83rem; color:var(--text-muted); margin:0; }
+        .paytime-subnav { display:flex; gap:0; margin-bottom:20px; background:white; border:1px solid var(--border); border-radius:10px; overflow:hidden; flex-wrap:wrap; }
+        .pt-nav-btn {
+            flex:1; padding:11px 12px; font-size:0.83rem; font-weight:500; color:var(--text-muted);
+            border:none; background:none; cursor:pointer; border-right:1px solid var(--border);
+            transition:all 0.15s; white-space:nowrap; min-width:90px;
+        }
+        .pt-nav-btn:last-child { border-right:none; }
+        .pt-nav-btn:hover  { background:var(--primary-light); color:var(--primary-dark); }
+        .pt-nav-btn.active { background:var(--primary); color:white; font-weight:600; }
+        .pt-badge {
+            display:inline-block; padding:1px 6px; border-radius:10px; font-size:0.68rem;
+            font-weight:700; margin-left:4px; vertical-align:middle;
+            background:var(--primary-light); color:var(--primary-dark);
+        }
+        .pt-nav-btn.active .pt-badge { background:rgba(255,255,255,0.25); color:white; }
+        .pt-section { display:none; }
+        .pt-section.active { display:block; }
+        .pt-suggest-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; margin-bottom:16px; }
+        .pt-suggest-card {
+            background:white; border:1px solid var(--border); border-radius:10px;
+            padding:12px 14px; font-size:0.82rem; cursor:pointer; transition:all 0.15s; color:var(--text);
+        }
+        .pt-suggest-card:hover { border-color:var(--primary); background:var(--primary-light); color:var(--primary-dark); box-shadow:0 2px 8px rgba(16,185,129,0.12); }
+        .pt-suggest-card .pt-suggest-icon { font-size:1.2rem; margin-bottom:4px; }
+        .pt-context-badge { display:inline-block; padding:4px 12px; border-radius:20px; font-size:0.73rem; font-weight:700; background:var(--primary-light); color:var(--primary-dark); margin-bottom:12px; letter-spacing:0.03em; }
+        .pt-stat-row { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+        .pt-stat-pill { padding:8px 16px; border-radius:8px; text-align:center; flex:1; min-width:80px; font-size:0.82rem; }
+        .pt-status-filter { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+        .pt-status-btn { padding:5px 14px; border:1px solid var(--border); border-radius:20px; background:white; font-size:0.8rem; cursor:pointer; transition:all 0.15s; }
+        .pt-status-btn.active { background:var(--primary); color:white; border-color:var(--primary); }
+        .pt-audit-row { padding:10px 12px; border-left:3px solid var(--border); margin-bottom:8px; background:#f8fafc; border-radius:0 6px 6px 0; font-size:0.82rem; }
+        .pt-audit-row.action-create { border-left-color:var(--primary); }
+        .pt-audit-row.action-approve { border-left-color:#10b981; }
+        .pt-audit-row.action-draft { border-left-color:#f59e0b; }
+        .pt-audit-row.action-discard { border-left-color:#ef4444; }
+        .pt-search-row { display:flex; gap:8px; margin-bottom:14px; }
+        .pt-search-row input { flex:1; padding:9px 12px; border:2px solid var(--border); border-radius:8px; font-size:0.9rem; }
+        .pt-approved-card { padding:14px; border:1px solid var(--border); border-radius:8px; margin-bottom:10px; }
+        .pt-approved-card:hover { border-color:var(--primary); }
+
         /* ─── Teach Paytime ─────────────────────────────────────── */
         .teach-step { display: none; }
         .teach-step.active { display: block; }
@@ -299,12 +343,11 @@
     <div class="nav-tabs">
         <button class="nav-tab active" data-tab="dashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
         <button class="nav-tab" data-tab="chat" onclick="switchTab('chat')">💬 Chat</button>
-        <button class="nav-tab" data-tab="transactions" onclick="switchTab('transactions')">🏦 Transactions</button>
+        <button class="nav-tab" data-tab="paytime" onclick="switchTab('paytime')">💼 Paytime</button>
         <button class="nav-tab" data-tab="calculator" onclick="switchTab('calculator')">🧮 Calculator</button>
         <button class="nav-tab" data-tab="knowledge" onclick="switchTab('knowledge')">📚 Codex</button>
         <button class="nav-tab" data-tab="categories" onclick="switchTab('categories')">🏷️ Categories</button>
         <button class="nav-tab" data-tab="coaching" onclick="switchTab('coaching')">🧘 Coaching</button>
-        <button class="nav-tab" data-tab="teach" onclick="switchTab('teach')">📝 Teach Paytime</button>
     </div>
 
     <div class="content">
@@ -322,9 +365,9 @@
                 <h3>⚡ Quick Actions</h3>
                 <div style="display:flex;gap:12px;flex-wrap:wrap;">
                     <button class="btn btn-outline btn-sm" onclick="switchTab('chat')">💬 Ask SEAN</button>
-                    <button class="btn btn-outline btn-sm" onclick="switchTab('transactions')">🏦 View Transactions</button>
+                    <button class="btn btn-outline btn-sm" onclick="switchTab('paytime')">💼 Paytime</button>
                     <button class="btn btn-outline btn-sm" onclick="switchTab('calculator')">🧮 Tax Calculator</button>
-                    <button class="btn btn-outline btn-sm" onclick="promptTeach()">📝 Teach SEAN</button>
+                    <button class="btn btn-outline btn-sm" onclick="switchPaytimeAndTeach()">📝 Teach Paytime</button>
                 </div>
             </div>
         </div>
@@ -352,8 +395,8 @@
             </div>
         </div>
 
-        <!-- ═══════ TRANSACTIONS TAB ═══════ -->
-        <div id="tab-transactions" class="tab-content">
+        <!-- ═══════ TRANSACTIONS TAB (hidden — kept for backward-compat JS references) ═══════ -->
+        <div id="tab-transactions" class="tab-content" style="display:none!important;">
 
             <!-- Learning Sources layout: left panel + right content -->
             <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start;">
@@ -629,137 +672,273 @@
 
         </div><!-- /tab-coaching -->
 
-        <!-- ═══════ TEACH PAYTIME TAB ═══════ -->
+        <!-- ═══════ PAYTIME MODULE ═══════ -->
         <!--
             GOVERNANCE (CLAUDE.md Part B — Rules B1–B9):
-            This flow creates PENDING proposals only.
-            It does NOT approve, does NOT sync, does NOT mutate Paytime data.
-            Approval and sync are separate super-admin actions in the Transactions tab.
+            Teach creates PENDING proposals only.
+            Approve & Sync is a separate, explicitly confirmed super-admin action.
+            No Paytime data is mutated by any action in this module except after approval.
         -->
-        <div id="tab-teach" class="tab-content">
+        <div id="tab-paytime" class="tab-content">
 
-            <!-- Step indicator -->
-            <div class="teach-step-indicator">
-                <div id="teachPill1" class="teach-step-pill active">1 · Paste Knowledge</div>
-                <div id="teachPill2" class="teach-step-pill">2 · Review Preview</div>
-                <div id="teachPill3" class="teach-step-pill">3 · Proposals Created</div>
+            <!-- Module header -->
+            <div class="paytime-module-header">
+                <h2>💼 Paytime Intelligence</h2>
+                <p>Sean's payroll learning, governance, and knowledge centre — all in one place.</p>
             </div>
 
-            <!-- ── Step 1: Input ── -->
-            <div id="teachStep1" class="teach-step active">
-                <div class="card">
-                    <h3 style="margin-bottom:8px;">📝 Teach Sean — Paytime Payroll Knowledge</h3>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">
-                        Paste a list of payroll items with their IRP5 codes. Sean will parse the input,
-                        show you a preview, and then create <strong>pending learning proposals</strong>
-                        in the Transactions queue. Nothing is approved or synced until you explicitly do so.
-                    </p>
+            <!-- Sub-navigation -->
+            <div class="paytime-subnav">
+                <button class="pt-nav-btn active" data-section="assistant" onclick="switchPaytimeSection('assistant')">🤖 Assistant</button>
+                <button class="pt-nav-btn" data-section="teach"     onclick="switchPaytimeSection('teach')">📝 Teach</button>
+                <button class="pt-nav-btn" data-section="review"    onclick="switchPaytimeSection('review')">⏳ Pending Review <span class="pt-badge" id="ptPendingBadge"></span></button>
+                <button class="pt-nav-btn" data-section="approved"  onclick="switchPaytimeSection('approved')">✅ Approved</button>
+                <button class="pt-nav-btn" data-section="audit"     onclick="switchPaytimeSection('audit')">📋 Audit History</button>
+            </div>
 
-                    <div style="background:#e0e7ff;border:1px solid #818cf8;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:0.82rem;color:#3730a3;">
-                        <strong>Supported formats:</strong><br>
-                        <strong>CSV:</strong> <code>Item Name, IRP5 Code</code> — one row per item<br>
-                        <strong>Table:</strong> <code>Item Name | IRP5 Code | Taxable | UIF</code><br>
-                        <strong>Bullet/text:</strong> <code>- Commission uses IRP5 3606 and is taxable.</code>
+            <!-- ══ SECTION 1: ASSISTANT ══════════════════════════════════════ -->
+            <div id="pt-assistant" class="pt-section active">
+
+                <div class="pt-context-badge">Sean Paytime Assistant</div>
+
+                <!-- Suggested prompt cards -->
+                <div class="pt-suggest-grid">
+                    <div class="pt-suggest-card" onclick="ptAssistantPrompt('What IRP5 code should commission use?')">
+                        <div class="pt-suggest-icon">💰</div>
+                        What IRP5 code should commission use?
                     </div>
-
-                    <div class="form-group" style="margin-bottom:16px;">
-                        <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px;">
-                            Payroll Knowledge
-                            <span style="font-weight:400;color:var(--text-muted);">(paste CSV, table, or bullet list)</span>
-                        </label>
-                        <textarea id="teachInputText" rows="10"
-                            style="width:100%;padding:12px;border:2px solid var(--border);border-radius:8px;
-                                   font-size:0.88rem;font-family:monospace;resize:vertical;box-sizing:border-box;"
-                            placeholder="Item Name, IRP5 Code&#10;Commission, 3606&#10;Travel Allowance, 3701&#10;Provident Fund, 3801"></textarea>
+                    <div class="pt-suggest-card" onclick="ptAssistantPrompt('Why would a travel allowance be taxable?')">
+                        <div class="pt-suggest-icon">🚗</div>
+                        Why would a travel allowance be taxable?
                     </div>
-
-                    <div id="teachParseStatus" style="display:none;margin-bottom:12px;padding:10px 14px;
-                         background:#f8fafc;border-radius:6px;font-size:0.85rem;color:var(--text-muted);">
-                        Parsing...
+                    <div class="pt-suggest-card" onclick="ptAssistantPrompt('What is the difference between Variable and Average PAYE projection?')">
+                        <div class="pt-suggest-icon">📐</div>
+                        Variable vs Average PAYE projection?
                     </div>
-
-                    <div style="display:flex;gap:8px;justify-content:flex-end;">
-                        <button class="btn btn-outline btn-sm" onclick="clearTeachInput()">Clear</button>
-                        <button class="btn btn-primary btn-sm" style="width:auto;" onclick="parseTeachInput()">
-                            Parse &amp; Preview →
-                        </button>
+                    <div class="pt-suggest-card" onclick="ptAssistantPrompt('How does UIF apply to commission payments?')">
+                        <div class="pt-suggest-icon">🔒</div>
+                        How does UIF apply to commission?
+                    </div>
+                    <div class="pt-suggest-card" onclick="ptAssistantPrompt('What payroll items are included in the gross remuneration for SDL?')">
+                        <div class="pt-suggest-icon">🏦</div>
+                        What is included in gross for SDL?
+                    </div>
+                    <div class="pt-suggest-card" onclick="ptAssistantPrompt('What is the IRP5 code for a provident fund employer contribution?')">
+                        <div class="pt-suggest-icon">📄</div>
+                        IRP5 code for provident fund employer contribution?
                     </div>
                 </div>
-            </div>
 
-            <!-- ── Step 2: Preview ── -->
-            <div id="teachStep2" class="teach-step">
-                <div class="card">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-                        <h3 style="margin:0;">
-                            Review Extracted Items
-                            <span id="teachFormatChip" class="teach-format-chip"></span>
-                        </h3>
-                        <span id="teachItemCount" style="font-size:0.85rem;color:var(--text-muted);"></span>
-                    </div>
-
-                    <div id="teachGlobalWarnings" style="display:none;margin-bottom:12px;"></div>
-
-                    <div class="table-wrap" style="max-height:440px;overflow-y:auto;">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style="width:32px;"></th>
-                                    <th>Item Name</th>
-                                    <th>IRP5 Code</th>
-                                    <th>Taxable</th>
-                                    <th>UIF</th>
-                                    <th>Confidence</th>
-                                    <th>Notes / Warnings</th>
-                                </tr>
-                            </thead>
-                            <tbody id="teachPreviewBody"></tbody>
-                        </table>
-                    </div>
-
-                    <p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;">
-                        Click ✕ to remove a row before creating proposals.
-                        Missing optional fields can be completed later via Edit in the Transactions tab.
-                    </p>
-
-                    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;">
-                        <button class="btn btn-outline btn-sm" onclick="backToTeachStep1()">← Back</button>
-                        <button class="btn btn-outline btn-sm" onclick="cancelTeach()">Cancel</button>
-                        <button class="btn btn-primary btn-sm" style="width:auto;" id="createProposalsBtn"
-                            onclick="confirmCreateProposals()">
-                            ✅ Create Learning Proposals
-                        </button>
+                <!-- Chat panel -->
+                <div class="card" style="padding:0;overflow:hidden;">
+                    <div class="chat-container">
+                        <div class="chat-messages" id="ptAssistantMessages">
+                            <div class="msg msg-sean">
+                                Hi! I'm your <strong>Paytime Assistant</strong>. 💼<br><br>
+                                Ask me anything about:<br>
+                                • <strong>IRP5 codes</strong> — "What code should basic salary use?"<br>
+                                • <strong>Tax treatment</strong> — "Is overtime taxable?"<br>
+                                • <strong>UIF &amp; SDL</strong> — "Does travel allowance affect UIF?"<br>
+                                • <strong>PAYE projections</strong> — "Variable vs Average PAYE?"<br>
+                                • <strong>Payslip items</strong> — "How do deductions affect net pay?"<br><br>
+                                I provide guidance only. To update Paytime mappings, use the <strong>Teach</strong> section.
+                            </div>
+                        </div>
+                        <div class="chat-input">
+                            <input type="text" id="ptAssistantInput" placeholder="Ask a Paytime payroll question..."
+                                   onkeydown="if(event.key==='Enter')sendPaytimeAssistantChat()">
+                            <button onclick="sendPaytimeAssistantChat()">➤</button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </div><!-- /pt-assistant -->
 
-            <!-- ── Step 3: Result ── -->
-            <div id="teachStep3" class="teach-step">
+            <!-- ══ SECTION 2: TEACH ══════════════════════════════════════════ -->
+            <div id="pt-teach" class="pt-section">
+
+                <!-- Step indicator -->
+                <div class="teach-step-indicator">
+                    <div id="teachPill1" class="teach-step-pill active">1 · Paste Knowledge</div>
+                    <div id="teachPill2" class="teach-step-pill">2 · Review Preview</div>
+                    <div id="teachPill3" class="teach-step-pill">3 · Proposals Created</div>
+                </div>
+
+                <!-- Step 1: Input -->
+                <div id="teachStep1" class="teach-step active">
+                    <div class="card">
+                        <h3 style="margin-bottom:8px;">📝 Teach Sean — Paytime Payroll Knowledge</h3>
+                        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">
+                            Paste payroll items with their IRP5 codes. Sean parses the input, shows a preview,
+                            then creates <strong>pending learning proposals</strong> in the review queue.
+                            Nothing is approved or synced until you explicitly do so.
+                        </p>
+                        <div style="background:#e0e7ff;border:1px solid #818cf8;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:0.82rem;color:#3730a3;">
+                            <strong>Supported formats:</strong><br>
+                            <strong>CSV:</strong> <code>Item Name, IRP5 Code</code><br>
+                            <strong>Table:</strong> <code>Item Name | IRP5 Code | Taxable | UIF</code><br>
+                            <strong>Bullet/text:</strong> <code>- Commission uses IRP5 3606 and is taxable.</code>
+                        </div>
+                        <div class="form-group" style="margin-bottom:16px;">
+                            <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px;">
+                                Payroll Knowledge
+                                <span style="font-weight:400;color:var(--text-muted);">(paste CSV, table, or bullet list)</span>
+                            </label>
+                            <textarea id="teachInputText" rows="10"
+                                style="width:100%;padding:12px;border:2px solid var(--border);border-radius:8px;
+                                       font-size:0.88rem;font-family:monospace;resize:vertical;box-sizing:border-box;"
+                                placeholder="Item Name, IRP5 Code&#10;Commission, 3606&#10;Travel Allowance, 3701&#10;Provident Fund, 3801"></textarea>
+                        </div>
+                        <div id="teachParseStatus" style="display:none;margin-bottom:12px;padding:10px 14px;
+                             background:#f8fafc;border-radius:6px;font-size:0.85rem;color:var(--text-muted);">
+                            Parsing...
+                        </div>
+                        <div style="display:flex;gap:8px;justify-content:flex-end;">
+                            <button class="btn btn-outline btn-sm" onclick="clearTeachInput()">Clear</button>
+                            <button class="btn btn-primary btn-sm" style="width:auto;" onclick="parseTeachInput()">
+                                Parse &amp; Preview →
+                            </button>
+                        </div>
+                    </div>
+                </div><!-- /teachStep1 -->
+
+                <!-- Step 2: Preview -->
+                <div id="teachStep2" class="teach-step">
+                    <div class="card">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                            <h3 style="margin:0;">Review Extracted Items <span id="teachFormatChip" class="teach-format-chip"></span></h3>
+                            <span id="teachItemCount" style="font-size:0.85rem;color:var(--text-muted);"></span>
+                        </div>
+                        <div id="teachGlobalWarnings" style="display:none;margin-bottom:12px;"></div>
+                        <div class="table-wrap" style="max-height:440px;overflow-y:auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width:32px;"></th>
+                                        <th>Item Name</th><th>IRP5 Code</th>
+                                        <th>Taxable</th><th>UIF</th>
+                                        <th>Confidence</th><th>Notes / Warnings</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="teachPreviewBody"></tbody>
+                            </table>
+                        </div>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;">
+                            Click ✕ to remove a row before creating proposals.
+                            Missing optional fields can be completed later via Edit in Pending Review.
+                        </p>
+                        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;">
+                            <button class="btn btn-outline btn-sm" onclick="backToTeachStep1()">← Back</button>
+                            <button class="btn btn-outline btn-sm" onclick="cancelTeach()">Cancel</button>
+                            <button class="btn btn-primary btn-sm" style="width:auto;" id="createProposalsBtn"
+                                onclick="confirmCreateProposals()">✅ Create Learning Proposals</button>
+                        </div>
+                    </div>
+                </div><!-- /teachStep2 -->
+
+                <!-- Step 3: Result -->
+                <div id="teachStep3" class="teach-step">
+                    <div class="card">
+                        <div id="teachResultBox" class="teach-result-box" style="margin-bottom:20px;"></div>
+                        <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;
+                                    padding:12px 16px;font-size:0.82rem;color:#4c1d95;margin-bottom:16px;">
+                            ⚠️ <strong>These proposals are pending review.</strong>
+                            They do <em>not</em> change Paytime until a super-admin reviews, edits, and
+                            explicitly approves them in <strong>Pending Review</strong>.
+                        </div>
+                        <div id="teachSkippedDetails" style="display:none;margin-bottom:16px;"></div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button class="btn btn-outline btn-sm" onclick="resetTeachFlow()">Teach More Items</button>
+                            <button class="btn btn-primary btn-sm" style="width:auto;"
+                                onclick="switchPaytimeToReview()">View in Pending Review →</button>
+                        </div>
+                    </div>
+                </div><!-- /teachStep3 -->
+
+            </div><!-- /pt-teach -->
+
+            <!-- ══ SECTION 3: PENDING REVIEW ═════════════════════════════════ -->
+            <div id="pt-review" class="pt-section">
+
                 <div class="card">
-                    <div id="teachResultBox" class="teach-result-box" style="margin-bottom:20px;">
-                        <!-- Populated by confirmCreateProposals() -->
+                    <!-- Header -->
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                        <h3 style="margin:0;">⏳ Pending Review Queue</h3>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <select id="ptEntityFilter" onchange="loadPtPendingReview()"
+                                    style="font-size:0.82rem;padding:4px 8px;border:1px solid var(--border);border-radius:6px;">
+                                <option value="">All Paytime items</option>
+                                <option value="payroll_item">Payroll items (Paytime events)</option>
+                                <option value="paytime_learning">Teach Sean proposals</option>
+                            </select>
+                            <button class="btn btn-outline btn-sm" onclick="loadPtPendingReview()">🔄 Refresh</button>
+                        </div>
                     </div>
 
-                    <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;
-                                padding:12px 16px;font-size:0.82rem;color:#4c1d95;margin-bottom:16px;">
-                        ⚠️ <strong>These proposals are pending review.</strong>
-                        They do <em>not</em> change Paytime until a super-admin reviews, edits, and
-                        explicitly approves them in the <strong>Transactions</strong> tab.
+                    <!-- Status filter pills -->
+                    <div class="pt-status-filter">
+                        <button class="pt-status-btn active" data-status="pending"   onclick="filterPtReview('pending',this)">⏳ Pending</button>
+                        <button class="pt-status-btn"        data-status="approved"  onclick="filterPtReview('approved',this)">✅ Approved</button>
+                        <button class="pt-status-btn"        data-status="discarded" onclick="filterPtReview('discarded',this)">✗ Discarded</button>
+                        <button class="pt-status-btn"        data-status=""          onclick="filterPtReview('',this)">All</button>
                     </div>
 
-                    <div id="teachSkippedDetails" style="display:none;margin-bottom:16px;"></div>
+                    <!-- Stats row -->
+                    <div id="ptReviewStats" class="pt-stat-row" style="display:none;"></div>
 
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button class="btn btn-outline btn-sm" onclick="resetTeachFlow()">Teach More Items</button>
-                        <button class="btn btn-primary btn-sm" style="width:auto;"
-                            onclick="switchTab('transactions')">
-                            View in Transactions →
-                        </button>
+                    <!-- List -->
+                    <div id="ptReviewBody">
+                        <div style="padding:28px;text-align:center;color:var(--text-muted);">Loading…</div>
                     </div>
                 </div>
-            </div>
+            </div><!-- /pt-review -->
 
-        </div><!-- /tab-teach -->
+            <!-- ══ SECTION 4: APPROVED KNOWLEDGE ═════════════════════════════ -->
+            <div id="pt-approved" class="pt-section">
+
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                        <div>
+                            <h3 style="margin:0 0 4px;">🌐 Approved Paytime Knowledge</h3>
+                            <p style="font-size:0.82rem;color:var(--text-muted);margin:0;">
+                                Approved IRP5 mappings and standards.
+                                These sync to Paytime clients where the local value is blank — existing codes are never overwritten.
+                            </p>
+                        </div>
+                        <button class="btn btn-outline btn-sm" onclick="loadPtApprovedKnowledge()">🔄 Refresh</button>
+                    </div>
+
+                    <div class="pt-search-row">
+                        <input type="text" id="ptApprovedSearch"
+                               placeholder="Search by item name or IRP5 code…"
+                               oninput="filterPtApproved(this.value)">
+                    </div>
+
+                    <div id="ptApprovedBody">
+                        <div style="padding:28px;text-align:center;color:var(--text-muted);">Loading…</div>
+                    </div>
+                </div>
+            </div><!-- /pt-approved -->
+
+            <!-- ══ SECTION 5: AUDIT / SYNC HISTORY ═══════════════════════════ -->
+            <div id="pt-audit" class="pt-section">
+
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                        <div>
+                            <h3 style="margin:0 0 4px;">📋 Audit &amp; Sync History</h3>
+                            <p style="font-size:0.82rem;color:var(--text-muted);margin:0;">
+                                A complete, read-only record of what Sean learned, what was approved, what synced, and who acted.
+                            </p>
+                        </div>
+                        <button class="btn btn-outline btn-sm" onclick="loadPtAuditHistory()">🔄 Refresh</button>
+                    </div>
+                    <div id="ptAuditBody">
+                        <div style="padding:28px;text-align:center;color:var(--text-muted);">Loading…</div>
+                    </div>
+                </div>
+            </div><!-- /pt-audit -->
+
+        </div><!-- /tab-paytime -->
 
     </div><!-- /content -->
 </div><!-- /app -->
@@ -1014,12 +1193,11 @@ function showApp() {
 function switchTab(tabId) {
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === `tab-${tabId}`));
-    if (tabId === 'dashboard')    loadDashboard();
-    if (tabId === 'transactions') { loadTransactions(); loadEcosystemApps(); }
-    if (tabId === 'knowledge')    loadKnowledge();
-    if (tabId === 'categories')   loadCategories();
-    if (tabId === 'coaching')     loadCoachingTab();
-    if (tabId === 'teach')        resetTeachFlow();
+    if (tabId === 'dashboard') loadDashboard();
+    if (tabId === 'paytime')   loadPaytimeModule();
+    if (tabId === 'knowledge') loadKnowledge();
+    if (tabId === 'categories') loadCategories();
+    if (tabId === 'coaching')  loadCoachingTab();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1534,6 +1712,7 @@ async function approveStoreItem(id) {
         const sync = data.sync || {};
         alert('✅ Approved!\n\nSync method: ' + (sync.syncMethod || 'pending') + '\n\n' + (sync.note || ''));
         loadLearningPatterns();
+        loadPtPendingReview();
     } catch (err) {
         alert('Error: ' + err.message);
     }
@@ -1546,6 +1725,7 @@ async function discardStoreItem(id) {
         await api(`/sean/store/${id}/discard`, { method: 'POST', body: JSON.stringify({ notes: notes || null }) });
         alert('✗ Discarded. Item remains local only.');
         loadLearningPatterns();
+        loadPtPendingReview();
     } catch (err) {
         alert('Error: ' + err.message);
     }
@@ -1688,6 +1868,7 @@ async function saveDraft() {
 
         // Refresh the pending queue and counters in the background
         loadLearningPatterns();
+        loadPtPendingReview();
 
     } catch (err) {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save Draft'; }
@@ -1747,6 +1928,7 @@ async function approveFromDraftModal() {
         alert('✅ Approved & synced!\n\nIRP5 code: ' + irp5 + '\n\n' + ((data.sync || {}).note || ''));
         closeEditDraftModal();
         loadLearningPatterns();
+        loadPtPendingReview();
 
     } catch (err) {
         if (apprBtn) { apprBtn.disabled = false; apprBtn.textContent = '✅ Approve & Sync'; }
@@ -2389,6 +2571,361 @@ function _renderGaugeHighlights(highlights) {
         (c ? '<div style="margin-bottom:4px;"><strong style="color:#dc2626;">Aandag nodig:</strong> ' + c + '</div>' : '') +
         (s ? '<div><strong style="color:#059669;">Sterkpunte:</strong> ' + s + '</div>' : '') + '</div>';
 }
+// ═══════════════════════════════════════════════════════════
+// PAYTIME MODULE — Navigation + Section controllers
+//
+// GOVERNANCE (CLAUDE.md Part B — Rules B1–B9):
+//   No action in this module directly mutates Paytime.
+//   Teach creates pending proposals. Approve is a separate super-admin step.
+// ═══════════════════════════════════════════════════════════
+
+let _paytimeSection     = 'assistant'; // active sub-section
+let _ptReviewStatus     = 'pending';   // active status filter in Pending Review
+let _ptApprovedItems    = [];          // cached for client-side search
+
+function loadPaytimeModule() {
+    switchPaytimeSection(_paytimeSection || 'assistant');
+    _updatePtPendingBadge();
+}
+
+function switchPaytimeSection(section) {
+    _paytimeSection = section;
+    document.querySelectorAll('.pt-nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.section === section);
+    });
+    document.querySelectorAll('.pt-section').forEach(s => {
+        s.classList.toggle('active', s.id === 'pt-' + section);
+    });
+    if (section === 'teach')    resetTeachFlow();
+    if (section === 'review')   loadPtPendingReview();
+    if (section === 'approved') loadPtApprovedKnowledge();
+    if (section === 'audit')    loadPtAuditHistory();
+}
+
+function switchPaytimeAndTeach() {
+    switchTab('paytime');
+    // Defer section switch so tab content is visible first
+    setTimeout(() => switchPaytimeSection('teach'), 50);
+}
+
+function switchPaytimeToReview() {
+    if (document.getElementById('tab-paytime')?.classList.contains('active')) {
+        switchPaytimeSection('review');
+    } else {
+        _paytimeSection = 'review';
+        switchTab('paytime');
+    }
+}
+
+// Update the pending badge count in the Paytime nav button
+async function _updatePtPendingBadge() {
+    try {
+        const data = await api('/sean/paytime/pending-review?status=pending&limit=1');
+        const count = data.count || 0;
+        const badge = document.getElementById('ptPendingBadge');
+        if (badge) { badge.textContent = count > 0 ? count : ''; }
+    } catch (_) {}
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAYTIME ASSISTANT — Payroll-focused chat
+// ═══════════════════════════════════════════════════════════
+
+function ptAssistantPrompt(text) {
+    const input = document.getElementById('ptAssistantInput');
+    if (input) { input.value = text; sendPaytimeAssistantChat(); }
+}
+
+async function sendPaytimeAssistantChat() {
+    const input = document.getElementById('ptAssistantInput');
+    const msg   = (input?.value || '').trim();
+    if (!msg) return;
+    input.value = '';
+
+    const container = document.getElementById('ptAssistantMessages');
+    if (!container) return;
+
+    container.innerHTML += `<div class="msg msg-user">${escHtml(msg)}</div>`;
+    container.innerHTML += `<div class="msg msg-sean" id="ptTyping"><span class="typing-dots">Thinking</span></div>`;
+    container.scrollTop = container.scrollHeight;
+
+    try {
+        // Augment with Paytime context so the general chat endpoint gives payroll-relevant answers
+        const paytimePrompt = `[Paytime Payroll context — answer as a South African payroll specialist]\n\n${msg}`;
+        const data = await api('/sean/chat', { method: 'POST', body: JSON.stringify({ message: paytimePrompt }) });
+
+        const typingEl = document.getElementById('ptTyping');
+        if (typingEl) typingEl.remove();
+
+        let rawAnswer = data.answer;
+        if (typeof rawAnswer === 'object' && rawAnswer !== null) {
+            rawAnswer = Object.entries(rawAnswer)
+                .map(([k, v]) => `${k.replace(/_/g,' ')}: ${typeof v === 'number' ? 'R ' + v.toFixed(2) : v}`)
+                .join('\n');
+        }
+
+        const answerHtml = String(rawAnswer || 'No response').replace(/\n/g, '<br>');
+        const methodBadge = data.method ? `<div class="method"><span>${escHtml(data.method)}</span></div>` : '';
+        container.innerHTML += `<div class="msg msg-sean">${answerHtml}${methodBadge}</div>`;
+        container.scrollTop = container.scrollHeight;
+
+    } catch (err) {
+        const typingEl = document.getElementById('ptTyping');
+        if (typingEl) typingEl.remove();
+        container.innerHTML += `<div class="msg msg-sean" style="color:var(--danger);">Error: ${escHtml(err.message)}</div>`;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAYTIME — PENDING REVIEW
+// ═══════════════════════════════════════════════════════════
+
+async function loadPtPendingReview() {
+    const bodyEl = document.getElementById('ptReviewBody');
+    const statsEl = document.getElementById('ptReviewStats');
+    if (!bodyEl) return;
+    bodyEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">Loading…</div>';
+
+    const entityFilter = document.getElementById('ptEntityFilter')?.value || '';
+    const statusFilter = _ptReviewStatus;
+
+    try {
+        const qs = new URLSearchParams({ limit: '100' });
+        if (entityFilter)  qs.set('entityType', entityFilter);
+        if (statusFilter)  qs.set('status', statusFilter);
+
+        const data = await api('/sean/paytime/pending-review?' + qs.toString());
+        const items = data.items || [];
+
+        // Update badge
+        if (!statusFilter || statusFilter === 'pending') {
+            const badge = document.getElementById('ptPendingBadge');
+            if (badge) badge.textContent = data.count > 0 ? data.count : '';
+        }
+
+        // Stats row (only when showing "all" statuses)
+        if (!statusFilter && statsEl) {
+            const p = items.filter(i => i.status === 'pending').length;
+            const a = items.filter(i => i.status === 'approved').length;
+            const d = items.filter(i => i.status === 'discarded').length;
+            statsEl.style.display = 'flex';
+            statsEl.innerHTML = `
+                <div class="pt-stat-pill" style="background:var(--primary-light);color:var(--primary-dark);">
+                    <div style="font-size:1.4rem;font-weight:700;">${p}</div><div style="font-size:0.78rem;">Pending</div>
+                </div>
+                <div class="pt-stat-pill" style="background:#d1fae5;color:#059669;">
+                    <div style="font-size:1.4rem;font-weight:700;">${a}</div><div style="font-size:0.78rem;">Approved</div>
+                </div>
+                <div class="pt-stat-pill" style="background:#f3f4f6;color:#6b7280;">
+                    <div style="font-size:1.4rem;font-weight:700;">${d}</div><div style="font-size:0.78rem;">Discarded</div>
+                </div>`;
+        } else if (statsEl) {
+            statsEl.style.display = 'none';
+        }
+
+        if (!items.length) {
+            const labels = { pending:'pending', approved:'approved', discarded:'discarded', '':'in this category' };
+            bodyEl.innerHTML = `
+                <div style="padding:36px;text-align:center;color:var(--text-muted);">
+                    <div style="font-size:2rem;margin-bottom:8px;">💼</div>
+                    <div style="font-weight:600;margin-bottom:4px;">No ${labels[statusFilter]||''} items</div>
+                    <div style="font-size:0.83rem;">
+                        ${statusFilter === 'pending'
+                            ? 'Use <strong>Teach</strong> to add payroll knowledge, or Paytime will submit items automatically when payroll items are created.'
+                            : 'Nothing here yet.'}
+                    </div>
+                </div>`;
+            return;
+        }
+
+        const statusChip = (s) => {
+            const cfg = { pending:{bg:'#fef3c7',c:'#b45309',l:'⏳ Pending'}, approved:{bg:'#d1fae522',c:'#059669',l:'✅ Approved'}, discarded:{bg:'#6b728022',c:'#6b7280',l:'✗ Discarded'} }[s] || {bg:'#f1f5f9',c:'#64748b',l:s};
+            return `<span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.73rem;font-weight:600;background:${cfg.bg};color:${cfg.c};">${cfg.l}</span>`;
+        };
+
+        const confBar = (c) => {
+            const pct = Math.round((c || 0) * 100);
+            const col = pct >= 90 ? '#10b981' : pct >= 70 ? '#f59e0b' : '#ef4444';
+            return `<div style="display:inline-flex;align-items:center;gap:6px;">
+                <div style="width:48px;height:5px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+                    <div style="width:${pct}%;height:100%;background:${col};border-radius:3px;"></div>
+                </div>
+                <span style="font-size:0.73rem;color:${col};">${pct}%</span>
+            </div>`;
+        };
+
+        bodyEl.innerHTML = items.map(i => {
+            const p   = i.payload || {};
+            const si  = JSON.stringify(i).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
+            const src = i.source_channel === 'teach_sean' ? '<span style="background:#e0e7ff;color:#4338ca;padding:1px 6px;border-radius:4px;font-size:0.72rem;">Teach Sean</span>'
+                      : i.source_channel ? `<span style="background:#f1f5f9;color:#64748b;padding:1px 6px;border-radius:4px;font-size:0.72rem;">${escHtml(i.source_channel)}</span>` : '';
+            const canEdit = i.status === 'pending';
+            return `
+            <div style="padding:14px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;transition:border-color 0.15s;"
+                 onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;font-size:0.95rem;margin-bottom:5px;">${escHtml(i.item_name)}</div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.82rem;margin-bottom:6px;align-items:center;">
+                            ${i.proposed_value
+                                ? `<span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:6px;font-family:monospace;font-weight:600;">IRP5: ${escHtml(i.proposed_value)}</span>`
+                                : `<span style="color:#9ca3af;font-size:0.78rem;">— no IRP5 code yet</span>`}
+                            ${statusChip(i.status)}
+                            ${src}
+                            ${i.confidence != null ? confBar(i.confidence) : ''}
+                        </div>
+                        <div style="font-size:0.78rem;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap;">
+                            ${i.submitted_by ? `By: ${escHtml(String(i.submitted_by))}` : ''}
+                            ${i.submitted_at ? `· ${new Date(i.submitted_at).toLocaleDateString('en-ZA')}` : ''}
+                            ${i.entity_type  ? `· ${escHtml(i.entity_type)}` : ''}
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;">
+                        ${canEdit ? `
+                        <button class="btn btn-primary btn-sm" style="font-size:0.78rem;"
+                            onclick="approveStoreItem(${i.id})">✅ Approve</button>
+                        <button class="btn btn-outline btn-sm" style="font-size:0.78rem;color:#6366f1;border-color:#6366f1;"
+                            onclick='editStoreItem(${i.id}, ${si})'>✏️ Edit</button>
+                        <button class="btn btn-outline btn-sm" style="font-size:0.78rem;color:#ef4444;"
+                            onclick="discardStoreItem(${i.id})">✗ Discard</button>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+    } catch (err) {
+        if (bodyEl) bodyEl.innerHTML = `<div style="padding:16px;color:var(--danger);font-size:0.85rem;">Failed to load: ${escHtml(err.message)}</div>`;
+    }
+}
+
+function filterPtReview(status, btn) {
+    _ptReviewStatus = status;
+    document.querySelectorAll('.pt-status-btn').forEach(b => b.classList.toggle('active', b.dataset.status === status));
+    loadPtPendingReview();
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAYTIME — APPROVED KNOWLEDGE
+// ═══════════════════════════════════════════════════════════
+
+async function loadPtApprovedKnowledge() {
+    const bodyEl = document.getElementById('ptApprovedBody');
+    if (!bodyEl) return;
+    bodyEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">Loading…</div>';
+
+    try {
+        const data = await api('/sean/paytime/approved-knowledge');
+        _ptApprovedItems = data.items || [];
+        _renderPtApproved(_ptApprovedItems);
+    } catch (err) {
+        bodyEl.innerHTML = `<div style="padding:16px;color:var(--danger);font-size:0.85rem;">Failed to load: ${escHtml(err.message)}</div>`;
+    }
+}
+
+function filterPtApproved(q) {
+    if (!q) { _renderPtApproved(_ptApprovedItems); return; }
+    const lq = q.toLowerCase();
+    const filtered = _ptApprovedItems.filter(i =>
+        (i.item_name  || '').toLowerCase().includes(lq) ||
+        (i.standard_value || '').toLowerCase().includes(lq)
+    );
+    _renderPtApproved(filtered);
+}
+
+function _renderPtApproved(items) {
+    const bodyEl = document.getElementById('ptApprovedBody');
+    if (!bodyEl) return;
+    if (!items.length) {
+        bodyEl.innerHTML = `
+            <div style="padding:36px;text-align:center;color:var(--text-muted);">
+                <div style="font-size:2rem;margin-bottom:8px;">🌐</div>
+                <div style="font-weight:600;margin-bottom:4px;">No approved knowledge yet</div>
+                <div style="font-size:0.83rem;">Approved IRP5 mappings will appear here after super-admin review.</div>
+            </div>`;
+        return;
+    }
+
+    bodyEl.innerHTML = `
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">${items.length} approved mapping(s)</div>
+        <div class="table-wrap"><table>
+            <thead><tr>
+                <th>Item Name</th><th>Standard Field</th><th>Standard Value</th>
+                <th>Approved By</th><th>Approved At</th><th>Syncs</th>
+            </tr></thead>
+            <tbody>
+            ${items.map(i => `<tr>
+                <td><strong>${escHtml(i.item_name)}</strong></td>
+                <td style="font-size:0.8rem;color:var(--text-muted);">${escHtml(i.standard_field||'—')}</td>
+                <td><code style="font-family:monospace;font-weight:600;font-size:0.9rem;">${escHtml(i.standard_value||'—')}</code></td>
+                <td style="font-size:0.78rem;color:var(--text-muted);">${escHtml(i.approved_by||'—')}</td>
+                <td style="font-size:0.78rem;color:var(--text-muted);">${i.approved_at ? new Date(i.approved_at).toLocaleDateString('en-ZA') : '—'}</td>
+                <td style="font-size:0.78rem;color:var(--text-muted);">${i.sync_count ?? 0}</td>
+            </tr>`).join('')}
+            </tbody>
+        </table></div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAYTIME — AUDIT / SYNC HISTORY
+// ═══════════════════════════════════════════════════════════
+
+async function loadPtAuditHistory() {
+    const bodyEl = document.getElementById('ptAuditBody');
+    if (!bodyEl) return;
+    bodyEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">Loading…</div>';
+
+    try {
+        const data = await api('/sean/paytime/audit?limit=100');
+        const log  = data.log || [];
+
+        if (!log.length) {
+            bodyEl.innerHTML = `
+                <div style="padding:36px;text-align:center;color:var(--text-muted);">
+                    <div style="font-size:2rem;margin-bottom:8px;">📋</div>
+                    <div style="font-weight:600;">No audit history yet</div>
+                    <div style="font-size:0.83rem;margin-top:4px;">Actions on Paytime proposals appear here.</div>
+                </div>`;
+            return;
+        }
+
+        const actionIcon = (a) => {
+            if (!a) return '🔹';
+            if (a.includes('approved') || a.includes('sync')) return '✅';
+            if (a.includes('draft'))    return '💾';
+            if (a.includes('discard'))  return '✗';
+            if (a.includes('teach') || a.includes('parsed') || a.includes('create')) return '📝';
+            return '🔹';
+        };
+        const rowClass = (a) => {
+            if (!a) return '';
+            if (a.includes('approved') || a.includes('sync'))  return 'action-approve';
+            if (a.includes('draft'))   return 'action-draft';
+            if (a.includes('discard')) return 'action-discard';
+            if (a.includes('teach') || a.includes('create') || a.includes('parsed')) return 'action-create';
+            return '';
+        };
+
+        bodyEl.innerHTML = log.map(entry => `
+            <div class="pt-audit-row ${rowClass(entry.action)}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+                    <div style="flex:1;">
+                        <span style="font-weight:600;">${actionIcon(entry.action)} ${escHtml(entry.action || '—')}</span>
+                        ${entry.field_written ? `<span style="color:var(--text-muted);margin-left:8px;font-size:0.78rem;">${escHtml(entry.field_written)}: <strong>${escHtml(entry.value_written||'—')}</strong></span>` : ''}
+                        ${entry.notes ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;">${escHtml(entry.notes)}</div>` : ''}
+                    </div>
+                    <div style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;text-align:right;">
+                        ${entry.authorized_by ? escHtml(entry.authorized_by) : ''}
+                        ${entry.created_at ? '<br>' + new Date(entry.created_at).toLocaleString('en-ZA') : ''}
+                    </div>
+                </div>
+            </div>`).join('');
+
+    } catch (err) {
+        bodyEl.innerHTML = `<div style="padding:16px;color:var(--danger);font-size:0.85rem;">Failed to load: ${escHtml(err.message)}</div>`;
+    }
+}
+
 // ═══════════════════════════════════════════════════════════
 // TEACH PAYTIME — Parse → Preview → Create Proposals
 //
