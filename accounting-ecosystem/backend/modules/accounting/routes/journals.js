@@ -277,7 +277,12 @@ router.post('/:id/reverse', authenticate, hasPermission('journal.reverse'), asyn
         `Journal reverse blocked: ${error.message}`
       );
     }
-    res.status(400).json({ error: error.message || 'Failed to reverse journal' });
+    // 409 Conflict for: already reversed (pre-check) or concurrent reversal (race)
+    const isConflict = error.message && (
+      error.message.includes('already been reversed') ||
+      error.message.includes('concurrent reversal')
+    );
+    res.status(isConflict ? 409 : 400).json({ error: error.message || 'Failed to reverse journal' });
   }
 });
 

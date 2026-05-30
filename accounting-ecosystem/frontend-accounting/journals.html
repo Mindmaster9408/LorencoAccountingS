@@ -596,9 +596,17 @@
     }
 
     // ── Reverse a posted journal ─────────────────────────────────────────────
+    // _reversingIds prevents a double-click from firing two concurrent reversal
+    // requests for the same journal. Backend enforcement (conditional UPDATE +
+    // unique index on reversal_of_journal_id) is the authoritative guard; this
+    // is the complementary frontend layer.
+    const _reversingIds = new Set();
+
     async function reverseJournal(id) {
+        if (_reversingIds.has(id)) return;  // already in-flight for this journal
         const reason = prompt('Enter reason for reversal:');
         if (!reason || !reason.trim()) return;
+        _reversingIds.add(id);
         try {
             const res = await fetch('/api/journals/' + id + '/reverse', {
                 method: 'POST',
@@ -610,6 +618,8 @@
             await loadJournals();
         } catch (err) {
             showError('Reversal failed: ' + err.message);
+        } finally {
+            _reversingIds.delete(id);
         }
     }
 

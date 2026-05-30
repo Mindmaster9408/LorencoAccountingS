@@ -699,13 +699,23 @@ class JournalService {
 
       await _insertLinesOnClient(client, reversalJournal.id, reversedLines);
 
-      // Mark original journal as reversed — include company_id for tenant safety
-      await client.query(
+      // Mark original journal as reversed — conditional UPDATE prevents concurrent
+      // double-reversal. The predicate (status='posted' AND reversed_by_journal_id IS NULL)
+      // ensures only the first concurrent transaction wins; if rowCount=0 a second
+      // concurrent reversal already committed, so we roll back ours and throw.
+      // The database-level unique index on reversal_of_journal_id (migration 065)
+      // provides a second independent guard at the INSERT step above.
+      const markResult = await client.query(
         `UPDATE journals
             SET status='reversed', reversed_by_journal_id=$1
-          WHERE id=$2 AND company_id=$3`,
+          WHERE id=$2 AND company_id=$3
+            AND status='posted'
+            AND reversed_by_journal_id IS NULL`,
         [reversalJournal.id, originalJournalId, companyId]
       );
+      if (markResult.rowCount === 0) {
+        throw new Error('Journal has already been reversed — concurrent reversal detected');
+      }
 
       await client.query('COMMIT');
       return reversalJournal;
