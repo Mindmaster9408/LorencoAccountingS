@@ -11,6 +11,7 @@
 const express = require('express');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
+const workflowsRouter = require('./workflows');
 
 const router = express.Router();
 
@@ -813,5 +814,8 @@ router.delete('/deadlines/:id', async (req, res) => {
   await auditFromReq(req, 'DELETE', 'practice_deadline', req.params.id, { module: 'practice' });
   res.json({ success: true });
 });
+
+// Workflows: templates, runs, and generation
+router.use('/workflows', workflowsRouter);
 
 module.exports = router;

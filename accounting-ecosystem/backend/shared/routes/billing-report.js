@@ -354,5 +354,468 @@ router.get('/practice/:practiceId', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Payroll invoice — pricing schedule
+// Applied to PRACTICE TOTAL active employees (not per payroll company).
+// ─────────────────────────────────────────────────────────────────────────────
+const PAYROLL_PRICING = [
+  { min: 0,   max: 5,   rate: 17.50,  base: 50.00    },
+  { min: 6,   max: 10,  rate: 14.00,  base: 137.50   },
+  { min: 11,  max: 300, rate: 12.00,  base: 207.50   },
+  { min: 301, max: 500, rate: 9.00,   base: 3687.50  },
+];
+
+function getPayrollBracket(empCount) {
+  for (const tier of PAYROLL_PRICING) {
+    if (empCount >= tier.min && empCount <= tier.max) return tier;
+  }
+  // Above 500 — apply highest tier
+  return PAYROLL_PRICING[PAYROLL_PRICING.length - 1];
+}
+
+function fmtCurrency(n) {
+  const abs = Math.abs(parseFloat(n) || 0).toFixed(2);
+  return 'R ' + abs.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+// ── GET /api/ecosystem/billing-report/payroll-invoice/:practiceId ─────────────
+// Generates and streams a professional PDF Tax Invoice for the practice's
+// combined payroll usage (all payroll-linked client companies aggregated).
+//
+// Query params: month (1-12), year (YYYY)
+// Returns: application/pdf — triggers browser download
+// Security: requireSuperAdmin (inherited from router.use at top of file)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/payroll-invoice/:practiceId', async (req, res) => {
+  const PDFDocument = require('pdfkit');
+
+  try {
+    // ── 1. Validate inputs ─────────────────────────────────────────────────
+    const practiceId = parseInt(req.params.practiceId, 10);
+    if (!Number.isFinite(practiceId) || practiceId <= 0) {
+      return res.status(400).json({ error: 'Invalid practiceId' });
+    }
+
+    const month = parseInt(req.query.month, 10);
+    const year  = parseInt(req.query.year,  10);
+
+    if (!month || month < 1 || month > 12) {
+      return res.status(400).json({ error: 'month must be between 1 and 12' });
+    }
+    if (!year || year < 2020 || year > 2100) {
+      return res.status(400).json({ error: 'year is outside valid range (2020–2100)' });
+    }
+
+    const periodKey = `${year}-${String(month).padStart(2, '0')}`;
+
+    // ── 2. Validate practice ───────────────────────────────────────────────
+    const { data: practiceCompany, error: practiceErr } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name')
+      .eq('id', practiceId)
+      .maybeSingle();
+
+    if (practiceErr) throw practiceErr;
+    if (!practiceCompany) {
+      return res.status(404).json({ error: 'Practice not found' });
+    }
+
+    const practiceName = practiceCompany.trading_name || practiceCompany.company_name
+      || `Practice ${practiceId}`;
+
+    // ── 3. Fetch all payroll-linked eco_clients for this practice ──────────
+    const { data: ecoClients, error: clientsErr } = await supabase
+      .from('eco_clients')
+      .select('id, name, client_company_id, apps, is_active')
+      .eq('company_id', practiceId)
+      .eq('is_active', true)
+      .order('name');
+
+    if (clientsErr) throw clientsErr;
+
+    const payrollClients = (ecoClients || []).filter(
+      c => Array.isArray(c.apps) && c.apps.includes('payroll')
+    );
+
+    const clientCompanyIds = [...new Set(
+      payrollClients.map(c => c.client_company_id).filter(Boolean)
+    )];
+
+    // ── 4. Aggregate active employee counts ────────────────────────────────
+    let activeEmpCount = {};   // { company_id → count }
+    let companyNameMap = {};   // { company_id → display name }
+
+    if (clientCompanyIds.length > 0) {
+      const [empsResult, companiesResult] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('company_id, is_active')
+          .in('company_id', clientCompanyIds),
+        supabase
+          .from('companies')
+          .select('id, company_name, trading_name')
+          .in('id', clientCompanyIds),
+      ]);
+
+      if (empsResult.error)      throw empsResult.error;
+      if (companiesResult.error) throw companiesResult.error;
+
+      (empsResult.data || []).forEach(e => {
+        if (e.is_active) {
+          activeEmpCount[e.company_id] = (activeEmpCount[e.company_id] || 0) + 1;
+        }
+      });
+
+      (companiesResult.data || []).forEach(c => {
+        companyNameMap[c.id] = c.trading_name || c.company_name || null;
+      });
+    }
+
+    // ── 5. Build company breakdown and totals ──────────────────────────────
+    const companyBreakdown = payrollClients.map(client => {
+      const cid  = client.client_company_id;
+      const name = (cid && companyNameMap[cid]) || client.name;
+      const emps = cid ? (activeEmpCount[cid] || 0) : 0;
+      return { name, activeEmployees: emps };
+    }).sort((a, b) => b.activeEmployees - a.activeEmployees);
+
+    const totalActiveEmployees = companyBreakdown.reduce(
+      (sum, c) => sum + c.activeEmployees, 0
+    );
+
+    // ── 6. Calculate billing ───────────────────────────────────────────────
+    const bracket      = getPayrollBracket(totalActiveEmployees);
+    const employeeFee  = Math.round(totalActiveEmployees * bracket.rate * 100) / 100;
+    const baseFee      = bracket.base;
+    const monthlyTotal = Math.round((employeeFee + baseFee) * 100) / 100;
+
+    // ── 7. Invoice metadata ────────────────────────────────────────────────
+    const invoiceDate = new Date().toLocaleDateString('en-ZA', {
+      day: '2-digit', month: 'long', year: 'numeric'
+    });
+    const invoiceNumber = `LTPI-${year}${String(month).padStart(2, '0')}-${String(practiceId).padStart(4, '0')}`;
+
+    const afMonths = ['','Januarie','Februarie','Maart','April','Mei','Junie',
+                      'Julie','Augustus','September','Oktober','November','Desember'];
+    const monthLabel = afMonths[month] || String(month);
+    const periodLabel = `${monthLabel} ${year}`;
+
+    const generatedBy  = (req.user && (req.user.email || req.user.username)) || 'System';
+    const generatedAt  = new Date().toLocaleString('en-ZA', {
+      day: '2-digit', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    });
+
+    const safeFilename = practiceName.replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-').toLowerCase();
+    const filename = `lorenco-payroll-invoice-${safeFilename}-${year}-${String(month).padStart(2, '0')}.pdf`;
+
+    // ── 8. Generate PDF ────────────────────────────────────────────────────
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      info: {
+        Title:   `Lorenco Paytime Tax Invoice — ${practiceName} — ${periodLabel}`,
+        Author:  'Lorenco Ecosystem',
+        Creator: 'Lorenco Paytime Billing',
+      },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    doc.pipe(res);
+
+    // ── Constants ──────────────────────────────────────────────────────────
+    const PAGE_W = doc.page.width;         // 595.28
+    const L      = 50;                     // left margin
+    const W      = PAGE_W - 100;           // content width (~495)
+    const R      = L + W;                  // right edge
+
+    // Palette
+    const NAVY     = '#0f172a';
+    const NAVY2    = '#1e293b';
+    const BLUE     = '#2563eb';
+    const TEAL     = '#0d9488';
+    const WHITE    = '#ffffff';
+    const DARK     = '#1a202c';
+    const MUTED    = '#64748b';
+    const BORDER   = '#e2e8f0';
+    const TBL_HDR  = '#f1f5f9';
+    const TBL_ALT  = '#fafbfc';
+    const HI_BG    = '#f0fdf4';
+    const HI_BAR   = '#22c55e';
+    const HI_TEXT  = '#14532d';
+    const TOT_BG   = NAVY2;
+
+    let y = 0;  // current drawing Y (doc will start at margin 50)
+
+    // ── Helper: check if new page needed ──────────────────────────────────
+    function maybeNewPage(neededPts = 60) {
+      if (y + neededPts > doc.page.height - 60) {
+        doc.addPage();
+        y = 50;
+      }
+    }
+
+    // ── Helper: draw table header row ─────────────────────────────────────
+    function tblHeader(cols) {
+      doc.rect(L, y, W, 22).fill(TBL_HDR);
+      let x = L;
+      cols.forEach(col => {
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(MUTED)
+           .text(col.label.toUpperCase(), x + 6, y + 7,
+                 { width: col.w - 12, align: col.align || 'left', lineBreak: false });
+        x += col.w;
+      });
+      doc.rect(L, y + 22, W, 0.5).fill(BORDER);
+      y += 22;
+    }
+
+    // ── Helper: draw a table row ───────────────────────────────────────────
+    // opts: { bg, bold, textColor, highlight, height }
+    function tblRow(cells, cols, opts = {}) {
+      const rh = opts.height || 24;
+      maybeNewPage(rh + 4);
+
+      if (opts.bg) doc.rect(L, y, W, rh).fill(opts.bg);
+      if (opts.highlight) {
+        // left accent bar for highlighted bracket row
+        doc.rect(L, y, 3, rh).fill(HI_BAR);
+      }
+
+      let x = L;
+      cells.forEach((cell, i) => {
+        const col     = cols[i];
+        const align   = col.align || 'left';
+        const txtX    = align === 'right' ? x + col.w - 70 : x + 6;
+        const txtW    = align === 'right' ? 64 : col.w - 12;
+        doc.fontSize(9)
+           .font(opts.bold ? 'Helvetica-Bold' : 'Helvetica')
+           .fillColor(opts.textColor || DARK)
+           .text(String(cell ?? ''), txtX, y + (rh - 10) / 2 + 1,
+                 { width: txtW, align, lineBreak: false });
+        x += col.w;
+      });
+
+      doc.rect(L, y + rh, W, 0.5).fill(BORDER);
+      y += rh;
+    }
+
+    // ── Helper: section heading ────────────────────────────────────────────
+    function sectionHeading(label) {
+      maybeNewPage(40);
+      doc.rect(L, y, 3, 18).fill(BLUE);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(DARK)
+         .text(label, L + 10, y + 2, { lineBreak: false });
+      y += 28;
+    }
+
+    // ── DRAW: Header block ─────────────────────────────────────────────────
+    const HDR_H = 110;
+    doc.rect(0, 0, PAGE_W, HDR_H).fill(NAVY);
+    doc.rect(0, HDR_H, PAGE_W, 4).fill(BLUE);
+
+    // Brand line
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(BLUE)
+       .text('LORENCO ECOSYSTEM  ·  PAYTIME PAYROLL', L, 18, { lineBreak: false });
+
+    // Main title
+    doc.fontSize(22).font('Helvetica-Bold').fillColor(WHITE)
+       .text('TAX INVOICE', L, 30, { lineBreak: false });
+
+    // Invoice number (right side)
+    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
+       .text('INVOICE NO.', R - 130, 22, { width: 130, align: 'right', lineBreak: false });
+    doc.fontSize(11).font('Helvetica-Bold').fillColor(WHITE)
+       .text(invoiceNumber, R - 130, 33, { width: 130, align: 'right', lineBreak: false });
+
+    // Practice name
+    doc.fontSize(13).font('Helvetica-Bold').fillColor('#e2e8f0')
+       .text(practiceName, L, 64, { width: W - 140, lineBreak: false });
+
+    // Period tag
+    doc.rect(R - 120, 58, 120, 22).fill(BLUE);
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(WHITE)
+       .text(periodLabel, R - 120, 64, { width: 120, align: 'center', lineBreak: false });
+
+    y = HDR_H + 18;
+
+    // ── DRAW: Meta grid (4 boxes) ──────────────────────────────────────────
+    const META_ITEMS = [
+      { label: 'Practice',      value: practiceName      },
+      { label: 'Billing Period', value: periodLabel       },
+      { label: 'Invoice Date',  value: invoiceDate       },
+      { label: 'Generated By',  value: generatedBy       },
+    ];
+
+    const boxW = Math.floor(W / 4);
+    META_ITEMS.forEach((item, i) => {
+      const bx = L + i * boxW;
+      doc.rect(bx, y, boxW - 4, 44).fill(TBL_HDR)
+         .rect(bx, y, boxW - 4, 1).fill(BORDER);
+      doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED)
+         .text(item.label.toUpperCase(), bx + 7, y + 7,
+               { width: boxW - 18, lineBreak: false });
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor(DARK)
+         .text(item.value, bx + 7, y + 20,
+               { width: boxW - 18, lineBreak: true });
+    });
+
+    y += 58;
+
+    // ── DRAW: Section 1 — Payroll Billing ─────────────────────────────────
+    sectionHeading('Section 1 — Payroll Billing');
+
+    const billingCols = [
+      { label: 'Description',            w: 250 },
+      { label: 'Quantity',               w: 75,  align: 'right' },
+      { label: 'Rate',                   w: 85,  align: 'right' },
+      { label: 'Amount',                 w: W - 410, align: 'right' },
+    ];
+
+    tblHeader(billingCols);
+
+    tblRow(
+      [
+        'Active Employees Processed',
+        String(totalActiveEmployees),
+        fmtCurrency(bracket.rate),
+        fmtCurrency(employeeFee),
+      ],
+      billingCols,
+      { bg: totalActiveEmployees === 0 ? TBL_ALT : WHITE }
+    );
+
+    tblRow(
+      [
+        'Payroll Base Fee',
+        '1',
+        fmtCurrency(baseFee),
+        fmtCurrency(baseFee),
+      ],
+      billingCols,
+      { bg: TBL_ALT }
+    );
+
+    if (totalActiveEmployees === 0) {
+      tblRow(
+        ['No active payroll employees found for selected period.', '', '', ''],
+        billingCols,
+        { bg: '#fffbeb', textColor: '#92400e', height: 28 }
+      );
+    }
+
+    // Total row
+    tblRow(
+      ['', '', 'Monthly Total', fmtCurrency(monthlyTotal)],
+      billingCols,
+      { bg: TOT_BG, bold: true, textColor: WHITE, height: 28 }
+    );
+
+    y += 20;
+
+    // ── DRAW: Section 2 — Billing Basis ───────────────────────────────────
+    maybeNewPage(180);
+    sectionHeading('Section 2 — Pricing Basis');
+
+    const pricingCols = [
+      { label: 'Employee Range',   w: 150 },
+      { label: 'Rate per Employee', w: 115, align: 'right' },
+      { label: 'Base Fee',         w: 115, align: 'right' },
+      { label: 'Applied',          w: W - 380, align: 'center' },
+    ];
+
+    tblHeader(pricingCols);
+
+    PAYROLL_PRICING.forEach(tier => {
+      const isApplied = tier === bracket;
+      const rangeLabel = tier.max >= 500
+        ? `${tier.min}–${tier.max} employees (max)`
+        : `${tier.min}–${tier.max} employees`;
+
+      tblRow(
+        [
+          rangeLabel,
+          fmtCurrency(tier.rate) + ' / emp',
+          fmtCurrency(tier.base),
+          isApplied ? '✓ Applied' : '',
+        ],
+        pricingCols,
+        {
+          bg:        isApplied ? HI_BG     : (tier === PAYROLL_PRICING[1] ? TBL_ALT : WHITE),
+          highlight: isApplied,
+          textColor: isApplied ? HI_TEXT   : DARK,
+          bold:      isApplied,
+          height:    26,
+        }
+      );
+    });
+
+    y += 20;
+
+    // ── DRAW: Section 3 — Company Breakdown ───────────────────────────────
+    maybeNewPage(60 + companyBreakdown.length * 25);
+    sectionHeading('Section 3 — Payroll Company Breakdown');
+
+    const breakdownCols = [
+      { label: 'Payroll Company',   w: W - 135 },
+      { label: 'Active Employees',  w: 135, align: 'right' },
+    ];
+
+    tblHeader(breakdownCols);
+
+    if (companyBreakdown.length === 0) {
+      tblRow(
+        ['No payroll companies linked to this practice.', ''],
+        breakdownCols,
+        { bg: TBL_ALT, textColor: MUTED, height: 28 }
+      );
+    } else {
+      companyBreakdown.forEach((co, idx) => {
+        tblRow(
+          [co.name, String(co.activeEmployees)],
+          breakdownCols,
+          { bg: idx % 2 === 1 ? TBL_ALT : WHITE, height: 24 }
+        );
+      });
+
+      // Total row
+      tblRow(
+        [`TOTAL (${companyBreakdown.length} compan${companyBreakdown.length === 1 ? 'y' : 'ies'})`,
+         String(totalActiveEmployees)],
+        breakdownCols,
+        { bg: TOT_BG, bold: true, textColor: WHITE, height: 28 }
+      );
+    }
+
+    y += 28;
+
+    // ── DRAW: Footer ───────────────────────────────────────────────────────
+    maybeNewPage(60);
+    doc.rect(L, y, W, 0.5).fill(BORDER);
+    y += 10;
+
+    doc.fontSize(7.5).font('Helvetica').fillColor(MUTED)
+       .text(
+         `Lorenco Ecosystem  ·  Platform Billing  ·  Confidential — Internal Use Only  ·  Generated: ${generatedAt}`,
+         L, y, { width: W, align: 'center', lineBreak: false }
+       );
+
+    y += 14;
+    doc.fontSize(7).font('Helvetica').fillColor(MUTED)
+       .text(
+         `This invoice reflects the combined payroll usage of ${practiceName} across all linked payroll companies for the period ${periodLabel}.`,
+         L, y, { width: W, align: 'center', lineBreak: true }
+       );
+
+    doc.end();
+
+  } catch (err) {
+    console.error('[payroll-invoice] Error generating PDF:', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate payroll invoice' });
+    }
+  }
+});
+
 module.exports = router;
 

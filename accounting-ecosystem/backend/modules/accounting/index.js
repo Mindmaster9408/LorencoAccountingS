@@ -15,6 +15,17 @@ const router = express.Router();
 
 // Accounting-specific middleware
 const { enforceCompanyStatus } = require('./middleware/companyStatus');
+const { validatePermissionMap } = require('./middleware/auth');
+
+// Validate PERMISSIONS map integrity at startup — fails loudly if misconfigured.
+// Unknown or structurally broken permissions must never be discovered at request time.
+const permissionErrors = validatePermissionMap();
+if (permissionErrors.length > 0) {
+  throw new Error(
+    `[accounting] Startup aborted — PERMISSIONS map has ${permissionErrors.length} error(s):\n` +
+    permissionErrors.map(e => `  - ${e}`).join('\n')
+  );
+}
 
 // Apply company status enforcement to all accounting routes
 router.use(enforceCompanyStatus);
@@ -57,6 +68,9 @@ router.use('/bank',         require('./routes/bank'));
 router.use('/bank/staging', require('./routes/bankStaging'));
 router.use('/pos', require('./routes/pos-bridge'));
 router.use('/reports', require('./routes/reports'));
+// OCR drafts mounted BEFORE the generic /suppliers router so the more-specific
+// path /suppliers/invoice-ocr-drafts/* is resolved first without ambiguity.
+router.use('/suppliers/invoice-ocr-drafts', require('./routes/supplierOcrDrafts'));
 router.use('/suppliers', require('./routes/suppliers'));
 router.use('/customer-invoices', require('./routes/customer-invoices'));
 router.use('/segments', require('./routes/segments'));
@@ -90,5 +104,11 @@ router.use('/historical-comparatives', require('./routes/historicalComparatives'
 
 // Opening Balance / Prior Year Trial Balance Import Engine
 router.use('/opening-balances', require('./routes/openingBalances'));
+
+// QA — Pilot Smoke Test Pack
+router.use('/pilot-smoke-tests', require('./routes/pilot-smoke-tests'));
+
+// Dashboard — Pilot Action Queue
+router.use('/dashboard', require('./routes/dashboard'));
 
 module.exports = router;

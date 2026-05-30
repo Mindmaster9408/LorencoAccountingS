@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCR Invoice Review — Lorenco Accounting</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <script src="js/polyfills.js"></script>
+  <style>
+    /* ── Reset & layout ──────────────────────────────────────────────── */
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .review-layout {
+      display: grid;
+      grid-template-columns: 1fr 520px;
+      gap: 0;
+      height: calc(100vh - 56px);   /* full height minus topbar */
+      overflow: hidden;
+    }
+    @media (max-width: 900px) {
+      .review-layout { grid-template-columns: 1fr; height: auto; overflow: auto; }
+      .preview-panel { height: 400px; }
+    }
+
+    /* ── Preview panel (left) ────────────────────────────────────────── */
+    .preview-panel {
+      background: #111827;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid rgba(255,255,255,0.08);
+    }
+    .preview-panel header {
+      padding: 12px 16px;
+      background: #1f2937;
+      font-size: 12px;
+      color: #9ca3af;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .preview-panel header strong { color: #f3f4f6; font-size: 13px; }
+    .preview-frame {
+      flex: 1;
+      border: none;
+      background: #1f2937;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .preview-frame iframe { width: 100%; height: 100%; border: none; background: white; }
+    .preview-frame img    { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .preview-placeholder  { color: #6b7280; font-size: 13px; text-align: center; padding: 40px; }
+
+    /* ── Review panel (right) ────────────────────────────────────────── */
+    .review-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-primary, #0f172a);
+    }
+    .review-topbar {
+      padding: 12px 18px;
+      background: var(--bg-secondary, #1e293b);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .review-topbar h1 { font-size: 15px; font-weight: 700; margin: 0; }
+    .review-topbar .back-link {
+      font-size: 12px; color: #60a5fa; text-decoration: none; white-space: nowrap;
+    }
+    .review-topbar .back-link:hover { text-decoration: underline; }
+
+    .review-body { flex: 1; overflow-y: auto; padding: 16px 18px; }
+
+    /* ── Confidence badge ────────────────────────────────────────────── */
+    .conf-badge {
+      display: inline-block; padding: 1px 7px; border-radius: 10px;
+      font-size: 10px; font-weight: 700; margin-left: 6px; vertical-align: middle;
+    }
+    .conf-high   { background: rgba(34,197,94,0.2);  color: #4ade80; }
+    .conf-medium { background: rgba(251,191,36,0.2); color: #fbbf24; }
+    .conf-low    { background: rgba(239,68,68,0.2);  color: #f87171; }
+    .conf-none   { background: rgba(107,114,128,0.2);color: #9ca3af; }
+
+    /* ── Low-confidence warning banner ──────────────────────────────── */
+    .low-conf-banner {
+      background: rgba(251,191,36,0.12);
+      border: 1px solid rgba(251,191,36,0.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #fbbf24;
+      margin-bottom: 14px;
+      display: none;
+    }
+
+    /* ── Status chip ─────────────────────────────────────────────────── */
+    .status-chip {
+      display: inline-block; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+    }
+    .status-draft     { background: rgba(107,114,128,0.2); color: #9ca3af; }
+    .status-reviewed  { background: rgba(99,102,241,0.2);  color: #a5b4fc; }
+    .status-converted { background: rgba(34,197,94,0.2);   color: #4ade80; }
+    .status-rejected  { background: rgba(239,68,68,0.2);   color: #f87171; }
+
+    /* ── Form elements ───────────────────────────────────────────────── */
+    .field-group { margin-bottom: 12px; }
+    .field-group label {
+      display: block; font-size: 11px; font-weight: 600;
+      color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;
+    }
+    .field-group input, .field-group select, .field-group textarea {
+      width: 100%; padding: 8px 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px; color: #f3f4f6; font-size: 13px;
+      transition: border-color 0.15s;
+    }
+    .field-group input:focus, .field-group select:focus, .field-group textarea:focus {
+      outline: none; border-color: #3b82f6;
+    }
+    .field-group input.low-conf { border-color: rgba(251,191,36,0.5); }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* ── Lines table ─────────────────────────────────────────────────── */
+    .lines-section { margin-top: 18px; }
+    .lines-section h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: #e2e8f0; }
+    .lines-table-wrap { overflow-x: auto; margin-bottom: 10px; }
+    .lines-table {
+      width: 100%; border-collapse: collapse; font-size: 12px;
+      min-width: 560px;
+    }
+    .lines-table th {
+      background: rgba(255,255,255,0.04); color: #9ca3af;
+      padding: 6px 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .lines-table td { padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .lines-table td input, .lines-table td select {
+      width: 100%; padding: 4px 6px; background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 4px;
+      color: #f3f4f6; font-size: 12px;
+    }
+    .lines-table td input:focus, .lines-table td select:focus {
+      outline: none; border-color: #3b82f6;
+    }
+    .lines-table td input.no-account { border-color: rgba(239,68,68,0.5) !important; }
+    .lines-table .remove-btn {
+      background: none; border: none; color: #6b7280; cursor: pointer; padding: 2px 5px;
+      font-size: 14px; border-radius: 4px;
+    }
+    .lines-table .remove-btn:hover { color: #f87171; background: rgba(239,68,68,0.1); }
+
+    /* ── Totals panel ────────────────────────────────────────────────── */
+    .totals-panel {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;
+    }
+    .total-row {
+      display: flex; justify-content: space-between;
+      font-size: 13px; padding: 3px 0; color: #cbd5e1;
+    }
+    .total-row.grand { font-weight: 700; font-size: 15px; color: #f3f4f6; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; margin-top: 5px; }
+    .total-row .amount { font-family: 'Courier New', monospace; }
+    .vat-mismatch { color: #f87171; font-size: 11px; margin-top: 4px; display: none; }
+
+    /* ── Action bar ──────────────────────────────────────────────────── */
+    .action-bar {
+      padding: 12px 18px;
+      background: rgba(255,255,255,0.03);
+      border-top: 1px solid rgba(255,255,255,0.07);
+      display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    .btn {
+      padding: 9px 18px; border: none; border-radius: 6px;
+      font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+    }
+    .btn-approve { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
+    .btn-approve:hover { opacity: 0.9; }
+    .btn-approve:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-save    { background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.3); }
+    .btn-save:hover { background: rgba(99,102,241,0.25); }
+    .btn-reject  { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+    .btn-reject:hover { background: rgba(239,68,68,0.2); }
+    .btn-secondary { background: rgba(255,255,255,0.06); color: #9ca3af; border: 1px solid rgba(255,255,255,0.1); }
+    .btn-sm { padding: 5px 12px; font-size: 11px; }
+
+    /* ── Misc ────────────────────────────────────────────────────────── */
+    .section-divider { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 16px 0; }
+    .info-row { display: flex; gap: 16px; font-size: 12px; color: #6b7280; margin-bottom: 12px; flex-wrap: wrap; }
+    .info-row span strong { color: #9ca3af; }
+    .toast-msg {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #1e293b; border: 1px solid rgba(255,255,255,0.1);
+      color: #f3f4f6; padding: 10px 20px; border-radius: 8px; font-size: 13px;
+      z-index: 9999; opacity: 0; transition: opacity 0.25s; pointer-events: none;
+    }
+    .toast-msg.show { opacity: 1; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .error-banner { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 14px; color: #f87171; font-size: 13px; margin-bottom: 14px; display: none; }
+  </style>
+</head>
+<body>
+
+<div id="topbarPlaceholder"></div>
+
+<!-- ══ MAIN REVIEW LAYOUT ══════════════════════════════════════════════════ -->
+<div class="review-layout" id="reviewLayout" style="display:none;">
+
+  <!-- ── Left: original document preview ────────────────────────────── -->
+  <div class="preview-panel">
+    <header>
+      <span>📄</span>
+      <strong id="previewFilename">Loading…</strong>
+      <span id="previewMeta"></span>
+    </header>
+    <div class="preview-frame" id="previewFrame">
+      <div class="preview-placeholder">Loading document…</div>
+    </div>
+  </div>
+
+  <!-- ── Right: review form ──────────────────────────────────────────── -->
+  <div class="review-panel">
+
+    <div class="review-topbar">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <a class="back-link" href="suppliers.html?tab=ocr-drafts">← Back to OCR Drafts</a>
+        <h1>Review Invoice</h1>
+        <span id="draftStatusChip" class="status-chip"></span>
+      </div>
+      <div style="font-size:12px;color:#6b7280;" id="draftIdLabel"></div>
+    </div>
+
+    <div class="review-body" id="reviewBody">
+
+      <!-- Low confidence banner -->
+      <div class="low-conf-banner" id="lowConfBanner">
+        ⚠️ <strong>Low-confidence fields highlighted.</strong>
+        Verify all amber/red fields manually before approving.
+      </div>
+
+      <!-- Error banner -->
+      <div class="error-banner" id="errorBanner"></div>
+
+      <!-- Draft info row -->
+      <div class="info-row" id="infoRow"></div>
+
+      <!-- ── SUPPLIER ────────────────────────────────────────────────── -->
+      <div class="field-group">
+        <label>Supplier <span style="color:#f87171;">*</span></label>
+        <select id="fldSupplier">
+          <option value="">— select supplier —</option>
+        </select>
+        <div style="font-size:11px;color:#6b7280;margin-top:3px;" id="ocrSupplierHint"></div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- ── HEADER FIELDS ──────────────────────────────────────────── -->
+      <div class="field-row">
+        <div class="field-group">
+          <label>Invoice Number <span id="confInvoiceNumber" class="conf-badge"></span></label>
+          <input type="text" id="fldInvoiceNumber" placeholder="INV-001">
+        </div>
+        <div class="field-group">
+          <label>Supplier VAT Number <span id="confVatNumber" class="conf-badge"></span></label>
+          <input type="text" id="fldVatNumber" placeholder="4123456789">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field-group">
+          <label>Invoice Date <span style="color:#f87171;">*</span> <span id="confInvoiceDate" class="conf-badge"></span></label>
+          <input type="date" id="fldInvoiceDate">
+        </div>
+        <div class="field-group">
+          <label>Due Date <span id="confDueDate" class="conf-badge"></span></label>
+          <input type="date" id="fldDueDate">
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label>VAT Treatment</label>
+        <select id="fldVatInclusive">
+          <option value="false">Ex-VAT (prices exclude VAT — standard SA tax invoice)</option>
+          <option value="true">Inc-VAT (prices include VAT — VAT will be extracted)</option>
+        </select>
+      </div>
+
+      <!-- ── LINE ITEMS ─────────────────────────────────────────────── -->
+      <div class="lines-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <h3>Line Items <span id="lineCountBadge" style="font-size:11px;color:#6b7280;font-weight:400;"></span></h3>
+          <button class="btn btn-secondary btn-sm" onclick="addLineRow()">+ Add Line</button>
+        </div>
+
+        <div class="lines-table-wrap">
+          <table class="lines-table">
+            <thead>
+              <tr>
+                <th style="width:36%;">Description</th>
+                <th style="width:7%;">Qty</th>
+                <th style="width:10%;">Unit Price</th>
+                <th style="width:7%;">VAT%</th>
+                <th style="width:10%;">Line Total</th>
+                <th style="width:25%;">GL Account <span style="color:#f87171;">*</span></th>
+                <th style="width:5%;"></th>
+              </tr>
+            </thead>
+            <tbody id="linesTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── TOTALS ─────────────────────────────────────────────────── -->
+      <div class="totals-panel">
+        <div class="total-row"><span>Subtotal (ex-VAT)</span><span class="amount" id="totalSubtotal">R 0.00</span></div>
+        <div class="total-row"><span>VAT</span><span class="amount" id="totalVat">R 0.00</span></div>
+        <div class="total-row grand"><span>Total (inc-VAT)</span><span class="amount" id="totalGrand">R 0.00</span></div>
+        <div class="vat-mismatch" id="vatMismatch">⚠️ VAT cross-check failed — subtotal + VAT does not equal total. Verify line amounts.</div>
+      </div>
+
+      <div class="field-group">
+        <label>Reviewer Notes (internal)</label>
+        <textarea id="fldNotes" rows="2" placeholder="Internal notes — not posted to GL…" style="resize:vertical;"></textarea>
+      </div>
+
+    </div><!-- /review-body -->
+
+    <div class="action-bar">
+      <button class="btn btn-approve" id="btnApprove" onclick="approveDraft()">
+        ✅ Approve &amp; Create Invoice
+      </button>
+      <button class="btn btn-save" onclick="saveDraft()">💾 Save Draft</button>
+      <button class="btn btn-reject" onclick="rejectDraft()">✗ Reject</button>
+    </div>
+  </div><!-- /review-panel -->
+
+</div><!-- /review-layout -->
+
+<!-- Loading state -->
+<div id="loadingState" style="display:flex;align-items:center;justify-content:center;height:80vh;font-size:14px;color:#6b7280;">
+  <span class="spinner"></span> Loading draft…
+</div>
+<!-- Error state -->
+<div id="errorState" style="display:none;align-items:center;justify-content:center;height:80vh;text-align:center;">
+  <div>
+    <div style="font-size:2rem;margin-bottom:12px;">❌</div>
+    <div style="font-size:15px;color:#f87171;" id="errorStateMsg"></div>
+    <a href="suppliers.html?tab=ocr-drafts" style="display:inline-block;margin-top:16px;color:#60a5fa;font-size:13px;">← Back to OCR Drafts</a>
+  </div>
+</div>
+<!-- Toast -->
+<div class="toast-msg" id="toastMsg"></div>
+
+<script>
+'use strict';
+
+const API   = '/api/accounting';
+let   token = null;
+let   draft = null;
+let   glAccounts = [];
+let   draftId    = null;
+
+// ─── Auth ──────────────────────────────────────────────────────────────────
+function getToken() {
+  return localStorage.getItem('token') || localStorage.getItem('accounting_token');
+}
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, ...(opts.headers || {}) }
+  });
+  if (res.status === 401) { window.location.href = 'login.html'; throw new Error('Session expired'); }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+// ─── Boot ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  token = getToken();
+  if (!token) { window.location.href = 'login.html'; return; }
+
+  const params = new URLSearchParams(window.location.search);
+  draftId = params.get('id');
+  if (!draftId) { showErrorState('No draft ID provided.'); return; }
+
+  try {
+    await Promise.all([loadDraft(), loadGlAccounts(), loadSuppliers()]);
+    renderDraft();
+    document.getElementById('reviewLayout').style.display = '';
+    document.getElementById('loadingState').style.display = 'none';
+  } catch (err) {
+    showErrorState(err.message);
+  }
+});
+
+// ─── Data loading ──────────────────────────────────────────────────────────
+async function loadDraft() {
+  const data = await apiFetch(`${API}/suppliers/invoice-ocr-drafts/${draftId}`);
+  draft = data.draft;
+}
+
+async function loadGlAccounts() {
+  try {
+    const data = await apiFetch(`${API}/accounts?active=true&limit=500`);
+    glAccounts = (data.accounts || []);
+  } catch (_) { glAccounts = []; }
+}
+
+async function loadSuppliers() {
+  try {
+    const data = await apiFetch(`${API}/suppliers?status=active`);
+    const sel = document.getElementById('fldSupplier');
+    (data.suppliers || []).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name + (s.code ? ` (${s.code})` : '');
+      sel.appendChild(opt);
+    });
+  } catch (_) {}
+}
+
+// ─── Render draft into form ────────────────────────────────────────────────
+function renderDraft() {
+  const h = draft.reviewer_header || draft.extracted_header || {};
+  const c = draft.confidence_summary || {};
+
+  // Status chip
+  const chip = document.getElementById('draftStatusChip');
+  chip.textContent = (draft.status || 'draft').replace('_', ' ').toUpperCase();
+  chip.className = 'status-chip status-' + (draft.status || 'draft');
+
+  // Draft ID / info
+  document.getElementById('draftIdLabel').textContent = `Draft #${draft.id}`;
+  document.getElementById('infoRow').innerHTML =
+    `<span><strong>File:</strong> ${escHtml(draft.original_filename || '—')}</span>` +
+    `<span><strong>Confidence:</strong> ${Math.round((c.overall || 0) * 100)}%</span>` +
+    `<span><strong>Lines extracted:</strong> ${c.lineCount || 0}</span>`;
+
+  // File preview
+  document.getElementById('previewFilename').textContent = draft.original_filename || 'Document';
+  document.getElementById('previewMeta').textContent = draft.file_mime_type ? `(${draft.file_mime_type})` : '';
+  const frameEl = document.getElementById('previewFrame');
+  if (draft.file_path) {
+    const fileUrl = `${API}/suppliers/invoice-ocr-drafts/${draftId}/file`;
+    if (draft.file_mime_type === 'application/pdf') {
+      frameEl.innerHTML = `<iframe src="${fileUrl}" title="Invoice PDF"></iframe>`;
+    } else {
+      frameEl.innerHTML = `<img src="${fileUrl}" alt="Invoice image" style="object-fit:contain;max-width:100%;max-height:100%;padding:8px;">`;
+    }
+  } else {
+    frameEl.innerHTML = '<div class="preview-placeholder">📄 File preview not available.<br>Review the extracted fields on the right.</div>';
+  }
+
+  // OCR supplier hint
+  if (h.supplier_name) {
+    document.getElementById('ocrSupplierHint').textContent = `OCR detected: "${h.supplier_name}"`;
+  }
+
+  // Supplier select
+  if (draft.supplier_id) {
+    document.getElementById('fldSupplier').value = draft.supplier_id;
+  }
+
+  // Header fields with confidence badges
+  setFieldConf('fldInvoiceNumber', 'confInvoiceNumber', h.invoice_number, c.invoiceNumber);
+  setFieldConf('fldVatNumber',     'confVatNumber',     h.vat_number,     c.vatNumber);
+  setFieldConf('fldInvoiceDate',   'confInvoiceDate',   h.invoice_date,   c.invoiceDate);
+  setFieldConf('fldDueDate',       'confDueDate',       h.due_date,       c.dueDate);
+  document.getElementById('fldVatInclusive').value = String(h.vat_inclusive || false);
+
+  // Notes
+  document.getElementById('fldNotes').value = draft.notes || '';
+
+  // Lines
+  renderLines(draft.reviewer_lines || draft.extracted_lines || []);
+
+  // Low confidence banner
+  const anyLow = [c.invoiceNumber, c.invoiceDate, c.total].some(v => v !== undefined && v < 0.5);
+  if (anyLow || (c.overall || 0) < 0.5) {
+    document.getElementById('lowConfBanner').style.display = 'block';
+  }
+
+  // Lock form if already converted or rejected
+  if (draft.status === 'converted' || draft.status === 'rejected') {
+    document.querySelectorAll('.review-body input, .review-body select, .review-body textarea')
+      .forEach(el => el.disabled = true);
+    document.getElementById('btnApprove').disabled = true;
+    document.querySelector('.btn-save').disabled = true;
+    document.querySelector('.btn-reject').disabled = true;
+    if (draft.status === 'converted') {
+      showInfo(`This draft was converted to Supplier Invoice #${draft.converted_supplier_invoice_id}.`);
+    }
+  }
+
+  recalcTotals();
+}
+
+function setFieldConf(inputId, badgeId, value, conf) {
+  const input = document.getElementById(inputId);
+  const badge = document.getElementById(badgeId);
+  if (value !== null && value !== undefined) input.value = value;
+  if (!badge) return;
+  const level = conf === undefined ? null : conf >= 0.7 ? 'high' : conf >= 0.4 ? 'medium' : 'low';
+  if (!level) { badge.style.display = 'none'; return; }
+  badge.textContent = level === 'high' ? '✓ High' : level === 'medium' ? '~ Med' : '! Low';
+  badge.className   = 'conf-badge conf-' + level;
+  if (level === 'low') input.classList.add('low-conf');
+}
+
+// ─── Lines table ───────────────────────────────────────────────────────────
+function renderLines(lines) {
+  const tbody = document.getElementById('linesTableBody');
+  tbody.innerHTML = '';
+  (lines || []).forEach(l => addLineRow(l));
+  updateLineCount();
+  recalcTotals();
+}
+
+function addLineRow(lineData) {
+  const l = lineData || {};
+  const tbody = document.getElementById('linesTableBody');
+  const tr = document.createElement('tr');
+  const idx = Date.now() + Math.random();
+
+  const acctOpts = glAccounts.map(a =>
+    `<option value="${a.id}" ${String(l.account_id) === String(a.id) ? 'selected' : ''}>${a.code} — ${escHtml(a.name)}</option>`
+  ).join('');
+
+  tr.innerHTML = `
+    <td><input type="text" value="${escAttr(l.description||'')}" placeholder="Description" onchange="recalcTotals()"></td>
+    <td><input type="number" value="${l.quantity||1}" min="0.001" step="0.001" style="width:56px;" onchange="recalcTotals()"></td>
+    <td><input type="number" value="${l.unit_price||0}" min="0" step="0.01" onchange="recalcTotals()"></td>
+    <td><input type="number" value="${l.vat_rate!=null?l.vat_rate:15}" min="0" max="100" step="1" style="width:44px;" onchange="recalcTotals()"></td>
+    <td><input type="number" readonly value="${l.line_total||0}" step="0.01" style="background:rgba(255,255,255,0.02);color:#9ca3af;"></td>
+    <td>
+      <select class="account-select ${!l.account_id ? 'no-account' : ''}" onchange="this.classList.remove('no-account');recalcTotals()">
+        <option value="">— map GL account —</option>${acctOpts}
+      </select>
+    </td>
+    <td><button class="remove-btn" onclick="removeLine(this)" title="Remove line">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+  updateLineCount();
+}
+
+function removeLine(btn) {
+  btn.closest('tr').remove();
+  updateLineCount();
+  recalcTotals();
+}
+
+function updateLineCount() {
+  const count = document.getElementById('linesTableBody').querySelectorAll('tr').length;
+  document.getElementById('lineCountBadge').textContent = `(${count})`;
+}
+
+// ─── Totals recalculation ──────────────────────────────────────────────────
+function recalcTotals() {
+  const vatInclusive = document.getElementById('fldVatInclusive').value === 'true';
+  const rows = document.getElementById('linesTableBody').querySelectorAll('tr');
+  let subEx = 0, vatTotal = 0, grandTotal = 0;
+
+  rows.forEach(tr => {
+    const cells  = tr.querySelectorAll('input');
+    const qty    = parseFloat(cells[1].value) || 1;
+    const price  = parseFloat(cells[2].value) || 0;
+    const vatR   = parseFloat(cells[3].value) / 100 || 0.15;
+    const entered = Math.round(qty * price * 10000) / 10000;
+
+    let sub, vat, total;
+    if (vatInclusive) {
+      total = Math.round(entered * 100) / 100;
+      sub   = Math.round((entered / (1 + vatR)) * 100) / 100;
+      vat   = Math.round((total - sub) * 100) / 100;
+    } else {
+      sub   = Math.round(entered * 100) / 100;
+      vat   = Math.round(entered * vatR * 100) / 100;
+      total = Math.round((sub + vat) * 100) / 100;
+    }
+    cells[4].value = total.toFixed(2);
+    subEx += sub; vatTotal += vat; grandTotal += total;
+  });
+
+  subEx      = Math.round(subEx * 100) / 100;
+  vatTotal   = Math.round(vatTotal * 100) / 100;
+  grandTotal = Math.round(grandTotal * 100) / 100;
+
+  document.getElementById('totalSubtotal').textContent = 'R ' + subEx.toLocaleString('en-ZA', {minimumFractionDigits:2});
+  document.getElementById('totalVat').textContent      = 'R ' + vatTotal.toLocaleString('en-ZA', {minimumFractionDigits:2});
+  document.getElementById('totalGrand').textContent    = 'R ' + grandTotal.toLocaleString('en-ZA', {minimumFractionDigits:2});
+
+  // VAT cross-check (within R0.05 tolerance for floating point)
+  const mismatch = Math.abs((subEx + vatTotal) - grandTotal) > 0.05;
+  document.getElementById('vatMismatch').style.display = mismatch ? 'block' : 'none';
+}
+
+// ─── Collect form data ─────────────────────────────────────────────────────
+function collectHeader() {
+  return {
+    invoice_number: document.getElementById('fldInvoiceNumber').value.trim() || null,
+    vat_number:     document.getElementById('fldVatNumber').value.trim()     || null,
+    invoice_date:   document.getElementById('fldInvoiceDate').value          || null,
+    due_date:       document.getElementById('fldDueDate').value              || null,
+    vat_inclusive:  document.getElementById('fldVatInclusive').value === 'true',
+    subtotal_ex_vat: null, // calculated server-side
+    vat_amount:      null,
+    total_inc_vat:   null,
+  };
+}
+
+function collectLines() {
+  const rows = document.getElementById('linesTableBody').querySelectorAll('tr');
+  return Array.from(rows).map((tr, i) => {
+    const inputs = tr.querySelectorAll('input');
+    const acctSel = tr.querySelector('.account-select');
+    return {
+      sort_order:  i,
+      description: inputs[0].value.trim(),
+      quantity:    parseFloat(inputs[1].value) || 1,
+      unit_price:  parseFloat(inputs[2].value) || 0,
+      vat_rate:    parseFloat(inputs[3].value) || 15,
+      line_total:  parseFloat(inputs[4].value) || 0,
+      account_id:  acctSel?.value ? parseInt(acctSel.value) : null,
+    };
+  });
+}
+
+// ─── Save draft ────────────────────────────────────────────────────────────
+async function saveDraft() {
+  const btn = document.querySelector('.btn-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  clearError();
+  try {
+    const supplierId = document.getElementById('fldSupplier').value || null;
+    await apiFetch(`${API}/suppliers/invoice-ocr-drafts/${draftId}/review`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        supplierId:     supplierId ? parseInt(supplierId) : null,
+        reviewerHeader: collectHeader(),
+        reviewerLines:  collectLines(),
+        notes:          document.getElementById('fldNotes').value.trim() || null,
+      }),
+    });
+    toast('Draft saved successfully.');
+    // Refresh status chip
+    draft.status = 'reviewed';
+    const chip = document.getElementById('draftStatusChip');
+    chip.textContent = 'REVIEWED'; chip.className = 'status-chip status-reviewed';
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Save Draft';
+  }
+}
+
+// ─── Approve ───────────────────────────────────────────────────────────────
+async function approveDraft() {
+  clearError();
+
+  // Client-side pre-validation
+  const supplierId = document.getElementById('fldSupplier').value;
+  if (!supplierId) { showError('Please select a supplier before approving.'); return; }
+  const invDate = document.getElementById('fldInvoiceDate').value;
+  if (!invDate)    { showError('Invoice date is required before approving.'); return; }
+  const lines = collectLines();
+  if (!lines.length) { showError('At least one line item is required.'); return; }
+  const unmapped = lines.filter(l => !l.account_id);
+  if (unmapped.length > 0) {
+    showError(`${unmapped.length} line(s) are missing a GL account. Map all lines before approving.`);
+    document.querySelectorAll('.account-select').forEach(s => { if (!s.value) s.classList.add('no-account'); });
+    return;
+  }
+
+  if (!confirm('Create supplier invoice and post to the General Ledger?\n\nThis action cannot be undone. All line items and totals will be posted as shown.')) return;
+
+  const btn = document.getElementById('btnApprove');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Creating invoice…';
+
+  try {
+    // Save review data first (ensures latest edits are stored)
+    await apiFetch(`${API}/suppliers/invoice-ocr-drafts/${draftId}/review`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        supplierId:     parseInt(supplierId),
+        reviewerHeader: collectHeader(),
+        reviewerLines:  lines,
+        notes:          document.getElementById('fldNotes').value.trim() || null,
+      }),
+    });
+
+    // Approve — creates invoice + posts GL
+    const result = await apiFetch(`${API}/suppliers/invoice-ocr-drafts/${draftId}/approve`, { method: 'POST' });
+
+    // Success — update UI
+    document.getElementById('draftStatusChip').textContent = 'CONVERTED';
+    document.getElementById('draftStatusChip').className   = 'status-chip status-converted';
+    btn.textContent = '✅ Invoice Created';
+    document.querySelectorAll('.review-body input, .review-body select, .review-body textarea')
+      .forEach(el => el.disabled = true);
+    document.querySelector('.btn-save').disabled   = true;
+    document.querySelector('.btn-reject').disabled = true;
+
+    toast(`✅ Supplier Invoice #${result.invoiceId} created and posted to GL.`);
+    setTimeout(() => {
+      window.location.href = `suppliers.html?tab=invoices&invoiceId=${result.invoiceId}`;
+    }, 2500);
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerHTML = '✅ Approve &amp; Create Invoice';
+    showError(err.message);
+  }
+}
+
+// ─── Reject ────────────────────────────────────────────────────────────────
+async function rejectDraft() {
+  const reason = prompt('Reason for rejecting this draft (optional):');
+  if (reason === null) return; // cancelled
+  clearError();
+  try {
+    await apiFetch(`${API}/suppliers/invoice-ocr-drafts/${draftId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || null }),
+    });
+    document.getElementById('draftStatusChip').textContent = 'REJECTED';
+    document.getElementById('draftStatusChip').className   = 'status-chip status-rejected';
+    document.querySelectorAll('.review-body input, .review-body select, .review-body textarea')
+      .forEach(el => el.disabled = true);
+    document.getElementById('btnApprove').disabled       = true;
+    document.querySelector('.btn-save').disabled         = true;
+    document.querySelector('.btn-reject').disabled       = true;
+    toast('Draft rejected.');
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+// ─── UI helpers ────────────────────────────────────────────────────────────
+function showError(msg) {
+  const el = document.getElementById('errorBanner');
+  el.textContent = '⚠️ ' + msg; el.style.display = 'block';
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function clearError() { document.getElementById('errorBanner').style.display = 'none'; }
+function showInfo(msg) { showError(msg); document.getElementById('errorBanner').style.color = '#60a5fa'; document.getElementById('errorBanner').style.borderColor = 'rgba(96,165,250,0.3)'; document.getElementById('errorBanner').style.background = 'rgba(96,165,250,0.07)'; }
+function showErrorState(msg) {
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('errorStateMsg').textContent = msg;
+  document.getElementById('errorState').style.display = 'flex';
+}
+let _toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toastMsg');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+function escHtml(s) { const d = document.createElement('div'); d.textContent = String(s||''); return d.innerHTML; }
+function escAttr(s) { return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+</script>
+
+</body>
+</html>

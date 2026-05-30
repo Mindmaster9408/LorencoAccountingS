@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Workflows — Lorenco Practice</title>
+  <link rel="stylesheet" href="/practice/css/practice.css">
+ </head>
+ <body>
+  <div class="topbar" id="app-topbar"></div>
+  <nav class="nav-tabs" id="app-nav"></nav>
+
+  <div class="main">
+    <div class="section-header">
+      <div class="section-title">Workflow Templates</div>
+      <div class="controls">
+        <button class="btn btn-primary" onclick="openNewTemplate()">+ New Template</button>
+      </div>
+    </div>
+
+    <div id="workflowsWrap"><div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div></div>
+
+    <!-- GENERATE MODAL -->
+    <div class="modal-overlay" id="generateModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 id="generateTitle">Generate Workflow</h3>
+          <button type="button" class="modal-close" onclick="closeModal('generateModal')">✕</button>
+        </div>
+        <div class="modal-body">
+          <form onsubmit="return submitGenerate(event)">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="gClient">Client</label>
+                <select id="gClient"><option value="">None</option></select>
+              </div>
+              <div class="form-field">
+                <label for="gStart">Start Date</label>
+                <input type="date" id="gStart" value="">
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-ghost" onclick="closeModal('generateModal')">Cancel</button>
+              <button type="submit" class="btn btn-primary">Generate</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/practice/js/polyfills.js"></script>
+  <script src="/practice/js/auth.js"></script>
+  <script src="/practice/js/api.js"></script>
+  <script src="/practice/js/layout.js"></script>
+  <script src="/practice/js/workflows.js"></script>
+ </body>
+</html>

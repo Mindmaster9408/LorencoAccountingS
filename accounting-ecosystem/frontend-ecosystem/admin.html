@@ -232,6 +232,12 @@
             font-size: 0.82rem; font-weight: 700; cursor: pointer;
         }
         .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-invoice {
+            padding: 10px 16px; background: #0d9488; color: #fff;
+            border: none; border-radius: 6px; cursor: pointer;
+            font-size: 0.85rem; font-weight: 500;
+        }
+        .btn-invoice:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ── Account Holder Groups ── */
         .control-panel { display: flex; flex-direction: column; gap: 16px; }
@@ -769,6 +775,7 @@
             <div id="billingReportError" style="display:none;color:#f87171;font-size:0.8rem;margin-bottom:12px;"></div>
             <div class="modal-footer">
                 <button class="btn-cancel" onclick="closeBillingReportModal()">Kanselleer</button>
+                <button type="button" class="btn-invoice" id="btnDownloadInvoice" onclick="downloadPayrollInvoice()">&#11015; Download Invoice (Payroll)</button>
                 <button class="btn-submit" id="btnGenerateReport" onclick="generateBillingReport()">&#128438; Genereer PDF</button>
             </div>
         </div>
@@ -1838,6 +1845,10 @@
             btn.disabled    = false;
             btn.textContent = '📊 Maak Verslag Oop';
 
+            const btnInv = document.getElementById('btnDownloadInvoice');
+            btnInv.disabled    = false;
+            btnInv.textContent = '⬇ Download Invoice (Payroll)';
+
             document.getElementById('billingReportModal').classList.add('open');
         }
 
@@ -1900,6 +1911,52 @@
             } finally {
                 btn.disabled    = false;
                 btn.textContent = '🖨️ Genereer PDF';
+            }
+        }
+
+        async function downloadPayrollInvoice() {
+            if (!_billingReportFirmId) return;
+
+            const month = parseInt(document.getElementById('billingReportMonth').value, 10);
+            const year  = parseInt(document.getElementById('billingReportYear').value, 10);
+            const errEl = document.getElementById('billingReportError');
+            errEl.style.display = 'none';
+            errEl.textContent   = '';
+
+            const btn = document.getElementById('btnDownloadInvoice');
+            btn.disabled    = true;
+            btn.textContent = '⏳ Genereer…';
+
+            try {
+                const url = `${API_BASE}/api/ecosystem/billing-report/payroll-invoice/${encodeURIComponent(_billingReportFirmId)}?month=${month}&year=${year}`;
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) {
+                    let errMsg = `Fout ${res.status}`;
+                    try { const d = await res.json(); errMsg = d.error || errMsg; } catch (_) { /* not JSON */ }
+                    throw new Error(errMsg);
+                }
+
+                const blob   = await res.blob();
+                const objUrl = URL.createObjectURL(blob);
+                const a      = document.createElement('a');
+                a.href     = objUrl;
+                a.download = `lorenco-payroll-invoice-${year}-${String(month).padStart(2, '0')}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(objUrl);
+
+                showToast('&#9989; Invoice afgelaai');
+                closeBillingReportModal();
+            } catch (err) {
+                errEl.textContent   = '❌ ' + err.message;
+                errEl.style.display = 'block';
+            } finally {
+                btn.disabled    = false;
+                btn.textContent = '⬇ Download Invoice (Payroll)';
             }
         }
 

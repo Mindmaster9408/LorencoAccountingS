@@ -199,7 +199,7 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
  *
  * Body: { termination_date, termination_reason? }
  */
-router.post('/:id/end-service', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
+router.post('/:id/end-service', requirePermission('EMPLOYEES.DELETE'), async (req, res) => {
   try {
     const empId = req.params.id;
     const { termination_date, termination_reason } = req.body;

@@ -41,6 +41,23 @@ const { supabase } = require('../../../config/database');
 
 const router = express.Router();
 
+// ─── Pure helper — exported for unit testing ──────────────────────────────────
+/**
+ * Returns true when an employee row should be included in the payroll run.
+ * Active employees always pass. Inactive employees pass only when their
+ * termination_date falls within the pay period (final pro-rata month).
+ *
+ * @param {object|null} empRow      - { is_active, termination_date } or null if not found
+ * @param {string}      periodStart - period start date string "YYYY-MM-DD"
+ * @param {string}      periodEnd   - period end date string "YYYY-MM-DD"
+ */
+function isEligibleForPayroll(empRow, periodStart, periodEnd) {
+  if (!empRow) return false;
+  if (empRow.is_active) return true;
+  const td = empRow.termination_date;
+  return !!(td && periodStart && periodEnd && td >= periodStart && td <= periodEnd);
+}
+
 router.use(authenticateToken);
 router.use(requireCompany);
 
@@ -232,6 +249,22 @@ router.post(
 
       for (const empId of visibleIds) {
         try {
+          // Guard: verify employee belongs to this company and is eligible for payroll.
+          // Active employees pass. Inactive employees pass only when their termination_date
+          // falls within the pay period (final pro-rata month). This prevents processing
+          // terminated employees even if their IDs are passed directly in the request body.
+          const { data: empRow } = await supabase
+            .from('employees')
+            .select('is_active, termination_date')
+            .eq('id', empId)
+            .eq('company_id', req.companyId)
+            .single();
+
+          if (!isEligibleForPayroll(empRow, period.start_date, period.end_date)) {
+            errors.push({ employee_id: empId, error: 'Employee is not active — skipped' });
+            continue;
+          }
+
           // Check if a finalized snapshot already exists for this employee
           const existingSnap = await PayrollHistoryService.getSnapshot(
             supabase, req.companyId, empId, period_key
@@ -772,4 +805,5 @@ router.get(
   }
 );
 
+router.isEligibleForPayroll = isEligibleForPayroll;
 module.exports = router;

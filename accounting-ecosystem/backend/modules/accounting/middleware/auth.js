@@ -184,6 +184,13 @@ const PERMISSIONS = {
   'opening_balance.edit':     ['admin', 'accountant'],
   'opening_balance.finalize': ['admin', 'accountant'],
   'opening_balance.archive':  ['admin', 'accountant'],
+
+  // QA — Pilot Smoke Test Pack
+  'pilot_smoke_test.view': ['admin', 'accountant', 'bookkeeper'],
+  'pilot_smoke_test.run':  ['admin', 'accountant', 'bookkeeper'],
+
+  // Dashboard
+  'dashboard.view': ['admin', 'accountant', 'bookkeeper', 'viewer'],
 };
 
 function hasPermission(permission) {

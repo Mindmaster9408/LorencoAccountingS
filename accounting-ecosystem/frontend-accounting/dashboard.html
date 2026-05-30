@@ -423,6 +423,89 @@
             font-size: 12px;
             font-weight: bold;
         }
+
+        /* ─── Action Queue ─────────────────────────────────────────────────── */
+        .action-queue-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .action-queue-badges {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .aq-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .aq-badge-critical { background: #fde8e8; color: #b71c1c; }
+        .aq-badge-high     { background: #fff3e0; color: #e65100; }
+        .aq-badge-warning  { background: #fffde7; color: #f57f17; }
+        .aq-badge-info     { background: #e3f2fd; color: #1565c0; }
+        .action-item {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 4px solid #e0e0e0;
+            background: #fafafa;
+            gap: 12px;
+        }
+        .action-item:last-child { margin-bottom: 0; }
+        .action-item-critical { border-left-color: #e53935; background: #fff8f8; }
+        .action-item-high     { border-left-color: #fb8c00; background: #fffaf5; }
+        .action-item-warning  { border-left-color: #fdd835; background: #fffef5; }
+        .action-item-info     { border-left-color: #1e88e5; background: #f5f9ff; }
+        .action-item-body { flex: 1; min-width: 0; }
+        .action-item-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #202124;
+            margin-bottom: 3px;
+        }
+        .action-item-desc {
+            font-size: 12px;
+            color: #5f6368;
+        }
+        .action-item-link {
+            color: #0066cc;
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            white-space: nowrap;
+            padding: 4px 10px;
+            border: 1px solid #d0e4ff;
+            border-radius: 6px;
+            transition: all 0.15s;
+            align-self: center;
+        }
+        .action-item-link:hover { background: #e6f3ff; }
+        .action-queue-empty {
+            color: #9aa0a6;
+            font-size: 13px;
+            text-align: center;
+            padding: 20px 0;
+        }
+        .action-queue-title {
+            margin: 0;
+            font-size: 16px;
+        }
+        .action-queue-loading {
+            color: #9aa0a6;
+            font-size: 13px;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 
@@ -437,7 +520,18 @@
 <body>
     <div class="main-content">
         <h1 style="margin-bottom: 30px;">Dashboard</h1>
-        
+
+        <!-- Pilot Action Queue -->
+        <div class="section" id="actionQueueSection">
+            <div class="action-queue-header">
+                <h2 class="action-queue-title">Pilot Action Queue</h2>
+                <div class="action-queue-badges" id="actionQueueBadges"></div>
+            </div>
+            <div id="actionQueueList">
+                <p class="action-queue-loading">Loading&hellip;</p>
+            </div>
+        </div>
+
         <div class="cards">
             <div class="card">
                 <h3>Total Accounts</h3>
@@ -609,8 +703,68 @@
         }
         
         // Logout is handled by navigation.js
-        
+
+        function escHtml(s) {
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        async function loadActionQueue() {
+            const section  = document.getElementById('actionQueueSection');
+            const badgesEl = document.getElementById('actionQueueBadges');
+            const listEl   = document.getElementById('actionQueueList');
+
+            try {
+                const res = await fetchWithAuth(`${API_URL}/dashboard/action-queue`);
+                if (!res.ok) {
+                    section.style.display = 'none';
+                    return;
+                }
+                const data = await res.json();
+                const { items, summary } = data;
+
+                // Summary badges
+                const badgeParts = [];
+                if (summary.criticalCount > 0) badgeParts.push(`<span class="aq-badge aq-badge-critical">&#9679; ${summary.criticalCount} critical</span>`);
+                if (summary.highCount     > 0) badgeParts.push(`<span class="aq-badge aq-badge-high">&#9679; ${summary.highCount} high</span>`);
+                if (summary.warningCount  > 0) badgeParts.push(`<span class="aq-badge aq-badge-warning">&#9679; ${summary.warningCount} warning</span>`);
+                if (summary.infoCount     > 0) badgeParts.push(`<span class="aq-badge aq-badge-info">&#9679; ${summary.infoCount} info</span>`);
+                badgesEl.innerHTML = badgeParts.join('');
+
+                if (!items || items.length === 0) {
+                    listEl.innerHTML = '<div class="action-queue-empty">No pending actions &#8212; all clear.</div>';
+                    return;
+                }
+
+                function severityClass(s) {
+                    if (s === 'critical') return 'action-item-critical';
+                    if (s === 'high')     return 'action-item-high';
+                    if (s === 'warning')  return 'action-item-warning';
+                    if (s === 'info')     return 'action-item-info';
+                    return '';
+                }
+
+                listEl.innerHTML = items.map(item => `
+                    <div class="action-item ${severityClass(item.severity)}">
+                        <div class="action-item-body">
+                            <div class="action-item-title">${escHtml(item.title)}</div>
+                            <div class="action-item-desc">${escHtml(item.description)}</div>
+                        </div>
+                        ${item.link ? `<a href="${escHtml(item.link)}" class="action-item-link">Open &#8594;</a>` : ''}
+                    </div>
+                `).join('');
+
+            } catch (e) {
+                console.warn('[Dashboard] Action queue load failed:', e.message);
+                section.style.display = 'none';
+            }
+        }
+
         loadDashboard();
+        loadActionQueue();
     </script>
 </body>
 </html>

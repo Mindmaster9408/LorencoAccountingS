@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lorenco Accounting — Pilot Smoke Test Pack</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+    }
+
+    .page-wrapper { max-width: 1200px; margin: 24px auto; padding: 0 24px 60px; }
+
+    /* ── Page header ─────────────────────────────────────────────────────── */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 22px;
+    }
+    .page-header h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; }
+    .page-header p  { font-size: 14px; color: #6b7280; margin-top: 4px; }
+
+    .page-header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary   { background: #0066cc; color: white; }
+    .btn-primary:hover:not(:disabled)   { background: #0052a3; }
+    .btn-secondary { background: white; color: #374151; border: 1px solid #d1d5db; }
+    .btn-secondary:hover:not(:disabled) { background: #f9fafb; }
+    .btn-success   { background: #15803d; color: white; }
+    .btn-success:hover:not(:disabled)   { background: #166534; }
+    .btn-outline-danger { background: white; color: #dc2626; border: 1px solid #fca5a5; }
+    .btn-outline-danger:hover:not(:disabled) { background: #fef2f2; }
+    .btn-sm { padding: 5px 11px; font-size: 12px; }
+
+    /* ── Cards ───────────────────────────────────────────────────────────── */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 18px;
+    }
+
+    /* ── Run header form ─────────────────────────────────────────────────── */
+    .run-header-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+    }
+    .run-header-grid .full-width { grid-column: 1 / -1; }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 5px;
+    }
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 8px 11px;
+      border: 1px solid #d1d5db;
+      border-radius: 7px;
+      font-size: 13px;
+      font-family: inherit;
+      color: #1a1a2e;
+      background: #f9fafb;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #0066cc;
+      background: white;
+    }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+
+    /* ── Progress bar ────────────────────────────────────────────────────── */
+    .progress-section {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 6px;
+    }
+    .progress-bar-wrap {
+      flex: 1;
+      height: 10px;
+      background: #e5e7eb;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #0066cc, #0099ff);
+      border-radius: 99px;
+      transition: width 0.3s;
+    }
+    .progress-pct { font-size: 13px; font-weight: 700; color: #0066cc; min-width: 40px; }
+
+    /* ── Summary pill strip ──────────────────────────────────────────────── */
+    .summary-strip {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .summary-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .pill-pass    { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+    .pill-fail    { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+    .pill-blocked { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+    .pill-nt      { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
+    .pill-total   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+    /* ── Recent runs panel ───────────────────────────────────────────────── */
+    .recent-runs-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .recent-runs-header h3 { font-size: 15px; font-weight: 600; }
+
+    .runs-list { display: flex; flex-direction: column; gap: 8px; }
+    .run-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .run-row:hover { border-color: #0066cc; background: #f5f9ff; }
+    .run-row-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .run-row-name { font-size: 13px; font-weight: 600; }
+    .run-row-counters {
+      display: flex;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .rc-pass    { color: #15803d; }
+    .rc-fail    { color: #dc2626; }
+    .rc-blocked { color: #c2410c; }
+    .rc-nt      { color: #6b7280; }
+
+    /* ── Test category sections ──────────────────────────────────────────── */
+    .category-section {
+      margin-bottom: 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .category-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      background: #f8fafc;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid #e5e7eb;
+      transition: background 0.15s;
+    }
+    .category-header:hover { background: #f0f4f8; }
+    .category-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .category-chevron { font-size: 12px; color: #6b7280; transition: transform 0.2s; }
+    .category-chevron.open { transform: rotate(180deg); }
+    .category-summary {
+      display: flex;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .category-body { display: none; }
+    .category-body.open { display: block; }
+
+    /* ── Test item rows ──────────────────────────────────────────────────── */
+    .test-item {
+      padding: 14px 18px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .test-item:last-child { border-bottom: none; }
+
+    .test-item-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .test-item-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+    .test-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1a1a2e;
+    }
+
+    /* severity badges */
+    .severity-badge {
+      flex-shrink: 0;
+      padding: 1px 7px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .sev-critical { background: #fee2e2; color: #991b1b; }
+    .sev-high     { background: #fff7ed; color: #c2410c; }
+    .sev-normal   { background: #eff6ff; color: #1d4ed8; }
+    .sev-low      { background: #f3f4f6; color: #6b7280; }
+
+    /* status buttons */
+    .status-buttons {
+      display: flex;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+    .status-btn {
+      padding: 5px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      background: white;
+      transition: all 0.15s;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .status-btn:hover { filter: brightness(0.95); }
+
+    /* active state per button type */
+    .status-btn.active-pass    { background: #15803d; color: white; border-color: #15803d; }
+    .status-btn.active-fail    { background: #dc2626; color: white; border-color: #dc2626; }
+    .status-btn.active-blocked { background: #c2410c; color: white; border-color: #c2410c; }
+    .status-btn.active-nt      { background: #6b7280; color: white; border-color: #6b7280; }
+
+    /* expanded detail panel */
+    .test-detail {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed #e5e7eb;
+      display: none;
+    }
+    .test-detail.open { display: block; }
+    .test-detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .test-detail-grid .full-width { grid-column: 1 / -1; }
+    .test-detail label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+    .test-detail input,
+    .test-detail textarea {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+      color: #1a1a2e;
+      background: #f9fafb;
+    }
+    .test-detail input:focus,
+    .test-detail textarea:focus {
+      outline: none;
+      border-color: #0066cc;
+      background: white;
+    }
+    .test-detail textarea { resize: vertical; min-height: 52px; }
+
+    /* Required note warning */
+    .required-warning {
+      display: none;
+      margin-top: 6px;
+      padding: 5px 10px;
+      background: #fef3cd;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #92400e;
+      font-weight: 600;
+    }
+    .required-warning.visible { display: block; }
+
+    /* ── Toast notification ──────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: white;
+      z-index: 9000;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.25s;
+      pointer-events: none;
+      max-width: 360px;
+    }
+    .toast.show    { opacity: 1; transform: translateY(0); }
+    .toast.success { background: #15803d; }
+    .toast.error   { background: #dc2626; }
+    .toast.info    { background: #1d4ed8; }
+
+    /* ── Loading overlay ─────────────────────────────────────────────────── */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.6);
+      z-index: 8000;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 600;
+      color: #0066cc;
+    }
+    .loading-overlay.show { display: flex; }
+
+    /* ── Section heading ─────────────────────────────────────────────────── */
+    .section-heading {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+
+    /* ── Empty state ─────────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 32px;
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    /* ── Active run indicator ────────────────────────────────────────────── */
+    .run-id-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #1d4ed8;
+    }
+
+    @media (max-width: 768px) {
+      .run-header-grid   { grid-template-columns: 1fr; }
+      .test-detail-grid  { grid-template-columns: 1fr; }
+      .status-buttons    { flex-wrap: wrap; }
+      .page-header-actions { flex-direction: column; align-items: flex-end; }
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ── Page header ────────────────────────────────────────────────────── -->
+  <div class="page-header">
+    <div>
+      <h1>Pilot Smoke Test Pack</h1>
+      <p>Structured guided testing &mdash; evidence-driven pass/fail recording. Test Pack v01.</p>
+    </div>
+    <div class="page-header-actions">
+      <span class="run-id-badge" id="activeRunBadge" style="display:none;">
+        Run #<span id="activeRunId"></span>
+      </span>
+      <button class="btn btn-secondary" onclick="showRecentRuns()">Load Previous Run</button>
+      <button class="btn btn-outline-danger btn-sm" onclick="newRun()">New Run</button>
+      <button class="btn btn-primary" id="saveBtn" onclick="saveRun()" disabled>Save Run</button>
+      <button class="btn btn-secondary" id="exportBtn" onclick="exportMarkdown()" disabled>Export .md</button>
+    </div>
+  </div>
+
+  <!-- ── Run header ─────────────────────────────────────────────────────── -->
+  <div class="card" id="runHeaderCard">
+    <div class="section-heading">Test Run Details</div>
+    <div class="run-header-grid">
+      <div class="form-group">
+        <label>Tester Name *</label>
+        <input type="text" id="testerName" placeholder="Your name" oninput="onHeaderChange()">
+      </div>
+      <div class="form-group">
+        <label>Build / Version</label>
+        <input type="text" id="buildVersion" placeholder="e.g. 2026-05-28-prod" oninput="onHeaderChange()">
+      </div>
+      <div class="form-group">
+        <label>Date &amp; Time</label>
+        <input type="text" id="runDateTime" readonly style="background:#f3f4f6;cursor:default;">
+      </div>
+      <div class="form-group full-width">
+        <label>Run Notes</label>
+        <textarea id="runNotes" placeholder="Optional: context, environment, known issues..." oninput="onHeaderChange()"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Progress & summary ─────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="progress-section">
+      <span style="font-size:13px;font-weight:600;color:#374151;">Progress</span>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <span class="progress-pct" id="progressPct">0%</span>
+    </div>
+    <div class="summary-strip">
+      <span class="summary-pill pill-pass">&#10003; Pass: <span id="countPass">0</span></span>
+      <span class="summary-pill pill-fail">&#10007; Fail: <span id="countFail">0</span></span>
+      <span class="summary-pill pill-blocked">&#9632; Blocked: <span id="countBlocked">0</span></span>
+      <span class="summary-pill pill-nt">&#8864; Not Tested: <span id="countNT">0</span></span>
+      <span class="summary-pill pill-total">Total: <span id="countTotal">0</span></span>
+    </div>
+  </div>
+
+  <!-- ── Test checklist ─────────────────────────────────────────────────── -->
+  <div class="section-heading" style="margin-top:8px;">Test Checklist</div>
+  <div id="checklistContainer">
+    <div class="empty-state">Loading test pack&hellip;</div>
+  </div>
+
+  <!-- ── Recent runs panel (hidden by default) ──────────────────────────── -->
+  <div class="card" id="recentRunsPanel" style="display:none;">
+    <div class="recent-runs-header">
+      <h3>Recent Test Runs</h3>
+      <button class="btn btn-secondary btn-sm" onclick="hideRecentRuns()">Close</button>
+    </div>
+    <div class="runs-list" id="recentRunsList">
+      <div class="empty-state">Loading&hellip;</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Loading overlay ──────────────────────────────────────────────────── -->
+<div class="loading-overlay" id="loadingOverlay">Saving&hellip;</div>
+
+<!-- ── Toast ────────────────────────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let _templates    = null;   // { version, totalTests, categories }
+let _results      = {};     // { [testKey]: { status, notes, screenshotRef, errorText } }
+let _currentRunId = null;
+let _dirty        = false;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  updateDateTime();
+  setInterval(updateDateTime, 60000);
+
+  try {
+    const resp = await apiFetch('/api/pilot-smoke-tests/templates');
+    if (!resp.ok) throw new Error('Failed to load templates');
+    _templates = await resp.json();
+    renderChecklist(_templates);
+    updateSummary();
+  } catch (err) {
+    document.getElementById('checklistContainer').innerHTML =
+      '<div class="empty-state" style="color:#dc2626;">Failed to load test pack. ' + err.message + '</div>';
+  }
+});
+
+function updateDateTime() {
+  document.getElementById('runDateTime').value = new Date().toLocaleString('en-ZA', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API helper — uses paths rewritten by eco-api-interceptor.js
+// Auth headers added by polyfills.js fetch interceptor.
+// ─────────────────────────────────────────────────────────────────────────────
+function apiFetch(url, opts = {}) {
+  opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  return fetch(url, opts);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render checklist
+// ─────────────────────────────────────────────────────────────────────────────
+function renderChecklist(templates) {
+  const container = document.getElementById('checklistContainer');
+  if (!templates || !templates.categories.length) {
+    container.innerHTML = '<div class="empty-state">No test items found.</div>';
+    return;
+  }
+
+  container.innerHTML = templates.categories.map(cat => `
+    <div class="category-section" id="cat-${cat.key}">
+      <div class="category-header" onclick="toggleCategory('${cat.key}')">
+        <div class="category-title">
+          <span>${cat.name}</span>
+          <span class="category-summary" id="cat-summary-${cat.key}">
+            ${renderCatSummary(cat.key, cat.tests)}
+          </span>
+        </div>
+        <span class="category-chevron open" id="chev-${cat.key}">&#9660;</span>
+      </div>
+      <div class="category-body open" id="body-${cat.key}">
+        ${cat.tests.map(t => renderTestItem(t, cat.key)).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  // Initialise all results as not_tested
+  templates.categories.forEach(cat => {
+    cat.tests.forEach(t => {
+      if (!_results[t.key]) {
+        _results[t.key] = { status: 'not_tested', notes: '', screenshotRef: '', errorText: '' };
+      }
+    });
+  });
+}
+
+function renderTestItem(t, catKey) {
+  const sevClass = { critical: 'sev-critical', high: 'sev-high', normal: 'sev-normal', low: 'sev-low' }[t.severity] || 'sev-normal';
+  return `
+    <div class="test-item" id="item-${t.key}">
+      <div class="test-item-top">
+        <div class="test-item-left">
+          <span class="severity-badge ${sevClass}">${t.severity}</span>
+          <span class="test-name">${escapeHtml(t.name)}</span>
+        </div>
+        <div class="status-buttons">
+          <button class="status-btn" data-key="${t.key}" data-status="pass"       onclick="setStatus('${t.key}','pass')">Pass</button>
+          <button class="status-btn" data-key="${t.key}" data-status="fail"       onclick="setStatus('${t.key}','fail')">Fail</button>
+          <button class="status-btn" data-key="${t.key}" data-status="blocked"    onclick="setStatus('${t.key}','blocked')">Blocked</button>
+          <button class="status-btn active-nt" data-key="${t.key}" data-status="not_tested" onclick="setStatus('${t.key}','not_tested')">N/T</button>
+        </div>
+      </div>
+      <div class="required-warning" id="warn-${t.key}">
+        A note is required for Fail and Blocked results.
+      </div>
+      <div class="test-detail" id="detail-${t.key}">
+        <div class="test-detail-grid">
+          <div class="full-width form-group">
+            <label>Notes / Observations</label>
+            <textarea id="notes-${t.key}" rows="2" placeholder="What happened? Include steps if relevant..."
+              oninput="onDetailChange('${t.key}')">${''}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Screenshot Reference</label>
+            <input type="text" id="screenshot-${t.key}" placeholder="Filename or path..."
+              oninput="onDetailChange('${t.key}')">
+          </div>
+          <div class="form-group">
+            <label>Error Text / Console Output</label>
+            <input type="text" id="error-${t.key}" placeholder="Error message if applicable..."
+              oninput="onDetailChange('${t.key}')">
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderCatSummary(catKey, tests) {
+  const catTests = tests || [];
+  let p = 0, f = 0, b = 0, nt = 0;
+  catTests.forEach(t => {
+    const r = _results[t.key];
+    if (!r || r.status === 'not_tested') nt++;
+    else if (r.status === 'pass') p++;
+    else if (r.status === 'fail') f++;
+    else if (r.status === 'blocked') b++;
+  });
+  const parts = [];
+  if (p)  parts.push(`<span class="rc-pass">${p} pass</span>`);
+  if (f)  parts.push(`<span class="rc-fail">${f} fail</span>`);
+  if (b)  parts.push(`<span class="rc-blocked">${b} blocked</span>`);
+  if (nt) parts.push(`<span class="rc-nt">${nt} n/t</span>`);
+  return parts.join(' · ');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Category expand/collapse
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleCategory(key) {
+  const body  = document.getElementById('body-' + key);
+  const chev  = document.getElementById('chev-' + key);
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  chev.classList.toggle('open', !isOpen);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Set test status
+// ─────────────────────────────────────────────────────────────────────────────
+function setStatus(key, status) {
+  const r = _results[key] || { status: 'not_tested', notes: '', screenshotRef: '', errorText: '' };
+  r.status = status;
+  _results[key] = r;
+
+  // Update button active states
+  const btns = document.querySelectorAll(`[data-key="${key}"].status-btn`);
+  btns.forEach(btn => {
+    btn.classList.remove('active-pass', 'active-fail', 'active-blocked', 'active-nt');
+    if (btn.dataset.status === status) {
+      btn.classList.add('active-' + (status === 'not_tested' ? 'nt' : status));
+    }
+  });
+
+  // Show/hide detail panel (always show on fail/blocked, toggle otherwise)
+  const detail  = document.getElementById('detail-' + key);
+  const showDetail = status === 'fail' || status === 'blocked' || detail.classList.contains('open');
+  detail.classList.toggle('open', status === 'fail' || status === 'blocked');
+
+  // Show required-note warning if fail/blocked with empty notes
+  checkRequiredNote(key);
+
+  // Update category summary
+  refreshCategorySummary(key);
+
+  // Update overall progress
+  updateSummary();
+
+  // Unlock save button
+  _dirty = true;
+  updateSaveButton();
+}
+
+function checkRequiredNote(key) {
+  const r    = _results[key];
+  const warn = document.getElementById('warn-' + key);
+  if (!warn || !r) return;
+  const needsNote = (r.status === 'fail' || r.status === 'blocked') && !(r.notes || '').trim();
+  warn.classList.toggle('visible', needsNote);
+}
+
+function onDetailChange(key) {
+  const r = _results[key] || {};
+  r.notes         = (document.getElementById('notes-'      + key) || {}).value || '';
+  r.screenshotRef = (document.getElementById('screenshot-' + key) || {}).value || '';
+  r.errorText     = (document.getElementById('error-'      + key) || {}).value || '';
+  _results[key] = r;
+  checkRequiredNote(key);
+  _dirty = true;
+  updateSaveButton();
+}
+
+function onHeaderChange() {
+  _dirty = true;
+  updateSaveButton();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Refresh category summary strip
+// ─────────────────────────────────────────────────────────────────────────────
+function refreshCategorySummary(testKey) {
+  if (!_templates) return;
+  const cat = _templates.categories.find(c => c.tests.some(t => t.key === testKey));
+  if (!cat) return;
+  const el = document.getElementById('cat-summary-' + cat.key);
+  if (el) el.innerHTML = renderCatSummary(cat.key, cat.tests);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Update global progress and summary
+// ─────────────────────────────────────────────────────────────────────────────
+function updateSummary() {
+  if (!_templates) return;
+  let pass = 0, fail = 0, blocked = 0, nt = 0;
+  Object.values(_results).forEach(r => {
+    if (r.status === 'pass')       pass++;
+    else if (r.status === 'fail')  fail++;
+    else if (r.status === 'blocked') blocked++;
+    else                           nt++;
+  });
+  const total = _templates.totalTests;
+  const tested = pass + fail + blocked;
+  const pct = total ? Math.round((tested / total) * 100) : 0;
+
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent  = pct + '%';
+  document.getElementById('countPass').textContent    = pass;
+  document.getElementById('countFail').textContent    = fail;
+  document.getElementById('countBlocked').textContent = blocked;
+  document.getElementById('countNT').textContent      = nt;
+  document.getElementById('countTotal').textContent   = total;
+}
+
+function updateSaveButton() {
+  const tester = (document.getElementById('testerName').value || '').trim();
+  document.getElementById('saveBtn').disabled    = !_dirty || !tester;
+  document.getElementById('exportBtn').disabled  = !tester;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Validate before save — fail/blocked items must have notes
+// ─────────────────────────────────────────────────────────────────────────────
+function validateBeforeSave() {
+  const missing = [];
+  Object.entries(_results).forEach(([key, r]) => {
+    if ((r.status === 'fail' || r.status === 'blocked') && !(r.notes || '').trim()) {
+      missing.push(key);
+    }
+  });
+  if (missing.length) {
+    // Scroll to first missing item and expand its category
+    missing.forEach(key => {
+      checkRequiredNote(key);
+      const detail = document.getElementById('detail-' + key);
+      if (detail) detail.classList.add('open');
+    });
+    // Ensure first category is visible
+    const firstEl = document.getElementById('item-' + missing[0]);
+    if (firstEl) firstEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return false;
+  }
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save run
+// ─────────────────────────────────────────────────────────────────────────────
+async function saveRun() {
+  if (!validateBeforeSave()) {
+    showToast('Please add notes for all Fail and Blocked items.', 'error');
+    return;
+  }
+
+  const testerName   = (document.getElementById('testerName').value || '').trim();
+  const buildVersion = (document.getElementById('buildVersion').value || '').trim();
+  const notes        = (document.getElementById('runNotes').value || '').trim();
+
+  if (!testerName) {
+    showToast('Tester Name is required.', 'error');
+    return;
+  }
+
+  const resultsPayload = Object.entries(_results).map(([testKey, r]) => ({
+    testKey,
+    status:        r.status,
+    notes:         r.notes         || null,
+    screenshotRef: r.screenshotRef || null,
+    errorText:     r.errorText     || null
+  }));
+
+  showLoading(true);
+  try {
+    let resp, data;
+    if (_currentRunId) {
+      // Update existing run
+      resp = await apiFetch(`/api/pilot-smoke-tests/runs/${_currentRunId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ testerName, buildVersion: buildVersion || null, notes: notes || null, results: resultsPayload })
+      });
+    } else {
+      // Create new run
+      resp = await apiFetch('/api/pilot-smoke-tests/runs', {
+        method: 'POST',
+        body: JSON.stringify({ testerName, buildVersion: buildVersion || null, notes: notes || null })
+      });
+    }
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || 'Save failed');
+    }
+    data = await resp.json();
+
+    // If we just created, we now have the run ID — do a PUT to save the results
+    if (!_currentRunId && data.run) {
+      _currentRunId = data.run.id;
+      setActiveRunBadge(_currentRunId);
+
+      const saveResp = await apiFetch(`/api/pilot-smoke-tests/runs/${_currentRunId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ results: resultsPayload })
+      });
+      if (!saveResp.ok) {
+        const err2 = await saveResp.json().catch(() => ({}));
+        throw new Error(err2.error || 'Failed to save results');
+      }
+    }
+
+    _dirty = false;
+    document.getElementById('saveBtn').disabled = true;
+    document.getElementById('exportBtn').disabled = false;
+    showToast('Test run saved successfully.', 'success');
+  } catch (err) {
+    showToast('Save failed: ' + err.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load results from an existing run into the UI
+// ─────────────────────────────────────────────────────────────────────────────
+function loadRunIntoUI(run, results) {
+  _currentRunId = run.id;
+  setActiveRunBadge(run.id);
+
+  document.getElementById('testerName').value   = run.tester_name   || '';
+  document.getElementById('buildVersion').value = run.build_version || '';
+  document.getElementById('runNotes').value     = run.notes         || '';
+
+  // Reset all results to not_tested first
+  Object.keys(_results).forEach(k => {
+    _results[k] = { status: 'not_tested', notes: '', screenshotRef: '', errorText: '' };
+  });
+
+  // Apply saved results
+  results.forEach(r => {
+    _results[r.test_key] = {
+      status:        r.status         || 'not_tested',
+      notes:         r.notes          || '',
+      screenshotRef: r.screenshot_ref || '',
+      errorText:     r.error_text     || ''
+    };
+
+    // Restore button states
+    const btns = document.querySelectorAll(`[data-key="${r.test_key}"].status-btn`);
+    btns.forEach(btn => {
+      btn.classList.remove('active-pass', 'active-fail', 'active-blocked', 'active-nt');
+      if (btn.dataset.status === r.status) {
+        btn.classList.add('active-' + (r.status === 'not_tested' ? 'nt' : r.status));
+      }
+    });
+
+    // Populate detail fields
+    const notesEl      = document.getElementById('notes-'      + r.test_key);
+    const screenshotEl = document.getElementById('screenshot-' + r.test_key);
+    const errorEl      = document.getElementById('error-'      + r.test_key);
+    if (notesEl)      notesEl.value      = r.notes          || '';
+    if (screenshotEl) screenshotEl.value = r.screenshot_ref || '';
+    if (errorEl)      errorEl.value      = r.error_text     || '';
+
+    // Show detail if fail/blocked
+    if (r.status === 'fail' || r.status === 'blocked') {
+      const detail = document.getElementById('detail-' + r.test_key);
+      if (detail) detail.classList.add('open');
+    }
+  });
+
+  // Refresh all category summaries
+  if (_templates) {
+    _templates.categories.forEach(cat => {
+      const el = document.getElementById('cat-summary-' + cat.key);
+      if (el) el.innerHTML = renderCatSummary(cat.key, cat.tests);
+    });
+  }
+
+  updateSummary();
+  _dirty = false;
+  document.getElementById('saveBtn').disabled   = false;
+  document.getElementById('exportBtn').disabled = false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// New run — reset UI
+// ─────────────────────────────────────────────────────────────────────────────
+function newRun() {
+  if (_dirty && !confirm('You have unsaved changes. Start a new run anyway?')) return;
+
+  _currentRunId = null;
+  _dirty        = false;
+
+  document.getElementById('testerName').value   = '';
+  document.getElementById('buildVersion').value = '';
+  document.getElementById('runNotes').value     = '';
+
+  setActiveRunBadge(null);
+
+  if (_templates) {
+    // Reset all statuses
+    _templates.categories.forEach(cat => {
+      cat.tests.forEach(t => {
+        _results[t.key] = { status: 'not_tested', notes: '', screenshotRef: '', errorText: '' };
+        const btns = document.querySelectorAll(`[data-key="${t.key}"].status-btn`);
+        btns.forEach(btn => {
+          btn.classList.remove('active-pass', 'active-fail', 'active-blocked', 'active-nt');
+          if (btn.dataset.status === 'not_tested') btn.classList.add('active-nt');
+        });
+        const detail = document.getElementById('detail-' + t.key);
+        if (detail) detail.classList.remove('open');
+        const warn = document.getElementById('warn-' + t.key);
+        if (warn) warn.classList.remove('visible');
+        const notesEl = document.getElementById('notes-' + t.key);
+        if (notesEl) notesEl.value = '';
+        const screenshotEl = document.getElementById('screenshot-' + t.key);
+        if (screenshotEl) screenshotEl.value = '';
+        const errorEl = document.getElementById('error-' + t.key);
+        if (errorEl) errorEl.value = '';
+      });
+    });
+    _templates.categories.forEach(cat => {
+      const el = document.getElementById('cat-summary-' + cat.key);
+      if (el) el.innerHTML = renderCatSummary(cat.key, cat.tests);
+    });
+  }
+
+  updateSummary();
+  document.getElementById('saveBtn').disabled   = true;
+  document.getElementById('exportBtn').disabled = true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recent runs panel
+// ─────────────────────────────────────────────────────────────────────────────
+async function showRecentRuns() {
+  const panel = document.getElementById('recentRunsPanel');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  document.getElementById('recentRunsList').innerHTML = '<div class="empty-state">Loading&hellip;</div>';
+
+  try {
+    const resp = await apiFetch('/api/pilot-smoke-tests/runs');
+    if (!resp.ok) throw new Error('Failed to load runs');
+    const data = await resp.json();
+    renderRecentRuns(data.runs || []);
+  } catch (err) {
+    document.getElementById('recentRunsList').innerHTML =
+      '<div class="empty-state" style="color:#dc2626;">Failed to load runs: ' + err.message + '</div>';
+  }
+}
+
+function hideRecentRuns() {
+  document.getElementById('recentRunsPanel').style.display = 'none';
+}
+
+function renderRecentRuns(runs) {
+  const container = document.getElementById('recentRunsList');
+  if (!runs.length) {
+    container.innerHTML = '<div class="empty-state">No saved test runs for this company yet.</div>';
+    return;
+  }
+  container.innerHTML = runs.map(r => {
+    const date = new Date(r.created_at).toLocaleString('en-ZA', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    const pct = r.total_count ? Math.round(((r.passed_count + r.failed_count + r.blocked_count) / r.total_count) * 100) : 0;
+    return `
+      <div class="run-row" onclick="loadRun(${r.id})">
+        <div>
+          <div class="run-row-name">
+            Run #${r.id} &mdash; ${escapeHtml(r.tester_name)}
+            ${r.build_version ? `<span style="font-weight:400;color:#6b7280;">(${escapeHtml(r.build_version)})</span>` : ''}
+          </div>
+          <div class="run-row-meta">${date} &middot; ${pct}% tested</div>
+        </div>
+        <div class="run-row-counters">
+          <span class="rc-pass">&#10003; ${r.passed_count}</span>
+          <span class="rc-fail">&#10007; ${r.failed_count}</span>
+          <span class="rc-blocked">&#9632; ${r.blocked_count}</span>
+          <span class="rc-nt">N/T ${r.not_tested_count}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function loadRun(runId) {
+  if (_dirty && !confirm('You have unsaved changes. Load this run anyway?')) return;
+
+  showLoading(true);
+  try {
+    const resp = await apiFetch('/api/pilot-smoke-tests/runs/' + runId);
+    if (!resp.ok) throw new Error('Failed to load run');
+    const data = await resp.json();
+    loadRunIntoUI(data.run, data.results || []);
+    hideRecentRuns();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast('Run #' + runId + ' loaded.', 'info');
+  } catch (err) {
+    showToast('Failed to load run: ' + err.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export to Markdown
+// ─────────────────────────────────────────────────────────────────────────────
+function exportMarkdown() {
+  const tester  = document.getElementById('testerName').value.trim() || 'Unknown';
+  const build   = document.getElementById('buildVersion').value.trim() || 'n/a';
+  const runNote = document.getElementById('runNotes').value.trim();
+  const now     = new Date().toLocaleString('en-ZA');
+
+  let pass = 0, fail = 0, blocked = 0, nt = 0, total = 0;
+  Object.values(_results).forEach(r => {
+    total++;
+    if (r.status === 'pass') pass++;
+    else if (r.status === 'fail') fail++;
+    else if (r.status === 'blocked') blocked++;
+    else nt++;
+  });
+  const pct = total ? Math.round(((pass + fail + blocked) / total) * 100) : 0;
+
+  let md = `# Pilot Smoke Test Report — Lorenco Accounting\n\n`;
+  md += `| Field        | Value |\n|---|---|\n`;
+  md += `| Run ID       | ${_currentRunId || '(not saved)'} |\n`;
+  md += `| Tester       | ${tester} |\n`;
+  md += `| Build        | ${build} |\n`;
+  md += `| Date/Time    | ${now} |\n`;
+  md += `| Test Pack    | v01 |\n`;
+  if (runNote) md += `| Notes        | ${runNote.replace(/\n/g, ' ')} |\n`;
+  md += `\n## Summary\n\n`;
+  md += `| Result    | Count |\n|---|---|\n`;
+  md += `| ✅ Pass     | ${pass} |\n`;
+  md += `| ❌ Fail     | ${fail} |\n`;
+  md += `| ⛔ Blocked  | ${blocked} |\n`;
+  md += `| ⬜ Not Tested | ${nt} |\n`;
+  md += `| **Total** | **${total}** |\n`;
+  md += `| **Progress** | **${pct}%** |\n\n`;
+
+  if (_templates) {
+    _templates.categories.forEach(cat => {
+      md += `## ${cat.name}\n\n`;
+      md += `| Test | Severity | Status | Notes |\n|---|---|---|---|\n`;
+      cat.tests.forEach(t => {
+        const r = _results[t.key] || { status: 'not_tested', notes: '' };
+        const statusIcon = { pass: '✅', fail: '❌', blocked: '⛔', not_tested: '⬜' }[r.status] || '⬜';
+        const noteStr = (r.notes || '').replace(/\|/g, '&#124;').replace(/\n/g, ' ');
+        md += `| ${t.name} | ${t.severity} | ${statusIcon} ${r.status} | ${noteStr} |\n`;
+        if (r.screenshotRef) md += `| *Screenshot* | | | ${r.screenshotRef} |\n`;
+        if (r.errorText)     md += `| *Error* | | | ${r.errorText} |\n`;
+      });
+      md += `\n`;
+    });
+  }
+
+  md += `---\n*Generated by Lorenco Accounting Pilot Smoke Test Pack v01*\n`;
+
+  // Download as file
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const dateStr = new Date().toISOString().slice(0,10);
+  a.href     = url;
+  a.download = `smoke-test-${dateStr}-${tester.replace(/\s+/g,'-').toLowerCase()}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function setActiveRunBadge(runId) {
+  const badge = document.getElementById('activeRunBadge');
+  if (runId) {
+    document.getElementById('activeRunId').textContent = runId;
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function showLoading(show) {
+  document.getElementById('loadingOverlay').classList.toggle('show', show);
+}
+
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = `toast ${type}`;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;');
+}
+</script>
+</body>
+</html>

@@ -423,7 +423,12 @@ router.delete('/:id', requirePermission('PAYROLL.CREATE'), requirePaytimeModule(
 
     const { error } = await supabase
       .from('employees')
-      .update({ is_active: false })
+      .update({
+        is_active:         false,
+        employment_status: 'terminated',
+        termination_date:  new Date().toISOString().split('T')[0],
+        updated_at:        new Date().toISOString(),
+      })
       .eq('id', empId)
       .eq('company_id', req.companyId);
 

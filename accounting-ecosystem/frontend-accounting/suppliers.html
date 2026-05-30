@@ -173,7 +173,8 @@
     <div class="tab"        onclick="switchTab('invoices')"  id="tab-btn-invoices">Invoices</div>
     <div class="tab"        onclick="switchTab('orders')"    id="tab-btn-orders">Purchase Orders</div>
     <div class="tab"        onclick="switchTab('payments')"  id="tab-btn-payments">Payments</div>
-    <div class="tab"        onclick="switchTab('aging')"     id="tab-btn-aging">Aging Report</div>
+    <div class="tab"        onclick="switchTab('aging')"      id="tab-btn-aging">Aging Report</div>
+    <div class="tab"        onclick="switchTab('ocr-drafts')" id="tab-btn-ocr-drafts">📄 OCR Invoice Review</div>
   </div>
 
   <!-- ══ Tab: Supplier List ══════════════════════════════════════════ -->
@@ -357,6 +358,67 @@
         <div id="agingEmpty" class="empty-state" style="display:none">
           <h3>No outstanding balances</h3>
           <p>All supplier accounts are settled.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Tab: OCR Invoice Review ════════════════════════════════════ -->
+  <div id="tab-ocr-drafts" class="tab-content">
+    <div class="card">
+      <div class="card-header">
+        <h2>📄 OCR Invoice Review Queue</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="ocrStatusFilter" onchange="loadOcrDrafts()" style="font-size:12px;padding:5px 10px;">
+            <option value="">All statuses</option>
+            <option value="draft" selected>Pending Review</option>
+            <option value="reviewed">Reviewed (ready to approve)</option>
+            <option value="converted">Converted</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="loadOcrDrafts()">Refresh</button>
+          <label class="btn btn-primary btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;">
+            📤 Upload Invoice
+            <input type="file" id="ocrUploadInput" accept=".jpg,.jpeg,.png,.webp,.pdf"
+                   style="display:none;" onchange="handleOcrUpload(event)">
+          </label>
+        </div>
+      </div>
+
+      <!-- Upload progress indicator -->
+      <div id="ocrUploadProgress" style="display:none;padding:12px 20px;background:rgba(99,102,241,0.08);border-bottom:1px solid rgba(255,255,255,0.06);font-size:13px;color:#a5b4fc;">
+        ⏳ Uploading and running OCR… please wait.
+      </div>
+
+      <!-- Governance note -->
+      <div style="padding:10px 20px;background:rgba(251,191,36,0.06);border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;color:#d1a800;">
+        ⚠️ <strong>Forensic review required.</strong>
+        OCR results are never accounting truth. Every draft must be reviewed and explicitly approved before a supplier invoice is created and posted to the GL.
+      </div>
+
+      <div class="card-body" style="padding:0">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Supplier</th>
+                <th>Invoice #</th>
+                <th>Date</th>
+                <th>Confidence</th>
+                <th>Status</th>
+                <th>Uploaded</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ocrDraftsTbody">
+              <tr><td colspan="8" style="text-align:center;padding:40px;opacity:0.5;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="ocrDraftsEmpty" class="empty-state" style="display:none">
+          <h3>No OCR drafts</h3>
+          <p>Upload a supplier invoice PDF or image to extract and review it.</p>
         </div>
       </div>
     </div>
@@ -766,11 +828,12 @@ async function loadStats() {
 // ═══════════════════════════════════════════════════════
 
 const tabLoaders = {
-  suppliers: loadSuppliers,
-  invoices:  loadInvoices,
-  orders:    loadOrders,
-  payments:  loadPayments,
-  aging:     loadAging,
+  suppliers:   loadSuppliers,
+  invoices:    loadInvoices,
+  orders:      loadOrders,
+  payments:    loadPayments,
+  aging:       loadAging,
+  'ocr-drafts': loadOcrDrafts,
 };
 
 function switchTab(name) {
@@ -1546,6 +1609,109 @@ function esc(str) {
 document.addEventListener('click', e => {
   if (e.target.classList.contains('modal')) closeModal(e.target.id);
 });
+
+// ═══════════════════════════════════════════════════════
+//  OCR INVOICE REVIEW QUEUE
+// ═══════════════════════════════════════════════════════
+
+async function loadOcrDrafts() {
+  const tbody   = document.getElementById('ocrDraftsTbody');
+  const emptyEl = document.getElementById('ocrDraftsEmpty');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;opacity:0.5;">Loading…</td></tr>';
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  const status = document.getElementById('ocrStatusFilter')?.value || '';
+  const url    = `${BASE}/invoice-ocr-drafts?limit=100${status ? '&status=' + status : ''}`;
+
+  try {
+    const data = await apiGet(url);
+    const drafts = data?.drafts || [];
+
+    if (!drafts.length) {
+      tbody.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = 'block';
+      return;
+    }
+
+    const statusBadge = (s) => {
+      const map = {
+        draft:     ['badge-draft',    '⏳ Pending'],
+        reviewed:  ['badge-approved', '🔍 Reviewed'],
+        converted: ['badge-paid',     '✅ Converted'],
+        rejected:  ['badge-inactive', '✗ Rejected'],
+      };
+      const [cls, label] = map[s] || ['badge-draft', s];
+      return `<span class="badge ${cls}">${label}</span>`;
+    };
+
+    const confBadge = (c) => {
+      const pct = Math.round((c?.overall || 0) * 100);
+      const col = pct >= 75 ? '#4ade80' : pct >= 45 ? '#fbbf24' : '#f87171';
+      return `<span style="color:${col};font-weight:600;font-size:12px;">${pct}%</span>`;
+    };
+
+    tbody.innerHTML = drafts.map(d => {
+      const hdr      = d.reviewer_header || {};
+      const supplier = d.suppliers?.name || '— not mapped —';
+      const canReview = d.status !== 'converted' && d.status !== 'rejected';
+      return `<tr>
+        <td style="font-size:12px;">
+          <div style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(d.original_filename||'')}">
+            ${escHtml((d.original_filename||'—').substring(0,30))}
+          </div>
+          <div style="opacity:0.5;font-size:11px;">${d.file_mime_type === 'application/pdf' ? 'PDF' : 'Image'}</div>
+        </td>
+        <td style="font-size:12px;">${escHtml(supplier)}</td>
+        <td style="font-size:12px;font-family:monospace;">${escHtml(hdr.invoice_number||'—')}</td>
+        <td style="font-size:12px;">${hdr.invoice_date||'—'}</td>
+        <td>${confBadge(d.confidence_summary)}</td>
+        <td>${statusBadge(d.status)}</td>
+        <td style="font-size:11px;opacity:0.6;">${d.created_at ? new Date(d.created_at).toLocaleDateString('en-ZA') : '—'}</td>
+        <td>
+          <div class="action-btns">
+            <a href="supplier-invoice-ocr-review.html?id=${d.id}" class="btn btn-secondary btn-sm">
+              ${canReview ? '✏️ Review' : '👁 View'}
+            </a>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#f87171;">Failed to load: ${escHtml(err.message)}</td></tr>`;
+  }
+}
+
+// Upload a supplier invoice PDF/image directly from the suppliers page
+async function handleOcrUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const progressEl = document.getElementById('ocrUploadProgress');
+  if (progressEl) progressEl.style.display = 'block';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(`${BASE}/invoice-ocr-drafts/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+    // Navigate to the review page for the new draft
+    window.location.href = `supplier-invoice-ocr-review.html?id=${data.draft.id}`;
+  } catch (err) {
+    alert('Upload failed: ' + err.message);
+  } finally {
+    if (progressEl) progressEl.style.display = 'none';
+    event.target.value = ''; // reset input
+  }
+}
 
 // ═══════════════════════════════════════════════════════
 //  START

@@ -283,15 +283,6 @@
             background: #5568d3;
         }
 
-        .btn-delete {
-            background: #dc3545;
-            color: white;
-        }
-
-        .btn-delete:hover {
-            background: #c82333;
-        }
-
         .btn-end-service {
             background: #fd7e14;
             color: white;
@@ -1214,34 +1205,6 @@
             if (!res.ok) {
                 var data = await res.json();
                 throw new Error(data.error || 'Bank details save failed');
-            }
-        }
-
-        async function deleteEmployee(id) {
-            if (!Permissions.require('DELETE_EMPLOYEES')) return;
-
-            var emp = employees.find(function(e) { return String(e.id) === String(id); });
-            var empName = emp
-                ? (emp.first_name || '') + ' ' + (emp.last_name || '') + ' (' + (emp.employee_number || emp.employee_code || id) + ')'
-                : String(id);
-
-            // Legacy localStorage-only employees (fake IDs) — remove locally
-            if (emp && typeof emp.id === 'string' && emp.id.indexOf('emp-') === 0) {
-                if (confirm('This employee is stored locally only and has not been synced to the server.\nRemove from local data?')) {
-                    employees = employees.filter(function(e) { return e.id !== id; });
-                    displayEmployees();
-                }
-                return;
-            }
-
-            if (!confirm('Deactivate employee ' + empName + '?\n\nPayroll history will be preserved. The employee will be marked inactive.')) return;
-
-            try {
-                await DataAccess.deactivateEmployee(id);
-                AuditTrail.logDelete(currentCompanyId, 'employee', 'Deactivated employee ' + empName);
-                await loadEmployeesFromBackend();
-            } catch (err) {
-                alert('Failed to deactivate employee: ' + (err.message || 'Server error'));
             }
         }
 
