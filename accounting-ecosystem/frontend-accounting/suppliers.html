@@ -862,6 +862,59 @@
   </div>
 </div>
 
+<!-- ══ Supplier Invoice Void Modal (ACC-HARDEN-025) ════════════════ -->
+<div id="modalSupInvVoid" class="modal">
+  <div class="modal-dialog narrow">
+    <div class="modal-header">
+      <h3>Void Supplier Invoice</h3>
+      <button class="modal-close" onclick="closeSupInvVoid()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="voidInvError" class="rev-error"></div>
+      <div class="rev-summary">
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Invoice</span>
+          <span class="rev-summary-value" id="voidInvNumber"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Supplier</span>
+          <span class="rev-summary-value" id="voidInvSupplier"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Invoice Date</span>
+          <span class="rev-summary-value" id="voidInvDate"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Amount</span>
+          <span class="rev-summary-value amt" id="voidInvAmount"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Current Status</span>
+          <span class="rev-summary-value" id="voidInvStatus"></span>
+        </div>
+      </div>
+      <div class="rev-impact">
+        <div class="rev-impact-title">Voiding this invoice will:</div>
+        <ul class="rev-impact-list">
+          <li>Permanently mark invoice as VOID</li>
+          <li>Reverse the posted GL journal</li>
+          <li>Remove the invoice from AP balances</li>
+          <li>Preserve full audit trail and history</li>
+          <li>Cannot be undone — re-enter as a new invoice if needed</li>
+        </ul>
+      </div>
+      <div class="form-group">
+        <label>Reason (optional)</label>
+        <textarea id="voidInvReason" rows="2" placeholder="e.g. Duplicate invoice — correct copy on file"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeSupInvVoid()">Cancel</button>
+      <button class="btn btn-danger" id="voidInvConfirmBtn" onclick="confirmSupInvVoid()">Void Invoice</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ Supplier Payment Detail Modal (ACC-HARDEN-023) ══════════════ -->
 <div id="modalSupPayDetail" class="modal">
   <div class="modal-dialog wide">
@@ -887,8 +940,9 @@
 // ═══════════════════════════════════════════════════════
 
 const BASE = '/api/accounting/suppliers';
-let cachedAccounts     = [];
-let _cachedSupPayments = [];   // ACC-HARDEN-024: cached for reversal modal lookup
+let cachedAccounts      = [];
+let _cachedSupPayments  = [];   // ACC-HARDEN-024: cached for reversal modal lookup
+let _cachedSupInvoices  = [];   // ACC-HARDEN-025: cached for void modal lookup
 
 // ── Payment idempotency ─────────────────────────────────────────────────────
 // UUID generated in-memory when the payment modal opens. Same key on retry.
@@ -1060,6 +1114,8 @@ async function loadInvoices() {
   const data  = await apiGet(url);
   if (!data) return;
   const items = data.invoices || [];
+  _cachedSupInvoices = items;   // cache for void modal lookup
+
   const tbody = document.getElementById('invoiceTbody');
   const empty = document.getElementById('invoiceEmpty');
 
@@ -1086,7 +1142,7 @@ async function loadInvoices() {
               ? `<button class="btn btn-primary btn-sm" onclick="payInvoiceQuick(${inv.id},${inv.supplier_id},'${esc(inv.supplier_name)}',${balance.toFixed(2)})">Pay</button>`
               : ''}
             ${inv.status !== 'paid' && inv.status !== 'void' && inv.status !== 'cancelled' && parseFloat(inv.amount_paid||0) < 0.005
-              ? `<button class="btn btn-danger btn-sm" onclick="voidSupplierInvoice(${inv.id},'${esc(inv.invoice_number||inv.id)}')">Void</button>`
+              ? `<button class="btn btn-danger btn-sm" onclick="openSupInvVoid(${inv.id})">Void</button>`
               : ''}
           </div>
         </td>
@@ -1135,25 +1191,72 @@ async function updatePOStatus(poId, status) {
   loadOrders();
 }
 
-// ── Void supplier invoice ────────────────────────────────────────────────────
-// In-flight guard prevents double-click from firing two concurrent void requests.
-// Backend is the authoritative guard (conditional UPDATE + reverseJournal locks).
+// ── Supplier invoice void modal (ACC-HARDEN-025) ─────────────────────────────
+// In-flight guard prevents double-click. Backend is the authoritative guard
+// (conditional UPDATE + reverseJournal concurrency safety).
 const _voidingInvoiceIds = new Set();
+let   _pendingVoidInvId  = null;
 
-async function voidSupplierInvoice(invoiceId, invoiceRef) {
-  if (_voidingInvoiceIds.has(invoiceId)) return;
-  const label = invoiceRef || invoiceId;
-  if (!confirm(`Void supplier invoice ${label}?\n\nThis will reverse the posted GL journal. The invoice will be permanently marked as void and cannot be edited.`)) return;
-  const reason = prompt(`Optional: enter a reason for voiding invoice ${label}`) || '';
-  _voidingInvoiceIds.add(invoiceId);
+function openSupInvVoid(id) {
+  if (_voidingInvoiceIds.has(id)) return;
+
+  const inv = _cachedSupInvoices.find(x => x.id === id);
+  if (!inv) return;
+
+  _pendingVoidInvId = id;
+
+  document.getElementById('voidInvNumber').textContent       = inv.invoice_number || `INV-${inv.id}`;
+  document.getElementById('voidInvSupplier').textContent     = inv.supplier_name  || '—';
+  document.getElementById('voidInvDate').textContent         = fmtDate(inv.invoice_date);
+  document.getElementById('voidInvAmount').textContent       = fmtR(inv.total_inc_vat);
+  document.getElementById('voidInvStatus').textContent       = fmtStatus(inv.status);
+  document.getElementById('voidInvReason').value             = '';
+  document.getElementById('voidInvError').style.display      = 'none';
+  document.getElementById('voidInvConfirmBtn').disabled      = false;
+  document.getElementById('voidInvConfirmBtn').textContent   = 'Void Invoice';
+
+  document.getElementById('modalSupInvVoid').classList.add('show');
+}
+
+function closeSupInvVoid() {
+  _pendingVoidInvId = null;
+  document.getElementById('modalSupInvVoid').classList.remove('show');
+}
+
+async function confirmSupInvVoid() {
+  const id = _pendingVoidInvId;
+  if (!id || _voidingInvoiceIds.has(id)) return;
+
+  const reason = (document.getElementById('voidInvReason').value || '').trim();
+  const errEl  = document.getElementById('voidInvError');
+  const btn    = document.getElementById('voidInvConfirmBtn');
+
+  errEl.style.display = 'none';
+  btn.disabled        = true;
+  btn.textContent     = 'Voiding…';
+  _voidingInvoiceIds.add(id);
+
   try {
-    const data = await apiPost(`${BASE}/invoices/${invoiceId}/void`, { reason: reason.trim() || null });
-    if (data?.error) { alert('Void failed: ' + data.error); return; }
-    await loadInvoices();
+    const data = await apiPost(`${BASE}/invoices/${id}/void`, { reason: reason || null });
+
+    if (data?.error) {
+      errEl.textContent   = data.error;
+      errEl.style.display = 'block';
+      btn.disabled        = false;
+      btn.textContent     = 'Void Invoice';
+      _voidingInvoiceIds.delete(id);
+      return;
+    }
+
+    _voidingInvoiceIds.delete(id);
+    closeSupInvVoid();
+    await Promise.all([loadInvoices(), loadStats()]);
   } catch (err) {
-    alert('Void failed: ' + err.message);
-  } finally {
-    _voidingInvoiceIds.delete(invoiceId);
+    errEl.textContent   = 'Network error: ' + err.message;
+    errEl.style.display = 'block';
+    btn.disabled        = false;
+    btn.textContent     = 'Void Invoice';
+    _voidingInvoiceIds.delete(id);
   }
 }
 
