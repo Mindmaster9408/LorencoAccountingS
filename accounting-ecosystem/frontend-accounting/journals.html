@@ -69,6 +69,22 @@
         .unbalanced { background: #fce4ec; color: #c62828; }
         .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 
+        /* ── Action confirm overlay (ACC-HARDEN-027) ─────────────────────── */
+        .actn-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; align-items: center; justify-content: center; }
+        .actn-overlay.show { display: flex; }
+        .actn-dialog { background: white; border-radius: 12px; padding: 28px; width: 460px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .actn-title { font-size: 17px; font-weight: 700; color: #202124; margin-bottom: 14px; }
+        .actn-body  { font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 16px; }
+        .actn-impact { background: #fff3f3; border: 1px solid #ffdede; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #c62828; line-height: 1.7; }
+        .actn-impact ul { margin: 4px 0 0 16px; padding: 0; }
+        .actn-error { background: #fce4ec; border: 1px solid #f48fb1; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #c62828; margin-bottom: 12px; display: none; }
+        .actn-reason { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical; margin-bottom: 14px; }
+        .actn-footer { display: flex; gap: 10px; justify-content: flex-end; }
+        .btn-actn-cancel { padding: 9px 18px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .btn-actn-danger { padding: 9px 18px; background: #ef5350; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .btn-actn-success { padding: 9px 18px; background: #2e7d32; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .actn-hidden { display: none; }
+
         /* Detail panel */
         .detail-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 2000; align-items: center; justify-content: center; }
         .detail-overlay.show { display: flex; }
@@ -149,6 +165,21 @@
             </tbody>
         </table>
     </div>
+</div>
+
+<!-- Action Confirm Overlay (ACC-HARDEN-027) -->
+<div class="actn-overlay" id="jnlActionOverlay">
+  <div class="actn-dialog">
+    <div class="actn-title" id="jnlActionTitle"></div>
+    <div class="actn-body"  id="jnlActionBody"></div>
+    <div class="actn-impact actn-hidden" id="jnlActionImpact"></div>
+    <div class="actn-error" id="jnlActionError"></div>
+    <textarea class="actn-reason actn-hidden" id="jnlActionReason" rows="2" placeholder="Reason (required)"></textarea>
+    <div class="actn-footer">
+      <button type="button" class="btn-actn-cancel" onclick="closeJnlAction()">Cancel</button>
+      <button type="button" id="jnlActionConfirmBtn" onclick="confirmJnlAction()">Confirm</button>
+    </div>
+  </div>
 </div>
 
 <!-- Create / Edit Modal -->
@@ -565,34 +596,96 @@
         }
     }
 
-    // ── Post a draft from the table row ─────────────────────────────────────
-    async function postJournal(id) {
-        if (!confirm('Post this journal? Posted journals cannot be edited.')) return;
+    // ── Action confirm overlay (ACC-HARDEN-027) ──────────────────────────────
+    // Single reusable overlay for post / delete / reverse — each call
+    // configures the dialog, stores the pending async action, then executes
+    // it when the accountant clicks Confirm.
+    let _jnlPendingAction = null;
+
+    function openJnlAction({ title, body, impact, confirmLabel, btnClass, showReason }) {
+        document.getElementById('jnlActionTitle').textContent  = title;
+        document.getElementById('jnlActionBody').textContent   = body;
+        document.getElementById('jnlActionError').style.display = 'none';
+
+        const impactEl = document.getElementById('jnlActionImpact');
+        if (impact) { impactEl.innerHTML = impact; impactEl.classList.remove('actn-hidden'); }
+        else         { impactEl.classList.add('actn-hidden'); }
+
+        const reasonEl = document.getElementById('jnlActionReason');
+        if (showReason) { reasonEl.classList.remove('actn-hidden'); reasonEl.value = ''; }
+        else             { reasonEl.classList.add('actn-hidden'); }
+
+        const btn = document.getElementById('jnlActionConfirmBtn');
+        btn.className = btnClass;
+        btn.textContent = confirmLabel;
+        btn.disabled = false;
+
+        document.getElementById('jnlActionOverlay').classList.add('show');
+    }
+
+    function closeJnlAction() {
+        _jnlPendingAction = null;
+        document.getElementById('jnlActionOverlay').classList.remove('show');
+    }
+
+    async function confirmJnlAction() {
+        if (!_jnlPendingAction) return;
+        const btn    = document.getElementById('jnlActionConfirmBtn');
+        const errEl  = document.getElementById('jnlActionError');
+        const reason = document.getElementById('jnlActionReason').value.trim();
+        const action = _jnlPendingAction;
+        btn.disabled    = true;
+        btn.textContent = 'Working…';
+        errEl.style.display = 'none';
         try {
-            const res = await fetch('/api/journals/' + id + '/post', {
-                method: 'POST',
-                headers: authHeaders(),
-                body: JSON.stringify({})
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
-            await loadJournals();
+            await action(reason);
+            closeJnlAction();
         } catch (err) {
-            showError('Post failed: ' + err.message);
+            errEl.textContent   = err.message;
+            errEl.style.display = 'block';
+            btn.disabled        = false;
+            btn.textContent     = document.getElementById('jnlActionConfirmBtn').dataset.label || 'Confirm';
         }
     }
 
-    // ── Delete a draft ───────────────────────────────────────────────────────
-    async function deleteJournal(id) {
-        if (!confirm('Delete this draft journal? This cannot be undone.')) return;
-        try {
-            const res = await fetch('/api/journals/' + id, { method: 'DELETE', headers: authHeaders() });
+    // ── Post a draft from the table row ─────────────────────────────────────
+    function postJournal(id) {
+        _jnlPendingAction = async () => {
+            const res  = await fetch('/api/journals/' + id + '/post', { method: 'POST', headers: authHeaders(), body: JSON.stringify({}) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
             await loadJournals();
-        } catch (err) {
-            showError('Delete failed: ' + err.message);
-        }
+        };
+        const btn = document.getElementById('jnlActionConfirmBtn');
+        btn.dataset.label = 'Post to GL';
+        openJnlAction({
+            title:        'Post Journal to General Ledger',
+            body:         'This journal will be posted. Posted journals cannot be edited.',
+            impact:       '<ul style="margin:4px 0 0 14px;padding:0;"><li>Debit and credit entries will be finalised</li><li>The journal cannot be edited after posting</li><li>Reverse via journal reversal if correction is needed</li></ul>',
+            confirmLabel: 'Post to GL',
+            btnClass:     'btn-actn-success',
+            showReason:   false,
+        });
+    }
+
+    // ── Delete a draft ───────────────────────────────────────────────────────
+    function deleteJournal(id) {
+        _jnlPendingAction = async () => {
+            const res  = await fetch('/api/journals/' + id, { method: 'DELETE', headers: authHeaders() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            await loadJournals();
+        };
+        const btn = document.getElementById('jnlActionConfirmBtn');
+        btn.dataset.label = 'Delete Draft';
+        openJnlAction({
+            title:        'Delete Draft Journal',
+            body:         'This draft journal will be permanently deleted. This cannot be undone.',
+            impact:       null,
+            confirmLabel: 'Delete Draft',
+            btnClass:     'btn-actn-danger',
+            showReason:   false,
+        });
     }
 
     // ── Reverse a posted journal ─────────────────────────────────────────────
@@ -602,25 +695,30 @@
     // is the complementary frontend layer.
     const _reversingIds = new Set();
 
-    async function reverseJournal(id) {
-        if (_reversingIds.has(id)) return;  // already in-flight for this journal
-        const reason = prompt('Enter reason for reversal:');
-        if (!reason || !reason.trim()) return;
-        _reversingIds.add(id);
-        try {
-            const res = await fetch('/api/journals/' + id + '/reverse', {
-                method: 'POST',
-                headers: authHeaders(),
-                body: JSON.stringify({ reason: reason.trim() })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
-            await loadJournals();
-        } catch (err) {
-            showError('Reversal failed: ' + err.message);
-        } finally {
-            _reversingIds.delete(id);
-        }
+    function reverseJournal(id) {
+        if (_reversingIds.has(id)) return;
+        _jnlPendingAction = async (reason) => {
+            if (!reason) throw new Error('A reason is required for journal reversal.');
+            _reversingIds.add(id);
+            try {
+                const res  = await fetch('/api/journals/' + id + '/reverse', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ reason }) });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                await loadJournals();
+            } finally {
+                _reversingIds.delete(id);
+            }
+        };
+        const btn = document.getElementById('jnlActionConfirmBtn');
+        btn.dataset.label = 'Reverse Journal';
+        openJnlAction({
+            title:        'Reverse Journal',
+            body:         'A mirror-image reversal journal will be created and posted. The original journal remains visible.',
+            impact:       '<ul style="margin:4px 0 0 14px;padding:0;"><li>Creates a new reversal journal with opposite debit/credit entries</li><li>Both journals remain permanently visible in the audit trail</li></ul>',
+            confirmLabel: 'Reverse Journal',
+            btnClass:     'btn-actn-danger',
+            showReason:   true,
+        });
     }
 
     // ── View journal detail ──────────────────────────────────────────────────

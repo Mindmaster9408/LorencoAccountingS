@@ -157,6 +157,20 @@
         .status-badge.status-draft   { background: #e3f2fd !important; color: #1976d2 !important; }
         .status-badge.status-approved { background: #c8e6c9 !important; color: #388e3c !important; }
         .status-badge.status-locked  { background: #ffecb3 !important; color: #f57c00 !important; }
+
+        /* ── PAYE action confirm overlay (ACC-HARDEN-027) ──── */
+        .paye-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9000; align-items: center; justify-content: center; }
+        .paye-overlay.show { display: flex; }
+        .paye-dialog { background: #fff; border-radius: 10px; padding: 24px; width: 420px; box-shadow: 0 16px 48px rgba(0,0,0,0.25); }
+        .paye-dlg-title { font-size: 15px; font-weight: 700; color: #333; margin-bottom: 10px; }
+        .paye-dlg-body  { font-size: 12px; color: #555; line-height: 1.6; margin-bottom: 14px; }
+        .paye-dlg-warn  { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 10px 12px; font-size: 11px; color: #856404; margin-bottom: 14px; }
+        .paye-dlg-error { background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; padding: 8px 12px; font-size: 11px; color: #721c24; margin-bottom: 12px; display: none; }
+        .paye-dlg-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+        .paye-btn-cancel  { padding: 7px 16px; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
+        .paye-btn-approve { padding: 7px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
+        .paye-btn-lock    { padding: 7px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
+        .paye-hidden      { display: none; }
     </style>
 
 <!--[if gte mso 9]><xml>
@@ -1053,51 +1067,7 @@
       }
     }
 
-    async function approveRecon() {
-      if (!confirm('Approve this reconciliation? It will become read-only.')) return;
-
-      try {
-        const res = await fetch(`/api/paye/reconciliation/approve/${currentReconId}`, {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
-        });
-
-        if (res.ok) {
-          status = 'APPROVED';
-          updateStatus();
-          renderTable();
-          alert('Reconciliation approved!');
-        } else {
-          throw new Error('Approve failed');
-        }
-      } catch (err) {
-        alert('Failed to approve');
-        console.error(err);
-      }
-    }
-
-    async function lockRecon() {
-      if (!confirm('Lock this reconciliation? This is FINAL and cannot be undone.')) return;
-
-      try {
-        const res = await fetch(`/api/paye/reconciliation/lock/${currentReconId}`, {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
-        });
-
-        if (res.ok) {
-          status = 'LOCKED';
-          updateStatus();
-          renderTable();
-          alert('Reconciliation locked!');
-        } else {
-          throw new Error('Lock failed');
-        }
-      } catch (err) {
-        alert('Failed to lock');
-        console.error(err);
-      }
-    }
+    // approveRecon and lockRecon replaced by modal versions below (ACC-HARDEN-027)
 
     function loadPeriod() {
       init();
@@ -1123,8 +1093,115 @@
 
     // Logout handled by navigation.js
 
+    // ── PAYE action confirm overlay (ACC-HARDEN-027) ─────────────────────────
+    // Single reusable overlay for approve + lock PAYE reconciliation actions.
+    // Both are status-locking — approve makes read-only, lock is FINAL.
+
+    let _payePendingAction = null;
+
+    function _openPayeConfirm({ title, body, warn, btnLabel, btnClass, onConfirm }) {
+        document.getElementById('payeDlgTitle').textContent    = title;
+        document.getElementById('payeDlgBody').textContent     = body;
+        document.getElementById('payeDlgError').style.display  = 'none';
+        const warnEl = document.getElementById('payeDlgWarn');
+        if (warn) { warnEl.textContent = warn; warnEl.classList.remove('paye-hidden'); }
+        else       { warnEl.classList.add('paye-hidden'); }
+        const btn = document.getElementById('payeDlgConfirmBtn');
+        btn.className   = btnClass;
+        btn.textContent = btnLabel;
+        btn.disabled    = false;
+        btn.dataset.label = btnLabel;
+        _payePendingAction = onConfirm;
+        document.getElementById('payeConfirmOverlay').classList.add('show');
+    }
+
+    function _closePayeConfirm() {
+        _payePendingAction = null;
+        document.getElementById('payeConfirmOverlay').classList.remove('show');
+    }
+
+    async function _confirmPayeAction() {
+        if (!_payePendingAction) return;
+        const btn   = document.getElementById('payeDlgConfirmBtn');
+        const errEl = document.getElementById('payeDlgError');
+        btn.disabled    = true;
+        btn.textContent = 'Working…';
+        errEl.style.display = 'none';
+        try {
+            await _payePendingAction();
+            _closePayeConfirm();
+        } catch (err) {
+            errEl.textContent   = err.message;
+            errEl.style.display = 'block';
+            btn.disabled        = false;
+            btn.textContent     = btn.dataset.label;
+        }
+    }
+
+    async function approveRecon() {
+        if (status !== 'DRAFT') return;
+        _openPayeConfirm({
+            title:    'Approve PAYE Reconciliation',
+            body:     'Approving this reconciliation will make it read-only. No further edits will be permitted.',
+            warn:     null,
+            btnLabel: 'Approve',
+            btnClass: 'paye-btn-approve',
+            onConfirm: async () => {
+                const res = await fetch(`/api/paye/reconciliation/approve/${currentReconId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+                });
+                if (!res.ok) {
+                    const d = await res.json().catch(() => ({}));
+                    throw new Error(d.error || 'Approve failed');
+                }
+                status = 'APPROVED';
+                updateStatus();
+                renderTable();
+            }
+        });
+    }
+
+    async function lockRecon() {
+        if (status !== 'APPROVED') return;
+        _openPayeConfirm({
+            title:    'Lock PAYE Reconciliation',
+            body:     'Locking this reconciliation is FINAL and cannot be undone. It will be permanently locked for audit and compliance.',
+            warn:     '⚠ This action is irreversible. Ensure all figures are correct before locking.',
+            btnLabel: 'Lock Reconciliation',
+            btnClass: 'paye-btn-lock',
+            onConfirm: async () => {
+                const res = await fetch(`/api/paye/reconciliation/lock/${currentReconId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+                });
+                if (!res.ok) {
+                    const d = await res.json().catch(() => ({}));
+                    throw new Error(d.error || 'Lock failed');
+                }
+                status = 'LOCKED';
+                updateStatus();
+                renderTable();
+            }
+        });
+    }
+
     // Initialize
     init();
   </script>
+
+<!-- PAYE Action Confirm Overlay (ACC-HARDEN-027) -->
+<div class="paye-overlay" id="payeConfirmOverlay">
+  <div class="paye-dialog">
+    <div class="paye-dlg-title"  id="payeDlgTitle"></div>
+    <div class="paye-dlg-body"   id="payeDlgBody"></div>
+    <div class="paye-dlg-warn paye-hidden" id="payeDlgWarn"></div>
+    <div class="paye-dlg-error"  id="payeDlgError"></div>
+    <div class="paye-dlg-footer">
+      <button type="button" class="paye-btn-cancel" onclick="_closePayeConfirm()">Cancel</button>
+      <button type="button" id="payeDlgConfirmBtn"  onclick="_confirmPayeAction()">Confirm</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

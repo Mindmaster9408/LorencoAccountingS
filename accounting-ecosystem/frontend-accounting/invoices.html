@@ -404,6 +404,46 @@
   </div>
 </div>
 
+<!-- ══ Post Invoice to GL Modal (ACC-HARDEN-027) ══════════════════ -->
+<div class="modal" id="modalPostInvoice">
+  <div class="modal-dialog narrow">
+    <div class="modal-header">
+      <h3>Post Invoice to General Ledger</h3>
+      <button class="modal-close" onclick="closePostInvoiceModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="postInvError" class="rev-error"></div>
+      <div class="rev-summary">
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Invoice</span>
+          <span class="rev-summary-value" id="postInvNumber"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Customer</span>
+          <span class="rev-summary-value" id="postInvCustomer"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Amount</span>
+          <span class="rev-summary-value amt" id="postInvAmount"></span>
+        </div>
+      </div>
+      <div class="rev-impact">
+        <div class="rev-impact-title">Posting this invoice will:</div>
+        <ul class="rev-impact-list">
+          <li>Create debit/credit GL journal entries</li>
+          <li>Post to Accounts Receivable (AR 1100)</li>
+          <li>Post to Revenue and VAT Output accounts</li>
+          <li>Cannot be un-posted — reverse via journal reversal if needed</li>
+        </ul>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePostInvoiceModal()">Cancel</button>
+      <button class="btn btn-success" id="postInvConfirmBtn" onclick="confirmPostInvoice()">Post to GL</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ Customer Invoice Void Modal (ACC-HARDEN-026) ════════════════ -->
 <div class="modal" id="modalCustInvVoid">
   <div class="modal-dialog narrow">
@@ -970,16 +1010,61 @@ function showInvSuccess() {
   setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
-async function postInvoice(id) {
-  if (!confirm('Post this invoice to the General Ledger? This creates debit/credit journal entries.')) return;
-  const r = await apiPost(`${BASE}/${id}/post`, {});
-  if (r.ok) {
-    alert('Invoice posted to GL. Journal ID: ' + r.data.journalId);
+// ── Post Invoice to GL modal (ACC-HARDEN-027) ────────────────────────────────
+const _postingInvIds  = new Set();
+let   _pendingPostInvId = null;
+
+function openPostInvoiceModal(id) {
+  if (_postingInvIds.has(id)) return;
+  const inv = allInvoices.find(x => x.id === id);
+  if (!inv) return;
+  _pendingPostInvId = id;
+  document.getElementById('postInvNumber').textContent       = inv.invoice_number || `INV-${inv.id}`;
+  document.getElementById('postInvCustomer').textContent     = inv.customer_name  || '—';
+  document.getElementById('postInvAmount').textContent       = fmtR(inv.total_inc_vat);
+  document.getElementById('postInvError').style.display      = 'none';
+  document.getElementById('postInvConfirmBtn').disabled      = false;
+  document.getElementById('postInvConfirmBtn').textContent   = 'Post to GL';
+  document.getElementById('modalPostInvoice').classList.add('show');
+}
+
+function closePostInvoiceModal() {
+  _pendingPostInvId = null;
+  document.getElementById('modalPostInvoice').classList.remove('show');
+}
+
+async function confirmPostInvoice() {
+  const id = _pendingPostInvId;
+  if (!id || _postingInvIds.has(id)) return;
+  const errEl = document.getElementById('postInvError');
+  const btn   = document.getElementById('postInvConfirmBtn');
+  errEl.style.display = 'none';
+  btn.disabled        = true;
+  btn.textContent     = 'Posting…';
+  _postingInvIds.add(id);
+  try {
+    const r = await apiPost(`${BASE}/${id}/post`, {});
+    if (!r.ok) {
+      errEl.textContent   = r.data?.error || 'Post failed.';
+      errEl.style.display = 'block';
+      btn.disabled        = false;
+      btn.textContent     = 'Post to GL';
+      _postingInvIds.delete(id);
+      return;
+    }
+    _postingInvIds.delete(id);
+    closePostInvoiceModal();
     await loadInvoices();
-  } else {
-    alert('Error: ' + (r.data.error || 'Unknown error'));
+  } catch (err) {
+    errEl.textContent   = 'Network error: ' + err.message;
+    errEl.style.display = 'block';
+    btn.disabled        = false;
+    btn.textContent     = 'Post to GL';
+    _postingInvIds.delete(id);
   }
 }
+
+function postInvoice(id) { openPostInvoiceModal(id); }
 
 // ── Customer invoice void modal (ACC-HARDEN-026) ─────────────────────────────
 // In-flight guard prevents double-click. Backend is the authoritative guard
