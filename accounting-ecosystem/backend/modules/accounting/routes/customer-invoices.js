@@ -1187,6 +1187,207 @@ router.get('/payments', authenticate, hasPermission('ar.payment.record'), async 
   }
 });
 
+// ─── Customer Payment Detail ──────────────────────────────────────────────────
+// GET /payments/:id
+//
+// Forensic detail view for a single customer payment (ACC-HARDEN-022).
+// Returns the payment header, all allocations with joined invoice data,
+// the original GL journal with account names, and the reversal GL journal
+// if the payment has been reversed.
+//
+// Data enrichment (parallel where possible):
+//   - bank ledger account: code + name from accounts table
+//   - created_by user:     full_name + username from users table
+//   - reversed_by user:    full_name + username from users table (if reversed)
+//   - allocations:         joined with customer_invoices for number, date, totals
+//   - original journal:    lines joined with accounts for code + name
+//   - reversal journal:    same, only if reversal_journal_id is set
+//
+// All queries are company-scoped. Cross-company access returns 404.
+
+router.get('/payments/:id', authenticate, hasPermission('ar.payment.record'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const paymentId = parseInt(req.params.id);
+
+  if (isNaN(paymentId)) {
+    return res.status(400).json({ error: 'Invalid payment ID' });
+  }
+
+  try {
+    // ── 1. Fetch payment — company-scoped ────────────────────────────────────
+    const { data: payment, error: payErr } = await supabase
+      .from('customer_payments')
+      .select('*')
+      .eq('id', paymentId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (payErr) throw new Error(payErr.message);
+    if (!payment) {
+      return res.status(404).json({ error: 'Payment not found', errorCode: 'PAYMENT_NOT_FOUND' });
+    }
+
+    // ── 2. Parallel enrichment fetches ───────────────────────────────────────
+    const [
+      allocResult,
+      bankAcctResult,
+      createdByResult,
+      reversedByResult,
+      journalResult,
+      revJournalResult,
+    ] = await Promise.all([
+
+      // Allocations + joined invoice header data
+      supabase
+        .from('customer_payment_allocations')
+        .select('invoice_id, amount_applied')
+        .eq('payment_id', paymentId),
+
+      // Bank ledger account name + code
+      payment.bank_ledger_account_id
+        ? supabase
+            .from('accounts')
+            .select('id, code, name')
+            .eq('id', payment.bank_ledger_account_id)
+            .eq('company_id', companyId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+
+      // Created-by user
+      payment.created_by_user_id
+        ? supabase
+            .from('users')
+            .select('id, full_name, username, email')
+            .eq('id', payment.created_by_user_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+
+      // Reversed-by user (only relevant if reversed)
+      payment.reversed_by_user_id
+        ? supabase
+            .from('users')
+            .select('id, full_name, username, email')
+            .eq('id', payment.reversed_by_user_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+
+      // Original GL journal with lines
+      payment.journal_id
+        ? supabase
+            .from('journals')
+            .select('id, date, reference, description, status, source_type, created_at')
+            .eq('id', payment.journal_id)
+            .eq('company_id', companyId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+
+      // Reversal GL journal with lines
+      payment.reversal_journal_id
+        ? supabase
+            .from('journals')
+            .select('id, date, reference, description, status, source_type, created_at')
+            .eq('id', payment.reversal_journal_id)
+            .eq('company_id', companyId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    if (allocResult.error) throw new Error(allocResult.error.message);
+
+    // ── 3. Enrich allocations with invoice data ───────────────────────────────
+    const rawAllocs = allocResult.data || [];
+    let allocations = [];
+
+    if (rawAllocs.length > 0) {
+      const invoiceIds = [...new Set(rawAllocs.map(a => a.invoice_id))];
+      const { data: invoices } = await supabase
+        .from('customer_invoices')
+        .select('id, invoice_number, invoice_date, due_date, total_inc_vat, amount_paid, status')
+        .eq('company_id', companyId)
+        .in('id', invoiceIds);
+
+      const invMap = new Map((invoices || []).map(i => [i.id, i]));
+
+      allocations = rawAllocs.map(alloc => {
+        const inv     = invMap.get(alloc.invoice_id) || {};
+        const total   = parseFloat(inv.total_inc_vat || 0);
+        const paid    = parseFloat(inv.amount_paid   || 0);
+        const applied = parseFloat(alloc.amount_applied || 0);
+        return {
+          invoiceId:         alloc.invoice_id,
+          invoiceNumber:     inv.invoice_number     || `#${alloc.invoice_id}`,
+          invoiceDate:       inv.invoice_date       || null,
+          invoiceDueDate:    inv.due_date           || null,
+          invoiceTotal:      total,
+          invoiceAmountPaid: paid,
+          invoiceOutstanding: Math.max(0, Math.round((total - paid) * 100) / 100),
+          invoiceStatus:     inv.status             || null,
+          amountApplied:     applied,
+        };
+      });
+    }
+
+    // ── 4. Fetch journal lines with account codes + names ────────────────────
+    async function enrichJournalWithLines(journal) {
+      if (!journal) return null;
+      const { data: lines } = await supabase
+        .from('journal_lines')
+        .select('id, account_id, line_number, description, debit, credit')
+        .eq('journal_id', journal.id)
+        .order('line_number', { ascending: true });
+
+      const accountIds = [...new Set((lines || []).map(l => l.account_id).filter(Boolean))];
+      let accountMap = {};
+      if (accountIds.length > 0) {
+        const { data: accts } = await supabase
+          .from('accounts')
+          .select('id, code, name')
+          .eq('company_id', companyId)
+          .in('id', accountIds);
+        (accts || []).forEach(a => { accountMap[a.id] = a; });
+      }
+
+      return {
+        ...journal,
+        lines: (lines || []).map(l => ({
+          ...l,
+          accountCode: accountMap[l.account_id]?.code || null,
+          accountName: accountMap[l.account_id]?.name || null,
+        })),
+      };
+    }
+
+    const [originalJournal, reversalJournal] = await Promise.all([
+      enrichJournalWithLines(journalResult.data || null),
+      enrichJournalWithLines(revJournalResult.data || null),
+    ]);
+
+    // ── 5. Build response ────────────────────────────────────────────────────
+    const createdByUser  = createdByResult.data  || null;
+    const reversedByUser = reversedByResult.data || null;
+    const bankAcct       = bankAcctResult.data   || null;
+
+    res.json({
+      payment: {
+        ...payment,
+        bankLedgerAccountCode: bankAcct?.code || null,
+        bankLedgerAccountName: bankAcct?.name || null,
+        createdByUserName:     createdByUser?.full_name || createdByUser?.username || null,
+        createdByUsername:     createdByUser?.username  || null,
+        reversedByUserName:    reversedByUser?.full_name || reversedByUser?.username || null,
+        reversedByUsername:    reversedByUser?.username  || null,
+      },
+      allocations,
+      journal:        originalJournal,
+      reversalJournal,
+    });
+  } catch (err) {
+    console.error('GET /customer-invoices/payments/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Reverse / Void Customer Payment ─────────────────────────────────────────
 // POST /payments/:id/void
 //
