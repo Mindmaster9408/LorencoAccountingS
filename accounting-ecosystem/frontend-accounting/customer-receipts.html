@@ -462,6 +462,100 @@
         .btn-danger:hover {
             background: #c82333;
         }
+
+        /* Customer typeahead in receipt modal */
+        .cust-wrap {
+            position: relative;
+        }
+
+        .cust-dropdown-modal {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 9000;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            max-height: 220px;
+            overflow-y: auto;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            display: none;
+        }
+
+        .cust-option {
+            padding: 10px 14px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #333;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .cust-option:last-child {
+            border-bottom: none;
+        }
+
+        .cust-option:hover,
+        .cust-option.focused {
+            background: rgba(0,102,204,0.08);
+            color: #0066cc;
+        }
+
+        .cust-no-results {
+            padding: 10px 14px;
+            font-size: 13px;
+            color: #999;
+        }
+
+        .cust-warn {
+            font-size: 12px;
+            color: #dc3545;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .hidden-section {
+            display: none;
+        }
+
+        .tbl-loading, .tbl-error {
+            text-align: center;
+            padding: 24px;
+            color: #666;
+        }
+
+        .tbl-error { color: #dc3545; }
+
+        .cust-invalid {
+            border-color: #dc3545;
+        }
+
+        /* Allocation summary */
+        .alloc-summary {
+            margin-top: 15px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .alloc-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .alloc-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .alloc-row-total {
+            font-size: 16px;
+            font-weight: 600;
+            color: #0066cc;
+            border-top: 2px solid #0066cc;
+            padding-top: 8px;
+        }
         
         .actions {
             display: flex;
@@ -764,31 +858,19 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title">Record Customer Receipt</h2>
-                <button class="close-btn" onclick="closeReceiptModal()">×</button>
+                <button type="button" class="close-btn" onclick="closeReceiptModal()">×</button>
             </div>
             <div class="modal-body">
-                <div id="aiSuggestion" class="ai-suggestion" style="display: none;">
-                    <span class="icon">🤖</span>
-                    <div class="ai-suggestion-text">
-                        <strong>Sean AI Suggestion:</strong>
-                        <div id="aiSuggestionText"></div>
-                    </div>
-                    <button class="btn btn-secondary" onclick="applyAISuggestion()">Apply</button>
-                </div>
+                <div id="receiptErrorBar" class="error-bar"></div>
 
                 <div class="form-grid">
-                    <div class="form-group">
+                    <div class="form-group full-width cust-wrap">
                         <label>Customer *</label>
-                        <select id="customerId" required onchange="loadCustomerInvoices()">
-                            <option value="">Select Customer</option>
-                            <option value="1">ABC Corporation</option>
-                            <option value="2">XYZ Enterprises</option>
-                            <option value="3">Tech Solutions Ltd</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Receipt Number *</label>
-                        <input type="text" id="receiptNumber" required>
+                        <input type="text" id="payCustomerName" placeholder="Type to search customers…" autocomplete="off"
+                               oninput="onCustomerInput()" onfocus="onCustomerFocus()">
+                        <input type="hidden" id="payCustomerId">
+                        <div id="custDrop" class="cust-dropdown-modal"></div>
+                        <div id="custWarn" class="cust-warn">Select a customer from the list</div>
                     </div>
                     <div class="form-group">
                         <label>Receipt Date *</label>
@@ -796,21 +878,26 @@
                     </div>
                     <div class="form-group">
                         <label>Amount Received *</label>
-                        <input type="number" id="amount" step="0.01" required oninput="updateUnallocated()">
+                        <input type="number" id="amount" step="0.01" min="0.01" required oninput="updateAllocations()">
                     </div>
                     <div class="form-group">
-                        <label>Payment Method *</label>
-                        <select id="paymentMethod" required>
-                            <option value="">Select Method</option>
-                            <option value="Cash">Cash</option>
-                            <option value="Cheque">Cheque</option>
-                            <option value="EFT">EFT</option>
-                            <option value="Credit Card">Credit Card</option>
+                        <label>Bank / Cash Account *</label>
+                        <select id="payBankAcct" required>
+                            <option value="">Loading accounts…</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Payment Method</label>
+                        <select id="paymentMethod">
+                            <option value="bank_transfer">Bank Transfer (EFT)</option>
+                            <option value="cash">Cash</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="credit_card">Credit Card</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label>Reference</label>
-                        <input type="text" id="reference">
+                        <input type="text" id="reference" placeholder="Optional reference">
                     </div>
                     <div class="form-group full-width">
                         <label>Notes</label>
@@ -818,24 +905,22 @@
                     </div>
                 </div>
 
-                <div class="allocation-section" id="allocationSection" style="display: none;">
+                <div class="allocation-section hidden-section" id="allocationSection">
                     <div class="allocation-title">
                         <span>💰</span>
-                        Allocate to Invoices
+                        Allocate to Open Invoices (optional)
                     </div>
-                    <div class="invoice-list" id="invoiceList">
-                        <!-- Invoices will be loaded here -->
-                    </div>
-                    <div style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px;">
+                    <div class="invoice-list" id="invoiceList"></div>
+                    <div class="alloc-summary">
+                        <div class="alloc-row">
                             <span>Total Amount:</span>
                             <strong id="totalAmount">R 0.00</strong>
                         </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px;">
+                        <div class="alloc-row">
                             <span>Total Allocated:</span>
                             <strong id="totalAllocated">R 0.00</strong>
                         </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 600; color: #0066cc; border-top: 2px solid #0066cc; padding-top: 8px;">
+                        <div class="alloc-row alloc-row-total">
                             <span>Unallocated:</span>
                             <strong id="unallocatedAmount">R 0.00</strong>
                         </div>
@@ -843,8 +928,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeReceiptModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveReceipt()">Save Receipt</button>
+                <button type="button" class="btn btn-secondary" onclick="closeReceiptModal()">Cancel</button>
+                <button type="button" id="saveReceiptBtn" class="btn btn-primary" onclick="saveReceipt()">Record Receipt</button>
             </div>
         </div>
     </div>
@@ -853,80 +938,434 @@
         const token = localStorage.getItem('token');
         if (!token) { window.location.href = '/'; }
 
+        const BASE = '/api/accounting/customer-invoices';
+
         function authH() {
             return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
         }
 
-        // In-memory set to block double-click on the void button while a request is in flight
-        const voidingInFlight = new Set();
+        // ── Helpers ───────────────────────────────────────────────────────────
 
-        // Payment currently targeted for void
-        let pendingVoidId = null;
+        function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function escAttr(s) { return String(s || '').replace(/'/g,"\\'").replace(/</g,'&lt;'); }
+        function fmtR(v)    { return 'R ' + parseFloat(v || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        function fmtDate(d) { if (!d) return '—'; const p = d.split('T')[0].split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
+        function genUUID()  { return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now().toString(36)); }
+
+        async function apiGet(url) {
+            try {
+                const r = await fetch(url, { headers: authH() });
+                if (r.status === 401) { window.location.href = '/'; return null; }
+                return await r.json();
+            } catch (e) { console.error('apiGet', url, e); return null; }
+        }
+
+        // ── Page state ────────────────────────────────────────────────────────
+
+        let cachedCustomers    = [];   // { id, name, source }
+        let cachedOpenInvoices = [];   // all sent/part_paid invoices for the company
+        let _payCustomerSelected = false;
+        let _payCustomerId       = null;
+        let _payIdempotencyKey   = null;
+        let _custFocusIdx        = -1;
+
+        // Double-click guard for void requests
+        const voidingInFlight = new Set();
+        let pendingVoidId     = null;
 
         // ── Bootstrap ─────────────────────────────────────────────────────────
 
-        document.addEventListener('DOMContentLoaded', function () {
-            loadReceipts();
+        document.addEventListener('DOMContentLoaded', async function () {
             document.getElementById('receiptDate').value = new Date().toISOString().split('T')[0];
+            await Promise.all([
+                loadReceipts(),
+                loadCustomers(),
+                loadBankAccounts(),
+                loadOpenInvoices(),
+            ]);
         });
 
         // ── Payments list ─────────────────────────────────────────────────────
 
         async function loadReceipts() {
             const tbody = document.getElementById('receiptTableBody');
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#666;">Loading…</td></tr>';
-            try {
-                const res = await fetch('/api/accounting/customer-invoices/payments', { headers: authH() });
-                if (res.status === 401) { window.location.href = '/'; return; }
-                const json = await res.json();
-                if (!res.ok) throw new Error(json.error || 'Failed to load payments');
-                renderReceipts(json.payments || []);
-            } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:#dc3545;">Error: ${escHtml(err.message)}</td></tr>`;
+            tbody.innerHTML = '<tr><td colspan="8" class="tbl-loading">Loading…</td></tr>';
+            const json = await apiGet(BASE + '/payments');
+            if (!json) {
+                tbody.innerHTML = '<tr><td colspan="8" class="tbl-error">Failed to load payments.</td></tr>';
+                return;
             }
+            renderReceipts(json.payments || []);
         }
 
         function renderReceipts(payments) {
             const tbody = document.getElementById('receiptTableBody');
             if (!payments.length) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#666;">No receipts found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="tbl-loading">No receipts found.</td></tr>';
                 return;
             }
             tbody.innerHTML = payments.map(p => {
-                const amt    = parseFloat(p.amount) || 0;
-                const date   = window.formatDate ? window.formatDate(window.parseStandardDate(p.payment_date), 'ZA') : p.payment_date;
-                const method = p.payment_method || '—';
-                const ref    = p.reference || '—';
-
+                const amt        = parseFloat(p.amount) || 0;
+                const date       = fmtDate(p.payment_date);
+                const method     = escHtml(p.payment_method || '—');
+                const ref        = escHtml(p.reference || '—');
                 const statusBadge = p.is_reversed
                     ? '<span class="badge badge-reversed">Reversed</span>'
                     : '<span class="badge badge-allocated">Active</span>';
-
                 const voidBtn = p.is_reversed
                     ? '<button type="button" class="action-btn" disabled>Reversed</button>'
-                    : `<button type="button" class="action-btn danger" onclick="openVoidModal(${p.id}, '${escAttr(p.customer_name)}', ${amt})">Reverse</button>`;
-
+                    : `<button type="button" class="action-btn danger" onclick="openVoidModal(${p.id},'${escAttr(p.customer_name)}',${amt})">Reverse</button>`;
                 return `<tr>
                     <td><span class="receipt-number">#${p.id}</span></td>
                     <td>${escHtml(p.customer_name)}</td>
                     <td>${date}</td>
-                    <td>R ${amt.toFixed(2)}</td>
+                    <td>${fmtR(amt)}</td>
                     <td>${ref}</td>
-                    <td>${escHtml(method)}</td>
+                    <td>${method}</td>
                     <td>${statusBadge}</td>
-                    <td>
-                        <div class="actions">
-                            ${voidBtn}
-                        </div>
-                    </td>
+                    <td><div class="actions">${voidBtn}</div></td>
                 </tr>`;
             }).join('');
         }
 
         function filterReceipts(search) {
-            const tbody = document.getElementById('receiptTableBody');
-            for (const row of tbody.getElementsByTagName('tr')) {
-                row.style.display = row.textContent.toLowerCase().includes(search.toLowerCase()) ? '' : 'none';
+            const q = search.toLowerCase();
+            for (const row of document.getElementById('receiptTableBody').getElementsByTagName('tr')) {
+                row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+            }
+        }
+
+        // ── Data loading ──────────────────────────────────────────────────────
+
+        async function loadCustomers() {
+            const json = await apiGet(BASE + '/customers');
+            cachedCustomers = (json && json.customers) ? json.customers : [];
+        }
+
+        async function loadBankAccounts() {
+            const sel  = document.getElementById('payBankAcct');
+            const json = await apiGet('/api/accounting/bank/accounts');
+            const accounts = (json && json.bankAccounts) ? json.bankAccounts.filter(a => a.ledger_account_id) : [];
+            if (!accounts.length) {
+                sel.innerHTML = '<option value="">No bank accounts found — set up bank accounts first</option>';
+                return;
+            }
+            sel.innerHTML = '<option value="">— Select bank / cash account —</option>' +
+                accounts.map(a => `<option value="${a.ledger_account_id}">${escHtml(a.name)}${a.bank_name ? ' (' + escHtml(a.bank_name) + ')' : ''}</option>`).join('');
+        }
+
+        async function loadOpenInvoices() {
+            // Load sent + part_paid invoices for the company (used for allocation list)
+            const [r1, r2] = await Promise.all([
+                apiGet(BASE + '?status=sent&limit=500'),
+                apiGet(BASE + '?status=part_paid&limit=500'),
+            ]);
+            const sent     = (r1 && r1.invoices) ? r1.invoices : [];
+            const partPaid = (r2 && r2.invoices) ? r2.invoices : [];
+            cachedOpenInvoices = [...sent, ...partPaid];
+        }
+
+        // ── Customer typeahead ────────────────────────────────────────────────
+
+        function onCustomerInput() {
+            _payCustomerSelected = false;
+            _payCustomerId       = null;
+            const inp = document.getElementById('payCustomerName');
+            inp.classList.add('cust-invalid');
+            const warn = document.getElementById('custWarn');
+            warn.style.display = inp.value.trim() ? 'block' : 'none';
+            renderCustDrop(inp.value.trim());
+            clearAllocationList();
+        }
+
+        function onCustomerFocus() {
+            renderCustDrop(document.getElementById('payCustomerName').value.trim());
+        }
+
+        function renderCustDrop(query) {
+            const drop = document.getElementById('custDrop');
+            const q    = query.toLowerCase();
+            const matches = q.length === 0
+                ? cachedCustomers.slice(0, 8)
+                : cachedCustomers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 10);
+
+            if (!matches.length) {
+                drop.innerHTML = '<div class="cust-no-results">No customers found</div>';
+            } else {
+                _custFocusIdx = -1;
+                drop.innerHTML = matches.map((c, i) =>
+                    `<div class="cust-option" data-idx="${i}" data-id="${escAttr(c.id != null ? c.id : '')}" data-name="${escAttr(c.name)}"
+                          onmousedown="selectCustomer('${escAttr(c.name)}', ${c.id != null ? c.id : 'null'})">${escHtml(c.name)}</div>`
+                ).join('');
+            }
+            drop.style.display = 'block';
+        }
+
+        document.addEventListener('mousedown', function (e) {
+            const inp  = document.getElementById('payCustomerName');
+            const drop = document.getElementById('custDrop');
+            if (inp && drop && !inp.contains(e.target) && !drop.contains(e.target)) {
+                drop.style.display = 'none';
+            }
+        }, true);
+
+        document.getElementById('payCustomerName') && document.getElementById('payCustomerName').addEventListener('keydown', function (e) {
+            const drop  = document.getElementById('custDrop');
+            const items = drop ? drop.querySelectorAll('.cust-option') : [];
+            if (!items.length || drop.style.display === 'none') return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                _custFocusIdx = Math.min(_custFocusIdx + 1, items.length - 1);
+                items.forEach((el, i) => el.classList.toggle('focused', i === _custFocusIdx));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                _custFocusIdx = Math.max(_custFocusIdx - 1, 0);
+                items.forEach((el, i) => el.classList.toggle('focused', i === _custFocusIdx));
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const focused = drop.querySelector('.cust-option.focused');
+                if (focused) focused.dispatchEvent(new MouseEvent('mousedown'));
+            } else if (e.key === 'Escape') {
+                drop.style.display = 'none';
+            }
+        });
+
+        function selectCustomer(name, id) {
+            const inp  = document.getElementById('payCustomerName');
+            const warn = document.getElementById('custWarn');
+            const drop = document.getElementById('custDrop');
+            inp.value            = name;
+            _payCustomerId       = id;
+            _payCustomerSelected = true;
+            inp.classList.remove('cust-invalid');
+            warn.style.display = 'none';
+            if (drop) drop.style.display = 'none';
+            renderAllocationList(name, id);
+        }
+
+        // ── Open invoice allocation list ──────────────────────────────────────
+
+        function renderAllocationList(customerName, customerId) {
+            const openInvoices = cachedOpenInvoices.filter(inv => {
+                if (customerId != null) {
+                    return inv.customer_id === customerId || inv.customer_name.toLowerCase() === customerName.toLowerCase();
+                }
+                return inv.customer_name.toLowerCase() === customerName.toLowerCase();
+            });
+
+            const section = document.getElementById('allocationSection');
+            const list    = document.getElementById('invoiceList');
+
+            if (!openInvoices.length) {
+                section.classList.add('hidden-section');
+                list.innerHTML = '';
+                updateAllocations();
+                return;
+            }
+
+            list.innerHTML = openInvoices.map(inv => {
+                const outstanding = Math.max(0, Math.round((parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid || 0)) * 100) / 100);
+                return `<div class="invoice-item">
+                    <input type="checkbox" id="chk-${inv.id}" onchange="toggleInvoice(${inv.id}, this.checked)">
+                    <div class="invoice-info">
+                        <div class="invoice-num">${escHtml(inv.invoice_number)}</div>
+                        <div class="invoice-date">Date: ${fmtDate(inv.invoice_date)} &bull; Outstanding: ${fmtR(outstanding)}</div>
+                    </div>
+                    <div>
+                        <input type="number" class="allocation-input" id="alloc-${inv.id}"
+                               step="0.01" min="0" max="${outstanding}" placeholder="0.00"
+                               disabled oninput="updateAllocations()" data-max="${outstanding}">
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-secondary" id="btn-${inv.id}" disabled
+                                onclick="allocateFull(${inv.id}, ${outstanding})">Full</button>
+                    </div>
+                </div>`;
+            }).join('');
+
+            section.classList.remove('hidden-section');
+            updateAllocations();
+        }
+
+        function clearAllocationList() {
+            document.getElementById('allocationSection').classList.add('hidden-section');
+            document.getElementById('invoiceList').innerHTML = '';
+            updateAllocations();
+        }
+
+        function toggleInvoice(id, checked) {
+            const inp = document.getElementById(`alloc-${id}`);
+            const btn = document.getElementById(`btn-${id}`);
+            inp.disabled = !checked;
+            btn.disabled = !checked;
+            if (!checked) { inp.value = ''; }
+            updateAllocations();
+        }
+
+        function allocateFull(id, outstanding) {
+            const amount    = parseFloat(document.getElementById('amount').value) || 0;
+            const allocated = calculateTotalAllocated();
+            const available = amount - allocated;
+            const inp       = document.getElementById(`alloc-${id}`);
+            inp.value       = Math.max(0, Math.min(available, outstanding)).toFixed(2);
+            updateAllocations();
+        }
+
+        function calculateTotalAllocated() {
+            let total = 0;
+            for (const inp of document.querySelectorAll('.allocation-input')) {
+                if (!inp.disabled && inp.value) total += parseFloat(inp.value) || 0;
+            }
+            return Math.round(total * 100) / 100;
+        }
+
+        function updateAllocations() {
+            const amount      = parseFloat(document.getElementById('amount').value) || 0;
+            const allocated   = calculateTotalAllocated();
+            const unallocated = Math.round((amount - allocated) * 100) / 100;
+            document.getElementById('totalAmount').textContent       = fmtR(amount);
+            document.getElementById('totalAllocated').textContent    = fmtR(allocated);
+            document.getElementById('unallocatedAmount').textContent = fmtR(unallocated);
+        }
+
+        // ── Receipt modal lifecycle ───────────────────────────────────────────
+
+        function openNewReceipt() {
+            _payIdempotencyKey   = genUUID();
+            _payCustomerSelected = false;
+            _payCustomerId       = null;
+            _custFocusIdx        = -1;
+
+            document.getElementById('payCustomerName').value = '';
+            document.getElementById('payCustomerName').classList.remove('cust-invalid');
+            document.getElementById('custWarn').style.display = 'none';
+            document.getElementById('custDrop').style.display = 'none';
+            document.getElementById('receiptDate').value      = new Date().toISOString().split('T')[0];
+            document.getElementById('amount').value           = '';
+            document.getElementById('paymentMethod').value    = 'bank_transfer';
+            document.getElementById('reference').value        = '';
+            document.getElementById('notes').value            = '';
+            document.getElementById('receiptErrorBar').style.display = 'none';
+            document.getElementById('saveReceiptBtn').disabled = false;
+            document.getElementById('saveReceiptBtn').textContent = 'Record Receipt';
+            clearAllocationList();
+
+            document.getElementById('receiptModal').classList.add('active');
+        }
+
+        function closeReceiptModal() {
+            _payIdempotencyKey = null;
+            document.getElementById('receiptModal').classList.remove('active');
+            document.getElementById('custDrop').style.display = 'none';
+        }
+
+        // ── Submit payment ────────────────────────────────────────────────────
+
+        async function saveReceipt() {
+            const errBar = document.getElementById('receiptErrorBar');
+            const btn    = document.getElementById('saveReceiptBtn');
+
+            const customerName        = document.getElementById('payCustomerName').value.trim();
+            const paymentDate         = document.getElementById('receiptDate').value;
+            const amount              = parseFloat(document.getElementById('amount').value) || 0;
+            const bankLedgerAccountId = document.getElementById('payBankAcct').value;
+            const paymentMethod       = document.getElementById('paymentMethod').value;
+            const reference           = document.getElementById('reference').value.trim() || null;
+            const notes               = document.getElementById('notes').value.trim() || null;
+
+            errBar.style.display = 'none';
+
+            if (!_payCustomerSelected) {
+                errBar.textContent = 'Please select a customer from the dropdown list.';
+                errBar.style.display = 'block';
+                document.getElementById('payCustomerName').focus();
+                return;
+            }
+            if (!customerName) {
+                errBar.textContent = 'Customer name is required.';
+                errBar.style.display = 'block';
+                return;
+            }
+            if (!paymentDate) {
+                errBar.textContent = 'Receipt date is required.';
+                errBar.style.display = 'block';
+                return;
+            }
+            if (amount <= 0) {
+                errBar.textContent = 'Amount must be greater than zero.';
+                errBar.style.display = 'block';
+                return;
+            }
+            if (!bankLedgerAccountId) {
+                errBar.textContent = 'Please select a bank or cash account.';
+                errBar.style.display = 'block';
+                return;
+            }
+
+            // Build allocation list from checked invoice inputs
+            const allocations = [];
+            for (const inp of document.querySelectorAll('.allocation-input')) {
+                if (!inp.disabled && inp.value && parseFloat(inp.value) > 0) {
+                    const invId = parseInt(inp.id.replace('alloc-', ''));
+                    const alloc = Math.round(parseFloat(inp.value) * 100) / 100;
+                    const max   = parseFloat(inp.dataset.max) || Infinity;
+                    if (alloc > max + 0.01) {
+                        errBar.textContent = `Allocation exceeds outstanding balance on invoice ${invId}.`;
+                        errBar.style.display = 'block';
+                        return;
+                    }
+                    allocations.push({ invoiceId: invId, amount: alloc });
+                }
+            }
+
+            // Validate allocation total does not exceed payment (backend also checks)
+            const allocTotal = allocations.reduce((s, a) => s + a.amount, 0);
+            if (allocTotal > amount + 0.01) {
+                errBar.textContent = `Total allocation (${fmtR(allocTotal)}) exceeds payment amount (${fmtR(amount)}).`;
+                errBar.style.display = 'block';
+                return;
+            }
+
+            btn.disabled    = true;
+            btn.textContent = 'Recording…';
+
+            try {
+                const res = await fetch(BASE + '/payments', {
+                    method:  'POST',
+                    headers: authH(),
+                    body:    JSON.stringify({
+                        customerId:          _payCustomerId,
+                        customerName,
+                        paymentDate,
+                        paymentMethod,
+                        reference,
+                        amount,
+                        bankLedgerAccountId: parseInt(bankLedgerAccountId),
+                        notes,
+                        allocations,
+                        idempotencyKey:      _payIdempotencyKey,
+                    }),
+                });
+                const json = await res.json();
+
+                if (!res.ok) {
+                    errBar.textContent = json.error || 'Failed to record payment.';
+                    errBar.style.display = 'block';
+                    btn.disabled    = false;
+                    btn.textContent = 'Record Receipt';
+                    return;
+                }
+
+                // Success: clear idempotency key, close modal, refresh list + invoices
+                _payIdempotencyKey = null;
+                closeReceiptModal();
+                await Promise.all([loadReceipts(), loadOpenInvoices()]);
+
+            } catch (err) {
+                errBar.textContent = 'Network error: ' + err.message;
+                errBar.style.display = 'block';
+                btn.disabled    = false;
+                btn.textContent = 'Record Receipt';
             }
         }
 
@@ -936,10 +1375,11 @@
             if (voidingInFlight.has(id)) return;
             pendingVoidId = id;
             document.getElementById('voidPaymentLabel').textContent =
-                `#${id} — ${customerName} (R ${parseFloat(amount).toFixed(2)})`;
+                `#${id} — ${customerName} (${fmtR(amount)})`;
             document.getElementById('voidReason').value = '';
             document.getElementById('voidErrorBar').style.display = 'none';
             document.getElementById('voidConfirmBtn').disabled = false;
+            document.getElementById('voidConfirmBtn').textContent = 'Reverse Payment';
             document.getElementById('voidModal').classList.add('active');
         }
 
@@ -952,17 +1392,17 @@
             const id = pendingVoidId;
             if (!id || voidingInFlight.has(id)) return;
 
-            const reason  = (document.getElementById('voidReason').value || '').trim();
-            const errBar  = document.getElementById('voidErrorBar');
-            const btn     = document.getElementById('voidConfirmBtn');
+            const reason = (document.getElementById('voidReason').value || '').trim();
+            const errBar = document.getElementById('voidErrorBar');
+            const btn    = document.getElementById('voidConfirmBtn');
 
             errBar.style.display = 'none';
-            btn.disabled = true;
+            btn.disabled    = true;
             btn.textContent = 'Reversing…';
             voidingInFlight.add(id);
 
             try {
-                const res = await fetch(`/api/accounting/customer-invoices/payments/${id}/void`, {
+                const res  = await fetch(`${BASE}/payments/${id}/void`, {
                     method:  'POST',
                     headers: authH(),
                     body:    JSON.stringify({ reason: reason || null }),
@@ -972,14 +1412,14 @@
                 if (!res.ok) {
                     errBar.textContent = json.error || 'Reversal failed.';
                     errBar.style.display = 'block';
-                    btn.disabled = false;
+                    btn.disabled    = false;
                     btn.textContent = 'Reverse Payment';
                     voidingInFlight.delete(id);
                     return;
                 }
 
                 closeVoidModal();
-                await loadReceipts();
+                await Promise.all([loadReceipts(), loadOpenInvoices()]);
 
                 if (json.glReversalFailed) {
                     alert('Payment reversed. WARNING: GL journal reversal failed — manual correction of journal ' + json.journalId + ' is required.');
@@ -987,82 +1427,10 @@
             } catch (err) {
                 errBar.textContent = 'Network error: ' + err.message;
                 errBar.style.display = 'block';
-                btn.disabled = false;
+                btn.disabled    = false;
                 btn.textContent = 'Reverse Payment';
                 voidingInFlight.delete(id);
             }
-        }
-
-        // ── New receipt modal ─────────────────────────────────────────────────
-
-        function openNewReceipt() {
-            document.getElementById('receiptModal').classList.add('active');
-        }
-
-        function closeReceiptModal() {
-            document.getElementById('receiptModal').classList.remove('active');
-            document.getElementById('allocationSection').style.display = 'none';
-            document.getElementById('invoiceList').innerHTML = '';
-        }
-
-        function loadCustomerInvoices() {
-            const customerId = parseInt(document.getElementById('customerId').value);
-            if (!customerId) {
-                document.getElementById('allocationSection').style.display = 'none';
-                return;
-            }
-            document.getElementById('allocationSection').style.display = 'none';
-            updateUnallocated();
-        }
-
-        function toggleInvoice(id, checked) {
-            document.getElementById(`alloc-${id}`).disabled = !checked;
-            document.getElementById(`btn-${id}`).disabled   = !checked;
-            if (!checked) {
-                document.getElementById(`alloc-${id}`).value = '';
-                updateAllocations();
-            }
-        }
-
-        function allocateFull(id, balance) {
-            const amount           = parseFloat(document.getElementById('amount').value) || 0;
-            const currentAllocated = calculateTotalAllocated();
-            const available        = amount - currentAllocated;
-            document.getElementById(`alloc-${id}`).value = Math.min(available, balance).toFixed(2);
-            updateAllocations();
-        }
-
-        function calculateTotalAllocated() {
-            let total = 0;
-            for (const input of document.querySelectorAll('.allocation-input')) {
-                if (!input.disabled && input.value) total += parseFloat(input.value) || 0;
-            }
-            return total;
-        }
-
-        function updateAllocations() {
-            const amount      = parseFloat(document.getElementById('amount').value) || 0;
-            const allocated   = calculateTotalAllocated();
-            const unallocated = amount - allocated;
-            document.getElementById('totalAmount').textContent      = `R ${amount.toFixed(2)}`;
-            document.getElementById('totalAllocated').textContent   = `R ${allocated.toFixed(2)}`;
-            document.getElementById('unallocatedAmount').textContent = `R ${unallocated.toFixed(2)}`;
-        }
-
-        function updateUnallocated() { updateAllocations(); }
-
-        function saveReceipt() {
-            alert('Receipt recording via API is handled by the invoices page. Use Record Receipt there.');
-        }
-
-        // ── Helpers ───────────────────────────────────────────────────────────
-
-        function escHtml(str) {
-            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-
-        function escAttr(str) {
-            return String(str || '').replace(/'/g, "\\'").replace(/</g, '&lt;');
         }
     </script>
 </body>
