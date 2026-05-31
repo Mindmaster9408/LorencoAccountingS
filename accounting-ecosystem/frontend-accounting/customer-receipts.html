@@ -401,10 +401,66 @@
             background: #d4edda;
             color: #155724;
         }
-        
+
         .badge-unallocated {
             background: #fff3cd;
             color: #856404;
+        }
+
+        .badge-reversed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .action-btn.danger {
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+
+        .action-btn.danger:hover {
+            background: #dc3545;
+            color: white;
+        }
+
+        .action-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .error-bar {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        #voidModal .modal-content {
+            max-width: 480px;
+        }
+
+        .void-impact-text {
+            margin-bottom: 16px;
+            color: #333;
+        }
+
+        .void-impact-list {
+            margin: 0 0 16px 20px;
+            color: #555;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
         }
         
         .actions {
@@ -654,12 +710,11 @@
                 <table id="receiptTable">
                     <thead>
                         <tr>
-                            <th>Receipt #</th>
+                            <th>Payment #</th>
                             <th>Customer</th>
                             <th>Date</th>
                             <th>Amount</th>
-                            <th>Allocated</th>
-                            <th>Unallocated</th>
+                            <th>Reference</th>
                             <th>Method</th>
                             <th>Status</th>
                             <th>Actions</th>
@@ -669,6 +724,37 @@
                         <!-- Receipts will be loaded here -->
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Void/Reverse Payment Confirmation Modal -->
+    <div id="voidModal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Reverse Customer Payment</h2>
+                <button type="button" class="close-btn" onclick="closeVoidModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="voidErrorBar" class="error-bar"></div>
+                <p class="void-impact-text">
+                    You are about to reverse payment <strong id="voidPaymentLabel"></strong>.
+                    This will:
+                </p>
+                <ul class="void-impact-list">
+                    <li>Mark the payment as reversed</li>
+                    <li>Reduce amount paid on all allocated invoices</li>
+                    <li>Create a reversal GL journal</li>
+                    <li>This action cannot be undone</li>
+                </ul>
+                <div class="form-group">
+                    <label for="voidReason">Reason (optional)</label>
+                    <textarea id="voidReason" rows="2" placeholder="e.g. Payment returned — incorrect amount"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeVoidModal()">Cancel</button>
+                <button type="button" id="voidConfirmBtn" class="btn btn-danger" onclick="confirmVoid()">Reverse Payment</button>
             </div>
         </div>
     </div>
@@ -764,95 +850,150 @@
     </div>
 
     <script>
-        // Sample data
-        let receipts = [
-            {
-                id: 1,
-                number: 'RCP-2024-001',
-                customer: 'Tech Solutions Ltd',
-                customerId: 3,
-                date: '2024-01-10',
-                amount: 25000.00,
-                allocated: 25000.00,
-                method: 'EFT',
-                status: 'Allocated',
-                reference: 'INV-2024-003'
-            },
-            {
-                id: 2,
-                number: 'RCP-2024-002',
-                customer: 'ABC Corporation',
-                customerId: 1,
-                date: '2024-01-18',
-                amount: 5000.00,
-                allocated: 5000.00,
-                method: 'Cheque',
-                status: 'Allocated',
-                reference: 'Partial payment'
-            }
-        ];
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/'; }
 
-        let customerInvoices = {
-            1: [
-                { id: 1, number: 'INV-2024-001', date: '2024-01-15', balance: 15750.00 },
-                { id: 4, number: 'INV-2023-045', date: '2023-12-15', balance: 7500.00 }
-            ],
-            2: [
-                { id: 2, number: 'INV-2024-002', date: '2024-01-20', balance: 8420.50 }
-            ],
-            3: []
-        };
+        function authH() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+        }
 
-        // Load receipts on page load
-        document.addEventListener('DOMContentLoaded', function() {
+        // In-memory set to block double-click on the void button while a request is in flight
+        const voidingInFlight = new Set();
+
+        // Payment currently targeted for void
+        let pendingVoidId = null;
+
+        // ── Bootstrap ─────────────────────────────────────────────────────────
+
+        document.addEventListener('DOMContentLoaded', function () {
             loadReceipts();
-            
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('receiptDate').value = today;
-            
-            const nextNumber = (receipts.length + 1).toString().padStart(3, '0');
-            document.getElementById('receiptNumber').value = `RCP-2024-${nextNumber}`;
+            document.getElementById('receiptDate').value = new Date().toISOString().split('T')[0];
         });
 
-        function loadReceipts() {
-            const tbody = document.getElementById('receiptTableBody');
-            tbody.innerHTML = '';
+        // ── Payments list ─────────────────────────────────────────────────────
 
-            receipts.forEach(receipt => {
-                const unallocated = receipt.amount - receipt.allocated;
-                const statusClass = receipt.status.toLowerCase().replace(' ', '-');
-                
-                const row = `
-                    <tr>
-                        <td><span class="receipt-number" onclick="viewReceipt(${receipt.id})">${receipt.number}</span></td>
-                        <td>${receipt.customer}</td>
-                        <td>${window.formatDate(window.parseStandardDate(receipt.date), 'ZA')}</td>
-                        <td>R ${receipt.amount.toFixed(2)}</td>
-                        <td>R ${receipt.allocated.toFixed(2)}</td>
-                        <td>R ${unallocated.toFixed(2)}</td>
-                        <td>${receipt.method}</td>
-                        <td><span class="badge badge-${statusClass}">${receipt.status}</span></td>
-                        <td>
-                            <div class="actions">
-                                <button class="action-btn" onclick="viewReceipt(${receipt.id})">View</button>
-                                <button class="action-btn" onclick="allocateReceipt(${receipt.id})">Allocate</button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
-            });
+        async function loadReceipts() {
+            const tbody = document.getElementById('receiptTableBody');
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#666;">Loading…</td></tr>';
+            try {
+                const res = await fetch('/api/accounting/customer-invoices/payments', { headers: authH() });
+                if (res.status === 401) { window.location.href = '/'; return; }
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || 'Failed to load payments');
+                renderReceipts(json.payments || []);
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:#dc3545;">Error: ${escHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        function renderReceipts(payments) {
+            const tbody = document.getElementById('receiptTableBody');
+            if (!payments.length) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#666;">No receipts found.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = payments.map(p => {
+                const amt    = parseFloat(p.amount) || 0;
+                const date   = window.formatDate ? window.formatDate(window.parseStandardDate(p.payment_date), 'ZA') : p.payment_date;
+                const method = p.payment_method || '—';
+                const ref    = p.reference || '—';
+
+                const statusBadge = p.is_reversed
+                    ? '<span class="badge badge-reversed">Reversed</span>'
+                    : '<span class="badge badge-allocated">Active</span>';
+
+                const voidBtn = p.is_reversed
+                    ? '<button type="button" class="action-btn" disabled>Reversed</button>'
+                    : `<button type="button" class="action-btn danger" onclick="openVoidModal(${p.id}, '${escAttr(p.customer_name)}', ${amt})">Reverse</button>`;
+
+                return `<tr>
+                    <td><span class="receipt-number">#${p.id}</span></td>
+                    <td>${escHtml(p.customer_name)}</td>
+                    <td>${date}</td>
+                    <td>R ${amt.toFixed(2)}</td>
+                    <td>${ref}</td>
+                    <td>${escHtml(method)}</td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <div class="actions">
+                            ${voidBtn}
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
         }
 
         function filterReceipts(search) {
             const tbody = document.getElementById('receiptTableBody');
-            const rows = tbody.getElementsByTagName('tr');
-            
-            for (let row of rows) {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(search.toLowerCase()) ? '' : 'none';
+            for (const row of tbody.getElementsByTagName('tr')) {
+                row.style.display = row.textContent.toLowerCase().includes(search.toLowerCase()) ? '' : 'none';
             }
         }
+
+        // ── Void / Reversal modal ─────────────────────────────────────────────
+
+        function openVoidModal(id, customerName, amount) {
+            if (voidingInFlight.has(id)) return;
+            pendingVoidId = id;
+            document.getElementById('voidPaymentLabel').textContent =
+                `#${id} — ${customerName} (R ${parseFloat(amount).toFixed(2)})`;
+            document.getElementById('voidReason').value = '';
+            document.getElementById('voidErrorBar').style.display = 'none';
+            document.getElementById('voidConfirmBtn').disabled = false;
+            document.getElementById('voidModal').classList.add('active');
+        }
+
+        function closeVoidModal() {
+            pendingVoidId = null;
+            document.getElementById('voidModal').classList.remove('active');
+        }
+
+        async function confirmVoid() {
+            const id = pendingVoidId;
+            if (!id || voidingInFlight.has(id)) return;
+
+            const reason  = (document.getElementById('voidReason').value || '').trim();
+            const errBar  = document.getElementById('voidErrorBar');
+            const btn     = document.getElementById('voidConfirmBtn');
+
+            errBar.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Reversing…';
+            voidingInFlight.add(id);
+
+            try {
+                const res = await fetch(`/api/accounting/customer-invoices/payments/${id}/void`, {
+                    method:  'POST',
+                    headers: authH(),
+                    body:    JSON.stringify({ reason: reason || null }),
+                });
+                const json = await res.json();
+
+                if (!res.ok) {
+                    errBar.textContent = json.error || 'Reversal failed.';
+                    errBar.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = 'Reverse Payment';
+                    voidingInFlight.delete(id);
+                    return;
+                }
+
+                closeVoidModal();
+                await loadReceipts();
+
+                if (json.glReversalFailed) {
+                    alert('Payment reversed. WARNING: GL journal reversal failed — manual correction of journal ' + json.journalId + ' is required.');
+                }
+            } catch (err) {
+                errBar.textContent = 'Network error: ' + err.message;
+                errBar.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Reverse Payment';
+                voidingInFlight.delete(id);
+            }
+        }
+
+        // ── New receipt modal ─────────────────────────────────────────────────
 
         function openNewReceipt() {
             document.getElementById('receiptModal').classList.add('active');
@@ -870,78 +1011,13 @@
                 document.getElementById('allocationSection').style.display = 'none';
                 return;
             }
-
-            const invoices = customerInvoices[customerId] || [];
-            const invoiceList = document.getElementById('invoiceList');
-            invoiceList.innerHTML = '';
-
-            if (invoices.length > 0) {
-                document.getElementById('allocationSection').style.display = 'block';
-                
-                invoices.forEach(invoice => {
-                    const item = document.createElement('div');
-                    item.className = 'invoice-item';
-                    item.innerHTML = `
-                        <input type="checkbox" onchange="toggleInvoice(${invoice.id}, this.checked)">
-                        <div class="invoice-info">
-                            <div class="invoice-num">${invoice.number}</div>
-                            <div class="invoice-date">Due: ${window.formatDate(window.parseStandardDate(invoice.date), 'ZA')} • Balance: R ${invoice.balance.toFixed(2)}</div>
-                        </div>
-                        <div>
-                            <input type="number" class="allocation-input" id="alloc-${invoice.id}" 
-                                   step="0.01" placeholder="0.00" disabled
-                                   oninput="updateAllocations()">
-                        </div>
-                        <div>
-                            <button class="btn btn-secondary" onclick="allocateFull(${invoice.id}, ${invoice.balance})" 
-                                    id="btn-${invoice.id}" disabled>Full Amount</button>
-                        </div>
-                    `;
-                    invoiceList.appendChild(item);
-                });
-
-                // Show AI suggestion
-                showAISuggestion(customerId, invoices);
-            } else {
-                document.getElementById('allocationSection').style.display = 'none';
-            }
-
+            document.getElementById('allocationSection').style.display = 'none';
             updateUnallocated();
-        }
-
-        function showAISuggestion(customerId, invoices) {
-            const amount = parseFloat(document.getElementById('amount').value) || 0;
-            if (amount > 0 && invoices.length > 0) {
-                const suggestion = document.getElementById('aiSuggestion');
-                const suggestionText = document.getElementById('aiSuggestionText');
-                
-                // Simple AI logic: suggest oldest invoice first
-                const oldestInvoice = invoices.sort((a, b) => new Date(a.date) - new Date(b.date))[0];
-                suggestionText.innerHTML = `I recommend allocating to ${oldestInvoice.number} (R ${oldestInvoice.balance.toFixed(2)}) as it's the oldest outstanding invoice.`;
-                suggestion.style.display = 'flex';
-            }
-        }
-
-        function applyAISuggestion() {
-            const customerId = parseInt(document.getElementById('customerId').value);
-            const invoices = customerInvoices[customerId] || [];
-            const amount = parseFloat(document.getElementById('amount').value) || 0;
-            
-            if (invoices.length > 0) {
-                const oldestInvoice = invoices.sort((a, b) => new Date(a.date) - new Date(b.date))[0];
-                const checkbox = document.querySelector(`input[onchange*="toggleInvoice(${oldestInvoice.id}"]`);
-                checkbox.checked = true;
-                toggleInvoice(oldestInvoice.id, true);
-                
-                const allocAmount = Math.min(amount, oldestInvoice.balance);
-                document.getElementById(`alloc-${oldestInvoice.id}`).value = allocAmount.toFixed(2);
-                updateAllocations();
-            }
         }
 
         function toggleInvoice(id, checked) {
             document.getElementById(`alloc-${id}`).disabled = !checked;
-            document.getElementById(`btn-${id}`).disabled = !checked;
+            document.getElementById(`btn-${id}`).disabled   = !checked;
             if (!checked) {
                 document.getElementById(`alloc-${id}`).value = '';
                 updateAllocations();
@@ -949,79 +1025,44 @@
         }
 
         function allocateFull(id, balance) {
-            const amount = parseFloat(document.getElementById('amount').value) || 0;
+            const amount           = parseFloat(document.getElementById('amount').value) || 0;
             const currentAllocated = calculateTotalAllocated();
-            const available = amount - currentAllocated;
-            const allocAmount = Math.min(available, balance);
-            
-            document.getElementById(`alloc-${id}`).value = allocAmount.toFixed(2);
+            const available        = amount - currentAllocated;
+            document.getElementById(`alloc-${id}`).value = Math.min(available, balance).toFixed(2);
             updateAllocations();
         }
 
         function calculateTotalAllocated() {
             let total = 0;
-            const inputs = document.querySelectorAll('.allocation-input');
-            inputs.forEach(input => {
-                if (!input.disabled && input.value) {
-                    total += parseFloat(input.value) || 0;
-                }
-            });
+            for (const input of document.querySelectorAll('.allocation-input')) {
+                if (!input.disabled && input.value) total += parseFloat(input.value) || 0;
+            }
             return total;
         }
 
         function updateAllocations() {
-            const amount = parseFloat(document.getElementById('amount').value) || 0;
-            const allocated = calculateTotalAllocated();
+            const amount      = parseFloat(document.getElementById('amount').value) || 0;
+            const allocated   = calculateTotalAllocated();
             const unallocated = amount - allocated;
-            
-            document.getElementById('totalAmount').textContent = `R ${amount.toFixed(2)}`;
-            document.getElementById('totalAllocated').textContent = `R ${allocated.toFixed(2)}`;
+            document.getElementById('totalAmount').textContent      = `R ${amount.toFixed(2)}`;
+            document.getElementById('totalAllocated').textContent   = `R ${allocated.toFixed(2)}`;
             document.getElementById('unallocatedAmount').textContent = `R ${unallocated.toFixed(2)}`;
         }
 
-        function updateUnallocated() {
-            updateAllocations();
-        }
+        function updateUnallocated() { updateAllocations(); }
 
         function saveReceipt() {
-            const customerId = document.getElementById('customerId').value;
-            const receiptNumber = document.getElementById('receiptNumber').value;
-            const amount = parseFloat(document.getElementById('amount').value);
-            
-            if (!customerId || !receiptNumber || !amount) {
-                alert('Please fill in all required fields');
-                return;
-            }
-
-            const allocated = calculateTotalAllocated();
-            const customerName = document.getElementById('customerId').selectedOptions[0].text;
-            
-            const receipt = {
-                id: receipts.length + 1,
-                number: receiptNumber,
-                customer: customerName,
-                customerId: parseInt(customerId),
-                date: document.getElementById('receiptDate').value,
-                amount: amount,
-                allocated: allocated,
-                method: document.getElementById('paymentMethod').value,
-                status: allocated >= amount ? 'Allocated' : 'Unallocated',
-                reference: document.getElementById('reference').value
-            };
-            
-            receipts.push(receipt);
-            loadReceipts();
-            closeReceiptModal();
-            
-            alert('Receipt saved successfully!');
+            alert('Receipt recording via API is handled by the invoices page. Use Record Receipt there.');
         }
 
-        function viewReceipt(id) {
-            alert('View receipt: ' + id);
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        function escHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        function allocateReceipt(id) {
-            alert('Allocate receipt: ' + id);
+        function escAttr(str) {
+            return String(str || '').replace(/'/g, "\\'").replace(/</g, '&lt;');
         }
     </script>
 </body>

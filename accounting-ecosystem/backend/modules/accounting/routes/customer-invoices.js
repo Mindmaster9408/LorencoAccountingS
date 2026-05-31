@@ -1163,6 +1163,263 @@ router.post('/payments', authenticate, hasPermission('ar.payment.record'), async
   }
 });
 
+// ─── List Customer Payments ───────────────────────────────────────────────────
+// GET /payments — returns all customer payments for the company, newest first.
+// Includes reversal metadata so the frontend can render reversed badges and
+// conditionally show the void button.
+
+router.get('/payments', authenticate, hasPermission('ar.payment.record'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  try {
+    const { data: payments, error } = await supabase
+      .from('customer_payments')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('payment_date', { ascending: false })
+      .order('id',           { ascending: false });
+
+    if (error) throw new Error(error.message);
+    res.json({ payments: payments || [] });
+  } catch (err) {
+    console.error('GET /customer-invoices/payments error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Reverse / Void Customer Payment ─────────────────────────────────────────
+// POST /payments/:id/void
+//
+// Formal reversal path for customer payments (ACC-HARDEN-020).
+//
+// Execution order (DB-first):
+//   1. Fetch payment — company-scoped
+//   2. Guard: already reversed  → 409 PAYMENT_ALREADY_REVERSED
+//   3. Load allocations for this payment from customer_payment_allocations
+//   4. Atomic pg transaction (BEGIN/COMMIT/ROLLBACK):
+//      a. Lock payment row FOR UPDATE — re-check is_reversed under lock
+//      b. For each allocation: lock customer_invoices row FOR UPDATE
+//      c. Reduce invoice amount_paid + recalculate status (paid/part_paid/sent)
+//      d. UPDATE customer_payments SET is_reversed=true WHERE is_reversed=false
+//         (rowCount=0 → concurrent reversal guard → ROLLBACK → 409)
+//      e. COMMIT
+//   5. Reverse GL journal (JournalService — concurrency-safe per ACC-HARDEN-017)
+//      If GL reversal fails: payment is already marked reversed (AR correct),
+//      GL requires manual correction. CRITICAL audit event logged.
+//   6. Link reversal_journal_id back to payment row
+//   7. Audit log — CUSTOMER_PAYMENT_REVERSED
+//
+// Why DB before GL:
+//   If DB transaction fails → GL untouched → clean state.
+//   If DB commits but GL fails → payment marked reversed, AR/invoices correct,
+//   GL requires manual correction. Retry sees is_reversed=true → 409 (no dup).
+//
+// Permission: ar.payment.void (admin + accountant only)
+
+router.post('/payments/:id/void', authenticate, hasPermission('ar.payment.void'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const paymentId = parseInt(req.params.id);
+  const { reason } = req.body;
+  const reqUserId  = userId(req);
+
+  if (isNaN(paymentId)) {
+    return res.status(400).json({ error: 'Invalid payment ID' });
+  }
+
+  try {
+    // ── 1. Fetch payment — company-scoped ────────────────────────────────────
+    const { data: payment, error: fetchErr } = await supabase
+      .from('customer_payments')
+      .select('*')
+      .eq('id', paymentId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (fetchErr) throw new Error(fetchErr.message);
+    if (!payment) {
+      return res.status(404).json({ error: 'Customer payment not found', errorCode: 'PAYMENT_NOT_FOUND' });
+    }
+
+    // ── 2. Already-reversed guard ────────────────────────────────────────────
+    if (payment.is_reversed) {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: reqUserId,
+        actionType: 'CUSTOMER_PAYMENT_REVERSAL_BLOCKED',
+        entityType: 'CUSTOMER_PAYMENT', entityId: paymentId,
+        beforeJson: null,
+        afterJson: { paymentId, reasonCode: 'PAYMENT_ALREADY_REVERSED' },
+        reason: 'Customer payment reversal blocked: already reversed',
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(409).json({ error: 'Payment has already been reversed', errorCode: 'PAYMENT_ALREADY_REVERSED' });
+    }
+
+    // ── 3. Load allocations for this payment ─────────────────────────────────
+    // customer_payment_allocations uses amount_applied (not amount as in AP)
+    const { data: allocations, error: allocFetchErr } = await supabase
+      .from('customer_payment_allocations')
+      .select('invoice_id, amount_applied')
+      .eq('payment_id', paymentId);
+
+    if (allocFetchErr) throw new Error(allocFetchErr.message);
+
+    // ── 4. Atomic DB transaction: reverse allocations + mark payment ──────────
+    // DB-first: if this fails GL is untouched (clean state).
+    // If DB commits but GL fails: AR/invoice balances are correct;
+    // only the GL bank/AR entries require manual correction.
+    const revClient = await db.getClient();
+    try {
+      await revClient.query('BEGIN');
+
+      // Lock the payment row — prevents concurrent reversal from proceeding
+      const { rows: payLock } = await revClient.query(
+        `SELECT id, is_reversed
+           FROM customer_payments
+          WHERE id = $1 AND company_id = $2
+          FOR UPDATE`,
+        [paymentId, companyId]
+      );
+      if (!payLock.length || payLock[0].is_reversed) {
+        await revClient.query('ROLLBACK');
+        return res.status(409).json({ error: 'Payment has already been reversed', errorCode: 'PAYMENT_ALREADY_REVERSED' });
+      }
+
+      // For each allocated invoice: lock row, reduce amount_paid, recalculate status
+      for (const alloc of (allocations || [])) {
+        const allocAmount  = parseFloat(alloc.amount_applied);
+        const allocInvId   = parseInt(alloc.invoice_id);
+
+        const { rows: invLock } = await revClient.query(
+          `SELECT id, amount_paid, total_inc_vat
+             FROM customer_invoices
+            WHERE id = $1 AND company_id = $2
+            FOR UPDATE`,
+          [allocInvId, companyId]
+        );
+        if (!invLock.length) continue; // invoice may have been voided
+
+        const inv           = invLock[0];
+        const newAmountPaid = Math.max(
+          0,
+          Math.round((parseFloat(inv.amount_paid) - allocAmount) * 100) / 100
+        );
+        const totalIncVat   = parseFloat(inv.total_inc_vat);
+        const newStatus     = newAmountPaid >= totalIncVat - 0.005 ? 'paid'
+                            : newAmountPaid > 0                    ? 'part_paid'
+                            : 'sent';
+
+        await revClient.query(
+          `UPDATE customer_invoices
+              SET amount_paid = $1, status = $2, updated_at = NOW()
+            WHERE id = $3 AND company_id = $4`,
+          [newAmountPaid, newStatus, allocInvId, companyId]
+        );
+      }
+
+      // Mark payment as reversed — conditional UPDATE (is_reversed = false predicate)
+      // guards against any concurrent request that slipped past guard 2.
+      const markResult = await revClient.query(
+        `UPDATE customer_payments
+            SET is_reversed         = true,
+                reversed_at         = NOW(),
+                reversed_by_user_id = $1,
+                reversal_reason     = $2
+          WHERE id = $3 AND company_id = $4
+            AND is_reversed = false`,
+        [reqUserId, reason || null, paymentId, companyId]
+      );
+      if (markResult.rowCount === 0) {
+        await revClient.query('ROLLBACK');
+        return res.status(409).json({ error: 'Payment was concurrently reversed by another request', errorCode: 'PAYMENT_ALREADY_REVERSED' });
+      }
+
+      await revClient.query('COMMIT');
+    } catch (txErr) {
+      await revClient.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      revClient.release();
+    }
+
+    // ── 5. Reverse GL journal ─────────────────────────────────────────────────
+    // Runs AFTER the DB commit. A GL failure leaves a known auditable state:
+    // payment marked reversed (AR + invoice balances correct), GL needs manual fix.
+    let reversalJournalId = null;
+    if (payment.journal_id) {
+      try {
+        const reversalJournal = await JournalService.reverseJournal(
+          payment.journal_id,
+          companyId,
+          reqUserId,
+          reason ? `Payment reversal: ${reason}` : `Customer payment ${paymentId} reversed`
+        );
+        reversalJournalId = reversalJournal.id;
+
+        // Link reversal journal back to the payment record (best-effort)
+        await supabase
+          .from('customer_payments')
+          .update({ reversal_journal_id: reversalJournalId })
+          .eq('id', paymentId)
+          .eq('company_id', companyId);
+
+      } catch (glErr) {
+        // GL reversal failed after the DB commit. Payment is marked reversed
+        // and invoice balances are correct, but the bank/AR GL entries still
+        // show the original receipt. Manual journal reversal required.
+        console.error(`[CustomerAR] CRITICAL: payment ${paymentId} marked reversed but GL journal ${payment.journal_id} reversal failed:`, glErr.message);
+        await AuditLogger.log({
+          companyId,
+          actorType: 'SYSTEM', actorId: reqUserId,
+          actionType: 'CUSTOMER_PAYMENT_REVERSAL_GL_FAILED',
+          entityType: 'CUSTOMER_PAYMENT', entityId: paymentId,
+          beforeJson: { journalId: payment.journal_id },
+          afterJson: { paymentMarkedReversed: true, glReversalError: glErr.message },
+          reason: `CRITICAL: Payment ${paymentId} DB-reversed but GL journal ${payment.journal_id} reversal failed. Manual GL correction required.`,
+          ipAddress: req.ip, userAgent: req.get('user-agent'),
+        });
+        return res.json({
+          message: 'Payment reversed. WARNING: GL journal reversal failed — manual correction of journal ' + payment.journal_id + ' is required.',
+          reversalJournalId: null,
+          glReversalFailed:  true,
+          journalId:         payment.journal_id,
+        });
+      }
+    }
+
+    // ── 6. Audit log ──────────────────────────────────────────────────────────
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId:   reqUserId,
+      actionType: 'CUSTOMER_PAYMENT_REVERSED',
+      entityType: 'CUSTOMER_PAYMENT',
+      entityId:   paymentId,
+      beforeJson: {
+        is_reversed:     false,
+        journalId:       payment.journal_id || null,
+        amount:          parseFloat(payment.amount),
+        allocationCount: (allocations || []).length,
+      },
+      afterJson: {
+        is_reversed:      true,
+        reversalJournalId,
+        reversalReason:   reason || null,
+        glReversed:       !!reversalJournalId,
+      },
+      reason:    reason || 'Customer payment reversed',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
+    res.json({ message: 'Customer payment reversed', reversalJournalId });
+  } catch (err) {
+    console.error('POST /customer-invoices/payments/:id/void error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Aged Debtors Report ──────────────────────────────────────────────────────
 // GET /aging — groups outstanding customer invoices by customer and buckets them
 // into ageing periods.  Null due_date → current (with noDueDateCount flag).

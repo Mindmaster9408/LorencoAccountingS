@@ -156,6 +156,7 @@ const PERMISSIONS = {
   'ar.invoice.post':   ['admin', 'accountant'],
   'ar.invoice.void':   ['admin', 'accountant'],
   'ar.payment.record': ['admin', 'accountant', 'bookkeeper'],
+  'ar.payment.void':   ['admin', 'accountant'],
 
   // Accounts Payable / Supplier invoices (granular)
   'ap.invoice.view':           ['admin', 'accountant', 'bookkeeper', 'viewer'],
