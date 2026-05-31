@@ -20,6 +20,8 @@
     .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
     .btn-secondary { background: #6c757d; color: white; }
     .btn-success   { background: #28a745; color: white; }
+    .btn-danger    { background: #dc3545; color: white; border: none; }
+    .btn-danger:hover { background: #c82333; }
     .btn-sm        { padding: 5px 10px; font-size: 11px; }
 
     /* ── Stats ────────────────────────────────────────────────────────── */
@@ -129,6 +131,20 @@
       .stats-row, .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
       .vat-radio-group { flex-direction: column; gap: 10px; }
     }
+
+    /* ── Payment reversal modal (ACC-HARDEN-024) ─────────────────────── */
+    .rev-summary       { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+    .rev-summary-row   { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+    .rev-summary-label { opacity: 0.55; }
+    .rev-summary-value { font-weight: 600; font-family: 'Courier New', monospace; font-size: 12px; }
+    .rev-summary-value.amt { font-size: 15px; color: #fbbf24; }
+    .rev-impact        { background: rgba(220,53,69,0.1); border: 1px solid rgba(220,53,69,0.2); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+    .rev-impact-title  { font-size: 12px; font-weight: 700; color: #f87171; margin-bottom: 8px; }
+    .rev-impact-list   { margin: 0 0 0 16px; padding: 0; font-size: 12px; opacity: 0.8; line-height: 1.9; }
+    .rev-error         { background: rgba(220,53,69,0.15); border: 1px solid rgba(220,53,69,0.3); border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #fca5a5; margin-bottom: 14px; display: none; }
+    .rev-gl-warn       { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; display: none; }
+    .rev-gl-warn-title { font-size: 12px; font-weight: 700; color: #fbbf24; margin-bottom: 6px; }
+    .rev-gl-warn-body  { font-size: 12px; opacity: 0.8; line-height: 1.6; }
 
     /* ── Payment detail modal (ACC-HARDEN-023) ───────────────────────── */
     .detail-section       { margin-bottom: 22px; }
@@ -793,6 +809,59 @@
 </div>
 
 
+<!-- ══ Supplier Payment Reversal Modal (ACC-HARDEN-024) ════════════ -->
+<div id="modalSupPayReversal" class="modal">
+  <div class="modal-dialog narrow">
+    <div class="modal-header">
+      <h3>Reverse Supplier Payment</h3>
+      <button class="modal-close" onclick="closeSupPayReversal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="revError" class="rev-error"></div>
+      <div id="revGlWarn" class="rev-gl-warn">
+        <div class="rev-gl-warn-title">⚠ Payment reversed — GL journal requires manual correction</div>
+        <div id="revGlWarnBody" class="rev-gl-warn-body"></div>
+      </div>
+      <div class="rev-summary">
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Supplier</span>
+          <span class="rev-summary-value" id="revSupplier"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Amount</span>
+          <span class="rev-summary-value amt" id="revAmount"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Date</span>
+          <span class="rev-summary-value" id="revDate"></span>
+        </div>
+        <div class="rev-summary-row">
+          <span class="rev-summary-label">Reference</span>
+          <span class="rev-summary-value" id="revReference"></span>
+        </div>
+      </div>
+      <div class="rev-impact">
+        <div class="rev-impact-title">This reversal will:</div>
+        <ul class="rev-impact-list">
+          <li>Restore the supplier invoice balance</li>
+          <li>Reverse the posted GL journal</li>
+          <li>Mark this payment as permanently reversed</li>
+          <li>Cannot be undone</li>
+        </ul>
+      </div>
+      <div class="form-group">
+        <label>Reason (optional)</label>
+        <textarea id="revReason" rows="2" placeholder="e.g. Duplicate payment — reissued on correct date"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer" id="revFooter">
+      <button class="btn btn-secondary" onclick="closeSupPayReversal()">Cancel</button>
+      <button class="btn btn-danger" id="revConfirmBtn"
+              onclick="confirmSupPayReversal()">Reverse Payment</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ Supplier Payment Detail Modal (ACC-HARDEN-023) ══════════════ -->
 <div id="modalSupPayDetail" class="modal">
   <div class="modal-dialog wide">
@@ -818,7 +887,8 @@
 // ═══════════════════════════════════════════════════════
 
 const BASE = '/api/accounting/suppliers';
-let cachedAccounts = [];
+let cachedAccounts     = [];
+let _cachedSupPayments = [];   // ACC-HARDEN-024: cached for reversal modal lookup
 
 // ── Payment idempotency ─────────────────────────────────────────────────────
 // UUID generated in-memory when the payment modal opens. Same key on retry.
@@ -1098,6 +1168,8 @@ async function loadPayments() {
   const tbody = document.getElementById('paymentsTbody');
   const empty = document.getElementById('paymentsEmpty');
 
+  _cachedSupPayments = items;   // cache for reversal modal lookup
+
   if (!items.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
 
@@ -1113,33 +1185,105 @@ async function loadPayments() {
       <td class="action-btns">
         <button class="btn btn-secondary btn-sm" onclick="openSupPayDetail(${p.id})">View</button>
         ${!p.is_reversed
-          ? `<button class="btn btn-secondary btn-sm" onclick="reverseSupplierPayment(${p.id},${parseFloat(p.amount)})">Reverse</button>`
+          ? `<button class="btn btn-secondary btn-sm" onclick="openSupPayReversal(${p.id})">Reverse</button>`
           : ''}
       </td>
     </tr>`).join('');
 }
 
-// ── Reverse supplier payment ─────────────────────────────────────────────────
+// ── Supplier payment reversal modal (ACC-HARDEN-024) ─────────────────────────
 // In-flight guard prevents double-click. Backend is the authoritative guard
 // (FOR UPDATE lock + is_reversed=false predicate + JournalService concurrency).
 const _reversingPaymentIds = new Set();
+let   _pendingReversalId   = null;   // payment ID currently targeted in modal
 
-async function reverseSupplierPayment(paymentId, amount) {
-  if (_reversingPaymentIds.has(paymentId)) return;
-  if (!confirm(`Reverse this supplier payment of ${fmtR(amount)}?\n\nThis will:\n• Restore the supplier invoice balance\n• Reverse the posted GL journal\n• Mark this payment as reversed`)) return;
-  const reason = prompt('Optional: enter a reason for reversing this payment') || '';
-  _reversingPaymentIds.add(paymentId);
+function openSupPayReversal(id) {
+  if (_reversingPaymentIds.has(id)) return;
+
+  const p = _cachedSupPayments.find(x => x.id === id);
+  if (!p) return;   // shouldn't happen — list was just rendered
+
+  _pendingReversalId = id;
+
+  document.getElementById('revSupplier').textContent  = p.supplier_name || '—';
+  document.getElementById('revAmount').textContent    = fmtR(p.amount);
+  document.getElementById('revDate').textContent      = fmtDate(p.payment_date);
+  document.getElementById('revReference').textContent = p.reference || '—';
+  document.getElementById('revReason').value          = '';
+  document.getElementById('revError').style.display   = 'none';
+  document.getElementById('revGlWarn').style.display  = 'none';
+  document.getElementById('revConfirmBtn').disabled   = false;
+  document.getElementById('revConfirmBtn').textContent = 'Reverse Payment';
+  document.getElementById('revFooter').style.display  = '';
+
+  document.getElementById('modalSupPayReversal').classList.add('show');
+}
+
+function closeSupPayReversal() {
+  _pendingReversalId = null;
+  document.getElementById('modalSupPayReversal').classList.remove('show');
+}
+
+async function confirmSupPayReversal() {
+  const id = _pendingReversalId;
+  if (!id || _reversingPaymentIds.has(id)) return;
+
+  const reason  = (document.getElementById('revReason').value || '').trim();
+  const errEl   = document.getElementById('revError');
+  const warnEl  = document.getElementById('revGlWarn');
+  const btn     = document.getElementById('revConfirmBtn');
+
+  errEl.style.display  = 'none';
+  warnEl.style.display = 'none';
+  btn.disabled         = true;
+  btn.textContent      = 'Reversing…';
+  _reversingPaymentIds.add(id);
+
   try {
-    const data = await apiPost(`${BASE}/payments/${paymentId}/void`, { reason: reason.trim() || null });
-    if (data?.error) { alert('Reversal failed: ' + data.error); return; }
-    if (data?.glReversalFailed) {
-      alert('Payment reversed, but the GL journal could not be reversed automatically.\n\nManual correction required for journal ' + data.journalId + '.\n\nContact your accountant.');
+    const data = await apiPost(`${BASE}/payments/${id}/void`, { reason: reason || null });
+
+    if (data?.error) {
+      errEl.textContent    = data.error;
+      errEl.style.display  = 'block';
+      btn.disabled         = false;
+      btn.textContent      = 'Reverse Payment';
+      _reversingPaymentIds.delete(id);
+      return;
     }
+
+    // Refresh list, invoices, stats — do before any GL-warning display
     await Promise.all([loadPayments(), loadInvoices(), loadStats()]);
+
+    if (data?.glReversalFailed) {
+      // Payment DB-reversed successfully; GL requires manual correction.
+      // Keep modal open in warning state so the accountant cannot miss this.
+      document.getElementById('revGlWarnBody').innerHTML =
+        `The payment has been reversed and invoice balances are correct.<br>
+         However, GL journal <strong>GL-${data.journalId}</strong> could not be
+         reversed automatically. Manual GL correction is required.<br>
+         Contact your accountant before closing this notice.`;
+      warnEl.style.display = 'block';
+      // Switch footer to Close-only — no further actions needed
+      document.getElementById('revFooter').innerHTML =
+        `<button class="btn btn-secondary" onclick="closeSupPayReversal()">Close</button>`;
+      _reversingPaymentIds.delete(id);
+      return;
+    }
+
+    // Clean success
+    _reversingPaymentIds.delete(id);
+    closeSupPayReversal();
+
+    // If detail modal for this payment is open, refresh it
+    if (document.getElementById('modalSupPayDetail').classList.contains('show')) {
+      openSupPayDetail(id);
+    }
   } catch (err) {
-    alert('Reversal failed: ' + err.message);
-  } finally {
-    _reversingPaymentIds.delete(paymentId);
+    errEl.textContent    = 'Network error: ' + err.message;
+    errEl.style.display  = 'block';
+    btn.disabled         = false;
+    btn.textContent      = 'Reverse Payment';
+    _reversingPaymentIds.delete(id);
   }
 }
 
