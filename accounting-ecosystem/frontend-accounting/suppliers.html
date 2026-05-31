@@ -129,6 +129,46 @@
       .stats-row, .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
       .vat-radio-group { flex-direction: column; gap: 10px; }
     }
+
+    /* ── Payment detail modal (ACC-HARDEN-023) ───────────────────────── */
+    .detail-section       { margin-bottom: 22px; }
+    .detail-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.45; border-bottom: 1px solid rgba(255,255,255,0.07); padding-bottom: 6px; margin-bottom: 12px; }
+    .detail-grid          { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
+    .detail-field         { display: flex; flex-direction: column; gap: 2px; }
+    .detail-label         { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.45; }
+    .detail-value         { font-size: 13px; font-weight: 500; }
+    .detail-value.mono    { font-family: 'Courier New', monospace; font-size: 12px; }
+    .detail-amount        { font-size: 26px; font-weight: 700; color: #fbbf24; margin-bottom: 6px; }
+    .detail-amount.rev    { color: #f87171; text-decoration: line-through; }
+    .detail-rev-banner    { background: rgba(220,53,69,0.12); border: 1px solid rgba(220,53,69,0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+    .detail-rev-title     { font-size: 12px; font-weight: 700; color: #f87171; margin-bottom: 8px; }
+    .detail-rev-grid      { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+
+    .det-tbl              { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .det-tbl th           { font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; opacity: 0.45; padding: 7px 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.03); }
+    .det-tbl td           { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .det-tbl tr:last-child td { border-bottom: none; }
+    .det-tbl .num         { text-align: right; font-family: 'Courier New', monospace; }
+    .det-tbl .dr          { color: #34d058; }
+    .det-tbl .cr          { color: #f87171; }
+    .det-tbl tfoot td     { font-weight: 700; border-top: 1px solid rgba(255,255,255,0.1); }
+
+    .det-loading          { text-align: center; padding: 40px; opacity: 0.5; }
+    .det-error            { text-align: center; padding: 40px; color: #f87171; }
+
+    /* Print: hide everything except the detail modal content */
+    @media print {
+      body > *:not(#modalSupPayDetail)            { display: none !important; }
+      #modalSupPayDetail                          { position: static !important; background: none !important; display: block !important; padding: 0 !important; }
+      #modalSupPayDetail .modal-dialog            { box-shadow: none !important; border: none !important; border-radius: 0 !important; max-width: 100% !important; background: white !important; color: black !important; }
+      #modalSupPayDetail .modal-header .no-print,
+      #modalSupPayDetail .modal-close,
+      #modalSupPayDetail .modal-footer            { display: none !important; }
+      .det-tbl td, .det-tbl th, .det-tbl          { color: black !important; }
+      .detail-value, .detail-amount               { color: black !important; }
+      .det-tbl .dr                                { color: #155724 !important; }
+      .det-tbl .cr                                { color: #721c24 !important; }
+    }
   </style>
   <link rel="stylesheet" href="css/dark-theme.css">
 </head>
@@ -753,6 +793,25 @@
 </div>
 
 
+<!-- ══ Supplier Payment Detail Modal (ACC-HARDEN-023) ══════════════ -->
+<div id="modalSupPayDetail" class="modal">
+  <div class="modal-dialog wide">
+    <div class="modal-header">
+      <h3 id="detailModalTitle">Payment Detail</h3>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="btn btn-secondary btn-sm no-print" onclick="printSupplierPayment()">Print</button>
+        <button class="modal-close no-print" onclick="closeModal('modalSupPayDetail')">&times;</button>
+      </div>
+    </div>
+    <div id="supPayDetailBody" class="modal-body">
+      <div class="det-loading">Loading…</div>
+    </div>
+    <div class="modal-footer no-print">
+      <button class="btn btn-secondary" onclick="closeModal('modalSupPayDetail')">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════════════════
 //  CONFIG & AUTH
@@ -1051,7 +1110,8 @@ async function loadPayments() {
       <td class="amount-cell" style="${p.is_reversed ? 'text-decoration:line-through;' : ''}">${fmtR(p.amount)}</td>
       <td>${esc(p.notes || '—')}</td>
       <td>${p.is_reversed ? '<span class="badge badge-void">Reversed</span>' : ''}</td>
-      <td>
+      <td class="action-btns">
+        <button class="btn btn-secondary btn-sm" onclick="openSupPayDetail(${p.id})">View</button>
         ${!p.is_reversed
           ? `<button class="btn btn-secondary btn-sm" onclick="reverseSupplierPayment(${p.id},${parseFloat(p.amount)})">Reverse</button>`
           : ''}
@@ -1778,6 +1838,185 @@ async function handleOcrUpload(event) {
     if (progressEl) progressEl.style.display = 'none';
     event.target.value = ''; // reset input
   }
+}
+
+// ═══════════════════════════════════════════════════════
+//  SUPPLIER PAYMENT DETAIL (ACC-HARDEN-023)
+// ═══════════════════════════════════════════════════════
+
+async function openSupPayDetail(id) {
+  document.getElementById('detailModalTitle').textContent = `Payment #${id}`;
+  document.getElementById('supPayDetailBody').innerHTML = '<div class="det-loading">Loading…</div>';
+  document.getElementById('modalSupPayDetail').classList.add('show');
+
+  const json = await apiGet(`${BASE}/payments/${id}`);
+  if (!json || json.error) {
+    document.getElementById('supPayDetailBody').innerHTML =
+      `<div class="det-error">${esc(json?.error || 'Failed to load payment detail.')}</div>`;
+    return;
+  }
+  renderSupPayDetail(json);
+}
+
+function printSupplierPayment() {
+  window.print();
+}
+
+function renderSupPayDetail({ payment, allocations, journal, reversalJournal }) {
+  const body = document.getElementById('supPayDetailBody');
+  document.getElementById('detailModalTitle').textContent =
+    `Payment #${payment.id}${payment.reference ? ' — ' + payment.reference : ''}`;
+
+  // ── Reversal banner ──────────────────────────────────────────────────────
+  let revBanner = '';
+  if (payment.is_reversed) {
+    revBanner = `
+    <div class="detail-rev-banner">
+      <div class="detail-rev-title">⚠ This payment has been reversed</div>
+      <div class="detail-rev-grid">
+        <div class="detail-field">
+          <span class="detail-label">Reversed on</span>
+          <span class="detail-value">${fmtDate(payment.reversed_at)}</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Reversed by</span>
+          <span class="detail-value">${esc(payment.reversedByUserName || payment.reversedByUsername || 'Unknown')}</span>
+        </div>
+        ${payment.reversal_reason ? `
+        <div class="detail-field" style="grid-column:1/-1">
+          <span class="detail-label">Reason</span>
+          <span class="detail-value">${esc(payment.reversal_reason)}</span>
+        </div>` : ''}
+        ${payment.reversal_journal_id ? `
+        <div class="detail-field">
+          <span class="detail-label">Reversal Journal</span>
+          <span class="detail-value mono">GL-${payment.reversal_journal_id}</span>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  // ── Payment header ───────────────────────────────────────────────────────
+  const statusBadge = payment.is_reversed
+    ? '<span class="badge badge-void">Reversed</span>'
+    : '<span class="badge badge-paid">Active</span>';
+
+  const headerSection = `
+  <div class="detail-section">
+    <div class="detail-section-title">Payment Summary</div>
+    <div class="${payment.is_reversed ? 'detail-amount rev' : 'detail-amount'}">${fmtR(payment.amount)}</div>
+    <div style="margin-bottom:14px;">${statusBadge}</div>
+    <div class="detail-grid">
+      <div class="detail-field">
+        <span class="detail-label">Supplier</span>
+        <span class="detail-value">${esc(payment.supplierName || '—')}${payment.supplierCode ? ' <span style="opacity:0.5;font-size:11px;">(' + esc(payment.supplierCode) + ')</span>' : ''}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">Payment Date</span>
+        <span class="detail-value">${fmtDate(payment.payment_date)}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">Payment Method</span>
+        <span class="detail-value">${esc(fmtPayMethod(payment.payment_method))}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">Bank / Cash Account</span>
+        <span class="detail-value">${payment.bankLedgerAccountCode ? esc(payment.bankLedgerAccountCode + ' — ' + (payment.bankLedgerAccountName || '')) : esc(payment.bankLedgerAccountName || '—')}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">Reference</span>
+        <span class="detail-value">${esc(payment.reference || '—')}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">GL Journal</span>
+        <span class="detail-value mono">${payment.journal_id ? 'GL-' + payment.journal_id : '—'}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">Recorded by</span>
+        <span class="detail-value">${esc(payment.createdByUserName || payment.createdByUsername || '—')}</span>
+      </div>
+      <div class="detail-field">
+        <span class="detail-label">Recorded at</span>
+        <span class="detail-value">${fmtDate(payment.created_at)}</span>
+      </div>
+      ${payment.notes ? `
+      <div class="detail-field" style="grid-column:1/-1">
+        <span class="detail-label">Notes</span>
+        <span class="detail-value">${esc(payment.notes)}</span>
+      </div>` : ''}
+    </div>
+  </div>`;
+
+  // ── Allocations ──────────────────────────────────────────────────────────
+  let allocSection = '';
+  if (allocations && allocations.length > 0) {
+    const rows = allocations.map(a => {
+      const statusLabels = { paid:'Paid', part_paid:'Part Paid', unpaid:'Unpaid', draft:'Draft', void:'Void', approved:'Approved' };
+      return `<tr>
+        <td><strong>${esc(a.invoiceNumber)}</strong></td>
+        <td>${fmtDate(a.invoiceDate)}</td>
+        <td class="num">${fmtR(a.invoiceTotal)}</td>
+        <td class="num">${fmtR(a.amountApplied)}</td>
+        <td class="num">${fmtR(a.invoiceOutstanding)}</td>
+        <td>${esc(statusLabels[a.invoiceStatus] || a.invoiceStatus || '—')}</td>
+      </tr>`;
+    }).join('');
+    const totalApplied = allocations.reduce((s, a) => s + (parseFloat(a.amountApplied) || 0), 0);
+    allocSection = `
+    <div class="detail-section">
+      <div class="detail-section-title">Invoice Allocations</div>
+      <table class="det-tbl">
+        <thead><tr><th>Invoice</th><th>Inv. Date</th><th class="num">Total</th><th class="num">Applied</th><th class="num">Outstanding</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="3" style="padding:9px 10px;font-weight:600;">Total allocated</td><td class="num" style="font-weight:700;">${fmtR(totalApplied)}</td><td colspan="2"></td></tr></tfoot>
+      </table>
+    </div>`;
+  } else {
+    allocSection = `
+    <div class="detail-section">
+      <div class="detail-section-title">Invoice Allocations</div>
+      <p style="opacity:0.5;font-size:13px;">No invoice allocations — payment is unallocated.</p>
+    </div>`;
+  }
+
+  // ── GL journal section ───────────────────────────────────────────────────
+  function renderJournalSection(j, title) {
+    if (!j) return '';
+    const lineRows = (j.lines || []).map(l => `<tr>
+      <td class="mono">${esc(l.accountCode || '—')}</td>
+      <td>${esc(l.accountName || '—')}</td>
+      <td>${esc(l.description || '')}</td>
+      <td class="num dr">${parseFloat(l.debit)  > 0 ? fmtR(l.debit)  : ''}</td>
+      <td class="num cr">${parseFloat(l.credit) > 0 ? fmtR(l.credit) : ''}</td>
+    </tr>`).join('');
+    return `
+    <div class="detail-section">
+      <div class="detail-section-title">${esc(title)}<span class="mono" style="font-size:10px;opacity:0.4;margin-left:8px;">GL-${j.id}</span></div>
+      <div class="detail-grid" style="margin-bottom:12px;">
+        <div class="detail-field">
+          <span class="detail-label">Date</span>
+          <span class="detail-value">${fmtDate(j.date)}</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Status</span>
+          <span class="detail-value">${esc((j.status || '').toUpperCase())}</span>
+        </div>
+        ${j.description ? `<div class="detail-field" style="grid-column:1/-1">
+          <span class="detail-label">Description</span>
+          <span class="detail-value">${esc(j.description)}</span>
+        </div>` : ''}
+      </div>
+      <table class="det-tbl">
+        <thead><tr><th>Code</th><th>Account</th><th>Description</th><th class="num dr">Debit</th><th class="num cr">Credit</th></tr></thead>
+        <tbody>${lineRows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  const journalSection  = renderJournalSection(journal,        'Original GL Journal');
+  const revJrnlSection  = renderJournalSection(reversalJournal, 'Reversal GL Journal');
+
+  body.innerHTML = revBanner + headerSection + allocSection + journalSection + revJrnlSection;
 }
 
 // ═══════════════════════════════════════════════════════
