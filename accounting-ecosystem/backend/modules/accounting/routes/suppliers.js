@@ -1503,6 +1503,238 @@ router.get('/payments', authenticate, hasPermission('ap.invoice.view'), async (r
   }
 });
 
+// ─── Reverse / Void Supplier Payment ─────────────────────────────────────────
+// POST /payments/:id/void
+//
+// Formal reversal path for supplier payments.
+//
+// Execution order (DB-first):
+//   1. Fetch payment — company-scoped
+//   2. Guard: already reversed  → 409 PAYMENT_ALREADY_REVERSED
+//   3. Load allocations for this payment
+//   4. Atomic pg transaction (BEGIN/COMMIT/ROLLBACK):
+//      a. Lock payment row FOR UPDATE — re-check is_reversed under lock
+//      b. For each allocation: lock invoice row FOR UPDATE (ACC-HARDEN-015 pattern)
+//      c. Reduce invoice amount_paid + recalculate status
+//      d. UPDATE supplier_payment SET is_reversed=true WHERE is_reversed=false
+//         (rowCount=0 → concurrent reversal guard → ROLLBACK)
+//      e. COMMIT
+//   5. Reverse GL journal (JournalService — concurrency-safe per ACC-HARDEN-017)
+//      If GL reversal fails: payment is already marked reversed (AP correct),
+//      GL requires manual correction. CRITICAL audit event logged.
+//   6. Link reversal_journal_id back to payment row
+//   7. Audit log — SUPPLIER_PAYMENT_REVERSED
+//
+// Why DB before GL:
+//   If the DB transaction fails → GL untouched → clean state.
+//   If DB commits but GL fails → payment is marked reversed, AP/invoices are
+//   correct, GL requires manual correction. A retry sees is_reversed=true → 409
+//   (no duplicate). Auditable and recoverable.
+//
+// Permission: ap.payment.void (admin + accountant only)
+
+router.post('/payments/:id/void', authenticate, hasPermission('ap.payment.void'), async (req, res) => {
+  const companyId = req.companyId;
+  const paymentId = parseInt(req.params.id);
+  const { reason } = req.body;
+  const reqUserId  = req.user && req.user.userId ? req.user.userId : null;
+
+  if (isNaN(paymentId)) {
+    return res.status(400).json({ error: 'Invalid payment ID' });
+  }
+
+  try {
+    // ── 1. Fetch payment — company-scoped ────────────────────────────────────
+    const { data: payment, error: fetchErr } = await supabase
+      .from('supplier_payments')
+      .select('*')
+      .eq('id', paymentId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (fetchErr) throw new Error(fetchErr.message);
+    if (!payment) {
+      return res.status(404).json({ error: 'Supplier payment not found', errorCode: 'PAYMENT_NOT_FOUND' });
+    }
+
+    // ── 2. Already-reversed guard ────────────────────────────────────────────
+    if (payment.is_reversed) {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: reqUserId,
+        actionType: 'SUPPLIER_PAYMENT_REVERSAL_BLOCKED',
+        entityType: 'SUPPLIER_PAYMENT', entityId: paymentId,
+        beforeJson: null,
+        afterJson: { paymentId, reasonCode: 'PAYMENT_ALREADY_REVERSED' },
+        reason: 'Supplier payment reversal blocked: already reversed',
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(409).json({ error: 'Payment has already been reversed', errorCode: 'PAYMENT_ALREADY_REVERSED' });
+    }
+
+    // ── 3. Load allocations for this payment ─────────────────────────────────
+    const { data: allocations, error: allocFetchErr } = await supabase
+      .from('supplier_payment_allocations')
+      .select('invoice_id, amount')
+      .eq('payment_id', paymentId);
+
+    if (allocFetchErr) throw new Error(allocFetchErr.message);
+
+    // ── 4. Atomic DB transaction: reverse allocations + mark payment ──────────
+    // DB-first: if this fails GL is untouched (clean state).
+    // If DB commits but GL fails later: AP/invoice balances are correct;
+    // only the GL bank/AP entries require manual correction.
+    const revClient = await db.getClient();
+    try {
+      await revClient.query('BEGIN');
+
+      // Lock the payment row — prevents concurrent reversal from proceeding
+      const { rows: payLock } = await revClient.query(
+        `SELECT id, is_reversed
+           FROM supplier_payments
+          WHERE id = $1 AND company_id = $2
+          FOR UPDATE`,
+        [paymentId, companyId]
+      );
+      if (!payLock.length || payLock[0].is_reversed) {
+        await revClient.query('ROLLBACK');
+        return res.status(409).json({ error: 'Payment has already been reversed', errorCode: 'PAYMENT_ALREADY_REVERSED' });
+      }
+
+      // For each allocated invoice: lock row, reduce amount_paid, recalculate status
+      for (const alloc of (allocations || [])) {
+        const allocAmount   = parseFloat(alloc.amount);
+        const allocInvId    = parseInt(alloc.invoice_id);
+
+        const { rows: invLock } = await revClient.query(
+          `SELECT id, amount_paid, total_inc_vat
+             FROM supplier_invoices
+            WHERE id = $1 AND company_id = $2
+            FOR UPDATE`,
+          [allocInvId, companyId]
+        );
+        if (!invLock.length) continue; // invoice may have been voided/deleted
+
+        const inv              = invLock[0];
+        const newAmountPaid    = Math.max(
+          0,
+          Math.round((parseFloat(inv.amount_paid) - allocAmount) * 100) / 100
+        );
+        const newStatus        = invoiceStatus(inv.total_inc_vat, newAmountPaid);
+
+        await revClient.query(
+          `UPDATE supplier_invoices
+              SET amount_paid = $1, status = $2, updated_at = NOW()
+            WHERE id = $3 AND company_id = $4`,
+          [newAmountPaid, newStatus, allocInvId, companyId]
+        );
+      }
+
+      // Mark payment as reversed — conditional UPDATE (is_reversed = false predicate)
+      // guards against any concurrent request that slipped past guard 2.
+      const markResult = await revClient.query(
+        `UPDATE supplier_payments
+            SET is_reversed         = true,
+                reversed_at         = NOW(),
+                reversed_by_user_id = $1,
+                reversal_reason     = $2,
+                updated_at          = NOW()
+          WHERE id = $3 AND company_id = $4
+            AND is_reversed = false`,
+        [reqUserId, reason || null, paymentId, companyId]
+      );
+      if (markResult.rowCount === 0) {
+        await revClient.query('ROLLBACK');
+        return res.status(409).json({ error: 'Payment was concurrently reversed by another request', errorCode: 'PAYMENT_ALREADY_REVERSED' });
+      }
+
+      await revClient.query('COMMIT');
+    } catch (txErr) {
+      await revClient.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      revClient.release();
+    }
+
+    // ── 5. Reverse GL journal ─────────────────────────────────────────────────
+    // JournalService.reverseJournal is concurrency-safe (ACC-HARDEN-017).
+    // Runs AFTER the DB commit so that a GL failure leaves a known, auditable
+    // state: payment marked reversed (AP + invoice balances correct), GL requires
+    // manual correction.
+    let reversalJournalId = null;
+    if (payment.journal_id) {
+      try {
+        const reversalJournal = await JournalService.reverseJournal(
+          payment.journal_id,
+          companyId,
+          reqUserId,
+          reason ? `Payment reversal: ${reason}` : `Supplier payment ${paymentId} reversed`
+        );
+        reversalJournalId = reversalJournal.id;
+
+        // Link reversal journal back to the payment record (best-effort)
+        await supabase
+          .from('supplier_payments')
+          .update({ reversal_journal_id: reversalJournalId })
+          .eq('id', paymentId)
+          .eq('company_id', companyId);
+
+      } catch (glErr) {
+        // GL reversal failed after the DB commit. Payment is marked reversed
+        // and invoice balances are correct, but the bank/AP GL entries still
+        // show the original payment. Manual journal reversal required.
+        console.error(`[Suppliers] CRITICAL: payment ${paymentId} marked reversed but GL journal ${payment.journal_id} reversal failed:`, glErr.message);
+        await AuditLogger.log({
+          companyId,
+          actorType: 'SYSTEM', actorId: reqUserId,
+          actionType: 'SUPPLIER_PAYMENT_REVERSAL_GL_FAILED',
+          entityType: 'SUPPLIER_PAYMENT', entityId: paymentId,
+          beforeJson: { journalId: payment.journal_id },
+          afterJson: { paymentMarkedReversed: true, glReversalError: glErr.message },
+          reason: `CRITICAL: Payment ${paymentId} DB-reversed but GL journal ${payment.journal_id} reversal failed. Manual GL correction required.`,
+          ipAddress: req.ip, userAgent: req.get('user-agent'),
+        });
+        return res.json({
+          message: 'Payment reversed. WARNING: GL journal reversal failed — manual correction of journal ' + payment.journal_id + ' is required.',
+          reversalJournalId: null,
+          glReversalFailed:  true,
+          journalId:         payment.journal_id,
+        });
+      }
+    }
+
+    // ── 6. Audit log ──────────────────────────────────────────────────────────
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId:   reqUserId,
+      actionType: 'SUPPLIER_PAYMENT_REVERSED',
+      entityType: 'SUPPLIER_PAYMENT',
+      entityId:   paymentId,
+      beforeJson: {
+        is_reversed:      false,
+        journalId:        payment.journal_id || null,
+        amount:           parseFloat(payment.amount),
+        allocationCount:  (allocations || []).length,
+      },
+      afterJson: {
+        is_reversed:      true,
+        reversalJournalId,
+        reversalReason:   reason || null,
+        glReversed:       !!reversalJournalId,
+      },
+      reason:    reason || 'Supplier payment reversed',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
+    res.json({ message: 'Supplier payment reversed', reversalJournalId });
+  } catch (err) {
+    console.error('POST /suppliers/payments/:id/void error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // STRICT mode: GL journal is created BEFORE payment is inserted.
 // If GL posting fails the payment and allocations are never saved.
 // bankLedgerAccountId is required — no silent GL skip.

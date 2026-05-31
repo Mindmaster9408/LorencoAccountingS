@@ -163,6 +163,7 @@ const PERMISSIONS = {
   'ap.invoice.edit':           ['admin', 'accountant', 'bookkeeper'],
   'ap.invoice.void':           ['admin', 'accountant'],
   'ap.payment.record':         ['admin', 'accountant', 'bookkeeper'],
+  'ap.payment.void':           ['admin', 'accountant'],
   'ap.purchase_order.approve': ['admin', 'accountant'],
 
   // Kept for backward compatibility — new routes use the granular keys above

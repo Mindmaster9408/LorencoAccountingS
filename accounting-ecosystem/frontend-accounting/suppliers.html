@@ -319,6 +319,8 @@
                 <th>Reference</th>
                 <th style="text-align:right">Amount</th>
                 <th>Notes</th>
+                <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="paymentsTbody"></tbody>
@@ -1041,14 +1043,44 @@ async function loadPayments() {
   empty.style.display = 'none';
 
   tbody.innerHTML = items.map(p => `
-    <tr>
+    <tr style="${p.is_reversed ? 'opacity:0.55;' : ''}">
       <td>${esc(p.supplier_name)}</td>
       <td>${fmtDate(p.payment_date)}</td>
       <td>${fmtPayMethod(p.payment_method)}</td>
       <td>${esc(p.reference || '—')}</td>
-      <td class="amount-cell">${fmtR(p.amount)}</td>
+      <td class="amount-cell" style="${p.is_reversed ? 'text-decoration:line-through;' : ''}">${fmtR(p.amount)}</td>
       <td>${esc(p.notes || '—')}</td>
+      <td>${p.is_reversed ? '<span class="badge badge-void">Reversed</span>' : ''}</td>
+      <td>
+        ${!p.is_reversed
+          ? `<button class="btn btn-secondary btn-sm" onclick="reverseSupplierPayment(${p.id},${parseFloat(p.amount)})">Reverse</button>`
+          : ''}
+      </td>
     </tr>`).join('');
+}
+
+// ── Reverse supplier payment ─────────────────────────────────────────────────
+// In-flight guard prevents double-click. Backend is the authoritative guard
+// (FOR UPDATE lock + is_reversed=false predicate + JournalService concurrency).
+const _reversingPaymentIds = new Set();
+
+async function reverseSupplierPayment(paymentId, amount) {
+  if (_reversingPaymentIds.has(paymentId)) return;
+  if (!confirm(`Reverse this supplier payment of ${fmtR(amount)}?\n\nThis will:\n• Restore the supplier invoice balance\n• Reverse the posted GL journal\n• Mark this payment as reversed`)) return;
+  const reason = prompt('Optional: enter a reason for reversing this payment') || '';
+  _reversingPaymentIds.add(paymentId);
+  try {
+    const data = await apiPost(`${BASE}/payments/${paymentId}/void`, { reason: reason.trim() || null });
+    if (data?.error) { alert('Reversal failed: ' + data.error); return; }
+    if (data?.glReversalFailed) {
+      alert('Payment reversed, but the GL journal could not be reversed automatically.\n\nManual correction required for journal ' + data.journalId + '.\n\nContact your accountant.');
+    }
+    await Promise.all([loadPayments(), loadInvoices(), loadStats()]);
+  } catch (err) {
+    alert('Reversal failed: ' + err.message);
+  } finally {
+    _reversingPaymentIds.delete(paymentId);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
