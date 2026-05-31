@@ -1090,6 +1090,181 @@ router.put('/invoices/:id', authenticate, hasPermission('ap.invoice.edit'), asyn
   }
 });
 
+// ─── Void Supplier Invoice ────────────────────────────────────────────────────
+// POST /invoices/:id/void
+//
+// Formal void path for supplier invoices — mirrors the customer invoice void
+// (POST /api/accounting/customer-invoices/:id/void).
+//
+// Guards (in order):
+//   1. Invoice exists + belongs to company (company-scoped fetch)
+//   2. Not already void (INVOICE_ALREADY_VOID → 409)
+//   3. No payments applied (INVOICE_HAS_PAYMENTS → 409)
+//   4. VAT period not locked (VAT_PERIOD_LOCKED → 409)
+//   5. Reverse the GL journal (JournalService — concurrency-safe per ACC-HARDEN-017)
+//   6. Conditional UPDATE: mark void only if still not void (rowCount guard)
+//   7. Audit log
+//
+// Permission: ap.invoice.void (admin + accountant only)
+
+router.post('/invoices/:id/void', authenticate, hasPermission('ap.invoice.void'), async (req, res) => {
+  const companyId = req.companyId;
+  const invoiceId = parseInt(req.params.id);
+  const { reason } = req.body;
+  const reqUserId  = req.user && req.user.userId ? req.user.userId : null;
+
+  if (isNaN(invoiceId)) {
+    return res.status(400).json({ error: 'Invalid invoice ID' });
+  }
+
+  try {
+    // ── 1. Fetch invoice — company-scoped ────────────────────────────────────
+    const { data: invoice, error: fetchErr } = await supabase
+      .from('supplier_invoices')
+      .select('*')
+      .eq('id', invoiceId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (fetchErr) throw new Error(fetchErr.message);
+    if (!invoice) {
+      return res.status(404).json({ error: 'Supplier invoice not found', errorCode: 'SUPPLIER_INVOICE_NOT_FOUND' });
+    }
+
+    // ── 2. Already-void guard ────────────────────────────────────────────────
+    if (invoice.status === 'void') {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: reqUserId,
+        actionType: 'SUPPLIER_INVOICE_VOID_BLOCKED',
+        entityType: 'SUPPLIER_INVOICE', entityId: invoiceId,
+        beforeJson: null,
+        afterJson: { invoiceId, status: invoice.status, reasonCode: 'INVOICE_ALREADY_VOID' },
+        reason: 'Supplier invoice void blocked: already void',
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(409).json({ error: 'Invoice is already void', errorCode: 'INVOICE_ALREADY_VOID' });
+    }
+
+    // ── 3. Payments-applied guard ────────────────────────────────────────────
+    if (parseFloat(invoice.amount_paid || 0) > 0.005) {
+      await AuditLogger.log({
+        companyId,
+        actorType: 'USER', actorId: reqUserId,
+        actionType: 'SUPPLIER_INVOICE_VOID_BLOCKED',
+        entityType: 'SUPPLIER_INVOICE', entityId: invoiceId,
+        beforeJson: null,
+        afterJson: { invoiceId, status: invoice.status, amountPaid: parseFloat(invoice.amount_paid || 0), reasonCode: 'INVOICE_HAS_PAYMENTS' },
+        reason: 'Supplier invoice void blocked: payments applied',
+        ipAddress: req.ip, userAgent: req.get('user-agent'),
+      });
+      return res.status(409).json({
+        error: 'Cannot void a supplier invoice that has payments applied. Reverse the payments first.',
+        errorCode: 'INVOICE_HAS_PAYMENTS',
+      });
+    }
+
+    // ── 4. VAT period lock guard ──────────────────────────────────────────────
+    if (invoice.journal_id) {
+      const vatLock = await JournalService.isVatPeriodLocked(invoice.journal_id);
+      if (vatLock.locked) {
+        await AuditLogger.log({
+          companyId,
+          actorType: 'USER', actorId: reqUserId,
+          actionType: 'SUPPLIER_INVOICE_VOID_BLOCKED',
+          entityType: 'SUPPLIER_INVOICE', entityId: invoiceId,
+          beforeJson: null,
+          afterJson: { invoiceId, journalId: invoice.journal_id, vatPeriodKey: vatLock.periodKey, reasonCode: 'VAT_PERIOD_LOCKED' },
+          reason: `Supplier invoice void blocked: VAT period ${vatLock.periodKey} is locked`,
+          ipAddress: req.ip, userAgent: req.get('user-agent'),
+        });
+        return res.status(409).json({
+          error: `Cannot void this invoice — its VAT has been included in locked VAT period ${vatLock.periodKey}. VAT periods that have been locked cannot be changed.`,
+          errorCode: 'VAT_PERIOD_LOCKED',
+        });
+      }
+    }
+
+    // ── 5. Reverse the GL journal ─────────────────────────────────────────────
+    // JournalService.reverseJournal is concurrency-safe (ACC-HARDEN-017):
+    // conditional UPDATE + unique index prevent double-reversal.
+    let reversalJournalId = null;
+    if (invoice.journal_id) {
+      const reversalJournal = await JournalService.reverseJournal(
+        invoice.journal_id,
+        companyId,
+        reqUserId,
+        reason ? `Void: ${reason}` : `Supplier invoice ${invoiceId} voided`
+      );
+      reversalJournalId = reversalJournal.id;
+    }
+
+    // ── 6. Mark invoice as void — conditional UPDATE (concurrency guard) ───────
+    // Using native pg client to get rowCount. The WHERE predicate (status != 'void')
+    // ensures a concurrent void request that already committed will prevent this
+    // update from taking effect (rowCount=0 → throw → 409 for the second request).
+    const voidClient = await db.getClient();
+    let voidRowCount = 0;
+    try {
+      const voidResult = await voidClient.query(
+        `UPDATE supplier_invoices
+            SET status            = 'void',
+                voided_at         = NOW(),
+                voided_by_user_id = $1,
+                void_reason       = $2,
+                updated_at        = NOW()
+          WHERE id = $3
+            AND company_id = $4
+            AND status != 'void'`,
+        [reqUserId, reason || null, invoiceId, companyId]
+      );
+      voidRowCount = voidResult.rowCount;
+    } finally {
+      voidClient.release();
+    }
+
+    if (voidRowCount === 0) {
+      return res.status(409).json({
+        error: 'Invoice was concurrently voided by another request',
+        errorCode: 'INVOICE_ALREADY_VOID',
+      });
+    }
+
+    // ── 7. Audit log ──────────────────────────────────────────────────────────
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER',
+      actorId:   reqUserId,
+      actionType: 'SUPPLIER_INVOICE_VOIDED',
+      entityType: 'SUPPLIER_INVOICE',
+      entityId:   invoiceId,
+      beforeJson: {
+        status:       invoice.status,
+        journalId:    invoice.journal_id || null,
+        totalIncVat:  parseFloat(invoice.total_inc_vat),
+        amountPaid:   parseFloat(invoice.amount_paid || 0),
+      },
+      afterJson: {
+        status:             'void',
+        reversalJournalId,
+        voidReason:         reason || null,
+        glReversed:         !!reversalJournalId,
+      },
+      reason:    reason || 'Supplier invoice voided',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
+    res.json({
+      message:           'Supplier invoice voided',
+      reversalJournalId,
+    });
+  } catch (err) {
+    console.error('POST /suppliers/invoices/:id/void error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Purchase Orders ──────────────────────────────────────────────────────────
 
 router.get('/orders', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {

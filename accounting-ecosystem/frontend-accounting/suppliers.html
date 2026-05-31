@@ -55,6 +55,7 @@
     .badge-paid       { background: rgba(40,167,69,0.25);  color: #34d058 !important; }
     .badge-unpaid     { background: rgba(220,53,69,0.2);   color: #f87171 !important; }
     .badge-part_paid  { background: rgba(255,193,7,0.2);   color: #fbbf24 !important; }
+    .badge-void       { background: rgba(108,117,125,0.15); color: #9ca3af !important; }
     .badge-overdue    { background: rgba(220,53,69,0.2);   color: #f87171 !important; }
     .badge-draft      { background: rgba(108,117,125,0.2); color: #9ca3af !important; }
     .badge-approved   { background: rgba(0,102,204,0.2);   color: #60a5fa !important; }
@@ -950,8 +951,11 @@ async function loadInvoices() {
         <td><span class="badge badge-${inv.status}">${fmtStatus(inv.status)}</span></td>
         <td>
           <div class="action-btns">
-            ${inv.status !== 'paid' && inv.status !== 'cancelled'
+            ${inv.status !== 'paid' && inv.status !== 'cancelled' && inv.status !== 'void'
               ? `<button class="btn btn-primary btn-sm" onclick="payInvoiceQuick(${inv.id},${inv.supplier_id},'${esc(inv.supplier_name)}',${balance.toFixed(2)})">Pay</button>`
+              : ''}
+            ${inv.status !== 'paid' && inv.status !== 'void' && inv.status !== 'cancelled' && parseFloat(inv.amount_paid||0) < 0.005
+              ? `<button class="btn btn-danger btn-sm" onclick="voidSupplierInvoice(${inv.id},'${esc(inv.invoice_number||inv.id)}')">Void</button>`
               : ''}
           </div>
         </td>
@@ -998,6 +1002,28 @@ async function updatePOStatus(poId, status) {
   const data = await apiPut(`${BASE}/orders/${poId}/status`, { status });
   if (data?.error) { alert('Error: ' + data.error); return; }
   loadOrders();
+}
+
+// ── Void supplier invoice ────────────────────────────────────────────────────
+// In-flight guard prevents double-click from firing two concurrent void requests.
+// Backend is the authoritative guard (conditional UPDATE + reverseJournal locks).
+const _voidingInvoiceIds = new Set();
+
+async function voidSupplierInvoice(invoiceId, invoiceRef) {
+  if (_voidingInvoiceIds.has(invoiceId)) return;
+  const label = invoiceRef || invoiceId;
+  if (!confirm(`Void supplier invoice ${label}?\n\nThis will reverse the posted GL journal. The invoice will be permanently marked as void and cannot be edited.`)) return;
+  const reason = prompt(`Optional: enter a reason for voiding invoice ${label}`) || '';
+  _voidingInvoiceIds.add(invoiceId);
+  try {
+    const data = await apiPost(`${BASE}/invoices/${invoiceId}/void`, { reason: reason.trim() || null });
+    if (data?.error) { alert('Void failed: ' + data.error); return; }
+    await loadInvoices();
+  } catch (err) {
+    alert('Void failed: ' + err.message);
+  } finally {
+    _voidingInvoiceIds.delete(invoiceId);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1595,7 +1621,8 @@ function fmtDate(d) {
 
 function fmtStatus(s) {
   const map = { unpaid:'Unpaid', part_paid:'Part Paid', paid:'Paid', draft:'Draft',
-    overdue:'Overdue', approved:'Approved', sent:'Sent', received:'Received', cancelled:'Cancelled' };
+    overdue:'Overdue', approved:'Approved', sent:'Sent', received:'Received', cancelled:'Cancelled',
+    void:'Void' };
   return map[s] || s;
 }
 
