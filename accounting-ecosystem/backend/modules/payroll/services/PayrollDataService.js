@@ -620,13 +620,13 @@ async function fetchPeriodInputs(
     try {
       const { data: masterItems } = await supabase
         .from('payroll_items_master')
-        .select('name, affects_uif')
+        .select('item_name, affects_uif')  // payroll_items_master uses item_name not name
         .eq('company_id', companyId)
         .eq('is_active', true);
       if (masterItems && masterItems.length > 0) {
         const uifMap = {};
         masterItems.forEach(function(m) {
-          uifMap[m.name.toLowerCase().trim()] = m.affects_uif !== false;
+          if (m.item_name) uifMap[m.item_name.toLowerCase().trim()] = m.affects_uif !== false;
         });
         loadedInputs.forEach(function(ci) {
           const key = (ci.description || '').toLowerCase().trim();

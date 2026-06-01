@@ -170,13 +170,12 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
       try {
         const { data: masterItems } = await supabase
           .from('payroll_items_master')
-          .select('name, affects_uif')
+          .select('item_name, affects_uif')  // payroll_items_master uses item_name not name
           .eq('company_id', req.companyId)
           .eq('is_active', true);
         if (masterItems) {
           masterItems.forEach(m => {
-            // Key by lowercase-trimmed name for case-insensitive description match.
-            uifMap[m.name.toLowerCase().trim()] = m.affects_uif !== false;
+            if (m.item_name) uifMap[m.item_name.toLowerCase().trim()] = m.affects_uif !== false;
           });
         }
       } catch (_) {

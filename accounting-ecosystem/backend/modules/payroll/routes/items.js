@@ -46,7 +46,7 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       .eq('company_id', req.companyId)
       .eq('is_active', true)
       .order('item_type', { ascending: true })
-      .order('name');
+      .order('item_name');  // payroll_items_master uses item_name not name
 
     if (type) query = query.eq('item_type', type);
 
@@ -197,7 +197,7 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
     // (needed for Sean event and for validating company ownership)
     const { data: existing, error: fetchError } = await supabase
       .from('payroll_items_master')
-      .select('id, company_id, name, irp5_code, item_type, category')
+      .select('id, company_id, item_name, irp5_code, item_type, category')  // item_name not name
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
@@ -221,7 +221,8 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
     // When the admin changes affects_uif in the UI, existing payroll_items records
     // for this company + item name must reflect the new value so calculations are correct.
     // Fire-and-forget: failure does not block the master save.
-    const itemName = updates.name || existing.name;
+    // NOTE: payroll_items_master uses item_name; payroll_items uses name.
+    const itemName = updates.name || existing.item_name;
     const calcSync = {};
     if (updates.affects_uif       !== undefined) calcSync.affects_uif       = updates.affects_uif;
     if (updates.paye_projection_type !== undefined) calcSync.paye_projection_type = updates.paye_projection_type;
@@ -243,7 +244,7 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       _emitIRP5Event({
         companyId:        req.companyId,
         payrollItemId:    existing.id,
-        payrollItemName:  updates.name || existing.name,
+        payrollItemName:  updates.item_name || existing.item_name,  // item_name not name
         itemCategory:     updates.item_type || existing.item_type || null,
         previousIrp5Code: existing.irp5_code || null,
         newIrp5Code,
@@ -327,7 +328,7 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
         .from('payroll_items_master')
         .select('affects_uif')
         .eq('company_id', req.companyId)
-        .ilike('name', description)
+        .ilike('item_name', description)  // payroll_items_master uses item_name not name
         .maybeSingle();
       if (masterConfig && masterConfig.affects_uif === false) {
         resolvedAffectsUif = false;
