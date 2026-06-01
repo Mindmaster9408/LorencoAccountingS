@@ -64,7 +64,7 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
  */
 router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
-    const { code, name, item_type, is_taxable, is_recurring, default_amount, description, irp5_code, category, tax_treatment, paye_projection_type } = req.body;
+    const { code, name, item_type, is_taxable, is_recurring, default_amount, description, irp5_code, category, tax_treatment, paye_projection_type, affects_uif } = req.body;
 
     if (!code || !name || !item_type) {
       return res.status(400).json({ error: 'code, name, and item_type are required' });
@@ -99,7 +99,10 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       is_active:            true,
       // tax_treatment: only store for deductions; default net_only for all others
       tax_treatment:        (item_type === 'deduction' && tax_treatment) ? tax_treatment : 'net_only',
-      paye_projection_type: allowedProjectionTypes.includes(paye_projection_type) ? paye_projection_type : 'VARIABLE_AVERAGE'
+      paye_projection_type: allowedProjectionTypes.includes(paye_projection_type) ? paye_projection_type : 'VARIABLE_AVERAGE',
+      // affects_uif: default true — only items explicitly set to false are excluded from UIF base.
+      // Preserves false correctly; null/undefined treated as true (UIF-applicable).
+      affects_uif:          affects_uif === false ? false : true
     };
 
     if (irp5_code) {
@@ -165,6 +168,12 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       updates.paye_projection_type = req.body.paye_projection_type;
     }
 
+    // Handle affects_uif — boolean, preserving explicit false correctly.
+    // null/undefined = not being changed; false = excluded from UIF; true = included.
+    if (req.body.affects_uif !== undefined) {
+      updates.affects_uif = req.body.affects_uif === false ? false : true;
+    }
+
     // Handle irp5_code change separately — needs IRP5 code validation + Sean event
     const newIrp5Code = req.body.irp5_code !== undefined
       ? (req.body.irp5_code === '' || req.body.irp5_code === null ? null : String(req.body.irp5_code).trim())
@@ -206,6 +215,27 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+
+    // Sync affects_uif (and paye_projection_type if changed) to payroll_items by name.
+    // payroll_items is the calculation-time table used by PayrollDataService.
+    // When the admin changes affects_uif in the UI, existing payroll_items records
+    // for this company + item name must reflect the new value so calculations are correct.
+    // Fire-and-forget: failure does not block the master save.
+    const itemName = updates.name || existing.name;
+    const calcSync = {};
+    if (updates.affects_uif       !== undefined) calcSync.affects_uif       = updates.affects_uif;
+    if (updates.paye_projection_type !== undefined) calcSync.paye_projection_type = updates.paye_projection_type;
+    if (Object.keys(calcSync).length > 0) {
+      supabase
+        .from('payroll_items')
+        .update(calcSync)
+        .eq('company_id', req.companyId)
+        .ilike('name', itemName)
+        .then(() => {})
+        .catch(syncErr => {
+          console.warn('[Paytime] affects_uif sync to payroll_items failed (non-fatal):', syncErr.message);
+        });
+    }
 
     // Emit Sean learning event if irp5_code was added or changed (not cleared)
     if (newIrp5Code && newIrp5Code !== existing.irp5_code) {
@@ -287,6 +317,23 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
     // to DB item_type ('earning', 'deduction', 'company_contribution')
     const dbItemType = item_type === 'deduction' ? 'deduction' : 'earning';
 
+    // Look up affects_uif from payroll_items_master (the config-side table managed by the UI).
+    // This ensures the calculation-side payroll_items record inherits the correct UIF flag
+    // at creation time, and stays in sync when items are reassigned.
+    // Best-effort: failure defaults to true (UIF-applicable) — safe conservative default.
+    let resolvedAffectsUif = true;
+    try {
+      const { data: masterConfig } = await supabase
+        .from('payroll_items_master')
+        .select('affects_uif')
+        .eq('company_id', req.companyId)
+        .ilike('name', description)
+        .maybeSingle();
+      if (masterConfig && masterConfig.affects_uif === false) {
+        resolvedAffectsUif = false;
+      }
+    } catch (_) { /* defaults to true */ }
+
     // Find an existing payroll_items master record for this company + description
     let masterItemId = null;
     const { data: existingMaster } = await supabase
@@ -298,15 +345,17 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
 
     if (existingMaster) {
       masterItemId = existingMaster.id;
-      // Update paye_projection_type if the caller specifies it — ensures changes in
-      // payroll-items.html config propagate to the SQL record on the next assignment.
+      // Sync affects_uif and paye_projection_type from the master config into the
+      // calculation record — ensures future calculations use the correct flags.
+      const syncUpdates = { affects_uif: resolvedAffectsUif };
       if (paye_projection_type && allowedProjectionTypes.includes(paye_projection_type)) {
-        await supabase
-          .from('payroll_items')
-          .update({ paye_projection_type: resolvedProjectionType })
-          .eq('id', existingMaster.id)
-          .eq('company_id', req.companyId);
+        syncUpdates.paye_projection_type = resolvedProjectionType;
       }
+      await supabase
+        .from('payroll_items')
+        .update(syncUpdates)
+        .eq('id', existingMaster.id)
+        .eq('company_id', req.companyId);
     } else {
       // Generate a URL-safe code from the description
       const baseCode = description.toLowerCase()
@@ -325,7 +374,8 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
             item_category:        item_type,
             is_taxable:           is_taxable !== false,
             is_recurring:         true,
-            paye_projection_type: resolvedProjectionType
+            paye_projection_type: resolvedProjectionType,
+            affects_uif:          resolvedAffectsUif
           })
           .select('id')
           .single();

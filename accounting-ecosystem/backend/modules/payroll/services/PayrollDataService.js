@@ -533,7 +533,7 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
     .from('employee_payroll_items')
     .select(
       `id, payroll_item_id, amount, percentage, item_type,
-       payroll_items(code, name, item_category, is_taxable, tax_treatment, paye_projection_type)`
+       payroll_items(code, name, item_category, is_taxable, tax_treatment, paye_projection_type, affects_uif)`
     )
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
@@ -563,7 +563,7 @@ async function fetchPeriodInputs(
     .from('payroll_period_inputs')
     .select(
       `id, description, amount, item_type,
-       payroll_items(code, item_category, tax_treatment)`
+       payroll_items(code, item_category, tax_treatment, affects_uif)`
     )
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
@@ -654,7 +654,11 @@ function normalizeCalculationInput(
     tax_treatment: item.payroll_items?.tax_treatment || 'net_only',
     // paye_projection_type: how this item is classified in the projection_type_ytd method.
     // Defaults to 'VARIABLE_AVERAGE' — the conservative safe default for unclassified items.
-    paye_projection_type: item.payroll_items?.paye_projection_type || 'VARIABLE_AVERAGE'
+    paye_projection_type: item.payroll_items?.paye_projection_type || 'VARIABLE_AVERAGE',
+    // affects_uif: controls whether this item contributes to the UIF-applicable gross.
+    // MUST preserve explicit false — do not use || true fallback (it erases false).
+    // null/undefined → true (default UIF-applicable); only explicit false = excluded.
+    affects_uif: item.payroll_items?.affects_uif !== false
   }));
 
   // Normalize period inputs (one-off items)
@@ -663,7 +667,9 @@ function normalizeCalculationInput(
     amount: item.amount || 0,
     type: item.item_type || 'input',
     // Inherit tax_treatment from the linked payroll item master; default net_only.
-    tax_treatment: item.payroll_items?.tax_treatment || 'net_only'
+    tax_treatment: item.payroll_items?.tax_treatment || 'net_only',
+    // affects_uif: same false-preserving logic as regularInputs above.
+    affects_uif: item.payroll_items?.affects_uif !== false
   }));
 
   // Normalize overtime (preserve decimal hours)

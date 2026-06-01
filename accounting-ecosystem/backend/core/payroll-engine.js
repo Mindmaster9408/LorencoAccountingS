@@ -672,6 +672,11 @@ const PayrollEngine = {
         var periodicTaxable = payrollData.basic_salary || 0;
         var onceOffTaxable  = 0;
         var nonTaxableIncome = 0;
+        // uifExcludedEarnings: sum of earnings from items where affects_uif === false.
+        // Subtracted from gross to produce uifApplicableGross — the correct UIF base.
+        // Basic salary, overtime, and short-time are always UIF-applicable (not filtered here).
+        // Only items with an explicit affects_uif === false flag contribute to this accumulator.
+        var uifExcludedEarnings = 0;
 
         // Resolve percentage-based regular inputs against the current basic_salary.
         // When called from calculateWithProRata, basic_salary is already pro-rated — so % items
@@ -687,6 +692,9 @@ const PayrollEngine = {
         resolvedRegularInputs.forEach(function(ri) {
             if (ri.type !== 'deduction') {
                 var amt = parseFloat(ri.amount) || 0;
+                // Track UIF-excluded earnings. Only explicit false triggers exclusion —
+                // null/undefined/true all mean UIF-applicable (safe default).
+                if (ri.affects_uif === false) { uifExcludedEarnings += amt; }
                 if (ri.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
@@ -699,6 +707,8 @@ const PayrollEngine = {
         (currentInputs || []).forEach(function(ci) {
             if (ci.type !== 'deduction') {
                 var amt = parseFloat(ci.amount) || 0;
+                // Same affects_uif logic as regular inputs.
+                if (ci.affects_uif === false) { uifExcludedEarnings += amt; }
                 if (ci.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
@@ -738,6 +748,11 @@ const PayrollEngine = {
         // Captured BEFORE pre-tax deductions are applied so that UIF/SDL
         // remain based on actual earnings, not the reduced taxable income.
         var gross = taxableGross + nonTaxableIncome;
+
+        // UIF-applicable gross: gross minus earnings from items flagged affects_uif = false.
+        // SDL continues to use full gross — it has no per-item exclusion concept.
+        // Basic salary is always UIF-applicable and is never in uifExcludedEarnings.
+        var uifApplicableGross = Math.max(gross - uifExcludedEarnings, 0);
 
         // === DEDUCTION TAX TREATMENT (SARS COMPLIANCE — migration 018) ===
         // Split deductions into two categories BEFORE PAYE is calculated:
@@ -952,8 +967,9 @@ const PayrollEngine = {
         } else {
             paye = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, onceOffTaxable, opts, tables);
         }
-        // UIF and SDL are calculated from gross (full earnings) — not the reduced taxable income.
-        var uif = PayrollEngine.calculateUIF(gross, tables);
+        // UIF is calculated from uifApplicableGross — items with affects_uif = false are excluded.
+        // SDL is calculated from full gross — it has no per-item exclusion mechanism.
+        var uif = PayrollEngine.calculateUIF(uifApplicableGross, tables);
         var sdl = PayrollEngine.calculateSDL(gross, tables);
         // Respect company-level SDL/UIF registration flags.
         // employeeOptions.uif_registered === false  →  company not registered for UIF  →  0
@@ -1074,6 +1090,9 @@ const PayrollEngine = {
             // Split gross for YTD snapshot storage — enables correct once-off tax treatment
             periodicTaxableGross: PayrollEngine.r2(periodicTaxable),
             onceOffTaxableGross:  PayrollEngine.r2(onceOffTaxable),
+            // UIF transparency fields — allow payslip and audit to show the correct UIF base.
+            uifApplicableGross:   PayrollEngine.r2(uifApplicableGross),
+            uifExcludedEarnings:  PayrollEngine.r2(uifExcludedEarnings),
             // === ADDITIVE FIELDS (SARS spec compliance — tax breakdown transparency) ===
             // taxBeforeRebate: monthly bracket tax before age rebates (annual ÷ 12)
             // rebate: monthly sum of applicable age rebates (primary + secondary + tertiary)
