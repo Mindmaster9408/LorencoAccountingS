@@ -161,18 +161,46 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
       .eq('payroll_period_id', periodId);
 
     if (inputs && inputs.length > 0) {
+      // Batch-lookup affects_uif from payroll_items_master so it is stored on the record.
+      // payroll_period_inputs.payroll_item_id is optional and is often null, meaning the
+      // payroll_items join in fetchPeriodInputs returns null and affects_uif cannot be read
+      // from the join.  Stamping it here at insert time is the only reliable path.
+      // One query for all active items — avoids N+1 per input row.
+      const uifMap = {};
+      try {
+        const { data: masterItems } = await supabase
+          .from('payroll_items_master')
+          .select('name, affects_uif')
+          .eq('company_id', req.companyId)
+          .eq('is_active', true);
+        if (masterItems) {
+          masterItems.forEach(m => {
+            // Key by lowercase-trimmed name for case-insensitive description match.
+            uifMap[m.name.toLowerCase().trim()] = m.affects_uif !== false;
+          });
+        }
+      } catch (_) {
+        // Non-fatal: if lookup fails all inputs default to affects_uif = true (safe).
+      }
+
       const records = inputs.map(i => {
         const rawType = i.type || i.input_type || 'earning';
-        // Normalize to valid DB enum: only 'deduction' maps to 'deduction'; everything else is 'earning'
         const itemType = rawType === 'deduction' ? 'deduction' : 'earning';
+        const desc = (i.description || i.name || '').trim();
+        const descKey = desc.toLowerCase();
+        // Use master config value when found; default true (UIF-applicable) when not found.
+        const affectsUif = Object.prototype.hasOwnProperty.call(uifMap, descKey)
+          ? uifMap[descKey]
+          : true;
         return {
-          company_id: req.companyId,
+          company_id:        req.companyId,
           payroll_period_id: periodId,
-          employee_id: parseInt(employee_id),
-          item_type: itemType,
-          description: i.description || i.name || '',
-          amount: parseFloat(i.amount) || 0,
-          is_deleted: false
+          employee_id:       parseInt(employee_id),
+          item_type:         itemType,
+          description:       desc,
+          amount:            parseFloat(i.amount) || 0,
+          affects_uif:       affectsUif,
+          is_deleted:        false
         };
       });
       const { error } = await supabase.from('payroll_period_inputs').insert(records);

@@ -562,8 +562,12 @@ async function fetchPeriodInputs(
   const { data: currentInputs, error: err1 } = await supabase
     .from('payroll_period_inputs')
     .select(
-      `id, description, amount, item_type,
-       payroll_items(code, item_category, tax_treatment, affects_uif)`
+      // affects_uif is read directly from payroll_period_inputs (stamped at insert time
+      // by POST /api/payroll/transactions/inputs from payroll_items_master).
+      // It is NOT read via the payroll_items join because payroll_item_id is often null,
+      // which makes the join return null and affects_uif unresolvable from the join.
+      `id, description, amount, item_type, affects_uif,
+       payroll_items(code, item_category, tax_treatment)`
     )
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
@@ -668,8 +672,10 @@ function normalizeCalculationInput(
     type: item.item_type || 'input',
     // Inherit tax_treatment from the linked payroll item master; default net_only.
     tax_treatment: item.payroll_items?.tax_treatment || 'net_only',
-    // affects_uif: same false-preserving logic as regularInputs above.
-    affects_uif: item.payroll_items?.affects_uif !== false
+    // affects_uif: read directly from payroll_period_inputs.affects_uif (stamped at insert).
+    // NOT from item.payroll_items?.affects_uif — that join is null when payroll_item_id is
+    // null (common for current inputs), which makes affects_uif unreachable via the join.
+    affects_uif: item.affects_uif !== false
   }));
 
   // Normalize overtime (preserve decimal hours)

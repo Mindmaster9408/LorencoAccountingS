@@ -59,3 +59,23 @@ CREATE INDEX IF NOT EXISTS idx_payroll_items_master_uif_excluded
 CREATE INDEX IF NOT EXISTS idx_payroll_items_uif_excluded
   ON payroll_items (company_id)
   WHERE affects_uif = false AND is_active = true;
+
+
+-- ── payroll_period_inputs ─────────────────────────────────────────────────────
+-- Current-period (one-off) inputs entered per employee per month.
+-- These records do NOT always have a payroll_item_id link (the foreign key is
+-- optional), so affects_uif CANNOT be reliably read via the payroll_items join.
+-- Storing it directly on the record is the only reliable path.
+--
+-- The POST /api/payroll/transactions/inputs route performs a batch lookup of
+-- payroll_items_master by description at insert time and sets this column.
+-- Default true: all existing records remain UIF-applicable until re-saved.
+
+ALTER TABLE payroll_period_inputs
+  ADD COLUMN IF NOT EXISTS affects_uif BOOLEAN NOT NULL DEFAULT true;
+
+COMMENT ON COLUMN payroll_period_inputs.affects_uif IS
+  'Whether this one-off input is included in the UIF contribution base. '
+  'Set at insert time from payroll_items_master.affects_uif (matched by description). '
+  'Default true: UIF-applicable. false: excluded from UIF base. '
+  'Does NOT affect PAYE (is_taxable controls PAYE separately).';
