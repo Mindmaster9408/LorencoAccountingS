@@ -605,8 +605,44 @@ async function fetchPeriodInputs(
     console.error('Error fetching period inputs:', errors);
   }
 
+  // Override affects_uif from payroll_items_master at calculation time.
+  //
+  // Problem: payroll_period_inputs records may have affects_uif = true (the
+  // migration default) even when the master item is configured as Affects UIF = No.
+  // This happens for any record saved before the fix, or if the user never re-saved.
+  //
+  // Solution: after loading period inputs, fetch the latest affects_uif values from
+  // payroll_items_master and stamp them onto the loaded records.  One extra query
+  // per calculation — acceptable cost for always-correct behaviour.  Non-fatal:
+  // if this lookup fails, the stored record value is used (defaults to true = safe).
+  const loadedInputs = currentInputs || [];
+  if (loadedInputs.length > 0) {
+    try {
+      const { data: masterItems } = await supabase
+        .from('payroll_items_master')
+        .select('name, affects_uif')
+        .eq('company_id', companyId)
+        .eq('is_active', true);
+      if (masterItems && masterItems.length > 0) {
+        const uifMap = {};
+        masterItems.forEach(function(m) {
+          uifMap[m.name.toLowerCase().trim()] = m.affects_uif !== false;
+        });
+        loadedInputs.forEach(function(ci) {
+          const key = (ci.description || '').toLowerCase().trim();
+          if (Object.prototype.hasOwnProperty.call(uifMap, key)) {
+            ci.affects_uif = uifMap[key];
+          }
+          // If no master match: keep stored value (true by default — safe).
+        });
+      }
+    } catch (masterErr) {
+      console.warn('[PayrollDataService] affects_uif master override failed (non-fatal):', masterErr.message);
+    }
+  }
+
   return {
-    currentInputs: currentInputs || [],
+    currentInputs: loadedInputs,
     overtime: overtime || [],
     shortTime: shortTime || [],
     multiRate: multiRate || []
