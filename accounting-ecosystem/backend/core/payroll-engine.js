@@ -703,16 +703,25 @@ const PayrollEngine = {
             }
         });
 
-        // Current period inputs → once-off (this month only, never annualised)
+        // Current period inputs: routing controlled by paye_projection_type.
+        // FIXED_RECURRING / VARIABLE_AVERAGE (or no type) → periodicTaxable.
+        //   Both are projected via YTD averaging (× 12 / monthInTaxYear) so commission
+        //   entered as a current input correctly builds an annualised PAYE projection.
+        // ONCE_OFF → onceOffTaxable. Added once to the annual equivalent, never projected.
         (currentInputs || []).forEach(function(ci) {
             if (ci.type !== 'deduction') {
                 var amt = parseFloat(ci.amount) || 0;
-                // Same affects_uif logic as regular inputs.
+                // UIF exclusion is independent of PAYE bucket — affects_uif controls only UIF.
                 if (ci.affects_uif === false) { uifExcludedEarnings += amt; }
                 if (ci.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
-                    onceOffTaxable += amt;
+                    var projType = ci.paye_projection_type || 'VARIABLE_AVERAGE';
+                    if (projType === 'ONCE_OFF') {
+                        onceOffTaxable += amt;
+                    } else {
+                        periodicTaxable += amt;
+                    }
                 }
             }
         });
@@ -782,9 +791,13 @@ const PayrollEngine = {
         });
         (currentInputs || []).forEach(function(ci) {
           if (ci.type !== 'deduction') {
+            var _traceProj = ci.paye_projection_type || 'VARIABLE_AVERAGE';
+            var _traceBucket = ci.is_taxable === false ? 'nonTaxable'
+                             : (_traceProj === 'ONCE_OFF' ? 'onceOff' : 'periodic');
             console.log('[TRACE PAYE]   CURRENT "' + ci.description + '":', ci.amount,
               '| is_taxable:', ci.is_taxable, '| affects_uif:', ci.affects_uif,
-              '| -> PAYE bucket:', ci.is_taxable === false ? 'nonTaxable' : 'onceOff',
+              '| paye_projection_type:', _traceProj,
+              '| -> PAYE bucket:', _traceBucket,
               '| -> UIF excluded:', ci.affects_uif === false ? 'YES' : 'no');
           }
         });
@@ -901,10 +914,23 @@ const PayrollEngine = {
                     else                                      { _ptVariable += amt; }
                 });
 
-                // Overtime: always VARIABLE (move from onceOffTaxable → variable bucket)
+                // Overtime: always VARIABLE
                 _ptVariable += overtimeAmount;
 
-                // Remaining onceOffTaxable (period-specific inputs, multi-rate): ONCE_OFF
+                // Current period inputs: classify by paye_projection_type.
+                // After the engine routing fix, FIXED_RECURRING and VARIABLE_AVERAGE current inputs
+                // are in periodicTaxable (not onceOffTaxable), so they must be classified here.
+                // ONCE_OFF current inputs remain in onceOffTaxable and are captured below.
+                (currentInputs || []).forEach(function(ci) {
+                    if (ci.type === 'deduction' || ci.is_taxable === false) return;
+                    var amt = parseFloat(ci.amount) || 0;
+                    var projType = ci.paye_projection_type || 'VARIABLE_AVERAGE';
+                    if      (projType === 'FIXED_RECURRING') { _ptFixed    += amt; }
+                    else if (projType !== 'ONCE_OFF')        { _ptVariable += amt; }
+                    // ONCE_OFF falls through to the onceOffTaxable accumulator below
+                });
+
+                // Multi-rate and ONCE_OFF current inputs remain in onceOffTaxable (minus overtime).
                 _ptOnceOff += Math.max(onceOffTaxable - overtimeAmount, 0);
 
                 // Variable accumulation — use prior_once_off_taxable_gross as proxy for prior

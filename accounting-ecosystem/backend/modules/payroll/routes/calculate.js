@@ -195,7 +195,7 @@ router.post(
           console.log('[TRACE PAYE] CURRENT_INPUT:', JSON.stringify({
             name: item.description, amount: item.amount, type: item.type,
             is_taxable: item.is_taxable, affects_uif: item.affects_uif,
-            tax_treatment: item.tax_treatment
+            tax_treatment: item.tax_treatment, paye_projection_type: item.paye_projection_type
           }));
         });
         console.log('[TRACE PAYE] regular_inputs_count:', (normalizedInputs.regular_inputs || []).length);

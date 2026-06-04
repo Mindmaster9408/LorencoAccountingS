@@ -625,13 +625,17 @@ async function fetchPeriodInputs(
     try {
       const { data: masterItems } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif')  // item_name (not name) — payroll_items_master schema
+        .select('item_name, affects_uif, paye_projection_type')  // item_name (not name) — payroll_items_master schema
         .eq('company_id', companyId)
         .eq('is_active', true);
       if (masterItems && masterItems.length > 0) {
-        const uifMap = {};
+        const uifMap      = {};
+        const projTypeMap = {};
         masterItems.forEach(function(m) {
-          if (m.item_name) uifMap[m.item_name.toLowerCase().trim()] = m.affects_uif !== false;
+          if (!m.item_name) return;
+          const k = m.item_name.toLowerCase().trim();
+          uifMap[k]      = m.affects_uif !== false;
+          if (m.paye_projection_type) projTypeMap[k] = m.paye_projection_type;
         });
         loadedInputs.forEach(function(ci) {
           const key = (ci.description || '').toLowerCase().trim();
@@ -640,11 +644,16 @@ async function fetchPeriodInputs(
             // affects_uif controls UIF base ONLY — never affects PAYE taxable income.
             ci.affects_uif = uifMap[key];
           }
-          // If no master match: keep stored record value (true by default — safe).
+          if (Object.prototype.hasOwnProperty.call(projTypeMap, key)) {
+            // Override paye_projection_type from live master config.
+            // Controls whether this item goes into the periodic or once-off PAYE bucket.
+            ci.paye_projection_type = projTypeMap[key];
+          }
+          // If no master match: default VARIABLE_AVERAGE is applied in normalizeCalculationInput.
         });
       }
     } catch (masterErr) {
-      console.warn('[PayrollDataService] affects_uif master override failed (non-fatal):', masterErr.message);
+      console.warn('[PayrollDataService] master override failed (non-fatal):', masterErr.message);
     }
   }
 
@@ -708,7 +717,7 @@ function normalizeCalculationInput(
     affects_uif: item.payroll_items?.affects_uif !== false
   }));
 
-  // Normalize period inputs (one-off items)
+  // Normalize period inputs (current-period items)
   const normalizedPeriodInputs = periodInputs.currentInputs.map(item => ({
     description: item.payroll_items?.code || item.description || 'Unknown',
     amount: item.amount || 0,
@@ -718,7 +727,13 @@ function normalizeCalculationInput(
     // affects_uif: read from payroll_period_inputs record (stamped at insert,
     // live-overridden from payroll_items_master in fetchPeriodInputs above).
     // Controls UIF contribution base ONLY. Never affects PAYE.
-    affects_uif: item.affects_uif !== false
+    affects_uif: item.affects_uif !== false,
+    // paye_projection_type: live-overridden from payroll_items_master in fetchPeriodInputs above.
+    // Controls which PAYE bucket this item enters:
+    //   FIXED_RECURRING / VARIABLE_AVERAGE → periodicTaxable (projected via YTD averaging × 12)
+    //   ONCE_OFF                           → onceOffTaxable  (added once, never projected forward)
+    // Default VARIABLE_AVERAGE is the conservative safe choice for unclassified items.
+    paye_projection_type: item.paye_projection_type || 'VARIABLE_AVERAGE'
   }));
 
   // Normalize overtime (preserve decimal hours)
