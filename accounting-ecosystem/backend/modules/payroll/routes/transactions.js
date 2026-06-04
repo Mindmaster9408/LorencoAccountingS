@@ -161,32 +161,25 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
       .eq('payroll_period_id', periodId);
 
     if (inputs && inputs.length > 0) {
-      // Batch-lookup affects_uif AND is_taxable from payroll_items_master at insert time.
+      // Batch-lookup affects_uif from payroll_items_master so it is stored on the record.
       // payroll_period_inputs.payroll_item_id is optional and often null, so the
-      // payroll_items join is unreliable. Stamping both flags here is the only safe path.
+      // payroll_items join is unreliable. Stamping affects_uif here is the only safe path.
       // One query for all active items — avoids N+1 per input row.
-      // IMPORTANT: affects_uif and is_taxable are COMPLETELY INDEPENDENT:
-      //   is_taxable  → controls PAYE taxable income (affects_uif never touches this)
-      //   affects_uif → controls UIF contribution base (is_taxable never touches this)
-      const masterFlagMap = {};
+      // affects_uif controls UIF base ONLY. It never touches PAYE.
+      const uifMap = {};
       try {
         const { data: masterItems } = await supabase
           .from('payroll_items_master')
-          .select('item_name, affects_uif, is_taxable')
+          .select('item_name, affects_uif')
           .eq('company_id', req.companyId)
           .eq('is_active', true);
         if (masterItems) {
           masterItems.forEach(m => {
-            if (m.item_name) {
-              masterFlagMap[m.item_name.toLowerCase().trim()] = {
-                affects_uif: m.affects_uif !== false,
-                is_taxable:  m.is_taxable  !== false
-              };
-            }
+            if (m.item_name) uifMap[m.item_name.toLowerCase().trim()] = m.affects_uif !== false;
           });
         }
       } catch (_) {
-        // Non-fatal: if lookup fails all inputs default to affects_uif=true, is_taxable=true.
+        // Non-fatal: if lookup fails all inputs default to affects_uif = true (safe).
       }
 
       const records = inputs.map(i => {
@@ -194,7 +187,6 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
         const itemType = rawType === 'deduction' ? 'deduction' : 'earning';
         const desc = (i.description || i.name || '').trim();
         const descKey = desc.toLowerCase();
-        const masterFlags = masterFlagMap[descKey];
         return {
           company_id:        req.companyId,
           payroll_period_id: periodId,
@@ -202,8 +194,7 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
           item_type:         itemType,
           description:       desc,
           amount:            parseFloat(i.amount) || 0,
-          affects_uif:       masterFlags ? masterFlags.affects_uif : true,
-          is_taxable:        masterFlags ? masterFlags.is_taxable  : true,
+          affects_uif:       Object.prototype.hasOwnProperty.call(uifMap, descKey) ? uifMap[descKey] : true,
           is_deleted:        false
         };
       });

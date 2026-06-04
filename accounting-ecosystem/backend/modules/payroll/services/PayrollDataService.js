@@ -625,29 +625,22 @@ async function fetchPeriodInputs(
     try {
       const { data: masterItems } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif, is_taxable')  // item_name not name; both independent flags
+        .select('item_name, affects_uif')  // item_name (not name) — payroll_items_master schema
         .eq('company_id', companyId)
         .eq('is_active', true);
       if (masterItems && masterItems.length > 0) {
-        const masterFlagMap = {};
+        const uifMap = {};
         masterItems.forEach(function(m) {
-          if (m.item_name) {
-            masterFlagMap[m.item_name.toLowerCase().trim()] = {
-              affects_uif: m.affects_uif !== false,
-              is_taxable:  m.is_taxable  !== false
-            };
-          }
+          if (m.item_name) uifMap[m.item_name.toLowerCase().trim()] = m.affects_uif !== false;
         });
         loadedInputs.forEach(function(ci) {
           const key = (ci.description || '').toLowerCase().trim();
-          if (Object.prototype.hasOwnProperty.call(masterFlagMap, key)) {
-            // Override both flags from master config independently.
-            // affects_uif: UIF base only — never affects PAYE.
-            // is_taxable:  PAYE base only — never affects UIF.
-            ci.affects_uif = masterFlagMap[key].affects_uif;
-            ci.is_taxable  = masterFlagMap[key].is_taxable;
+          if (Object.prototype.hasOwnProperty.call(uifMap, key)) {
+            // Override affects_uif from live master config.
+            // affects_uif controls UIF base ONLY — never affects PAYE taxable income.
+            ci.affects_uif = uifMap[key];
           }
-          // If no master match: keep stored record values (both default true).
+          // If no master match: keep stored record value (true by default — safe).
         });
       }
     } catch (masterErr) {
@@ -722,13 +715,9 @@ function normalizeCalculationInput(
     type: item.item_type || 'input',
     // Inherit tax_treatment from the linked payroll item master; default net_only.
     tax_treatment: item.payroll_items?.tax_treatment || 'net_only',
-    // is_taxable: read directly from payroll_period_inputs.is_taxable (stamped at insert
-    // from payroll_items_master by POST /inputs, then live-overridden by fetchPeriodInputs).
-    // Controls PAYE taxable income ONLY — completely independent of affects_uif.
-    // Preserving explicit false: null/undefined → true (default taxable).
-    is_taxable:  item.is_taxable  !== false,
-    // affects_uif: read directly from payroll_period_inputs.affects_uif (same pipeline).
-    // Controls UIF contribution base ONLY — completely independent of is_taxable.
+    // affects_uif: read from payroll_period_inputs record (stamped at insert,
+    // live-overridden from payroll_items_master in fetchPeriodInputs above).
+    // Controls UIF contribution base ONLY. Never affects PAYE.
     affects_uif: item.affects_uif !== false
   }));
 
