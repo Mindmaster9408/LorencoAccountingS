@@ -161,25 +161,32 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
       .eq('payroll_period_id', periodId);
 
     if (inputs && inputs.length > 0) {
-      // Batch-lookup affects_uif from payroll_items_master so it is stored on the record.
-      // payroll_period_inputs.payroll_item_id is optional and often null, so the
-      // payroll_items join is unreliable. Stamping affects_uif here is the only safe path.
-      // One query for all active items — avoids N+1 per input row.
-      // affects_uif controls UIF base ONLY. It never touches PAYE.
+      // Stamp affects_uif from the KV-backed company item store — the authoritative source.
+      // payroll-items.html saves item config to payroll_kv_store_eco (safeLocalStorage bridge)
+      // under key 'payroll_items_{companyId}'. payroll_items_master is not reliably synced
+      // from the UI and must not be used as the authority for affects_uif at stamp time.
+      // affects_uif controls UIF base ONLY — it never touches PAYE.
       const uifMap = {};
       try {
-        const { data: masterItems } = await supabase
-          .from('payroll_items_master')
-          .select('item_name, affects_uif')
+        const { data: kvRow } = await supabase
+          .from('payroll_kv_store_eco')
+          .select('value')
           .eq('company_id', req.companyId)
-          .eq('is_active', true);
-        if (masterItems) {
-          masterItems.forEach(m => {
-            if (m.item_name) uifMap[m.item_name.toLowerCase().trim()] = m.affects_uif !== false;
-          });
+          .eq('key', 'payroll_items_' + req.companyId)
+          .maybeSingle();
+        if (kvRow && kvRow.value) {
+          const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+          if (Array.isArray(kvItems)) {
+            kvItems.forEach(kv => {
+              const k = (kv.item_name || '').toLowerCase().trim();
+              if (k && kv.affects_uif !== undefined && kv.affects_uif !== null) {
+                uifMap[k] = kv.affects_uif === true;
+              }
+            });
+          }
         }
       } catch (_) {
-        // Non-fatal: if lookup fails all inputs default to affects_uif = true (safe).
+        // Non-fatal: if KV lookup fails all inputs default to affects_uif = true (safe).
       }
 
       const records = inputs.map(i => {

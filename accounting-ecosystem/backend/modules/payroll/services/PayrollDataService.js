@@ -548,37 +548,47 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
 
   const loadedItems = data || [];
 
-  // Live override of affects_uif from payroll_items_master.
-  // payroll_items.affects_uif may be null for items created or migrated before the
-  // affects_uif column was reliably synced. payroll_items_master is the user-facing
-  // configuration (Payroll Items UI) and is authoritative.
-  // Same safe rule as fetchPeriodInputs: only explicit false from master overrides —
-  // null/true master values do not corrupt a correctly-stored value.
+  // Override item config (affects_uif, paye_projection_type, is_taxable) from the KV-backed
+  // company item store. payroll-items.html saves item configuration to payroll_kv_store_eco
+  // (via safeLocalStorage bridge) under key 'payroll_items_{companyId}'. This KV store is
+  // the authoritative source for all item configuration set via the Payroll Items UI.
+  // payroll_items_master is NOT reliably written by the UI and must not be used as authority.
   if (loadedItems.length > 0) {
     try {
-      const { data: masterItems } = await supabase
-        .from('payroll_items_master')
-        .select('item_name, affects_uif')
+      const { data: kvRow } = await supabase
+        .from('payroll_kv_store_eco')
+        .select('value')
         .eq('company_id', companyId)
-        .eq('is_active', true);
-      if (masterItems && masterItems.length > 0) {
-        const uifMap = {};
-        masterItems.forEach(function(m) {
-          if (!m.item_name) return;
-          if (m.affects_uif === false) {
-            uifMap[m.item_name.toLowerCase().trim()] = false;
-          }
-        });
-        loadedItems.forEach(function(item) {
-          if (!item.payroll_items) return;
-          const key = (item.payroll_items.name || '').toLowerCase().trim();
-          if (Object.prototype.hasOwnProperty.call(uifMap, key)) {
-            item.payroll_items.affects_uif = false;
-          }
-        });
+        .eq('key', 'payroll_items_' + companyId)
+        .maybeSingle();
+      if (kvRow && kvRow.value) {
+        const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+        if (Array.isArray(kvItems)) {
+          const kvMap = {};
+          kvItems.forEach(function(kv) {
+            const k = (kv.item_name || '').toLowerCase().trim();
+            if (k) kvMap[k] = kv;
+          });
+          loadedItems.forEach(function(item) {
+            if (!item.payroll_items) return;
+            const key = (item.payroll_items.name || '').toLowerCase().trim();
+            const kv = kvMap[key];
+            if (!kv) return;
+            // Apply only fields the KV store has explicit values for.
+            if (kv.affects_uif !== undefined && kv.affects_uif !== null) {
+              item.payroll_items.affects_uif = kv.affects_uif === true;
+            }
+            if (kv.paye_projection_type) {
+              item.payroll_items.paye_projection_type = kv.paye_projection_type;
+            }
+            if (kv.is_taxable !== undefined && kv.is_taxable !== null) {
+              item.payroll_items.is_taxable = kv.is_taxable === true;
+            }
+          });
+        }
       }
-    } catch (masterErr) {
-      console.warn('[PayrollDataService] recurring affects_uif master override failed (non-fatal):', masterErr.message);
+    } catch (kvErr) {
+      console.warn('[PayrollDataService] KV item config override failed (non-fatal):', kvErr.message);
     }
   }
 
@@ -647,52 +657,41 @@ async function fetchPeriodInputs(
     console.error('Error fetching period inputs:', errors);
   }
 
-  // Override affects_uif from payroll_items_master at calculation time.
-  //
-  // Problem: payroll_period_inputs records may have affects_uif = true (the
-  // migration default) even when the master item is configured as Affects UIF = No.
-  // This happens for any record saved before the fix, or if the user never re-saved.
-  //
-  // Solution: after loading period inputs, fetch the latest affects_uif values from
-  // payroll_items_master and stamp them onto the loaded records.  One extra query
-  // per calculation — acceptable cost for always-correct behaviour.  Non-fatal:
-  // if this lookup fails, the stored record value is used (defaults to true = safe).
+  // Override affects_uif and paye_projection_type from the KV-backed company item store.
+  // payroll-items.html saves to payroll_kv_store_eco (safeLocalStorage bridge), not to
+  // payroll_items_master. KV is the authoritative source for all Payroll Items UI settings.
   const loadedInputs = currentInputs || [];
   if (loadedInputs.length > 0) {
     try {
-      const { data: masterItems } = await supabase
-        .from('payroll_items_master')
-        .select('item_name, affects_uif, paye_projection_type')  // item_name (not name) — payroll_items_master schema
+      const { data: kvRow } = await supabase
+        .from('payroll_kv_store_eco')
+        .select('value')
         .eq('company_id', companyId)
-        .eq('is_active', true);
-      if (masterItems && masterItems.length > 0) {
-        const uifMap      = {};
-        const projTypeMap = {};
-        masterItems.forEach(function(m) {
-          if (!m.item_name) return;
-          const k = m.item_name.toLowerCase().trim();
-          // Only capture explicit false — a null/true master value must NOT overwrite
-          // a correctly-stored false in payroll_period_inputs (stamped at save time).
-          if (m.affects_uif === false) { uifMap[k] = false; }
-          if (m.paye_projection_type) projTypeMap[k] = m.paye_projection_type;
-        });
-        loadedInputs.forEach(function(ci) {
-          const key = (ci.description || '').toLowerCase().trim();
-          if (Object.prototype.hasOwnProperty.call(uifMap, key)) {
-            // Override affects_uif from live master config.
-            // affects_uif controls UIF base ONLY — never affects PAYE taxable income.
-            ci.affects_uif = uifMap[key];
-          }
-          if (Object.prototype.hasOwnProperty.call(projTypeMap, key)) {
-            // Override paye_projection_type from live master config.
-            // Controls whether this item goes into the periodic or once-off PAYE bucket.
-            ci.paye_projection_type = projTypeMap[key];
-          }
-          // If no master match: default VARIABLE_AVERAGE is applied in normalizeCalculationInput.
-        });
+        .eq('key', 'payroll_items_' + companyId)
+        .maybeSingle();
+      if (kvRow && kvRow.value) {
+        const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+        if (Array.isArray(kvItems)) {
+          const kvMap = {};
+          kvItems.forEach(function(kv) {
+            const k = (kv.item_name || '').toLowerCase().trim();
+            if (k) kvMap[k] = kv;
+          });
+          loadedInputs.forEach(function(ci) {
+            const key = (ci.description || '').toLowerCase().trim();
+            const kv = kvMap[key];
+            if (!kv) return;
+            if (kv.affects_uif !== undefined && kv.affects_uif !== null) {
+              ci.affects_uif = kv.affects_uif === true;
+            }
+            if (kv.paye_projection_type) {
+              ci.paye_projection_type = kv.paye_projection_type;
+            }
+          });
+        }
       }
-    } catch (masterErr) {
-      console.warn('[PayrollDataService] master override failed (non-fatal):', masterErr.message);
+    } catch (kvErr) {
+      console.warn('[PayrollDataService] KV period input override failed (non-fatal):', kvErr.message);
     }
   }
 
