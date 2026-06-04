@@ -176,6 +176,34 @@ router.post(
         throw err;
       }
 
+      // ── TRACE 1+2: RAW + NORMALIZED INPUT ITEMS ──────────────────────────────
+      // Temporary diagnostic logging. Remove after PAYE root cause confirmed.
+      try {
+        console.log('[TRACE PAYE] ── TRACE 1+2: NORMALIZED INPUTS ──');
+        console.log('[TRACE PAYE] basic_salary:', normalizedInputs.basic_salary);
+        console.log('[TRACE PAYE] period:', normalizedInputs.period);
+        console.log('[TRACE PAYE] uif_registered:', normalizedInputs.employeeOptions && normalizedInputs.employeeOptions.uif_registered);
+        console.log('[TRACE PAYE] is_director:', normalizedInputs.employeeOptions && normalizedInputs.employeeOptions.is_director);
+        (normalizedInputs.regular_inputs || []).forEach(function(item) {
+          console.log('[TRACE PAYE] REGULAR_INPUT:', JSON.stringify({
+            name: item.description, amount: item.amount, type: item.type,
+            is_taxable: item.is_taxable, affects_uif: item.affects_uif,
+            tax_treatment: item.tax_treatment, paye_projection_type: item.paye_projection_type
+          }));
+        });
+        (normalizedInputs.currentInputs || []).forEach(function(item) {
+          console.log('[TRACE PAYE] CURRENT_INPUT:', JSON.stringify({
+            name: item.description, amount: item.amount, type: item.type,
+            is_taxable: item.is_taxable, affects_uif: item.affects_uif,
+            tax_treatment: item.tax_treatment
+          }));
+        });
+        console.log('[TRACE PAYE] regular_inputs_count:', (normalizedInputs.regular_inputs || []).length);
+        console.log('[TRACE PAYE] currentInputs_count:', (normalizedInputs.currentInputs || []).length);
+        console.log('[TRACE PAYE] overtime_count:', (normalizedInputs.overtime || []).length);
+      } catch (_traceErr) { /* non-fatal */ }
+      // ── END TRACE 1+2 ────────────────────────────────────────────────────────
+
       // STEP 3: Fetch admin-configured tax tables from Supabase KV.
       // The backend engine cannot use localStorage, so we load the tax_config
       // stored by the Tax Configuration UI and pass it directly to the engine.
@@ -276,6 +304,30 @@ router.post(
           PayrollCalculationService.formatError(err)
         );
       }
+
+      // ── TRACE 5: ENGINE OUTPUT ────────────────────────────────────────────────
+      try {
+        console.log('[TRACE PAYE] ── TRACE 5: ENGINE OUTPUT ──');
+        console.log('[TRACE PAYE] engine.gross:', calculationResult.gross);
+        console.log('[TRACE PAYE] engine.taxableGross:', calculationResult.taxableGross);
+        console.log('[TRACE PAYE] engine.periodicTaxableGross:', calculationResult.periodicTaxableGross);
+        console.log('[TRACE PAYE] engine.onceOffTaxableGross:', calculationResult.onceOffTaxableGross);
+        console.log('[TRACE PAYE] engine.uifApplicableGross:', calculationResult.uifApplicableGross);
+        console.log('[TRACE PAYE] engine.uifExcludedEarnings:', calculationResult.uifExcludedEarnings);
+        console.log('[TRACE PAYE] engine.paye_base (statutory):', calculationResult.paye_base);
+        console.log('[TRACE PAYE] engine.paye (after voluntary):', calculationResult.paye);
+        console.log('[TRACE PAYE] engine.uif:', calculationResult.uif);
+        console.log('[TRACE PAYE] engine.sdl:', calculationResult.sdl);
+        console.log('[TRACE PAYE] engine.net:', calculationResult.net);
+        console.log('[TRACE PAYE] engine.medicalCredit:', calculationResult.medicalCredit);
+        console.log('[TRACE PAYE] engine.taxBeforeRebate:', calculationResult.taxBeforeRebate);
+        console.log('[TRACE PAYE] engine.rebate:', calculationResult.rebate);
+        console.log('[TRACE PAYE] engine.tax_year:', calculationResult.tax_year);
+        console.log('[TRACE PAYE] engine.uif_monthly_cap:', calculationResult.uif_monthly_cap);
+        console.log('[TRACE PAYE] meta.ytdMethod:', calculationResult._meta && calculationResult._meta.ytdMethod);
+        console.log('[TRACE PAYE] meta.calculationMethod:', calculationResult._meta && calculationResult._meta.calculationMethod);
+      } catch (_traceErr) { /* non-fatal */ }
+      // ── END TRACE 5 ──────────────────────────────────────────────────────────
 
       // STEP 5: Validate output
       try {
