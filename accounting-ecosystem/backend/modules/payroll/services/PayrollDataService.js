@@ -548,47 +548,75 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
 
   const loadedItems = data || [];
 
-  // Override item config (affects_uif, paye_projection_type, is_taxable) from the KV-backed
-  // company item store. payroll-items.html saves item configuration to payroll_kv_store_eco
-  // (via safeLocalStorage bridge) under key 'payroll_items_{companyId}'. This KV store is
-  // the authoritative source for all item configuration set via the Payroll Items UI.
-  // payroll_items_master is NOT reliably written by the UI and must not be used as authority.
+  // Override item config (affects_uif, paye_projection_type, is_taxable) from payroll_items_master.
+  // payroll-items.html now writes to the DB via /api/payroll/items, so payroll_items_master
+  // is the authoritative source. Falls back to KV for companies not yet migrated.
   if (loadedItems.length > 0) {
     try {
-      const { data: kvRow } = await supabase
-        .from('payroll_kv_store_eco')
-        .select('value')
+      // Primary: query payroll_items_master (authoritative after migration)
+      const { data: masterItems } = await supabase
+        .from('payroll_items_master')
+        .select('item_name, affects_uif, paye_projection_type, is_taxable')
         .eq('company_id', companyId)
-        .eq('key', 'payroll_items_' + companyId)
-        .maybeSingle();
-      if (kvRow && kvRow.value) {
-        const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
-        if (Array.isArray(kvItems)) {
-          const kvMap = {};
-          kvItems.forEach(function(kv) {
-            const k = (kv.item_name || '').toLowerCase().trim();
-            if (k) kvMap[k] = kv;
-          });
-          loadedItems.forEach(function(item) {
-            if (!item.payroll_items) return;
-            const key = (item.payroll_items.name || '').toLowerCase().trim();
-            const kv = kvMap[key];
-            if (!kv) return;
-            // Apply only fields the KV store has explicit values for.
-            if (kv.affects_uif !== undefined && kv.affects_uif !== null) {
-              item.payroll_items.affects_uif = kv.affects_uif === true;
-            }
-            if (kv.paye_projection_type) {
-              item.payroll_items.paye_projection_type = kv.paye_projection_type;
-            }
-            if (kv.is_taxable !== undefined && kv.is_taxable !== null) {
-              item.payroll_items.is_taxable = kv.is_taxable === true;
-            }
-          });
+        .eq('is_active', true);
+
+      if (masterItems && masterItems.length > 0) {
+        const masterMap = {};
+        masterItems.forEach(function(m) {
+          const k = (m.item_name || '').toLowerCase().trim();
+          if (k) masterMap[k] = m;
+        });
+        loadedItems.forEach(function(item) {
+          if (!item.payroll_items) return;
+          const key = (item.payroll_items.name || '').toLowerCase().trim();
+          const m = masterMap[key];
+          if (!m) return;
+          if (m.affects_uif !== undefined && m.affects_uif !== null) {
+            item.payroll_items.affects_uif = m.affects_uif === true;
+          }
+          if (m.paye_projection_type) {
+            item.payroll_items.paye_projection_type = m.paye_projection_type;
+          }
+          if (m.is_taxable !== undefined && m.is_taxable !== null) {
+            item.payroll_items.is_taxable = m.is_taxable === true;
+          }
+        });
+      } else {
+        // Fallback: KV store (company hasn't visited payroll-items.html since migration)
+        const { data: kvRow } = await supabase
+          .from('payroll_kv_store_eco')
+          .select('value')
+          .eq('company_id', companyId)
+          .eq('key', 'payroll_items_' + companyId)
+          .maybeSingle();
+        if (kvRow && kvRow.value) {
+          const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+          if (Array.isArray(kvItems)) {
+            const kvMap = {};
+            kvItems.forEach(function(kv) {
+              const k = (kv.item_name || '').toLowerCase().trim();
+              if (k) kvMap[k] = kv;
+            });
+            loadedItems.forEach(function(item) {
+              if (!item.payroll_items) return;
+              const key = (item.payroll_items.name || '').toLowerCase().trim();
+              const kv = kvMap[key];
+              if (!kv) return;
+              if (kv.affects_uif !== undefined && kv.affects_uif !== null) {
+                item.payroll_items.affects_uif = kv.affects_uif === true;
+              }
+              if (kv.paye_projection_type) {
+                item.payroll_items.paye_projection_type = kv.paye_projection_type;
+              }
+              if (kv.is_taxable !== undefined && kv.is_taxable !== null) {
+                item.payroll_items.is_taxable = kv.is_taxable === true;
+              }
+            });
+          }
         }
       }
-    } catch (kvErr) {
-      console.warn('[PayrollDataService] KV item config override failed (non-fatal):', kvErr.message);
+    } catch (overrideErr) {
+      console.warn('[PayrollDataService] item config override failed (non-fatal):', overrideErr.message);
     }
   }
 
@@ -657,41 +685,68 @@ async function fetchPeriodInputs(
     console.error('Error fetching period inputs:', errors);
   }
 
-  // Override affects_uif and paye_projection_type from the KV-backed company item store.
-  // payroll-items.html saves to payroll_kv_store_eco (safeLocalStorage bridge), not to
-  // payroll_items_master. KV is the authoritative source for all Payroll Items UI settings.
+  // Override affects_uif and paye_projection_type from payroll_items_master.
+  // payroll-items.html now writes to the DB via /api/payroll/items, so payroll_items_master
+  // is the authoritative source. Falls back to KV for companies not yet migrated.
   const loadedInputs = currentInputs || [];
   if (loadedInputs.length > 0) {
     try {
-      const { data: kvRow } = await supabase
-        .from('payroll_kv_store_eco')
-        .select('value')
+      // Primary: payroll_items_master
+      const { data: masterItems } = await supabase
+        .from('payroll_items_master')
+        .select('item_name, affects_uif, paye_projection_type')
         .eq('company_id', companyId)
-        .eq('key', 'payroll_items_' + companyId)
-        .maybeSingle();
-      if (kvRow && kvRow.value) {
-        const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
-        if (Array.isArray(kvItems)) {
-          const kvMap = {};
-          kvItems.forEach(function(kv) {
-            const k = (kv.item_name || '').toLowerCase().trim();
-            if (k) kvMap[k] = kv;
-          });
-          loadedInputs.forEach(function(ci) {
-            const key = (ci.description || '').toLowerCase().trim();
-            const kv = kvMap[key];
-            if (!kv) return;
-            if (kv.affects_uif !== undefined && kv.affects_uif !== null) {
-              ci.affects_uif = kv.affects_uif === true;
-            }
-            if (kv.paye_projection_type) {
-              ci.paye_projection_type = kv.paye_projection_type;
-            }
-          });
+        .eq('is_active', true);
+
+      if (masterItems && masterItems.length > 0) {
+        const masterMap = {};
+        masterItems.forEach(function(m) {
+          const k = (m.item_name || '').toLowerCase().trim();
+          if (k) masterMap[k] = m;
+        });
+        loadedInputs.forEach(function(ci) {
+          const key = (ci.description || '').toLowerCase().trim();
+          const m = masterMap[key];
+          if (!m) return;
+          if (m.affects_uif !== undefined && m.affects_uif !== null) {
+            ci.affects_uif = m.affects_uif === true;
+          }
+          if (m.paye_projection_type) {
+            ci.paye_projection_type = m.paye_projection_type;
+          }
+        });
+      } else {
+        // Fallback: KV store (company hasn't migrated yet)
+        const { data: kvRow } = await supabase
+          .from('payroll_kv_store_eco')
+          .select('value')
+          .eq('company_id', companyId)
+          .eq('key', 'payroll_items_' + companyId)
+          .maybeSingle();
+        if (kvRow && kvRow.value) {
+          const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+          if (Array.isArray(kvItems)) {
+            const kvMap = {};
+            kvItems.forEach(function(kv) {
+              const k = (kv.item_name || '').toLowerCase().trim();
+              if (k) kvMap[k] = kv;
+            });
+            loadedInputs.forEach(function(ci) {
+              const key = (ci.description || '').toLowerCase().trim();
+              const kv = kvMap[key];
+              if (!kv) return;
+              if (kv.affects_uif !== undefined && kv.affects_uif !== null) {
+                ci.affects_uif = kv.affects_uif === true;
+              }
+              if (kv.paye_projection_type) {
+                ci.paye_projection_type = kv.paye_projection_type;
+              }
+            });
+          }
         }
       }
-    } catch (kvErr) {
-      console.warn('[PayrollDataService] KV period input override failed (non-fatal):', kvErr.message);
+    } catch (overrideErr) {
+      console.warn('[PayrollDataService] period input override failed (non-fatal):', overrideErr.message);
     }
   }
 

@@ -426,7 +426,7 @@ async function _enrichProposal(approval) {
   // Fetch all payroll items whose normalized name matches
   const { data: items, error } = await supabase
     .from('payroll_items_master')
-    .select('id, company_id, name, irp5_code, is_active')
+    .select('id, company_id, item_name, irp5_code, is_active')
     .eq('is_active', true);
 
   if (error || !items) {
@@ -435,7 +435,7 @@ async function _enrichProposal(approval) {
   }
 
   // Filter to items whose normalized name matches
-  const matching = items.filter(item => normalizeName(item.name) === normalizedName);
+  const matching = items.filter(item => normalizeName(item.item_name) === normalizedName);
 
   const missing       = [];
   const conflicting   = [];
@@ -443,11 +443,11 @@ async function _enrichProposal(approval) {
 
   for (const item of matching) {
     if (!item.irp5_code) {
-      missing.push({ companyId: item.company_id, itemId: item.id, itemName: item.name });
+      missing.push({ companyId: item.company_id, itemId: item.id, itemName: item.item_name });
     } else if (item.irp5_code === proposedCode) {
-      alreadyCorrect.push({ companyId: item.company_id, itemId: item.id, itemName: item.name, existingCode: item.irp5_code });
+      alreadyCorrect.push({ companyId: item.company_id, itemId: item.id, itemName: item.item_name, existingCode: item.irp5_code });
     } else {
-      conflicting.push({ companyId: item.company_id, itemId: item.id, itemName: item.name, existingCode: item.irp5_code });
+      conflicting.push({ companyId: item.company_id, itemId: item.id, itemName: item.item_name, existingCode: item.irp5_code });
     }
   }
 
@@ -615,14 +615,14 @@ async function propagateApproved(approvalId, authorizedUserId) {
   // Fetch all active payroll items
   const { data: allItems, error: itemsError } = await supabase
     .from('payroll_items_master')
-    .select('id, company_id, name, irp5_code')
+    .select('id, company_id, item_name, irp5_code')
     .eq('is_active', true);
 
   if (itemsError) {
     throw new Error(`propagateApproved items fetch error: ${itemsError.message}`);
   }
 
-  const matching = (allItems || []).filter(item => normalizeName(item.name) === normalizedName);
+  const matching = (allItems || []).filter(item => normalizeName(item.item_name) === normalizedName);
 
   let applied         = 0;
   let skippedExisting = 0;

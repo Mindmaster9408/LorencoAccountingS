@@ -35,10 +35,13 @@ function _emitIRP5Event(params) {
 
 /**
  * GET /api/payroll/items
+ * Returns items from payroll_items_master (DB).
+ * First-load auto-migration: if no DB records exist for this company but KV data does,
+ * migrates KV → DB transparently and returns the migrated items.
  */
 router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   try {
-    const { type } = req.query; // 'earning' or 'deduction'
+    const { type } = req.query;
 
     let query = supabase
       .from('payroll_items_master')
@@ -46,12 +49,65 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       .eq('company_id', req.companyId)
       .eq('is_active', true)
       .order('item_type', { ascending: true })
-      .order('item_name');  // payroll_items_master uses item_name not name
+      .order('item_name');
 
     if (type) query = query.eq('item_type', type);
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
+
+    // Auto-migration: if no DB records, check KV and migrate once.
+    // This runs at most once per company (subsequent GETs find DB records and skip).
+    if ((data || []).length === 0 && !type) {
+      try {
+        const { data: kvRow } = await supabase
+          .from('payroll_kv_store_eco')
+          .select('value')
+          .eq('company_id', req.companyId)
+          .eq('key', 'payroll_items_' + req.companyId)
+          .maybeSingle();
+
+        if (kvRow?.value) {
+          const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+          if (Array.isArray(kvItems) && kvItems.length > 0) {
+            const allowedProjectionTypes = ['FIXED_RECURRING', 'VARIABLE_AVERAGE', 'ONCE_OFF'];
+            const migrated = kvItems.map(kv => ({
+              company_id:           req.companyId,
+              item_code:            kv.item_code || kv.code || ('ITEM_' + Math.random().toString(36).substr(2, 6).toUpperCase()),
+              item_name:            kv.item_name || kv.name || 'Unknown Item',
+              item_type:            kv.item_type || 'income',
+              category:             kv.category || null,
+              is_taxable:           kv.is_taxable !== false,
+              is_recurring:         kv.is_recurring !== false,
+              default_amount:       kv.default_amount || 0,
+              affects_uif:          kv.affects_uif === false ? false : true,
+              irp5_code:            kv.irp5_code || null,
+              tax_treatment:        kv.tax_treatment || 'net_only',
+              paye_projection_type: allowedProjectionTypes.includes(kv.paye_projection_type)
+                ? kv.paye_projection_type
+                : 'VARIABLE_AVERAGE',
+              is_variable:          kv.is_variable || false,
+              frequency:            kv.frequency || 'regular',
+              is_active:            true
+            }));
+
+            // Upsert handles race condition if two tabs hit this simultaneously.
+            const { data: insertedItems, error: upsertErr } = await supabase
+              .from('payroll_items_master')
+              .upsert(migrated, { onConflict: 'company_id,item_code', ignoreDuplicates: false })
+              .select();
+
+            if (!upsertErr && insertedItems?.length > 0) {
+              console.log(`[Paytime] Auto-migrated ${insertedItems.length} payroll items from KV to DB for company ${req.companyId}`);
+              return res.json({ items: insertedItems, migrated: true });
+            }
+          }
+        }
+      } catch (kvErr) {
+        // Non-fatal: if migration fails, return empty list and let the UI handle it
+        console.warn('[Paytime] KV→DB migration failed (non-fatal):', kvErr.message);
+      }
+    }
 
     res.json({ items: data || [] });
   } catch (err) {
@@ -64,10 +120,15 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
  */
 router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
-    const { code, name, item_type, is_taxable, is_recurring, default_amount, description, irp5_code, category, tax_treatment, paye_projection_type, affects_uif } = req.body;
+    const {
+      item_code, item_name, item_type,
+      is_taxable, is_recurring, default_amount, irp5_code,
+      category, tax_treatment, paye_projection_type, affects_uif,
+      is_variable, frequency
+    } = req.body;
 
-    if (!code || !name || !item_type) {
-      return res.status(400).json({ error: 'code, name, and item_type are required' });
+    if (!item_code || !item_name || !item_type) {
+      return res.status(400).json({ error: 'item_code, item_name, and item_type are required' });
     }
 
     // Validate IRP5 code format if supplied
@@ -75,34 +136,33 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       return res.status(400).json({ error: `Invalid IRP5 code format: "${irp5_code}". Expected 4–6 digit SARS code.` });
     }
 
-    // Validate tax_treatment — only meaningful for deductions, must be a known value
     const allowedTaxTreatments = ['net_only', 'pre_tax'];
     if (tax_treatment !== undefined && !allowedTaxTreatments.includes(tax_treatment)) {
       return res.status(400).json({ error: `Invalid tax_treatment: "${tax_treatment}". Must be net_only or pre_tax.` });
     }
 
-    // Validate paye_projection_type
     const allowedProjectionTypes = ['FIXED_RECURRING', 'VARIABLE_AVERAGE', 'ONCE_OFF'];
     if (paye_projection_type !== undefined && !allowedProjectionTypes.includes(paye_projection_type)) {
       return res.status(400).json({ error: `Invalid paye_projection_type: "${paye_projection_type}". Must be FIXED_RECURRING, VARIABLE_AVERAGE, or ONCE_OFF.` });
     }
 
+    const allowedFrequencies = ['regular', 'once_off', 'both'];
+
     const insertPayload = {
       company_id:           req.companyId,
-      code,
-      name,
+      item_code,
+      item_name,
       item_type,
+      category:             category || null,
       is_taxable:           is_taxable !== false,
       is_recurring:         is_recurring || false,
       default_amount:       default_amount || 0,
-      description,
       is_active:            true,
-      // tax_treatment: only store for deductions; default net_only for all others
       tax_treatment:        (item_type === 'deduction' && tax_treatment) ? tax_treatment : 'net_only',
       paye_projection_type: allowedProjectionTypes.includes(paye_projection_type) ? paye_projection_type : 'VARIABLE_AVERAGE',
-      // affects_uif: default true — only items explicitly set to false are excluded from UIF base.
-      // Preserves false correctly; null/undefined treated as true (UIF-applicable).
-      affects_uif:          affects_uif === false ? false : true
+      affects_uif:          affects_uif === false ? false : true,
+      is_variable:          is_variable || false,
+      frequency:            allowedFrequencies.includes(frequency) ? frequency : 'regular'
     };
 
     if (irp5_code) {
@@ -119,17 +179,16 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Emit Sean learning event if an IRP5 code was included at creation
     if (irp5_code && data) {
       _emitIRP5Event({
-        companyId:       req.companyId,
-        payrollItemId:   data.id,
-        payrollItemName: name,
-        itemCategory:    category || item_type || null,
+        companyId:        req.companyId,
+        payrollItemId:    data.id,
+        payrollItemName:  item_name,
+        itemCategory:     category || item_type || null,
         previousIrp5Code: null,
-        newIrp5Code:     String(irp5_code).trim(),
-        changeType:      'new_item',
-        changedBy:       req.user?.userId || null
+        newIrp5Code:      String(irp5_code).trim(),
+        changeType:       'new_item',
+        changedBy:        req.user?.userId || null
       });
     }
 
@@ -144,10 +203,19 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
  */
 router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
-    const allowed = ['code', 'name', 'item_type', 'is_taxable', 'is_recurring', 'default_amount', 'description', 'is_active'];
+    const allowed = ['item_code', 'item_name', 'item_type', 'is_taxable', 'is_recurring', 'default_amount', 'category', 'is_active', 'is_variable'];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+
+    // Handle frequency separately — validate value
+    if (req.body.frequency !== undefined) {
+      const allowedFrequencies = ['regular', 'once_off', 'both'];
+      if (!allowedFrequencies.includes(req.body.frequency)) {
+        return res.status(400).json({ error: `Invalid frequency: "${req.body.frequency}". Must be regular, once_off, or both.` });
+      }
+      updates.frequency = req.body.frequency;
     }
 
     // Handle tax_treatment separately — validate value and only allow known values
@@ -222,7 +290,7 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
     // for this company + item name must reflect the new value so calculations are correct.
     // Fire-and-forget: failure does not block the master save.
     // NOTE: payroll_items_master uses item_name; payroll_items uses name.
-    const itemName = updates.name || existing.item_name;
+    const itemName = updates.item_name || existing.item_name;
     const calcSync = {};
     if (updates.affects_uif       !== undefined) calcSync.affects_uif       = updates.affects_uif;
     if (updates.paye_projection_type !== undefined) calcSync.paye_projection_type = updates.paye_projection_type;
@@ -455,6 +523,31 @@ router.put('/employee/:id', requirePermission('PAYROLL.CREATE'), async (req, res
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+/**
+ * DELETE /api/payroll/items/:id
+ * Soft-delete a master payroll item (sets is_active = false).
+ */
+router.delete('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('payroll_items_master')
+      .update({ is_active: false })
+      .eq('id', parseInt(req.params.id))
+      .eq('company_id', req.companyId);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EMPLOYEE RECURRING ITEMS — employee_payroll_items table
+// These endpoints manage per-employee recurring allowances and deductions.
+// Backed by: payroll_items (master) and employee_payroll_items (assignments).
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * DELETE /api/payroll/items/employee/:id

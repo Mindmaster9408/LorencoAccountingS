@@ -161,32 +161,47 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
       .eq('payroll_period_id', periodId);
 
     if (inputs && inputs.length > 0) {
-      // Stamp affects_uif from the KV-backed company item store — the authoritative source.
-      // payroll-items.html saves item config to payroll_kv_store_eco (safeLocalStorage bridge)
-      // under key 'payroll_items_{companyId}'. payroll_items_master is not reliably synced
-      // from the UI and must not be used as the authority for affects_uif at stamp time.
+      // Stamp affects_uif from payroll_items_master (authoritative after migration).
+      // Falls back to KV for companies that haven't yet visited payroll-items.html.
       // affects_uif controls UIF base ONLY — it never touches PAYE.
       const uifMap = {};
       try {
-        const { data: kvRow } = await supabase
-          .from('payroll_kv_store_eco')
-          .select('value')
+        // Primary: payroll_items_master
+        const { data: masterItems } = await supabase
+          .from('payroll_items_master')
+          .select('item_name, affects_uif')
           .eq('company_id', req.companyId)
-          .eq('key', 'payroll_items_' + req.companyId)
-          .maybeSingle();
-        if (kvRow && kvRow.value) {
-          const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
-          if (Array.isArray(kvItems)) {
-            kvItems.forEach(kv => {
-              const k = (kv.item_name || '').toLowerCase().trim();
-              if (k && kv.affects_uif !== undefined && kv.affects_uif !== null) {
-                uifMap[k] = kv.affects_uif === true;
-              }
-            });
+          .eq('is_active', true);
+
+        if (masterItems && masterItems.length > 0) {
+          masterItems.forEach(m => {
+            const k = (m.item_name || '').toLowerCase().trim();
+            if (k && m.affects_uif !== undefined && m.affects_uif !== null) {
+              uifMap[k] = m.affects_uif === true;
+            }
+          });
+        } else {
+          // Fallback: KV store
+          const { data: kvRow } = await supabase
+            .from('payroll_kv_store_eco')
+            .select('value')
+            .eq('company_id', req.companyId)
+            .eq('key', 'payroll_items_' + req.companyId)
+            .maybeSingle();
+          if (kvRow && kvRow.value) {
+            const kvItems = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
+            if (Array.isArray(kvItems)) {
+              kvItems.forEach(kv => {
+                const k = (kv.item_name || '').toLowerCase().trim();
+                if (k && kv.affects_uif !== undefined && kv.affects_uif !== null) {
+                  uifMap[k] = kv.affects_uif === true;
+                }
+              });
+            }
           }
         }
       } catch (_) {
-        // Non-fatal: if KV lookup fails all inputs default to affects_uif = true (safe).
+        // Non-fatal: if lookup fails all inputs default to affects_uif = true (safe).
       }
 
       const records = inputs.map(i => {

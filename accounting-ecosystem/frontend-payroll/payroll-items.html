@@ -1076,27 +1076,27 @@
             container.innerHTML = html;
         }
 
-        // ========== PAYROLL ITEMS CRUD (localStorage) ==========
+        // ========== PAYROLL ITEMS CRUD (API) ==========
 
-        function getStorageKey() {
-            return 'payroll_items_' + currentCompanyId;
-        }
-
-        function loadItems() {
-            const stored = safeLocalStorage.getItem(getStorageKey());
-            if (stored) {
-                try {
-                    currentItems = JSON.parse(stored);
-                } catch (e) {
-                    currentItems = [];
+        async function loadItems() {
+            try {
+                const token = safeLocalStorage.getItem('token') || '';
+                const res = await fetch('/api/payroll/items', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                currentItems = data.items || [];
+                if (data.migrated) {
+                    console.log('[Paytime] Payroll items auto-migrated from KV to DB (' + currentItems.length + ' items).');
                 }
-            } else {
+            } catch (e) {
+                console.error('[Paytime] Failed to load payroll items:', e.message);
                 currentItems = [];
             }
             displayItemsByCategory();
             renderStandardItems();
             restoreSectionStates();
-            // Pull global library standards from SEAN (fills only blank/null fields — never overwrites)
             seanSyncBackFromLibrary();
         }
 
@@ -1131,6 +1131,7 @@
                 if (!data || !data.updates || !data.updates.length) return;
 
                 var changed = false;
+                var changedItemIds = [];
                 data.updates.forEach(function(u) {
                     var item = currentItems.find(function(i) { return i.id === u.localItemId; });
                     if (!item) return;
@@ -1138,11 +1139,24 @@
                     if (!item[u.field]) {
                         item[u.field] = u.value;
                         changed = true;
+                        changedItemIds.push(item.id);
                     }
                 });
 
                 if (changed) {
-                    saveItemsToStorage();
+                    // Persist each changed item to DB via API (irp5_code is the only synced field)
+                    const syncToken = _seanToken();
+                    changedItemIds.forEach(function(changedId) {
+                        var changedItem = currentItems.find(function(i) { return i.id === changedId; });
+                        if (!changedItem) return;
+                        fetch('/api/payroll/items/' + changedId, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + syncToken },
+                            body: JSON.stringify({ irp5_code: changedItem.irp5_code })
+                        }).catch(function(putErr) {
+                            console.warn('[SEAN] sync-back PUT failed for item ' + changedId + ':', putErr.message);
+                        });
+                    });
                     displayItemsByCategory();
                     console.log('[SEAN] Sync-back applied ' + data.updates.length + ' standard value(s) from global library.');
                 }
@@ -1184,9 +1198,9 @@
             });
         }
 
-        function saveItemsToStorage() {
-            safeLocalStorage.setItem(getStorageKey(), JSON.stringify(currentItems));
-        }
+        // saveItemsToStorage is no longer used for business data — KV replaced by API.
+        // Kept as a no-op to avoid errors from any stale references.
+        function saveItemsToStorage() {}
 
         function displayItemsByCategory() {
             const categories = {
@@ -1335,7 +1349,7 @@
         }
 
         function editItem(id) {
-            const item = currentItems.find(i => i.id === id);
+            const item = currentItems.find(i => String(i.id) === String(id));
             if (!item) return;
 
             document.getElementById('modalTitle').textContent = 'Edit Payroll Item';
@@ -1411,40 +1425,38 @@
             if (projGroup) projGroup.style.display = (type === 'deduction') ? 'none' : 'block';
         }
 
-        function saveItem(event) {
+        async function saveItem(event) {
             event.preventDefault();
 
             const errorDiv = document.getElementById('modalError');
             errorDiv.style.display = 'none';
 
-            const itemId = document.getElementById('itemId').value;
-            const isEdit = itemId !== '';
+            const itemId    = document.getElementById('itemId').value;
+            const isEdit    = itemId !== '';
+            const uiType    = document.getElementById('itemType').value;
 
-            // Capture previous IRP5 code before overwriting (for SEAN change tracking)
-            const previousItem = isEdit ? currentItems.find(i => i.id === itemId) : null;
+            const previousItem     = isEdit ? currentItems.find(i => String(i.id) === itemId) : null;
             const previousIrp5Code = previousItem ? (previousItem.irp5_code || null) : null;
 
             const itemData = {
-                id: itemId || 'pi-' + Math.random().toString(36).substr(2, 9),
-                item_code: document.getElementById('itemCode').value.trim(),
-                item_name: document.getElementById('itemName').value.trim(),
-                item_type: document.getElementById('itemType').value,
-                category: document.getElementById('itemCategory').value,
-                irp5_code: document.getElementById('irp5Code').value.trim() || null,
-                default_amount: parseFloat(document.getElementById('defaultAmount').value) || 0,
-                is_taxable: parseInt(document.getElementById('isTaxable').value) === 1,
-                affects_uif: parseInt(document.getElementById('affectsUif').value) === 1,
-                is_variable: document.getElementById('behaviourVariable').checked,
-                frequency: document.getElementById('itemFrequency').value || 'regular',
-                tax_treatment: document.getElementById('itemType').value === 'deduction'
+                item_code:            document.getElementById('itemCode').value.trim(),
+                item_name:            document.getElementById('itemName').value.trim(),
+                item_type:            uiType,
+                category:             document.getElementById('itemCategory').value,
+                irp5_code:            document.getElementById('irp5Code').value.trim() || null,
+                default_amount:       parseFloat(document.getElementById('defaultAmount').value) || 0,
+                is_taxable:           parseInt(document.getElementById('isTaxable').value) === 1,
+                affects_uif:          parseInt(document.getElementById('affectsUif').value) === 1,
+                is_variable:          document.getElementById('behaviourVariable').checked,
+                frequency:            document.getElementById('itemFrequency').value || 'regular',
+                tax_treatment:        uiType === 'deduction'
                     ? (document.getElementById('taxTreatment').value || 'net_only')
                     : 'net_only',
-                paye_projection_type: document.getElementById('itemType').value !== 'deduction'
+                paye_projection_type: uiType !== 'deduction'
                     ? (document.getElementById('payeProjectionType').value || 'VARIABLE_AVERAGE')
                     : 'VARIABLE_AVERAGE'
             };
 
-            // IRP5 code is required
             if (!itemData.irp5_code) {
                 errorDiv.textContent = 'IRP5 Code is required. Check the SARS IRP5/IT3(a) code list.';
                 errorDiv.style.display = 'block';
@@ -1452,54 +1464,91 @@
                 return;
             }
 
-            // Check for duplicate item code (but allow same code when editing same item)
-            const duplicate = currentItems.find(i => i.item_code === itemData.item_code && i.id !== itemData.id);
+            // Duplicate code check (allow same code when editing same item)
+            const duplicate = currentItems.find(i => i.item_code === itemData.item_code && String(i.id) !== itemId);
             if (duplicate) {
-                errorDiv.textContent = `Item code "${itemData.item_code}" already exists. Use a different code.`;
+                errorDiv.textContent = 'Item code "' + itemData.item_code + '" already exists. Use a different code.';
                 errorDiv.style.display = 'block';
                 return;
             }
 
-            if (isEdit) {
-                const index = currentItems.findIndex(i => i.id === itemId);
-                if (index !== -1) {
-                    currentItems[index] = itemData;
+            const submitBtn = document.querySelector('#itemForm button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+
+            try {
+                const token  = safeLocalStorage.getItem('token') || '';
+                const method = isEdit ? 'PUT' : 'POST';
+                const url    = isEdit ? '/api/payroll/items/' + itemId : '/api/payroll/items';
+
+                const r = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify(itemData)
+                });
+                const result = await r.json();
+                if (!r.ok) {
+                    errorDiv.textContent = result.error || 'Save failed. Please try again.';
+                    errorDiv.style.display = 'block';
+                    return;
                 }
-            } else {
-                currentItems.push(itemData);
+
+                const savedItem = result.item;
+                if (isEdit) {
+                    const idx = currentItems.findIndex(i => String(i.id) === itemId);
+                    if (idx !== -1) currentItems[idx] = savedItem;
+                } else {
+                    currentItems.push(savedItem);
+                }
+
+                if (!isEdit || savedItem.irp5_code !== previousIrp5Code) {
+                    seanSubmitToStore(savedItem, isEdit, previousIrp5Code);
+                }
+
+                if (isEdit) {
+                    AuditTrail.logUpdate(currentCompanyId, 'payroll_item', 'Updated payroll item "' + savedItem.item_name + '" (' + savedItem.item_code + ')');
+                } else {
+                    AuditTrail.logCreate(currentCompanyId, 'payroll_item', 'Created payroll item "' + savedItem.item_name + '" (' + savedItem.item_code + ')');
+                }
+
+                const successDiv = document.getElementById('modalSuccess');
+                successDiv.textContent = isEdit ? 'Item successfully updated!' : 'Item successfully added!';
+                successDiv.style.display = 'block';
+                setTimeout(() => { successDiv.style.display = 'none'; }, 3000);
+
+                closeItemModal();
+                displayItemsByCategory();
+
+            } catch (e) {
+                errorDiv.textContent = 'Save failed: ' + e.message;
+                errorDiv.style.display = 'block';
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
             }
-
-            saveItemsToStorage();
-
-            // Fire-and-forget: submit to SEAN Transaction Store for global review
-            // Only submits when IRP5 code is set or changed (the key field for standardization)
-            if (!isEdit || itemData.irp5_code !== previousIrp5Code) {
-                seanSubmitToStore(itemData, isEdit, previousIrp5Code);
-            }
-
-            if (isEdit) {
-                AuditTrail.logUpdate(currentCompanyId, 'payroll_item', 'Updated payroll item "' + itemData.item_name + '" (' + itemData.item_code + ') - ' + itemData.category + ', R' + itemData.default_amount.toFixed(2));
-            } else {
-                AuditTrail.logCreate(currentCompanyId, 'payroll_item', 'Created payroll item "' + itemData.item_name + '" (' + itemData.item_code + ') - ' + itemData.category + ', R' + itemData.default_amount.toFixed(2));
-            }
-
-            // Show success
-            const successDiv = document.getElementById('modalSuccess');
-            successDiv.textContent = isEdit ? 'Item successfully updated!' : 'Item successfully added!';
-            successDiv.style.display = 'block';
-            setTimeout(() => { successDiv.style.display = 'none'; }, 3000);
-
-            closeItemModal();
-            displayItemsByCategory();
         }
 
-        function deleteItem(id) {
+        async function deleteItem(id) {
             if (!Permissions.require('MANAGE_PAYROLL_ITEMS')) return;
             if (!confirm('Are you sure you want to delete this item?')) return;
 
-            var deleted = currentItems.find(i => i.id === id);
-            currentItems = currentItems.filter(i => i.id !== id);
-            saveItemsToStorage();
+            const deleted = currentItems.find(i => String(i.id) === String(id));
+
+            try {
+                const token = safeLocalStorage.getItem('token') || '';
+                const r = await fetch('/api/payroll/items/' + id, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!r.ok) {
+                    const result = await r.json().catch(() => ({}));
+                    alert('Delete failed: ' + (result.error || 'Unknown error'));
+                    return;
+                }
+            } catch (e) {
+                alert('Delete failed: ' + e.message);
+                return;
+            }
+
+            currentItems = currentItems.filter(i => String(i.id) !== String(id));
             AuditTrail.logDelete(currentCompanyId, 'payroll_item', 'Deleted payroll item "' + (deleted ? deleted.item_name : id) + '"' + (deleted ? ' (' + deleted.item_code + ')' : ''));
             displayItemsByCategory();
 

@@ -177,7 +177,7 @@ function createNavigation() {
           <a href="/accounting/company.html">Company Profile</a>
           <a href="/accounting/settings.html">Company Settings</a>
           <a href="/accounting/contacts.html">Contacts</a>
-          <a href="#">Users &amp; Permissions</a>
+          <a href="/accounting/users-permissions.html">Users &amp; Permissions</a>
           <a href="#">Financial Year</a>
           <a href="#">Tax Settings</a>
           <a href="#">Backup &amp; Restore</a>
