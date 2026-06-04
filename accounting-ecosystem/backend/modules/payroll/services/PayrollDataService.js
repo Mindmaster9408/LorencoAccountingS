@@ -566,7 +566,11 @@ async function fetchPeriodInputs(
       // by POST /api/payroll/transactions/inputs from payroll_items_master).
       // It is NOT read via the payroll_items join because payroll_item_id is often null,
       // which makes the join return null and affects_uif unresolvable from the join.
-      `id, description, amount, item_type, affects_uif,
+      // Both affects_uif and is_taxable are read directly from payroll_period_inputs
+      // (stamped at insert time by POST /api/payroll/transactions/inputs).
+      // They are NOT read via the payroll_items join (payroll_item_id is often null).
+      // INDEPENDENT FLAGS: is_taxable → PAYE only. affects_uif → UIF only.
+      `id, description, amount, item_type, affects_uif, is_taxable,
        payroll_items(code, item_category, tax_treatment)`
     )
     .eq('company_id', companyId)
@@ -620,20 +624,29 @@ async function fetchPeriodInputs(
     try {
       const { data: masterItems } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif')  // payroll_items_master uses item_name not name
+        .select('item_name, affects_uif, is_taxable')  // item_name not name; both independent flags
         .eq('company_id', companyId)
         .eq('is_active', true);
       if (masterItems && masterItems.length > 0) {
-        const uifMap = {};
+        const masterFlagMap = {};
         masterItems.forEach(function(m) {
-          if (m.item_name) uifMap[m.item_name.toLowerCase().trim()] = m.affects_uif !== false;
+          if (m.item_name) {
+            masterFlagMap[m.item_name.toLowerCase().trim()] = {
+              affects_uif: m.affects_uif !== false,
+              is_taxable:  m.is_taxable  !== false
+            };
+          }
         });
         loadedInputs.forEach(function(ci) {
           const key = (ci.description || '').toLowerCase().trim();
-          if (Object.prototype.hasOwnProperty.call(uifMap, key)) {
-            ci.affects_uif = uifMap[key];
+          if (Object.prototype.hasOwnProperty.call(masterFlagMap, key)) {
+            // Override both flags from master config independently.
+            // affects_uif: UIF base only — never affects PAYE.
+            // is_taxable:  PAYE base only — never affects UIF.
+            ci.affects_uif = masterFlagMap[key].affects_uif;
+            ci.is_taxable  = masterFlagMap[key].is_taxable;
           }
-          // If no master match: keep stored value (true by default — safe).
+          // If no master match: keep stored record values (both default true).
         });
       }
     } catch (masterErr) {
@@ -708,9 +721,13 @@ function normalizeCalculationInput(
     type: item.item_type || 'input',
     // Inherit tax_treatment from the linked payroll item master; default net_only.
     tax_treatment: item.payroll_items?.tax_treatment || 'net_only',
-    // affects_uif: read directly from payroll_period_inputs.affects_uif (stamped at insert).
-    // NOT from item.payroll_items?.affects_uif — that join is null when payroll_item_id is
-    // null (common for current inputs), which makes affects_uif unreachable via the join.
+    // is_taxable: read directly from payroll_period_inputs.is_taxable (stamped at insert
+    // from payroll_items_master by POST /inputs, then live-overridden by fetchPeriodInputs).
+    // Controls PAYE taxable income ONLY — completely independent of affects_uif.
+    // Preserving explicit false: null/undefined → true (default taxable).
+    is_taxable:  item.is_taxable  !== false,
+    // affects_uif: read directly from payroll_period_inputs.affects_uif (same pipeline).
+    // Controls UIF contribution base ONLY — completely independent of is_taxable.
     affects_uif: item.affects_uif !== false
   }));
 
