@@ -2,7 +2,8 @@
 import { $, escapeHtml, formatDate, formatDateTime, parseStandardDate } from './config.js';
 import { saveClient } from './storage.js';
 import { JOURNEY_STEPS } from './journey-data.js';
-import { renderAIChat, loadLinkedQuestionsSection } from './journey-helpers.js?v=11';
+import { renderAIChat } from './journey-helpers.js?v=11';
+import { api } from './api.js';
 
 // Render specific exercise based on step number
 export function renderExercise(client, stepNumber, containerId) {
@@ -348,11 +349,184 @@ function render4QuadrantExercise(client, container) {
     `;
 
     // Load linked questions from Question Builder
-    loadLinkedQuestionsSection(client);
+    _initLinkedQuestions(client);
 
     // Render AI chat if exists
     if (data.aiCoachNotes) {
         renderAIChat(data.aiCoachNotes);
+    }
+}
+
+// ── Linked Questions (Question Builder integration for 4 Quadrant) ────────────
+
+const _FQ_CTX = 'four_quadrants.dream_summary';
+let _lqClientId = null;
+let _lqAllQuestions = [];
+let _lqSelected = new Set();
+
+async function _initLinkedQuestions(client) {
+    if (!client || !client.id) return;
+    _lqClientId = client.id;
+
+    const openBtn = document.getElementById('btn-open-qlinker');
+    if (openBtn) openBtn.onclick = _openLinker;
+
+    const closeBtn = document.getElementById('qlinker-close');
+    if (closeBtn) closeBtn.onclick = _closeLinker;
+
+    const cancelBtn = document.getElementById('qlinker-cancel-btn');
+    if (cancelBtn) cancelBtn.onclick = _closeLinker;
+
+    const overlay = document.getElementById('qlinker-overlay');
+    if (overlay) overlay.onclick = e => { if (e.target === overlay) _closeLinker(); };
+
+    const addBtn = document.getElementById('qlinker-add-btn');
+    if (addBtn) addBtn.onclick = _addSelected;
+
+    await _renderLinkedList();
+}
+
+async function _renderLinkedList() {
+    const container = document.getElementById('linked-questions-list');
+    if (!container) return;
+    container.innerHTML = '<p class="linked-q-loading">Loading…</p>';
+    try {
+        const questions = await api.questionBuilder.getClientContextQuestions(_lqClientId, _FQ_CTX);
+        if (!questions || questions.length === 0) {
+            container.innerHTML = '<p class="linked-q-empty">No questions linked yet. Click <strong>+ Add Question</strong> to add from the Question Builder.</p>';
+            return;
+        }
+        container.innerHTML = questions.map(q => `
+            <div class="linked-q-item" data-aid="${q.assignment_id}">
+                <div class="linked-q-item-header">
+                    ${q.category ? `<span class="linked-q-badge">${escapeHtml(q.category)}</span>` : ''}
+                    <button class="linked-q-remove-btn" data-aid="${q.assignment_id}" title="Remove">&#x2715;</button>
+                </div>
+                <div class="linked-q-text">${escapeHtml(q.question_text)}</div>
+                ${q.help_text ? `<div class="linked-q-hint">${escapeHtml(q.help_text)}</div>` : ''}
+                <textarea class="linked-q-answer" id="lqa-${q.assignment_id}"
+                    data-aid="${q.assignment_id}" data-qid="${q.id}"
+                    placeholder="Enter answer..." rows="3">${escapeHtml(q.answer_text || '')}</textarea>
+                <button class="linked-q-save-answer-btn" data-aid="${q.assignment_id}" data-qid="${q.id}">Save Answer</button>
+            </div>
+        `).join('');
+        container.querySelectorAll('.linked-q-remove-btn').forEach(btn => {
+            btn.onclick = () => _removeQuestion(Number(btn.dataset.aid));
+        });
+        container.querySelectorAll('.linked-q-save-answer-btn').forEach(btn => {
+            btn.onclick = () => _saveAnswer(Number(btn.dataset.aid), Number(btn.dataset.qid));
+        });
+    } catch (err) {
+        console.error('[linkedQ] load error:', err);
+        container.innerHTML = '<p class="linked-q-error">Failed to load questions. Please try again.</p>';
+    }
+}
+
+function _renderLinkerList() {
+    const listEl = document.getElementById('qlinker-list');
+    if (!listEl) return;
+    const search = (document.getElementById('qlinker-search')?.value || '').toLowerCase().trim();
+    const cat = document.getElementById('qlinker-filter-cat')?.value || '';
+    let items = _lqAllQuestions;
+    if (search) items = items.filter(q => q.question_text.toLowerCase().includes(search) || (q.category || '').toLowerCase().includes(search));
+    if (cat) items = items.filter(q => q.category === cat);
+    if (!items.length) { listEl.innerHTML = '<p class="qlinker-empty">No questions found.</p>'; return; }
+    listEl.innerHTML = items.map(q => `
+        <label class="qlinker-item ${_lqSelected.has(q.id) ? 'qlinker-item-selected' : ''}">
+            <input type="checkbox" class="qlinker-check" data-qid="${q.id}" ${_lqSelected.has(q.id) ? 'checked' : ''} />
+            <div class="qlinker-item-body">
+                <div class="qlinker-item-text">${escapeHtml(q.question_text)}</div>
+                ${q.category ? `<span class="qlinker-item-cat">${escapeHtml(q.category)}</span>` : ''}
+            </div>
+        </label>
+    `).join('');
+    listEl.querySelectorAll('.qlinker-check').forEach(cb => {
+        cb.onchange = () => {
+            const id = Number(cb.dataset.qid);
+            if (cb.checked) _lqSelected.add(id); else _lqSelected.delete(id);
+            cb.closest('.qlinker-item').classList.toggle('qlinker-item-selected', cb.checked);
+            _updateAddBtn();
+        };
+    });
+}
+
+function _updateAddBtn() {
+    const btn = document.getElementById('qlinker-add-btn');
+    const count = document.getElementById('qlinker-selected-count');
+    if (btn) btn.disabled = _lqSelected.size === 0;
+    if (count) count.textContent = _lqSelected.size === 0 ? '0 selected' : `${_lqSelected.size} selected`;
+}
+
+async function _openLinker() {
+    const overlay = document.getElementById('qlinker-overlay');
+    if (!overlay) return;
+    _lqSelected.clear();
+    overlay.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    const listEl = document.getElementById('qlinker-list');
+    if (listEl) listEl.innerHTML = '<p class="qlinker-list-loading">Loading questions…</p>';
+    try {
+        _lqAllQuestions = await api.questionBuilder.listQuestions({ active: 'true' });
+        _renderLinkerList();
+    } catch (err) {
+        console.error('[linkedQ] linker load error:', err);
+        if (listEl) listEl.innerHTML = '<p class="qlinker-list-error">Failed to load questions.</p>';
+    }
+    _updateAddBtn();
+    // wire filter/search
+    const search = document.getElementById('qlinker-search');
+    if (search) search.oninput = () => { _renderLinkerList(); _updateAddBtn(); };
+    const cat = document.getElementById('qlinker-filter-cat');
+    if (cat) cat.onchange = () => { _renderLinkerList(); _updateAddBtn(); };
+}
+
+function _closeLinker() {
+    const overlay = document.getElementById('qlinker-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+async function _addSelected() {
+    if (!_lqClientId || _lqSelected.size === 0) return;
+    const btn = document.getElementById('qlinker-add-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+    try {
+        await api.questionBuilder.assignClientQuestions(_lqClientId, _FQ_CTX, Array.from(_lqSelected));
+        _closeLinker();
+        await _renderLinkedList();
+    } catch (err) {
+        console.error('[linkedQ] assign error:', err);
+        alert('Failed to link questions. Please try again.');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Add Selected'; }
+    }
+}
+
+async function _removeQuestion(assignmentId) {
+    if (!_lqClientId || !confirm('Remove this question?')) return;
+    try {
+        await api.questionBuilder.unassignClientQuestion?.(_lqClientId, _FQ_CTX, assignmentId)
+            ?? api.questionBuilder.deactivateQuestion?.(assignmentId);
+        await _renderLinkedList();
+    } catch (err) {
+        console.error('[linkedQ] remove error:', err);
+        alert('Failed to remove question.');
+    }
+}
+
+async function _saveAnswer(assignmentId, questionId) {
+    const textarea = document.getElementById(`lqa-${assignmentId}`);
+    if (!textarea || !_lqClientId) return;
+    const btn = document.querySelector(`.linked-q-item[data-aid="${assignmentId}"] .linked-q-save-answer-btn`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+        await api.questionBuilder.saveClientQuestionAnswers(_lqClientId, _FQ_CTX, [{ questionId, answerText: textarea.value }]);
+        if (btn) btn.textContent = '✓ Saved';
+        setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Save Answer'; } }, 1500);
+    } catch (err) {
+        console.error('[linkedQ] save error:', err);
+        alert('Failed to save answer.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Save Answer'; }
     }
 }
 
