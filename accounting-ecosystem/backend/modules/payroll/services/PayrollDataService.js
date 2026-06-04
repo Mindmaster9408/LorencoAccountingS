@@ -545,7 +545,44 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
     }
     return [];
   }
-  return data || [];
+
+  const loadedItems = data || [];
+
+  // Live override of affects_uif from payroll_items_master.
+  // payroll_items.affects_uif may be null for items created or migrated before the
+  // affects_uif column was reliably synced. payroll_items_master is the user-facing
+  // configuration (Payroll Items UI) and is authoritative.
+  // Same safe rule as fetchPeriodInputs: only explicit false from master overrides —
+  // null/true master values do not corrupt a correctly-stored value.
+  if (loadedItems.length > 0) {
+    try {
+      const { data: masterItems } = await supabase
+        .from('payroll_items_master')
+        .select('item_name, affects_uif')
+        .eq('company_id', companyId)
+        .eq('is_active', true);
+      if (masterItems && masterItems.length > 0) {
+        const uifMap = {};
+        masterItems.forEach(function(m) {
+          if (!m.item_name) return;
+          if (m.affects_uif === false) {
+            uifMap[m.item_name.toLowerCase().trim()] = false;
+          }
+        });
+        loadedItems.forEach(function(item) {
+          if (!item.payroll_items) return;
+          const key = (item.payroll_items.name || '').toLowerCase().trim();
+          if (Object.prototype.hasOwnProperty.call(uifMap, key)) {
+            item.payroll_items.affects_uif = false;
+          }
+        });
+      }
+    } catch (masterErr) {
+      console.warn('[PayrollDataService] recurring affects_uif master override failed (non-fatal):', masterErr.message);
+    }
+  }
+
+  return loadedItems;
 }
 
 /**
