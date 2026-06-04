@@ -634,7 +634,9 @@ async function fetchPeriodInputs(
         masterItems.forEach(function(m) {
           if (!m.item_name) return;
           const k = m.item_name.toLowerCase().trim();
-          uifMap[k]      = m.affects_uif !== false;
+          // Only capture explicit false — a null/true master value must NOT overwrite
+          // a correctly-stored false in payroll_period_inputs (stamped at save time).
+          if (m.affects_uif === false) { uifMap[k] = false; }
           if (m.paye_projection_type) projTypeMap[k] = m.paye_projection_type;
         });
         loadedInputs.forEach(function(ci) {

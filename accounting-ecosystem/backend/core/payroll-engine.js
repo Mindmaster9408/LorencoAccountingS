@@ -672,11 +672,10 @@ const PayrollEngine = {
         var periodicTaxable = payrollData.basic_salary || 0;
         var onceOffTaxable  = 0;
         var nonTaxableIncome = 0;
-        // uifExcludedEarnings: sum of earnings from items where affects_uif === false.
-        // Subtracted from gross to produce uifApplicableGross — the correct UIF base.
-        // Basic salary, overtime, and short-time are always UIF-applicable (not filtered here).
-        // Only items with an explicit affects_uif === false flag contribute to this accumulator.
-        var uifExcludedEarnings = 0;
+        // uifApplicableGross: built positively from items where affects_uif !== false.
+        // Basic salary is always UIF-applicable. Overtime and short-time are handled below.
+        // This whitelist approach is independent of PAYE bucket routing and gross subtraction.
+        var uifApplicableGross = payrollData.basic_salary || 0;
 
         // Resolve percentage-based regular inputs against the current basic_salary.
         // When called from calculateWithProRata, basic_salary is already pro-rated — so % items
@@ -692,9 +691,9 @@ const PayrollEngine = {
         resolvedRegularInputs.forEach(function(ri) {
             if (ri.type !== 'deduction') {
                 var amt = parseFloat(ri.amount) || 0;
-                // Track UIF-excluded earnings. Only explicit false triggers exclusion —
-                // null/undefined/true all mean UIF-applicable (safe default).
-                if (ri.affects_uif === false) { uifExcludedEarnings += amt; }
+                // UIF: include only items where affects_uif !== false (whitelist).
+                // null/undefined → UIF-applicable (safe default). Only explicit false excludes.
+                if (ri.affects_uif !== false) { uifApplicableGross += amt; }
                 if (ri.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
@@ -708,11 +707,12 @@ const PayrollEngine = {
         //   Both are projected via YTD averaging (× 12 / monthInTaxYear) so commission
         //   entered as a current input correctly builds an annualised PAYE projection.
         // ONCE_OFF → onceOffTaxable. Added once to the annual equivalent, never projected.
+        // UIF basis is independent of PAYE bucket — controlled only by affects_uif.
         (currentInputs || []).forEach(function(ci) {
             if (ci.type !== 'deduction') {
                 var amt = parseFloat(ci.amount) || 0;
-                // UIF exclusion is independent of PAYE bucket — affects_uif controls only UIF.
-                if (ci.affects_uif === false) { uifExcludedEarnings += amt; }
+                // UIF: include only if affects_uif !== false (whitelist — same rule as regular inputs).
+                if (ci.affects_uif !== false) { uifApplicableGross += amt; }
                 if (ci.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
@@ -735,11 +735,17 @@ const PayrollEngine = {
             onceOffTaxable += otAmt;
             overtimeAmount += otAmt;
         });
+        // Overtime is always UIF-applicable.
+        uifApplicableGross += overtimeAmount;
 
-        // Multi-rate hours → once-off (always taxable)
+        // Multi-rate hours → once-off (always taxable, always UIF-applicable)
+        var multiRateAmount = 0;
         (multiRate || []).forEach(function(mr) {
-            onceOffTaxable += (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
+            var mrAmt = (parseFloat(mr.hours) || 0) * (parseFloat(mr.hourly_rate) || 0);
+            onceOffTaxable    += mrAmt;
+            multiRateAmount   += mrAmt;
         });
+        uifApplicableGross += multiRateAmount;
 
         // Short time → reduces periodic income (salary reduction, not a once-off)
         var shortTimeAmount = 0;
@@ -748,20 +754,21 @@ const PayrollEngine = {
             periodicTaxable -= stAmt;
             shortTimeAmount += stAmt;
         });
+        // Short time reduces the UIF basis (it reduces the remuneration that UIF is levied on).
+        uifApplicableGross = Math.max(uifApplicableGross - shortTimeAmount, 0);
 
         if (periodicTaxable < 0) periodicTaxable = 0;
 
         var taxableGross = periodicTaxable + onceOffTaxable;
 
         // Total gross includes both taxable and non-taxable.
-        // Captured BEFORE pre-tax deductions are applied so that UIF/SDL
-        // remain based on actual earnings, not the reduced taxable income.
+        // Captured BEFORE pre-tax deductions are applied so that SDL remain based on actual earnings.
         var gross = taxableGross + nonTaxableIncome;
 
-        // UIF-applicable gross: gross minus earnings from items flagged affects_uif = false.
+        // uifApplicableGross is built from the whitelist above — do NOT re-derive from gross.
         // SDL continues to use full gross — it has no per-item exclusion concept.
-        // Basic salary is always UIF-applicable and is never in uifExcludedEarnings.
-        var uifApplicableGross = Math.max(gross - uifExcludedEarnings, 0);
+        // uifExcludedEarnings is derived for trace/return transparency only.
+        var uifExcludedEarnings = PayrollEngine.r2(Math.max(gross - uifApplicableGross, 0));
 
         // ── TRACE 3: PAYE + UIF BUILD-UP ─────────────────────────────────────
         console.log('[TRACE PAYE] ── TRACE 3: ENGINE INCOME BUILD-UP ──');
@@ -771,8 +778,8 @@ const PayrollEngine = {
         console.log('[TRACE PAYE] nonTaxableIncome:', nonTaxableIncome);
         console.log('[TRACE PAYE] taxableGross:', taxableGross);
         console.log('[TRACE PAYE] gross:', gross);
-        console.log('[TRACE PAYE] uifExcludedEarnings:', uifExcludedEarnings);
-        console.log('[TRACE PAYE] uifApplicableGross:', uifApplicableGross);
+        console.log('[TRACE PAYE] uifApplicableGross (whitelist):', uifApplicableGross);
+        console.log('[TRACE PAYE] uifExcludedEarnings (derived=gross-uifApplicable):', uifExcludedEarnings);
         console.log('[TRACE PAYE] tables.TAX_YEAR:', tables ? tables.TAX_YEAR : 'MISSING');
         console.log('[TRACE PAYE] tables.PRIMARY_REBATE:', tables ? tables.PRIMARY_REBATE : 'MISSING');
         console.log('[TRACE PAYE] tables.UIF_RATE:', tables ? tables.UIF_RATE : 'MISSING');
@@ -786,7 +793,7 @@ const PayrollEngine = {
             console.log('[TRACE PAYE]   REGULAR "' + ri.description + '":', ri.amount,
               '| is_taxable:', ri.is_taxable, '| affects_uif:', ri.affects_uif,
               '| -> PAYE bucket:', ri.is_taxable === false ? 'nonTaxable' : 'periodic',
-              '| -> UIF excluded:', ri.affects_uif === false ? 'YES' : 'no');
+              '| -> UIF included:', ri.affects_uif !== false ? 'YES' : 'no (excluded)');
           }
         });
         (currentInputs || []).forEach(function(ci) {
@@ -798,7 +805,7 @@ const PayrollEngine = {
               '| is_taxable:', ci.is_taxable, '| affects_uif:', ci.affects_uif,
               '| paye_projection_type:', _traceProj,
               '| -> PAYE bucket:', _traceBucket,
-              '| -> UIF excluded:', ci.affects_uif === false ? 'YES' : 'no');
+              '| -> UIF included:', ci.affects_uif !== false ? 'YES' : 'no (excluded)');
           }
         });
         // ── END TRACE 3 ──────────────────────────────────────────────────────
