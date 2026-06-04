@@ -370,9 +370,9 @@ describe('propagateApproved() — safety enforcement', () => {
 
     test('SAFETY: null irp5_code → applied; same code → skipped; different code → exception (never written)', async () => {
       const items = [
-        { id: 10, company_id: 1, name: 'Commission', irp5_code: null },   // → applied
-        { id: 11, company_id: 2, name: 'Commission', irp5_code: '3606' }, // → skipped_existing
-        { id: 12, company_id: 3, name: 'Commission', irp5_code: '9999' }  // → skipped_exception — NEVER write
+        { id: 10, company_id: 1, item_name: 'Commission', irp5_code: null },   // → applied
+        { id: 11, company_id: 2, item_name: 'Commission', irp5_code: '3606' }, // → skipped_existing
+        { id: 12, company_id: 3, item_name: 'Commission', irp5_code: '9999' }  // → skipped_exception — NEVER write
       ];
 
       const mock = makeMock(items);
@@ -396,7 +396,7 @@ describe('propagateApproved() — safety enforcement', () => {
     });
 
     test('SAFETY: empty-string irp5_code is falsy → treated as blank → written', async () => {
-      const items = [{ id: 20, company_id: 5, name: 'Commission', irp5_code: '' }];
+      const items = [{ id: 20, company_id: 5, item_name: 'Commission', irp5_code: '' }];
 
       const mock = makeMock(items);
       const saved = mockSupabase.from;
@@ -414,7 +414,7 @@ describe('propagateApproved() — safety enforcement', () => {
 
     test('SAFETY: no matching items → zero counts, zero writes', async () => {
       // 'Basic Salary Standard' does not normalize to 'commission'
-      const items = [{ id: 30, company_id: 6, name: 'Basic Salary Standard', irp5_code: null }];
+      const items = [{ id: 30, company_id: 6, item_name: 'Basic Salary Standard', irp5_code: null }];
 
       const mock = makeMock(items);
       const saved = mockSupabase.from;

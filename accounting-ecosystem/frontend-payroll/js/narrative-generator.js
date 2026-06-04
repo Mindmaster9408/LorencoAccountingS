@@ -267,19 +267,6 @@ const NarrativeGenerator = {
         var marginalRate      = calc.marginal_rate   || '';
         var marginalBracket   = calc.marginal_bracket || '';
 
-        // TRACE D — confirm backend display fields are flowing through correctly.
-        console.log('[narrative-generator TRACE D] Tax explanation source (backend calc):', JSON.stringify({
-            primary_rebate_annual:   calc.primary_rebate_annual,
-            rebate_monthly:          calc.rebate,
-            totalRebateAnnual_used:  totalRebateAnnual,
-            marginal_rate:           calc.marginal_rate,
-            marginal_bracket:        calc.marginal_bracket,
-            uif_monthly_cap:         calc.uif_monthly_cap,
-            tax_year:                calc.tax_year,
-            taxBeforeRebate_monthly: calc.taxBeforeRebate,
-            ytdMethod:               ytdMethod
-        }));
-
         var text;
 
         if (isProjectionType && meta) {
