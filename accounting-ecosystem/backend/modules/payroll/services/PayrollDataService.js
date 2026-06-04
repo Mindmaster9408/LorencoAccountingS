@@ -566,11 +566,12 @@ async function fetchPeriodInputs(
       // by POST /api/payroll/transactions/inputs from payroll_items_master).
       // It is NOT read via the payroll_items join because payroll_item_id is often null,
       // which makes the join return null and affects_uif unresolvable from the join.
-      // Both affects_uif and is_taxable are read directly from payroll_period_inputs
-      // (stamped at insert time by POST /api/payroll/transactions/inputs).
-      // They are NOT read via the payroll_items join (payroll_item_id is often null).
-      // INDEPENDENT FLAGS: is_taxable → PAYE only. affects_uif → UIF only.
-      `id, description, amount, item_type, affects_uif, is_taxable,
+      //
+      // is_taxable is NOT selected here — migration 022 adds that column and must be
+      // run first. Until then, is_taxable comes from the live master override below.
+      // Selecting a non-existent column causes a PostgREST 400, setting err1 and
+      // emptying all period inputs (PAYE regression). Never select unconfirmed columns.
+      `id, description, amount, item_type, affects_uif,
        payroll_items(code, item_category, tax_treatment)`
     )
     .eq('company_id', companyId)
