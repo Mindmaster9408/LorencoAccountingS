@@ -653,20 +653,6 @@ const PayrollEngine = {
         // taxOverride: pre-built tables from backend KV config (Node.js cannot use localStorage).
         var tables = period ? this.getTablesForPeriod(period, taxOverride) : (taxOverride || this);
 
-        // Debug: log which tax source is active for this calculation run.
-        console.log('[PayrollEngine] TAX SOURCE:', JSON.stringify({
-            source: taxOverride ? 'taxConfig (KV override)' : (period ? 'historical/engine-default' : 'engine-default'),
-            TAX_YEAR: tables.TAX_YEAR || this.TAX_YEAR,
-            PRIMARY_REBATE: tables.PRIMARY_REBATE,
-            SECONDARY_REBATE: tables.SECONDARY_REBATE,
-            TERTIARY_REBATE: tables.TERTIARY_REBATE,
-            MEDICAL_CREDIT_MAIN: tables.MEDICAL_CREDIT_MAIN,
-            UIF_RATE: tables.UIF_RATE,
-            UIF_MONTHLY_CAP: tables.UIF_MONTHLY_CAP,
-            SDL_RATE: tables.SDL_RATE,
-            bracketCount: tables.BRACKETS ? tables.BRACKETS.length : 0
-        }));
-
         // Split taxable income into periodic (annualised × 12) and once-off (added once).
         // This ensures bonuses/overtime are not incorrectly projected × 12 in annual PAYE.
         var periodicTaxable = payrollData.basic_salary || 0;
@@ -769,46 +755,6 @@ const PayrollEngine = {
         // SDL continues to use full gross — it has no per-item exclusion concept.
         // uifExcludedEarnings is derived for trace/return transparency only.
         var uifExcludedEarnings = PayrollEngine.r2(Math.max(gross - uifApplicableGross, 0));
-
-        // ── TRACE 3: PAYE + UIF BUILD-UP ─────────────────────────────────────
-        console.log('[TRACE PAYE] ── TRACE 3: ENGINE INCOME BUILD-UP ──');
-        console.log('[TRACE PAYE] basic_salary:', payrollData.basic_salary);
-        console.log('[TRACE PAYE] periodicTaxable (pre-deductions):', periodicTaxable);
-        console.log('[TRACE PAYE] onceOffTaxable:', onceOffTaxable);
-        console.log('[TRACE PAYE] nonTaxableIncome:', nonTaxableIncome);
-        console.log('[TRACE PAYE] taxableGross:', taxableGross);
-        console.log('[TRACE PAYE] gross:', gross);
-        console.log('[TRACE PAYE] uifApplicableGross (whitelist):', uifApplicableGross);
-        console.log('[TRACE PAYE] uifExcludedEarnings (derived=gross-uifApplicable):', uifExcludedEarnings);
-        console.log('[TRACE PAYE] tables.TAX_YEAR:', tables ? tables.TAX_YEAR : 'MISSING');
-        console.log('[TRACE PAYE] tables.PRIMARY_REBATE:', tables ? tables.PRIMARY_REBATE : 'MISSING');
-        console.log('[TRACE PAYE] tables.UIF_RATE:', tables ? tables.UIF_RATE : 'MISSING');
-        console.log('[TRACE PAYE] opts.age:', opts ? opts.age : 'MISSING');
-        console.log('[TRACE PAYE] opts.medicalMembers:', opts ? opts.medicalMembers : 0);
-        console.log('[TRACE PAYE] opts.uif_registered:', opts ? opts.uif_registered : 'MISSING');
-        console.log('[TRACE PAYE] opts.is_director:', opts ? opts.is_director : false);
-        console.log('[TRACE PAYE] regular_inputs breakdown:');
-        resolvedRegularInputs.forEach(function(ri) {
-          if (ri.type !== 'deduction') {
-            console.log('[TRACE PAYE]   REGULAR "' + ri.description + '":', ri.amount,
-              '| is_taxable:', ri.is_taxable, '| affects_uif:', ri.affects_uif,
-              '| -> PAYE bucket:', ri.is_taxable === false ? 'nonTaxable' : 'periodic',
-              '| -> UIF included:', ri.affects_uif !== false ? 'YES' : 'no (excluded)');
-          }
-        });
-        (currentInputs || []).forEach(function(ci) {
-          if (ci.type !== 'deduction') {
-            var _traceProj = ci.paye_projection_type || 'VARIABLE_AVERAGE';
-            var _traceBucket = ci.is_taxable === false ? 'nonTaxable'
-                             : (_traceProj === 'ONCE_OFF' ? 'onceOff' : 'periodic');
-            console.log('[TRACE PAYE]   CURRENT "' + ci.description + '":', ci.amount,
-              '| is_taxable:', ci.is_taxable, '| affects_uif:', ci.affects_uif,
-              '| paye_projection_type:', _traceProj,
-              '| -> PAYE bucket:', _traceBucket,
-              '| -> UIF included:', ci.affects_uif !== false ? 'YES' : 'no (excluded)');
-          }
-        });
-        // ── END TRACE 3 ──────────────────────────────────────────────────────
 
         // === DEDUCTION TAX TREATMENT (SARS COMPLIANCE — migration 018) ===
         // Split deductions into two categories BEFORE PAYE is calculated:
@@ -1036,25 +982,10 @@ const PayrollEngine = {
         } else {
             paye = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, onceOffTaxable, opts, tables);
         }
-        // ── TRACE 3 continued: PAYE result ───────────────────────────────────
-        console.log('[TRACE PAYE] paye_base (statutory, before voluntary):', paye);
-        var _projectedAnnual = (periodicTaxable * 12) + onceOffTaxable;
-        console.log('[TRACE PAYE] projected_annual_taxable (periodic*12 + onceOff):', _projectedAnnual);
-        var _annualBracketTax = paye * 12 + (opts && opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) * 12 : 0);
-        console.log('[TRACE PAYE] monthly_paye_base:', paye, '| if zero: check rebate vs tax below');
-        console.log('[TRACE PAYE] primary_rebate_monthly:', tables ? (tables.PRIMARY_REBATE / 12).toFixed(2) : 'N/A');
-        // ── END TRACE 3 continued ────────────────────────────────────────────
-
-        // UIF is calculated from uifApplicableGross — items with affects_uif = false are excluded.
+        // UIF is calculated from uifApplicableGross — built positively from UIF-applicable items.
         // SDL is calculated from full gross — it has no per-item exclusion mechanism.
         var uif = PayrollEngine.calculateUIF(uifApplicableGross, tables);
         var sdl = PayrollEngine.calculateSDL(gross, tables);
-        // ── TRACE 4: UIF BUILD-UP ─────────────────────────────────────────────
-        console.log('[TRACE PAYE] ── TRACE 4: UIF BUILD-UP ──');
-        console.log('[TRACE PAYE] uifApplicableGross:', uifApplicableGross);
-        console.log('[TRACE PAYE] uif (before exemption checks):', uif);
-        console.log('[TRACE PAYE] sdl (before exemption checks):', sdl);
-        // ── END TRACE 4 ──────────────────────────────────────────────────────
 
         // Respect company-level SDL/UIF registration flags.
         // employeeOptions.uif_registered === false  →  company not registered for UIF  →  0

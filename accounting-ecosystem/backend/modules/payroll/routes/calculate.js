@@ -176,34 +176,6 @@ router.post(
         throw err;
       }
 
-      // ── TRACE 1+2: RAW + NORMALIZED INPUT ITEMS ──────────────────────────────
-      // Temporary diagnostic logging. Remove after PAYE root cause confirmed.
-      try {
-        console.log('[TRACE PAYE] ── TRACE 1+2: NORMALIZED INPUTS ──');
-        console.log('[TRACE PAYE] basic_salary:', normalizedInputs.basic_salary);
-        console.log('[TRACE PAYE] period:', normalizedInputs.period);
-        console.log('[TRACE PAYE] uif_registered:', normalizedInputs.employeeOptions && normalizedInputs.employeeOptions.uif_registered);
-        console.log('[TRACE PAYE] is_director:', normalizedInputs.employeeOptions && normalizedInputs.employeeOptions.is_director);
-        (normalizedInputs.regular_inputs || []).forEach(function(item) {
-          console.log('[TRACE PAYE] REGULAR_INPUT:', JSON.stringify({
-            name: item.description, amount: item.amount, type: item.type,
-            is_taxable: item.is_taxable, affects_uif: item.affects_uif,
-            tax_treatment: item.tax_treatment, paye_projection_type: item.paye_projection_type
-          }));
-        });
-        (normalizedInputs.currentInputs || []).forEach(function(item) {
-          console.log('[TRACE PAYE] CURRENT_INPUT:', JSON.stringify({
-            name: item.description, amount: item.amount, type: item.type,
-            is_taxable: item.is_taxable, affects_uif: item.affects_uif,
-            tax_treatment: item.tax_treatment, paye_projection_type: item.paye_projection_type
-          }));
-        });
-        console.log('[TRACE PAYE] regular_inputs_count:', (normalizedInputs.regular_inputs || []).length);
-        console.log('[TRACE PAYE] currentInputs_count:', (normalizedInputs.currentInputs || []).length);
-        console.log('[TRACE PAYE] overtime_count:', (normalizedInputs.overtime || []).length);
-      } catch (_traceErr) { /* non-fatal */ }
-      // ── END TRACE 1+2 ────────────────────────────────────────────────────────
-
       // STEP 3: Fetch admin-configured tax tables from Supabase KV.
       // The backend engine cannot use localStorage, so we load the tax_config
       // stored by the Tax Configuration UI and pass it directly to the engine.
@@ -214,58 +186,29 @@ router.post(
       //   2. Company-specific override (company_id = req.companyId) — only if no global set.
       let taxConfig = null;
       try {
-        // TRACE A — global KV lookup FIRST (authoritative SA tax tables from super admin)
-        let globalRowFound = false;
-        const { data: globalKvRow, error: kvErr1 } = await supabase
+        // Global KV lookup FIRST (authoritative SA tax tables from super admin).
+        // Fallback: company-specific override if no global set.
+        const { data: globalKvRow } = await supabase
           .from('payroll_kv_store_eco')
           .select('value')
           .eq('company_id', '__global__')
           .eq('key', 'tax_config')
           .maybeSingle();
-        globalRowFound = !!(globalKvRow && globalKvRow.value);
-        if (globalRowFound) {
+        if (globalKvRow && globalKvRow.value) {
           taxConfig = typeof globalKvRow.value === 'string'
             ? JSON.parse(globalKvRow.value)
             : globalKvRow.value;
         }
-        console.log('[calculate.js TRACE A] __global__ tax_config row found:', globalRowFound,
-          kvErr1 ? '| DB error: ' + kvErr1.message : '');
-
-        // Fallback: if no global config exists, use company-specific
-        let companyRowFound = false;
         if (!taxConfig) {
-          const { data: kvRow, error: kvErr2 } = await supabase
+          const { data: kvRow } = await supabase
             .from('payroll_kv_store_eco')
             .select('value')
             .eq('company_id', req.companyId)
             .eq('key', 'tax_config')
             .maybeSingle();
-          companyRowFound = !!(kvRow && kvRow.value);
-          if (companyRowFound) {
+          if (kvRow && kvRow.value) {
             taxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
           }
-          console.log('[calculate.js TRACE A] company_id:', req.companyId,
-            '| company-specific tax_config row found:', companyRowFound,
-            kvErr2 ? '| DB error: ' + kvErr2.message : '');
-        }
-
-        // TRACE B — final taxConfig summary
-        console.log('[calculate.js TRACE B] taxConfig selected source:',
-          taxConfig ? (globalRowFound ? '__global__' : 'company-specific') : 'NONE (engine defaults will apply)');
-        if (taxConfig) {
-          console.log('[calculate.js TRACE B] taxConfig values:', JSON.stringify({
-            TAX_YEAR:          taxConfig.TAX_YEAR,
-            PRIMARY_REBATE:    taxConfig.PRIMARY_REBATE,
-            SECONDARY_REBATE:  taxConfig.SECONDARY_REBATE,
-            TERTIARY_REBATE:   taxConfig.TERTIARY_REBATE,
-            MEDICAL_CREDIT_MAIN: taxConfig.MEDICAL_CREDIT_MAIN,
-            UIF_RATE:          taxConfig.UIF_RATE,
-            UIF_MONTHLY_CAP:   taxConfig.UIF_MONTHLY_CAP,
-            SDL_RATE:          taxConfig.SDL_RATE,
-            bracketCount:      Array.isArray(taxConfig.BRACKETS) ? taxConfig.BRACKETS.length : 0
-          }));
-        } else {
-          console.warn('[calculate.js TRACE B] NO taxConfig loaded — engine will use hardcoded defaults (PRIMARY_REBATE = 17235)');
         }
       } catch (kvErr) {
         console.warn('[payroll/calculate] Could not load tax_config from KV:', kvErr.message);
@@ -304,30 +247,6 @@ router.post(
           PayrollCalculationService.formatError(err)
         );
       }
-
-      // ── TRACE 5: ENGINE OUTPUT ────────────────────────────────────────────────
-      try {
-        console.log('[TRACE PAYE] ── TRACE 5: ENGINE OUTPUT ──');
-        console.log('[TRACE PAYE] engine.gross:', calculationResult.gross);
-        console.log('[TRACE PAYE] engine.taxableGross:', calculationResult.taxableGross);
-        console.log('[TRACE PAYE] engine.periodicTaxableGross:', calculationResult.periodicTaxableGross);
-        console.log('[TRACE PAYE] engine.onceOffTaxableGross:', calculationResult.onceOffTaxableGross);
-        console.log('[TRACE PAYE] engine.uifApplicableGross:', calculationResult.uifApplicableGross);
-        console.log('[TRACE PAYE] engine.uifExcludedEarnings:', calculationResult.uifExcludedEarnings);
-        console.log('[TRACE PAYE] engine.paye_base (statutory):', calculationResult.paye_base);
-        console.log('[TRACE PAYE] engine.paye (after voluntary):', calculationResult.paye);
-        console.log('[TRACE PAYE] engine.uif:', calculationResult.uif);
-        console.log('[TRACE PAYE] engine.sdl:', calculationResult.sdl);
-        console.log('[TRACE PAYE] engine.net:', calculationResult.net);
-        console.log('[TRACE PAYE] engine.medicalCredit:', calculationResult.medicalCredit);
-        console.log('[TRACE PAYE] engine.taxBeforeRebate:', calculationResult.taxBeforeRebate);
-        console.log('[TRACE PAYE] engine.rebate:', calculationResult.rebate);
-        console.log('[TRACE PAYE] engine.tax_year:', calculationResult.tax_year);
-        console.log('[TRACE PAYE] engine.uif_monthly_cap:', calculationResult.uif_monthly_cap);
-        console.log('[TRACE PAYE] meta.ytdMethod:', calculationResult._meta && calculationResult._meta.ytdMethod);
-        console.log('[TRACE PAYE] meta.calculationMethod:', calculationResult._meta && calculationResult._meta.calculationMethod);
-      } catch (_traceErr) { /* non-fatal */ }
-      // ── END TRACE 5 ──────────────────────────────────────────────────────────
 
       // STEP 5: Validate output
       try {
