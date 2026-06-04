@@ -1347,8 +1347,11 @@
             document.getElementById('itemCategory').value = item.category;
             document.getElementById('defaultAmount').value = item.default_amount || '';
             updateDefaultAmountLabel();
-            document.getElementById('isTaxable').value = item.is_taxable ? '1' : '0';
-            document.getElementById('affectsUif').value = item.affects_uif ? '1' : '0';
+            document.getElementById('isTaxable').value = item.is_taxable === false ? '0' : '1';
+            // Strict check: only show "No" when explicitly false. null renders as "Yes" (UIF-applicable
+            // is the SA default). A null stored value means the item predates this column — treat as Yes
+            // so the accountant consciously sets No and saves, writing an explicit false to the DB.
+            document.getElementById('affectsUif').value = item.affects_uif === false ? '0' : '1';
             document.getElementById('taxTreatment').value = item.tax_treatment || 'net_only';
             document.getElementById('payeProjectionType').value = item.paye_projection_type || 'VARIABLE_AVERAGE';
             document.getElementById('itemFrequency').value = item.frequency || 'regular';
