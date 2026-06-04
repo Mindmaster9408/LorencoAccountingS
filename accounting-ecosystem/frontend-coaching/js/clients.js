@@ -6,7 +6,7 @@ import { renderCockpit, saveGauges } from './gauges.js';
 import { renderDashboard } from './dashboard.js';
 import { renderBASISAssessment } from './basis-ui.js?v=2';
 import { renderSpilClientPanel } from './spil-client.js?v=3';
-import { renderJourneyTracker } from './journey-ui.js';
+import { renderJourneyTracker } from './journey-ui.js?v=2';
 
 export async function openClient(clientId, options = {}) {
     const store = await readStore();
