@@ -28,7 +28,7 @@ router.get('/', authenticate, hasPermission('diagnostics.view'), async (req, res
     const olderThanDays = parseInt(req.query.olderThanDays, 10) || 30;
 
     // Validate category if provided
-    const VALID_CATEGORIES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    const VALID_CATEGORIES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
     if (category && !VALID_CATEGORIES.includes(category)) {
       return res.status(400).json({ error: `Invalid category '${category}'. Must be one of: ${VALID_CATEGORIES.join(', ')}` });
     }
@@ -106,7 +106,14 @@ router.post('/repair', authenticate, hasPermission('diagnostics.repair'), async 
     return res.status(400).json({ error: 'reason is required (non-empty string) — all repairs are audited' });
   }
 
-  const VALID_ACTIONS = ['REASSIGN_VAT_PERIOD', 'RELINK_BANK_TX', 'REVERSE_DANGLING_JOURNAL', 'ACKNOWLEDGE'];
+  const VALID_ACTIONS = [
+    'REASSIGN_VAT_PERIOD',
+    'RELINK_BANK_TX',
+    'REVERSE_DANGLING_JOURNAL',
+    'RECALCULATE_AGEING',
+    'REBUILD_SNAPSHOTS',
+    'ACKNOWLEDGE',
+  ];
   if (!VALID_ACTIONS.includes(repairAction)) {
     return res.status(400).json({ error: `Unknown repairAction '${repairAction}'. Must be one of: ${VALID_ACTIONS.join(', ')}` });
   }
@@ -190,6 +197,36 @@ router.post('/repair', authenticate, hasPermission('diagnostics.repair'), async 
             originalJournalId:  repairResult.originalJournalId,
             reversalJournalId:  repairResult.reversalJournalId,
           },
+          reason.trim()
+        );
+        break;
+      }
+
+      case 'RECALCULATE_AGEING': {
+        repairResult = await DiagnosticsService.repairRecalculateAgeing(companyId);
+
+        await AuditLogger.logUserAction(
+          req,
+          'DIAGNOSTIC_REPAIR_AGEING_RECALCULATED',
+          'COMPANY',
+          String(companyId),
+          null,
+          { findingId, ageingCacheCleared: repairResult.ageingCacheCleared },
+          reason.trim()
+        );
+        break;
+      }
+
+      case 'REBUILD_SNAPSHOTS': {
+        repairResult = await DiagnosticsService.repairRebuildSnapshots(companyId);
+
+        await AuditLogger.logUserAction(
+          req,
+          'DIAGNOSTIC_REPAIR_SNAPSHOTS_REBUILT',
+          'COMPANY',
+          String(companyId),
+          null,
+          { findingId, resetCount: repairResult.resetCount, batches: repairResult.batches },
           reason.trim()
         );
         break;

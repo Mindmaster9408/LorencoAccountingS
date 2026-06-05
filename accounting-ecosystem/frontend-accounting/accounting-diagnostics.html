@@ -3,290 +3,98 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lorenco Accounting - Diagnostics</title>
+  <title>Lorenco Accounting — Diagnostics &amp; Repair</title>
   <script src="js/navigation.js"></script>
   <script src="js/theme-guard.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f0f2f5;
+      background: #0f1117;
+      color: #e4e8f0;
+      min-height: 100vh;
     }
 
-    /* ── Page content wrapper ─────────────────────────────────────────────── */
+    /* ── Layout ───────────────────────────────────────────────────────────── */
     .page-content {
-      max-width: 1280px;
+      max-width: 1360px;
       margin: 0 auto;
-      padding: 28px 24px;
+      padding: 28px 24px 48px;
     }
 
+    /* ── Page Header ─────────────────────────────────────────────────────── */
     .page-header {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
-      margin-bottom: 24px;
+      margin-bottom: 28px;
+      gap: 16px;
       flex-wrap: wrap;
-      gap: 12px;
     }
-
     .page-title {
       font-size: 22px;
       font-weight: 700;
-      color: #1a2332;
+      color: #e4e8f0;
+      letter-spacing: -0.01em;
     }
-
     .page-subtitle {
       font-size: 13px;
-      color: #6b7280;
-      margin-top: 2px;
+      color: #6b7a96;
+      margin-top: 4px;
+      line-height: 1.5;
+      max-width: 520px;
     }
-
-    /* ── Controls ─────────────────────────────────────────────────────────── */
-    .controls {
+    .header-controls {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       flex-wrap: wrap;
     }
-
-    .controls select, .controls input {
+    select, input[type="number"] {
       padding: 8px 12px;
-      border: 1px solid #d1d5db;
+      border: 1px solid #252d3d;
       border-radius: 6px;
       font-size: 13px;
-      color: #374151;
-      background: white;
+      color: #c8d0de;
+      background: #161b27;
       outline: none;
+      transition: border-color 0.15s;
     }
-    .controls select:focus, .controls input:focus {
-      border-color: #0066cc;
-      box-shadow: 0 0 0 2px rgba(0,102,204,0.12);
+    select:focus, input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.18);
     }
+    .stale-label { font-size: 12px; color: #6b7a96; }
 
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
     .btn {
-      padding: 9px 18px;
+      padding: 9px 20px;
       border-radius: 6px;
       font-size: 13px;
       font-weight: 600;
       border: none;
       cursor: pointer;
-      transition: opacity 0.15s;
+      transition: opacity 0.15s, background 0.15s;
+      white-space: nowrap;
     }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-primary { background: #0066cc; color: white; }
-    .btn-primary:hover:not(:disabled) { background: #0055aa; }
-    .btn-danger  { background: #dc2626; color: white; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary  { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-danger   { background: #dc2626; color: #fff; }
     .btn-danger:hover:not(:disabled)  { background: #b91c1c; }
-    .btn-outline {
-      background: white;
-      color: #374151;
-      border: 1px solid #d1d5db;
+    .btn-ghost {
+      background: transparent;
+      color: #8892a0;
+      border: 1px solid #252d3d;
     }
-    .btn-outline:hover:not(:disabled) { background: #f3f4f6; }
-
-    /* ── Score card row ───────────────────────────────────────────────────── */
-    .score-row {
-      display: grid;
-      grid-template-columns: 200px repeat(4, 1fr);
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-
-    .score-card {
-      background: white;
-      border-radius: 10px;
-      padding: 18px 20px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .score-main {
-      font-size: 36px;
-      font-weight: 800;
-      line-height: 1;
-    }
-    .score-main.green  { color: #16a34a; }
-    .score-main.amber  { color: #d97706; }
-    .score-main.red    { color: #dc2626; }
-
-    .score-label {
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: #6b7280;
-    }
-
-    .count-main {
-      font-size: 28px;
-      font-weight: 700;
-      line-height: 1;
-    }
-    .count-critical { color: #dc2626; }
-    .count-high     { color: #ea580c; }
-    .count-medium   { color: #d97706; }
-    .count-low      { color: #16a34a; }
-
-    .score-card .checked-at {
-      font-size: 11px;
-      color: #9ca3af;
-      margin-top: 6px;
-    }
-
-    /* ── Finding status bar ───────────────────────────────────────────────── */
-    .status-bar {
-      background: white;
-      border-radius: 10px;
-      padding: 14px 20px;
-      margin-bottom: 16px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .status-bar .filter-label { font-size: 13px; color: #6b7280; font-weight: 500; }
-    .filter-btn {
-      padding: 5px 14px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      border: 1.5px solid;
-      cursor: pointer;
-      transition: all 0.15s;
-      background: white;
-    }
-    .filter-btn.active { color: white; }
-    .filter-btn.all         { border-color: #6b7280; color: #374151; }
-    .filter-btn.all.active  { background: #6b7280; color: white; }
-    .filter-btn.critical    { border-color: #dc2626; color: #dc2626; }
-    .filter-btn.critical.active { background: #dc2626; }
-    .filter-btn.high        { border-color: #ea580c; color: #ea580c; }
-    .filter-btn.high.active { background: #ea580c; }
-    .filter-btn.medium      { border-color: #d97706; color: #d97706; }
-    .filter-btn.medium.active { background: #d97706; }
-    .filter-btn.low         { border-color: #16a34a; color: #16a34a; }
-    .filter-btn.low.active  { background: #16a34a; }
-    .filter-btn:hover:not(.active) { opacity: 0.75; }
-
-    /* ── Findings table ───────────────────────────────────────────────────── */
-    .findings-table-wrap {
-      background: white;
-      border-radius: 10px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-      overflow: hidden;
-    }
-
-    .findings-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-    .findings-table th {
-      background: #f8f9fa;
-      padding: 10px 14px;
-      text-align: left;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: #6b7280;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    .findings-table td {
-      padding: 12px 14px;
-      border-bottom: 1px solid #f3f4f6;
-      vertical-align: top;
-      color: #374151;
-    }
-    .findings-table tr:last-child td { border-bottom: none; }
-    .findings-table tr:hover td { background: #f9fafb; }
-
-    .sev-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .sev-CRITICAL { background: #fee2e2; color: #991b1b; }
-    .sev-HIGH     { background: #ffedd5; color: #9a3412; }
-    .sev-MEDIUM   { background: #fef3c7; color: #92400e; }
-    .sev-LOW      { background: #dcfce7; color: #166534; }
-
-    .cat-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 10px;
-      font-weight: 600;
-      background: #eff6ff;
-      color: #1d4ed8;
-      white-space: nowrap;
-    }
-
-    .finding-title { font-weight: 600; color: #1a2332; margin-bottom: 2px; }
-    .finding-detail { color: #6b7280; font-size: 12px; line-height: 1.45; }
-    .finding-id { font-family: monospace; font-size: 10px; color: #9ca3af; margin-top: 3px; }
-
-    .repair-btn {
-      padding: 5px 12px;
-      background: #0066cc;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .repair-btn:hover { background: #0055aa; }
-
-    .no-findings {
-      padding: 48px;
-      text-align: center;
-      color: #6b7280;
-    }
-    .no-findings .icon { font-size: 40px; margin-bottom: 10px; }
-    .no-findings .text { font-size: 15px; font-weight: 600; color: #374151; }
-    .no-findings .sub  { font-size: 13px; }
-
-    /* ── Loading state ────────────────────────────────────────────────────── */
-    .loading-state {
-      padding: 64px;
-      text-align: center;
-      color: #6b7280;
-    }
-    .spinner {
-      width: 36px; height: 36px;
-      border: 3px solid #e5e7eb;
-      border-top-color: #0066cc;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto 14px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Empty state ──────────────────────────────────────────────────────── */
-    .empty-state {
-      background: white;
-      border-radius: 10px;
-      padding: 64px;
-      text-align: center;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-      color: #6b7280;
-    }
+    .btn-ghost:hover:not(:disabled) { background: #1a1f2e; color: #c8d0de; }
 
     /* ── Error banner ─────────────────────────────────────────────────────── */
     .error-banner {
-      background: #fee2e2;
-      color: #991b1b;
-      border: 1px solid #fca5a5;
+      background: rgba(220,38,38,0.12);
+      color: #fca5a5;
+      border: 1px solid rgba(220,38,38,0.3);
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 20px;
@@ -295,96 +103,393 @@
     }
     .error-banner.visible { display: block; }
 
-    /* ── Modal ────────────────────────────────────────────────────────────── */
+    /* ── Score Strip ──────────────────────────────────────────────────────── */
+    .score-strip {
+      display: grid;
+      grid-template-columns: 180px repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .score-card {
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+    .score-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6b7a96;
+      margin-bottom: 8px;
+    }
+    .score-value {
+      font-size: 34px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .score-value.green  { color: #22c55e; }
+    .score-value.amber  { color: #f59e0b; }
+    .score-value.red    { color: #ef4444; }
+    .count-value { font-size: 28px; font-weight: 700; line-height: 1; }
+    .count-critical { color: #ef4444; }
+    .count-high     { color: #f97316; }
+    .count-medium   { color: #f59e0b; }
+    .count-low      { color: #22c55e; }
+    .checked-at { font-size: 11px; color: #4b5568; margin-top: 6px; }
+
+    /* ── Section Dashboard ────────────────────────────────────────────────── */
+    .section-heading {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #6b7a96;
+      margin-bottom: 12px;
+      margin-top: 8px;
+    }
+    .section-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .section-card {
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: border-color 0.18s, background 0.18s;
+      position: relative;
+      overflow: hidden;
+    }
+    .section-card:hover { border-color: #374151; background: #1a1f2e; }
+    .section-card.active { border-color: #2563eb; background: rgba(37,99,235,0.08); }
+    .section-card.all-active { border-color: #4b5568; background: rgba(75,85,104,0.12); }
+
+    .section-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .section-icon-wrap {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+    }
+    .section-status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-pass    { background: #22c55e; }
+    .dot-warn    { background: #f59e0b; }
+    .dot-fail    { background: #ef4444; }
+    .dot-unknown { background: #374151; }
+
+    .section-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #c8d0de;
+      margin-bottom: 2px;
+    }
+    .section-desc {
+      font-size: 11px;
+      color: #4b5568;
+      margin-bottom: 8px;
+    }
+    .section-count-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .sect-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .sect-badge.none   { background: rgba(34,197,94,0.12);  color: #22c55e; }
+    .sect-badge.crit   { background: rgba(239,68,68,0.15);  color: #ef4444; }
+    .sect-badge.high   { background: rgba(249,115,22,0.15); color: #f97316; }
+    .sect-badge.medium { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .sect-badge.low    { background: rgba(34,197,94,0.10);  color: #22c55e; }
+
+    /* icon backgrounds per section */
+    .icon-general   { background: rgba(100,116,139,0.15); }
+    .icon-ar        { background: rgba(59,130,246,0.15);  }
+    .icon-ap        { background: rgba(168,85,247,0.15);  }
+    .icon-vat       { background: rgba(20,184,166,0.15);  }
+    .icon-bank      { background: rgba(245,158,11,0.15);  }
+    .icon-reporting { background: rgba(99,102,241,0.15);  }
+    .icon-period    { background: rgba(239,68,68,0.15);   }
+    .icon-audit     { background: rgba(34,197,94,0.15);   }
+
+    /* ── Findings Panel ───────────────────────────────────────────────────── */
+    .filter-bar {
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .filter-label { font-size: 12px; color: #6b7a96; font-weight: 500; margin-right: 4px; }
+    .sev-filter-btn {
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1.5px solid;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: transparent;
+      letter-spacing: 0.02em;
+    }
+    .sev-filter-btn.active { color: #fff; }
+    .sev-filter-btn.all        { border-color: #374151; color: #8892a0; }
+    .sev-filter-btn.all.active { background: #374151; }
+    .sev-filter-btn.critical        { border-color: #ef4444; color: #ef4444; }
+    .sev-filter-btn.critical.active { background: #ef4444; }
+    .sev-filter-btn.high            { border-color: #f97316; color: #f97316; }
+    .sev-filter-btn.high.active     { background: #f97316; }
+    .sev-filter-btn.medium          { border-color: #f59e0b; color: #f59e0b; }
+    .sev-filter-btn.medium.active   { background: #f59e0b; }
+    .sev-filter-btn.low             { border-color: #22c55e; color: #22c55e; }
+    .sev-filter-btn.low.active      { background: #22c55e; }
+    .sev-filter-btn:hover:not(.active) { opacity: 0.75; }
+
+    /* ── Findings Table ───────────────────────────────────────────────────── */
+    .findings-wrap {
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .findings-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .findings-table th {
+      background: #111520;
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #4b5568;
+      border-bottom: 1px solid #1e2535;
+    }
+    .findings-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #1a1f2e;
+      vertical-align: top;
+      color: #c8d0de;
+    }
+    .findings-table tr:last-child td { border-bottom: none; }
+    .findings-table tr:hover td { background: rgba(37,99,235,0.04); }
+
+    .sev-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+      letter-spacing: 0.03em;
+    }
+    .sev-CRITICAL { background: rgba(239,68,68,0.15);  color: #ef4444; }
+    .sev-HIGH     { background: rgba(249,115,22,0.15); color: #f97316; }
+    .sev-MEDIUM   { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .sev-LOW      { background: rgba(34,197,94,0.12);  color: #22c55e; }
+
+    .cat-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      background: rgba(37,99,235,0.12);
+      color: #60a5fa;
+      white-space: nowrap;
+      font-family: monospace;
+    }
+
+    .finding-title  { font-weight: 600; color: #e4e8f0; margin-bottom: 3px; font-size: 13px; }
+    .finding-detail { color: #6b7a96; font-size: 12px; line-height: 1.5; max-width: 620px; }
+    .finding-id     { font-family: monospace; font-size: 10px; color: #374151; margin-top: 4px; }
+
+    .repair-btn {
+      padding: 5px 12px;
+      background: #1d4ed8;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .repair-btn:hover { background: #1e40af; }
+
+    .no-findings {
+      padding: 48px 24px;
+      text-align: center;
+      color: #4b5568;
+    }
+    .no-findings .nf-icon { font-size: 36px; margin-bottom: 10px; }
+    .no-findings .nf-text { font-size: 15px; font-weight: 600; color: #6b7a96; margin-bottom: 4px; }
+    .no-findings .nf-sub  { font-size: 13px; }
+
+    /* ── Loading ──────────────────────────────────────────────────────────── */
+    .loading-state {
+      padding: 64px;
+      text-align: center;
+      color: #4b5568;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #1a1f2e;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Empty State ─────────────────────────────────────────────────────── */
+    .empty-state {
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 10px;
+      padding: 64px 24px;
+      text-align: center;
+      color: #4b5568;
+    }
+    .empty-state .es-icon { font-size: 40px; margin-bottom: 14px; }
+    .empty-state .es-title { font-size: 15px; font-weight: 600; color: #6b7a96; margin-bottom: 6px; }
+    .empty-state .es-sub { font-size: 13px; }
+
+    /* ── Modal ───────────────────────────────────────────────────────────── */
     .modal-overlay {
       position: fixed; inset: 0;
-      background: rgba(0,0,0,0.5);
-      display: flex;
+      background: rgba(0,0,0,0.7);
+      display: none;
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      display: none;
     }
     .modal-overlay.open { display: flex; }
-
     .modal {
-      background: white;
-      border-radius: 12px;
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 14px;
       padding: 28px;
-      width: 520px;
+      width: 560px;
       max-width: 95vw;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.6);
     }
-    .modal-title {
-      font-size: 17px;
-      font-weight: 700;
-      color: #1a2332;
-      margin-bottom: 8px;
-    }
-    .modal-subtitle {
-      font-size: 13px;
-      color: #6b7280;
-      margin-bottom: 20px;
-      line-height: 1.5;
-    }
+    .modal-title    { font-size: 17px; font-weight: 700; color: #e4e8f0; margin-bottom: 6px; }
+    .modal-subtitle { font-size: 13px; color: #6b7a96; margin-bottom: 20px; line-height: 1.5; }
+
     .modal-finding-box {
-      background: #f8f9fa;
-      border: 1px solid #e5e7eb;
+      background: #111520;
+      border: 1px solid #1e2535;
       border-radius: 8px;
       padding: 12px 14px;
-      margin-bottom: 18px;
-      font-size: 12px;
-      color: #374151;
+      margin-bottom: 20px;
     }
-    .modal-finding-box .title { font-weight: 600; margin-bottom: 4px; }
-    .modal-finding-box .detail { color: #6b7280; font-size: 12px; }
+    .modal-finding-box .mfb-title  { font-weight: 600; color: #e4e8f0; margin-bottom: 4px; font-size: 13px; }
+    .modal-finding-box .mfb-detail { color: #6b7a96; font-size: 12px; line-height: 1.5; }
 
-    .form-group { margin-bottom: 16px; }
-    .form-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; }
-    .form-input {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      resize: vertical;
-    }
-    .form-input:focus { border-color: #0066cc; box-shadow: 0 0 0 2px rgba(0,102,204,0.12); }
-
-    .action-row-label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+    .action-row-label { font-size: 12px; font-weight: 700; color: #8892a0; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
     .action-select-group { display: flex; flex-direction: column; gap: 6px; }
     .action-option {
       display: flex; align-items: flex-start; gap: 10px;
-      padding: 10px 12px;
-      border: 1.5px solid #e5e7eb;
-      border-radius: 7px;
+      padding: 11px 13px;
+      border: 1.5px solid #252d3d;
+      border-radius: 8px;
       cursor: pointer;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, background 0.15s;
     }
-    .action-option input[type="radio"] { margin-top: 2px; flex-shrink: 0; }
-    .action-option:has(input:checked) { border-color: #0066cc; background: #eff6ff; }
-    .action-option-label { font-size: 13px; font-weight: 600; color: #1a2332; }
-    .action-option-desc  { font-size: 11px; color: #6b7280; margin-top: 1px; }
+    .action-option input[type="radio"] { margin-top: 2px; flex-shrink: 0; accent-color: #2563eb; }
+    .action-option:has(input:checked) { border-color: #2563eb; background: rgba(37,99,235,0.08); }
+    .action-option-label { font-size: 13px; font-weight: 600; color: #c8d0de; }
+    .action-option-desc  { font-size: 11px; color: #4b5568; margin-top: 2px; }
 
     .extra-fields { margin-top: 14px; display: none; }
     .extra-fields.visible { display: block; }
 
     .warning-box {
-      background: #fff3cd;
-      border: 1px solid #ffc107;
+      background: rgba(245,158,11,0.1);
+      border: 1px solid rgba(245,158,11,0.3);
       border-radius: 6px;
       padding: 10px 14px;
       font-size: 12px;
-      color: #664d03;
+      color: #fbbf24;
+      margin-bottom: 16px;
+    }
+    .success-box {
+      background: rgba(34,197,94,0.1);
+      border: 1px solid rgba(34,197,94,0.3);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #4ade80;
       margin-bottom: 16px;
     }
 
-    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #8892a0;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .form-input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid #252d3d;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      color: #c8d0de;
+      background: #111520;
+      outline: none;
+      resize: vertical;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.18); }
+    .form-input::placeholder { color: #374151; }
 
-    @media (max-width: 768px) {
-      .score-row { grid-template-columns: 1fr 1fr; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+
+    /* ── Repair Result Modal ─────────────────────────────────────────────── */
+    .result-row   { display: flex; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+    .result-label { color: #6b7a96; width: 120px; flex-shrink: 0; }
+    .result-value { color: #c8d0de; font-family: monospace; word-break: break-all; }
+
+    @media (max-width: 900px) {
+      .section-grid { grid-template-columns: repeat(2, 1fr); }
+      .score-strip  { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .section-grid { grid-template-columns: 1fr 1fr; }
       .findings-table { font-size: 12px; }
     }
   </style>
@@ -393,14 +498,15 @@
 
 <div class="page-content">
 
+  <!-- ── Page Header ──────────────────────────────────────────────────────── -->
   <div class="page-header">
     <div>
-      <div class="page-title">System Diagnostics</div>
-      <div class="page-subtitle">Integrity checks across journals, bank linkage, invoices, VAT, and audit trail</div>
+      <div class="page-title">Diagnostics &amp; Repair Centre</div>
+      <div class="page-subtitle">Identifies data integrity issues across AR, AP, VAT, Bank, Reporting, and audit trail. All repairs require explicit confirmation and create a full audit trail.</div>
     </div>
-    <div class="controls">
-      <select id="categoryFilter" title="Category">
-        <option value="">All categories</option>
+    <div class="header-controls">
+      <select id="categoryFilter" title="Filter by category">
+        <option value="">All sections</option>
         <option value="A">A — Journal Integrity</option>
         <option value="B">B — Bank Linkage</option>
         <option value="C">C — Invoice Linkage</option>
@@ -408,9 +514,12 @@
         <option value="E">E — Bank Staging</option>
         <option value="F">F — Period / Year-End</option>
         <option value="G">G — Audit Trail</option>
+        <option value="H">H — AR Integrity</option>
+        <option value="I">I — AP Integrity</option>
+        <option value="J">J — Reporting Integrity</option>
       </select>
-      <input id="staleDays" type="number" min="1" max="3650" value="30" title="Staging stale threshold (days)" style="width:90px;" />
-      <span style="font-size:12px;color:#6b7280;">days stale</span>
+      <input id="staleDays" type="number" min="1" max="3650" value="30" title="Staging stale threshold (days)" style="width:80px;" />
+      <span class="stale-label">days stale</span>
       <button id="runBtn" class="btn btn-primary" onclick="runDiagnostics()">Run Diagnostics</button>
     </div>
   </div>
@@ -418,112 +527,221 @@
   <!-- Error banner -->
   <div id="errorBanner" class="error-banner"></div>
 
-  <!-- Score row — hidden until first run -->
-  <div id="scoreRow" class="score-row" style="display:none;">
+  <!-- ── Score Strip ──────────────────────────────────────────────────────── -->
+  <div id="scoreStrip" class="score-strip" style="display:none;">
     <div class="score-card">
       <div class="score-label">Health Score</div>
-      <div id="scoreValue" class="score-main">—</div>
+      <div id="scoreValue" class="score-value">—</div>
       <div id="checkedAt" class="checked-at">Not yet run</div>
     </div>
     <div class="score-card">
       <div class="score-label">Critical</div>
-      <div id="countCritical" class="count-main count-critical">0</div>
+      <div id="cntCritical" class="count-value count-critical">0</div>
     </div>
     <div class="score-card">
       <div class="score-label">High</div>
-      <div id="countHigh" class="count-main count-high">0</div>
+      <div id="cntHigh" class="count-value count-high">0</div>
     </div>
     <div class="score-card">
       <div class="score-label">Medium</div>
-      <div id="countMedium" class="count-main count-medium">0</div>
+      <div id="cntMedium" class="count-value count-medium">0</div>
     </div>
     <div class="score-card">
       <div class="score-label">Low</div>
-      <div id="countLow" class="count-main count-low">0</div>
+      <div id="cntLow" class="count-value count-low">0</div>
     </div>
   </div>
 
-  <!-- Initial empty state -->
-  <div id="emptyState" class="empty-state">
-    <div style="font-size:40px;margin-bottom:12px;">&#x1F50D;</div>
-    <div style="font-size:15px;font-weight:600;color:#374151;margin-bottom:6px;">No diagnostics run yet</div>
-    <div style="font-size:13px;">Click <strong>Run Diagnostics</strong> to check data integrity for this company.</div>
+  <!-- ── Section Dashboard ────────────────────────────────────────────────── -->
+  <div id="sectionDashboard" style="display:none;">
+    <div class="section-heading">Sections — click to filter findings</div>
+    <div class="section-grid">
+      <!-- All -->
+      <div class="section-card all-active" id="sect-ALL" onclick="filterBySection('ALL')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-general">&#x2139;</div>
+          <div class="section-status-dot dot-unknown" id="dot-ALL"></div>
+        </div>
+        <div class="section-name">All Sections</div>
+        <div class="section-desc">Show every finding</div>
+        <div class="section-count-row" id="badges-ALL"></div>
+      </div>
+      <!-- General Health (A + C) -->
+      <div class="section-card" id="sect-GENERAL" onclick="filterBySection('GENERAL')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-general">&#x2699;</div>
+          <div class="section-status-dot dot-unknown" id="dot-GENERAL"></div>
+        </div>
+        <div class="section-name">General Health</div>
+        <div class="section-desc">Journal &amp; invoice integrity</div>
+        <div class="section-count-row" id="badges-GENERAL"></div>
+      </div>
+      <!-- AR -->
+      <div class="section-card" id="sect-AR" onclick="filterBySection('AR')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-ar">&#x25BC;</div>
+          <div class="section-status-dot dot-unknown" id="dot-AR"></div>
+        </div>
+        <div class="section-name">AR Integrity</div>
+        <div class="section-desc">Accounts receivable</div>
+        <div class="section-count-row" id="badges-AR"></div>
+      </div>
+      <!-- AP -->
+      <div class="section-card" id="sect-AP" onclick="filterBySection('AP')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-ap">&#x25B2;</div>
+          <div class="section-status-dot dot-unknown" id="dot-AP"></div>
+        </div>
+        <div class="section-name">AP Integrity</div>
+        <div class="section-desc">Accounts payable</div>
+        <div class="section-count-row" id="badges-AP"></div>
+      </div>
+      <!-- VAT -->
+      <div class="section-card" id="sect-VAT" onclick="filterBySection('VAT')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-vat">&#x25A0;</div>
+          <div class="section-status-dot dot-unknown" id="dot-VAT"></div>
+        </div>
+        <div class="section-name">VAT Integrity</div>
+        <div class="section-desc">VAT periods &amp; control accounts</div>
+        <div class="section-count-row" id="badges-VAT"></div>
+      </div>
+      <!-- Bank -->
+      <div class="section-card" id="sect-BANK" onclick="filterBySection('BANK')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-bank">&#x25C6;</div>
+          <div class="section-status-dot dot-unknown" id="dot-BANK"></div>
+        </div>
+        <div class="section-name">Bank Integrity</div>
+        <div class="section-desc">Bank linkage &amp; staging</div>
+        <div class="section-count-row" id="badges-BANK"></div>
+      </div>
+      <!-- Reporting -->
+      <div class="section-card" id="sect-REPORTING" onclick="filterBySection('REPORTING')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-reporting">&#x25D0;</div>
+          <div class="section-status-dot dot-unknown" id="dot-REPORTING"></div>
+        </div>
+        <div class="section-name">Reporting Integrity</div>
+        <div class="section-desc">TB, P&amp;L &amp; control account cross-checks</div>
+        <div class="section-count-row" id="badges-REPORTING"></div>
+      </div>
+      <!-- Period -->
+      <div class="section-card" id="sect-PERIOD" onclick="filterBySection('PERIOD')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-period">&#x29BF;</div>
+          <div class="section-status-dot dot-unknown" id="dot-PERIOD"></div>
+        </div>
+        <div class="section-name">Period Integrity</div>
+        <div class="section-desc">Accounting &amp; VAT periods</div>
+        <div class="section-count-row" id="badges-PERIOD"></div>
+      </div>
+      <!-- Audit -->
+      <div class="section-card" id="sect-AUDIT" onclick="filterBySection('AUDIT')">
+        <div class="section-card-top">
+          <div class="section-icon-wrap icon-audit">&#x25CF;</div>
+          <div class="section-status-dot dot-unknown" id="dot-AUDIT"></div>
+        </div>
+        <div class="section-name">Audit Trail</div>
+        <div class="section-desc">Audit trail health</div>
+        <div class="section-count-row" id="badges-AUDIT"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- Loading state -->
+  <!-- ── Loading ──────────────────────────────────────────────────────────── -->
   <div id="loadingState" class="loading-state" style="display:none;">
     <div class="spinner"></div>
-    <div style="font-size:14px;font-weight:500;">Running diagnostic checks…</div>
-    <div style="font-size:12px;color:#9ca3af;margin-top:4px;">This may take a few seconds</div>
+    <div style="font-size:14px;font-weight:500;color:#6b7a96;">Running diagnostic checks&hellip;</div>
+    <div style="font-size:12px;color:#374151;margin-top:6px;">This may take a few seconds</div>
   </div>
 
-  <!-- Findings panel — hidden until first run -->
+  <!-- ── Empty State ──────────────────────────────────────────────────────── -->
+  <div id="emptyState" class="empty-state">
+    <div class="es-icon">&#x1F50D;</div>
+    <div class="es-title">No diagnostics run yet</div>
+    <div class="es-sub">Click <strong>Run Diagnostics</strong> to check data integrity for this company.</div>
+  </div>
+
+  <!-- ── Findings Panel ───────────────────────────────────────────────────── -->
   <div id="findingsPanel" style="display:none;">
-    <div class="status-bar">
-      <span class="filter-label">Filter:</span>
-      <button class="filter-btn all active" onclick="setFilter('all')">All (<span id="filterCountAll">0</span>)</button>
-      <button class="filter-btn critical" onclick="setFilter('CRITICAL')">Critical (<span id="filterCountCritical">0</span>)</button>
-      <button class="filter-btn high"     onclick="setFilter('HIGH')">High (<span id="filterCountHigh">0</span>)</button>
-      <button class="filter-btn medium"   onclick="setFilter('MEDIUM')">Medium (<span id="filterCountMedium">0</span>)</button>
-      <button class="filter-btn low"      onclick="setFilter('LOW')">Low (<span id="filterCountLow">0</span>)</button>
+    <div class="filter-bar">
+      <span class="filter-label">Severity:</span>
+      <button class="sev-filter-btn all active" onclick="setSevFilter('all')">All (<span id="fc-all">0</span>)</button>
+      <button class="sev-filter-btn critical" onclick="setSevFilter('CRITICAL')">Critical (<span id="fc-critical">0</span>)</button>
+      <button class="sev-filter-btn high"     onclick="setSevFilter('HIGH')">High (<span id="fc-high">0</span>)</button>
+      <button class="sev-filter-btn medium"   onclick="setSevFilter('MEDIUM')">Medium (<span id="fc-medium">0</span>)</button>
+      <button class="sev-filter-btn low"      onclick="setSevFilter('LOW')">Low (<span id="fc-low">0</span>)</button>
     </div>
 
-    <div class="findings-table-wrap">
+    <div class="findings-wrap">
       <table class="findings-table">
         <thead>
           <tr>
-            <th style="width:90px;">Severity</th>
-            <th style="width:100px;">Category</th>
+            <th style="width:80px;">Severity</th>
+            <th style="width:38px;">Cat</th>
             <th>Finding</th>
-            <th style="width:100px;">Entity</th>
-            <th style="width:90px;">Action</th>
+            <th style="width:90px;">Entity</th>
+            <th style="width:80px;">Action</th>
           </tr>
         </thead>
-        <tbody id="findingsBody">
-        </tbody>
+        <tbody id="findingsBody"></tbody>
       </table>
       <div id="noFindings" class="no-findings" style="display:none;">
-        <div class="icon">&#x2705;</div>
-        <div class="text">No findings</div>
-        <div class="sub">No issues found for the selected filter.</div>
+        <div class="nf-icon">&#x2705;</div>
+        <div class="nf-text">No findings</div>
+        <div class="nf-sub">No issues found for the selected filter.</div>
       </div>
     </div>
   </div>
 
 </div><!-- /page-content -->
 
-<!-- ─── Repair Modal ──────────────────────────────────────────────────────── -->
-<div id="repairModal" class="modal-overlay" onclick="closeModal(event)">
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     REPAIR MODAL
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="repairModal" class="modal-overlay" onclick="onOverlayClick(event)">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">Apply Repair</div>
-    <div class="modal-subtitle">All repairs are irreversible and fully audited. Select an action and provide a reason before confirming.</div>
+    <div class="modal-subtitle">All repairs are logged to the audit trail. Select an action and provide a mandatory reason before confirming.</div>
 
     <div id="modalFindingBox" class="modal-finding-box"></div>
 
-    <div style="margin-bottom:14px;">
+    <div style="margin-bottom:16px;">
       <div class="action-row-label">Repair Action</div>
-      <div class="action-select-group" id="actionOptions">
-        <!-- Populated by JS based on repairAction field -->
-      </div>
+      <div id="actionOptions" class="action-select-group"></div>
     </div>
 
     <div class="extra-fields" id="bankRelinkFields">
       <div class="form-group">
         <label class="form-label" for="relinkJournalId">Target Journal ID</label>
-        <input id="relinkJournalId" class="form-input" type="number" placeholder="Enter journal ID to link to" />
+        <input id="relinkJournalId" class="form-input" type="number" placeholder="Enter the journal ID to link to" />
       </div>
     </div>
 
-    <div class="warning-box" id="warningBox" style="display:none;"></div>
+    <div id="warningBox" class="warning-box" style="display:none;"></div>
 
     <div class="form-group">
-      <label class="form-label" for="repairReason">Reason for repair <span style="color:#dc2626;">*</span></label>
-      <textarea id="repairReason" class="form-input" rows="3" placeholder="Describe why this repair is necessary and what was verified before applying it…"></textarea>
+      <label class="form-label" for="repairReason">Reason <span style="color:#ef4444;">*</span></label>
+      <textarea id="repairReason" class="form-input" rows="3" placeholder="Describe why this repair is necessary and what was verified before applying it&hellip;"></textarea>
     </div>
 
     <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeRepairModal()">Cancel</button>
+      <button class="btn btn-ghost" onclick="closeRepairModal()">Cancel</button>
       <button id="confirmRepairBtn" class="btn btn-danger" onclick="submitRepair()">Confirm Repair</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     REPAIR RESULT MODAL
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="resultModal" class="modal-overlay" onclick="onResultOverlayClick(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Repair Applied</div>
+    <div id="resultContent"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="closeResultModal()">Close &amp; Refresh</button>
     </div>
   </div>
 </div>
@@ -532,46 +750,56 @@
 <script>
 'use strict';
 
+// ─── Section → category mapping ───────────────────────────────────────────────
+const SECTION_MAP = {
+  ALL:       { cats: null,             label: 'All Sections' },
+  GENERAL:   { cats: ['A', 'C'],       label: 'General Health' },
+  AR:        { cats: ['H'],            label: 'AR Integrity' },
+  AP:        { cats: ['I'],            label: 'AP Integrity' },
+  VAT:       { cats: ['D'],            label: 'VAT Integrity' },
+  BANK:      { cats: ['B', 'E'],       label: 'Bank Integrity' },
+  REPORTING: { cats: ['J'],            label: 'Reporting Integrity' },
+  PERIOD:    { cats: ['F'],            label: 'Period Integrity' },
+  AUDIT:     { cats: ['G'],            label: 'Audit Trail' },
+};
+
 // ─── State ────────────────────────────────────────────────────────────────────
-let allFindings = [];
-let currentFilter = 'all';
-let pendingRepair = null; // { finding, repairAction }
+let allFindings     = [];
+let activeSection   = 'ALL';
+let activeSevFilter = 'all';
+let pendingRepair   = null;
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 function getToken() {
   return localStorage.getItem('token') || localStorage.getItem('sb-token') || '';
 }
-
 function authHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer ' + getToken(),
-  };
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() };
 }
 
 // ─── Run Diagnostics ─────────────────────────────────────────────────────────
 async function runDiagnostics() {
-  const category    = document.getElementById('categoryFilter').value;
-  const olderThan   = parseInt(document.getElementById('staleDays').value, 10) || 30;
-  const btn         = document.getElementById('runBtn');
+  const category  = document.getElementById('categoryFilter').value;
+  const staleDays = parseInt(document.getElementById('staleDays').value, 10) || 30;
+  const btn       = document.getElementById('runBtn');
 
   btn.disabled = true;
   showLoading();
   hideError();
 
   try {
-    let url = '/api/diagnostics?olderThanDays=' + olderThan;
+    let url = '/api/diagnostics?olderThanDays=' + staleDays;
     if (category) url += '&category=' + encodeURIComponent(category);
 
     const resp = await fetch(url, { headers: authHeaders() });
 
     if (resp.status === 401 || resp.status === 403) {
-      showError('Access denied. You need diagnostics.view permission.');
+      showError('Access denied. You need the diagnostics.view permission.');
       return;
     }
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      showError('Diagnostics run failed: ' + (data.error || resp.statusText));
+      const body = await resp.json().catch(() => ({}));
+      showError('Diagnostics failed: ' + (body.error || resp.statusText));
       return;
     }
 
@@ -591,152 +819,219 @@ function displayResults(data) {
   const { summary, findings } = data;
   allFindings = findings || [];
 
-  // Score row
+  // Score strip
   const scoreEl = document.getElementById('scoreValue');
   scoreEl.textContent = summary.score;
-  scoreEl.className = 'score-main ' + (summary.score >= 80 ? 'green' : summary.score >= 50 ? 'amber' : 'red');
+  scoreEl.className   = 'score-value ' + (summary.score >= 80 ? 'green' : summary.score >= 50 ? 'amber' : 'red');
+  document.getElementById('cntCritical').textContent = summary.critical;
+  document.getElementById('cntHigh').textContent     = summary.high;
+  document.getElementById('cntMedium').textContent   = summary.medium;
+  document.getElementById('cntLow').textContent      = summary.low;
+  document.getElementById('checkedAt').textContent   = 'Checked: ' + new Date(summary.checkedAt).toLocaleString();
 
-  document.getElementById('countCritical').textContent = summary.critical;
-  document.getElementById('countHigh').textContent     = summary.high;
-  document.getElementById('countMedium').textContent   = summary.medium;
-  document.getElementById('countLow').textContent      = summary.low;
-  document.getElementById('checkedAt').textContent     = 'Checked: ' + new Date(summary.checkedAt).toLocaleString();
+  document.getElementById('scoreStrip').style.display      = '';
+  document.getElementById('sectionDashboard').style.display = '';
+  document.getElementById('emptyState').style.display       = 'none';
 
-  document.getElementById('scoreRow').style.display = '';
-  document.getElementById('emptyState').style.display = 'none';
-
-  // Filter counts
-  document.getElementById('filterCountAll').textContent      = allFindings.length;
-  document.getElementById('filterCountCritical').textContent = summary.critical;
-  document.getElementById('filterCountHigh').textContent     = summary.high;
-  document.getElementById('filterCountMedium').textContent   = summary.medium;
-  document.getElementById('filterCountLow').textContent      = summary.low;
-
-  currentFilter = 'all';
-  updateFilterButtons();
+  // Populate severity filter counts (for the active section — start with ALL)
+  activeSection   = 'ALL';
+  activeSevFilter = 'all';
+  updateSectionCards();
+  updateSevFilterCounts();
+  updateSectionCardHighlight();
   renderFindings();
 
   document.getElementById('findingsPanel').style.display = '';
 }
 
-// ─── Filter ───────────────────────────────────────────────────────────────────
-function setFilter(filter) {
-  currentFilter = filter;
-  updateFilterButtons();
+// ─── Section Cards ────────────────────────────────────────────────────────────
+function findingsForSection(sectionKey) {
+  const cats = SECTION_MAP[sectionKey].cats;
+  if (!cats) return allFindings;
+  return allFindings.filter(f => cats.includes(f.categoryCode));
+}
+
+function updateSectionCards() {
+  const SEV_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+
+  for (const [key, section] of Object.entries(SECTION_MAP)) {
+    const sectFindings = findingsForSection(key);
+    const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    for (const f of sectFindings) { if (counts[f.severity] !== undefined) counts[f.severity]++; }
+
+    const total       = sectFindings.length;
+    const worstSev    = sectFindings.reduce((w, f) => SEV_ORDER[f.severity] < SEV_ORDER[w] ? f.severity : w, 'LOW');
+    const dotEl       = document.getElementById('dot-' + key);
+    const badgesEl    = document.getElementById('badges-' + key);
+
+    // Determine status dot
+    if (total === 0) {
+      dotEl.className = 'section-status-dot dot-pass';
+    } else if (counts.CRITICAL > 0) {
+      dotEl.className = 'section-status-dot dot-fail';
+    } else if (counts.HIGH > 0) {
+      dotEl.className = 'section-status-dot dot-warn';
+    } else {
+      dotEl.className = 'section-status-dot dot-warn';
+    }
+
+    // Badges
+    let badgesHtml = '';
+    if (total === 0) {
+      badgesHtml = '<span class="sect-badge none">PASS</span>';
+    } else {
+      if (counts.CRITICAL) badgesHtml += `<span class="sect-badge crit">${counts.CRITICAL} CRIT</span>`;
+      if (counts.HIGH)     badgesHtml += `<span class="sect-badge high">${counts.HIGH} HIGH</span>`;
+      if (counts.MEDIUM)   badgesHtml += `<span class="sect-badge medium">${counts.MEDIUM} MED</span>`;
+      if (counts.LOW)      badgesHtml += `<span class="sect-badge low">${counts.LOW} LOW</span>`;
+    }
+    if (badgesEl) badgesEl.innerHTML = badgesHtml;
+  }
+}
+
+function filterBySection(sectionKey) {
+  activeSection   = sectionKey;
+  activeSevFilter = 'all';
+  updateSectionCardHighlight();
+  updateSevFilterCounts();
   renderFindings();
 }
 
-function updateFilterButtons() {
-  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-  const map = { all: '.filter-btn.all', CRITICAL: '.filter-btn.critical', HIGH: '.filter-btn.high', MEDIUM: '.filter-btn.medium', LOW: '.filter-btn.low' };
-  const sel = map[currentFilter];
-  if (sel) document.querySelector(sel)?.classList.add('active');
+function updateSectionCardHighlight() {
+  // Reset all
+  document.querySelectorAll('.section-card').forEach(el => {
+    el.classList.remove('active', 'all-active');
+  });
+  // Highlight active
+  const el = document.getElementById('sect-' + activeSection);
+  if (el) {
+    el.classList.add(activeSection === 'ALL' ? 'all-active' : 'active');
+  }
 }
 
-// ─── Render findings table ────────────────────────────────────────────────────
+// ─── Severity Filter ──────────────────────────────────────────────────────────
+function setSevFilter(sev) {
+  activeSevFilter = sev;
+  document.querySelectorAll('.sev-filter-btn').forEach(b => b.classList.remove('active'));
+  const cls = { all: '.sev-filter-btn.all', CRITICAL: '.sev-filter-btn.critical', HIGH: '.sev-filter-btn.high', MEDIUM: '.sev-filter-btn.medium', LOW: '.sev-filter-btn.low' };
+  const target = document.querySelector(cls[sev]);
+  if (target) target.classList.add('active');
+  renderFindings();
+}
+
+function updateSevFilterCounts() {
+  const sectFindings = findingsForSection(activeSection);
+  const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+  for (const f of sectFindings) { if (counts[f.severity] !== undefined) counts[f.severity]++; }
+
+  document.getElementById('fc-all').textContent      = sectFindings.length;
+  document.getElementById('fc-critical').textContent = counts.CRITICAL;
+  document.getElementById('fc-high').textContent     = counts.HIGH;
+  document.getElementById('fc-medium').textContent   = counts.MEDIUM;
+  document.getElementById('fc-low').textContent      = counts.LOW;
+}
+
+// ─── Render Findings Table ─────────────────────────────────────────────────────
 function renderFindings() {
-  const filtered = currentFilter === 'all'
-    ? allFindings
-    : allFindings.filter(f => f.severity === currentFilter);
+  let filtered = findingsForSection(activeSection);
+  if (activeSevFilter !== 'all') {
+    filtered = filtered.filter(f => f.severity === activeSevFilter);
+  }
 
   const tbody = document.getElementById('findingsBody');
   tbody.innerHTML = '';
 
+  const noEl = document.getElementById('noFindings');
   if (filtered.length === 0) {
-    document.getElementById('noFindings').style.display = '';
+    noEl.style.display = '';
     return;
   }
-  document.getElementById('noFindings').style.display = 'none';
+  noEl.style.display = 'none';
 
   for (const f of filtered) {
-    const tr = document.createElement('tr');
-
-    const catLabel = (f.categoryCode || '') + ': ' + formatCategory(f.category);
-
-    const actionBtn = f.repairAction
-      ? `<button class="repair-btn" onclick="openRepairModal('${escapeSingleQuote(f.id)}')">Repair</button>`
-      : '<span style="color:#9ca3af;font-size:12px;">—</span>';
+    const tr  = document.createElement('tr');
+    const btn = f.repairAction
+      ? `<button class="repair-btn" onclick="openRepairModal('${escapeSQ(f.id)}')">Repair</button>`
+      : `<span style="color:#374151;font-size:11px;">—</span>`;
 
     tr.innerHTML = `
       <td><span class="sev-badge sev-${f.severity}">${f.severity}</span></td>
-      <td><span class="cat-badge" title="${escapeHtml(f.category)}">${escapeHtml(f.categoryCode)}</span></td>
+      <td><span class="cat-badge" title="${escH(f.category)}">${escH(f.categoryCode)}</span></td>
       <td>
-        <div class="finding-title">${escapeHtml(f.title)}</div>
-        <div class="finding-detail">${escapeHtml(f.detail)}</div>
-        <div class="finding-id">${escapeHtml(f.id)}</div>
+        <div class="finding-title">${escH(f.title)}</div>
+        <div class="finding-detail">${escH(f.detail)}</div>
+        <div class="finding-id">${escH(f.id)}</div>
       </td>
-      <td style="font-family:monospace;font-size:12px;color:#6b7280;">${f.entityId != null ? '#' + f.entityId + '<br><span style="font-size:10px;color:#9ca3af;">' + escapeHtml(f.entityType || '') + '</span>' : '—'}</td>
-      <td>${actionBtn}</td>
+      <td style="font-family:monospace;font-size:11px;color:#4b5568;">${
+        f.entityId != null
+          ? `#${f.entityId}<br><span style="font-size:10px;color:#252d3d;">${escH(f.entityType || '')}</span>`
+          : '—'
+      }</td>
+      <td>${btn}</td>
     `;
     tbody.appendChild(tr);
   }
 }
 
-function formatCategory(cat) {
-  if (!cat) return '';
-  return cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
 // ─── Repair Modal ─────────────────────────────────────────────────────────────
 function openRepairModal(findingId) {
-  const finding = allFindings.find(f => f.id === findingId);
-  if (!finding) return;
+  const f = allFindings.find(x => x.id === findingId);
+  if (!f) return;
+  pendingRepair = { finding: f, repairAction: f.repairAction };
 
-  pendingRepair = { finding, repairAction: finding.repairAction };
-
-  // Populate finding box
   document.getElementById('modalFindingBox').innerHTML =
-    `<div class="title">${escapeHtml(finding.title)}</div>` +
-    `<div class="detail">${escapeHtml(finding.detail)}</div>` +
-    `<div style="font-family:monospace;font-size:10px;color:#9ca3af;margin-top:4px;">${escapeHtml(finding.id)}</div>`;
+    `<div class="mfb-title">${escH(f.title)}</div>` +
+    `<div class="mfb-detail">${escH(f.detail)}</div>` +
+    `<div style="font-family:monospace;font-size:10px;color:#374151;margin-top:6px;">${escH(f.id)}</div>`;
 
-  // Build action options
-  const actionsHtml = buildActionOptions(finding);
-  document.getElementById('actionOptions').innerHTML = actionsHtml;
+  document.getElementById('actionOptions').innerHTML = buildActionOptions(f);
 
-  // Show/hide extra fields
-  const bankRelinkFields = document.getElementById('bankRelinkFields');
-  bankRelinkFields.className = 'extra-fields' + (finding.repairAction === 'RELINK_BANK_TX' ? ' visible' : '');
+  // Extra fields for bank re-link
+  const relinkFields = document.getElementById('bankRelinkFields');
+  relinkFields.className = 'extra-fields' + (f.repairAction === 'RELINK_BANK_TX' ? ' visible' : '');
 
-  // Warning
-  const warningBox = document.getElementById('warningBox');
-  if (finding.repairAction === 'REVERSE_DANGLING_JOURNAL') {
-    warningBox.style.display = '';
-    warningBox.textContent = 'Warning: This will post a reversal journal. The action cannot be undone. Verify the journal is genuinely dangling before proceeding.';
-  } else if (finding.repairAction === 'REASSIGN_VAT_PERIOD') {
-    warningBox.style.display = '';
-    warningBox.textContent = 'This will re-run VAT period assignment for this journal. If the company is not VAT registered, or the journal has no VAT lines, the repair will return an error.';
+  // Warning box
+  const wb = document.getElementById('warningBox');
+  if (f.repairAction === 'REVERSE_DANGLING_JOURNAL') {
+    wb.style.display = '';
+    wb.textContent = 'Warning: This will post a reversal journal to the ledger. The action cannot be undone. Verify the journal is genuinely dangling before proceeding.';
+  } else if (f.repairAction === 'REASSIGN_VAT_PERIOD') {
+    wb.style.display = '';
+    wb.textContent = 'This will re-run VAT period assignment for this journal. If the company is not VAT-registered or the journal has no VAT lines, the repair will return an error.';
   } else {
-    warningBox.style.display = 'none';
+    wb.style.display = 'none';
   }
 
   document.getElementById('repairReason').value = '';
-  document.getElementById('relinkJournalId').value = finding.journalId || '';
-
+  document.getElementById('relinkJournalId').value = '';
   document.getElementById('repairModal').classList.add('open');
 }
 
-function buildActionOptions(finding) {
-  const action = finding.repairAction;
-  const options = [];
+function buildActionOptions(f) {
+  const action = f.repairAction;
 
-  if (action === 'REASSIGN_VAT_PERIOD') {
-    options.push(['REASSIGN_VAT_PERIOD', 'Re-assign VAT Period', 'Re-runs the VAT period assignment for this posted journal using the journal\'s date and company VAT settings.']);
-  } else if (action === 'RELINK_BANK_TX') {
-    options.push(['RELINK_BANK_TX', 'Re-link Bank Transaction', 'Links this bank transaction to the specified journal ID. Only allowed when the existing link is broken (journal missing).']);
-  } else if (action === 'REVERSE_DANGLING_JOURNAL') {
-    options.push(['REVERSE_DANGLING_JOURNAL', 'Reverse Dangling Journal', 'Posts a full reversal of this journal, zeroing its effect on the ledger. The original journal remains as-is; a new reversal journal is created.']);
-  }
+  // Define available repair options for each action type
+  const ACTIONS = {
+    REASSIGN_VAT_PERIOD:      ['Re-assign VAT Period',        'Re-runs VAT period assignment for this posted journal using its date and the company VAT period configuration.'],
+    RELINK_BANK_TX:           ['Re-link Bank Transaction',    'Links this bank transaction to a specified journal. Only permitted when the existing link is broken (journal missing).'],
+    REVERSE_DANGLING_JOURNAL: ['Reverse Dangling Journal',    'Posts a full reversal journal, zeroing the ledger effect. The original journal is preserved. This is irreversible.'],
+    RECALCULATE_AGEING:       ['Recalculate Ageing',          'Clears the ageing cache and forces aged debtors/creditors to be recalculated on next report load.'],
+    REBUILD_SNAPSHOTS:        ['Rebuild Historical Snapshots','Resets validated historical comparative batches to draft, allowing them to be re-validated and rebuilt.'],
+    ACKNOWLEDGE:              ['Acknowledge (no data change)','Records an acknowledgement in the audit trail with your reason. No data is modified.'],
+  };
 
-  // Always offer Acknowledge
-  options.push(['ACKNOWLEDGE', 'Acknowledge (no data change)', 'Records an acknowledgement in the audit log with your reason. Use when you have verified the situation and no repair is needed.']);
+  const primary = action && ACTIONS[action] ? [[action, ...ACTIONS[action]]] : [];
+  const opts = [
+    ...primary,
+    ['ACKNOWLEDGE', ...ACTIONS.ACKNOWLEDGE],
+  ];
 
-  return options.map(([val, label, desc], i) => `
+  return opts.map(([val, label, desc], i) => `
     <label class="action-option">
       <input type="radio" name="repairAction" value="${val}" ${i === 0 ? 'checked' : ''} onchange="onActionChange(this.value)">
       <div>
-        <div class="action-option-label">${escapeHtml(label)}</div>
-        <div class="action-option-desc">${escapeHtml(desc)}</div>
+        <div class="action-option-label">${escH(label)}</div>
+        <div class="action-option-desc">${escH(desc)}</div>
       </div>
     </label>
   `).join('');
@@ -744,20 +1039,19 @@ function buildActionOptions(finding) {
 
 function onActionChange(value) {
   pendingRepair.repairAction = value;
-  const bankRelinkFields = document.getElementById('bankRelinkFields');
-  bankRelinkFields.className = 'extra-fields' + (value === 'RELINK_BANK_TX' ? ' visible' : '');
+  const rf = document.getElementById('bankRelinkFields');
+  rf.className = 'extra-fields' + (value === 'RELINK_BANK_TX' ? ' visible' : '');
 }
 
 function closeRepairModal() {
   document.getElementById('repairModal').classList.remove('open');
   pendingRepair = null;
 }
-
-function closeModal(e) {
+function onOverlayClick(e) {
   if (e.target === document.getElementById('repairModal')) closeRepairModal();
 }
 
-// ─── Submit repair ────────────────────────────────────────────────────────────
+// ─── Submit Repair ────────────────────────────────────────────────────────────
 async function submitRepair() {
   if (!pendingRepair) return;
 
@@ -768,8 +1062,8 @@ async function submitRepair() {
     return;
   }
 
-  const selectedActionEl = document.querySelector('input[name="repairAction"]:checked');
-  const repairAction = selectedActionEl ? selectedActionEl.value : pendingRepair.repairAction;
+  const selectedEl  = document.querySelector('input[name="repairAction"]:checked');
+  const repairAction = selectedEl ? selectedEl.value : pendingRepair.repairAction;
 
   const body = {
     findingId:    pendingRepair.finding.id,
@@ -778,7 +1072,6 @@ async function submitRepair() {
     reason,
   };
 
-  // Attach entity IDs for specific actions
   if (repairAction === 'REASSIGN_VAT_PERIOD' || repairAction === 'REVERSE_DANGLING_JOURNAL') {
     body.journalId = pendingRepair.finding.entityId;
   }
@@ -793,14 +1086,14 @@ async function submitRepair() {
   }
 
   const btn = document.getElementById('confirmRepairBtn');
-  btn.disabled = true;
-  btn.textContent = 'Applying…';
+  btn.disabled    = true;
+  btn.textContent = 'Applying&hellip;';
 
   try {
     const resp = await fetch('/api/diagnostics/repair', {
-      method: 'POST',
+      method:  'POST',
       headers: authHeaders(),
-      body: JSON.stringify(body),
+      body:    JSON.stringify(body),
     });
 
     const data = await resp.json().catch(() => ({}));
@@ -811,24 +1104,75 @@ async function submitRepair() {
     }
 
     closeRepairModal();
-
-    // Re-run diagnostics to refresh findings
-    await runDiagnostics();
+    showRepairResult(repairAction, data.result);
 
   } catch (err) {
     alert('Network error: ' + err.message);
   } finally {
-    btn.disabled = false;
+    btn.disabled    = false;
     btn.textContent = 'Confirm Repair';
   }
 }
 
-// ─── UI helpers ───────────────────────────────────────────────────────────────
+// ─── Repair Result Modal ──────────────────────────────────────────────────────
+function showRepairResult(repairAction, result) {
+  const content = document.getElementById('resultContent');
+
+  let rows = '';
+
+  if (repairAction === 'ACKNOWLEDGE') {
+    rows = `<div class="success-box">Acknowledgement recorded in the audit trail. No data was changed.</div>`;
+  } else if (repairAction === 'REASSIGN_VAT_PERIOD') {
+    rows = `
+      <div class="success-box">VAT period re-assigned successfully.</div>
+      <div class="result-row"><span class="result-label">Journal</span><span class="result-value">#${result.journalId}</span></div>
+      <div class="result-row"><span class="result-label">VAT Period</span><span class="result-value">#${result.vatPeriodId}</span></div>
+    `;
+  } else if (repairAction === 'RELINK_BANK_TX') {
+    rows = `
+      <div class="success-box">Bank transaction re-linked to journal.</div>
+      <div class="result-row"><span class="result-label">Bank Tx</span><span class="result-value">#${result.bankTxnId}</span></div>
+      <div class="result-row"><span class="result-label">Journal</span><span class="result-value">#${result.linkedJournalId}</span></div>
+    `;
+  } else if (repairAction === 'REVERSE_DANGLING_JOURNAL') {
+    rows = `
+      <div class="success-box">Reversal journal posted.</div>
+      <div class="result-row"><span class="result-label">Original</span><span class="result-value">#${result.originalJournalId}</span></div>
+      <div class="result-row"><span class="result-label">Reversal</span><span class="result-value">#${result.reversalJournalId}</span></div>
+    `;
+  } else if (repairAction === 'RECALCULATE_AGEING') {
+    rows = `
+      <div class="success-box">${escH(result.message)}</div>
+      <div class="result-row"><span class="result-label">Cache cleared</span><span class="result-value">${result.ageingCacheCleared ? 'Yes' : 'No (dynamic system)'}</span></div>
+    `;
+  } else if (repairAction === 'REBUILD_SNAPSHOTS') {
+    rows = `
+      <div class="success-box">${escH(result.message)}</div>
+      <div class="result-row"><span class="result-label">Batches reset</span><span class="result-value">${result.resetCount}</span></div>
+    `;
+  } else {
+    rows = `<div class="success-box">Repair applied. See audit trail for details.</div>`;
+  }
+
+  content.innerHTML = rows;
+  document.getElementById('resultModal').classList.add('open');
+}
+
+function closeResultModal() {
+  document.getElementById('resultModal').classList.remove('open');
+  runDiagnostics();
+}
+function onResultOverlayClick(e) {
+  if (e.target === document.getElementById('resultModal')) closeResultModal();
+}
+
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
 function showLoading() {
-  document.getElementById('loadingState').style.display = '';
-  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('loadingState').style.display  = '';
+  document.getElementById('emptyState').style.display    = 'none';
   document.getElementById('findingsPanel').style.display = 'none';
-  document.getElementById('scoreRow').style.display = 'none';
+  document.getElementById('scoreStrip').style.display    = 'none';
+  document.getElementById('sectionDashboard').style.display = 'none';
 }
 function hideLoading() {
   document.getElementById('loadingState').style.display = 'none';
@@ -842,20 +1186,18 @@ function hideError() {
   document.getElementById('errorBanner').classList.remove('visible');
 }
 
-function escapeHtml(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function escH(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-function escapeSingleQuote(str) {
-  return String(str || '').replace(/'/g, "\\'");
+function escapeSQ(s) {
+  return String(s || '').replace(/'/g, "\\'");
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   if (typeof createNavigation === 'function') createNavigation();
 });
 </script>

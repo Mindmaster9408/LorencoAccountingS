@@ -191,6 +191,11 @@ const PERMISSIONS = {
   'pilot_smoke_test.view': ['admin', 'accountant', 'bookkeeper'],
   'pilot_smoke_test.run':  ['admin', 'accountant', 'bookkeeper'],
 
+  // Pilot Controls — governance checklists and risk register (ACC-CORE-032)
+  'pilot_controls.view':   ['admin', 'accountant', 'bookkeeper', 'viewer'],
+  'pilot_controls.sign':   ['admin', 'accountant', 'bookkeeper'],
+  'pilot_controls.risks':  ['admin', 'accountant'],
+
   // Dashboard
   'dashboard.view': ['admin', 'accountant', 'bookkeeper', 'viewer'],
 };

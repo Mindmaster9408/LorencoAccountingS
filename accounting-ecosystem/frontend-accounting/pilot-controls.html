@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lorenco Accounting — Pilot Controls</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e4e8f0;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────────────── */
+    .app-shell {
+      display: flex;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      background: #111520;
+      border-right: 1px solid #1a1f2e;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .sidebar-title {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #374151;
+      padding: 0 16px 12px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #6b7a96;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+      user-select: none;
+    }
+    .nav-item:hover { color: #c8d0de; background: rgba(255,255,255,0.03); }
+    .nav-item.active { color: #60a5fa; border-left-color: #2563eb; background: rgba(37,99,235,0.08); font-weight: 600; }
+    .nav-item .nav-icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+    .nav-badge {
+      margin-left: auto;
+      background: rgba(239,68,68,0.2);
+      color: #ef4444;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+    .nav-separator {
+      height: 1px;
+      background: #1a1f2e;
+      margin: 10px 0;
+    }
+
+    .main-content {
+      flex: 1;
+      min-width: 0;
+      padding: 28px 32px 48px;
+      max-width: 1080px;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s, background 0.15s;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary  { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-success  { background: #16a34a; color: #fff; }
+    .btn-success:hover:not(:disabled) { background: #15803d; }
+    .btn-ghost    { background: transparent; color: #8892a0; border: 1px solid #252d3d; }
+    .btn-ghost:hover:not(:disabled) { background: #1a1f2e; color: #c8d0de; }
+    .btn-danger   { background: #dc2626; color: #fff; }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+    /* ── Cards ───────────────────────────────────────────────────────────── */
+    .card {
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 10px;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #1a1f2e;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #e4e8f0;
+    }
+    .card-body { padding: 20px; }
+
+    /* ── Page Header ─────────────────────────────────────────────────────── */
+    .page-header {
+      margin-bottom: 24px;
+    }
+    .page-title { font-size: 20px; font-weight: 700; color: #e4e8f0; margin-bottom: 4px; }
+    .page-subtitle { font-size: 13px; color: #4b5568; }
+
+    /* ── Status Badges ───────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge-green  { background: rgba(34,197,94,0.12);  color: #22c55e; }
+    .badge-amber  { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .badge-red    { background: rgba(239,68,68,0.12);  color: #ef4444; }
+    .badge-gray   { background: rgba(107,114,128,0.12);color: #6b7280; }
+    .badge-blue   { background: rgba(37,99,235,0.12);  color: #60a5fa; }
+
+    /* ── Checklist Section ───────────────────────────────────────────────── */
+    .period-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .period-label { font-size: 12px; color: #6b7a96; font-weight: 600; }
+    .period-input {
+      padding: 7px 12px;
+      border: 1px solid #252d3d;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #c8d0de;
+      background: #111520;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .period-input:focus { border-color: #2563eb; }
+
+    .signoff-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    .signoff-banner.signed   { background: rgba(34,197,94,0.1);  border: 1px solid rgba(34,197,94,0.25);  color: #4ade80; }
+    .signoff-banner.exc      { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); color: #fbbf24; }
+    .signoff-banner.none     { background: rgba(107,114,128,0.08); border: 1px solid #1a1f2e; color: #6b7a96; }
+
+    .checklist-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+
+    .checklist-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: #111520;
+      border: 1px solid #1a1f2e;
+      border-radius: 8px;
+      transition: border-color 0.15s;
+    }
+    .checklist-item.status-done      { border-color: rgba(34,197,94,0.3);  }
+    .checklist-item.status-exception { border-color: rgba(245,158,11,0.3); }
+    .checklist-item.status-na        { border-color: #1a1f2e; opacity: 0.6; }
+
+    .item-label { flex: 1; font-size: 13px; color: #c8d0de; line-height: 1.4; }
+    .item-label.status-done      { color: #4ade80; }
+    .item-label.status-exception { color: #fbbf24; }
+    .item-label.status-na        { color: #4b5568; text-decoration: line-through; }
+
+    .item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .item-btn {
+      padding: 4px 10px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1.5px solid;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: transparent;
+    }
+    .item-btn.done     { border-color: #374151; color: #6b7280; }
+    .item-btn.exc      { border-color: #374151; color: #6b7280; }
+    .item-btn.na       { border-color: #374151; color: #6b7280; }
+    .item-btn.active-done      { background: rgba(34,197,94,0.15);  border-color: #22c55e; color: #22c55e; }
+    .item-btn.active-exception { background: rgba(245,158,11,0.15); border-color: #f59e0b; color: #f59e0b; }
+    .item-btn.active-na        { background: rgba(107,114,128,0.15);border-color: #6b7280; color: #6b7280; }
+
+    .form-group { margin-bottom: 14px; }
+    .form-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #4b5568;
+      margin-bottom: 6px;
+    }
+    .form-input, textarea.form-input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid #252d3d;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      color: #c8d0de;
+      background: #111520;
+      outline: none;
+      resize: vertical;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: #2563eb; }
+    .form-input::placeholder { color: #374151; }
+    select.form-input { cursor: pointer; }
+
+    .signoff-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 20px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .item-progress {
+      font-size: 12px;
+      color: #4b5568;
+    }
+    .item-progress strong { color: #c8d0de; }
+
+    /* ── Risk Register ────────────────────────────────────────────────────── */
+    .risk-grid { display: flex; flex-direction: column; gap: 10px; }
+    .risk-card {
+      background: #111520;
+      border: 1px solid #1a1f2e;
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .risk-card.sev-critical { border-left: 3px solid #ef4444; }
+    .risk-card.sev-high     { border-left: 3px solid #f97316; }
+    .risk-card.sev-medium   { border-left: 3px solid #f59e0b; }
+    .risk-card.sev-low      { border-left: 3px solid #22c55e; }
+    .risk-card.resolved     { opacity: 0.5; }
+    .risk-body { flex: 1; min-width: 0; }
+    .risk-title { font-size: 13px; font-weight: 600; color: #e4e8f0; margin-bottom: 4px; }
+    .risk-meta  { font-size: 11px; color: #4b5568; margin-bottom: 6px; }
+    .risk-mitigation { font-size: 12px; color: #6b7a96; margin-top: 4px; }
+    .risk-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    /* ── History Table ────────────────────────────────────────────────────── */
+    .history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .history-table th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #374151;
+      border-bottom: 1px solid #1a1f2e;
+    }
+    .history-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #111520;
+      color: #c8d0de;
+      vertical-align: top;
+    }
+    .history-table tr:last-child td { border-bottom: none; }
+    .history-table tr:hover td { background: rgba(37,99,235,0.04); }
+    .history-expand-row { display: none; }
+    .history-expand-row.open { display: table-row; }
+    .history-expand-content {
+      background: #0f1117;
+      padding: 14px 16px;
+      border-radius: 6px;
+      margin: 6px 0;
+      font-size: 12px;
+    }
+
+    /* ── Loading / Empty ─────────────────────────────────────────────────── */
+    .loading-state, .empty-state {
+      padding: 40px;
+      text-align: center;
+      color: #374151;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid #1a1f2e;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Modal ───────────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 12px;
+      padding: 28px;
+      width: 500px;
+      max-width: 95vw;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: #e4e8f0; margin-bottom: 6px; }
+    .modal-sub   { font-size: 13px; color: #4b5568; margin-bottom: 20px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+    /* ── Status bar ──────────────────────────────────────────────────────── */
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .status-mini {
+      background: #161b27;
+      border: 1px solid #252d3d;
+      border-radius: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      text-align: center;
+    }
+    .status-mini:hover { border-color: #374151; }
+    .status-mini.active { border-color: #2563eb; }
+    .status-mini-label { font-size: 10px; color: #4b5568; margin-bottom: 4px; }
+    .status-mini-val   { font-size: 11px; font-weight: 700; }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 9999;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all 0.25s;
+      max-width: 340px;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { background: #15803d; color: #fff; }
+    .toast.error   { background: #b91c1c; color: #fff; }
+
+    @media (max-width: 768px) {
+      .app-shell { flex-direction: column; }
+      .sidebar { width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap; padding: 10px; border-right: none; border-bottom: 1px solid #1a1f2e; }
+      .nav-item { border-left: none; border-bottom: 2px solid transparent; padding: 8px 12px; }
+      .nav-item.active { border-bottom-color: #2563eb; border-left-color: transparent; }
+      .main-content { padding: 16px; }
+      .status-row { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ── Left Sidebar ────────────────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="sidebar-title">Pilot Controls</div>
+
+    <div class="nav-item active" data-section="daily" onclick="selectSection('daily')">
+      <span class="nav-icon">&#x25D4;</span> Daily Control
+    </div>
+    <div class="nav-item" data-section="weekly" onclick="selectSection('weekly')">
+      <span class="nav-icon">&#x25D1;</span> Weekly Control
+    </div>
+    <div class="nav-item" data-section="month_end" onclick="selectSection('month_end')">
+      <span class="nav-icon">&#x25CF;</span> Month-End
+    </div>
+    <div class="nav-item" data-section="vat" onclick="selectSection('vat')">
+      <span class="nav-icon">&#x25A0;</span> VAT
+    </div>
+    <div class="nav-item" data-section="bank_recon" onclick="selectSection('bank_recon')">
+      <span class="nav-icon">&#x25C6;</span> Bank Recon
+    </div>
+    <div class="nav-item" data-section="diagnostics" onclick="selectSection('diagnostics')">
+      <span class="nav-icon">&#x25D0;</span> Diagnostics Review
+    </div>
+
+    <div class="nav-separator"></div>
+
+    <div class="nav-item" data-section="risks" onclick="selectSection('risks')">
+      <span class="nav-icon">&#x26A0;</span> Known Risks
+      <span class="nav-badge" id="openRiskBadge" style="display:none;">0</span>
+    </div>
+    <div class="nav-item" data-section="history" onclick="selectSection('history')">
+      <span class="nav-icon">&#x25B6;</span> Sign-Off History
+    </div>
+  </nav>
+
+  <!-- ── Main Content ────────────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Page header (common) -->
+    <div class="page-header">
+      <div class="page-title" id="sectionTitle">Daily Control Checklist</div>
+      <div class="page-subtitle" id="sectionSubtitle">Mark each item and sign off to create a permanent governance record.</div>
+    </div>
+
+    <!-- Checklist section status bar (shown for checklist sections) -->
+    <div id="statusBar" class="status-row"></div>
+
+    <!-- ── Checklist Sections ────────────────────────────────────────────── -->
+    <div id="checklistSection">
+      <!-- Rendered dynamically per section -->
+    </div>
+
+    <!-- ── Risk Register ─────────────────────────────────────────────────── -->
+    <div id="risksSection" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Known Risk Register</span>
+          <button class="btn btn-primary btn-sm" onclick="openAddRiskModal()">+ Add Risk</button>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="loadRisks('')" id="rf-all">All</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadRisks('open')" id="rf-open">Open</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadRisks('mitigated')" id="rf-mitigated">Mitigated</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadRisks('resolved')" id="rf-resolved">Resolved</button>
+          </div>
+          <div id="riskList" class="risk-grid">
+            <div class="loading-state"><div class="spinner"></div>Loading risks&hellip;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Sign-Off History ───────────────────────────────────────────────── -->
+    <div id="historySection" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Sign-Off History</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="histTypeFilter" class="form-input" style="width:160px;" onchange="loadHistory()">
+              <option value="">All types</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="month_end">Month-End</option>
+              <option value="vat">VAT</option>
+              <option value="bank_recon">Bank Recon</option>
+              <option value="diagnostics">Diagnostics</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Period</th>
+                <th>Signed By</th>
+                <th>Date &amp; Time</th>
+                <th>Progress</th>
+                <th>Exceptions</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody">
+              <tr><td colspan="6" class="loading-state"><div class="spinner" style="margin:12px auto;"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div><!-- /app-shell -->
+
+<!-- ── Add Risk Modal ─────────────────────────────────────────────────────── -->
+<div id="addRiskModal" class="modal-overlay" onclick="closeModalOnOverlay(event,'addRiskModal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Add Known Risk</div>
+    <div class="modal-sub">Capture a known limitation or risk for the pilot period. All risks are visible to the pilot team.</div>
+
+    <div class="form-group">
+      <label class="form-label">Risk Title <span style="color:#ef4444;">*</span></label>
+      <input id="riskTitle" class="form-input" type="text" placeholder="Describe the risk concisely" maxlength="255" />
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Severity</label>
+        <select id="riskSeverity" class="form-input">
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Affected Area</label>
+        <select id="riskArea" class="form-input">
+          <option value="">— Select area —</option>
+          <option value="ar">AR (Debtors)</option>
+          <option value="ap">AP (Creditors)</option>
+          <option value="vat">VAT</option>
+          <option value="bank">Bank</option>
+          <option value="reporting">Reporting</option>
+          <option value="general">General</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Mitigation / Workaround</label>
+      <textarea id="riskMitigation" class="form-input" rows="3" placeholder="Describe how the risk is being managed or mitigated&hellip;"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Owner</label>
+      <input id="riskOwner" class="form-input" type="text" placeholder="Person or team responsible" maxlength="100" />
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addRiskModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddRisk()">Add Risk</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── View Signoff Detail Modal ──────────────────────────────────────────── -->
+<div id="signoffDetailModal" class="modal-overlay" onclick="closeModalOnOverlay(event,'signoffDetailModal')">
+  <div class="modal" onclick="event.stopPropagation()" style="width:620px;">
+    <div class="modal-title">Sign-Off Detail</div>
+    <div id="signoffDetailContent" style="margin-bottom:16px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('signoffDetailModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────────────────── -->
+<div id="toast" class="toast"></div>
+
+<script src="js/polyfills.js"></script>
+<script>
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const CHECKLIST_SECTIONS = ['daily', 'weekly', 'month_end', 'vat', 'bank_recon', 'diagnostics'];
+
+const SECTION_META = {
+  daily:      { label: 'Daily Control Checklist',        sub: 'Daily checks — import review, diagnostics, and outstanding items.' },
+  weekly:     { label: 'Weekly Control Checklist',        sub: 'Weekly review — ageing, bank recon status, and audit log.' },
+  month_end:  { label: 'Month-End Checklist',             sub: 'Full month-end close — TB, P&L, BS, AR/AP controls, VAT, bank.' },
+  vat:        { label: 'VAT Checklist',                   sub: 'VAT period review and SARS submission readiness.' },
+  bank_recon: { label: 'Bank Reconciliation Checklist',   sub: 'Bank statement reconciliation completeness check.' },
+  diagnostics:{ label: 'Diagnostics Review',              sub: 'Data integrity diagnostic findings review and sign-off.' },
+  risks:      { label: 'Known Risk Register',             sub: 'Capture, track, and resolve known pilot risks and limitations.' },
+  history:    { label: 'Sign-Off History',                sub: 'Full immutable history of all governance sign-offs.' },
+};
+
+// Item status cycles on click
+const STATUS_CYCLE = { pending: 'done', done: 'exception', exception: 'na', na: 'pending' };
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let activeSection = 'daily';
+let templates     = {};      // loaded from API
+let sectionState  = {};      // { [type]: { period, items: { id: status }, exceptions, notes, lastSignoff } }
+let dashboard     = null;
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+function getToken() { return localStorage.getItem('token') || localStorage.getItem('sb-token') || ''; }
+function ah() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }; }
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async function () {
+  if (typeof createNavigation === 'function') createNavigation();
+  await loadTemplates();
+  await loadDashboard();
+  renderStatusBar();
+  selectSection('daily');
+});
+
+async function loadTemplates() {
+  try {
+    const r = await fetch('/api/accounting/pilot/templates', { headers: ah() });
+    if (r.ok) {
+      const d = await r.json();
+      templates = d.templates || {};
+    }
+  } catch (_) {}
+}
+
+async function loadDashboard() {
+  try {
+    const r = await fetch('/api/accounting/pilot/dashboard', { headers: ah() });
+    if (r.ok) {
+      dashboard = await r.json();
+      // Update risk badge
+      const openCount = dashboard.openRisks?.total || 0;
+      const badge = document.getElementById('openRiskBadge');
+      if (openCount > 0) { badge.textContent = openCount; badge.style.display = ''; }
+      else { badge.style.display = 'none'; }
+    }
+  } catch (_) {}
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+function selectSection(name) {
+  activeSection = name;
+
+  // Update nav
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.section === name);
+  });
+
+  // Update page header
+  const meta = SECTION_META[name] || {};
+  document.getElementById('sectionTitle').textContent   = meta.label || name;
+  document.getElementById('sectionSubtitle').textContent = meta.sub  || '';
+
+  // Show/hide main sections
+  document.getElementById('checklistSection').style.display = CHECKLIST_SECTIONS.includes(name) ? '' : 'none';
+  document.getElementById('risksSection').style.display     = name === 'risks' ? '' : 'none';
+  document.getElementById('historySection').style.display   = name === 'history' ? '' : 'none';
+  document.getElementById('statusBar').style.display        = CHECKLIST_SECTIONS.includes(name) ? '' : 'none';
+
+  if (CHECKLIST_SECTIONS.includes(name)) {
+    renderStatusBar();
+    renderChecklist(name);
+  } else if (name === 'risks') {
+    loadRisks('');
+  } else if (name === 'history') {
+    loadHistory();
+  }
+}
+
+// ─── Status Bar ───────────────────────────────────────────────────────────────
+function renderStatusBar() {
+  const bar = document.getElementById('statusBar');
+  if (!bar) return;
+
+  bar.innerHTML = CHECKLIST_SECTIONS.map(type => {
+    const signoff = dashboard?.latestSignoffs?.[type];
+    let valHtml, cls = '';
+    if (signoff) {
+      const date  = new Date(signoff.signed_at).toLocaleDateString('en-ZA', { day:'2-digit', month:'short' });
+      const color = signoff.has_exceptions ? '#f59e0b' : '#22c55e';
+      valHtml = `<div style="font-size:10px;color:${color};font-weight:700;">${signoff.has_exceptions ? '⚠ Exc' : '✓ Done'}</div><div style="font-size:9px;color:#374151;">${date}</div>`;
+      cls = type === activeSection ? 'active' : '';
+    } else {
+      valHtml = `<div style="font-size:10px;color:#374151;">Not signed</div>`;
+      cls = type === activeSection ? 'active' : '';
+    }
+    const shortLabel = { daily:'Daily', weekly:'Weekly', month_end:'Month-End', vat:'VAT', bank_recon:'Bank', diagnostics:'Diagnostics' }[type] || type;
+    return `<div class="status-mini ${cls}" onclick="selectSection('${type}')">
+      <div class="status-mini-label">${shortLabel}</div>
+      ${valHtml}
+    </div>`;
+  }).join('');
+}
+
+// ─── Checklist Render ─────────────────────────────────────────────────────────
+async function renderChecklist(type) {
+  const container = document.getElementById('checklistSection');
+  container.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
+
+  // Ensure state exists for this type
+  if (!sectionState[type]) {
+    const defaultPeriod = getDefaultPeriod(type);
+    sectionState[type] = { period: defaultPeriod, items: {}, exceptions: '', notes: '', lastSignoff: null };
+  }
+
+  // Load latest sign-off for the current period
+  await refreshLastSignoff(type);
+
+  container.innerHTML = buildChecklistHtml(type);
+  applyLastSignoffState(type);
+}
+
+function getDefaultPeriod(type) {
+  if (type === 'daily') return new Date().toISOString().slice(0, 10);
+  if (type === 'weekly') {
+    const d = new Date();
+    const onejan = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
+  return new Date().toISOString().slice(0, 7); // YYYY-MM
+}
+
+async function refreshLastSignoff(type) {
+  const period = sectionState[type].period;
+  try {
+    const r = await fetch(
+      `/api/accounting/pilot/signoffs?type=${encodeURIComponent(type)}&period=${encodeURIComponent(period)}&limit=1`,
+      { headers: ah() }
+    );
+    if (r.ok) {
+      const d = await r.json();
+      sectionState[type].lastSignoff = d.signoffs?.[0] || null;
+    }
+  } catch (_) {
+    sectionState[type].lastSignoff = null;
+  }
+}
+
+function buildChecklistHtml(type) {
+  const state    = sectionState[type];
+  const tmpl     = templates[type]  || { items: [] };
+  const signoff  = state.lastSignoff;
+  const items    = tmpl.items || [];
+  const periodFmt = getPeriodInputType(type);
+
+  // Period row
+  let periodHtml;
+  if (periodFmt === 'date') {
+    periodHtml = `<input type="date" class="period-input" id="periodInput-${type}" value="${escAttr(state.period)}" onchange="onPeriodChange('${type}', this.value)">`;
+  } else if (periodFmt === 'week') {
+    periodHtml = `<input type="week" class="period-input" id="periodInput-${type}" value="${escAttr(state.period)}" onchange="onPeriodChange('${type}', this.value)">`;
+  } else {
+    periodHtml = `<input type="month" class="period-input" id="periodInput-${type}" value="${escAttr(state.period)}" onchange="onPeriodChange('${type}', this.value)">`;
+  }
+
+  // Signed off banner
+  let bannerHtml = '';
+  if (signoff) {
+    const dt = new Date(signoff.signed_at).toLocaleString('en-ZA');
+    if (signoff.has_exceptions) {
+      bannerHtml = `<div class="signoff-banner exc">&#x26A0; Last signed off with EXCEPTIONS by ${escH(signoff.signed_by_name)} on ${dt}. Creating a new sign-off will add to the history.</div>`;
+    } else {
+      bannerHtml = `<div class="signoff-banner signed">&#x2713; Last signed off by ${escH(signoff.signed_by_name)} on ${dt}. Creating a new sign-off will add to the history.</div>`;
+    }
+  } else {
+    bannerHtml = `<div class="signoff-banner none">No sign-off found for this period. Complete the checklist below.</div>`;
+  }
+
+  // Items list
+  const itemsHtml = items.map(item => `
+    <div class="checklist-item" id="ci-${type}-${item.id}" data-status="pending">
+      <span class="item-label" id="il-${type}-${item.id}">${escH(item.label)}</span>
+      <div class="item-actions">
+        <button class="item-btn done"  title="Done"      onclick="setItemStatus('${type}','${item.id}','done')">&#x2713; Done</button>
+        <button class="item-btn exc"   title="Exception" onclick="setItemStatus('${type}','${item.id}','exception')">&#x26A0; Exc</button>
+        <button class="item-btn na"    title="N/A"       onclick="setItemStatus('${type}','${item.id}','na')">— N/A</button>
+      </div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${escH(tmpl.label || type)}</span>
+        <div class="period-row" style="margin:0;">
+          <span class="period-label">Period:</span>
+          ${periodHtml}
+        </div>
+      </div>
+      <div class="card-body">
+        ${bannerHtml}
+        <div class="checklist-items" id="items-${type}">${itemsHtml}</div>
+
+        <div class="form-group" id="excGroup-${type}" style="display:none;">
+          <label class="form-label">Exception Notes <span style="color:#ef4444;">*</span></label>
+          <textarea class="form-input" id="exceptions-${type}" rows="3" placeholder="Describe the exceptions found and what action is being taken&hellip;" oninput="sectionState['${type}'].exceptions=this.value"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Additional Notes</label>
+          <textarea class="form-input" id="notes-${type}" rows="2" placeholder="Any additional context for this sign-off&hellip;" oninput="sectionState['${type}'].notes=this.value"></textarea>
+        </div>
+
+        <div class="signoff-footer">
+          <div class="item-progress" id="progress-${type}">0 / ${items.length} items actioned</div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="clearChecklist('${type}')">Reset</button>
+            <button class="btn btn-success" id="signoffBtn-${type}" onclick="signOff('${type}')" disabled>Sign Off</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function getPeriodInputType(type) {
+  if (type === 'daily')  return 'date';
+  if (type === 'weekly') return 'week';
+  return 'month';
+}
+
+function applyLastSignoffState(type) {
+  // Populate items from the last sign-off's answers (for context display only —
+  // user starts fresh for a new sign-off but can see what was last answered)
+  const signoff = sectionState[type].lastSignoff;
+  if (signoff?.checklist_answers) {
+    const answers = typeof signoff.checklist_answers === 'string'
+      ? JSON.parse(signoff.checklist_answers) : signoff.checklist_answers;
+    sectionState[type].items = { ...answers };
+    Object.entries(answers).forEach(([id, status]) => {
+      _applyItemStatus(type, id, status, true);
+    });
+    updateProgress(type);
+    // Restore exception notes
+    if (signoff.exceptions) {
+      sectionState[type].exceptions = signoff.exceptions;
+      const excEl = document.getElementById(`exceptions-${type}`);
+      if (excEl) excEl.value = signoff.exceptions;
+    }
+    if (signoff.notes) {
+      sectionState[type].notes = signoff.notes;
+      const notesEl = document.getElementById(`notes-${type}`);
+      if (notesEl) notesEl.value = signoff.notes;
+    }
+  }
+}
+
+async function onPeriodChange(type, newPeriod) {
+  sectionState[type].period = newPeriod;
+  sectionState[type].items  = {};
+  sectionState[type].exceptions = '';
+  sectionState[type].notes  = '';
+  await refreshLastSignoff(type);
+  // Re-render checklist to update banner and reset items
+  document.getElementById('checklistSection').innerHTML = buildChecklistHtml(type);
+  applyLastSignoffState(type);
+}
+
+// ─── Item Status ──────────────────────────────────────────────────────────────
+function setItemStatus(type, itemId, status) {
+  sectionState[type].items[itemId] = status;
+  _applyItemStatus(type, itemId, status, false);
+  updateProgress(type);
+}
+
+function _applyItemStatus(type, itemId, status, readOnly) {
+  const row   = document.getElementById(`ci-${type}-${itemId}`);
+  const label = document.getElementById(`il-${type}-${itemId}`);
+  if (!row || !label) return;
+
+  row.dataset.status = status;
+  row.className      = `checklist-item status-${status}`;
+  label.className    = `item-label status-${status}`;
+
+  // Update button active states
+  const btns = row.querySelectorAll('.item-btn');
+  btns.forEach(b => {
+    b.className = 'item-btn ' + b.title.toLowerCase().replace('/', '').replace(' ', '');
+  });
+  if (status === 'done')      btns[0].className = 'item-btn done active-done';
+  if (status === 'exception') btns[1].className = 'item-btn exc active-exception';
+  if (status === 'na')        btns[2].className = 'item-btn na active-na';
+}
+
+function updateProgress(type) {
+  const tmpl   = templates[type] || { items: [] };
+  const items  = tmpl.items || [];
+  const state  = sectionState[type].items;
+
+  const actioned = items.filter(i => state[i.id] && state[i.id] !== 'pending').length;
+  const hasExc   = items.some(i => state[i.id] === 'exception');
+  const allDone  = actioned === items.length && items.length > 0;
+
+  const progEl = document.getElementById(`progress-${type}`);
+  if (progEl) progEl.innerHTML = `<strong>${actioned}</strong> / ${items.length} items actioned`;
+
+  const excGroup = document.getElementById(`excGroup-${type}`);
+  if (excGroup) excGroup.style.display = hasExc ? '' : 'none';
+
+  const btn = document.getElementById(`signoffBtn-${type}`);
+  if (btn) btn.disabled = !allDone;
+}
+
+function clearChecklist(type) {
+  sectionState[type].items      = {};
+  sectionState[type].exceptions = '';
+  sectionState[type].notes      = '';
+  document.getElementById('checklistSection').innerHTML = buildChecklistHtml(type);
+}
+
+// ─── Sign Off ─────────────────────────────────────────────────────────────────
+async function signOff(type) {
+  const state  = sectionState[type];
+  const hasExc = Object.values(state.items).some(v => v === 'exception');
+
+  if (hasExc && !state.exceptions.trim()) {
+    toast('Exception notes are required when items are marked Exception.', 'error');
+    document.getElementById(`exceptions-${type}`)?.focus();
+    return;
+  }
+
+  const btn = document.getElementById(`signoffBtn-${type}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing off…'; }
+
+  try {
+    const r = await fetch('/api/accounting/pilot/signoffs', {
+      method: 'POST',
+      headers: ah(),
+      body: JSON.stringify({
+        checklist_type:    type,
+        period:            state.period,
+        checklist_answers: state.items,
+        exceptions:        state.exceptions || null,
+        notes:             state.notes      || null,
+      }),
+    });
+
+    const d = await r.json();
+    if (!r.ok) {
+      toast(d.error || 'Sign-off failed.', 'error');
+      return;
+    }
+
+    toast('Signed off successfully. Record created.', 'success');
+    await loadDashboard();
+    renderStatusBar();
+    await refreshLastSignoff(type);
+    document.getElementById('checklistSection').innerHTML = buildChecklistHtml(type);
+    applyLastSignoffState(type);
+
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  } finally {
+    const btn2 = document.getElementById(`signoffBtn-${type}`);
+    if (btn2) { btn2.disabled = false; btn2.textContent = 'Sign Off'; }
+  }
+}
+
+// ─── Risk Register ─────────────────────────────────────────────────────────────
+async function loadRisks(statusFilter) {
+  // Highlight active filter button
+  ['all','open','mitigated','resolved'].forEach(s => {
+    const btn = document.getElementById(`rf-${s || 'all'}`);
+    if (btn) btn.className = 'btn btn-ghost btn-sm' + (s === statusFilter ? ' btn-primary' : '');
+  });
+
+  const list = document.getElementById('riskList');
+  if (!list) return;
+  list.innerHTML = '<div class="loading-state"><div class="spinner"></div>Loading risks&hellip;</div>';
+
+  try {
+    const url = '/api/accounting/pilot/risks' + (statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : '');
+    const r   = await fetch(url, { headers: ah() });
+    const d   = await r.json();
+
+    const risks = d.risks || [];
+    if (risks.length === 0) {
+      list.innerHTML = '<div class="empty-state">No risks found. Add a risk using the button above.</div>';
+      return;
+    }
+
+    list.innerHTML = risks.map(risk => buildRiskCard(risk)).join('');
+  } catch (err) {
+    list.innerHTML = `<div class="empty-state">Failed to load risks: ${escH(err.message)}</div>`;
+  }
+}
+
+function buildRiskCard(risk) {
+  const SEV_BADGE = {
+    critical: '<span class="badge badge-red">Critical</span>',
+    high:     '<span class="badge badge-amber">High</span>',
+    medium:   '<span class="badge" style="background:rgba(245,158,11,0.1);color:#f59e0b;">Medium</span>',
+    low:      '<span class="badge badge-green">Low</span>',
+  };
+  const STATUS_BADGE = {
+    open:      '<span class="badge badge-red">Open</span>',
+    mitigated: '<span class="badge badge-amber">Mitigated</span>',
+    resolved:  '<span class="badge badge-green">Resolved</span>',
+    accepted:  '<span class="badge badge-gray">Accepted</span>',
+  };
+  const AREA_LABEL = { ar:'AR', ap:'AP', vat:'VAT', bank:'Bank', reporting:'Reporting', general:'General' };
+
+  const areaTag = risk.affected_area ? `<span class="badge badge-blue">${AREA_LABEL[risk.affected_area] || risk.affected_area}</span>` : '';
+  const owner   = risk.owner ? `Owner: ${escH(risk.owner)}` : '';
+  const created = new Date(risk.created_at).toLocaleDateString('en-ZA', { day:'2-digit', month:'short', year:'numeric' });
+
+  const resolveBtn = risk.status !== 'resolved'
+    ? `<button class="btn btn-ghost btn-sm" onclick="resolveRisk(${risk.id})">Resolve</button>`
+    : `<span style="font-size:11px;color:#374151;">Resolved ${risk.resolved_at ? new Date(risk.resolved_at).toLocaleDateString('en-ZA') : ''}</span>`;
+
+  return `
+    <div class="risk-card sev-${risk.severity} ${risk.status === 'resolved' ? 'resolved' : ''}">
+      <div class="risk-body">
+        <div class="risk-title">${escH(risk.risk_title)}</div>
+        <div class="risk-meta">
+          ${SEV_BADGE[risk.severity] || ''}
+          ${STATUS_BADGE[risk.status] || ''}
+          ${areaTag}
+          &nbsp;&nbsp;${owner ? escH(owner) : ''}
+          &nbsp;·&nbsp;Added ${escH(created)}
+        </div>
+        ${risk.mitigation ? `<div class="risk-mitigation">${escH(risk.mitigation)}</div>` : ''}
+      </div>
+      <div class="risk-actions">${resolveBtn}</div>
+    </div>
+  `;
+}
+
+async function resolveRisk(id) {
+  if (!confirm('Mark this risk as resolved? This action is logged to the audit trail.')) return;
+  try {
+    const r = await fetch(`/api/accounting/pilot/risks/${id}`, {
+      method: 'PUT',
+      headers: ah(),
+      body: JSON.stringify({ status: 'resolved' }),
+    });
+    if (!r.ok) { const d = await r.json(); toast(d.error || 'Failed.', 'error'); return; }
+    toast('Risk marked as resolved.', 'success');
+    await loadDashboard();
+    document.getElementById('openRiskBadge').textContent = dashboard?.openRisks?.total || 0;
+    loadRisks('');
+  } catch (err) { toast('Network error: ' + err.message, 'error'); }
+}
+
+function openAddRiskModal() {
+  document.getElementById('riskTitle').value      = '';
+  document.getElementById('riskSeverity').value   = 'medium';
+  document.getElementById('riskArea').value        = '';
+  document.getElementById('riskMitigation').value = '';
+  document.getElementById('riskOwner').value       = '';
+  openModal('addRiskModal');
+}
+
+async function submitAddRisk() {
+  const title = document.getElementById('riskTitle').value.trim();
+  if (!title) { toast('Risk title is required.', 'error'); return; }
+
+  try {
+    const r = await fetch('/api/accounting/pilot/risks', {
+      method: 'POST',
+      headers: ah(),
+      body: JSON.stringify({
+        risk_title:    title,
+        severity:      document.getElementById('riskSeverity').value,
+        affected_area: document.getElementById('riskArea').value || null,
+        mitigation:    document.getElementById('riskMitigation').value.trim() || null,
+        owner:         document.getElementById('riskOwner').value.trim() || null,
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast(d.error || 'Failed.', 'error'); return; }
+    closeModal('addRiskModal');
+    toast('Risk added to the register.', 'success');
+    await loadDashboard();
+    loadRisks('');
+  } catch (err) { toast('Network error: ' + err.message, 'error'); }
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const typeFilter = document.getElementById('histTypeFilter')?.value || '';
+  const tbody      = document.getElementById('historyBody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:#374151;"><div class="spinner" style="margin:0 auto 10px;width:24px;height:24px;border-width:2px;"></div>Loading history&hellip;</td></tr>';
+
+  try {
+    const url = '/api/accounting/pilot/signoffs?limit=60' + (typeFilter ? `&type=${encodeURIComponent(typeFilter)}` : '');
+    const r   = await fetch(url, { headers: ah() });
+    const d   = await r.json();
+
+    const rows = d.signoffs || [];
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:32px;text-align:center;color:#374151;">No sign-offs found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map((s, i) => {
+      const dt      = new Date(s.signed_at).toLocaleString('en-ZA', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      const typeLabel = { daily:'Daily', weekly:'Weekly', month_end:'Month-End', vat:'VAT', bank_recon:'Bank Recon', diagnostics:'Diagnostics' }[s.checklist_type] || s.checklist_type;
+      const excBadge  = s.has_exceptions
+        ? '<span class="badge badge-amber" style="font-size:10px;">&#x26A0; Exceptions</span>'
+        : '<span class="badge badge-green" style="font-size:10px;">&#x2713; Clean</span>';
+      const progress = `${s.items_done + s.items_na}/${s.items_total}`;
+
+      return `
+        <tr style="cursor:pointer;" onclick="toggleHistoryRow(${i})">
+          <td><span class="badge badge-blue" style="font-size:10px;">${typeLabel}</span></td>
+          <td style="font-family:monospace;font-size:12px;">${escH(s.period)}</td>
+          <td>${escH(s.signed_by_name || '—')}</td>
+          <td style="font-size:12px;color:#6b7a96;">${dt}</td>
+          <td style="font-size:12px;">${progress}</td>
+          <td>${excBadge}</td>
+        </tr>
+        <tr class="history-expand-row" id="hist-expand-${i}">
+          <td colspan="6">
+            <div class="history-expand-content">
+              ${buildHistoryDetail(s)}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;text-align:center;color:#ef4444;">Failed to load history: ${escH(err.message)}</td></tr>`;
+  }
+}
+
+function toggleHistoryRow(idx) {
+  const el = document.getElementById(`hist-expand-${idx}`);
+  if (!el) return;
+  el.classList.toggle('open');
+}
+
+function buildHistoryDetail(s) {
+  const answers = typeof s.checklist_answers === 'string'
+    ? JSON.parse(s.checklist_answers || '{}') : (s.checklist_answers || {});
+
+  const tmpl = templates[s.checklist_type] || { items: [] };
+  const STATUS_ICON = { done:'&#x2713;', exception:'&#x26A0;', na:'&mdash;', pending:'&#x25CB;' };
+  const STATUS_COLOR = { done:'#22c55e', exception:'#f59e0b', na:'#374151', pending:'#252d3d' };
+
+  const itemRows = tmpl.items.map(item => {
+    const status = answers[item.id] || 'pending';
+    const icon   = STATUS_ICON[status]  || '?';
+    const color  = STATUS_COLOR[status] || '#374151';
+    return `<div style="display:flex;gap:10px;align-items:center;padding:4px 0;">
+      <span style="color:${color};width:16px;text-align:center;font-size:13px;">${icon}</span>
+      <span style="font-size:12px;color:${status === 'na' ? '#4b5568' : '#c8d0de'};${status === 'na' ? 'text-decoration:line-through;' : ''}">${escH(item.label)}</span>
+    </div>`;
+  }).join('');
+
+  const excHtml = s.has_exceptions && s.exceptions
+    ? `<div style="margin-top:10px;padding:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;font-size:12px;color:#fbbf24;">${escH(s.exceptions)}</div>`
+    : '';
+
+  const notesHtml = s.notes
+    ? `<div style="margin-top:8px;font-size:12px;color:#6b7a96;">${escH(s.notes)}</div>`
+    : '';
+
+  return itemRows + excHtml + notesHtml;
+}
+
+// ─── Modal helpers ─────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id)?.classList.add('open'); }
+function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
+function closeModalOnOverlay(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+let _toastTimer = null;
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className   = `toast ${type} show`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.classList.remove('show'); }, 3200);
+}
+
+// ─── HTML Escaping ────────────────────────────────────────────────────────────
+function escH(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) { return escH(s); }
+</script>
+</body>
+</html>

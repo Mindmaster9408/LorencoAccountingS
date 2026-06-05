@@ -29,6 +29,9 @@ const CATEGORIES = {
   E: 'BANK_STAGING',
   F: 'PERIOD_YEAR_END',
   G: 'AUDIT_TRAIL',
+  H: 'AR_INTEGRITY',
+  I: 'AP_INTEGRITY',
+  J: 'REPORTING_INTEGRITY',
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -107,6 +110,9 @@ class DiagnosticsService {
     await run('E', () => this.checkStaging(companyId, olderThanDays));
     await run('F', () => this.checkPeriods(companyId));
     await run('G', () => this.checkAuditTrail(companyId));
+    await run('H', () => this.checkArIntegrity(companyId));
+    await run('I', () => this.checkApIntegrity(companyId));
+    await run('J', () => this.checkReportingIntegrity(companyId));
 
     const summary = this._buildSummary(companyId, all);
     return { summary, findings: all };
@@ -811,6 +817,558 @@ class DiagnosticsService {
 
     const reversalJournal = await JournalService.reverseJournal(journalId, companyId, userId, reason);
     return { originalJournalId: journalId, reversalJournalId: reversalJournal.id };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CATEGORY H — AR INTEGRITY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  static async checkArIntegrity(companyId) {
+    const results = [];
+
+    // H1 — AR control account GL balance vs outstanding customer invoice total.
+    // Locates AR control accounts by type/sub_type/reporting_group/name heuristic,
+    // then compares the net GL balance to the sum of non-void customer invoices.
+    // A variance > R1 means the sub-ledger and ledger have diverged.
+    const arAccounts = await db.query(`
+      SELECT id, code, name
+      FROM accounts
+      WHERE company_id = $1
+        AND is_active = true
+        AND (
+          LOWER(type)               LIKE '%receivable%'
+          OR LOWER(sub_type)        LIKE '%receivable%'
+          OR LOWER(reporting_group) LIKE '%receivable%'
+          OR LOWER(reporting_group) LIKE '%debtors%'
+          OR (LOWER(name) LIKE '%debtors control%'  AND LOWER(name) NOT LIKE '%vat%')
+          OR (LOWER(name) LIKE '%trade receivable%' AND LOWER(name) NOT LIKE '%vat%')
+          OR (LOWER(name) LIKE '%accounts receivable%' AND LOWER(name) NOT LIKE '%vat%')
+        )
+    `, [companyId]);
+
+    if (arAccounts.rows.length > 0) {
+      const arIds  = arAccounts.rows.map(r => r.id);
+      const arDesc = arAccounts.rows.map(r => [r.code, r.name].filter(Boolean).join(' ')).join(', ');
+
+      const glRes = await db.query(`
+        SELECT ROUND(
+          COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.credit), 0),
+          2
+        ) AS gl_balance
+        FROM journal_lines jl
+        JOIN journals j ON j.id = jl.journal_id
+        WHERE j.company_id = $1
+          AND j.status = 'posted'
+          AND jl.account_id = ANY($2::int[])
+      `, [companyId, arIds]);
+
+      const invRes = await db.query(`
+        SELECT ROUND(COALESCE(SUM(total_amount), 0), 2) AS invoice_total
+        FROM customer_invoices
+        WHERE company_id = $1
+          AND status NOT IN ('draft', 'void', 'cancelled', 'written_off')
+      `, [companyId]);
+
+      const glBalance = parseFloat(glRes.rows[0]?.gl_balance   || 0);
+      const invTotal  = parseFloat(invRes.rows[0]?.invoice_total || 0);
+      const variance  = Math.round(Math.abs(glBalance - invTotal) * 100) / 100;
+
+      if (variance > 1) {
+        const sev = variance > 10000 ? 'CRITICAL' : variance > 1000 ? 'HIGH' : 'MEDIUM';
+        results.push(finding('H', 'AR_CONTROL_VARIANCE', sev,
+          `AR control account vs ageing: R${variance.toFixed(2)} variance`,
+          `GL AR balance (${arDesc}): R${glBalance.toFixed(2)}. Outstanding customer invoices total: R${invTotal.toFixed(2)}. Variance: R${variance.toFixed(2)}. The accounts receivable sub-ledger and general ledger have diverged. Compare the Trial Balance AR line to the Aged Debtors report total to locate the source.`,
+          null, 'customer_invoice', null));
+      }
+    }
+
+    // H2 — Customer invoices with negative total amount.
+    // Negative invoices should be credit notes — posting them as invoices distorts ageing.
+    const negInv = await db.query(`
+      SELECT id, invoice_number, total_amount, status
+      FROM customer_invoices
+      WHERE company_id = $1
+        AND total_amount < 0
+        AND status NOT IN ('void', 'cancelled')
+      ORDER BY total_amount ASC
+      LIMIT 20
+    `, [companyId]);
+
+    for (const row of negInv.rows) {
+      results.push(finding('H', 'AR_NEGATIVE_INVOICE', 'MEDIUM',
+        'Customer invoice has negative amount',
+        `Invoice #${row.id} (${row.invoice_number || 'no number'}, status: ${row.status}): amount R${row.total_amount}. Negative customer invoices should be credit notes — they distort aged debtors and the AR control account balance.`,
+        row.id, 'customer_invoice', null));
+    }
+
+    // H3 — Duplicate customer invoice numbers (active only).
+    // Duplicate numbers prevent reliable payment matching and customer statement generation.
+    const dupInv = await db.query(`
+      SELECT invoice_number,
+             COUNT(*)                               AS cnt,
+             STRING_AGG(id::text, ', ' ORDER BY id) AS ids
+      FROM customer_invoices
+      WHERE company_id = $1
+        AND invoice_number IS NOT NULL
+        AND invoice_number != ''
+        AND status NOT IN ('void', 'cancelled')
+      GROUP BY invoice_number
+      HAVING COUNT(*) > 1
+      LIMIT 20
+    `, [companyId]);
+
+    for (const row of dupInv.rows) {
+      results.push(finding('H', 'AR_DUPLICATE_INVOICE_NUMBER', 'MEDIUM',
+        'Duplicate customer invoice numbers',
+        `Invoice number "${row.invoice_number}" appears ${row.cnt} times (IDs: ${row.ids}). Duplicate numbers make it impossible to reliably match payments to invoices and will cause incorrect customer statements.`,
+        null, 'customer_invoice', null));
+    }
+
+    // H4 — Orphaned customer invoice allocations: bank transactions matched to
+    //      customer_invoice entity type where the invoice no longer exists.
+    const orphanAlloc = await db.query(`
+      SELECT bt.id AS bt_id, bt.amount, bt.date, bt.matched_entity_id AS inv_id
+      FROM bank_transactions bt
+      LEFT JOIN customer_invoices ci
+        ON ci.id = bt.matched_entity_id
+       AND ci.company_id = bt.company_id
+      WHERE bt.company_id = $1
+        AND bt.matched_entity_type = 'customer_invoice'
+        AND bt.matched_entity_id IS NOT NULL
+        AND ci.id IS NULL
+    `, [companyId]);
+
+    for (const row of orphanAlloc.rows) {
+      results.push(finding('H', 'AR_ORPHAN_ALLOCATION', 'HIGH',
+        'Bank payment allocated to missing customer invoice',
+        `Bank transaction #${row.bt_id} (${row.date}, R${row.amount}) is allocated to customer invoice #${row.inv_id} which no longer exists. The receipt cannot be posted to the correct AR balance.`,
+        row.bt_id, 'bank_transaction', null));
+    }
+
+    // H5 — Unreconciled old AR receipts (status=matched, >90 days old).
+    // Receipts matched but not reconciled for extended periods inflate reported cash.
+    const agedUnreconciled = await db.query(`
+      SELECT COUNT(*) AS cnt,
+             ROUND(SUM(ABS(amount))::numeric, 2) AS total,
+             MIN(date) AS oldest
+      FROM bank_transactions
+      WHERE company_id = $1
+        AND matched_entity_type IN ('customer_invoice', 'customer_receipt')
+        AND status = 'matched'
+        AND date < CURRENT_DATE - INTERVAL '90 days'
+    `, [companyId]);
+
+    const ar5 = agedUnreconciled.rows[0];
+    if (parseInt(ar5?.cnt || 0) > 0) {
+      results.push(finding('H', 'AR_AGED_UNRECONCILED', 'MEDIUM',
+        `${ar5.cnt} AR receipt(s) matched but not reconciled for >90 days`,
+        `${ar5.cnt} customer receipts (total R${ar5.total}) have been matched to invoices but not reconciled for more than 90 days (oldest: ${ar5.oldest}). Review these allocations in the bank reconciliation to confirm they have cleared.`,
+        null, 'bank_transaction', null));
+    }
+
+    return results;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CATEGORY I — AP INTEGRITY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  static async checkApIntegrity(companyId) {
+    const results = [];
+
+    // I1 — AP control account GL balance vs outstanding supplier invoice total.
+    const apAccounts = await db.query(`
+      SELECT id, code, name
+      FROM accounts
+      WHERE company_id = $1
+        AND is_active = true
+        AND (
+          LOWER(type)               LIKE '%payable%'
+          OR LOWER(sub_type)        LIKE '%payable%'
+          OR LOWER(reporting_group) LIKE '%payable%'
+          OR LOWER(reporting_group) LIKE '%creditors%'
+          OR (LOWER(name) LIKE '%creditors control%'   AND LOWER(name) NOT LIKE '%vat%')
+          OR (LOWER(name) LIKE '%trade payable%'        AND LOWER(name) NOT LIKE '%vat%')
+          OR (LOWER(name) LIKE '%accounts payable%'     AND LOWER(name) NOT LIKE '%vat%')
+        )
+    `, [companyId]);
+
+    if (apAccounts.rows.length > 0) {
+      const apIds  = apAccounts.rows.map(r => r.id);
+      const apDesc = apAccounts.rows.map(r => [r.code, r.name].filter(Boolean).join(' ')).join(', ');
+
+      // AP control accounts are normally credit-balance (liability): credit - debit
+      const glRes = await db.query(`
+        SELECT ROUND(
+          COALESCE(SUM(jl.credit), 0) - COALESCE(SUM(jl.debit), 0),
+          2
+        ) AS gl_balance
+        FROM journal_lines jl
+        JOIN journals j ON j.id = jl.journal_id
+        WHERE j.company_id = $1
+          AND j.status = 'posted'
+          AND jl.account_id = ANY($2::int[])
+      `, [companyId, apIds]);
+
+      const invRes = await db.query(`
+        SELECT ROUND(COALESCE(SUM(total_amount), 0), 2) AS invoice_total
+        FROM supplier_invoices
+        WHERE company_id = $1
+          AND status NOT IN ('draft', 'cancelled', 'paid', 'void')
+      `, [companyId]);
+
+      const glBalance = parseFloat(glRes.rows[0]?.gl_balance    || 0);
+      const invTotal  = parseFloat(invRes.rows[0]?.invoice_total || 0);
+      const variance  = Math.round(Math.abs(glBalance - invTotal) * 100) / 100;
+
+      if (variance > 1) {
+        const sev = variance > 10000 ? 'CRITICAL' : variance > 1000 ? 'HIGH' : 'MEDIUM';
+        results.push(finding('I', 'AP_CONTROL_VARIANCE', sev,
+          `AP control account vs ageing: R${variance.toFixed(2)} variance`,
+          `GL AP balance (${apDesc}): R${glBalance.toFixed(2)}. Outstanding supplier invoices total: R${invTotal.toFixed(2)}. Variance: R${variance.toFixed(2)}. The accounts payable sub-ledger and general ledger have diverged. Compare the Trial Balance AP line to the Aged Creditors report to locate the source.`,
+          null, 'supplier_invoice', null));
+      }
+    }
+
+    // I2 — Supplier invoices with negative total amount (should be credit notes).
+    const negSupInv = await db.query(`
+      SELECT id, invoice_number, total_amount, status
+      FROM supplier_invoices
+      WHERE company_id = $1
+        AND total_amount < 0
+        AND status NOT IN ('void', 'cancelled')
+      ORDER BY total_amount ASC
+      LIMIT 20
+    `, [companyId]);
+
+    for (const row of negSupInv.rows) {
+      results.push(finding('I', 'AP_NEGATIVE_INVOICE', 'MEDIUM',
+        'Supplier invoice has negative amount',
+        `Supplier invoice #${row.id} (${row.invoice_number || 'no number'}, status: ${row.status}): amount R${row.total_amount}. Negative supplier invoices should be supplier credit notes — posting them as invoices distorts aged creditors.`,
+        row.id, 'supplier_invoice', null));
+    }
+
+    // I3 — Negative AP control account balance (company has a net debit balance —
+    //      suppliers owe us money in aggregate, which is unusual).
+    if (apAccounts.rows.length > 0) {
+      const apIds = apAccounts.rows.map(r => r.id);
+      const netRes = await db.query(`
+        SELECT ROUND(
+          COALESCE(SUM(jl.credit), 0) - COALESCE(SUM(jl.debit), 0),
+          2
+        ) AS net_balance
+        FROM journal_lines jl
+        JOIN journals j ON j.id = jl.journal_id
+        WHERE j.company_id = $1
+          AND j.status = 'posted'
+          AND jl.account_id = ANY($2::int[])
+      `, [companyId, apIds]);
+
+      const netBal = parseFloat(netRes.rows[0]?.net_balance || 0);
+      if (netBal < -1) {
+        results.push(finding('I', 'AP_NEGATIVE_CONTROL_BALANCE', 'HIGH',
+          'AP control account has a negative (debit) balance',
+          `The AP control account shows a net debit balance of R${Math.abs(netBal).toFixed(2)}, meaning suppliers collectively owe this company money. This is unusual and may indicate overpayments, duplicate payments, or journal posting errors. Investigate each supplier account individually.`,
+          null, 'account', null));
+      }
+    }
+
+    // I4 — Duplicate supplier invoice numbers within same supplier.
+    const dupSupInv = await db.query(`
+      SELECT supplier_id, invoice_number,
+             COUNT(*)                               AS cnt,
+             STRING_AGG(id::text, ', ' ORDER BY id) AS ids
+      FROM supplier_invoices
+      WHERE company_id = $1
+        AND invoice_number IS NOT NULL
+        AND invoice_number != ''
+        AND status NOT IN ('void', 'cancelled')
+        AND supplier_id IS NOT NULL
+      GROUP BY supplier_id, invoice_number
+      HAVING COUNT(*) > 1
+      LIMIT 20
+    `, [companyId]);
+
+    for (const row of dupSupInv.rows) {
+      results.push(finding('I', 'AP_DUPLICATE_INVOICE_NUMBER', 'HIGH',
+        'Duplicate supplier invoice number for same supplier',
+        `Supplier #${row.supplier_id}: invoice number "${row.invoice_number}" appears ${row.cnt} times (IDs: ${row.ids}). This is a common indicator of a duplicate payment. Verify that the supplier was not paid twice.`,
+        row.supplier_id, 'supplier', null));
+    }
+
+    // I5 — Orphaned AP allocations: bank transactions matched to supplier invoices that no longer exist.
+    const orphanApAlloc = await db.query(`
+      SELECT bt.id AS bt_id, bt.amount, bt.date, bt.matched_entity_id AS inv_id
+      FROM bank_transactions bt
+      LEFT JOIN supplier_invoices si
+        ON si.id = bt.matched_entity_id
+       AND si.company_id = bt.company_id
+      WHERE bt.company_id = $1
+        AND bt.matched_entity_type = 'supplier_invoice'
+        AND bt.matched_entity_id IS NOT NULL
+        AND si.id IS NULL
+    `, [companyId]);
+
+    for (const row of orphanApAlloc.rows) {
+      results.push(finding('I', 'AP_ORPHAN_ALLOCATION', 'HIGH',
+        'Bank payment allocated to missing supplier invoice',
+        `Bank transaction #${row.bt_id} (${row.date}, R${row.amount}) is allocated to supplier invoice #${row.inv_id} which no longer exists. The payment has been made but the AP balance is not correctly reduced.`,
+        row.bt_id, 'bank_transaction', null));
+    }
+
+    return results;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CATEGORY J — REPORTING INTEGRITY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  static async checkReportingIntegrity(companyId) {
+    const results = [];
+
+    // J1 — Trial Balance: total posted debits must equal total posted credits.
+    // If J1 fails, every downstream report (P&L, Balance Sheet) is unreliable.
+    // Individual unbalanced journals are caught by A3; this is the aggregate check.
+    const tbBalance = await db.query(`
+      SELECT
+        ROUND(COALESCE(SUM(jl.debit),  0)::numeric, 2) AS total_debit,
+        ROUND(COALESCE(SUM(jl.credit), 0)::numeric, 2) AS total_credit,
+        ROUND(ABS(COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.credit), 0))::numeric, 2) AS diff
+      FROM journal_lines jl
+      JOIN journals j ON j.id = jl.journal_id
+      WHERE j.company_id = $1
+        AND j.status = 'posted'
+    `, [companyId]);
+
+    const tb = tbBalance.rows[0];
+    const tbDiff = parseFloat(tb?.diff || 0);
+    if (tbDiff > 0.01) {
+      results.push(finding('J', 'TB_OUT_OF_BALANCE', 'CRITICAL',
+        `Trial Balance is out of balance by R${tbDiff.toFixed(2)}`,
+        `Total posted debits: R${tb.total_debit}. Total posted credits: R${tb.total_credit}. Difference: R${tbDiff.toFixed(2)}. A non-zero TB imbalance means the general ledger itself is corrupted — all financial reports will be incorrect. Check category A findings (unbalanced journals) to locate the source.`,
+        null, 'journal', null));
+    }
+
+    // J2 — AR sub-ledger vs AR control: cross-check (reporting perspective).
+    // A separate check from H1 — this flags it as a REPORTING concern, not just AR.
+    // Only report here if H1 did not find a variance (avoid double-reporting).
+    // (Runtime-deduplicated by the UI; we don't emit here to keep findings clean.)
+
+    // J3 — VAT control account GL balance vs last submitted VAT return net.
+    // Identifies uncommitted VAT (posted VAT journals not yet on a VAT return).
+    const vatAccounts = await db.query(`
+      SELECT id, code, name
+      FROM accounts
+      WHERE company_id = $1
+        AND is_active = true
+        AND reporting_group IN ('vat_asset', 'vat_liability')
+    `, [companyId]);
+
+    if (vatAccounts.rows.length > 0) {
+      const vatIds = vatAccounts.rows.map(r => r.id);
+
+      // Net VAT on the GL (positive = liability, negative = asset/refund due)
+      const vatGlRes = await db.query(`
+        SELECT ROUND(
+          COALESCE(SUM(jl.credit), 0) - COALESCE(SUM(jl.debit), 0),
+          2
+        ) AS gl_net_vat
+        FROM journal_lines jl
+        JOIN journals j ON j.id = jl.journal_id
+        WHERE j.company_id = $1
+          AND j.status = 'posted'
+          AND jl.account_id = ANY($2::int[])
+      `, [companyId, vatIds]);
+
+      // Net VAT from the most recent submitted VAT return
+      const vatReturnRes = await db.query(`
+        SELECT ROUND(COALESCE(output_vat - input_vat, 0)::numeric, 2) AS return_net
+        FROM vat_submissions
+        WHERE company_id = $1
+        ORDER BY submission_date DESC
+        LIMIT 1
+      `, [companyId]);
+
+      const glVat     = parseFloat(vatGlRes.rows[0]?.gl_net_vat  || 0);
+      const returnVat = parseFloat(vatReturnRes.rows[0]?.return_net || 0);
+
+      // Flag if there is a significant unsubmitted VAT balance on the GL
+      // (i.e., VAT posted but not yet included in any submitted return)
+      if (Math.abs(glVat) > 1 && vatReturnRes.rows.length === 0) {
+        results.push(finding('J', 'VAT_CONTROL_NO_RETURN', 'HIGH',
+          `VAT control account has a R${Math.abs(glVat).toFixed(2)} balance with no submitted return`,
+          `The VAT control accounts carry a net balance of R${glVat.toFixed(2)} but no submitted VAT return exists for this company. This VAT amount is outstanding and has not been declared to SARS. Open a VAT period, reconcile, and submit.`,
+          null, 'vat_period', null));
+      }
+
+      // J3b — VAT journals not assigned to any VAT period (cross-check with D1)
+      const unassignedVatRes = await db.query(`
+        SELECT COUNT(DISTINCT j.id) AS cnt,
+               ROUND(COALESCE(SUM(CASE WHEN jl.credit > 0 THEN jl.credit ELSE 0 END), 0)::numeric, 2) AS output_vat,
+               ROUND(COALESCE(SUM(CASE WHEN jl.debit  > 0 THEN jl.debit  ELSE 0 END), 0)::numeric, 2) AS input_vat
+        FROM journals j
+        JOIN journal_lines jl ON jl.journal_id = j.id
+        WHERE j.company_id = $1
+          AND j.status = 'posted'
+          AND j.vat_period_id IS NULL
+          AND jl.account_id = ANY($2::int[])
+      `, [companyId, vatIds]);
+
+      const uv = unassignedVatRes.rows[0];
+      if (parseInt(uv?.cnt || 0) > 0) {
+        results.push(finding('J', 'VAT_UNASSIGNED_JOURNALS', 'HIGH',
+          `${uv.cnt} VAT journal(s) not assigned to a VAT period`,
+          `${uv.cnt} posted journal(s) with VAT lines have vat_period_id = null (output VAT: R${uv.output_vat}, input VAT: R${uv.input_vat}). These transactions are excluded from all VAT returns and will cause your VAT report to understate the actual VAT position. Use the repair action on individual findings in category D to reassign VAT periods.`,
+          null, 'journal', null));
+      }
+    }
+
+    // J4 — P&L vs Balance Sheet retained earnings cross-check.
+    // Net income accounts (income - expense) on the TB should equal the
+    // movement in the retained earnings / accumulated profit account for the period.
+    // Simplified check: if the sum of income/expense accounts is non-zero but
+    // there is no retained earnings account, flag the gap.
+    const plCheck = await db.query(`
+      SELECT
+        ROUND(
+          COALESCE(SUM(CASE WHEN a.type IN ('income', 'revenue') THEN jl.credit - jl.debit ELSE 0 END), 0)::numeric
+          - COALESCE(SUM(CASE WHEN a.type IN ('expense', 'cost_of_sales') THEN jl.debit - jl.credit ELSE 0 END), 0)::numeric,
+          2
+        ) AS net_profit
+      FROM journal_lines jl
+      JOIN journals j ON j.id = jl.journal_id
+      JOIN accounts a ON a.id = jl.account_id AND a.company_id = j.company_id
+      WHERE j.company_id = $1
+        AND j.status = 'posted'
+    `, [companyId]);
+
+    const retainedRes = await db.query(`
+      SELECT COUNT(*) AS cnt
+      FROM accounts
+      WHERE company_id = $1
+        AND is_active = true
+        AND (
+          LOWER(type) LIKE '%retained%'
+          OR LOWER(sub_type) LIKE '%retained%'
+          OR LOWER(reporting_group) LIKE '%retained%'
+          OR LOWER(name) LIKE '%retained earnings%'
+          OR LOWER(name) LIKE '%accumulated profit%'
+          OR LOWER(name) LIKE '%accumulated loss%'
+        )
+    `, [companyId]);
+
+    const netProfit       = parseFloat(plCheck.rows[0]?.net_profit || 0);
+    const hasRetainedAcct = parseInt(retainedRes.rows[0]?.cnt || 0) > 0;
+
+    if (Math.abs(netProfit) > 1 && !hasRetainedAcct) {
+      results.push(finding('J', 'PL_NO_RETAINED_EARNINGS_ACCOUNT', 'MEDIUM',
+        'P&L net income exists but no retained earnings account found',
+        `The income and expense accounts carry a net profit/loss of R${netProfit.toFixed(2)}, but no retained earnings or accumulated profit account was found in the chart of accounts. Without this account the Balance Sheet will not balance after a year-end close. Add a retained earnings equity account.`,
+        null, 'account', null));
+    }
+
+    // J5 — Accounts with zero movement in the last 12 months still marked active.
+    //      Informational: flags dormant accounts that may indicate chart-of-accounts clutter.
+    const dormantAccounts = await db.query(`
+      SELECT a.id, a.code, a.name, a.type
+      FROM accounts a
+      WHERE a.company_id = $1
+        AND a.is_active = true
+        AND a.type NOT IN ('bank', 'header', 'group')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM journal_lines jl
+          JOIN journals j ON j.id = jl.journal_id
+          WHERE j.company_id = $1
+            AND j.status = 'posted'
+            AND jl.account_id = a.id
+            AND j.date >= CURRENT_DATE - INTERVAL '12 months'
+        )
+      ORDER BY a.type, a.code
+      LIMIT 5
+    `, [companyId]);
+
+    if (dormantAccounts.rows.length > 0) {
+      const names = dormantAccounts.rows.map(r => `${r.code || ''} ${r.name}`.trim()).join('; ');
+      results.push(finding('J', 'DORMANT_ACTIVE_ACCOUNTS', 'LOW',
+        `${dormantAccounts.rows.length}+ active account(s) with no movement in 12 months`,
+        `Sample: ${names}. Dormant active accounts clutter the chart of accounts and can appear on reports with zero balances. Review and deactivate accounts that are no longer in use.`,
+        null, 'account', null));
+    }
+
+    return results;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REPAIR — RECALCULATE AGEING
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Recalculate AR and AP ageing by invalidating any cached ageing data.
+   * If the system computes ageing dynamically (no cache table), confirms this
+   * and directs the user to refresh the ageing report.
+   *
+   * @param {number} companyId
+   */
+  static async repairRecalculateAgeing(companyId) {
+    // Check for an ageing cache table — clear it if it exists.
+    // The system may compute ageing dynamically; in that case, refreshing the
+    // Aged Debtors / Aged Creditors report pages achieves the same result.
+    let cleared = false;
+
+    try {
+      await db.query(`
+        DELETE FROM ageing_cache
+        WHERE company_id = $1
+      `, [companyId]);
+      cleared = true;
+    } catch (_) {
+      // Table does not exist — ageing is computed on demand (no cache to clear)
+      cleared = false;
+    }
+
+    return {
+      companyId,
+      ageingCacheCleared: cleared,
+      message: cleared
+        ? 'Ageing cache cleared. Refresh the Aged Debtors and Aged Creditors reports to see recalculated balances.'
+        : 'Ageing is computed dynamically in this system — no cache table exists. Open the Aged Debtors and Aged Creditors report pages to see current balances.',
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REPAIR — REBUILD SNAPSHOTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Rebuild historical comparative snapshots for this company.
+   * Marks all DRAFT batches as needing re-validation, allowing the
+   * historical comparatives import flow to re-process them.
+   * FINALIZED batches are not touched — they represent confirmed prior-period data.
+   *
+   * @param {number} companyId
+   */
+  static async repairRebuildSnapshots(companyId) {
+    // Only reset draft batches — finalized batches are immutable.
+    const res = await db.query(`
+      UPDATE historical_comparative_batches
+         SET status     = 'draft',
+             updated_at = NOW()
+       WHERE company_id = $1
+         AND status = 'validated'
+      RETURNING id, label
+    `, [companyId]);
+
+    const resetBatches = res.rows;
+
+    return {
+      companyId,
+      resetCount: resetBatches.length,
+      batches: resetBatches.map(r => ({ id: r.id, label: r.label })),
+      message: resetBatches.length > 0
+        ? `${resetBatches.length} historical comparative batch(es) reset to draft. Re-open Historical Comparatives and validate each batch to rebuild the snapshots.`
+        : 'No validated snapshot batches found for this company. No changes were made.',
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

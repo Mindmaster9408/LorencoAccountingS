@@ -108,6 +108,9 @@ router.use('/opening-balances', require('./routes/openingBalances'));
 // QA — Pilot Smoke Test Pack
 router.use('/pilot-smoke-tests', require('./routes/pilot-smoke-tests'));
 
+// Pilot Controls — governance checklists, sign-off history, risk register
+router.use('/pilot', require('./routes/pilotControls'));
+
 // Dashboard — Pilot Action Queue
 router.use('/dashboard', require('./routes/dashboard'));
 
