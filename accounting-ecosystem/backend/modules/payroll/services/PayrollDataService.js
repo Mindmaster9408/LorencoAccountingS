@@ -556,7 +556,7 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
       // Primary: query payroll_items_master (authoritative after migration)
       const { data: masterItems } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif, paye_projection_type, is_taxable')
+        .select('item_name, affects_uif, paye_projection_type, is_taxable, tax_treatment')
         .eq('company_id', companyId)
         .eq('is_active', true);
 
@@ -579,6 +579,12 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
           }
           if (m.is_taxable !== undefined && m.is_taxable !== null) {
             item.payroll_items.is_taxable = m.is_taxable === true;
+          }
+          // tax_treatment: payroll_items_master is authoritative (set via /api/payroll/items).
+          // payroll_items (calculation table) may lag — e.g. pre_tax vs net_only mismatch.
+          // Override ensures the engine receives the correct PAYE treatment for deductions.
+          if (m.tax_treatment) {
+            item.payroll_items.tax_treatment = m.tax_treatment;
           }
         });
       } else {
