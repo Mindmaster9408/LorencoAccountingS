@@ -334,6 +334,55 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .report-filter-bar .filter-select { min-width: 150px; }
 
 @media(max-width:768px) { .form-grid { grid-template-columns: 1fr; } .form-grid.cols3 { grid-template-columns: 1fr; } .main { padding: 16px; } .bom-line-row { grid-template-columns: 1fr 80px 70px 70px 32px; } }
+
+/* ── Custom Select Dropdown (H02-B) ─────────────────────────────────────────
+   CSS alone cannot style the Chromium/Edge native select popup panel on Windows
+   — the OS renders it regardless of color-scheme or select option rules.
+   These styles support the custom JS dropdown below.                           */
+.cs-wrap          { position: relative; }
+.cs-wrap.cs-block { display: block; width: 100%; }
+.cs-wrap.cs-inline{ display: inline-block; }
+
+.cs-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  background: #1e1b4b; border: 1px solid var(--border); color: var(--text);
+  font-family: inherit; cursor: pointer; user-select: none; box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.cs-trigger:focus, .cs-trigger.cs-open {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.cs-trigger:hover:not(.cs-open) { border-color: rgba(125,211,252,0.55); }
+.cs-trigger.cs-disabled         { opacity: 0.45; cursor: not-allowed; }
+
+/* Size variants matching existing class patterns */
+.cs-trigger.cs-sz-filter { padding: 9px 12px; font-size: 0.85rem; border-radius: 10px; }
+.cs-trigger.cs-sz-form   { padding: 9px 12px; font-size: 0.88rem; border-radius: 9px;  }
+.cs-trigger.cs-sz-bom    { padding: 7px 10px; font-size: 0.82rem; border-radius: 8px;  }
+.cs-trigger.cs-sz-xs     { padding: 3px 8px;  font-size: 0.80rem; border-radius: 6px;  }
+
+.cs-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.cs-label.cs-placeholder { color: var(--text-muted); }
+.cs-arrow {
+  flex-shrink: 0; color: var(--text-muted); font-size: 0.68rem;
+  transition: transform 0.18s; line-height: 1;
+}
+.cs-trigger.cs-open .cs-arrow { transform: rotate(180deg); }
+
+.cs-panel {
+  display: none; position: absolute; left: 0; min-width: 100%;
+  top: calc(100% + 3px);
+  background: #1e1b4b; border: 1px solid var(--border); border-radius: 9px;
+  overflow: hidden; overflow-y: auto; max-height: 230px;
+  z-index: 99999; box-shadow: 0 10px 40px rgba(0,0,0,0.65);
+}
+.cs-opt {
+  padding: 9px 14px; font-size: 0.88rem; color: var(--text);
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.cs-opt:hover             { background: #312e81; }
+.cs-opt.cs-sel            { background: #1e3a8a; color: #fff; }
+.cs-opt.cs-dis            { color: var(--text-muted); cursor: default; opacity: 0.45; }
 </style>
 </head>
 <body>
@@ -5829,6 +5878,228 @@ async function loadVarianceReport() {
 }
 
 // esc() is defined centrally above — this duplicate is removed (H01-006 fix)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CUSTOM SELECT DROPDOWN — H02-B
+// ═══════════════════════════════════════════════════════════════════════════
+// Reason: CSS (color-scheme:dark, select option) cannot control the native
+// Windows popup panel in Chromium/Edge — the OS renders it with system
+// colours regardless. This replaces the native popup with a fully styled
+// custom div dropdown.
+//
+// Compatibility:
+//  - Maintains .value get/set — existing app code (sel.value = x) still works
+//  - Fires 'change' events on selection — all onchange handlers still fire
+//  - MutationObserver keeps label/options in sync with dynamic option injection
+//  - Body MutationObserver handles JS-generated selects (PO lines, BOM lines)
+//  - Keyboard: Space/Enter to open, Escape to close
+//  - Panels flip above the trigger if screen edge is near
+//  - No localStorage, no business logic changes
+// ═══════════════════════════════════════════════════════════════════════════
+
+(function () {
+  'use strict';
+
+  // ─── Value descriptor — cache once ───────────────────────────────────────
+  var _nativeValDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+
+  function _nativeGet(sel) { return _nativeValDesc ? _nativeValDesc.get.call(sel) : sel._rawValue; }
+  function _nativeSet(sel, v) { if (_nativeValDesc) _nativeValDesc.set.call(sel, v); else sel._rawValue = v; }
+
+  // ─── Determine size variant ───────────────────────────────────────────────
+  function sizeClass(sel) {
+    if (sel.classList.contains('filter-select')) return 'cs-sz-filter';
+    if (sel.classList.contains('bom-line-item')) return 'cs-sz-bom';
+    var p = sel.style.padding || '';
+    if (/^3px/.test(p) || p === '3px 6px') return 'cs-sz-xs';
+    if (/^7px/.test(p) || p === '7px 10px') return 'cs-sz-bom';
+    return 'cs-sz-form';
+  }
+
+  // ─── Build one custom select ──────────────────────────────────────────────
+  function build(sel) {
+    if (sel._cs || sel.style.display === 'none' && !sel._cs) { /* skip already hidden natives */ }
+    if (sel._cs) return;
+    sel._cs = true;
+
+    var isFilter = sel.classList.contains('filter-select');
+    var minW     = sel.style.minWidth || '';
+
+    // ── Wrapper ──────────────────────────────────────────────────────────────
+    var wrap = document.createElement('div');
+    wrap.className = 'cs-wrap ' + (isFilter ? 'cs-inline' : 'cs-block');
+    if (minW) wrap.style.minWidth = minW;
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(sel);
+    sel.style.cssText = 'display:none !important;'; // hide native; form has no native submit
+
+    // ── Trigger ───────────────────────────────────────────────────────────────
+    var trigger = document.createElement('div');
+    trigger.className = 'cs-trigger ' + sizeClass(sel);
+    trigger.tabIndex = 0;
+    trigger.setAttribute('role', 'combobox');
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    if (sel.disabled) trigger.classList.add('cs-disabled');
+
+    var lbl = document.createElement('span');
+    lbl.className = 'cs-label';
+    trigger.appendChild(lbl);
+
+    var arw = document.createElement('span');
+    arw.className = 'cs-arrow';
+    arw.innerHTML = '&#9662;';
+    trigger.appendChild(arw);
+    wrap.appendChild(trigger);
+
+    // ── Panel ─────────────────────────────────────────────────────────────────
+    var panel = document.createElement('div');
+    panel.className = 'cs-panel';
+    panel.setAttribute('role', 'listbox');
+    wrap.appendChild(panel);
+
+    // ── Intercept programmatic .value = x ────────────────────────────────────
+    try {
+      Object.defineProperty(sel, 'value', {
+        get: function () { return _nativeGet(this); },
+        set: function (v) { _nativeSet(this, v); syncLabel(); },
+        configurable: true,
+        enumerable: true
+      });
+    } catch (e) { /* silently skip if not configurable */ }
+
+    // ── Sync helpers ─────────────────────────────────────────────────────────
+    function syncLabel() {
+      var idx = sel.selectedIndex;
+      var opt = idx >= 0 ? sel.options[idx] : null;
+      if (opt && opt.value !== '') {
+        lbl.textContent = opt.text;
+        lbl.classList.remove('cs-placeholder');
+      } else if (opt) {
+        lbl.textContent = opt.text;
+        lbl.classList.add('cs-placeholder');
+      } else {
+        lbl.textContent = '—';
+        lbl.classList.add('cs-placeholder');
+      }
+    }
+
+    function buildPanel() {
+      panel.innerHTML = '';
+      var cur = _nativeGet(sel);
+      Array.from(sel.options).forEach(function (opt) {
+        var item = document.createElement('div');
+        item.className = 'cs-opt' +
+          (opt.value === cur ? ' cs-sel' : '') +
+          (opt.disabled      ? ' cs-dis' : '');
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', opt.value === cur ? 'true' : 'false');
+        item.textContent = opt.text;
+        if (!opt.disabled) {
+          item.addEventListener('mousedown', function (e) {
+            e.preventDefault(); // prevent blur before value is set
+            _nativeSet(sel, opt.value);
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            close();
+            syncLabel();
+          });
+        }
+        panel.appendChild(item);
+      });
+    }
+
+    // ── Open / Close ─────────────────────────────────────────────────────────
+    function open() {
+      if (sel.disabled) return;
+      buildPanel();
+      panel.style.display = 'block';
+      trigger.classList.add('cs-open');
+      trigger.setAttribute('aria-expanded', 'true');
+      // Scroll selected option into view
+      var selOpt = panel.querySelector('.cs-sel');
+      if (selOpt) selOpt.scrollIntoView({ block: 'nearest' });
+      // Flip above if near bottom of viewport
+      window.requestAnimationFrame(function () {
+        var r = panel.getBoundingClientRect();
+        if (r.bottom > window.innerHeight - 8) {
+          panel.style.top    = 'auto';
+          panel.style.bottom = 'calc(100% + 3px)';
+        } else {
+          panel.style.top    = 'calc(100% + 3px)';
+          panel.style.bottom = 'auto';
+        }
+      });
+    }
+
+    function close() {
+      panel.style.display = 'none';
+      trigger.classList.remove('cs-open');
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    // ── Events ────────────────────────────────────────────────────────────────
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var isOpen = panel.style.display === 'block';
+      closeAll();
+      if (!isOpen) open();
+    });
+
+    trigger.addEventListener('keydown', function (e) {
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); trigger.click(); }
+      if (e.key === 'Escape') close();
+    });
+
+    // ── Watch for dynamic option injection ────────────────────────────────────
+    new MutationObserver(function () {
+      syncLabel();
+    }).observe(sel, { childList: true });
+
+    syncLabel();
+  }
+
+  // ─── Close all open panels ────────────────────────────────────────────────
+  function closeAll() {
+    document.querySelectorAll('.cs-panel').forEach(function (p) {
+      p.style.display = 'none';
+    });
+    document.querySelectorAll('.cs-trigger.cs-open').forEach(function (t) {
+      t.classList.remove('cs-open');
+      t.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // ─── Init all selects ─────────────────────────────────────────────────────
+  function initAll() {
+    document.querySelectorAll('select').forEach(build);
+  }
+
+  // ─── Boot ─────────────────────────────────────────────────────────────────
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+  function boot() {
+    initAll();
+
+    // Close panels on outside click
+    document.addEventListener('click', closeAll);
+
+    // Watch for new selects added by JS (PO lines, BOM lines, count lines, etc.)
+    new MutationObserver(function (muts) {
+      muts.forEach(function (m) {
+        m.addedNodes.forEach(function (n) {
+          if (!n || n.nodeType !== 1) return;
+          if (n.tagName === 'SELECT') build(n);
+          if (n.querySelectorAll) n.querySelectorAll('select').forEach(build);
+        });
+      });
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+
+})();
 </script>
 </body>
 </html>
