@@ -6,7 +6,13 @@
 <title>Lorenco Storehouse — Inventory & MRP</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
+/* color-scheme:dark on :root tells the browser this page is a dark-mode page.
+   This is the definitive fix for native <select> dropdown popup panels rendering
+   white in Chrome — all browser-rendered UI (selects, scrollbars, form controls)
+   will use dark system colors. Per-element color-scheme:dark alone is unreliable
+   for the native popup layer; root-level declaration is required. */
 :root {
+  color-scheme: dark;
   /* Lorenco Ecosystem Colour Palette */
   --eco-bg:           #0f172a;
   --eco-panel:        #1e1b4b;
@@ -185,7 +191,7 @@ select option:disabled {
 .form-control {
   width: 100%;
   padding: 9px 12px;
-  background: rgba(255,255,255,0.05);
+  background: #1e1b4b;
   border: 1px solid var(--border);
   border-radius: 9px;
   color: var(--text);
@@ -208,7 +214,7 @@ select option:disabled {
    No prior definition existed.                                           */
 .bom-line-item {
   padding: 7px 10px;
-  background: rgba(255,255,255,0.05);
+  background: #1e1b4b;
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
@@ -259,7 +265,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .form-grid.full { grid-template-columns: 1fr; }
 .form-field { display: flex; flex-direction: column; gap: 5px; }
 .form-field label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-.form-field input, .form-field select, .form-field textarea { padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 0.88rem; font-family: inherit; color-scheme: dark; }
+.form-field input, .form-field select, .form-field textarea { padding: 9px 12px; background: #1e1b4b; border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 0.88rem; font-family: inherit; color-scheme: dark; }
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; border-color: var(--accent); }
 .form-field textarea { resize: vertical; min-height: 60px; }
 .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
@@ -271,7 +277,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 /* ── BOM Lines Editor ── */
 .bom-lines-header { display: grid; grid-template-columns: 1fr 120px 90px 90px 32px; gap: 8px; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; padding: 8px 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .bom-line-row { display: grid; grid-template-columns: 1fr 120px 90px 90px 32px; gap: 8px; align-items: center; margin-bottom: 6px; }
-.bom-line-row input, .bom-line-row select { padding: 7px 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.82rem; width: 100%; color-scheme: dark; }
+.bom-line-row input, .bom-line-row select { padding: 7px 10px; background: #1e1b4b; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.82rem; width: 100%; color-scheme: dark; }
 .bom-line-row input:focus, .bom-line-row select:focus { outline: none; border-color: var(--accent); }
 .bom-line-remove { width: 28px; height: 28px; background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.25); color: #fda4af; border-radius: 7px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }
 .bom-line-remove:hover { background: rgba(244,63,94,0.25); }
