@@ -108,7 +108,7 @@ body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, 
 
 /* ── Buttons ── */
 .btn { padding: 9px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; }
-.btn-primary { background: linear-gradient(135deg,var(--accent),#0891b2); color: #000; }
+.btn-primary { background: linear-gradient(135deg,var(--accent),#0891b2); color: #fff; }
 .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px var(--accent-glow); }
 .btn-purple { background: linear-gradient(135deg,#a78bfa,#7c3aed); color: #fff; }
 .btn-purple:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(167,139,250,0.35); }
@@ -1895,7 +1895,7 @@ async function loadHealth() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
           <span>${s.icon}</span>
           <strong style="font-size:0.85rem;">${esc(issue.title)}</strong>
-          <span style="margin-left:auto;font-size:0.72rem;background:${s.border};color:#000;border-radius:4px;padding:1px 6px;">${issue.count}</span>
+          <span style="margin-left:auto;font-size:0.72rem;background:${s.border};color:#fff;border-radius:4px;padding:1px 6px;">${issue.count}</span>
         </div>
         <div style="font-size:0.78rem;color:#cbd5e1;">${esc(issue.recommendation)}</div>
         ${affectedHtml}
