@@ -123,6 +123,98 @@ body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, 
 .btn-gold { background: linear-gradient(135deg,#f5c542,#d97706); color: #1a1a1a; }
 .btn-gold:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(245,197,66,0.35); }
 
+/* ════════════════════════════════════════════════════════════════════
+   SELECT / DROPDOWN DARK-THEME HARDENING — H02
+   ════════════════════════════════════════════════════════════════════
+   Three problems existed before this block:
+     1. select option: never styled → OS default (white panel, dark text)
+     2. .form-control: undefined → browser default white select element
+     3. .bom-line-item: undefined → browser default white select element
+
+   Fix strategy:
+     • Global `select` baseline — applies to all selects that lack a
+       more-specific class. Higher-specificity existing rules
+       (.filter-select, .form-field select, .bom-line-row select)
+       continue to override padding/radius; only gap-fills are needed here.
+     • `select option` — solid dark colour (#1e1b4b = --eco-panel).
+       Must be solid (not rgba) because option elements have no stacking
+       context against which a transparent colour can composite.
+     • .form-control — first definition; covers stock-count, approve-count,
+       manual-hold, PO-line, and count-line-reason selects/inputs.
+     • .bom-line-item — first definition; covers JS-generated BOM rows.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* 1. Global select baseline ─────────────────────────────────────────── */
+select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: inherit;
+  outline: none;
+}
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+/* 2. Option list colours ─────────────────────────────────────────────
+   Solid hex values are required — rgba fails inside the native OS popup
+   because there is no compositing parent for the option layer. */
+select option {
+  background-color: #1e1b4b;   /* --eco-panel */
+  color: #f8fafc;               /* --eco-text  */
+}
+select option:checked {
+  background-color: #1e40af;   /* dark blue highlight */
+  color: #ffffff;
+}
+select option:disabled {
+  color: #475569;
+  background-color: #1e1b4b;
+}
+
+/* 3. .form-control — used in stock-count, approve, manual-hold, PO-line,
+   count-line-reason modals/tables. No prior definition existed.          */
+.form-control {
+  width: 100%;
+  padding: 9px 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.form-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+/* Small-row variant used in the count-line variance reason cell */
+.form-control[style*="padding:3px"] {
+  border-radius: 6px;
+}
+
+/* 4. .bom-line-item — JS-generated component selects in addBomLine().
+   No prior definition existed.                                           */
+.bom-line-item {
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.82rem;
+  width: 100%;
+  outline: none;
+  font-family: inherit;
+}
+.bom-line-item:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
 /* ── Table ── */
 .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
 table { width: 100%; border-collapse: collapse; }
