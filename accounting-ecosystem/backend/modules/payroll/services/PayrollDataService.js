@@ -794,8 +794,15 @@ function normalizeCalculationInput(
   // Normalize recurring items into regular_inputs format
   const regularInputs = recurringItems.map(item => ({
     description: item.payroll_items?.name || item.payroll_items?.code || 'Unknown',
-    amount: item.amount || 0,
-    percentage: item.percentage || 0,
+    // Percentage-based items (amount=null in DB, percentage>0) must be communicated to
+    // the engine using is_percentage + percentage_value — the fields calculateFromData
+    // checks at resolution time. Sending only `percentage` was silently ignored by the
+    // engine, causing all percentage items to contribute R0 to gross/PAYE/UIF.
+    // `percentage` is kept as a legacy/display field; the engine reads is_percentage.
+    amount:           parseFloat(item.percentage || 0) > 0 ? 0 : (item.amount || 0),
+    percentage:       parseFloat(item.percentage || 0),
+    is_percentage:    parseFloat(item.percentage || 0) > 0,
+    percentage_value: parseFloat(item.percentage || 0) > 0 ? parseFloat(item.percentage || 0) : 0,
     type: item.item_type || 'allowance',
     is_taxable: item.payroll_items?.is_taxable !== false,
     // tax_treatment: controls whether a deduction reduces taxableGross (pre-PAYE) or net only.
