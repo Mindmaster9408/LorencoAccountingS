@@ -104,7 +104,7 @@ body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, 
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .search-input { padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; width: 230px; }
 .search-input:focus { outline: none; border-color: var(--accent); }
-.filter-select { padding: 9px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; }
+.filter-select { padding: 9px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; color-scheme: dark; }
 
 /* ── Buttons ── */
 .btn { padding: 9px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; }
@@ -152,6 +152,12 @@ select {
   border-radius: 8px;
   font-family: inherit;
   outline: none;
+  /* color-scheme: dark — tells Chrome's native rendering engine to draw
+     the dropdown popup panel in dark mode. Without this, Chrome ignores
+     select option { background-color } for the panel background and
+     renders it white regardless of option styling. This is the key fix
+     that makes the open dropdown list show dark on Chrome/Edge/Firefox. */
+  color-scheme: dark;
 }
 select:focus {
   border-color: var(--accent);
@@ -187,6 +193,7 @@ select option:disabled {
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
+  color-scheme: dark;
 }
 .form-control:focus {
   border-color: var(--accent);
@@ -209,6 +216,7 @@ select option:disabled {
   width: 100%;
   outline: none;
   font-family: inherit;
+  color-scheme: dark;
 }
 .bom-line-item:focus {
   border-color: var(--accent);
@@ -251,7 +259,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .form-grid.full { grid-template-columns: 1fr; }
 .form-field { display: flex; flex-direction: column; gap: 5px; }
 .form-field label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-.form-field input, .form-field select, .form-field textarea { padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 0.88rem; font-family: inherit; }
+.form-field input, .form-field select, .form-field textarea { padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 0.88rem; font-family: inherit; color-scheme: dark; }
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; border-color: var(--accent); }
 .form-field textarea { resize: vertical; min-height: 60px; }
 .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
@@ -263,7 +271,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 /* ── BOM Lines Editor ── */
 .bom-lines-header { display: grid; grid-template-columns: 1fr 120px 90px 90px 32px; gap: 8px; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; padding: 8px 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .bom-line-row { display: grid; grid-template-columns: 1fr 120px 90px 90px 32px; gap: 8px; align-items: center; margin-bottom: 6px; }
-.bom-line-row input, .bom-line-row select { padding: 7px 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.82rem; width: 100%; }
+.bom-line-row input, .bom-line-row select { padding: 7px 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.82rem; width: 100%; color-scheme: dark; }
 .bom-line-row input:focus, .bom-line-row select:focus { outline: none; border-color: var(--accent); }
 .bom-line-remove { width: 28px; height: 28px; background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.25); color: #fda4af; border-radius: 7px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }
 .bom-line-remove:hover { background: rgba(244,63,94,0.25); }
