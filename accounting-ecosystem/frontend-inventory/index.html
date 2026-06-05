@@ -335,10 +335,9 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 
 @media(max-width:768px) { .form-grid { grid-template-columns: 1fr; } .form-grid.cols3 { grid-template-columns: 1fr; } .main { padding: 16px; } .bom-line-row { grid-template-columns: 1fr 80px 70px 70px 32px; } }
 
-/* ── Custom Select Dropdown (H02-B) ─────────────────────────────────────────
-   CSS alone cannot style the Chromium/Edge native select popup panel on Windows
-   — the OS renders it regardless of color-scheme or select option rules.
-   These styles support the custom JS dropdown below.                           */
+/* ── Custom Select Dropdown (H02-B HARDENED) ──────────────────────────────
+   CSS cannot style Chromium/Edge/Windows native popup panels (OS-rendered).
+   All styles here back the custom JS dropdown — no native popup is shown.   */
 .cs-wrap          { position: relative; }
 .cs-wrap.cs-block { display: block; width: 100%; }
 .cs-wrap.cs-inline{ display: inline-block; }
@@ -353,16 +352,16 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow);
 }
 .cs-trigger:hover:not(.cs-open) { border-color: rgba(125,211,252,0.55); }
-.cs-trigger.cs-disabled         { opacity: 0.45; cursor: not-allowed; }
+.cs-trigger.cs-disabled         { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
 
-/* Size variants matching existing class patterns */
+/* Size variants — match exact padding/radius of replaced select classes */
 .cs-trigger.cs-sz-filter { padding: 9px 12px; font-size: 0.85rem; border-radius: 10px; }
 .cs-trigger.cs-sz-form   { padding: 9px 12px; font-size: 0.88rem; border-radius: 9px;  }
 .cs-trigger.cs-sz-bom    { padding: 7px 10px; font-size: 0.82rem; border-radius: 8px;  }
 .cs-trigger.cs-sz-xs     { padding: 3px 8px;  font-size: 0.80rem; border-radius: 6px;  }
 
-.cs-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.cs-label.cs-placeholder { color: var(--text-muted); }
+.cs-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-label.cs-ph { color: var(--text-muted); }
 .cs-arrow {
   flex-shrink: 0; color: var(--text-muted); font-size: 0.68rem;
   transition: transform 0.18s; line-height: 1;
@@ -371,18 +370,21 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 
 .cs-panel {
   display: none; position: absolute; left: 0; min-width: 100%;
-  top: calc(100% + 3px);
+  top: calc(100% + 3px); bottom: auto;
   background: #1e1b4b; border: 1px solid var(--border); border-radius: 9px;
-  overflow: hidden; overflow-y: auto; max-height: 230px;
+  overflow: hidden; overflow-y: auto; max-height: 240px;
   z-index: 99999; box-shadow: 0 10px 40px rgba(0,0,0,0.65);
 }
 .cs-opt {
   padding: 9px 14px; font-size: 0.88rem; color: var(--text);
   font-family: inherit; cursor: pointer; white-space: nowrap;
 }
-.cs-opt:hover             { background: #312e81; }
-.cs-opt.cs-sel            { background: #1e3a8a; color: #fff; }
-.cs-opt.cs-dis            { color: var(--text-muted); cursor: default; opacity: 0.45; }
+/* Keyboard focus indicator (arrow-key navigation) */
+.cs-opt.cs-focused         { background: #312e81; }
+.cs-opt:hover              { background: #312e81; }
+.cs-opt.cs-sel             { background: #1e3a8a; color: #fff; }
+.cs-opt.cs-sel.cs-focused  { background: #1e40af; }
+.cs-opt.cs-dis             { color: var(--text-muted); cursor: default; opacity: 0.45; }
 </style>
 </head>
 <body>
@@ -5880,63 +5882,76 @@ async function loadVarianceReport() {
 // esc() is defined centrally above — this duplicate is removed (H01-006 fix)
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CUSTOM SELECT DROPDOWN — H02-B
+// CUSTOM SELECT DROPDOWN — H02-B HARDENED
 // ═══════════════════════════════════════════════════════════════════════════
-// Reason: CSS (color-scheme:dark, select option) cannot control the native
-// Windows popup panel in Chromium/Edge — the OS renders it with system
-// colours regardless. This replaces the native popup with a fully styled
-// custom div dropdown.
+// CSS cannot style Chromium/Edge/Windows native select popup panels —
+// the OS renders them with system colours regardless of CSS declarations.
+// This replaces every native <select> popup with a fully styled dark div.
 //
-// Compatibility:
-//  - Maintains .value get/set — existing app code (sel.value = x) still works
-//  - Fires 'change' events on selection — all onchange handlers still fire
-//  - MutationObserver keeps label/options in sync with dynamic option injection
-//  - Body MutationObserver handles JS-generated selects (PO lines, BOM lines)
-//  - Keyboard: Space/Enter to open, Escape to close
-//  - Panels flip above the trigger if screen edge is near
-//  - No localStorage, no business logic changes
+// Rules enforced:
+//  1. Native select stays in DOM (hidden) — .value reads/writes always work
+//  2. change event dispatched on selection — all onchange= handlers fire
+//  3. .value setter intercepted — programmatic sel.value = x updates label
+//  4. MutationObserver per-select — label syncs when options injected by JS
+//  5. Body MutationObserver — JS-generated selects (PO/BOM/count lines) built
+//  6. Keyboard: Enter/Space opens; ArrowUp/Down navigates; Enter selects;
+//     Escape closes and returns focus; Tab closes and continues naturally
+//  7. Click outside closes — uses closest() guard, not blanket closeAll
+//  8. Disabled options skipped by keyboard and mouse
+//  9. No duplicate wrappers — _cs flag prevents double-init per element
+// 10. No localStorage / sessionStorage / business logic changes
 // ═══════════════════════════════════════════════════════════════════════════
 
 (function () {
   'use strict';
 
-  // ─── Value descriptor — cache once ───────────────────────────────────────
-  var _nativeValDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  // Cache the native value descriptor once — used for get/set interception.
+  // Calling through the prototype descriptor bypasses our own defineProperty
+  // override, preventing infinite recursion.
+  var _vd = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  function _get(el) { return _vd ? _vd.get.call(el) : ''; }
+  function _set(el, v) { if (_vd) _vd.set.call(el, v); }
 
-  function _nativeGet(sel) { return _nativeValDesc ? _nativeValDesc.get.call(sel) : sel._rawValue; }
-  function _nativeSet(sel, v) { if (_nativeValDesc) _nativeValDesc.set.call(sel, v); else sel._rawValue = v; }
-
-  // ─── Determine size variant ───────────────────────────────────────────────
+  // ─── Size variant from original select's class / inline padding ──────────
   function sizeClass(sel) {
     if (sel.classList.contains('filter-select')) return 'cs-sz-filter';
     if (sel.classList.contains('bom-line-item')) return 'cs-sz-bom';
-    var p = sel.style.padding || '';
-    if (/^3px/.test(p) || p === '3px 6px') return 'cs-sz-xs';
-    if (/^7px/.test(p) || p === '7px 10px') return 'cs-sz-bom';
+    var p = (sel.style.padding || '').trim();
+    if (/^3px/.test(p)) return 'cs-sz-xs';
+    if (/^7px/.test(p)) return 'cs-sz-bom';
     return 'cs-sz-form';
   }
 
-  // ─── Build one custom select ──────────────────────────────────────────────
+  // ─── Build one custom select ─────────────────────────────────────────────
   function build(sel) {
-    if (sel._cs || sel.style.display === 'none' && !sel._cs) { /* skip already hidden natives */ }
-    if (sel._cs) return;
+    if (sel._cs) return; // Guard: never double-init the same element
     sel._cs = true;
 
     var isFilter = sel.classList.contains('filter-select');
-    var minW     = sel.style.minWidth || '';
+    var focusIdx = -1; // tracks keyboard-focused row within non-disabled options
 
     // ── Wrapper ──────────────────────────────────────────────────────────────
     var wrap = document.createElement('div');
     wrap.className = 'cs-wrap ' + (isFilter ? 'cs-inline' : 'cs-block');
-    if (minW) wrap.style.minWidth = minW;
+    if (sel.style.minWidth) wrap.style.minWidth = sel.style.minWidth;
+    // Insert wrap before sel, then move sel inside
     sel.parentNode.insertBefore(wrap, sel);
     wrap.appendChild(sel);
-    sel.style.cssText = 'display:none !important;'; // hide native; form has no native submit
+    // Hide native select visually but keep it reachable for JS .value access.
+    // position:absolute / zero-size keeps it in the accessibility tree yet
+    // invisible; display:none would also work (no native form submit used here)
+    // but this is safer if any code checks offsetParent or similar.
+    sel.style.position   = 'absolute';
+    sel.style.opacity    = '0';
+    sel.style.pointerEvents = 'none';
+    sel.style.width      = '1px';
+    sel.style.height     = '1px';
+    sel.style.overflow   = 'hidden';
 
-    // ── Trigger ───────────────────────────────────────────────────────────────
+    // ── Trigger (visible "select" element) ───────────────────────────────────
     var trigger = document.createElement('div');
     trigger.className = 'cs-trigger ' + sizeClass(sel);
-    trigger.tabIndex = 0;
+    trigger.tabIndex  = sel.disabled ? -1 : 0;
     trigger.setAttribute('role', 'combobox');
     trigger.setAttribute('aria-haspopup', 'listbox');
     trigger.setAttribute('aria-expanded', 'false');
@@ -5949,114 +5964,189 @@ async function loadVarianceReport() {
     var arw = document.createElement('span');
     arw.className = 'cs-arrow';
     arw.innerHTML = '&#9662;';
+    arw.setAttribute('aria-hidden', 'true');
     trigger.appendChild(arw);
     wrap.appendChild(trigger);
 
-    // ── Panel ─────────────────────────────────────────────────────────────────
+    // ── Panel (dropdown list) ─────────────────────────────────────────────────
     var panel = document.createElement('div');
     panel.className = 'cs-panel';
     panel.setAttribute('role', 'listbox');
     wrap.appendChild(panel);
 
-    // ── Intercept programmatic .value = x ────────────────────────────────────
+    // ── Intercept .value setter ───────────────────────────────────────────────
+    // App code does sel.value = x in many places (populateWarehouseSelects etc.)
+    // Intercept so the label stays in sync with programmatic changes.
     try {
       Object.defineProperty(sel, 'value', {
-        get: function () { return _nativeGet(this); },
-        set: function (v) { _nativeSet(this, v); syncLabel(); },
+        get: function () { return _get(this); },
+        set: function (v) { _set(this, v); syncLabel(); },
         configurable: true,
-        enumerable: true
+        enumerable:   true
       });
-    } catch (e) { /* silently skip if not configurable */ }
+    } catch (_) { /* skip: already defined or non-configurable */ }
 
-    // ── Sync helpers ─────────────────────────────────────────────────────────
+    // ── Label sync ───────────────────────────────────────────────────────────
     function syncLabel() {
       var idx = sel.selectedIndex;
-      var opt = idx >= 0 ? sel.options[idx] : null;
-      if (opt && opt.value !== '') {
-        lbl.textContent = opt.text;
-        lbl.classList.remove('cs-placeholder');
-      } else if (opt) {
-        lbl.textContent = opt.text;
-        lbl.classList.add('cs-placeholder');
-      } else {
-        lbl.textContent = '—';
-        lbl.classList.add('cs-placeholder');
-      }
+      var opt = (idx >= 0 && sel.options[idx]) ? sel.options[idx] : null;
+      lbl.textContent = opt ? opt.text : '—';
+      lbl.classList.toggle('cs-ph', !opt || !opt.value);
     }
 
+    // ── Panel builder (called fresh on every open) ────────────────────────────
     function buildPanel() {
       panel.innerHTML = '';
-      var cur = _nativeGet(sel);
-      Array.from(sel.options).forEach(function (opt) {
-        var item = document.createElement('div');
+      focusIdx = -1;
+      var cur = _get(sel);
+
+      Array.from(sel.options).forEach(function (opt, optIdx) {
+        var isSel = (opt.value === cur);
+        var item  = document.createElement('div');
         item.className = 'cs-opt' +
-          (opt.value === cur ? ' cs-sel' : '') +
-          (opt.disabled      ? ' cs-dis' : '');
+          (isSel       ? ' cs-sel' : '') +
+          (opt.disabled ? ' cs-dis' : '');
         item.setAttribute('role', 'option');
-        item.setAttribute('aria-selected', opt.value === cur ? 'true' : 'false');
+        item.setAttribute('aria-selected', isSel.toString());
+        item.setAttribute('data-oi', optIdx); // index into sel.options
         item.textContent = opt.text;
+
         if (!opt.disabled) {
+          // mousedown (not click) so e.preventDefault() stops the trigger
+          // losing focus before the value is committed
           item.addEventListener('mousedown', function (e) {
-            e.preventDefault(); // prevent blur before value is set
-            _nativeSet(sel, opt.value);
-            sel.dispatchEvent(new Event('change', { bubbles: true }));
-            close();
-            syncLabel();
+            e.preventDefault();
+            choose(optIdx);
+          });
+          item.addEventListener('mouseover', function () {
+            var pos = getFocusable().indexOf(item);
+            if (pos >= 0) applyFocus(pos);
           });
         }
         panel.appendChild(item);
       });
+
+      // Pre-focus the currently selected item for keyboard navigation start
+      var selItem = panel.querySelector('.cs-sel:not(.cs-dis)');
+      if (selItem) {
+        var fi = getFocusable().indexOf(selItem);
+        if (fi >= 0) applyFocus(fi);
+      }
     }
 
-    // ── Open / Close ─────────────────────────────────────────────────────────
+    // ── Keyboard focus helpers ────────────────────────────────────────────────
+    function getFocusable() {
+      return Array.from(panel.querySelectorAll('.cs-opt:not(.cs-dis)'));
+    }
+
+    function applyFocus(pos) {
+      getFocusable().forEach(function (el, i) {
+        el.classList.toggle('cs-focused', i === pos);
+      });
+      focusIdx = pos;
+    }
+
+    function moveFocus(dir) {
+      var items = getFocusable();
+      if (!items.length) return;
+      var next = focusIdx < 0
+        ? (dir > 0 ? 0 : items.length - 1)
+        : (focusIdx + dir + items.length) % items.length;
+      applyFocus(next);
+      items[next].scrollIntoView({ block: 'nearest' });
+    }
+
+    // ── Choose option — commits value, fires change, closes ───────────────────
+    function choose(optIdx) {
+      var opt = sel.options[optIdx];
+      if (!opt || opt.disabled) return;
+      _set(sel, opt.value);          // set native select value
+      syncLabel();                   // update visible label
+      sel.dispatchEvent(new Event('change', { bubbles: true })); // fire onchange
+      close();
+    }
+
+    // ── Open ──────────────────────────────────────────────────────────────────
     function open() {
       if (sel.disabled) return;
       buildPanel();
       panel.style.display = 'block';
+      panel.style.top     = 'calc(100% + 3px)';
+      panel.style.bottom  = 'auto';
       trigger.classList.add('cs-open');
       trigger.setAttribute('aria-expanded', 'true');
-      // Scroll selected option into view
-      var selOpt = panel.querySelector('.cs-sel');
-      if (selOpt) selOpt.scrollIntoView({ block: 'nearest' });
-      // Flip above if near bottom of viewport
+
+      // After paint: flip above the trigger if it overflows the viewport bottom
       window.requestAnimationFrame(function () {
         var r = panel.getBoundingClientRect();
         if (r.bottom > window.innerHeight - 8) {
           panel.style.top    = 'auto';
           panel.style.bottom = 'calc(100% + 3px)';
-        } else {
-          panel.style.top    = 'calc(100% + 3px)';
-          panel.style.bottom = 'auto';
         }
       });
     }
 
+    // ── Close ─────────────────────────────────────────────────────────────────
     function close() {
       panel.style.display = 'none';
       trigger.classList.remove('cs-open');
       trigger.setAttribute('aria-expanded', 'false');
+      focusIdx = -1;
     }
+
+    function isOpen() { return panel.style.display === 'block'; }
 
     // ── Events ────────────────────────────────────────────────────────────────
     trigger.addEventListener('click', function (e) {
+      if (sel.disabled) return;
       e.stopPropagation();
-      var isOpen = panel.style.display === 'block';
-      closeAll();
-      if (!isOpen) open();
+      if (isOpen()) { close(); } else { closeAll(); open(); }
     });
 
     trigger.addEventListener('keydown', function (e) {
-      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); trigger.click(); }
-      if (e.key === 'Escape') close();
+      if (sel.disabled) return;
+      switch (e.key) {
+        case ' ':
+        case 'Enter':
+          e.preventDefault();
+          if (isOpen()) {
+            // Enter on focused item selects it; Enter with no focus just closes
+            var items = getFocusable();
+            if (focusIdx >= 0 && items[focusIdx]) {
+              choose(parseInt(items[focusIdx].getAttribute('data-oi'), 10));
+            } else {
+              close();
+            }
+          } else {
+            closeAll();
+            open();
+          }
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          if (isOpen()) { moveFocus(1); } else { closeAll(); open(); }
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          if (isOpen()) { moveFocus(-1); } else { closeAll(); open(); }
+          break;
+        case 'Escape':
+          if (isOpen()) { e.preventDefault(); close(); trigger.focus(); }
+          break;
+        case 'Tab':
+          // Close without preventing default so Tab moves focus naturally
+          if (isOpen()) close();
+          break;
+      }
     });
 
-    // ── Watch for dynamic option injection ────────────────────────────────────
-    new MutationObserver(function () {
-      syncLabel();
-    }).observe(sel, { childList: true });
+    // ── MutationObserver: re-sync label when options are injected by JS ───────
+    // (e.g. populateWarehouseSelects rebuilds option lists after API load)
+    new MutationObserver(function () { syncLabel(); })
+      .observe(sel, { childList: true });
 
     syncLabel();
-  }
+  } // end build()
 
   // ─── Close all open panels ────────────────────────────────────────────────
   function closeAll() {
@@ -6069,34 +6159,38 @@ async function loadVarianceReport() {
     });
   }
 
-  // ─── Init all selects ─────────────────────────────────────────────────────
-  function initAll() {
-    document.querySelectorAll('select').forEach(build);
-  }
-
   // ─── Boot ─────────────────────────────────────────────────────────────────
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
-
   function boot() {
-    initAll();
+    // Init all selects currently in the DOM
+    document.querySelectorAll('select').forEach(build);
 
-    // Close panels on outside click
-    document.addEventListener('click', closeAll);
+    // Click outside any .cs-wrap closes all panels
+    document.addEventListener('click', function (e) {
+      if (!(e.target && typeof e.target.closest === 'function' && e.target.closest('.cs-wrap'))) {
+        closeAll();
+      }
+    });
 
-    // Watch for new selects added by JS (PO lines, BOM lines, count lines, etc.)
+    // Watch for new selects added dynamically:
+    // PO line rows, BOM component rows, count-line reason cells, etc.
     new MutationObserver(function (muts) {
       muts.forEach(function (m) {
         m.addedNodes.forEach(function (n) {
           if (!n || n.nodeType !== 1) return;
-          if (n.tagName === 'SELECT') build(n);
-          if (n.querySelectorAll) n.querySelectorAll('select').forEach(build);
+          if (n.tagName === 'SELECT') {
+            build(n);
+          } else if (n.querySelectorAll) {
+            n.querySelectorAll('select').forEach(build);
+          }
         });
       });
     }).observe(document.body, { childList: true, subtree: true });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
   }
 
 })();
