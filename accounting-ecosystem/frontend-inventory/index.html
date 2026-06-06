@@ -371,20 +371,25 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .cs-panel {
   display: none; position: absolute; left: 0; min-width: 100%;
   top: calc(100% + 3px); bottom: auto;
-  background: #1e1b4b; border: 1px solid var(--border); border-radius: 9px;
+  background: #1e1b4b !important; border: 1px solid var(--border); border-radius: 9px;
   overflow: hidden; overflow-y: auto; max-height: 240px;
   z-index: 99999; box-shadow: 0 10px 40px rgba(0,0,0,0.65);
 }
 .cs-opt {
-  padding: 9px 14px; font-size: 0.88rem; color: var(--text);
+  padding: 9px 14px; font-size: 0.88rem;
+  /* Explicit solid dark bg — options must not be transparent. If panel bg fails to
+     paint (stacking-context / compositing quirk), transparent opts become invisible
+     because --text (#e2e8f0) is near-white on a white fallback surface. */
+  background-color: #1e1b4b;
+  color: #e2e8f0;
   font-family: inherit; cursor: pointer; white-space: nowrap;
 }
 /* Keyboard focus indicator (arrow-key navigation) */
-.cs-opt.cs-focused         { background: #312e81; }
-.cs-opt:hover              { background: #312e81; }
-.cs-opt.cs-sel             { background: #1e3a8a; color: #fff; }
-.cs-opt.cs-sel.cs-focused  { background: #1e40af; }
-.cs-opt.cs-dis             { color: var(--text-muted); cursor: default; opacity: 0.45; }
+.cs-opt.cs-focused         { background-color: #312e81 !important; color: #e2e8f0; }
+.cs-opt:hover              { background-color: #312e81 !important; color: #e2e8f0; }
+.cs-opt.cs-sel             { background-color: #1e3a8a !important; color: #fff; }
+.cs-opt.cs-sel.cs-focused  { background-color: #1e40af !important; color: #fff; }
+.cs-opt.cs-dis             { background-color: #1e1b4b; color: rgba(226,232,240,0.4); cursor: default; opacity: 0.45; }
 </style>
 </head>
 <body>
