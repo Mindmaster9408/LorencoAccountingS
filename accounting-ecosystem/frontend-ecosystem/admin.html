@@ -105,7 +105,8 @@
         .stat-card.pos      { border-color: rgba(245,158,11,0.2); }
         .stat-card.payroll  { border-color: rgba(102,126,234,0.2); }
         .stat-card.accounting { border-color: rgba(139,92,246,0.2); }
-        .stat-card.sean     { border-color: rgba(34,211,238,0.2); }
+        .stat-card.sean       { border-color: rgba(34,211,238,0.2); }
+        .stat-card.storehouse { border-color: rgba(245,200,11,0.2); }
         .stat-value { font-size: 1.6rem; font-weight: 800; }
         .stat-label { font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
 
@@ -219,6 +220,7 @@
         }
         .app-checkbox:hover { background: var(--surface-hover); }
         .app-checkbox input { cursor: pointer; }
+        .app-checkbox-til-only { display: none; }
         .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
         .btn-cancel {
             padding: 10px 20px; background: transparent; border: 1px solid var(--border);
@@ -564,6 +566,10 @@
                 <div class="stat-value" id="statSean">—</div>
                 <div class="stat-label">SEAN AI</div>
             </div>
+            <div class="stat-card storehouse">
+                <div class="stat-value" id="statStorehouse">—</div>
+                <div class="stat-label">Storehouse</div>
+            </div>
         </div>
 
         <!-- Toolbar -->
@@ -581,6 +587,7 @@
                 <span class="filter-chip"         id="faPayroll"    onclick="setAppFilter('payroll',this)">&#128176; Payroll</span>
                 <span class="filter-chip"         id="faAccounting" onclick="setAppFilter('accounting',this)">&#128200; Accounting</span>
                 <span class="filter-chip"         id="faSean"       onclick="setAppFilter('sean',this)">&#129302; SEAN</span>
+                <span class="filter-chip"         id="faStorehouse" onclick="setAppFilter('inventory',this)">&#128230; Storehouse</span>
             </div>
             <button class="btn-add-client" onclick="openAddModal()">+ Add Client</button>
             <span class="toolbar-count" id="toolbarCount">Loading...</span>
@@ -602,7 +609,7 @@
             <h2>Add New <span>Client</span></h2>
             <div class="form-group">
                 <label>Parent Account Holder *</label>
-                <select id="mParent">
+                <select id="mParent" onchange="updateInventoryCheckboxVisibility()">
                     <option value="">Loading account holders...</option>
                 </select>
             </div>
@@ -643,6 +650,7 @@
                     <label class="app-checkbox"><input type="checkbox" id="mPos" value="pos"> &#128722; POS</label>
                     <label class="app-checkbox"><input type="checkbox" id="mPayroll" value="payroll"> &#128176; Payroll</label>
                     <label class="app-checkbox"><input type="checkbox" id="mAccounting" value="accounting"> &#128200; Accounting</label>
+                    <label class="app-checkbox app-checkbox-til-only" id="mInventoryWrap" title="Only available under The Infinite Legacy"><input type="checkbox" id="mInventory" value="inventory"> &#128230; Storehouse</label>
                 </div>
             </div>
             <div class="form-group">
@@ -799,6 +807,12 @@
         //       FOLLOW-UP: migrate to fully separate per-app Sean keys
         //       once billing and provisioning logic is ready.
         // ============================================================
+        // Returns true only when co is The Infinite Legacy (matches same check as backend guard).
+        function isTILCompany(co) {
+            if (!co) return false;
+            return co.company_name === 'The Infinite Legacy' || co.trading_name === 'The Infinite Legacy';
+        }
+
         const APP_REGISTRY = [
             {
                 key:            'pos',
@@ -831,6 +845,17 @@
                 seanAddonSub:   'AI allocations &amp; transaction insights',
                 billingMetric:  null,
                 packageSupport: true,
+            },
+            {
+                key:                'inventory',
+                name:               'Lorenco Storehouse',
+                subtitle:           'Inventory &amp; Warehouse Management',
+                icon:               '&#128230;',
+                seanAddonKey:       null,
+                seanAddonLabel:     null,
+                billingMetric:      null,
+                packageSupport:     false,
+                infiniteLegacyOnly: true,
             },
         ];
 
@@ -933,6 +958,7 @@
             document.getElementById('statPayroll').textContent    = allClients.filter(c => hasApp(c, 'payroll')).length;
             document.getElementById('statAccounting').textContent = allClients.filter(c => hasApp(c, 'accounting')).length;
             document.getElementById('statSean').textContent       = allClients.filter(c => hasAddon(c, 'sean') || hasAddon(c, 'sean_accounting')).length;
+            document.getElementById('statStorehouse').textContent = allClients.filter(c => hasApp(c, 'inventory') && isTILCompany(companyMap[c.company_id])).length;
         }
 
         function hasApp(c, key)   { return Array.isArray(c.apps)   && c.apps.includes(key); }
@@ -1139,7 +1165,10 @@
                 ? formatDate(parseStandardDate(c.created_at), 'ZA') : '—';
             const metaParts = [c.email, c.phone].filter(Boolean);
 
-            const appListHtml = APP_REGISTRY.map(appDef => buildAppRow(c, appDef)).join('');
+            const parentCo = companyMap[c.company_id];
+            const appListHtml = APP_REGISTRY
+                .filter(appDef => !appDef.infiniteLegacyOnly || isTILCompany(parentCo))
+                .map(appDef => buildAppRow(c, appDef)).join('');
 
             return `
             <div class="client-card ${isActive ? '' : 'client-inactive'}" id="card-${c.id}">
@@ -1396,17 +1425,31 @@
         }
 
         // ── Add Client Modal ──────────────────────────────────────────────────
+        function updateInventoryCheckboxVisibility() {
+            const sel   = document.getElementById('mParent');
+            const wrap  = document.getElementById('mInventoryWrap');
+            const check = document.getElementById('mInventory');
+            if (!sel || !wrap || !check) return;
+            const co    = companyMap[parseInt(sel.value)];
+            const show  = isTILCompany(co);
+            wrap.classList.toggle('app-checkbox-til-only', !show);
+            if (!show) check.checked = false;
+        }
+
         function openAddModal() {
             // Populate parent account holder dropdown
             populateParentDropdown('mParent', null);
+            updateInventoryCheckboxVisibility();
             document.getElementById('addClientModal').classList.add('open');
         }
         function closeAddModal() {
             document.getElementById('addClientModal').classList.remove('open');
             ['mName','mEmail','mPhone','mId','mAddress','mNotes']
                 .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-            ['mPos','mPayroll','mAccounting']
+            ['mPos','mPayroll','mAccounting','mInventory']
                 .forEach(id => { const el = document.getElementById(id); if(el) el.checked = false; });
+            const wrap = document.getElementById('mInventoryWrap');
+            if (wrap) wrap.classList.add('app-checkbox-til-only');
         }
 
         // Populate a <select> with account holder companies (non-data-silo companies)
@@ -1446,6 +1489,7 @@
 
             const apps = ['pos','payroll','accounting']
                 .filter(key => document.getElementById('m' + key.charAt(0).toUpperCase() + key.slice(1))?.checked);
+            if (document.getElementById('mInventory')?.checked) apps.push('inventory');
 
             try {
                 const body = {

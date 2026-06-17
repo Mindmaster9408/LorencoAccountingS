@@ -22,6 +22,23 @@ function isAdminUser(user) {
   return !!(user && (user.isSuperAdmin || user.role === 'super_admin'));
 }
 
+// ─── Storehouse Guard ───────────────────────────────────────────────────────
+// Lorenco Storehouse (app key: 'inventory') may only be assigned under
+// The Infinite Legacy. This check is enforced backend-side regardless of UI.
+async function isInfiniteLegacyCompany(companyId) {
+  if (!companyId) return false;
+  const { data, error } = await supabase
+    .from('companies')
+    .select('company_name, trading_name')
+    .eq('id', companyId)
+    .single();
+  if (error || !data) return false;
+  return (
+    data.company_name === 'The Infinite Legacy' ||
+    data.trading_name === 'The Infinite Legacy'
+  );
+}
+
 // ─── Cross-App Sync Helper ──────────────────────────────────────────────────
 
 /**
@@ -728,6 +745,17 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No company exists in the system yet. Please create a company first.' });
     }
 
+    // ── Storehouse restriction: inventory may only be assigned under The Infinite Legacy ──
+    const requestedApps = Array.isArray(apps) ? apps : [];
+    if (requestedApps.includes('inventory')) {
+      const allowed = await isInfiniteLegacyCompany(resolvedCompanyId);
+      if (!allowed) {
+        return res.status(403).json({
+          error: 'Lorenco Storehouse can only be assigned under The Infinite Legacy.'
+        });
+      }
+    }
+
     // ── Resolve or auto-create the client's OWN company for data isolation ──
     let resolvedClientCompanyId = parseInt(client_company_id) || null;
 
@@ -827,6 +855,20 @@ router.put('/:id', async (req, res) => {
 
     if (fetchError || !old) {
       return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // ── Storehouse restriction: inventory may only be assigned under The Infinite Legacy ──
+    if (Array.isArray(req.body.apps)) {
+      const oldApps = old.apps || [];
+      const inventoryBeingAdded = req.body.apps.includes('inventory') && !oldApps.includes('inventory');
+      if (inventoryBeingAdded) {
+        const allowed = await isInfiniteLegacyCompany(old.company_id);
+        if (!allowed) {
+          return res.status(403).json({
+            error: 'Lorenco Storehouse can only be assigned under The Infinite Legacy.'
+          });
+        }
+      }
     }
 
     const allowed = ['name', 'email', 'phone', 'id_number', 'address', 'client_type', 'apps', 'addons',
