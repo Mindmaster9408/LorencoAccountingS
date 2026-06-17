@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Users &amp; Permissions — Lorenco Accounting</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <script src="js/polyfills.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+    }
+
+    .content { padding: 24px; max-width: 1200px; margin: 0 auto; }
+
+    .page-header { margin-bottom: 24px; }
+    .page-header h1 { font-size: 22px; color: #f0f6fc; font-weight: 600; margin-bottom: 4px; }
+    .page-header p { color: #8b949e; font-size: 13px; }
+
+    /* Alert */
+    .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; display: none; }
+    .alert.show { display: block; }
+    .alert-success { background: #1a3b2b; color: #3fb950; border: 1px solid #238636; }
+    .alert-error   { background: #3b1a1a; color: #f85149; border: 1px solid #da3633; }
+    .alert-info    { background: #1a2b3b; color: #58a6ff; border: 1px solid #1f6feb; }
+
+    /* Card */
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 20px; }
+    .card-header { padding: 16px 20px; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; }
+    .card-header h2 { font-size: 16px; color: #f0f6fc; font-weight: 600; }
+    .card-meta { font-size: 12px; color: #8b949e; margin-top: 2px; }
+    .card-body { padding: 0; }
+
+    /* Table */
+    .users-table { width: 100%; border-collapse: collapse; }
+    .users-table th {
+      text-align: left; padding: 10px 16px;
+      font-size: 11px; font-weight: 600; color: #8b949e;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      border-bottom: 1px solid #30363d;
+    }
+    .users-table td { padding: 14px 16px; border-bottom: 1px solid #21262d; vertical-align: middle; }
+    .users-table tbody tr:last-child td { border-bottom: none; }
+    .users-table tbody tr:hover td { background: #1c2128; }
+
+    .user-cell { display: flex; align-items: center; gap: 10px; }
+    .user-avatar {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: #1f6feb; color: #fff;
+      font-size: 13px; font-weight: 700;
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .user-info .name  { font-weight: 600; color: #f0f6fc; font-size: 13px; }
+    .user-info .email { font-size: 11px; color: #8b949e; margin-top: 1px; }
+
+    /* Role badge */
+    .role-badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .role-super_admin    { background: #3b1a5f; color: #bc8fff; }
+    .role-business_owner,
+    .role-practice_manager,
+    .role-administrator  { background: #1a3b5f; color: #79c0ff; }
+    .role-accountant,
+    .role-corporate_admin { background: #1a3b2b; color: #56d364; }
+    .role-payroll_admin,
+    .role-store_manager  { background: #3b2a1a; color: #ffa657; }
+    .role-leave_admin,
+    .role-assistant_manager,
+    .role-shift_supervisor,
+    .role-senior_cashier,
+    .role-cashier,
+    .role-trainee        { background: #21262d; color: #8b949e; }
+
+    /* Status */
+    .status-cell { display: flex; align-items: center; gap: 6px; }
+    .status-dot  { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .status-dot.active   { background: #3fb950; }
+    .status-dot.inactive { background: #484f58; }
+    .status-text         { font-size: 12px; }
+    .status-text.active  { color: #3fb950; }
+    .status-text.inactive { color: #484f58; }
+
+    /* App chips */
+    .app-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .app-chip { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+    .app-chip.all        { background: #1a3b2b; color: #56d364; }
+    .app-chip.none       { background: #3b1a1a; color: #f85149; }
+    .app-chip.pos        { background: #3b2a1a; color: #ffa657; }
+    .app-chip.payroll    { background: #1a2b3b; color: #58a6ff; }
+    .app-chip.accounting { background: #1a3b2b; color: #56d364; }
+    .app-chip.sean       { background: #2a1a3b; color: #bc8fff; }
+    .app-chip.coaching   { background: #3b1a2a; color: #ff7eb6; }
+
+    .last-login { font-size: 11px; color: #8b949e; }
+
+    .actions { display: flex; gap: 6px; }
+
+    /* Buttons */
+    .btn { padding: 7px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: opacity 0.15s, background 0.15s; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary   { background: #238636; color: #fff; }
+    .btn-primary:hover:not(:disabled)   { background: #2ea043; }
+    .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+    .btn-secondary:hover:not(:disabled) { background: #2d333b; border-color: #484f58; }
+    .btn-danger    { background: transparent; color: #f85149; border: 1px solid #da3633; }
+    .btn-danger:hover:not(:disabled)    { background: #3b1a1a; }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+    /* States */
+    .empty-state { text-align: center; padding: 56px 20px; color: #8b949e; }
+    .empty-state .icon { font-size: 36px; margin-bottom: 12px; display: block; opacity: 0.4; }
+    .empty-state p { font-size: 14px; margin-bottom: 6px; color: #c9d1d9; }
+    .loading-state { text-align: center; padding: 48px; color: #8b949e; font-size: 13px; }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65); z-index: 2000;
+      align-items: center; justify-content: center;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+      width: 540px; max-width: 96%; max-height: 88vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-header {
+      padding: 18px 20px; border-bottom: 1px solid #30363d;
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    .modal-header h3 { font-size: 16px; color: #f0f6fc; font-weight: 600; }
+    .modal-close { background: none; border: none; color: #8b949e; cursor: pointer; font-size: 18px; line-height: 1; padding: 2px; }
+    .modal-close:hover { color: #f0f6fc; }
+    .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 14px 20px; border-top: 1px solid #30363d; display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+
+    /* Form */
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block; font-size: 11px; font-weight: 600;
+      color: #8b949e; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%; padding: 9px 12px;
+      background: #0d1117; border: 1px solid #30363d;
+      border-radius: 6px; color: #c9d1d9; font-size: 13px;
+    }
+    .form-group input:focus,
+    .form-group select:focus { outline: none; border-color: #388bfd; box-shadow: 0 0 0 2px rgba(56,139,253,0.15); }
+    .form-group select option { background: #0d1117; }
+    .form-group small { font-size: 11px; color: #8b949e; margin-top: 4px; display: block; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+    /* App access checkboxes */
+    .app-access-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    .app-check-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; background: #0d1117;
+      border: 1px solid #30363d; border-radius: 6px; cursor: pointer;
+    }
+    .app-check-item:hover { border-color: #388bfd; }
+    .app-check-item input[type="checkbox"] { accent-color: #388bfd; width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+    .app-check-item label { font-size: 12px; color: #c9d1d9; cursor: pointer; }
+
+    /* Toggle */
+    .toggle-row { display: flex; align-items: center; gap: 12px; }
+    .toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: #30363d; border-radius: 22px; transition: 0.2s; }
+    .toggle-slider:before { position: absolute; content: ''; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #8b949e; border-radius: 50%; transition: 0.2s; }
+    .toggle-switch input:checked + .toggle-slider { background: #238636; }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); background: #fff; }
+  </style>
+  <link rel="stylesheet" href="css/dark-theme.css">
+</head>
+<body>
+  <div class="content">
+    <div class="page-header">
+      <h1>Users &amp; Permissions</h1>
+      <p>Manage who has access to this company and what they can do</p>
+    </div>
+
+    <div id="alertBox" class="alert"></div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2>Team Members</h2>
+          <div class="card-meta" id="userCount"></div>
+        </div>
+        <button class="btn btn-primary" id="addUserBtn" onclick="openAddModal()" style="display:none;">+ Add User</button>
+      </div>
+      <div class="card-body" id="usersTableContainer">
+        <div class="loading-state">Loading users…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Add User Modal ──────────────────────────────────────────────────── -->
+  <div id="addModal" class="modal-backdrop" onclick="if(event.target===this)closeAddModal()">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Add Team Member</h3>
+        <button class="modal-close" onclick="closeAddModal()">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <div id="addModalAlert" class="alert"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Full Name *</label>
+            <input type="text" id="addFullName" placeholder="Jane Smith" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>Email Address *</label>
+            <input type="email" id="addEmail" placeholder="jane@example.com" autocomplete="off">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Temporary Password *</label>
+            <input type="password" id="addPassword" placeholder="Min. 8 characters" autocomplete="new-password">
+            <small>User can change this after first login</small>
+          </div>
+          <div class="form-group">
+            <label>Role *</label>
+            <select id="addRole">
+              <option value="">Select role…</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>App Access Restriction</label>
+          <small>Leave all unchecked to grant access to all apps. Check specific apps to restrict this user.</small>
+          <div class="app-access-grid">
+            <div class="app-check-item"><input type="checkbox" id="addApp_pos" value="pos"><label for="addApp_pos">POS</label></div>
+            <div class="app-check-item"><input type="checkbox" id="addApp_payroll" value="payroll"><label for="addApp_payroll">Payroll</label></div>
+            <div class="app-check-item"><input type="checkbox" id="addApp_accounting" value="accounting"><label for="addApp_accounting">Accounting</label></div>
+            <div class="app-check-item"><input type="checkbox" id="addApp_sean" value="sean"><label for="addApp_sean">Sean AI</label></div>
+            <div class="app-check-item"><input type="checkbox" id="addApp_coaching" value="coaching"><label for="addApp_coaching">Coaching</label></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAddModal()">Cancel</button>
+        <button class="btn btn-primary" id="addSubmitBtn" onclick="submitAddUser()">Add User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Edit User Modal ─────────────────────────────────────────────────── -->
+  <div id="editModal" class="modal-backdrop" onclick="if(event.target===this)closeEditModal()">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="editModalTitle">Edit User</h3>
+        <button class="modal-close" onclick="closeEditModal()">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <div id="editModalAlert" class="alert"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Full Name *</label>
+            <input type="text" id="editFullName" placeholder="Jane Smith">
+          </div>
+          <div class="form-group">
+            <label>Email Address *</label>
+            <input type="email" id="editEmail" placeholder="jane@example.com">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Role *</label>
+          <select id="editRole">
+            <option value="">Select role…</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Account Status</label>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="editIsActive" onchange="updateStatusLabel()">
+              <span class="toggle-slider"></span>
+            </label>
+            <span id="editStatusLabel" style="font-size:13px;color:#8b949e;">Active</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>App Access Restriction</label>
+          <small>Leave all unchecked to grant access to all apps. Check specific apps to restrict this user.</small>
+          <div class="app-access-grid">
+            <div class="app-check-item"><input type="checkbox" id="editApp_pos" value="pos"><label for="editApp_pos">POS</label></div>
+            <div class="app-check-item"><input type="checkbox" id="editApp_payroll" value="payroll"><label for="editApp_payroll">Payroll</label></div>
+            <div class="app-check-item"><input type="checkbox" id="editApp_accounting" value="accounting"><label for="editApp_accounting">Accounting</label></div>
+            <div class="app-check-item"><input type="checkbox" id="editApp_sean" value="sean"><label for="editApp_sean">Sean AI</label></div>
+            <div class="app-check-item"><input type="checkbox" id="editApp_coaching" value="coaching"><label for="editApp_coaching">Coaching</label></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+        <button class="btn btn-primary" id="editSubmitBtn" onclick="submitEditUser()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Constants ─────────────────────────────────────────────────────────────
+
+    const VALID_APPS = ['pos', 'payroll', 'accounting', 'sean', 'coaching'];
+    const APP_LABELS = {
+      pos: 'POS', payroll: 'Payroll', accounting: 'Accounting',
+      sean: 'Sean AI', coaching: 'Coaching'
+    };
+    const ROLE_LABELS = {
+      super_admin:       'Super Admin',
+      business_owner:    'Business Owner',
+      practice_manager:  'Practice Manager',
+      administrator:     'Administrator',
+      accountant:        'Accountant',
+      corporate_admin:   'Corporate Admin',
+      store_manager:     'Store Manager',
+      payroll_admin:     'Payroll Admin',
+      leave_admin:       'Leave Admin',
+      assistant_manager: 'Asst. Manager',
+      shift_supervisor:  'Shift Supervisor',
+      senior_cashier:    'Senior Cashier',
+      cashier:           'Cashier',
+      trainee:           'Trainee',
+    };
+    const MANAGEMENT_ROLES = [
+      'super_admin', 'business_owner', 'practice_manager', 'administrator',
+      'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin'
+    ];
+
+    let allUsers = [];
+    let availableRoles = [];
+    let editingUserId = null;
+
+    // ── Auth helpers ──────────────────────────────────────────────────────────
+
+    function getToken() {
+      return localStorage.getItem('token') || localStorage.getItem('eco_token') || '';
+    }
+
+    function authH() {
+      return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' };
+    }
+
+    function decodeJwt() {
+      try {
+        const parts = getToken().split('.');
+        if (parts.length < 2) return null;
+        return JSON.parse(atob(parts[1]));
+      } catch { return null; }
+    }
+
+    function getCurrentUserRole() { return decodeJwt()?.role || null; }
+    function getCurrentUserId()   { return decodeJwt()?.userId || null; }
+    function canManageUsers()     { return MANAGEMENT_ROLES.includes(getCurrentUserRole()); }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+
+    async function init() {
+      if (canManageUsers()) {
+        document.getElementById('addUserBtn').style.display = '';
+      }
+      await Promise.all([loadUsers(), loadRoles()]);
+    }
+
+    // ── API: load ─────────────────────────────────────────────────────────────
+
+    async function loadUsers() {
+      try {
+        const res = await fetch('/api/users', { headers: authH() });
+
+        if (res.status === 400) {
+          const d = await res.json().catch(() => ({}));
+          if (d.requiresCompanySelection) {
+            showTableState('error', 'No company selected. Please select a company from the top navigation bar and return to this page.');
+            return;
+          }
+        }
+        if (res.status === 401) { showTableState('error', 'Session expired. Please log in again.'); return; }
+        if (res.status === 403) { showTableState('error', 'You do not have permission to view users for this company.'); return; }
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          showTableState('error', 'Failed to load users: ' + (d.error || 'Server error'));
+          return;
+        }
+
+        const data = await res.json();
+        allUsers = data.users || [];
+        renderUsers();
+        const n = allUsers.length;
+        document.getElementById('userCount').textContent = n + ' member' + (n === 1 ? '' : 's');
+      } catch (err) {
+        showTableState('error', 'Network error loading users. Please check your connection.');
+      }
+    }
+
+    async function loadRoles() {
+      try {
+        const res = await fetch('/api/users/roles', { headers: authH() });
+        if (!res.ok) throw new Error('roles fetch failed');
+        const data = await res.json();
+        availableRoles = (data.roles || []).filter(r => r !== 'super_admin');
+      } catch {
+        availableRoles = Object.keys(ROLE_LABELS).filter(r => r !== 'super_admin');
+      }
+      populateRoleDropdowns();
+    }
+
+    function populateRoleDropdowns() {
+      const opts = availableRoles.map(r =>
+        `<option value="${r}">${ROLE_LABELS[r] || r}</option>`
+      ).join('');
+      const frag = '<option value="">Select role…</option>' + opts;
+      document.getElementById('addRole').innerHTML = frag;
+      document.getElementById('editRole').innerHTML = frag;
+    }
+
+    // ── Render ────────────────────────────────────────────────────────────────
+
+    function renderUsers() {
+      const container = document.getElementById('usersTableContainer');
+      const myId = getCurrentUserId();
+
+      if (allUsers.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <span class="icon">&#x1F465;</span>
+            <p>No team members found</p>
+            <small>Add your first team member using the button above</small>
+          </div>`;
+        return;
+      }
+
+      const rows = allUsers.map(u => {
+        const initial = ((u.full_name || u.email || '?')[0]).toUpperCase();
+        const isSelf  = u.id === myId;
+        const roleKey = 'role-' + (u.role || 'cashier');
+        const roleLabel = ROLE_LABELS[u.role] || u.role || '—';
+        const isActive = u.is_active !== false;
+
+        // App chips
+        const appList = u.apps_access || u.apps;
+        let appsHtml;
+        if (!appList) {
+          appsHtml = '<span class="app-chip all">All apps</span>';
+        } else if (appList.length === 0) {
+          appsHtml = '<span class="app-chip none">No access</span>';
+        } else {
+          appsHtml = appList.map(a => `<span class="app-chip ${escAttr(a)}">${escHtml(APP_LABELS[a] || a)}</span>`).join('');
+        }
+
+        // Last login
+        const lastLogin = u.last_login_at ? formatRelDate(u.last_login_at) : '<span style="color:#484f58">Never</span>';
+
+        // Action buttons
+        const editBtn = canManageUsers()
+          ? `<button class="btn btn-secondary btn-sm" onclick="openEditModal(${u.id})">Edit</button>`
+          : '';
+        const removeBtn = canManageUsers() && !isSelf
+          ? `<button class="btn btn-danger btn-sm" onclick="confirmRemove(${u.id},'${escAttr(u.full_name || u.email)}')">Remove</button>`
+          : isSelf ? '<span style="font-size:11px;color:#484f58;">You</span>' : '';
+
+        return `<tr>
+          <td>
+            <div class="user-cell">
+              <div class="user-avatar">${escHtml(initial)}</div>
+              <div class="user-info">
+                <div class="name">${escHtml(u.full_name || '—')}</div>
+                <div class="email">${escHtml(u.email || '—')}</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="role-badge ${escAttr(roleKey)}">${escHtml(roleLabel)}</span></td>
+          <td>
+            <div class="status-cell">
+              <span class="status-dot ${isActive ? 'active' : 'inactive'}"></span>
+              <span class="status-text ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</span>
+            </div>
+          </td>
+          <td><div class="app-chips">${appsHtml}</div></td>
+          <td class="last-login">${lastLogin}</td>
+          <td><div class="actions">${editBtn}${removeBtn}</div></td>
+        </tr>`;
+      }).join('');
+
+      container.innerHTML = `
+        <table class="users-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>App Access</th>
+              <th>Last Login</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    function showTableState(type, msg) {
+      document.getElementById('usersTableContainer').innerHTML = `
+        <div class="empty-state">
+          <span class="icon">${type === 'error' ? '&#x26A0;' : '&#x1F4C4;'}</span>
+          <p style="color:${type === 'error' ? '#f85149' : '#c9d1d9'}">${escHtml(msg)}</p>
+        </div>`;
+    }
+
+    // ── Add User ──────────────────────────────────────────────────────────────
+
+    function openAddModal() {
+      document.getElementById('addFullName').value = '';
+      document.getElementById('addEmail').value = '';
+      document.getElementById('addPassword').value = '';
+      document.getElementById('addRole').value = '';
+      VALID_APPS.forEach(a => { document.getElementById('addApp_' + a).checked = false; });
+      hideModalAlert('addModalAlert');
+      document.getElementById('addModal').classList.add('show');
+      setTimeout(() => document.getElementById('addFullName').focus(), 80);
+    }
+
+    function closeAddModal() { document.getElementById('addModal').classList.remove('show'); }
+
+    async function submitAddUser() {
+      const full_name = document.getElementById('addFullName').value.trim();
+      const email     = document.getElementById('addEmail').value.trim();
+      const password  = document.getElementById('addPassword').value;
+      const role      = document.getElementById('addRole').value;
+
+      if (!full_name || !email || !password || !role) {
+        showModalAlert('addModalAlert', 'Please complete all required fields.', 'error');
+        return;
+      }
+      if (password.length < 8) {
+        showModalAlert('addModalAlert', 'Password must be at least 8 characters.', 'error');
+        return;
+      }
+
+      const checkedApps = VALID_APPS.filter(a => document.getElementById('addApp_' + a).checked);
+      const apps_access = checkedApps.length > 0 ? checkedApps : null;
+
+      setBtnLoading('addSubmitBtn', true, 'Adding…');
+      try {
+        const res = await fetch('/api/users', {
+          method: 'POST',
+          headers: authH(),
+          body: JSON.stringify({ full_name, email, password, role, apps_access })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showModalAlert('addModalAlert', data.error || 'Failed to create user.', 'error'); return; }
+        closeAddModal();
+        showPageAlert('Team member added successfully.', 'success');
+        await loadUsers();
+      } catch (err) {
+        showModalAlert('addModalAlert', 'Network error: ' + err.message, 'error');
+      } finally {
+        setBtnLoading('addSubmitBtn', false, 'Add User');
+      }
+    }
+
+    // ── Edit User ─────────────────────────────────────────────────────────────
+
+    function openEditModal(userId) {
+      const u = allUsers.find(x => x.id === userId);
+      if (!u) return;
+      editingUserId = userId;
+
+      document.getElementById('editModalTitle').textContent = 'Edit: ' + (u.full_name || u.email);
+      document.getElementById('editFullName').value  = u.full_name || '';
+      document.getElementById('editEmail').value     = u.email || '';
+      document.getElementById('editRole').value      = u.role || '';
+      document.getElementById('editIsActive').checked = u.is_active !== false;
+      updateStatusLabel();
+
+      const appList = u.apps_access || u.apps || null;
+      VALID_APPS.forEach(a => {
+        document.getElementById('editApp_' + a).checked = Array.isArray(appList) && appList.includes(a);
+      });
+
+      hideModalAlert('editModalAlert');
+      document.getElementById('editModal').classList.add('show');
+    }
+
+    function closeEditModal() {
+      editingUserId = null;
+      document.getElementById('editModal').classList.remove('show');
+    }
+
+    function updateStatusLabel() {
+      const active = document.getElementById('editIsActive').checked;
+      const label  = document.getElementById('editStatusLabel');
+      label.textContent = active ? 'Active' : 'Inactive';
+      label.style.color = active ? '#3fb950' : '#484f58';
+    }
+
+    async function submitEditUser() {
+      if (!editingUserId) return;
+
+      const full_name = document.getElementById('editFullName').value.trim();
+      const email     = document.getElementById('editEmail').value.trim();
+      const role      = document.getElementById('editRole').value;
+      const is_active = document.getElementById('editIsActive').checked;
+
+      if (!full_name || !email || !role) {
+        showModalAlert('editModalAlert', 'Please complete all required fields.', 'error');
+        return;
+      }
+
+      const checkedApps = VALID_APPS.filter(a => document.getElementById('editApp_' + a).checked);
+      const apps_access = checkedApps.length > 0 ? checkedApps : null;
+
+      setBtnLoading('editSubmitBtn', true, 'Saving…');
+      try {
+        const res = await fetch('/api/users/' + editingUserId, {
+          method: 'PUT',
+          headers: authH(),
+          body: JSON.stringify({ full_name, email, role, is_active, apps_access })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showModalAlert('editModalAlert', data.error || 'Failed to update user.', 'error'); return; }
+        closeEditModal();
+        showPageAlert('User updated successfully.', 'success');
+        await loadUsers();
+      } catch (err) {
+        showModalAlert('editModalAlert', 'Network error: ' + err.message, 'error');
+      } finally {
+        setBtnLoading('editSubmitBtn', false, 'Save Changes');
+      }
+    }
+
+    // ── Remove from company ───────────────────────────────────────────────────
+
+    function confirmRemove(userId, name) {
+      if (!confirm(
+        'Remove "' + name + '" from this company?\n\n' +
+        'This removes their access to this company only. Their account will not be deleted.'
+      )) return;
+      doRemove(userId, name);
+    }
+
+    async function doRemove(userId, name) {
+      try {
+        const res = await fetch('/api/users/' + userId + '/company-access', {
+          method: 'DELETE',
+          headers: authH()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showPageAlert(data.error || 'Failed to remove user.', 'error'); return; }
+        showPageAlert(name + ' has been removed from this company.', 'success');
+        await loadUsers();
+      } catch (err) {
+        showPageAlert('Network error: ' + err.message, 'error');
+      }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    function escHtml(s) {
+      if (s === null || s === undefined) return '';
+      const d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+
+    function escAttr(s) {
+      return String(s || '').replace(/["'<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function formatRelDate(iso) {
+      try {
+        const diff = Date.now() - new Date(iso).getTime();
+        const d = Math.floor(diff / 86400000);
+        if (d === 0) return 'Today';
+        if (d === 1) return 'Yesterday';
+        if (d < 30)  return d + 'd ago';
+        if (d < 365) return Math.floor(d / 30) + 'mo ago';
+        return Math.floor(d / 365) + 'y ago';
+      } catch { return '—'; }
+    }
+
+    function showPageAlert(msg, type) {
+      const el = document.getElementById('alertBox');
+      el.textContent = msg;
+      el.className   = 'alert alert-' + type + ' show';
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setTimeout(() => el.classList.remove('show'), 5500);
+    }
+
+    function showModalAlert(id, msg, type) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.className   = 'alert alert-' + type + ' show';
+    }
+
+    function hideModalAlert(id) {
+      document.getElementById(id).className = 'alert';
+    }
+
+    function setBtnLoading(id, loading, label) {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled    = loading;
+      btn.textContent = label;
+    }
+
+    // ── Boot ──────────────────────────────────────────────────────────────────
+    init();
+  </script>
+</body>
+</html>
