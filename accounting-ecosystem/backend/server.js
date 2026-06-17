@@ -537,7 +537,17 @@ app.get('/inventory/*', (req, res) => {
 
 // Practice frontend — multi-page app (clients.html, tasks.html, deadlines.html, etc.)
 app.use('/practice', express.static(practiceFrontendPath, staticOptions));
-app.get('/practice', (req, res) => sendHtml(res, path.join(practiceFrontendPath, 'index.html')));
+app.get('/practice', (req, res) => {
+  const indexPath = path.join(practiceFrontendPath, 'index.html');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[practice] GET /practice sendFile error:', err.message, '| path:', indexPath, '| practiceFrontendPath exists:', fs.existsSync(practiceFrontendPath));
+      res.status(500).json({ error: 'Practice frontend unavailable', detail: err.message, resolvedPath: indexPath });
+    }
+  });
+});
 app.get('/practice/*', (req, res) => {
   const requestedFile = req.path.replace('/practice/', '');
   const filePath = path.join(practiceFrontendPath, requestedFile);
@@ -547,7 +557,15 @@ app.get('/practice/*', (req, res) => {
   if (fs.existsSync(filePath + '.html')) {
     return sendHtml(res, filePath + '.html');
   }
-  sendHtml(res, path.join(practiceFrontendPath, 'index.html'));
+  const indexPath = path.join(practiceFrontendPath, 'index.html');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[practice] GET /practice/* sendFile error:', err.message, '| path:', indexPath);
+      res.status(500).json({ error: 'Practice frontend unavailable', detail: err.message, resolvedPath: indexPath });
+    }
+  });
 });
 
 // Accounting: multi-page frontend (30+ HTML pages)
