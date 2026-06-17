@@ -7150,9 +7150,12 @@
             const section_element = document.getElementById(sectionId);
             if (section_element) {
                 section_element.style.display = 'block';
-                if (section === 'customers') {
-                    loadCustomers();
-                }
+                if (section === 'companies')  { loadCompanies(); }
+                if (section === 'general')    { loadGeneralSettings(); }
+                if (section === 'users')      { loadCompaniesForUserFilter(); }
+                if (section === 'customers')  { loadCustomers(); }
+                if (section === 'suppliers')  { loadSettingsSuppliers(); }
+                if (section === 'tills')      { loadSettingsTills(); }
             }
         }
 
@@ -9147,33 +9150,39 @@
         }
 
         async function loadMainCompanyInfo() {
-            // Set immediate fallback from session data
-            if (currentCompanyName) {
-                document.getElementById('mainCompanyName').textContent = currentCompanyName;
+            const nameEl    = document.getElementById('mainCompanyName');
+            const vatEl     = document.getElementById('mainCompanyVat');
+            const detailsEl = document.getElementById('mainCompanyDetails');
+
+            // Unconditional immediate clear — no path may leave "Loading..." on screen
+            nameEl.textContent    = currentCompanyName || 'Loading company...';
+            vatEl.textContent     = '-';
+            detailsEl.textContent = '';
+
+            if (!currentCompanyId) {
+                console.warn('[POS] loadMainCompanyInfo: currentCompanyId is null — cannot load company details');
+                nameEl.textContent = 'Current company unavailable';
+                return;
             }
 
             try {
-                const res = await fetch(`${API_URL}/auth/company-info`, {
+                const res = await fetch(`${API_URL}/companies/${currentCompanyId}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {
                     const data = await res.json();
                     const company = data.company || {};
-                    document.getElementById('mainCompanyName').textContent = company.company_name || currentCompanyName || 'My Company';
-                    document.getElementById('mainCompanyVat').textContent = company.vat_number || '-';
-                    document.getElementById('mainCompanyDetails').textContent =
-                        `${company.trading_name || ''} ${company.address ? '| ' + company.address : ''}`.trim() || '';
+                    nameEl.textContent    = company.company_name || currentCompanyName || 'My Company';
+                    vatEl.textContent     = company.vat_number || '-';
+                    detailsEl.textContent = [company.trading_name, company.address ? '| ' + company.address : '']
+                        .filter(Boolean).join(' ').trim();
                 } else {
-                    // API error - use session data as fallback
-                    const errorData = await res.json().catch(() => ({}));
-                    console.log('Company info API error:', res.status, errorData);
-                    document.getElementById('mainCompanyName').textContent = currentCompanyName || 'My Company';
-                    document.getElementById('mainCompanyVat').textContent = '-';
+                    console.warn('[POS] loadMainCompanyInfo: API returned', res.status, 'for company', currentCompanyId);
+                    nameEl.textContent = currentCompanyName || 'Current company unavailable';
                 }
             } catch (e) {
-                console.log('Error loading main company:', e);
-                document.getElementById('mainCompanyName').textContent = currentCompanyName || 'My Company';
-                document.getElementById('mainCompanyVat').textContent = '-';
+                console.warn('[POS] loadMainCompanyInfo error:', e.message);
+                nameEl.textContent = currentCompanyName || 'Current company unavailable';
             }
         }
 
@@ -9894,10 +9903,12 @@
         async function loadGeneralSettings() {
             try {
                 // Load company info
-                const companyRes = await fetch(`${API_URL}/auth/company-info`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (companyRes.ok) {
+                const companyRes = currentCompanyId
+                    ? await fetch(`${API_URL}/companies/${currentCompanyId}`, {
+                          headers: { 'Authorization': `Bearer ${token}` }
+                      })
+                    : null;
+                if (companyRes && companyRes.ok) {
                     const companyData = await companyRes.json();
                     const company = companyData.company || {};
                     document.getElementById('settingsCompanyName').value = company.company_name || '';
@@ -9937,22 +9948,24 @@
         async function saveGeneralSettings() {
             try {
                 // Save company info
-                const companyRes = await fetch(`${API_URL}/auth/company-info`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        company_name: document.getElementById('settingsCompanyName').value.trim(),
-                        trading_name: document.getElementById('settingsTradingName').value.trim() || null,
-                        vat_number: document.getElementById('settingsVatNumber').value.trim() || null,
-                        registration_number: document.getElementById('settingsRegNumber').value.trim() || null,
-                        contact_phone: document.getElementById('settingsPhone').value.trim() || null,
-                        contact_email: document.getElementById('settingsEmail').value.trim() || null,
-                        address: document.getElementById('settingsAddress').value.trim() || null
-                    })
-                });
+                const companyRes = currentCompanyId
+                    ? await fetch(`${API_URL}/companies/${currentCompanyId}`, {
+                          method: 'PUT',
+                          headers: {
+                              'Authorization': `Bearer ${token}`,
+                              'Content-Type': 'application/json'
+                          },
+                          body: JSON.stringify({
+                              company_name: document.getElementById('settingsCompanyName').value.trim(),
+                              trading_name: document.getElementById('settingsTradingName').value.trim() || null,
+                              vat_number: document.getElementById('settingsVatNumber').value.trim() || null,
+                              registration_number: document.getElementById('settingsRegNumber').value.trim() || null,
+                              contact_phone: document.getElementById('settingsPhone').value.trim() || null,
+                              contact_email: document.getElementById('settingsEmail').value.trim() || null,
+                              address: document.getElementById('settingsAddress').value.trim() || null
+                          })
+                      })
+                    : null;
 
                 // Save company settings
                 const settingsRes = await fetch(`${API_URL}/pos/settings`, {
@@ -9974,7 +9987,7 @@
                     })
                 });
 
-                if (companyRes.ok && settingsRes.ok) {
+                if ((!companyRes || companyRes.ok) && settingsRes.ok) {
                     showNotification('All settings saved successfully!', 'success');
                     autoPrintEnabled = document.getElementById('settingsAutoPrint').checked;
                 } else {
