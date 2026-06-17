@@ -18,6 +18,18 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(requireCompany);
 
+// Strip 'inventory' from an apps_access array if the company is not The Infinite Legacy.
+// Returns null when the resulting array would be empty (null = unrestricted, which is
+// still correct — no whitelist is safer than an empty whitelist for a new user).
+async function sanitiseAppsAccess(appsAccess, companyId) {
+  if (!Array.isArray(appsAccess) || !appsAccess.includes('inventory')) return appsAccess;
+  const { data } = await supabase.from('companies').select('company_name, trading_name').eq('id', companyId).single();
+  const isTIL = data && (data.company_name === 'The Infinite Legacy' || data.trading_name === 'The Infinite Legacy');
+  if (isTIL) return appsAccess;
+  const stripped = appsAccess.filter(a => a !== 'inventory');
+  return stripped.length > 0 ? stripped : null;
+}
+
 /**
  * GET /api/users
  * List users for the current company
@@ -225,13 +237,17 @@ router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     // Link to current company with optional per-app access
+    const safeAppsAccessCreate = await sanitiseAppsAccess(
+      Array.isArray(apps_access) && apps_access.length > 0 ? apps_access : null,
+      req.companyId
+    );
     await supabase.from('user_company_access').insert({
       user_id: newUser.id,
       company_id: req.companyId,
       role,
       is_primary: true,
       is_active: true,
-      apps_access: Array.isArray(apps_access) && apps_access.length > 0 ? apps_access : null
+      apps_access: safeAppsAccessCreate
     });
 
     // If specific apps were provided, record per-user app access.
@@ -325,7 +341,8 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
       accessUpdates.role = role;
     }
     if (apps_access !== undefined) {
-      accessUpdates.apps_access = Array.isArray(apps_access) && apps_access.length > 0 ? apps_access : null;
+      const rawAccess = Array.isArray(apps_access) && apps_access.length > 0 ? apps_access : null;
+      accessUpdates.apps_access = await sanitiseAppsAccess(rawAccess, req.companyId);
     }
     if (Object.keys(accessUpdates).length > 0) {
       await supabase

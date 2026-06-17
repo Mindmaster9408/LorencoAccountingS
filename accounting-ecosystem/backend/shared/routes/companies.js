@@ -179,6 +179,15 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Guard: Lorenco Storehouse (inventory) may only be enabled for The Infinite Legacy
+    if (Array.isArray(modules_enabled) && modules_enabled.includes('inventory')) {
+      const isTIL = company_name === 'The Infinite Legacy' ||
+        (trading_name && trading_name === 'The Infinite Legacy');
+      if (!isTIL) {
+        return res.status(403).json({ error: 'Lorenco Storehouse can only be assigned under The Infinite Legacy.' });
+      }
+    }
+
     const { data, error } = await supabase
       .from('companies')
       .insert({
@@ -294,6 +303,17 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
       }
     }
     updates.updated_at = new Date().toISOString();
+
+    // Guard: Lorenco Storehouse (inventory) may only be enabled for The Infinite Legacy
+    if (Array.isArray(updates.modules_enabled) && updates.modules_enabled.includes('inventory')) {
+      const isTIL = old && (
+        old.company_name === 'The Infinite Legacy' ||
+        old.trading_name === 'The Infinite Legacy'
+      );
+      if (!isTIL) {
+        return res.status(403).json({ error: 'Lorenco Storehouse can only be assigned under The Infinite Legacy.' });
+      }
+    }
 
     const { data, error } = await supabase
       .from('companies')
