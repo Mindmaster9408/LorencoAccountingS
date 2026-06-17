@@ -535,15 +535,19 @@ app.get('/inventory/*', (req, res) => {
   });
 });
 
-// Practice frontend
-app.use('/practice', express.static(practiceFrontendPath));
+// Practice frontend — multi-page app (clients.html, tasks.html, deadlines.html, etc.)
+app.use('/practice', express.static(practiceFrontendPath, staticOptions));
+app.get('/practice', (req, res) => sendHtml(res, path.join(practiceFrontendPath, 'index.html')));
 app.get('/practice/*', (req, res) => {
-  const indexPath = path.join(practiceFrontendPath, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).json({ error: 'Practice frontend not found' });
+  const requestedFile = req.path.replace('/practice/', '');
+  const filePath = path.join(practiceFrontendPath, requestedFile);
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    return sendHtml(res, filePath);
   }
+  if (fs.existsSync(filePath + '.html')) {
+    return sendHtml(res, filePath + '.html');
+  }
+  sendHtml(res, path.join(practiceFrontendPath, 'index.html'));
 });
 
 // Accounting: multi-page frontend (30+ HTML pages)
