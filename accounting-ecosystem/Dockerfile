@@ -28,7 +28,7 @@ FROM node:22-alpine
 # OCR dependencies: tesseract (engine + English data) + poppler-utils (pdftoppm for PDF→image)
 # tesseract-ocr-data-eng: ~15MB — add more langs e.g. tesseract-ocr-data-afr for Afrikaans
 # Cache-bust: 2026-04-24-v4 — frontend-inventory moved inside backend/ for guaranteed copy
-ARG CACHE_BUST=2026-04-24-v4
+ARG CACHE_BUST=2026-06-17-v1
 RUN echo "cache-bust: $CACHE_BUST" && apk update && apk add --no-cache \
     tesseract-ocr \
     tesseract-ocr-data-eng \
@@ -46,11 +46,15 @@ RUN cd backend && npm install --production
 # always included regardless of build method. No separate COPY needed.
 COPY . .
 
-# ── BUILD VERIFICATION — fails the build if the inventory frontend is missing ──
+# ── BUILD VERIFICATION — fails the build if any backend-bundled frontend is missing ──
 RUN echo "=== /app/backend/frontend-inventory ===" \
   && ls -la /app/backend/frontend-inventory \
   && test -f /app/backend/frontend-inventory/index.html \
   || (echo "FATAL: /app/backend/frontend-inventory/index.html is missing" && exit 1)
+RUN echo "=== /app/backend/frontend-practice ===" \
+  && ls -la /app/backend/frontend-practice \
+  && test -f /app/backend/frontend-practice/index.html \
+  || (echo "FATAL: /app/backend/frontend-practice/index.html is missing" && exit 1)
 
 EXPOSE 3000
 

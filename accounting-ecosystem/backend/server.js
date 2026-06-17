@@ -397,7 +397,7 @@ const seanFrontendPath      = path.join(__dirname, '..', 'frontend-sean');
 const accountingFrontendPath = path.join(__dirname, '..', 'frontend-accounting');
 const coachingFrontendPath  = path.join(__dirname, '..', 'frontend-coaching');
 const inventoryFrontendPath = path.join(__dirname, 'frontend-inventory'); // inside backend/ — guaranteed copy by any Node.js Dockerfile
-const practiceFrontendPath  = path.join(__dirname, '..', 'frontend-practice');
+const practiceFrontendPath  = path.join(__dirname, 'frontend-practice');  // inside backend/ — guaranteed copy by any Node.js Dockerfile
 
 // ── Cache-Control helper ──────────────────────────────────────────────────────
 // HTML files: never cache — browser must always revalidate on navigation.
