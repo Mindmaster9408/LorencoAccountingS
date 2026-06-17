@@ -796,7 +796,7 @@ router.post('/logout', authenticateToken, async (req, res) => {
 router.post('/sso-launch', authenticateToken, async (req, res) => {
   try {
     const { targetApp, companyId } = req.body;
-    const validApps = ['pos', 'payroll', 'accounting', 'sean', 'coaching', 'inventory'];
+    const validApps = ['pos', 'payroll', 'accounting', 'sean', 'coaching', 'inventory', 'practice'];
 
     if (!targetApp || !validApps.includes(targetApp)) {
       return res.status(400).json({ error: `Invalid targetApp. Must be one of: ${validApps.join(', ')}` });
