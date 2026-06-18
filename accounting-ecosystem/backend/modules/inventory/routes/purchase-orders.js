@@ -68,8 +68,8 @@ router.get('/', requirePerm(PERM.VIEW), async (req, res) => {
     let query = supabase
       .from('purchase_orders')
       .select(`
-        id, po_number, order_date, expected_date, status,
-        total_amount, subtotal, tax_amount, currency_code,
+        id, po_number, po_date, expected_date, status,
+        total_inc_vat, subtotal, tax_amount, currency_code,
         notes, created_at, updated_at,
         suppliers:supplier_id(id, name, email)
       `)
@@ -131,10 +131,10 @@ router.get('/:id', requirePerm(PERM.VIEW), async (req, res) => {
     const { data: po, error: poErr } = await supabase
       .from('purchase_orders')
       .select(`
-        id, po_number, order_date, expected_date, status,
-        total_amount, subtotal, tax_amount, currency_code,
+        id, po_number, po_date, expected_date, status,
+        total_inc_vat, subtotal, tax_amount, currency_code,
         notes, approved_by, approved_at, closed_at,
-        created_at, updated_at, created_by,
+        created_at, updated_at, created_by_user_id,
         suppliers:supplier_id(id, name, email, phone, contact_name)
       `)
       .eq('company_id', companyId)
@@ -237,15 +237,15 @@ router.post('/', requirePerm(PERM.PO_CREATE), async (req, res) => {
         company_id:    companyId,
         supplier_id,
         po_number:     poNumber,
-        status:        'draft',
-        order_date:    new Date().toISOString().slice(0, 10),
-        expected_date: expected_date || null,
-        notes:         notes || null,
-        currency_code: currency_code || 'ZAR',
+        status:              'draft',
+        po_date:             new Date().toISOString().slice(0, 10),
+        expected_date:       expected_date || null,
+        notes:               notes || null,
+        currency_code:       currency_code || 'ZAR',
         subtotal,
-        tax_amount:    taxAmount,
-        total_amount:  totalAmount,
-        created_by:    userId,
+        tax_amount:          taxAmount,
+        total_inc_vat:       totalAmount,
+        created_by_user_id:  userId,
       })
       .select()
       .single();

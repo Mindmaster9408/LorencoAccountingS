@@ -1299,6 +1299,11 @@
                         <span class="app-check-icon">🤖</span>
                         <span class="app-check-label">SEAN AI</span>
                     </label>
+                    <label class="app-check" id="editAppsInventoryWrap" style="display:none;" onclick="toggleAppCheck(this)" title="Only available for The Infinite Legacy clients">
+                        <input type="checkbox" name="editApps" value="inventory">
+                        <span class="app-check-icon">📦</span>
+                        <span class="app-check-label">Storehouse</span>
+                    </label>
                 </div>
                 <div class="form-actions" style="margin-top: 24px;">
                     <button type="button" class="btn-form cancel" onclick="closeEditApps()">Cancel</button>
@@ -2485,8 +2490,14 @@
         // Extra fields carried from PDF import into the add-client form (null when adding manually)
         let _importedClientData = null;
 
-        const APP_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖' };
-        const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI' };
+        const APP_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖', inventory: '📦' };
+        const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI', inventory: 'Storehouse' };
+
+        // Returns true when the company is The Infinite Legacy — mirrors admin.html guard.
+        function isTILCompany(co) {
+            if (!co) return false;
+            return co.company_name === 'The Infinite Legacy' || co.trading_name === 'The Infinite Legacy';
+        }
 
         // ── Toast ──
         function showToast(msg, isError) {
@@ -3048,6 +3059,11 @@
             // SEAN AI is only for individual clients
             const isIndividual = (client.client_type || '').toLowerCase() === 'individual';
 
+            // Inventory/Storehouse is only for clients managed under The Infinite Legacy.
+            // Clients in the dashboard are always scoped to selectedCompany (the managing practice),
+            // so checking selectedCompany is the correct and sufficient guard.
+            const isTIL = isTILCompany(selectedCompany);
+
             // Set checkboxes
             document.querySelectorAll('#editAppsCheckboxes .app-check').forEach(label => {
                 const cb = label.querySelector('input');
@@ -3056,10 +3072,26 @@
                     if (!isIndividual) { cb.checked = false; label.classList.remove('checked'); }
                     return;
                 }
+                if (cb.value === 'inventory') {
+                    label.style.display = isTIL ? '' : 'none';
+                    if (!isTIL) { cb.checked = false; label.classList.remove('checked'); }
+                    return;
+                }
                 const isLinked = client.apps && client.apps.includes(cb.value);
                 cb.checked = isLinked;
                 label.classList.toggle('checked', isLinked);
             });
+
+            // For TIL clients, also set the inventory checked state from the client record
+            if (isTIL) {
+                const invWrap = document.getElementById('editAppsInventoryWrap');
+                const invCb   = invWrap ? invWrap.querySelector('input') : null;
+                if (invCb) {
+                    const isLinked = client.apps && client.apps.includes('inventory');
+                    invCb.checked = isLinked;
+                    invWrap.classList.toggle('checked', isLinked);
+                }
+            }
 
             document.getElementById('editAppsModal').classList.add('show');
         }

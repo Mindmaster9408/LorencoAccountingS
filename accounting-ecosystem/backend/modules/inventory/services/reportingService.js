@@ -506,8 +506,8 @@ async function getPurchaseOrderReport(supabase, companyId, options = {}) {
   let q = supabase
     .from('purchase_orders')
     .select(`
-      id, po_number, order_date, expected_date, status,
-      total_amount, subtotal, tax_amount, currency_code,
+      id, po_number, po_date, expected_date, status,
+      total_inc_vat, subtotal, tax_amount, currency_code,
       suppliers:supplier_id(id, name, email)
     `)
     .eq('company_id', companyId)
@@ -517,11 +517,11 @@ async function getPurchaseOrderReport(supabase, companyId, options = {}) {
   if (status) q = q.eq('status', status);
   if (from) {
     const fromDate = parseDate(from);
-    if (fromDate) q = q.gte('order_date', fromDate);
+    if (fromDate) q = q.gte('po_date', fromDate);
   }
   if (to) {
     const toDate = parseDate(to);
-    if (toDate) q = q.lte('order_date', toDate);
+    if (toDate) q = q.lte('po_date', toDate);
   }
 
   const { data: pos, error } = await q;
@@ -563,7 +563,7 @@ async function getPurchaseOrderReport(supabase, companyId, options = {}) {
     report: {
       generated_at: new Date().toISOString(),
       total_purchase_orders: enriched.length,
-      total_amount: enriched.reduce((sum, row) => sum + (parseFloat(row.total_amount) || 0), 0),
+      total_amount: enriched.reduce((sum, row) => sum + (parseFloat(row.total_inc_vat) || 0), 0),
       overdue_count: enriched.filter(row => row.is_overdue).length
     },
     purchase_orders: enriched
@@ -575,7 +575,7 @@ async function getOverduePurchaseOrdersReport(supabase, companyId, options = {})
   let q = supabase
     .from('purchase_orders')
     .select(`
-      id, po_number, order_date, expected_date, status, total_amount,
+      id, po_number, po_date, expected_date, status, total_inc_vat,
       suppliers:supplier_id(id, name, email)
     `)
     .eq('company_id', companyId)
@@ -810,7 +810,7 @@ async function getAlertsPanel(supabase, companyId) {
     supabase
       .from('purchase_orders')
       .select(`
-        id, po_number, expected_date, status, total_amount,
+        id, po_number, expected_date, status, total_inc_vat,
         suppliers:supplier_id(id, name)
       `)
       .eq('company_id', companyId)

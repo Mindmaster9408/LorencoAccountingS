@@ -3171,7 +3171,7 @@ async function loadOrders() {
         <td><strong>${esc(p.po_number||'—')}</strong></td>
         <td>${esc(p.suppliers?.name||'—')}</td>
         <td>${statusBadge(p.status)}${overdue?'<span class="badge badge-danger" style="margin-left:4px;font-size:0.65rem;">OVERDUE</span>':''}</td>
-        <td>${fmtR(p.total_amount)}</td>
+        <td>${fmtR(p.total_inc_vat)}</td>
         <td>${fmtDate(p.expected_date)}</td>
         <td>${rcvPct}</td>
         <td class="td-actions">${actions.join('')}</td>
@@ -3310,7 +3310,7 @@ async function viewPoDetail(id) {
         <div><span style="color:var(--text-muted);">Supplier</span><br><strong>${esc(po.supplier?.name||'—')}</strong></div>
         <div><span style="color:var(--text-muted);">Status</span><br>${statusBadge(po.status)}</div>
         <div><span style="color:var(--text-muted);">Expected</span><br>${fmtDate(po.expected_date)}</div>
-        <div><span style="color:var(--text-muted);">Total</span><br><strong>${fmtR(po.total_amount)}</strong></div>
+        <div><span style="color:var(--text-muted);">Total</span><br><strong>${fmtR(po.total_inc_vat)}</strong></div>
         <div><span style="color:var(--text-muted);">Created</span><br>${fmtDate(po.created_at)}</div>
         <div><span style="color:var(--text-muted);">Notes</span><br>${esc(po.notes||'—')}</div>
       </div>
@@ -4195,7 +4195,7 @@ async function loadAlertsPanel() {
       { label:'PO #', render: r => `<span style="font-weight:600">${esc(r.po_number||r.id)}</span>` },
       { label:'Supplier', render: r => esc(r.suppliers?.name||'—') },
       { label:'Due Date', render: r => `<span style="color:var(--eco-red)">${fmtDate(r.expected_date)}</span>` },
-      { label:'Amount', right:true, render: r => fmtR(r.total_amount) },
+      { label:'Amount', right:true, render: r => fmtR(r.total_inc_vat) },
     ]);
     const shortageHtml = alertTable(alerts.reservation_shortages || [], [
       { label:'Item', render: r => `<span style="font-weight:600">${esc(r.name||r.item_name||'—')}</span>` },
@@ -4509,9 +4509,9 @@ async function loadPurchaseOrderReport() {
         <td style="font-weight:600">${esc(po.po_number||po.id)}</td>
         <td>${esc(sup.name||'—')}</td>
         <td>${statusBadge(po.status)}${po.is_overdue ? ' <span class="badge badge-danger">Overdue</span>' : ''}</td>
-        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(po.order_date)}</td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">${fmtDate(po.po_date)}</td>
         <td style="font-size:0.8rem;color:${po.is_overdue?'var(--eco-red)':'var(--text-muted)'}">${fmtDate(po.expected_date)}</td>
-        <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(po.total_amount)}</td>
+        <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(po.total_inc_vat)}</td>
         <td style="text-align:right;color:var(--eco-green)">${fmtR(po.total_received_value)}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
@@ -4539,7 +4539,7 @@ async function loadOverduePOsReport() {
         <td>${esc(sup.name||'—')}</td>
         <td>${statusBadge(po.status)}</td>
         <td style="color:var(--eco-red);font-weight:700">${fmtDate(po.expected_date)}</td>
-        <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(po.total_amount)}</td>
+        <td style="text-align:right;font-weight:700;color:var(--eco-cyan)">${fmtR(po.total_inc_vat)}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
   } catch(e) { setReportError(e.message); showToast(e.message, true); }

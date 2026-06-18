@@ -165,7 +165,7 @@ router.get('/overdue-pos', requirePerm(PERM.REPORTS_VIEW), async (req, res) => {
     const { data, error } = await supabase
       .from('purchase_orders')
       .select(`
-        id, po_number, order_date, expected_date, status, total_amount,
+        id, po_number, po_date, expected_date, status, total_inc_vat,
         suppliers:supplier_id(id, name, email)
       `)
       .eq('company_id', companyId)
