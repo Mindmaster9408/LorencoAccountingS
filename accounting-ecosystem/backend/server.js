@@ -58,6 +58,8 @@ const featureFlagsRoutes = require('./shared/routes/featureFlags');
 const pdfImportRoutes    = require('./shared/routes/pdfImport');
 const adminPanelRoutes   = require('./shared/routes/admin-panel');
 const qaHubRoutes        = require('./shared/routes/qa-hub.routes');
+// 2FA — dormant foundation (not enforced; TWO_FACTOR_AUTH_ENABLED=false by default)
+const twoFactorRoutes    = require('./shared/routes/twoFactor');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
@@ -221,6 +223,8 @@ app.get('/api/admin/reset-master', async (req, res) => {
 
 // ─── Shared Routes (always active) ──────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+// 2FA endpoints — dormant; no login flow change until TWO_FACTOR_AUTH_ENABLED=true
+app.use('/api/auth', twoFactorRoutes);
 app.use('/api/companies', authenticateToken, companiesRoutes);
 app.use('/api/users', authenticateToken, usersRoutes);
 app.use('/api/employees', authenticateToken, employeesRoutes);

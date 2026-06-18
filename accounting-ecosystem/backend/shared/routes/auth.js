@@ -143,6 +143,30 @@ router.post('/login', async (req, res) => {
       tokenPayload.role = selectedCompany.role;
     }
 
+    // ── 2FA DORMANT GATE ────────────────────────────────────────────────────
+    // This block does nothing until TWO_FACTOR_AUTH_ENABLED=true is set in env.
+    // When activated, users with two_factor_enabled=true will receive a
+    // 2FA_REQUIRED challenge instead of a full token, and must call
+    // POST /api/auth/2fa/verify to complete login.
+    //
+    // DO NOT enable without: feature flag active + user comms + UI challenge screen.
+    if (
+      process.env.TWO_FACTOR_AUTH_ENABLED === 'true' &&
+      user.two_factor_enabled === true &&
+      user.two_factor_confirmed_at
+    ) {
+      // Placeholder: return a partial token that can only call /api/auth/2fa/verify
+      // Implementation: replace this comment with the 2FA challenge flow when activating.
+      // For now this branch is unreachable because TWO_FACTOR_AUTH_ENABLED is unset.
+      return res.status(200).json({
+        success: false,
+        requires2FA: true,
+        code: '2FA_REQUIRED',
+        message: 'Please complete two-factor authentication to continue.',
+      });
+    }
+    // ── END 2FA DORMANT GATE ────────────────────────────────────────────────
+
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '8h' });
 
     // Audit login

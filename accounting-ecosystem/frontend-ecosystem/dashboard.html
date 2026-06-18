@@ -1590,6 +1590,24 @@
                         </div>
                     </div>
 
+                    <!-- ── Security Settings (2FA placeholder — dormant) ── -->
+                    <div id="securitySettingsSection" style="border-top:1px solid var(--border);margin:20px 0 0 0;padding-top:20px;display:none;">
+                        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:14px;">Security</div>
+                        <div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.18);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:14px;">
+                            <div style="font-size:1.5rem;flex-shrink:0;">&#128274;</div>
+                            <div style="flex:1;">
+                                <div style="font-size:0.88rem;font-weight:700;color:rgba(255,255,255,0.85);margin-bottom:3px;">Two-Factor Authentication</div>
+                                <div style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;">
+                                    Google / Microsoft Authenticator support is being prepared for this account.<br>
+                                    <span id="tfa2faStatus" style="color:rgba(99,102,241,0.8);font-weight:600;">Status: Coming Soon</span>
+                                </div>
+                            </div>
+                            <div style="flex-shrink:0;">
+                                <span style="background:rgba(99,102,241,0.15);color:rgba(99,102,241,0.75);font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:0.5px;">NOT ACTIVE</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="form-actions">
                         <button type="button" class="btn-form cancel" onclick="closeProfileModal()">Cancel</button>
                         <button type="submit" class="btn-form save" id="profSaveBtn">Save Changes</button>
@@ -3303,6 +3321,38 @@
             document.getElementById('profCurrentPwd').value = '';
             document.getElementById('profNewPwd').value = '';
             document.getElementById('profileModal').classList.add('show');
+            _load2faStatusPlaceholder();
+        }
+
+        // Populate dormant 2FA placeholder in the profile modal.
+        // Only shown to super admins as a preview of the coming feature.
+        // When the feature flag becomes active, this will show real status.
+        async function _load2faStatusPlaceholder() {
+            const section = document.getElementById('securitySettingsSection');
+            if (!section) return;
+            const isSuperAdmin = currentUser && (currentUser.isSuperAdmin || currentUser.is_super_admin);
+            if (!isSuperAdmin) return; // only show preview to super admins
+            section.style.display = 'block';
+            const statusEl = document.getElementById('tfa2faStatus');
+            try {
+                const token = localStorage.getItem('eco_token') || localStorage.getItem('token');
+                const res = await fetch('/api/auth/2fa/status', {
+                    headers: token ? { Authorization: 'Bearer ' + token } : {}
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (statusEl) {
+                        if (data.enforcement_active) {
+                            statusEl.textContent = data.enabled ? 'Status: Enabled' : 'Status: Not Set Up';
+                            statusEl.style.color = data.enabled ? '#34d399' : '#f87171';
+                        } else {
+                            statusEl.textContent = 'Status: Coming Soon (Foundation Ready)';
+                        }
+                    }
+                }
+            } catch {
+                // Non-fatal — status label stays as "Coming Soon"
+            }
         }
 
         function closeProfileModal() {

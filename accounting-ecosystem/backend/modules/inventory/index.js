@@ -42,6 +42,14 @@ const {
 
 const router = express.Router();
 
+// Sub-routers use req.supabase rather than the global singleton imported above.
+// Inject it here once so every sub-router downstream receives it without needing
+// to import the DB module directly.
+router.use((req, _res, next) => {
+  req.supabase = supabase;
+  next();
+});
+
 // ─── Sub-routers ──────────────────────────────────────────────
 router.use('/boms', bomRoutes);
 router.use('/work-orders', workOrderRoutes);
