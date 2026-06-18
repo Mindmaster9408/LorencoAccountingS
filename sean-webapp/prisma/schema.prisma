@@ -37,6 +37,7 @@ model Conversation {
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String    @default("Untitled")
+  module    String?   @default("general") // "general" | "accounting" | "allocation"
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 

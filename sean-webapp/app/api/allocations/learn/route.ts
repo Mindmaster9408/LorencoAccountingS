@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { getUserFromRequest, unauthorized } from "@/lib/api-auth";
-import { learnFromCorrection, ALLOCATION_CATEGORIES } from "@/lib/bank-allocations";
+import { learnFromCorrection, ALLOCATION_CATEGORIES, syncConfirmedToAccountingEco } from "@/lib/bank-allocations";
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,6 +49,14 @@ export async function POST(request: NextRequest) {
         });
       } catch (txError) {
         console.warn("Transaction update failed (may not exist):", txError);
+      }
+
+      // Push confirmed allocation to accounting-ecosystem staging pipeline.
+      // Fire-and-forget — never blocks the user response.
+      // Inactive unless both ECO_BASE_URL and ECO_SERVICE_TOKEN are set.
+      const ecoBase = process.env.ECO_BASE_URL;
+      if (ecoBase && process.env.ECO_SERVICE_TOKEN) {
+        void syncConfirmedToAccountingEco(transactionId, ecoBase);
       }
     }
 

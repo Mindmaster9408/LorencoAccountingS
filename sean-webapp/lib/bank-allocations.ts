@@ -1063,3 +1063,75 @@ export async function suggestCategoryEnhanced(
     totalConfidence,
   };
 }
+
+// ==============================================================================
+// ACCOUNTING ECOSYSTEM SYNC BRIDGE
+// Pushes a confirmed allocation from Sean's SQLite store to the accounting-
+// ecosystem backend's bank staging pipeline. Called after learnFromCorrection.
+// Never throws — the caller's confirmation flow must not be blocked by a
+// downstream sync failure.
+// ==============================================================================
+
+export async function syncConfirmedToAccountingEco(
+  txId: string,
+  ecoBaseUrl: string
+): Promise<void> {
+  const serviceToken = process.env.ECO_SERVICE_TOKEN;
+  if (!serviceToken) {
+    console.warn("[EcoSync] ECO_SERVICE_TOKEN not set — skipping sync for tx", txId);
+    return;
+  }
+
+  let tx: Awaited<ReturnType<typeof prisma.bankTransaction.findUnique>>;
+  try {
+    tx = await prisma.bankTransaction.findUnique({ where: { id: txId } });
+  } catch (err) {
+    console.error("[EcoSync] Failed to fetch transaction", txId, err);
+    return;
+  }
+
+  if (!tx) {
+    console.warn("[EcoSync] Transaction not found, skipping sync:", txId);
+    return;
+  }
+
+  if (!tx.confirmedCategory) {
+    console.warn("[EcoSync] Transaction has no confirmedCategory, skipping sync:", txId);
+    return;
+  }
+
+  const payload = {
+    externalId: tx.id,
+    date: tx.date,
+    description: tx.description,
+    rawDescription: tx.rawDescription,
+    amount: tx.amount,
+    isDebit: tx.isDebit,
+    confirmedCategory: tx.confirmedCategory,
+    suggestedCategory: tx.suggestedCategory,
+    suggestedConfidence: tx.suggestedConfidence,
+    clientId: tx.clientId,
+    bankAccount: tx.bankAccount,
+    source: "sean",
+  };
+
+  try {
+    const response = await fetch(`${ecoBaseUrl}/api/bank-transactions/staging`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      console.log("[EcoSync] Synced tx", txId, "→ accounting-ecosystem staging");
+    } else {
+      const body = await response.text().catch(() => "(unreadable)");
+      console.error("[EcoSync] Staging endpoint rejected tx", txId, response.status, body);
+    }
+  } catch (err) {
+    console.error("[EcoSync] Network error syncing tx", txId, err);
+  }
+}
