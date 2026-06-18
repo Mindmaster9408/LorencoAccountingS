@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Products &amp; Services — Lorenco Accounting</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <script src="js/polyfills.js"></script>
+  <style>
+    /* ── Dark-native layout ───────────────────────────────────────────── */
+    .main-content         { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    .page-header          { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .page-header h1       { font-size: 24px; font-weight: 700; }
+    .page-header .actions { display: flex; gap: 10px; }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+    .btn-primary    { background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%); color: white; }
+    .btn-primary:hover  { opacity: 0.9; transform: translateY(-1px); }
+    .btn-secondary  { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.15); }
+    .btn-secondary:hover { background: rgba(255,255,255,0.13); }
+    .btn-sm         { padding: 5px 10px; font-size: 11px; }
+
+    /* ── Summary cards ────────────────────────────────────────────────── */
+    .stats-row  { display: grid; grid-template-columns: repeat(4,1fr); gap: 15px; margin-bottom: 20px; }
+    .stat-card  { padding: 16px 20px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+    .stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; }
+    .stat-value { font-size: 28px; font-weight: 700; margin-top: 5px; }
+    .stat-sub   { font-size: 12px; margin-top: 5px; opacity: 0.6; }
+
+    /* ── Filter tabs ──────────────────────────────────────────────────── */
+    .filter-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid rgba(255,255,255,0.1); }
+    .ftab        { padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 500; opacity: 0.6; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+    .ftab:hover  { opacity: 0.9; }
+    .ftab.active { opacity: 1; border-bottom-color: #f59e0b; color: #fbbf24; font-weight: 600; }
+
+    /* ── Search / filter bar ──────────────────────────────────────────── */
+    .filter-bar  { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .filter-bar input, .filter-bar select {
+      padding: 8px 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px; color: inherit; font-size: 13px; font-family: inherit;
+    }
+    .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: rgba(0,153,255,0.5); }
+    .filter-bar input[type=text] { width: 240px; }
+    .filter-bar select           { min-width: 160px; }
+    .search-wrap { position: relative; }
+    .search-wrap input { padding-left: 32px !important; }
+    .search-wrap::before { content: "🔍"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; z-index: 1; }
+
+    /* ── Table ────────────────────────────────────────────────────────── */
+    .table-wrap  { overflow-x: auto; }
+    .data-table  { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.4px; opacity: 0.6; border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-weight: 600; white-space: nowrap;
+    }
+    .data-table td { padding: 11px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
+    .data-table tr:hover td { background: rgba(255,255,255,0.025); }
+    .col-price   { text-align: right !important; font-family: 'Courier New', monospace; }
+    .col-actions { white-space: nowrap; }
+    .item-name   { font-weight: 600; color: #60a5fa; cursor: pointer; }
+    .item-name:hover { text-decoration: underline; }
+    .item-code-cell { font-size: 11px; opacity: 0.5; font-family: monospace; }
+    .action-btns { display: flex; gap: 5px; }
+
+    /* ── Badges ───────────────────────────────────────────────────────── */
+    .badge           { padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; display: inline-block; white-space: nowrap; }
+    .badge-service   { background: rgba(59,130,246,0.2);   color: #60a5fa; }
+    .badge-inventory { background: rgba(16,185,129,0.2);   color: #34d399; }
+    .badge-non_stock { background: rgba(139,92,246,0.2);   color: #a78bfa; }
+    .badge-active    { background: rgba(40,167,69,0.25);   color: #34d058; }
+    .badge-inactive  { background: rgba(108,117,125,0.2);  color: #9ca3af; }
+    .badge-standard  { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+    .badge-zero_rated{ background: rgba(16,185,129,0.15);  color: #6ee7b7; }
+    .badge-exempt    { background: rgba(107,114,128,0.2);  color: #9ca3af; }
+
+    /* ── Empty state ──────────────────────────────────────────────────── */
+    .empty-state   { text-align: center; padding: 60px 20px; opacity: 0.5; }
+    .empty-state h3 { font-size: 18px; margin-bottom: 8px; }
+    .empty-state p  { font-size: 14px; }
+
+    /* ── Modal ────────────────────────────────────────────────────────── */
+    .modal        { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 3000; align-items: center; justify-content: center; padding: 20px; }
+    .modal.show   { display: flex; }
+    .modal-dialog { background: #1e1b3a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto; }
+    .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h3 { font-size: 18px; font-weight: 700; }
+    .modal-close  { background: none; border: none; font-size: 22px; cursor: pointer; color: rgba(255,255,255,0.5); line-height: 1; }
+    .modal-close:hover { color: white; }
+    .modal-body   { padding: 20px 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: flex-end; gap: 10px; }
+
+    /* ── Forms ────────────────────────────────────────────────────────── */
+    .form-group       { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.3px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px; color: inherit; font-size: 13px; font-family: inherit; box-sizing: border-box;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: rgba(0,153,255,0.5); background: rgba(0,153,255,0.05);
+    }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-section-title {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.45;
+      margin: 18px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .hint-text { font-size: 11px; opacity: 0.5; margin-top: 3px; }
+
+    /* ── Error box ────────────────────────────────────────────────────── */
+    .alert-error { background: rgba(220,53,69,0.15); border: 1px solid rgba(220,53,69,0.3); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #fca5a5; margin-bottom: 14px; display: none; }
+    .alert-error.show { display: block; }
+
+    /* ── Toast ────────────────────────────────────────────────────────── */
+    #toast         { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+    .toast-msg     { padding: 12px 18px; border-radius: 8px; font-size: 13px; font-weight: 500; opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; max-width: 340px; }
+    .toast-msg.show{ opacity: 1; transform: translateY(0); }
+    .toast-ok  { background: #166534; border: 1px solid rgba(74,222,128,0.3);  color: #bbf7d0; }
+    .toast-err { background: #7f1d1d; border: 1px solid rgba(248,113,113,0.3); color: #fecaca; }
+    .toast-inf { background: #1e3a5f; border: 1px solid rgba(96,165,250,0.3);  color: #bfdbfe; }
+  </style>
+</head>
+<body>
+<div class="main-content">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <h1>Products &amp; Services</h1>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="openItemModal()">+ New Item</button>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Total Items</div>
+      <div class="stat-value" id="statTotal">—</div>
+      <div class="stat-sub">in catalogue</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active</div>
+      <div class="stat-value" id="statActive">—</div>
+      <div class="stat-sub">available on invoices</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Services</div>
+      <div class="stat-value" id="statServices">—</div>
+      <div class="stat-sub">active service items</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Products</div>
+      <div class="stat-value" id="statProducts">—</div>
+      <div class="stat-sub">inventory &amp; non-stock</div>
+    </div>
+  </div>
+
+  <!-- Filter tabs -->
+  <div class="filter-tabs">
+    <div class="ftab active" data-tab="all"      onclick="setTab('all')">All</div>
+    <div class="ftab"        data-tab="service"  onclick="setTab('service')">Services</div>
+    <div class="ftab"        data-tab="product"  onclick="setTab('product')">Products</div>
+    <div class="ftab"        data-tab="inactive" onclick="setTab('inactive')">Inactive</div>
+  </div>
+
+  <!-- Search / filter bar -->
+  <div class="filter-bar">
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Search name or code…" oninput="renderTable()">
+    </div>
+    <select id="vatFilter" onchange="renderTable()">
+      <option value="">All VAT types</option>
+      <option value="standard">Standard (15%)</option>
+      <option value="zero_rated">Zero Rated</option>
+      <option value="exempt">Exempt</option>
+    </select>
+  </div>
+
+  <!-- Items table -->
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Name</th>
+          <th>Type</th>
+          <th class="col-price">Selling Price</th>
+          <th>Income Account</th>
+          <th>VAT</th>
+          <th>Status</th>
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="itemsTbody">
+        <tr><td colspan="8" style="text-align:center;padding:40px;opacity:0.4;">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Create / Edit Item Modal
+════════════════════════════════════════════════════════════════ -->
+<div id="modalItem" class="modal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3 id="modalItemTitle">New Item</h3>
+      <button class="modal-close" onclick="closeItemModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="itemFormError" class="alert-error"></div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Item Name *</label>
+          <input type="text" id="fItemName" placeholder="e.g. Consulting Services" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Item Code</label>
+          <input type="text" id="fItemCode" placeholder="e.g. SRV-001" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Type</label>
+          <select id="fItemType">
+            <option value="service">Service</option>
+            <option value="inventory">Product</option>
+            <option value="non_stock">Non-stock Product</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>VAT Treatment</label>
+          <select id="fTaxType">
+            <option value="standard">Standard (15%)</option>
+            <option value="zero_rated">Zero Rated</option>
+            <option value="exempt">Exempt</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Selling Price (ex VAT)</label>
+          <input type="number" id="fSellingPrice" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Income Account</label>
+          <select id="fIncomeAccount">
+            <option value="">— Select account —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="fDescription" rows="2" placeholder="Optional notes or description for this item"></textarea>
+      </div>
+
+      <div class="form-section-title">Advanced</div>
+      <div class="form-group">
+        <label>Integration Key</label>
+        <input type="text" id="fIntegrationKey" placeholder="Optional — for future POS / Storehouse mapping" autocomplete="off">
+        <div class="hint-text">Leave blank unless mapping to an external system (e.g. POS product ID).</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeItemModal()">Cancel</button>
+      <button class="btn btn-primary" id="btnSaveItem" onclick="saveItem()">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════════════
+let allItems    = [];
+let allAccounts = [];
+let currentTab  = 'all';
+let editingId   = null;   // null = create, integer = update
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Auth
+// ═══════════════════════════════════════════════════════════════════════════
+function authHeaders() {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════════════════════
+async function init() {
+  await Promise.all([loadItems(), loadAccounts()]);
+}
+
+async function loadItems() {
+  try {
+    const r = await fetch('/api/accounting/items?includeInactive=true', { headers: authHeaders() });
+    if (r.status === 401) { window.location.href = '/'; return; }
+    if (!r.ok) throw new Error('Failed to load items');
+    const d = await r.json();
+    allItems = d.items || [];
+    updateSummaryCards();
+    renderTable();
+  } catch (err) {
+    console.error('loadItems:', err);
+    toast('Failed to load items: ' + err.message, 'err');
+    renderTable();
+  }
+}
+
+async function loadAccounts() {
+  try {
+    const r = await fetch('/api/accounting/customer-invoices/accounts', { headers: authHeaders() });
+    if (!r.ok) return;
+    const d = await r.json();
+    allAccounts = d.accounts || [];
+    populateAccountSelect('fIncomeAccount', null);
+  } catch (_) {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Summary cards
+// ═══════════════════════════════════════════════════════════════════════════
+function updateSummaryCards() {
+  const active   = allItems.filter(i => i.is_active);
+  const services = allItems.filter(i => i.is_active && i.item_type === 'service');
+  const products = allItems.filter(i => i.is_active && (i.item_type === 'inventory' || i.item_type === 'non_stock'));
+  document.getElementById('statTotal').textContent    = allItems.length;
+  document.getElementById('statActive').textContent   = active.length;
+  document.getElementById('statServices').textContent = services.length;
+  document.getElementById('statProducts').textContent = products.length;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Filter tabs
+// ═══════════════════════════════════════════════════════════════════════════
+function setTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.ftab').forEach(el =>
+    el.classList.toggle('active', el.dataset.tab === tab)
+  );
+  renderTable();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Table render
+// ═══════════════════════════════════════════════════════════════════════════
+const TYPE_LABELS = { service: 'Service', inventory: 'Product', non_stock: 'Non-stock' };
+const VAT_LABELS  = { standard: 'Standard', zero_rated: 'Zero Rated', exempt: 'Exempt' };
+
+function renderTable() {
+  const search    = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const vatFilter = document.getElementById('vatFilter')?.value || '';
+
+  let rows = allItems.filter(item => {
+    if (currentTab === 'service')  return item.is_active && item.item_type === 'service';
+    if (currentTab === 'product')  return item.is_active && (item.item_type === 'inventory' || item.item_type === 'non_stock');
+    if (currentTab === 'inactive') return !item.is_active;
+    return true;
+  });
+  if (search) {
+    rows = rows.filter(i =>
+      (i.item_name || '').toLowerCase().includes(search) ||
+      (i.item_code || '').toLowerCase().includes(search)
+    );
+  }
+  if (vatFilter) rows = rows.filter(i => i.tax_type === vatFilter);
+
+  const tbody = document.getElementById('itemsTbody');
+
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8">
+      <div class="empty-state">
+        <h3>No items found</h3>
+        <p>${allItems.length === 0
+          ? 'Create your first product or service to get started.'
+          : 'Try adjusting your search or filters.'}</p>
+      </div>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(item => {
+    const typeBadge   = `<span class="badge badge-${item.item_type}">${esc(TYPE_LABELS[item.item_type] || item.item_type)}</span>`;
+    const vatBadge    = `<span class="badge badge-${item.tax_type}">${esc(VAT_LABELS[item.tax_type] || item.tax_type)}</span>`;
+    const statusBadge = item.is_active
+      ? `<span class="badge badge-active">Active</span>`
+      : `<span class="badge badge-inactive">Inactive</span>`;
+    const priceCell   = item.selling_price != null
+      ? 'R ' + parseFloat(item.selling_price).toFixed(2)
+      : '<span style="opacity:0.3">—</span>';
+    const acctName    = getAccountName(item.income_account_id);
+    const acctCell    = acctName ? esc(acctName) : '<span style="opacity:0.3">—</span>';
+    const codeCell    = item.item_code
+      ? `<span class="item-code-cell">${esc(item.item_code)}</span>`
+      : '<span style="opacity:0.25">—</span>';
+    const toggleBtn   = item.is_active
+      ? `<button class="btn btn-sm btn-secondary" onclick="toggleActive(${item.id}, false)">Deactivate</button>`
+      : `<button class="btn btn-sm btn-primary"   onclick="toggleActive(${item.id}, true)">Activate</button>`;
+
+    return `<tr>
+      <td>${codeCell}</td>
+      <td><span class="item-name" onclick="openItemModal(${item.id})">${esc(item.item_name)}</span></td>
+      <td>${typeBadge}</td>
+      <td class="col-price">${priceCell}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${acctName ? esc(acctName) : ''}">${acctCell}</td>
+      <td>${vatBadge}</td>
+      <td>${statusBadge}</td>
+      <td class="col-actions">
+        <div class="action-btns">
+          <button class="btn btn-sm btn-secondary" onclick="openItemModal(${item.id})">Edit</button>
+          ${toggleBtn}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function getAccountName(accountId) {
+  if (!accountId) return null;
+  const acct = allAccounts.find(a => String(a.id) === String(accountId));
+  return acct ? (acct.account_name || acct.name || null) : null;
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Account select
+// ═══════════════════════════════════════════════════════════════════════════
+function populateAccountSelect(selectId, selectedId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Select account —</option>';
+  allAccounts.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = (a.account_code ? a.account_code + ' — ' : '') + (a.account_name || a.name || '');
+    sel.appendChild(opt);
+  });
+  if (selectedId != null) sel.value = String(selectedId);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Modal — open / close
+// ═══════════════════════════════════════════════════════════════════════════
+function openItemModal(id) {
+  editingId = id || null;
+  const errEl = document.getElementById('itemFormError');
+  errEl.classList.remove('show');
+  errEl.textContent = '';
+
+  if (editingId) {
+    const item = allItems.find(i => i.id === editingId);
+    if (!item) { toast('Item not found in local cache — please refresh.', 'err'); return; }
+    document.getElementById('modalItemTitle').textContent = 'Edit Item';
+    document.getElementById('fItemName').value        = item.item_name     || '';
+    document.getElementById('fItemCode').value        = item.item_code     || '';
+    document.getElementById('fItemType').value        = item.item_type     || 'service';
+    document.getElementById('fTaxType').value         = item.tax_type      || 'standard';
+    document.getElementById('fSellingPrice').value    = item.selling_price != null ? item.selling_price : '';
+    document.getElementById('fDescription').value     = item.description   || '';
+    document.getElementById('fIntegrationKey').value  = item.integration_key || '';
+    populateAccountSelect('fIncomeAccount', item.income_account_id || null);
+  } else {
+    document.getElementById('modalItemTitle').textContent = 'New Item';
+    document.getElementById('fItemName').value        = '';
+    document.getElementById('fItemCode').value        = '';
+    document.getElementById('fItemType').value        = 'service';
+    document.getElementById('fTaxType').value         = 'standard';
+    document.getElementById('fSellingPrice').value    = '';
+    document.getElementById('fDescription').value     = '';
+    document.getElementById('fIntegrationKey').value  = '';
+    populateAccountSelect('fIncomeAccount', null);
+  }
+
+  document.getElementById('modalItem').classList.add('show');
+  document.getElementById('fItemName').focus();
+}
+
+function closeItemModal() {
+  document.getElementById('modalItem').classList.remove('show');
+  editingId = null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Save (create or update)
+// ═══════════════════════════════════════════════════════════════════════════
+async function saveItem() {
+  const errEl = document.getElementById('itemFormError');
+  errEl.classList.remove('show');
+
+  const itemName        = document.getElementById('fItemName').value.trim();
+  const itemCode        = document.getElementById('fItemCode').value.trim();
+  const itemType        = document.getElementById('fItemType').value;
+  const taxType         = document.getElementById('fTaxType').value;
+  const sellingPriceRaw = document.getElementById('fSellingPrice').value;
+  const incomeAccountId = document.getElementById('fIncomeAccount').value;
+  const description     = document.getElementById('fDescription').value.trim();
+  const integrationKey  = document.getElementById('fIntegrationKey').value.trim();
+
+  if (!itemName) {
+    errEl.textContent = 'Item name is required.';
+    errEl.classList.add('show');
+    document.getElementById('fItemName').focus();
+    return;
+  }
+
+  const payload = {
+    itemName,
+    itemCode:         itemCode        || null,
+    itemType,
+    taxType,
+    sellingPrice:     sellingPriceRaw !== '' ? parseFloat(sellingPriceRaw) : null,
+    incomeAccountId:  incomeAccountId || null,
+    description:      description     || null,
+    integrationKey:   integrationKey  || null,
+  };
+
+  const btn = document.getElementById('btnSaveItem');
+  btn.disabled    = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    const url    = editingId ? `/api/accounting/items/${editingId}` : '/api/accounting/items';
+    const method = editingId ? 'PUT' : 'POST';
+    const r = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (!r.ok) {
+      errEl.textContent = d.error || 'Save failed.';
+      errEl.classList.add('show');
+      return;
+    }
+    closeItemModal();
+    toast(editingId ? 'Item updated.' : 'Item created.', 'ok');
+    await loadItems();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Save Item';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Toggle active / inactive
+// ═══════════════════════════════════════════════════════════════════════════
+async function toggleActive(id, activate) {
+  const item = allItems.find(i => i.id === id);
+  const name = item ? item.item_name : 'this item';
+  if (!activate && !confirm(`Deactivate "${name}"?\n\nIt will no longer appear in the invoice item selector. Historical invoices are not affected.`)) return;
+
+  try {
+    const action = activate ? 'activate' : 'deactivate';
+    const r = await fetch(`/api/accounting/items/${id}/${action}`, {
+      method: 'PATCH', headers: authHeaders(),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      toast(d.error || `Failed to ${action} item`, 'err');
+      return;
+    }
+    toast(activate ? `"${name}" activated.` : `"${name}" deactivated.`, 'ok');
+    await loadItems();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Toast
+// ═══════════════════════════════════════════════════════════════════════════
+function toast(msg, type = 'inf') {
+  const el = document.createElement('div');
+  el.className = `toast-msg toast-${type}`;
+  el.textContent = msg;
+  document.getElementById('toast').appendChild(el);
+  requestAnimationFrame(() => { requestAnimationFrame(() => el.classList.add('show')); });
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UX
+// ═══════════════════════════════════════════════════════════════════════════
+document.getElementById('modalItem').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalItem')) closeItemModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeItemModal(); });
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

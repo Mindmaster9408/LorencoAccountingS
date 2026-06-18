@@ -85,12 +85,13 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage.includes('customer') || currentPage === 'invoices.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage.includes('customer') || currentPage === 'invoices.html' || currentPage === 'products-services.html' ? 'active' : ''}">
         <a href="#">Customers</a>
         <div class="dropdown">
           <div class="dropdown-header">Sales</div>
           <a href="/accounting/customer-list.html">Customer List</a>
           <a href="/accounting/invoices.html">Invoices</a>
+          <a href="/accounting/products-services.html">Products &amp; Services</a>
           <a href="#">Quotes</a>
           <a href="#">Credit Notes</a>
           <div class="dropdown-header">Payments</div>
