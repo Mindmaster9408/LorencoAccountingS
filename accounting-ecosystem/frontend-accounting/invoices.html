@@ -941,6 +941,7 @@ function buildInvActions(inv) {
   }
   if (inv.status === 'sent' || inv.status === 'part_paid') {
     btns.push(`<button class="btn btn-success btn-sm" onclick="openPaymentModalForCustomer('${esc(inv.customer_name)}')">Pay</button>`);
+    btns.push(`<button class="btn btn-secondary btn-sm" onclick="window.location.href='/accounting/credit-notes.html?fromInvoice=${inv.id}'">Credit Note</button>`);
   }
   if (inv.status !== 'void' && inv.status !== 'paid' && parseFloat(inv.amount_paid || 0) === 0) {
     btns.push(`<button class="btn btn-danger btn-sm" onclick="openCustInvVoid(${inv.id})">Void</button>`);

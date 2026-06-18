@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Credit Notes — Lorenco Accounting</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <script src="js/polyfills.js"></script>
+  <style>
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    .main-content         { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    .page-header          { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .page-header h1       { font-size: 24px; font-weight: 700; }
+    .page-header .actions { display: flex; gap: 10px; }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+    .btn-primary   { background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%); color: white; }
+    .btn-primary:hover   { opacity: 0.9; transform: translateY(-1px); }
+    .btn-secondary { background: #6c757d; color: white; }
+    .btn-secondary:hover { opacity: 0.85; }
+    .btn-success   { background: #28a745; color: white; }
+    .btn-success:hover   { background: #218838; }
+    .btn-danger    { background: #dc3545; color: white; }
+    .btn-danger:hover    { background: #c82333; }
+    .btn-warning   { background: #f59e0b; color: #1a1a2e; }
+    .btn-sm        { padding: 5px 10px; font-size: 11px; }
+
+    /* ── Stats ────────────────────────────────────────────────────────── */
+    .stats-row  { display: grid; grid-template-columns: repeat(4,1fr); gap: 15px; margin-bottom: 20px; }
+    .stat-card  { padding: 16px 20px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+    .stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; }
+    .stat-value { font-size: 28px; font-weight: 700; margin-top: 5px; }
+    .stat-sub   { font-size: 12px; margin-top: 5px; opacity: 0.6; }
+
+    /* ── Tabs ─────────────────────────────────────────────────────────── */
+    .tabs       { display: flex; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 20px; gap: 4px; }
+    .tab        { padding: 10px 18px; cursor: pointer; font-size: 14px; opacity: 0.6; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+    .tab:hover  { opacity: 0.9; }
+    .tab.active { opacity: 1; border-bottom-color: #f59e0b; font-weight: 600; color: #fbbf24; }
+
+    /* ── Filters ──────────────────────────────────────────────────────── */
+    .filters      { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .search-wrap  { position: relative; }
+    .search-wrap input { padding-left: 32px !important; }
+    .search-wrap::before { content: "🔍"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; z-index: 1; }
+
+    /* ── Tables ───────────────────────────────────────────────────────── */
+    .table-wrap  { overflow-x: auto; }
+    .data-table  { width: 100%; border-collapse: collapse; }
+    .data-table th, .data-table td { padding: 12px 15px; text-align: left; }
+    .action-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+
+    /* ── Status badges ────────────────────────────────────────────────── */
+    .badge        { padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; display: inline-block; }
+    .badge-draft  { background: rgba(108,117,125,0.2); color: #9ca3af !important; }
+    .badge-posted { background: rgba(40,167,69,0.2);  color: #34d058 !important; }
+    .badge-void   { background: rgba(108,117,125,0.15); color: #6b7280 !important; }
+
+    .cn-number    { font-family: 'Courier New', monospace; font-weight: 700; color: #a78bfa !important; }
+    .customer-link { font-weight: 600; color: #60a5fa !important; cursor: pointer; }
+    .customer-link:hover { text-decoration: underline; }
+    .amount-cell  { font-family: 'Courier New', monospace; font-weight: 600; text-align: right !important; color: #f87171 !important; }
+    .source-inv   { font-size: 11px; color: #fbbf24 !important; font-family: monospace; }
+
+    /* ── Empty state ──────────────────────────────────────────────────── */
+    .empty-state    { text-align: center; padding: 60px 20px; opacity: 0.6; }
+    .empty-state h3 { font-size: 18px; margin-bottom: 8px; }
+    .empty-state p  { font-size: 14px; }
+
+    /* ── Modals ───────────────────────────────────────────────────────── */
+    .modal        { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 3000; align-items: center; justify-content: center; padding: 20px; }
+    .modal.show   { display: flex; }
+    .modal-dialog { background: #1e1b3a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-height: 90vh; overflow-y: auto; }
+    .modal-dialog.wide   { max-width: 900px; }
+    .modal-dialog.narrow { max-width: 520px; }
+    .modal-header   { padding: 20px 24px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h3 { font-size: 18px; font-weight: 700; }
+    .modal-close    { background: none; border: none; font-size: 22px; cursor: pointer; color: rgba(255,255,255,0.5); line-height: 1; }
+    .modal-close:hover { color: white; }
+    .modal-body     { padding: 20px 24px; }
+    .modal-footer   { padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: flex-end; gap: 10px; align-items: center; }
+
+    /* ── Forms ────────────────────────────────────────────────────────── */
+    .form-group       { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.3px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px; color: inherit; font-size: 13px; font-family: inherit; box-sizing: border-box;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: rgba(0,153,255,0.5); background: rgba(0,153,255,0.05);
+    }
+    .form-group input[readonly], .form-group select[disabled] {
+      opacity: 0.6; cursor: not-allowed;
+    }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .form-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.5; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+
+    /* ── From-invoice banner ──────────────────────────────────────────── */
+    .from-inv-banner { background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: none; }
+    .from-inv-banner.show { display: block; }
+    .from-inv-banner .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #a78bfa; margin-bottom: 4px; }
+    .from-inv-banner .inv-ref { font-size: 14px; font-weight: 600; font-family: monospace; }
+
+    /* ── VAT mode ─────────────────────────────────────────────────────── */
+    .vat-mode-bar    { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+    .vat-mode-label  { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #fbbf24; margin-bottom: 8px; display: block; }
+    .vat-radio-group { display: flex; gap: 24px; }
+    .vat-radio       { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+    .vat-radio input[type=radio] { accent-color: #f59e0b; width: 15px; height: 15px; margin: 0; }
+
+    /* ── Line items ───────────────────────────────────────────────────── */
+    .lines-table    { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
+    .lines-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; opacity: 0.6; padding: 6px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .lines-table th.right { text-align: right; }
+    .lines-table td { padding: 3px 4px; vertical-align: middle; }
+    .lines-table input, .lines-table select { width: 100%; padding: 5px 7px; font-size: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: inherit; }
+    .line-type-col  { width: 72px; }
+    .line-type-col select { font-size: 11px; padding: 4px 5px; }
+    .line-num-col   { width: 75px; }
+    .line-vat-col   { width: 60px; }
+    .line-amt-col   { width: 90px; font-family: monospace; text-align: right; padding-right: 8px !important; }
+    .line-del-col   { width: 28px; text-align: center; }
+    .add-line-btn   { font-size: 12px; color: #60a5fa; background: none; border: none; cursor: pointer; padding: 4px 0; }
+    .add-line-btn:hover { color: #93c5fd; }
+
+    /* ── Totals ───────────────────────────────────────────────────────── */
+    .totals-panel   { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 14px 18px; margin-top: 10px; }
+    .totals-row     { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+    .totals-divider { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 6px 0; }
+    .totals-grand   { font-size: 16px; font-weight: 700; color: #f87171; }
+
+    /* ── Customer typeahead ───────────────────────────────────────────── */
+    .cust-wrap     { position: relative; }
+    .cust-dropdown { position: fixed; z-index: 9000; background: #1e1b3a; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; max-height: 220px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; }
+    .cust-item     { padding: 9px 14px; cursor: pointer; font-size: 13px; color: rgba(255,255,255,0.85); border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .cust-item:last-child { border-bottom: none; }
+    .cust-item:hover, .cust-item.focused { background: rgba(245,158,11,0.12); color: #fbbf24; }
+    .cust-no-results { padding: 10px 14px; font-size: 12px; color: rgba(255,255,255,0.4); font-style: italic; }
+
+    /* ── View modal lines table ───────────────────────────────────────── */
+    .view-lines-table    { width: 100%; border-collapse: collapse; font-size: 12px; margin: 10px 0; }
+    .view-lines-table th { font-size: 10px; text-transform: uppercase; opacity: 0.5; letter-spacing: 0.3px; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
+    .view-lines-table td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 12px; }
+    .view-lines-table .right { text-align: right; font-family: monospace; }
+    .view-summary-block  { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 14px 16px; }
+    .view-summary-row    { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+    .view-summary-label  { opacity: 0.55; }
+    .view-summary-value  { font-weight: 600; font-family: monospace; }
+    .view-summary-grand  { font-size: 16px; font-weight: 700; color: #f87171; }
+
+    /* ── Void modal ───────────────────────────────────────────────────── */
+    .void-warning        { background: rgba(220,53,69,0.1); border: 1px solid rgba(220,53,69,0.25); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+    .void-warning-title  { font-size: 12px; font-weight: 700; color: #f87171; margin-bottom: 8px; }
+    .void-warning-list   { margin: 0 0 0 16px; padding: 0; font-size: 12px; opacity: 0.8; line-height: 1.9; }
+    .error-msg           { background: rgba(220,53,69,0.15); border: 1px solid rgba(220,53,69,0.3); border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #fca5a5; margin-bottom: 14px; display: none; }
+    .success-msg         { flex: 1; font-size: 13px; color: #34d058; display: none; }
+
+    @media (max-width: 768px) {
+      .stats-row, .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
+      .vat-radio-group { flex-direction: column; gap: 10px; }
+    }
+  </style>
+  <link rel="stylesheet" href="css/dark-theme.css">
+</head>
+<body>
+<div class="main-content">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <h1>Customer Credit Notes</h1>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="openCreateModal()">+ New Credit Note</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Total Credit Notes</div>
+      <div class="stat-value" id="statTotal">—</div>
+      <div class="stat-sub">all time</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Draft</div>
+      <div class="stat-value" id="statDraft">—</div>
+      <div class="stat-sub">pending post</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Posted Value</div>
+      <div class="stat-value" id="statPostedValue">—</div>
+      <div class="stat-sub">total credits issued</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">This Month</div>
+      <div class="stat-value" id="statMonth">—</div>
+      <div class="stat-sub">credit notes issued</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-status="" onclick="switchTab(this)">All</div>
+    <div class="tab" data-status="draft" onclick="switchTab(this)">Draft</div>
+    <div class="tab" data-status="posted" onclick="switchTab(this)">Posted</div>
+    <div class="tab" data-status="void" onclick="switchTab(this)">Void</div>
+  </div>
+
+  <!-- Search -->
+  <div class="filters">
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Search by customer or CN number…" style="width:300px"
+        oninput="scheduleSearch()" onkeydown="if(event.key==='Enter')loadCNs()">
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table class="data-table" id="cnTable">
+      <thead>
+        <tr>
+          <th>CN #</th>
+          <th>Date</th>
+          <th>Customer</th>
+          <th>Reason</th>
+          <th>Linked Invoice</th>
+          <th>Status</th>
+          <th style="text-align:right">Amount (inc VAT)</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cnBody">
+        <tr><td colspan="8" style="text-align:center;padding:40px;opacity:0.5">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /main-content -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     CREATE / EDIT MODAL
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal" id="createModal">
+  <div class="modal-dialog wide">
+    <div class="modal-header">
+      <h3 id="createModalTitle">New Credit Note</h3>
+      <button class="modal-close" onclick="closeCreateModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- From-invoice banner (shown when pre-populated from an invoice) -->
+      <div class="from-inv-banner" id="fromInvBanner">
+        <div class="label">Linked to Invoice</div>
+        <div class="inv-ref" id="fromInvRef">—</div>
+      </div>
+
+      <!-- Error -->
+      <div class="error-msg" id="createError"></div>
+
+      <!-- Customer -->
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Customer *</label>
+          <div class="cust-wrap">
+            <input type="text" id="cnCustomerInput" placeholder="Search customer…" autocomplete="off"
+              oninput="custSearch()" onkeydown="custKeyNav(event)">
+            <div class="cust-dropdown" id="custDropdown"></div>
+          </div>
+          <input type="hidden" id="cnCustomerId">
+          <input type="hidden" id="cnCustomerName">
+        </div>
+        <div class="form-group">
+          <label>Credit Note Date *</label>
+          <input type="date" id="cnDate">
+        </div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Reason</label>
+          <input type="text" id="cnReason" placeholder="e.g. Billing error, Goodwill credit, Quantity adjustment">
+        </div>
+        <div class="form-group">
+          <label>Internal Notes</label>
+          <input type="text" id="cnNotes" placeholder="Optional internal notes">
+        </div>
+      </div>
+
+      <!-- Linked invoice (read-only) -->
+      <div class="form-group" id="linkedInvGroup" style="display:none">
+        <label>Linked Invoice (read-only)</label>
+        <input type="text" id="linkedInvDisplay" readonly>
+        <input type="hidden" id="cnSourceInvoiceId">
+      </div>
+
+      <!-- VAT mode -->
+      <div class="vat-mode-bar" id="vatModeBar">
+        <span class="vat-mode-label">Line amounts are:</span>
+        <div class="vat-radio-group">
+          <label class="vat-radio"><input type="radio" name="cnVatMode" value="0" checked onchange="recalcAll()"> Exclusive of VAT</label>
+          <label class="vat-radio"><input type="radio" name="cnVatMode" value="1" onchange="recalcAll()"> Inclusive of VAT</label>
+        </div>
+      </div>
+
+      <!-- Line items -->
+      <div class="form-section-title">Line Items</div>
+      <table class="lines-table" id="linesTable">
+        <thead>
+          <tr>
+            <th class="line-type-col">Type</th>
+            <th style="min-width:160px">Account / Item</th>
+            <th style="min-width:120px">Description</th>
+            <th class="line-num-col right">Qty</th>
+            <th class="line-num-col right">Unit Price</th>
+            <th class="line-vat-col right">VAT %</th>
+            <th class="line-amt-col right">Line Total</th>
+            <th class="line-del-col"></th>
+          </tr>
+        </thead>
+        <tbody id="linesBody"></tbody>
+      </table>
+      <button class="add-line-btn" onclick="addLine()">+ Add line</button>
+
+      <!-- Totals -->
+      <div class="totals-panel">
+        <div class="totals-row"><span>Subtotal (ex VAT)</span><span id="totSubtotal">R 0.00</span></div>
+        <div class="totals-row"><span>VAT</span><span id="totVat">R 0.00</span></div>
+        <hr class="totals-divider">
+        <div class="totals-row totals-grand"><span>Total (inc VAT)</span><span id="totTotal">R 0.00</span></div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <span class="success-msg" id="createSuccess"></span>
+      <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-secondary" id="btnSaveDraft" onclick="saveCN('draft')">Save Draft</button>
+      <button class="btn btn-success" id="btnPost" onclick="saveCN('post')">Save &amp; Post to GL</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     VIEW MODAL
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal" id="viewModal">
+  <div class="modal-dialog wide">
+    <div class="modal-header">
+      <h3 id="viewModalTitle">Credit Note</h3>
+      <button class="modal-close" onclick="closeModal('viewModal')">&times;</button>
+    </div>
+    <div class="modal-body" id="viewModalBody">
+      <div style="text-align:center;padding:40px;opacity:0.5">Loading…</div>
+    </div>
+    <div class="modal-footer" id="viewModalFooter">
+      <button class="btn btn-secondary" onclick="closeModal('viewModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     VOID MODAL
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal" id="voidModal">
+  <div class="modal-dialog narrow">
+    <div class="modal-header">
+      <h3>Void Credit Note</h3>
+      <button class="modal-close" onclick="closeModal('voidModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="void-warning">
+        <div class="void-warning-title">This action cannot be undone</div>
+        <ul class="void-warning-list">
+          <li>The GL reversing journal will be reversed again (second reversal)</li>
+          <li>VAT output adjustments will be unwound</li>
+          <li>Full audit trail entry will be created</li>
+        </ul>
+      </div>
+      <div class="error-msg" id="voidError"></div>
+      <div class="form-group">
+        <label>Reason for voiding *</label>
+        <input type="text" id="voidReason" placeholder="e.g. Issued in error, Duplicate credit note…">
+      </div>
+      <input type="hidden" id="voidCnId">
+    </div>
+    <div class="modal-footer">
+      <span class="success-msg" id="voidSuccess"></span>
+      <button class="btn btn-secondary" onclick="closeModal('voidModal')">Cancel</button>
+      <button class="btn btn-danger" id="btnConfirmVoid" onclick="confirmVoid()">Void Credit Note</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+//  GLOBALS
+// ═══════════════════════════════════════════════════════════════════════
+const API = '/api/accounting';
+let currentStatus = '';
+let searchTimer   = null;
+
+// Cache of GL accounts and customers for line items
+let glAccounts    = [];
+let allCustomers  = [];
+let editingCnId   = null;
+let fromInvoiceId = null;  // set when ?fromInvoice=ID is in the URL
+
+// ── Auth header ────────────────────────────────────────────────────────
+function authH() {
+  const token = localStorage.getItem('token');
+  return token ? { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+// ── Currency format ────────────────────────────────────────────────────
+function fmt(n) {
+  const v = parseFloat(n) || 0;
+  return 'R ' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  TABS & SEARCH
+// ═══════════════════════════════════════════════════════════════════════
+function switchTab(el) {
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  currentStatus = el.dataset.status;
+  loadCNs();
+}
+
+function scheduleSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadCNs, 350);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  LOAD CREDIT NOTES LIST
+// ═══════════════════════════════════════════════════════════════════════
+async function loadCNs() {
+  const search = document.getElementById('searchInput').value.trim();
+  const params = new URLSearchParams();
+  if (currentStatus) params.set('status', currentStatus);
+  if (search)        params.set('search', search);
+
+  document.getElementById('cnBody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;opacity:0.5">Loading…</td></tr>';
+
+  try {
+    const res  = await fetch(`${API}/credit-notes?${params}`, { headers: authH() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Load failed');
+
+    const cns = data.creditNotes || [];
+    renderCNTable(cns);
+    updateStats(cns);
+  } catch (e) {
+    document.getElementById('cnBody').innerHTML =
+      `<tr><td colspan="8" style="text-align:center;padding:30px;color:#f87171">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderCNTable(cns) {
+  const tbody = document.getElementById('cnBody');
+  if (!cns.length) {
+    tbody.innerHTML = `<tr><td colspan="8">
+      <div class="empty-state"><h3>No credit notes found</h3><p>Create your first credit note above</p></div>
+    </td></tr>`;
+    return;
+  }
+  tbody.innerHTML = cns.map(cn => {
+    const actions = buildActions(cn);
+    const sourceInvCell = cn.source_invoice_number
+      ? `<span class="source-inv">${esc(cn.source_invoice_number)}</span>`
+      : '<span style="opacity:0.4">—</span>';
+    return `<tr>
+      <td><span class="cn-number">${esc(cn.credit_note_number)}</span></td>
+      <td>${cn.credit_note_date ? cn.credit_note_date.slice(0,10) : '—'}</td>
+      <td><span class="customer-link" onclick="viewCN(${cn.id})">${esc(cn.customer_name)}</span></td>
+      <td style="opacity:0.7;font-size:12px">${esc(cn.reason) || '<span style="opacity:0.4">—</span>'}</td>
+      <td>${sourceInvCell}</td>
+      <td><span class="badge badge-${cn.status}">${cn.status}</span></td>
+      <td class="amount-cell">−${fmt(cn.total_inc_vat)}</td>
+      <td><div class="action-btns">${actions}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+function buildActions(cn) {
+  const btns = [];
+  btns.push(`<button class="btn btn-secondary btn-sm" onclick="viewCN(${cn.id})">View</button>`);
+  if (cn.status === 'draft') {
+    btns.push(`<button class="btn btn-warning btn-sm" onclick="editCN(${cn.id})">Edit</button>`);
+    btns.push(`<button class="btn btn-success btn-sm" onclick="postCN(${cn.id})">Post to GL</button>`);
+  }
+  if (cn.status === 'posted') {
+    btns.push(`<button class="btn btn-danger btn-sm" onclick="openVoidModal(${cn.id})">Void</button>`);
+  }
+  return btns.join('');
+}
+
+function updateStats(cns) {
+  const all    = cns.length;
+  const draft  = cns.filter(c => c.status === 'draft').length;
+  const posted = cns.filter(c => c.status === 'posted');
+  const postedVal = posted.reduce((s, c) => s + (parseFloat(c.total_inc_vat) || 0), 0);
+  const thisMonth = cns.filter(c => {
+    if (!c.credit_note_date) return false;
+    const d = new Date(c.credit_note_date);
+    const n = new Date();
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth();
+  }).length;
+  document.getElementById('statTotal').textContent       = all;
+  document.getElementById('statDraft').textContent       = draft;
+  document.getElementById('statPostedValue').textContent = fmt(postedVal);
+  document.getElementById('statMonth').textContent       = thisMonth;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  GL ACCOUNTS & CUSTOMERS (preload)
+// ═══════════════════════════════════════════════════════════════════════
+async function loadGLAccounts() {
+  if (glAccounts.length) return;
+  try {
+    const res  = await fetch(`${API}/accounts?postable=true`, { headers: authH() });
+    const data = await res.json();
+    glAccounts = data.accounts || data || [];
+  } catch (e) { /* non-fatal */ }
+}
+
+async function loadCustomers() {
+  if (allCustomers.length) return;
+  try {
+    const res  = await fetch(`${API}/customer-invoices/customers`, { headers: authH() });
+    const data = await res.json();
+    allCustomers = data.customers || data || [];
+  } catch (e) { /* non-fatal */ }
+}
+
+// ── Build GL account <select> optgroups ───────────────────────────────
+function buildAcctSelect(id, selectedId) {
+  const byType = {};
+  glAccounts.forEach(a => {
+    const t = a.type || 'Other';
+    (byType[t] = byType[t] || []).push(a);
+  });
+  const opts = [`<option value="">— Select account —</option>`];
+  Object.entries(byType).forEach(([type, accts]) => {
+    opts.push(`<optgroup label="${esc(type)}">`);
+    accts.forEach(a => {
+      const sel = String(a.id) === String(selectedId) ? ' selected' : '';
+      opts.push(`<option value="${a.id}"${sel}>${esc(a.code)} — ${esc(a.name)}</option>`);
+    });
+    opts.push(`</optgroup>`);
+  });
+  return `<select id="${id}" onchange="recalcAll()">${opts.join('')}</select>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  CUSTOMER TYPEAHEAD
+// ═══════════════════════════════════════════════════════════════════════
+let custFocusIdx = -1;
+
+function custSearch() {
+  const q   = document.getElementById('cnCustomerInput').value.toLowerCase().trim();
+  const dd  = document.getElementById('custDropdown');
+  document.getElementById('cnCustomerId').value   = '';
+  document.getElementById('cnCustomerName').value = '';
+  custFocusIdx = -1;
+
+  if (!q) { dd.style.display = 'none'; return; }
+
+  const matches = allCustomers.filter(c =>
+    (c.name || '').toLowerCase().includes(q) ||
+    (c.email || '').toLowerCase().includes(q)
+  ).slice(0, 12);
+
+  if (!matches.length) {
+    dd.innerHTML = `<div class="cust-no-results">No customers found</div>`;
+  } else {
+    dd.innerHTML = matches.map((c, i) =>
+      `<div class="cust-item" data-id="${c.id}" data-name="${esc(c.name)}" data-idx="${i}"
+        onclick="pickCustomer(${c.id},'${esc(c.name).replace(/'/g,"\\'")}')">
+        ${esc(c.name)}${c.email ? `<span style="opacity:0.5;font-size:11px;margin-left:6px">${esc(c.email)}</span>` : ''}
+      </div>`
+    ).join('');
+  }
+  positionDropdown();
+  dd.style.display = 'block';
+}
+
+function positionDropdown() {
+  const inp  = document.getElementById('cnCustomerInput');
+  const dd   = document.getElementById('custDropdown');
+  const rect = inp.getBoundingClientRect();
+  dd.style.top   = (rect.bottom + 4) + 'px';
+  dd.style.left  = rect.left + 'px';
+  dd.style.width = rect.width + 'px';
+}
+
+function pickCustomer(id, name) {
+  document.getElementById('cnCustomerInput').value = name;
+  document.getElementById('cnCustomerId').value    = id;
+  document.getElementById('cnCustomerName').value  = name;
+  document.getElementById('custDropdown').style.display = 'none';
+  custFocusIdx = -1;
+}
+
+function custKeyNav(e) {
+  const dd    = document.getElementById('custDropdown');
+  const items = dd.querySelectorAll('.cust-item');
+  if (!items.length) return;
+  if (e.key === 'ArrowDown') {
+    custFocusIdx = Math.min(custFocusIdx + 1, items.length - 1);
+    updateCustFocus(items);
+    e.preventDefault();
+  } else if (e.key === 'ArrowUp') {
+    custFocusIdx = Math.max(custFocusIdx - 1, 0);
+    updateCustFocus(items);
+    e.preventDefault();
+  } else if (e.key === 'Enter' && custFocusIdx >= 0) {
+    items[custFocusIdx].click();
+    e.preventDefault();
+  } else if (e.key === 'Escape') {
+    dd.style.display = 'none';
+  }
+}
+
+function updateCustFocus(items) {
+  items.forEach((el, i) => el.classList.toggle('focused', i === custFocusIdx));
+  if (custFocusIdx >= 0) items[custFocusIdx].scrollIntoView({ block: 'nearest' });
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.cust-wrap')) {
+    document.getElementById('custDropdown').style.display = 'none';
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  LINE ITEMS ENGINE
+// ═══════════════════════════════════════════════════════════════════════
+let lineIdx = 0;
+
+function addLine(data = {}) {
+  const i  = lineIdx++;
+  const tr = document.createElement('tr');
+  tr.id    = `line-${i}`;
+
+  const typeVal  = data.line_type   || 'account';
+  const acctId   = data.account_id  || '';
+  const desc     = data.description || '';
+  const qty      = data.quantity    || '1';
+  const price    = data.unit_price  || '0';
+  const vat      = data.vat_rate    !== undefined ? data.vat_rate : '15';
+
+  tr.innerHTML = `
+    <td class="line-type-col">
+      <select id="lt-${i}" onchange="toggleLineType(${i})">
+        <option value="account" ${typeVal==='account'?'selected':''}>Account</option>
+        <option value="item"    ${typeVal==='item'   ?'selected':''}>Item</option>
+      </select>
+    </td>
+    <td id="acct-cell-${i}">${buildAcctSelect('la-'+i, acctId)}</td>
+    <td><input type="text" id="ld-${i}" value="${esc(desc)}" placeholder="Description" oninput=""></td>
+    <td class="line-num-col"><input type="number" id="lq-${i}" value="${qty}" min="0.0001" step="any" style="text-align:right" oninput="recalcLine(${i})"></td>
+    <td class="line-num-col"><input type="number" id="lp-${i}" value="${price}" min="0" step="any" style="text-align:right" oninput="recalcLine(${i})"></td>
+    <td class="line-vat-col"><input type="number" id="lv-${i}" value="${vat}" min="0" max="100" step="any" style="text-align:right" oninput="recalcLine(${i})"></td>
+    <td class="line-amt-col" id="la-amt-${i}">R 0.00</td>
+    <td class="line-del-col"><button style="background:none;border:none;color:#f87171;cursor:pointer;font-size:16px" onclick="removeLine(${i})" title="Remove">×</button></td>`;
+  document.getElementById('linesBody').appendChild(tr);
+  recalcLine(i);
+}
+
+function toggleLineType(i) {
+  const type = document.getElementById(`lt-${i}`).value;
+  // For now both account and item use the same account dropdown — item lookup could be added later
+  recalcLine(i);
+}
+
+function removeLine(i) {
+  const el = document.getElementById(`line-${i}`);
+  if (el) el.remove();
+  recalcAll();
+}
+
+function getVatInclusive() {
+  const r = document.querySelector('input[name="cnVatMode"]:checked');
+  return r ? r.value === '1' : false;
+}
+
+function recalcLine(i) {
+  const qty   = parseFloat(document.getElementById(`lq-${i}`)?.value) || 0;
+  const price = parseFloat(document.getElementById(`lp-${i}`)?.value) || 0;
+  const vatR  = parseFloat(document.getElementById(`lv-${i}`)?.value) || 0;
+  const incl  = getVatInclusive();
+
+  let subtotal, vatAmt;
+  const gross = qty * price;
+  if (incl) {
+    vatAmt   = gross - (gross / (1 + vatR / 100));
+    subtotal = gross - vatAmt;
+  } else {
+    subtotal = gross;
+    vatAmt   = gross * vatR / 100;
+  }
+  const total = subtotal + vatAmt;
+
+  const cell = document.getElementById(`la-amt-${i}`);
+  if (cell) cell.textContent = 'R ' + total.toFixed(2);
+
+  recalcTotals();
+}
+
+function recalcAll() {
+  document.querySelectorAll('#linesBody tr').forEach(tr => {
+    const id = tr.id.replace('line-', '');
+    recalcLine(parseInt(id));
+  });
+}
+
+function recalcTotals() {
+  let subtotal = 0, vatAmt = 0;
+  const incl = getVatInclusive();
+  document.querySelectorAll('#linesBody tr').forEach(tr => {
+    const i     = parseInt(tr.id.replace('line-', ''));
+    const qty   = parseFloat(document.getElementById(`lq-${i}`)?.value) || 0;
+    const price = parseFloat(document.getElementById(`lp-${i}`)?.value) || 0;
+    const vatR  = parseFloat(document.getElementById(`lv-${i}`)?.value) || 0;
+    const gross = qty * price;
+    if (incl) {
+      const v = gross - (gross / (1 + vatR / 100));
+      vatAmt   += v;
+      subtotal += gross - v;
+    } else {
+      subtotal += gross;
+      vatAmt   += gross * vatR / 100;
+    }
+  });
+  document.getElementById('totSubtotal').textContent = fmt(subtotal);
+  document.getElementById('totVat').textContent      = fmt(vatAmt);
+  document.getElementById('totTotal').textContent    = fmt(subtotal + vatAmt);
+}
+
+function collectLines() {
+  const lines = [];
+  const incl  = getVatInclusive();
+  document.querySelectorAll('#linesBody tr').forEach(tr => {
+    const i = parseInt(tr.id.replace('line-', ''));
+    lines.push({
+      lineType:    document.getElementById(`lt-${i}`)?.value || 'account',
+      accountId:   parseInt(document.getElementById(`la-${i}`)?.value) || null,
+      description: document.getElementById(`ld-${i}`)?.value?.trim() || '',
+      quantity:    parseFloat(document.getElementById(`lq-${i}`)?.value) || 1,
+      unitPrice:   parseFloat(document.getElementById(`lp-${i}`)?.value) || 0,
+      vatRate:     parseFloat(document.getElementById(`lv-${i}`)?.value) || 0,
+      vatInclusive: incl ? 1 : 0,
+    });
+  });
+  return lines;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  CREATE MODAL
+// ═══════════════════════════════════════════════════════════════════════
+async function openCreateModal(prefillFromInvoiceId = null) {
+  editingCnId   = null;
+  fromInvoiceId = prefillFromInvoiceId;
+
+  await Promise.all([loadGLAccounts(), loadCustomers()]);
+
+  // Reset form
+  document.getElementById('createModalTitle').textContent = 'New Credit Note';
+  document.getElementById('createError').style.display   = 'none';
+  document.getElementById('createSuccess').style.display = 'none';
+  document.getElementById('cnCustomerInput').value       = '';
+  document.getElementById('cnCustomerId').value          = '';
+  document.getElementById('cnCustomerName').value        = '';
+  document.getElementById('cnDate').value                = new Date().toISOString().slice(0, 10);
+  document.getElementById('cnReason').value              = '';
+  document.getElementById('cnNotes').value               = '';
+  document.getElementById('cnSourceInvoiceId').value     = '';
+  document.getElementById('linkedInvGroup').style.display = 'none';
+  document.getElementById('fromInvBanner').classList.remove('show');
+  document.getElementById('linesBody').innerHTML = '';
+  lineIdx = 0;
+  document.querySelectorAll('input[name="cnVatMode"]')[0].checked = true;
+
+  // Enable all fields
+  document.getElementById('cnCustomerInput').disabled = false;
+  document.getElementById('vatModeBar').style.display = 'block';
+  document.getElementById('btnSaveDraft').style.display = 'inline-block';
+
+  if (prefillFromInvoiceId) {
+    await prefillFromInvoice(prefillFromInvoiceId);
+  } else {
+    addLine();
+  }
+
+  document.getElementById('createModal').classList.add('show');
+}
+
+async function prefillFromInvoice(invoiceId) {
+  try {
+    const res  = await fetch(`${API}/customer-invoices/${invoiceId}`, { headers: authH() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Invoice not found');
+
+    const inv = data.invoice || data;
+
+    // Pre-fill customer
+    document.getElementById('cnCustomerInput').value = inv.customer_name || '';
+    document.getElementById('cnCustomerId').value    = inv.customer_id || '';
+    document.getElementById('cnCustomerName').value  = inv.customer_name || '';
+    document.getElementById('cnCustomerInput').disabled = true;
+
+    // Link
+    document.getElementById('cnSourceInvoiceId').value = invoiceId;
+    document.getElementById('linkedInvDisplay').value  = `${inv.invoice_number} — ${inv.customer_name} (${fmt(inv.total_inc_vat)})`;
+    document.getElementById('linkedInvGroup').style.display = 'block';
+
+    // Banner
+    document.getElementById('fromInvRef').textContent = `${inv.invoice_number} — ${inv.customer_name} — ${fmt(inv.total_inc_vat)}`;
+    document.getElementById('fromInvBanner').classList.add('show');
+
+    document.getElementById('createModalTitle').textContent = `Credit Note for ${inv.invoice_number}`;
+
+    // Copy lines
+    const lines = inv.lines || [];
+    if (lines.length) {
+      lines.forEach(l => addLine({
+        line_type:   'account',
+        account_id:  l.account_id,
+        description: l.description,
+        quantity:    l.quantity,
+        unit_price:  l.unit_price,
+        vat_rate:    l.vat_rate,
+      }));
+      // VAT mode — match invoice
+      if (inv.vat_inclusive) {
+        document.querySelectorAll('input[name="cnVatMode"]')[1].checked = true;
+      }
+    } else {
+      addLine();
+    }
+    recalcAll();
+  } catch (e) {
+    document.getElementById('createError').textContent = e.message;
+    document.getElementById('createError').style.display = 'block';
+    addLine();
+  }
+}
+
+function closeCreateModal() {
+  document.getElementById('createModal').classList.remove('show');
+  editingCnId   = null;
+  fromInvoiceId = null;
+}
+
+// ── Edit an existing draft ─────────────────────────────────────────────
+async function editCN(id) {
+  await Promise.all([loadGLAccounts(), loadCustomers()]);
+
+  try {
+    const res  = await fetch(`${API}/credit-notes/${id}`, { headers: authH() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Load failed');
+    const cn = data.creditNote || data;
+
+    editingCnId   = cn.id;
+    fromInvoiceId = cn.source_invoice_id || null;
+
+    document.getElementById('createModalTitle').textContent = `Edit Credit Note ${cn.credit_note_number}`;
+    document.getElementById('createError').style.display   = 'none';
+    document.getElementById('createSuccess').style.display = 'none';
+    document.getElementById('cnCustomerInput').value       = cn.customer_name || '';
+    document.getElementById('cnCustomerId').value          = cn.customer_id || '';
+    document.getElementById('cnCustomerName').value        = cn.customer_name || '';
+    document.getElementById('cnDate').value                = (cn.credit_note_date || '').slice(0, 10);
+    document.getElementById('cnReason').value              = cn.reason || '';
+    document.getElementById('cnNotes').value               = cn.notes || '';
+    document.getElementById('cnSourceInvoiceId').value     = cn.source_invoice_id || '';
+    document.getElementById('cnCustomerInput').disabled    = false;
+
+    if (cn.source_invoice_id) {
+      document.getElementById('linkedInvDisplay').value  = `Invoice #${cn.source_invoice_id}`;
+      document.getElementById('linkedInvGroup').style.display = 'block';
+    } else {
+      document.getElementById('linkedInvGroup').style.display = 'none';
+    }
+    document.getElementById('fromInvBanner').classList.remove('show');
+
+    document.getElementById('linesBody').innerHTML = '';
+    lineIdx = 0;
+    (cn.lines || []).forEach(l => addLine(l));
+    if (!cn.lines || !cn.lines.length) addLine();
+    recalcAll();
+
+    document.getElementById('createModal').classList.add('show');
+  } catch (e) {
+    alert('Error loading credit note: ' + e.message);
+  }
+}
+
+// ── Save (draft or post) ───────────────────────────────────────────────
+async function saveCN(mode) {
+  const errEl = document.getElementById('createError');
+  errEl.style.display = 'none';
+
+  const customerId   = document.getElementById('cnCustomerId').value;
+  const customerName = document.getElementById('cnCustomerInput').value.trim() || document.getElementById('cnCustomerName').value.trim();
+  const cnDate       = document.getElementById('cnDate').value;
+  const reason       = document.getElementById('cnReason').value.trim();
+  const notes        = document.getElementById('cnNotes').value.trim();
+  const srcInvId     = parseInt(document.getElementById('cnSourceInvoiceId').value) || null;
+  const vatInclusive = getVatInclusive() ? 1 : 0;
+  const lines        = collectLines();
+
+  if (!customerName) {
+    errEl.textContent = 'Customer is required.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!cnDate) {
+    errEl.textContent = 'Credit note date is required.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!lines.length) {
+    errEl.textContent = 'At least one line item is required.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const body = {
+    customerId:      customerId ? parseInt(customerId) : null,
+    customerName,
+    creditNoteDate:  cnDate,
+    vatInclusive,
+    reason,
+    notes,
+    sourceInvoiceId: srcInvId,
+    lines,
+  };
+
+  const btnDraft = document.getElementById('btnSaveDraft');
+  const btnPost  = document.getElementById('btnPost');
+  btnDraft.disabled = true;
+  btnPost.disabled  = true;
+
+  try {
+    let res, data;
+
+    if (editingCnId) {
+      // Update existing draft
+      res  = await fetch(`${API}/credit-notes/${editingCnId}`, {
+        method: 'PUT', headers: authH(), body: JSON.stringify(body),
+      });
+      data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Update failed');
+
+      if (mode === 'post') {
+        const postRes  = await fetch(`${API}/credit-notes/${editingCnId}/post`, {
+          method: 'POST', headers: authH(),
+        });
+        const postData = await postRes.json();
+        if (!postRes.ok) throw new Error(postData.error || 'Post failed');
+      }
+    } else if (fromInvoiceId && srcInvId) {
+      // From-invoice full credit
+      res  = await fetch(`${API}/credit-notes/from-invoice/${fromInvoiceId}`, {
+        method: 'POST', headers: authH(), body: JSON.stringify({
+          creditNoteDate: cnDate, reason, notes,
+          autoPost: mode === 'post' ? 1 : 0,
+        }),
+      });
+      data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Create failed');
+      // If from-invoice with custom lines (partial), fall through to normal create
+    } else {
+      // New credit note
+      res  = await fetch(`${API}/credit-notes`, {
+        method: 'POST', headers: authH(), body: JSON.stringify(body),
+      });
+      data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Create failed');
+
+      if (mode === 'post') {
+        const newId    = (data.creditNote || data).id;
+        const postRes  = await fetch(`${API}/credit-notes/${newId}/post`, {
+          method: 'POST', headers: authH(),
+        });
+        const postData = await postRes.json();
+        if (!postRes.ok) throw new Error(postData.error || 'Post failed');
+      }
+    }
+
+    const succEl = document.getElementById('createSuccess');
+    succEl.textContent = mode === 'post' ? 'Credit note posted to GL.' : 'Draft saved.';
+    succEl.style.display = 'inline';
+    setTimeout(() => {
+      closeCreateModal();
+      loadCNs();
+    }, 900);
+  } catch (e) {
+    errEl.textContent   = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btnDraft.disabled = false;
+    btnPost.disabled  = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  POST INLINE (from table row button)
+// ═══════════════════════════════════════════════════════════════════════
+async function postCN(id) {
+  if (!confirm('Post this credit note to the GL? This cannot be undone.')) return;
+  try {
+    const res  = await fetch(`${API}/credit-notes/${id}/post`, { method: 'POST', headers: authH() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Post failed');
+    loadCNs();
+  } catch (e) {
+    alert('Post failed: ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  VIEW MODAL
+// ═══════════════════════════════════════════════════════════════════════
+async function viewCN(id) {
+  document.getElementById('viewModalBody').innerHTML = '<div style="text-align:center;padding:40px;opacity:0.5">Loading…</div>';
+  document.getElementById('viewModal').classList.add('show');
+
+  try {
+    const res  = await fetch(`${API}/credit-notes/${id}`, { headers: authH() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Load failed');
+    const cn = data.creditNote || data;
+
+    document.getElementById('viewModalTitle').textContent = cn.credit_note_number || 'Credit Note';
+
+    const linesHtml = (cn.lines || []).map(l => `<tr>
+      <td>${esc(l.description || '—')}</td>
+      <td style="opacity:0.7;font-size:11px">${esc(l.account_code || '')} ${esc(l.account_name || '')}</td>
+      <td class="right">${parseFloat(l.quantity).toFixed(2)}</td>
+      <td class="right">${parseFloat(l.unit_price).toFixed(4)}</td>
+      <td class="right">${parseFloat(l.vat_rate).toFixed(1)}%</td>
+      <td class="right" style="color:#f87171">−${fmt(l.total_inc_vat)}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="opacity:0.4;text-align:center">No lines</td></tr>';
+
+    const srcInv = cn.source_invoice_id
+      ? `<div class="view-summary-row"><span class="view-summary-label">Linked Invoice</span><span class="view-summary-value" style="color:#fbbf24">${esc(cn.source_invoice_number || '#'+cn.source_invoice_id)}</span></div>`
+      : '';
+
+    const journalRow = cn.posted_journal_id
+      ? `<div class="view-summary-row"><span class="view-summary-label">GL Journal</span><span class="view-summary-value">#${cn.posted_journal_id}</span></div>`
+      : '';
+
+    document.getElementById('viewModalBody').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+        <div>
+          <div style="font-size:11px;opacity:0.55;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px">Customer</div>
+          <div style="font-weight:600">${esc(cn.customer_name)}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;opacity:0.55;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px">Date</div>
+          <div>${(cn.credit_note_date || '').slice(0,10)}</div>
+        </div>
+        ${cn.reason ? `<div><div style="font-size:11px;opacity:0.55;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px">Reason</div><div>${esc(cn.reason)}</div></div>` : ''}
+        ${cn.notes  ? `<div><div style="font-size:11px;opacity:0.55;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px">Notes</div><div style="opacity:0.8">${esc(cn.notes)}</div></div>` : ''}
+      </div>
+      <table class="view-lines-table">
+        <thead><tr>
+          <th>Description</th><th>Account</th>
+          <th class="right">Qty</th><th class="right">Unit Price</th>
+          <th class="right">VAT %</th><th class="right">Total</th>
+        </tr></thead>
+        <tbody>${linesHtml}</tbody>
+      </table>
+      <div class="view-summary-block">
+        ${srcInv}
+        ${journalRow}
+        <div class="view-summary-row"><span class="view-summary-label">Subtotal (ex VAT)</span><span class="view-summary-value">−${fmt(cn.subtotal_ex_vat)}</span></div>
+        <div class="view-summary-row"><span class="view-summary-label">VAT</span><span class="view-summary-value">−${fmt(cn.vat_amount)}</span></div>
+        <hr class="totals-divider">
+        <div class="view-summary-row view-summary-grand"><span>Total (inc VAT)</span><span>−${fmt(cn.total_inc_vat)}</span></div>
+      </div>`;
+
+    // Footer actions
+    const footer = document.getElementById('viewModalFooter');
+    let footerBtns = `<button class="btn btn-secondary" onclick="closeModal('viewModal')">Close</button>`;
+    if (cn.status === 'draft') {
+      footerBtns = `
+        <button class="btn btn-warning btn-sm" onclick="closeModal('viewModal');editCN(${cn.id})">Edit</button>
+        <button class="btn btn-success btn-sm" onclick="closeModal('viewModal');postCN(${cn.id})">Post to GL</button>
+        ${footerBtns}`;
+    }
+    if (cn.status === 'posted') {
+      footerBtns = `
+        <button class="btn btn-danger btn-sm" onclick="closeModal('viewModal');openVoidModal(${cn.id})">Void</button>
+        ${footerBtns}`;
+    }
+    footer.innerHTML = footerBtns;
+
+  } catch (e) {
+    document.getElementById('viewModalBody').innerHTML =
+      `<div style="color:#f87171;padding:20px">${esc(e.message)}</div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  VOID MODAL
+// ═══════════════════════════════════════════════════════════════════════
+function openVoidModal(id) {
+  document.getElementById('voidCnId').value        = id;
+  document.getElementById('voidReason').value      = '';
+  document.getElementById('voidError').style.display   = 'none';
+  document.getElementById('voidSuccess').style.display = 'none';
+  document.getElementById('btnConfirmVoid').disabled   = false;
+  document.getElementById('voidModal').classList.add('show');
+}
+
+async function confirmVoid() {
+  const id     = parseInt(document.getElementById('voidCnId').value);
+  const reason = document.getElementById('voidReason').value.trim();
+  const errEl  = document.getElementById('voidError');
+
+  if (!reason) {
+    errEl.textContent = 'A reason is required to void a credit note.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+
+  document.getElementById('btnConfirmVoid').disabled = true;
+  try {
+    const res  = await fetch(`${API}/credit-notes/${id}/void`, {
+      method: 'POST', headers: authH(), body: JSON.stringify({ reason }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Void failed');
+
+    const succEl = document.getElementById('voidSuccess');
+    succEl.textContent = 'Credit note voided.';
+    succEl.style.display = 'inline';
+    setTimeout(() => {
+      closeModal('voidModal');
+      loadCNs();
+    }, 900);
+  } catch (e) {
+    errEl.textContent   = e.message;
+    errEl.style.display = 'block';
+    document.getElementById('btnConfirmVoid').disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════════════════════
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+// Close modals on backdrop click
+['createModal','viewModal','voidModal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal(id);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+  // Preload reference data in background
+  loadGLAccounts();
+  loadCustomers();
+
+  // Check for ?fromInvoice=ID in URL
+  const params = new URLSearchParams(window.location.search);
+  const invId  = params.get('fromInvoice');
+  if (invId) {
+    // Auto-open create modal pre-filled from invoice
+    await openCreateModal(parseInt(invId));
+  }
+
+  loadCNs();
+});
+</script>
+</body>
+</html>

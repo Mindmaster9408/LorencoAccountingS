@@ -98,6 +98,9 @@ router.use('/employees', require('./routes/employees'));
 router.use('/integrations', require('./routes/integrations'));
 router.use('/kv', require('./routes/kv'));
 
+// Customer Credit Notes (ACC-CORE-036)
+router.use('/credit-notes', require('./routes/credit-notes'));
+
 // Legacy GL Import (ACC-SIDEQUEST-001)
 router.use('/legacy-gl', require('./routes/legacy-gl'));
 

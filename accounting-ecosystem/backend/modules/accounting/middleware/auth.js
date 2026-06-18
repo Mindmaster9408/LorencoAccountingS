@@ -202,6 +202,12 @@ const PERMISSIONS = {
   // Legacy GL Import (ACC-SIDEQUEST-001)
   'legacy_gl.view':   ['admin', 'accountant'],
   'legacy_gl.import': ['admin', 'accountant'],
+
+  // Customer Credit Notes (ACC-CORE-036)
+  'ar.credit_note.view':   ['admin', 'accountant', 'bookkeeper', 'viewer'],
+  'ar.credit_note.create': ['admin', 'accountant', 'bookkeeper'],
+  'ar.credit_note.post':   ['admin', 'accountant'],
+  'ar.credit_note.void':   ['admin', 'accountant'],
 };
 
 function hasPermission(permission) {

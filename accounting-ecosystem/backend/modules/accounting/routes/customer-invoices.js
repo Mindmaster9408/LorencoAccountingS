@@ -1766,4 +1766,34 @@ router.get('/aging', authenticate, hasPermission('ar.invoice.view'), async (req,
   }
 });
 
+// ─── Get Credit Notes for Invoice (ACC-CORE-036) ─────────────────────────────
+// Returns all credit notes linked to a specific invoice.
+// Mounted on customer-invoices so the invoice detail page can call
+//   GET /api/accounting/customer-invoices/:id/credit-notes
+// without any cross-router dependency.
+
+router.get('/:id/credit-notes', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
+  const companyId = req.companyId;
+  const invoiceId = parseInt(req.params.id);
+
+  // Verify the invoice itself belongs to this company first (tenant safety)
+  const { data: inv } = await supabase
+    .from('customer_invoices')
+    .select('id')
+    .eq('id', invoiceId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+
+  const { data, error } = await supabase
+    .from('customer_credit_notes')
+    .select('id, credit_note_number, credit_note_date, status, total_inc_vat, reason')
+    .eq('company_id', companyId)
+    .eq('source_invoice_id', invoiceId)
+    .order('id', { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ creditNotes: data || [] });
+});
+
 module.exports = router;
