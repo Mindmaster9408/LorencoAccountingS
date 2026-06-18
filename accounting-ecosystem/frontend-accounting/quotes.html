@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quotes — Lorenco Accounting</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <script src="js/polyfills.js"></script>
+  <style>
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    .main-content         { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    .page-header          { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .page-header h1       { font-size: 24px; font-weight: 700; }
+    .page-header .actions { display: flex; gap: 10px; }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+    .btn-primary   { background: linear-gradient(135deg, #0066cc 0%, #0099ff 100%); color: white; }
+    .btn-primary:hover  { opacity: 0.9; transform: translateY(-1px); }
+    .btn-secondary { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.15); }
+    .btn-secondary:hover { background: rgba(255,255,255,0.14); }
+    .btn-success   { background: #16803c; color: white; }
+    .btn-success:hover { background: #14532d; }
+    .btn-warning   { background: #f59e0b; color: #1a1a2e; }
+    .btn-warning:hover { opacity: 0.9; }
+    .btn-danger    { background: #dc3545; color: white; }
+    .btn-danger:hover { opacity: 0.9; }
+    .btn-cyan      { background: #0e7490; color: white; }
+    .btn-cyan:hover { background: #155e75; }
+    .btn-sm        { padding: 5px 10px; font-size: 11px; }
+
+    /* ── Stats ────────────────────────────────────────────────────────── */
+    .stats-row  { display: grid; grid-template-columns: repeat(4,1fr); gap: 15px; margin-bottom: 20px; }
+    .stat-card  { padding: 16px 20px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+    .stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; }
+    .stat-value { font-size: 28px; font-weight: 700; margin-top: 5px; }
+    .stat-sub   { font-size: 12px; margin-top: 5px; opacity: 0.6; }
+
+    /* ── Tabs ─────────────────────────────────────────────────────────── */
+    .filter-tabs { display: flex; gap: 4px; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 16px; flex-wrap: wrap; }
+    .ftab        { padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 500; opacity: 0.6; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; white-space: nowrap; }
+    .ftab:hover  { opacity: 0.9; }
+    .ftab.active { opacity: 1; border-bottom-color: #f59e0b; color: #fbbf24; font-weight: 600; }
+
+    /* ── Filters ──────────────────────────────────────────────────────── */
+    .filter-bar  { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .filter-bar input, .filter-bar select {
+      padding: 8px 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px; color: inherit; font-size: 13px; font-family: inherit;
+    }
+    .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: rgba(0,153,255,0.5); }
+    .filter-bar input[type=text] { width: 220px; }
+    .search-wrap { position: relative; }
+    .search-wrap input { padding-left: 32px !important; }
+    .search-wrap::before { content: "🔍"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; z-index: 1; }
+
+    /* ── Table ────────────────────────────────────────────────────────── */
+    .table-wrap  { overflow-x: auto; }
+    .data-table  { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th { padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.6; border-bottom: 1px solid rgba(255,255,255,0.08); font-weight: 600; white-space: nowrap; }
+    .data-table td { padding: 11px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
+    .data-table tr:hover td { background: rgba(255,255,255,0.025); }
+    .col-amount  { text-align: right !important; font-family: 'Courier New', monospace; font-weight: 600; }
+    .quote-num   { font-weight: 600; color: #60a5fa; cursor: pointer; }
+    .quote-num:hover { text-decoration: underline; }
+    .action-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+    .expiry-warn { color: #f87171 !important; font-weight: 600; }
+
+    /* ── Status badges ────────────────────────────────────────────────── */
+    .badge           { padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; display: inline-block; white-space: nowrap; }
+    .badge-draft     { background: rgba(107,114,128,0.2);  color: #9ca3af; }
+    .badge-sent      { background: rgba(139,92,246,0.2);   color: #a78bfa; }
+    .badge-accepted  { background: rgba(40,167,69,0.25);   color: #34d058; }
+    .badge-declined  { background: rgba(239,68,68,0.2);    color: #fca5a5; }
+    .badge-expired   { background: rgba(249,115,22,0.2);   color: #fb923c; }
+    .badge-converted { background: rgba(14,165,233,0.2);   color: #38bdf8; }
+    .badge-void      { background: rgba(55,65,81,0.4);     color: #6b7280; }
+
+    /* ── Empty state ──────────────────────────────────────────────────── */
+    .empty-state   { text-align: center; padding: 60px 20px; opacity: 0.5; }
+    .empty-state h3 { font-size: 18px; margin-bottom: 8px; }
+    .empty-state p  { font-size: 14px; }
+
+    /* ── Modals ───────────────────────────────────────────────────────── */
+    .modal        { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 3000; align-items: flex-start; justify-content: center; padding: 20px; overflow-y: auto; }
+    .modal.show   { display: flex; }
+    .modal-dialog { background: #1a1740; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 900px; margin: auto; }
+    .modal-dialog.narrow { max-width: 520px; }
+    .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #1a1740; z-index: 1; border-radius: 12px 12px 0 0; }
+    .modal-header h3 { font-size: 18px; font-weight: 700; }
+    .modal-close  { background: none; border: none; font-size: 22px; cursor: pointer; color: rgba(255,255,255,0.5); line-height: 1; }
+    .modal-close:hover { color: white; }
+    .modal-body   { padding: 20px 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; position: sticky; bottom: 0; background: #1a1740; z-index: 1; border-radius: 0 0 12px 12px; }
+    .modal-footer .footer-left  { display: flex; gap: 8px; flex-wrap: wrap; }
+    .modal-footer .footer-right { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+    /* ── Forms ────────────────────────────────────────────────────────── */
+    .form-group       { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.3px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 9px 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px; color: inherit; font-size: 13px; font-family: inherit; box-sizing: border-box;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: rgba(0,153,255,0.5); background: rgba(0,153,255,0.04);
+    }
+    .form-group input:disabled, .form-group select:disabled, .form-group textarea:disabled {
+      opacity: 0.5; cursor: not-allowed;
+    }
+    .form-group textarea { resize: vertical; min-height: 55px; }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .form-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.45; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+
+    /* ── Customer typeahead ───────────────────────────────────────────── */
+    .cust-wrap    { position: relative; }
+    .cust-drop    { display: none; position: absolute; top: 100%; left: 0; right: 0; background: #1a1740; border: 1px solid rgba(255,255,255,0.15); border-top: none; border-radius: 0 0 8px 8px; z-index: 500; max-height: 200px; overflow-y: auto; }
+    .cust-drop.show { display: block; }
+    .cust-item    { padding: 9px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .cust-item:hover  { background: rgba(255,255,255,0.07); }
+    .cust-add-option  { color: #60a5fa; font-style: italic; }
+
+    /* ── VAT mode bar ─────────────────────────────────────────────────── */
+    .vat-mode-bar    { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 20px; }
+    .vat-mode-label  { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #fbbf24; white-space: nowrap; }
+    .vat-radio-group { display: flex; gap: 20px; }
+    .vat-radio       { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
+    .vat-radio input[type=radio] { accent-color: #f59e0b; width: 14px; height: 14px; margin: 0; }
+
+    /* ── Line items table ─────────────────────────────────────────────── */
+    .lines-wrap    { border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+    .lines-table   { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .lines-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; opacity: 0.6; padding: 7px 6px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); }
+    .lines-table th.right { text-align: right; }
+    .lines-table td { padding: 3px 4px; vertical-align: middle; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .lines-table tr:last-child td { border-bottom: none; }
+    .lines-table input, .lines-table select { width: 100%; padding: 5px 7px; font-size: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: inherit; }
+    .lines-table input:focus, .lines-table select:focus { outline: none; border-color: rgba(0,153,255,0.4); }
+    .lines-table input:disabled, .lines-table select:disabled { opacity: 0.45; cursor: not-allowed; }
+    .line-type-col  { width: 74px; }
+    .line-type-col select { font-size: 11px; padding: 4px 5px; }
+    .line-num-col   { width: 70px; }
+    .line-vat-col   { width: 58px; }
+    .line-amt-col   { width: 88px; font-family: monospace; text-align: right; padding-right: 8px !important; font-size: 12px; }
+    .line-del-col   { width: 26px; text-align: center; }
+    .line-del-btn   { background: none; border: none; color: rgba(255,100,100,0.6); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px; }
+    .line-del-btn:hover { color: #f87171; }
+    .add-line-row td { padding: 6px 8px; }
+    .add-line-btn   { background: none; border: 1px dashed rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); border-radius: 5px; padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+    .add-line-btn:hover { border-color: rgba(255,255,255,0.4); color: rgba(255,255,255,0.8); }
+    .add-line-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Totals ───────────────────────────────────────────────────────── */
+    .totals-panel  { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+    .totals-grid   { display: grid; grid-template-columns: auto auto; gap: 4px 24px; text-align: right; min-width: 260px; }
+    .totals-label  { font-size: 12px; opacity: 0.7; text-align: left; }
+    .totals-value  { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 600; }
+    .totals-total  { font-size: 16px !important; color: #fbbf24; }
+    .totals-sep    { grid-column: span 2; border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 4px 0; }
+
+    /* ── Status info panel ────────────────────────────────────────────── */
+    .status-banner { border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+    .status-banner.read-only { background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.25); color: #c4b5fd; }
+    .status-banner.converted { background: rgba(14,165,233,0.1); border: 1px solid rgba(14,165,233,0.25); color: #7dd3fc; }
+
+    /* ── Alert / error ────────────────────────────────────────────────── */
+    .alert-error { background: rgba(220,53,69,0.15); border: 1px solid rgba(220,53,69,0.3); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #fca5a5; margin-bottom: 14px; display: none; }
+    .alert-error.show { display: block; }
+
+    /* ── Add customer mini-modal ──────────────────────────────────────── */
+    .mini-modal        { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 4000; align-items: center; justify-content: center; padding: 20px; }
+    .mini-modal.show   { display: flex; }
+    .mini-modal-box    { background: #1e1b3a; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; width: 100%; max-width: 460px; padding: 24px; }
+    .mini-modal-title  { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+    .mini-modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+    /* ── Toast ────────────────────────────────────────────────────────── */
+    #toast         { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+    .toast-msg     { padding: 12px 18px; border-radius: 8px; font-size: 13px; font-weight: 500; opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; max-width: 360px; }
+    .toast-msg.show{ opacity: 1; transform: translateY(0); }
+    .toast-ok  { background: #166534; border: 1px solid rgba(74,222,128,0.3);  color: #bbf7d0; }
+    .toast-err { background: #7f1d1d; border: 1px solid rgba(248,113,113,0.3); color: #fecaca; }
+    .toast-inf { background: #1e3a5f; border: 1px solid rgba(96,165,250,0.3);  color: #bfdbfe; }
+  </style>
+</head>
+<body>
+<div class="main-content">
+
+  <div class="page-header">
+    <h1>Quotes</h1>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="openQuoteModal()">+ New Quote</button>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Total</div>
+      <div class="stat-value" id="statTotal">—</div>
+      <div class="stat-sub">all quotes</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Open</div>
+      <div class="stat-value" id="statOpen">—</div>
+      <div class="stat-sub">draft &amp; sent</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Accepted</div>
+      <div class="stat-value" id="statAccepted">—</div>
+      <div class="stat-sub">ready to convert</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Converted</div>
+      <div class="stat-value" id="statConverted">—</div>
+      <div class="stat-sub">invoiced</div>
+    </div>
+  </div>
+
+  <!-- Filter tabs -->
+  <div class="filter-tabs">
+    <div class="ftab active" data-tab="all"       onclick="setTab('all')">All</div>
+    <div class="ftab"        data-tab="draft"     onclick="setTab('draft')">Draft</div>
+    <div class="ftab"        data-tab="sent"      onclick="setTab('sent')">Sent</div>
+    <div class="ftab"        data-tab="accepted"  onclick="setTab('accepted')">Accepted</div>
+    <div class="ftab"        data-tab="declined"  onclick="setTab('declined')">Declined</div>
+    <div class="ftab"        data-tab="converted" onclick="setTab('converted')">Converted</div>
+  </div>
+
+  <!-- Search -->
+  <div class="filter-bar">
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Search customer…" oninput="renderTable()">
+    </div>
+  </div>
+
+  <!-- Quote list -->
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Quote #</th>
+          <th>Customer</th>
+          <th>Date</th>
+          <th>Expires</th>
+          <th class="col-amount">Subtotal</th>
+          <th class="col-amount">VAT</th>
+          <th class="col-amount">Total</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="quotesTbody">
+        <tr><td colspan="9" style="text-align:center;padding:40px;opacity:0.4;">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Quote Create / Edit Modal
+════════════════════════════════════════════════════════════════ -->
+<div id="modalQuote" class="modal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3 id="modalTitle">New Quote</h3>
+      <button class="modal-close" onclick="closeQuoteModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="statusBanner" class="status-banner" style="display:none;"></div>
+      <div id="quoteFormError" class="alert-error"></div>
+
+      <!-- Customer -->
+      <div class="form-group">
+        <label>Customer *</label>
+        <div class="cust-wrap">
+          <input type="text" id="qCustInput" placeholder="Search or type customer name…" autocomplete="off"
+            oninput="onCustInput()" onfocus="onCustInput()" onblur="hideCustDrop()">
+          <div id="qCustDrop" class="cust-drop"></div>
+          <input type="hidden" id="qCustomerId">
+        </div>
+      </div>
+
+      <!-- Dates + VAT mode -->
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Quote Date</label>
+          <input type="date" id="qQuoteDate">
+        </div>
+        <div class="form-group">
+          <label>Expiry Date</label>
+          <input type="date" id="qExpiryDate">
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;">
+          <div class="vat-mode-bar" style="flex:1;margin-bottom:0;">
+            <span class="vat-mode-label">VAT</span>
+            <div class="vat-radio-group">
+              <label class="vat-radio"><input type="radio" name="qVatMode" id="qVatExcl" value="exclusive" checked onchange="onVatModeChange()"> Exc</label>
+              <label class="vat-radio"><input type="radio" name="qVatMode" id="qVatIncl" value="inclusive" onchange="onVatModeChange()"> Inc</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Line items -->
+      <div class="form-section-title">Line Items</div>
+      <div class="lines-wrap">
+        <table class="lines-table">
+          <thead>
+            <tr>
+              <th class="line-type-col">Type</th>
+              <th>Account / Item &amp; Description</th>
+              <th class="line-num-col right">Qty</th>
+              <th class="line-num-col right">Price</th>
+              <th class="line-vat-col right">VAT %</th>
+              <th class="line-amt-col right">Ex VAT</th>
+              <th class="line-amt-col right">VAT</th>
+              <th class="line-amt-col right">Total</th>
+              <th class="line-del-col"></th>
+            </tr>
+          </thead>
+          <tbody id="quoteLinesBody"></tbody>
+          <tfoot>
+            <tr class="add-line-row">
+              <td colspan="9">
+                <button id="btnAddLine" class="add-line-btn" onclick="addQuoteLine()">+ Add Line</button>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Totals -->
+      <div class="totals-panel">
+        <div class="totals-grid">
+          <span class="totals-label">Subtotal (ex VAT)</span>
+          <span class="totals-value" id="tSubtotal">R 0.00</span>
+          <span class="totals-label">VAT</span>
+          <span class="totals-value" id="tVat">R 0.00</span>
+          <hr class="totals-sep">
+          <span class="totals-label" style="font-weight:700;">Total (inc VAT)</span>
+          <span class="totals-value totals-total" id="tTotal">R 0.00</span>
+        </div>
+      </div>
+
+      <!-- Notes / Terms -->
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="qNotes" rows="2" placeholder="e.g. validity period, payment terms reminder…"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Terms &amp; Conditions</label>
+          <textarea id="qTerms" rows="2" placeholder="e.g. This quote is valid for 30 days…"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <!-- Left: status actions -->
+      <div class="footer-left" id="footerStatusBtns"></div>
+      <!-- Right: save / close -->
+      <div class="footer-right">
+        <button class="btn btn-secondary" onclick="closeQuoteModal()">Close</button>
+        <button class="btn btn-primary" id="btnSaveQuote" onclick="saveQuote()" style="display:none;">Save Quote</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Add Customer Mini-Modal
+════════════════════════════════════════════════════════════════ -->
+<div id="modalAddCust" class="mini-modal">
+  <div class="mini-modal-box">
+    <div class="mini-modal-title">Add Customer</div>
+    <div id="addCustError" class="alert-error"></div>
+    <div class="form-group"><label>Name *</label><input type="text" id="acName" autocomplete="off"></div>
+    <div class="form-row-2">
+      <div class="form-group"><label>Email</label><input type="email" id="acEmail" autocomplete="off"></div>
+      <div class="form-group"><label>Phone</label><input type="tel" id="acPhone" autocomplete="off"></div>
+    </div>
+    <div class="form-group"><label>VAT Number</label><input type="text" id="acVat" autocomplete="off"></div>
+    <div class="mini-modal-footer">
+      <button class="btn btn-secondary" onclick="closeAddCust()">Cancel</button>
+      <button class="btn btn-primary" id="btnAddCust" onclick="submitAddCust()">Add Customer</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════════════
+let allQuotes     = [];
+let allCustomers  = [];
+let cachedItems   = [];
+let allAccounts   = [];
+let currentTab    = 'all';
+let editingId     = null;   // null = create, integer = edit/view
+let currentQuote  = null;   // full quote object with lines
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Auth
+// ═══════════════════════════════════════════════════════════════════════════
+function authHeaders() {
+  const token = localStorage.getItem('token');
+  return { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════════════════════
+async function init() {
+  await Promise.all([loadQuotes(), loadCustomers(), loadItems(), loadAccounts()]);
+}
+
+async function loadQuotes() {
+  try {
+    const r = await fetch('/api/accounting/quotes', { headers: authHeaders() });
+    if (r.status === 401) { window.location.href = '/'; return; }
+    if (!r.ok) throw new Error('Failed to load quotes');
+    const d = await r.json();
+    allQuotes = d.quotes || [];
+    updateSummaryCards();
+    renderTable();
+  } catch (err) {
+    console.error('loadQuotes:', err);
+    toast('Failed to load quotes: ' + err.message, 'err');
+    renderTable();
+  }
+}
+
+async function loadCustomers() {
+  try {
+    const r = await fetch('/api/accounting/customer-invoices/customers', { headers: authHeaders() });
+    if (!r.ok) return;
+    const d = await r.json();
+    allCustomers = d.customers || [];
+  } catch (_) {}
+}
+
+async function loadItems() {
+  try {
+    const r = await fetch('/api/accounting/items', { headers: authHeaders() });
+    if (!r.ok) return;
+    const d = await r.json();
+    cachedItems = d.items || [];
+  } catch (_) {}
+}
+
+async function loadAccounts() {
+  try {
+    const r = await fetch('/api/accounting/customer-invoices/accounts', { headers: authHeaders() });
+    if (!r.ok) return;
+    const d = await r.json();
+    allAccounts = d.accounts || [];
+  } catch (_) {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Summary cards
+// ═══════════════════════════════════════════════════════════════════════════
+function updateSummaryCards() {
+  const open      = allQuotes.filter(q => q.status === 'draft' || q.status === 'sent');
+  const accepted  = allQuotes.filter(q => q.status === 'accepted');
+  const converted = allQuotes.filter(q => q.status === 'converted');
+  document.getElementById('statTotal').textContent     = allQuotes.length;
+  document.getElementById('statOpen').textContent      = open.length;
+  document.getElementById('statAccepted').textContent  = accepted.length;
+  document.getElementById('statConverted').textContent = converted.length;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Filter tabs
+// ═══════════════════════════════════════════════════════════════════════════
+function setTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.ftab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  renderTable();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Table
+// ═══════════════════════════════════════════════════════════════════════════
+const today = new Date().toISOString().slice(0, 10);
+
+function renderTable() {
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  let rows = allQuotes.filter(q => {
+    if (currentTab !== 'all' && q.status !== currentTab) return false;
+    if (search && !(q.customer_name || '').toLowerCase().includes(search) && !(q.quote_number || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('quotesTbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><h3>No quotes found</h3><p>${allQuotes.length === 0 ? 'Create your first quote to get started.' : 'Try adjusting your filters.'}</p></div></td></tr>`;
+    return;
+  }
+
+  const fmt = (n) => 'R ' + parseFloat(n || 0).toFixed(2);
+  const expired = (q) => q.expiry_date && q.expiry_date < today && ['draft','sent'].includes(q.status);
+
+  tbody.innerHTML = rows.map(q => {
+    const expiryCell = q.expiry_date
+      ? `<span${expired(q) ? ' class="expiry-warn"' : ''}>${q.expiry_date}${expired(q) ? ' ⚠' : ''}</span>`
+      : '<span style="opacity:0.3">—</span>';
+
+    const actionBtns = [];
+    if (['draft','sent','accepted'].includes(q.status))
+      actionBtns.push(`<button class="btn btn-sm btn-secondary" onclick="openQuoteModal(${q.id})">Edit</button>`);
+    else
+      actionBtns.push(`<button class="btn btn-sm btn-secondary" onclick="openQuoteModal(${q.id})">View</button>`);
+    if (q.status !== 'converted' && q.status !== 'void')
+      actionBtns.push(`<button class="btn btn-sm btn-cyan" onclick="quickConvert(${q.id})">→ Invoice</button>`);
+    if (q.status === 'converted' && q.converted_invoice_id)
+      actionBtns.push(`<a href="/accounting/invoices.html" class="btn btn-sm btn-secondary">View Invoice</a>`);
+
+    return `<tr>
+      <td><span class="quote-num" onclick="openQuoteModal(${q.id})">${esc(q.quote_number)}</span></td>
+      <td>${esc(q.customer_name)}</td>
+      <td>${q.quote_date || '—'}</td>
+      <td>${expiryCell}</td>
+      <td class="col-amount">${fmt(q.subtotal_ex_vat)}</td>
+      <td class="col-amount">${fmt(q.vat_amount)}</td>
+      <td class="col-amount">${fmt(q.total_inc_vat)}</td>
+      <td><span class="badge badge-${q.status}">${esc(q.status)}</span></td>
+      <td><div class="action-btns">${actionBtns.join('')}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Customer typeahead
+// ═══════════════════════════════════════════════════════════════════════════
+let _custHideTimer = null;
+
+function onCustInput() {
+  const val = document.getElementById('qCustInput').value;
+  const drop = document.getElementById('qCustDrop');
+  document.getElementById('qCustomerId').value = '';
+  const query = val.toLowerCase();
+  const matches = allCustomers.filter(c => (c.customer_name || c.name || '').toLowerCase().includes(query)).slice(0, 10);
+  const hasExact = allCustomers.some(c => (c.customer_name || c.name || '').toLowerCase() === query);
+
+  let html = matches.map(c => {
+    const name = esc(c.customer_name || c.name || '');
+    return `<div class="cust-item" onmousedown="selectCust(${c.id}, '${name.replace(/'/g,"\\'")}')"><b>${name}</b></div>`;
+  }).join('');
+  if (val.trim() && !hasExact)
+    html += `<div class="cust-item cust-add-option" onmousedown="openAddCust('${esc(val).replace(/'/g,"\\'")}')">+ Add customer: "${esc(val)}"</div>`;
+
+  drop.innerHTML = html || (val ? `<div class="cust-item" style="opacity:0.5;">No match found</div>` : '');
+  drop.classList.toggle('show', !!(val || matches.length));
+}
+
+function hideCustDrop() {
+  clearTimeout(_custHideTimer);
+  _custHideTimer = setTimeout(() => document.getElementById('qCustDrop').classList.remove('show'), 200);
+}
+
+function selectCust(id, name) {
+  document.getElementById('qCustInput').value = name;
+  document.getElementById('qCustomerId').value = id;
+  document.getElementById('qCustDrop').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Add Customer mini-modal
+// ═══════════════════════════════════════════════════════════════════════════
+let _addCustPrefill = '';
+
+function openAddCust(prefill) {
+  _addCustPrefill = prefill || '';
+  document.getElementById('acName').value  = prefill || '';
+  document.getElementById('acEmail').value = '';
+  document.getElementById('acPhone').value = '';
+  document.getElementById('acVat').value   = '';
+  document.getElementById('addCustError').classList.remove('show');
+  document.getElementById('modalAddCust').classList.add('show');
+  document.getElementById('acName').focus();
+}
+
+function closeAddCust() {
+  document.getElementById('modalAddCust').classList.remove('show');
+}
+
+async function submitAddCust() {
+  const name  = document.getElementById('acName').value.trim();
+  const errEl = document.getElementById('addCustError');
+  errEl.classList.remove('show');
+  if (!name) { errEl.textContent = 'Name is required.'; errEl.classList.add('show'); return; }
+
+  const btn = document.getElementById('btnAddCust');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const r = await fetch('/api/accounting/customer-invoices/customers', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ name, email: document.getElementById('acEmail').value.trim() || null, phone: document.getElementById('acPhone').value.trim() || null, vatNumber: document.getElementById('acVat').value.trim() || null }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      if (r.status === 409 && d.existing) { selectCust(d.existing.id, d.existing.customer_name || d.existing.name); closeAddCust(); return; }
+      errEl.textContent = d.error || 'Failed to add customer'; errEl.classList.add('show'); return;
+    }
+    const c = d.customer;
+    allCustomers.push(c);
+    selectCust(c.id, c.customer_name || c.name);
+    closeAddCust();
+    toast(`Customer "${name}" added.`, 'ok');
+  } catch (err) {
+    errEl.textContent = err.message; errEl.classList.add('show');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Add Customer';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VAT mode
+// ═══════════════════════════════════════════════════════════════════════════
+let vatMode = 'exclusive';
+
+function onVatModeChange() {
+  vatMode = document.querySelector('input[name="qVatMode"]:checked')?.value || 'exclusive';
+  updateQuoteTotals();
+}
+
+function getVatModeUI() {
+  return document.querySelector('input[name="qVatMode"]:checked')?.value || 'exclusive';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Line items
+// ═══════════════════════════════════════════════════════════════════════════
+function buildAccountOptions(selectedId) {
+  return allAccounts.map(a => {
+    const label = (a.account_code ? a.account_code + ' — ' : '') + (a.account_name || a.name || '');
+    return `<option value="${a.id}"${String(a.id) === String(selectedId) ? ' selected' : ''}>${esc(label)}</option>`;
+  }).join('');
+}
+
+function buildItemOptions(selectedId) {
+  return cachedItems.map(i =>
+    `<option value="${i.id}"
+       data-name="${esc(i.item_name)}"
+       data-price="${i.selling_price || 0}"
+       data-acct="${i.income_account_id || ''}"
+       data-tax="${i.tax_type || 'standard'}"
+       ${String(i.id) === String(selectedId) ? ' selected' : ''}
+     >${esc(i.item_name)}</option>`
+  ).join('');
+}
+
+function addQuoteLine(line) {
+  const l = line || {};
+  const isItem    = l.line_type === 'item';
+  const isDisabled = currentQuote && !['draft','sent'].includes(currentQuote.status);
+  const dis       = isDisabled ? ' disabled' : '';
+
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="line-type-col">
+      <select class="line-type"${dis} onchange="onQuoteLineTypeChange(this)">
+        <option value="account"${!isItem ? ' selected' : ''}>Acct</option>
+        <option value="item"${isItem ? ' selected' : ''}>Item</option>
+      </select>
+    </td>
+    <td>
+      <div class="line-acct-wrap"${isItem ? ' style="display:none"' : ''}>
+        <select class="line-acct"${dis} onchange="updateQuoteTotals()">
+          <option value="">— Account —</option>
+          ${buildAccountOptions(l.account_id)}
+        </select>
+      </div>
+      <div class="line-item-wrap"${!isItem ? ' style="display:none"' : ''}>
+        <select class="line-item"${dis} onchange="onQuoteItemSelect(this)">
+          <option value="">— Item —</option>
+          ${buildItemOptions(l.item_id)}
+        </select>
+      </div>
+      <input type="text"   class="line-desc"${dis}     value="${esc(l.description || '')}" placeholder="Description" oninput="updateQuoteTotals()">
+      <input type="hidden" class="line-item-acct"       value="${l.account_id || ''}">
+      <input type="hidden" class="line-item-id"         value="${l.item_id    || ''}">
+    </td>
+    <td class="line-num-col">
+      <input type="number" class="line-qty"${dis}  value="${l.quantity || 1}"   step="0.01" min="0" oninput="updateQuoteTotals()">
+    </td>
+    <td class="line-num-col">
+      <input type="number" class="line-price"${dis} value="${l.unit_price  != null ? l.unit_price  : 0}" step="0.01" min="0" oninput="updateQuoteTotals()">
+    </td>
+    <td class="line-vat-col">
+      <input type="number" class="line-vat"${dis}   value="${l.vat_rate   != null ? l.vat_rate   : 15}" step="0.01" min="0" oninput="updateQuoteTotals()">
+    </td>
+    <td class="line-amt-col"><span class="line-subex">0.00</span></td>
+    <td class="line-amt-col"><span class="line-vatamt">0.00</span></td>
+    <td class="line-amt-col"><span class="line-total">0.00</span></td>
+    <td class="line-del-col">
+      <button class="line-del-btn"${dis} onclick="this.closest('tr').remove(); updateQuoteTotals()" title="Remove">✕</button>
+    </td>`;
+  document.getElementById('quoteLinesBody').appendChild(tr);
+  updateQuoteTotals();
+}
+
+function onQuoteLineTypeChange(sel) {
+  const tr     = sel.closest('tr');
+  const isItem = sel.value === 'item';
+  tr.querySelector('.line-acct-wrap').style.display = isItem ? 'none' : '';
+  tr.querySelector('.line-item-wrap').style.display = isItem ? ''     : 'none';
+  if (!isItem) {
+    tr.querySelector('.line-item-acct').value = '';
+    tr.querySelector('.line-item-id').value   = '';
+  }
+  updateQuoteTotals();
+}
+
+function onQuoteItemSelect(sel) {
+  const tr   = sel.closest('tr');
+  const opt  = sel.selectedOptions[0];
+  if (!opt || !opt.value) return;
+  const price = parseFloat(opt.dataset.price) || 0;
+  const acct  = opt.dataset.acct || '';
+  const tax   = opt.dataset.tax  || 'standard';
+  const vatR  = tax === 'zero_rated' ? 0 : tax === 'exempt' ? 0 : 15;
+  tr.querySelector('.line-price').value     = price;
+  tr.querySelector('.line-vat').value       = vatR;
+  tr.querySelector('.line-item-acct').value = acct;
+  tr.querySelector('.line-item-id').value   = opt.value;
+  if (!tr.querySelector('.line-desc').value)
+    tr.querySelector('.line-desc').value = opt.dataset.name || '';
+  updateQuoteTotals();
+}
+
+function updateQuoteTotals() {
+  const mode = getVatModeUI();
+  let sumEx = 0, sumVat = 0, sumTotal = 0;
+
+  document.querySelectorAll('#quoteLinesBody tr').forEach(tr => {
+    const qty   = parseFloat(tr.querySelector('.line-qty')?.value)   || 0;
+    const price = parseFloat(tr.querySelector('.line-price')?.value)  || 0;
+    const vat   = parseFloat(tr.querySelector('.line-vat')?.value)    ?? 0;
+
+    let subEx, vatAmt, total;
+    if (mode === 'inclusive') {
+      total  = parseFloat((qty * price).toFixed(2));
+      subEx  = parseFloat((total / (1 + vat / 100)).toFixed(2));
+      vatAmt = parseFloat((total - subEx).toFixed(2));
+    } else {
+      subEx  = parseFloat((qty * price).toFixed(2));
+      vatAmt = parseFloat((subEx * vat / 100).toFixed(2));
+      total  = parseFloat((subEx + vatAmt).toFixed(2));
+    }
+
+    tr.querySelector('.line-subex') && (tr.querySelector('.line-subex').textContent  = subEx.toFixed(2));
+    tr.querySelector('.line-vatamt') && (tr.querySelector('.line-vatamt').textContent = vatAmt.toFixed(2));
+    tr.querySelector('.line-total') && (tr.querySelector('.line-total').textContent  = total.toFixed(2));
+
+    sumEx    += subEx;
+    sumVat   += vatAmt;
+    sumTotal += total;
+  });
+
+  document.getElementById('tSubtotal').textContent = 'R ' + sumEx.toFixed(2);
+  document.getElementById('tVat').textContent      = 'R ' + sumVat.toFixed(2);
+  document.getElementById('tTotal').textContent    = 'R ' + sumTotal.toFixed(2);
+}
+
+function collectLines() {
+  const mode = getVatModeUI();
+  return Array.from(document.querySelectorAll('#quoteLinesBody tr')).map(tr => {
+    const lineType  = tr.querySelector('.line-type')?.value    || 'account';
+    const isItem    = lineType === 'item';
+    const qty       = parseFloat(tr.querySelector('.line-qty')?.value)   || 1;
+    const priceRaw  = parseFloat(tr.querySelector('.line-price')?.value)  || 0;
+    const vatRate   = parseFloat(tr.querySelector('.line-vat')?.value)    ?? 0;
+    const acctRaw   = isItem ? tr.querySelector('.line-item-acct')?.value : tr.querySelector('.line-acct')?.value;
+    const itemIdRaw = isItem ? tr.querySelector('.line-item-id')?.value   : null;
+
+    // Always send exclusive price to backend
+    let unitPrice = priceRaw;
+    if (mode === 'inclusive') {
+      unitPrice = parseFloat((priceRaw / (1 + vatRate / 100)).toFixed(6));
+    }
+
+    return {
+      lineType,
+      itemId:      itemIdRaw ? parseInt(itemIdRaw) : null,
+      accountId:   acctRaw   ? parseInt(acctRaw)   : null,
+      description: tr.querySelector('.line-desc')?.value || '',
+      quantity:    qty,
+      unitPrice,
+      vatRate,
+    };
+  }).filter(l => l.description || l.unitPrice > 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Open / close quote modal
+// ═══════════════════════════════════════════════════════════════════════════
+async function openQuoteModal(id) {
+  editingId    = id    || null;
+  currentQuote = null;
+  clearQuoteForm();
+
+  document.getElementById('modalQuote').classList.add('show');
+
+  if (editingId) {
+    document.getElementById('modalTitle').textContent = 'Loading…';
+    try {
+      const r = await fetch(`/api/accounting/quotes/${editingId}`, { headers: authHeaders() });
+      if (!r.ok) throw new Error('Failed to load quote');
+      const d = await r.json();
+      currentQuote = d.quote;
+      populateQuoteForm(d.quote);
+    } catch (err) {
+      toast(err.message, 'err');
+      closeQuoteModal();
+    }
+  } else {
+    document.getElementById('modalTitle').textContent = 'New Quote';
+    document.getElementById('qQuoteDate').value = today;
+    addQuoteLine();
+    renderFooterButtons(null);
+    document.getElementById('btnSaveQuote').style.display = '';
+    document.getElementById('btnAddLine').disabled = false;
+  }
+}
+
+function closeQuoteModal() {
+  document.getElementById('modalQuote').classList.remove('show');
+  editingId    = null;
+  currentQuote = null;
+}
+
+function clearQuoteForm() {
+  document.getElementById('quoteFormError').classList.remove('show');
+  document.getElementById('statusBanner').style.display = 'none';
+  document.getElementById('qCustInput').value  = '';
+  document.getElementById('qCustomerId').value = '';
+  document.getElementById('qQuoteDate').value  = '';
+  document.getElementById('qExpiryDate').value = '';
+  document.getElementById('qNotes').value      = '';
+  document.getElementById('qTerms').value      = '';
+  document.getElementById('quoteLinesBody').innerHTML = '';
+  document.getElementById('qVatExcl').checked  = true;
+  vatMode = 'exclusive';
+  updateQuoteTotals();
+  document.getElementById('footerStatusBtns').innerHTML = '';
+  document.getElementById('btnSaveQuote').style.display = 'none';
+  // Re-enable all form fields
+  setFormReadOnly(false);
+}
+
+function populateQuoteForm(quote) {
+  document.getElementById('modalTitle').textContent = quote.quote_number;
+  document.getElementById('qCustInput').value  = quote.customer_name || '';
+  document.getElementById('qCustomerId').value = quote.customer_id || '';
+  document.getElementById('qQuoteDate').value  = quote.quote_date  || '';
+  document.getElementById('qExpiryDate').value = quote.expiry_date || '';
+  document.getElementById('qNotes').value      = quote.notes  || '';
+  document.getElementById('qTerms').value      = quote.terms  || '';
+
+  if (quote.vat_mode === 'inclusive') {
+    document.getElementById('qVatIncl').checked = true;
+    vatMode = 'inclusive';
+  } else {
+    document.getElementById('qVatExcl').checked = true;
+    vatMode = 'exclusive';
+  }
+
+  document.getElementById('quoteLinesBody').innerHTML = '';
+  (quote.lines || []).forEach(l => addQuoteLine(l));
+  updateQuoteTotals();
+
+  const isEditable = ['draft','sent'].includes(quote.status);
+  setFormReadOnly(!isEditable);
+
+  // Status banner
+  const banner = document.getElementById('statusBanner');
+  if (quote.status === 'converted' && quote.converted_invoice_id) {
+    banner.className = 'status-banner converted';
+    banner.textContent = `Converted to Invoice ${quote.converted_invoice_id}. This quote is read-only.`;
+    banner.style.display = '';
+  } else if (!isEditable) {
+    banner.className = 'status-banner read-only';
+    banner.textContent = `This quote is ${quote.status} — it cannot be edited.`;
+    banner.style.display = '';
+  }
+
+  renderFooterButtons(quote);
+  document.getElementById('btnSaveQuote').style.display = isEditable ? '' : 'none';
+  document.getElementById('btnAddLine').disabled = !isEditable;
+}
+
+function setFormReadOnly(readonly) {
+  const ids = ['qCustInput','qQuoteDate','qExpiryDate','qNotes','qTerms','qVatExcl','qVatIncl'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = readonly; });
+  document.querySelectorAll('#quoteLinesBody input, #quoteLinesBody select').forEach(el => el.disabled = readonly);
+  document.querySelectorAll('.line-del-btn').forEach(btn => btn.disabled = readonly);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Footer status buttons
+// ═══════════════════════════════════════════════════════════════════════════
+function renderFooterButtons(quote) {
+  const cont = document.getElementById('footerStatusBtns');
+  if (!quote) { cont.innerHTML = ''; return; }
+  const btns = [];
+  const s = quote.status;
+
+  if (s === 'draft')
+    btns.push(`<button class="btn btn-secondary btn-sm" onclick="statusAction('send')">Mark Sent</button>`);
+  if (s === 'draft' || s === 'sent')
+    btns.push(`<button class="btn btn-success btn-sm"   onclick="statusAction('accept')">Mark Accepted</button>`);
+  if (s === 'draft' || s === 'sent' || s === 'accepted')
+    btns.push(`<button class="btn btn-secondary btn-sm" onclick="statusAction('decline')">Decline</button>`);
+  if (s !== 'converted' && s !== 'void')
+    btns.push(`<button class="btn btn-cyan btn-sm"      onclick="statusAction('convert')">→ Convert to Invoice</button>`);
+  if (s !== 'converted' && s !== 'void')
+    btns.push(`<button class="btn btn-danger btn-sm"    onclick="statusAction('void')">Void</button>`);
+  if (s === 'converted' && quote.converted_invoice_id)
+    btns.push(`<a href="/accounting/invoices.html" class="btn btn-secondary btn-sm">View Invoice</a>`);
+
+  cont.innerHTML = btns.join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Status actions
+// ═══════════════════════════════════════════════════════════════════════════
+async function statusAction(action) {
+  if (!editingId) return;
+  const confirmMsgs = {
+    void:    'Void this quote? It cannot be undone.',
+    decline: 'Mark this quote as declined?',
+  };
+  if (confirmMsgs[action] && !confirm(confirmMsgs[action])) return;
+
+  if (action === 'convert') { await doConvert(editingId); return; }
+
+  try {
+    const r = await fetch(`/api/accounting/quotes/${editingId}/${action}`, { method: 'POST', headers: authHeaders() });
+    const d = await r.json();
+    if (!r.ok) { toast(d.error || `Failed to ${action} quote`, 'err'); return; }
+    currentQuote = d.quote;
+    populateQuoteForm(d.quote);
+    await loadQuotes();
+    toast(`Quote ${action === 'send' ? 'marked as sent' : action === 'accept' ? 'accepted' : action === 'decline' ? 'declined' : action + 'd'}.`, 'ok');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+async function doConvert(id) {
+  if (!confirm('Convert this quote to a draft invoice? The quote will be marked as converted.')) return;
+  try {
+    const r = await fetch(`/api/accounting/quotes/${id}/convert-to-invoice`, { method: 'POST', headers: authHeaders() });
+    const d = await r.json();
+    if (!r.ok) {
+      if (r.status === 409 && d.invoiceId) { toast(`Already converted to Invoice ${d.invoiceId}.`, 'inf'); return; }
+      toast(d.error || 'Conversion failed', 'err'); return;
+    }
+    closeQuoteModal();
+    await loadQuotes();
+    toast(`Quote converted → Draft Invoice ${d.invoice.invoice_number}. Open Invoices to view it.`, 'ok');
+  } catch (err) { toast(err.message, 'err'); }
+}
+
+// Quick convert from table row (without opening modal)
+async function quickConvert(id) {
+  editingId = id;
+  await doConvert(id);
+  editingId = null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Save quote (create or update)
+// ═══════════════════════════════════════════════════════════════════════════
+async function saveQuote() {
+  const errEl = document.getElementById('quoteFormError');
+  errEl.classList.remove('show');
+
+  const customerName = document.getElementById('qCustInput').value.trim();
+  const customerId   = document.getElementById('qCustomerId').value;
+  const quoteDate    = document.getElementById('qQuoteDate').value;
+  const expiryDate   = document.getElementById('qExpiryDate').value;
+  const vatModeVal   = getVatModeUI();
+  const notes        = document.getElementById('qNotes').value.trim();
+  const terms        = document.getElementById('qTerms').value.trim();
+  const lines        = collectLines();
+
+  if (!customerName) {
+    errEl.textContent = 'Customer name is required.';
+    errEl.classList.add('show');
+    document.getElementById('qCustInput').focus();
+    return;
+  }
+  if (!quoteDate) {
+    errEl.textContent = 'Quote date is required.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  const payload = { customerName, customerId: customerId || null, quoteDate, expiryDate: expiryDate || null, vatMode: vatModeVal, notes: notes || null, terms: terms || null, lines };
+
+  const btn = document.getElementById('btnSaveQuote');
+  btn.disabled    = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    const url    = editingId ? `/api/accounting/quotes/${editingId}` : '/api/accounting/quotes';
+    const method = editingId ? 'PUT' : 'POST';
+    const r = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (!r.ok) {
+      errEl.textContent = d.error || 'Save failed';
+      errEl.classList.add('show');
+      return;
+    }
+    currentQuote = d.quote;
+    editingId    = d.quote.id;
+    populateQuoteForm(d.quote);
+    await loadQuotes();
+    toast(method === 'POST' ? `Quote ${d.quote.quote_number} created.` : 'Quote saved.', 'ok');
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Save Quote';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Utilities
+// ═══════════════════════════════════════════════════════════════════════════
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toast(msg, type = 'inf') {
+  const el = document.createElement('div');
+  el.className  = `toast-msg toast-${type}`;
+  el.textContent = msg;
+  document.getElementById('toast').appendChild(el);
+  requestAnimationFrame(() => { requestAnimationFrame(() => el.classList.add('show')); });
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 4000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UX
+// ═══════════════════════════════════════════════════════════════════════════
+document.getElementById('modalQuote').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalQuote')) closeQuoteModal();
+});
+document.getElementById('modalAddCust').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalAddCust')) closeAddCust();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeAddCust(); closeQuoteModal(); }
+});
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
