@@ -98,6 +98,9 @@ router.use('/employees', require('./routes/employees'));
 router.use('/integrations', require('./routes/integrations'));
 router.use('/kv', require('./routes/kv'));
 
+// Legacy GL Import (ACC-SIDEQUEST-001)
+router.use('/legacy-gl', require('./routes/legacy-gl'));
+
 // Diagnostics & repair tooling
 router.use('/diagnostics', require('./routes/diagnostics'));
 

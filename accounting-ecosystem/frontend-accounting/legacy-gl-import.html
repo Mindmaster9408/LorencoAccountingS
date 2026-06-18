@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legacy GL Import | Lorenco Accounting</title>
+  <script src="/accounting/js/navigation.js"></script>
+  <style>
+    :root {
+      --bg:        #0f0e1a;
+      --surface:   #1a1740;
+      --surface2:  #221f4a;
+      --border:    rgba(255,255,255,0.08);
+      --border2:   rgba(255,255,255,0.14);
+      --text:      #e8e6f0;
+      --text-dim:  rgba(232,230,240,0.55);
+      --accent:    #7c6af7;
+      --accent-h:  #9b8dff;
+      --green:     #22c55e;
+      --yellow:    #eab308;
+      --red:       #ef4444;
+      --blue:      #3b82f6;
+      --card-bg:   rgba(255,255,255,0.04);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter',system-ui,sans-serif; font-size: 14px; padding-top: 112px; }
+
+    /* ── Layout ─────────────────────────────────────────────────────── */
+    .page-wrap { max-width: 1280px; margin: 0 auto; padding: 24px 24px 80px; }
+    .page-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+    .page-header h1 { font-size: 22px; font-weight: 600; }
+    .page-header p  { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+    .badge-pill { display:inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+
+    /* ── Cards ──────────────────────────────────────────────────────── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+    .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .card-header h2 { font-size: 15px; font-weight: 600; }
+    .card-body { padding: 20px; }
+
+    /* ── Upload zone ─────────────────────────────────────────────────  */
+    .upload-card { margin-bottom: 24px; }
+    .upload-zone {
+      border: 2px dashed var(--border2);
+      border-radius: 10px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: rgba(124,106,247,.07); }
+    .upload-zone .uz-icon { font-size: 36px; margin-bottom: 12px; }
+    .upload-zone .uz-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .upload-zone .uz-hint  { color: var(--text-dim); font-size: 12px; }
+    #fileInput { display: none; }
+
+    .upload-meta { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 16px; }
+    @media (max-width:700px) { .upload-meta { grid-template-columns: 1fr; } }
+
+    /* ── Form controls ───────────────────────────────────────────────── */
+    label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; }
+    select, input[type=text], input[type=date], textarea {
+      width: 100%; padding: 8px 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+    select option { background: #1a1740; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: opacity .15s; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
+    .btn-ghost   { background: rgba(255,255,255,0.07); color: var(--text); }
+    .btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+    .btn-green   { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+    .btn-green:hover:not(:disabled) { background: rgba(34,197,94,.25); }
+    .btn-red     { background: rgba(239,68,68,.12); color: var(--red); border: 1px solid rgba(239,68,68,.25); }
+    .btn-red:hover:not(:disabled) { background: rgba(239,68,68,.22); }
+    .btn-sm { padding: 5px 11px; font-size: 12px; }
+
+    /* ── Batches table ───────────────────────────────────────────────── */
+    .batches-wrap { margin-bottom: 24px; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { padding: 10px 12px; text-align: left; color: var(--text-dim); font-weight: 500; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr.clickable:hover td { background: rgba(255,255,255,0.03); cursor: pointer; }
+    tr.selected td { background: rgba(124,106,247,.1); }
+
+    /* ── Status badges ───────────────────────────────────────────────── */
+    .s-staged             { background: rgba(59,130,246,.15); color: #60a5fa; }
+    .s-validation_failed  { background: rgba(239,68,68,.15);  color: #f87171; }
+    .s-ready_for_approval { background: rgba(234,179,8,.15);  color: #facc15; }
+    .s-approved           { background: rgba(124,106,247,.18);color: #a78bfa; }
+    .s-importing          { background: rgba(124,106,247,.18);color: #a78bfa; }
+    .s-imported           { background: rgba(34,197,94,.15);  color: #4ade80; }
+    .s-failed             { background: rgba(239,68,68,.15);  color: #f87171; }
+    .s-cancelled          { background: rgba(255,255,255,.08);color: var(--text-dim); }
+
+    /* ── Detail panel ────────────────────────────────────────────────── */
+    .detail-panel { margin-top: 8px; }
+    .detail-header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .detail-header .dh-title { font-size: 15px; font-weight: 600; flex: 1; min-width: 200px; }
+    .detail-stats { display: flex; gap: 24px; padding: 14px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .stat-item { display: flex; flex-direction: column; gap: 2px; }
+    .stat-item .sv { font-size: 18px; font-weight: 700; }
+    .stat-item .sl { font-size: 11px; color: var(--text-dim); }
+    .sv-green { color: var(--green); }
+    .sv-yellow { color: var(--yellow); }
+    .sv-red { color: var(--red); }
+
+    /* ── Tabs ────────────────────────────────────────────────────────── */
+    .tab-bar { display: flex; gap: 2px; padding: 12px 20px 0; border-bottom: 1px solid var(--border); }
+    .tab-btn { padding: 8px 16px; font-size: 13px; font-weight: 500; color: var(--text-dim); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
+    .tab-btn.active { color: var(--accent-h); border-bottom-color: var(--accent); }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+    .tab-content { display: none; padding: 20px; }
+    .tab-content.active { display: block; }
+
+    /* ── Preview table ───────────────────────────────────────────────── */
+    .preview-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .preview-toolbar select { width: auto; }
+    .pag-bar { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--text-dim); }
+    .pag-bar .pag-info { margin: 0 8px; }
+
+    /* ── Mapping panel ────────────────────────────────────────────────── */
+    .mapping-item { border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+    .mapping-item .mi-source { font-weight: 600; margin-bottom: 4px; }
+    .mapping-item .mi-stats  { font-size: 11px; color: var(--text-dim); margin-bottom: 10px; }
+    .mapping-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .mapping-row select { flex: 1; min-width: 200px; }
+    .mapping-all-clear { text-align: center; padding: 40px; color: var(--text-dim); }
+
+    /* ── Validation panel ─────────────────────────────────────────────── */
+    .check-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .check-item:last-child { border-bottom: none; }
+    .check-icon { font-size: 16px; margin-top: 1px; flex-shrink: 0; }
+    .check-label { font-weight: 600; font-size: 13px; }
+    .check-detail { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+    .status-PASS    { color: var(--green); }
+    .status-WARNING { color: var(--yellow); }
+    .status-FAIL    { color: var(--red); }
+    .status-INFO    { color: var(--blue); }
+
+    /* ── Action bar ───────────────────────────────────────────────────── */
+    .action-bar { display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+
+    /* ── Toast ────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 28px; right: 28px;
+      padding: 12px 18px; border-radius: 9px;
+      font-size: 13px; font-weight: 500; z-index: 9999;
+      opacity: 0; pointer-events: none; transition: opacity .25s;
+      max-width: 380px;
+    }
+    #toast.show { opacity: 1; }
+    #toast.ok  { background: rgba(34,197,94,.18); color: #4ade80; border: 1px solid rgba(34,197,94,.3); }
+    #toast.err { background: rgba(239,68,68,.18);  color: #f87171; border: 1px solid rgba(239,68,68,.3); }
+    #toast.inf { background: rgba(59,130,246,.18); color: #60a5fa; border: 1px solid rgba(59,130,246,.3); }
+
+    /* ── Upload progress ─────────────────────────────────────────────── */
+    .upload-progress { margin-top: 14px; background: rgba(255,255,255,0.05); border-radius: 6px; overflow: hidden; height: 4px; display: none; }
+    .upload-progress .bar { height: 100%; background: var(--accent); transition: width .3s; }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
+    .empty-state .es-icon { font-size: 40px; margin-bottom: 14px; }
+    .empty-state p { margin-top: 6px; font-size: 13px; }
+
+    .warn-banner { background: rgba(234,179,8,.1); border: 1px solid rgba(234,179,8,.3); border-radius: 8px; padding: 12px 16px; color: #facc15; font-size: 12px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="page-header">
+    <div>
+      <h1>Legacy GL Import</h1>
+      <p>Import historical General Ledger data from Sage, Xero, QuickBooks, Pastel or CSV/Excel exports.</p>
+    </div>
+  </div>
+
+  <!-- ── Upload card ─────────────────────────────────────────────────────── -->
+  <div class="card upload-card">
+    <div class="card-header">
+      <h2>Upload File</h2>
+      <span style="font-size:12px;color:var(--text-dim)">CSV, XLS, XLSX &mdash; max 50 MB</span>
+    </div>
+    <div class="card-body">
+      <div class="warn-banner">
+        &#x26A0;&nbsp; Imported journals are posted directly to the GL and <strong>locked from normal editing</strong>.
+        Ensure your file is correct and all accounts are mapped before importing.
+      </div>
+
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        <div class="uz-icon">&#x1F4C2;</div>
+        <div class="uz-title">Drop your file here or click to browse</div>
+        <div class="uz-hint">Supported: CSV, XLS, XLSX exports from Sage, Xero, QuickBooks, Pastel</div>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.xls,.xlsx">
+
+      <div class="upload-meta">
+        <div>
+          <label>Source System</label>
+          <select id="sourceSystem">
+            <option value="other">Other / Unknown</option>
+            <option value="sage">Sage</option>
+            <option value="xero">Xero</option>
+            <option value="quickbooks">QuickBooks</option>
+            <option value="pastel">Pastel</option>
+            <option value="excel">Excel (manual)</option>
+            <option value="csv">CSV (manual)</option>
+          </select>
+        </div>
+        <div>
+          <label>Period Start (optional)</label>
+          <input type="date" id="periodStart">
+        </div>
+        <div>
+          <label>Period End (optional)</label>
+          <input type="date" id="periodEnd">
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label>Notes (optional)</label>
+        <textarea id="importNotes" rows="2" style="resize:vertical" placeholder="e.g. Migration from Sage One — FY2020-FY2023"></textarea>
+      </div>
+
+      <div class="upload-progress" id="uploadProgress">
+        <div class="bar" id="uploadBar" style="width:0%"></div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <button class="btn btn-primary" id="uploadBtn" onclick="doUpload()" disabled>Upload &amp; Stage</button>
+        <span id="uploadFileName" style="margin-left:12px;color:var(--text-dim);font-size:12px;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Batches list ─────────────────────────────────────────────────────── -->
+  <div class="card batches-wrap">
+    <div class="card-header">
+      <h2>Import Batches</h2>
+      <button class="btn btn-ghost btn-sm" onclick="loadBatches()">&#x21BB; Refresh</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>File</th>
+            <th>Source</th>
+            <th>Status</th>
+            <th>Lines</th>
+            <th>Mapped</th>
+            <th>Debit</th>
+            <th>Credit</th>
+            <th>Imported</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="batchesTbody">
+          <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-dim)">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Batch detail ─────────────────────────────────────────────────────── -->
+  <div class="card detail-panel" id="detailPanel" style="display:none">
+    <div class="detail-header">
+      <div class="dh-title" id="detailTitle">Batch #</div>
+      <span class="badge-pill" id="detailStatusBadge"></span>
+      <div style="flex:1"></div>
+      <button class="btn btn-ghost btn-sm" onclick="closeDetail()">&#x2715; Close</button>
+    </div>
+
+    <div class="detail-stats" id="detailStats"></div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('preview')" id="tabPreview">Preview</button>
+      <button class="tab-btn" onclick="switchTab('mapping')" id="tabMapping">Account Mapping</button>
+      <button class="tab-btn" onclick="switchTab('validation')" id="tabValidation">Validation</button>
+    </div>
+
+    <!-- Preview tab -->
+    <div class="tab-content active" id="tcPreview">
+      <div class="preview-toolbar">
+        <select id="previewFilter" onchange="loadLines(1)">
+          <option value="">All lines</option>
+          <option value="unmapped">Unmapped only</option>
+          <option value="mapped">Mapped only</option>
+          <option value="skipped">Skipped only</option>
+        </select>
+        <span id="previewCount" style="font-size:12px;color:var(--text-dim)"></span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Row</th><th>Date</th><th>Acc. Code</th><th>Acc. Name</th><th>Description</th>
+              <th>Reference</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th>
+              <th>Mapping</th><th>Target Account</th><th>Validation</th>
+            </tr>
+          </thead>
+          <tbody id="linesTbody"></tbody>
+        </table>
+      </div>
+      <div class="pag-bar" id="pagBar">
+        <button class="btn btn-ghost btn-sm" id="pagPrev" onclick="loadLines(currentPage-1)" disabled>&#8592;</button>
+        <span class="pag-info" id="pagInfo"></span>
+        <button class="btn btn-ghost btn-sm" id="pagNext" onclick="loadLines(currentPage+1)" disabled>&#8594;</button>
+      </div>
+    </div>
+
+    <!-- Mapping tab -->
+    <div class="tab-content" id="tcMapping">
+      <div id="mappingPanel"></div>
+    </div>
+
+    <!-- Validation tab -->
+    <div class="tab-content" id="tcValidation">
+      <div id="validationPanel">
+        <p style="color:var(--text-dim);font-size:13px">Run validation to see results.</p>
+      </div>
+    </div>
+
+    <!-- Action bar -->
+    <div class="action-bar" id="actionBar"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ─── State ─────────────────────────────────────────────────────────────────
+let currentBatch   = null;
+let currentPage    = 1;
+let totalPages     = 1;
+let allGLAccounts  = [];
+
+// ─── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadBatches();
+  loadGLAccounts();
+  wireUploadZone();
+});
+
+// ─── Auth headers ──────────────────────────────────────────────────────────
+function authHeaders() {
+  const token = localStorage.getItem('token') || localStorage.getItem('eco_token') || '';
+  return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+}
+function authHeadersNoContentType() {
+  const token = localStorage.getItem('token') || localStorage.getItem('eco_token') || '';
+  return { 'Authorization': `Bearer ${token}` };
+}
+
+// ─── Formatters ────────────────────────────────────────────────────────────
+function fmt(n) { return parseFloat(n || 0).toLocaleString('en-ZA', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+function fmtDate(d) { return d ? d.slice(0,10) : '—'; }
+function relDate(d) {
+  if (!d) return '—';
+  const diff = Date.now() - new Date(d).getTime();
+  const mins = Math.round(diff/60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins/60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return new Date(d).toLocaleDateString('en-ZA');
+}
+
+function statusBadge(status) {
+  const labels = {
+    staged:'Staged', validation_failed:'Validation Failed',
+    ready_for_approval:'Ready to Approve', approved:'Approved',
+    importing:'Importing…', imported:'Imported',
+    failed:'Failed', cancelled:'Cancelled',
+  };
+  return `<span class="badge-pill s-${status}">${labels[status] || status}</span>`;
+}
+
+function checkIcon(status) {
+  return { PASS:'✅', WARNING:'⚠️', FAIL:'❌', INFO:'ℹ️' }[status] || '•';
+}
+
+function mappingBadge(status) {
+  const m = { mapped:'#4ade80', unmapped:'#f87171', skipped:'#94a3b8' };
+  return `<span style="color:${m[status]||'#aaa'};font-size:11px">${status}</span>`;
+}
+function validBadge(status) {
+  const m = { pass:'#4ade80', warning:'#facc15', fail:'#f87171', pending:'#94a3b8' };
+  return `<span style="color:${m[status]||'#aaa'};font-size:11px">${status}</span>`;
+}
+
+// ─── Toast ─────────────────────────────────────────────────────────────────
+let _toastTimer;
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.className = `show ${type}`;
+  el.textContent = msg;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, 4000);
+}
+
+// ─── GL Accounts (for mapping dropdowns) ───────────────────────────────────
+async function loadGLAccounts() {
+  try {
+    const r = await fetch('/api/accounting/accounts?postable=true', { headers: authHeaders() });
+    if (!r.ok) return;
+    const data = await r.json();
+    allGLAccounts = (data.accounts || data || []).filter(a => a.is_postable !== false);
+  } catch (_) {}
+}
+
+function buildAccountSelect(id, selectedId) {
+  const byType = {};
+  for (const a of allGLAccounts) {
+    const t = a.account_type || 'Other';
+    (byType[t] = byType[t] || []).push(a);
+  }
+  let html = `<select id="${id}" style="width:100%"><option value="">— Select account —</option>`;
+  for (const [type, accts] of Object.entries(byType)) {
+    html += `<optgroup label="${type}">`;
+    for (const a of accts) {
+      const sel = a.id == selectedId ? 'selected' : '';
+      html += `<option value="${a.id}" ${sel}>${a.code} — ${a.name}</option>`;
+    }
+    html += '</optgroup>';
+  }
+  html += '</select>';
+  return html;
+}
+
+// ─── File upload wiring ────────────────────────────────────────────────────
+function wireUploadZone() {
+  const zone = document.getElementById('uploadZone');
+  const inp  = document.getElementById('fileInput');
+
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) selectFile(e.dataTransfer.files[0]);
+  });
+  inp.addEventListener('change', () => { if (inp.files.length) selectFile(inp.files[0]); });
+}
+
+let selectedFile = null;
+function selectFile(file) {
+  selectedFile = file;
+  document.getElementById('uploadFileName').textContent = file.name;
+  document.getElementById('uploadBtn').disabled = false;
+}
+
+async function doUpload() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+
+  const prog = document.getElementById('uploadProgress');
+  const bar  = document.getElementById('uploadBar');
+  prog.style.display = 'block';
+  bar.style.width = '30%';
+
+  const fd = new FormData();
+  fd.append('file',          selectedFile);
+  fd.append('source_system', document.getElementById('sourceSystem').value);
+  fd.append('period_start',  document.getElementById('periodStart').value  || '');
+  fd.append('period_end',    document.getElementById('periodEnd').value    || '');
+  fd.append('notes',         document.getElementById('importNotes').value  || '');
+
+  try {
+    bar.style.width = '60%';
+    const r = await fetch('/api/accounting/legacy-gl/import', {
+      method: 'POST',
+      headers: authHeadersNoContentType(),
+      body: fd,
+    });
+    bar.style.width = '100%';
+    const data = await r.json();
+
+    if (!r.ok) {
+      // Column detection failure — show friendly hint
+      if (r.status === 422 && data.headers) {
+        toast(`Column detection failed: ${data.missingFields.join(', ')}. Rename your headers.`, 'err');
+        showColumnHint(data);
+      } else if (r.status === 409) {
+        toast(data.message || data.error, 'inf');
+        loadBatches();
+        if (data.batchId) loadDetail(data.batchId);
+      } else {
+        toast(data.error || 'Upload failed', 'err');
+      }
+    } else {
+      toast(data.message || 'Staged successfully', 'ok');
+      loadBatches();
+      if (data.batch) loadDetail(data.batch.id);
+      // Reset form
+      selectedFile = null;
+      document.getElementById('fileInput').value = '';
+      document.getElementById('uploadFileName').textContent = '';
+    }
+  } catch (err) {
+    toast('Network error: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Upload & Stage';
+    setTimeout(() => { prog.style.display = 'none'; bar.style.width = '0%'; }, 800);
+  }
+}
+
+function showColumnHint(data) {
+  const div = document.createElement('div');
+  div.style.cssText = 'background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:14px;margin-top:12px;font-size:12px;';
+  div.innerHTML = `<strong style="color:#f87171">Columns not detected</strong><br>
+    Missing: ${data.missingFields.map(f => `<code style="color:#fca5a5">${f}</code>`).join(', ')}<br><br>
+    <strong>Detected headers:</strong><br>
+    ${(data.headers || []).map(h => `Row ${h.index+1}: <code style="color:#94a3b8">${h.name}</code>`).join(' &nbsp;|&nbsp; ')}<br><br>
+    Rename your spreadsheet headers to: <code>Date</code>, <code>Account Code</code>, <code>Account Name</code>, <code>Debit</code>, <code>Credit</code>, <code>Description</code>, <code>Reference</code>`;
+  document.querySelector('.card-body').appendChild(div);
+  setTimeout(() => div.remove(), 15000);
+}
+
+// ─── Load batches ──────────────────────────────────────────────────────────
+async function loadBatches() {
+  try {
+    const r = await fetch('/api/accounting/legacy-gl/batches', { headers: authHeaders() });
+    const data = await r.json();
+    renderBatches(data.batches || []);
+  } catch (err) {
+    document.getElementById('batchesTbody').innerHTML =
+      `<tr><td colspan="10" style="color:var(--red);padding:20px">${err.message}</td></tr>`;
+  }
+}
+
+function renderBatches(batches) {
+  const tbody = document.getElementById('batchesTbody');
+  if (!batches.length) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-dim)">No import batches yet. Upload a file to get started.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = batches.map(b => `
+    <tr class="clickable${currentBatch && currentBatch.id === b.id ? ' selected' : ''}"
+        onclick="loadDetail(${b.id})">
+      <td>#${b.id}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${b.file_name}">${b.file_name}</td>
+      <td style="text-transform:capitalize">${b.source_system}</td>
+      <td>${statusBadge(b.status)}</td>
+      <td>${b.total_lines || 0}</td>
+      <td>${b.mapped_lines || 0} <span style="color:var(--text-dim)">/ ${b.total_lines || 0}</span></td>
+      <td style="text-align:right">${fmt(b.total_debits)}</td>
+      <td style="text-align:right">${fmt(b.total_credits)}</td>
+      <td>${b.journals_created || 0}</td>
+      <td style="color:var(--text-dim)">${relDate(b.created_at)}</td>
+    </tr>
+  `).join('');
+}
+
+// ─── Detail panel ──────────────────────────────────────────────────────────
+async function loadDetail(batchId) {
+  const r    = await fetch(`/api/accounting/legacy-gl/batches/${batchId}`, { headers: authHeaders() });
+  const data = await r.json();
+  currentBatch = data.batch;
+  currentPage  = 1;
+  renderDetail();
+  document.getElementById('detailPanel').style.display = 'block';
+  document.getElementById('detailPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Reload batches list to highlight selection
+  loadBatches();
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').style.display = 'none';
+  currentBatch = null;
+}
+
+function renderDetail() {
+  const b = currentBatch;
+  document.getElementById('detailTitle').textContent = `Batch #${b.id} — ${b.file_name}`;
+  document.getElementById('detailStatusBadge').outerHTML =
+    `<span class="badge-pill s-${b.status}" id="detailStatusBadge">${b.status.replace(/_/g,' ')}</span>`;
+
+  // Stats
+  const mapped   = parseInt(b.mapped_lines || 0);
+  const total    = parseInt(b.total_lines  || 0);
+  const unmapped = parseInt(b.unmapped_lines || 0);
+  const skipped  = parseInt(b.skipped_lines  || 0);
+  const pct      = total > 0 ? Math.round(mapped / total * 100) : 0;
+
+  document.getElementById('detailStats').innerHTML = `
+    <div class="stat-item"><span class="sv">${total}</span><span class="sl">Total Lines</span></div>
+    <div class="stat-item"><span class="sv sv-green">${mapped}</span><span class="sl">Mapped</span></div>
+    <div class="stat-item"><span class="sv sv-${unmapped>0?'red':'green'}">${unmapped}</span><span class="sl">Unmapped</span></div>
+    <div class="stat-item"><span class="sv">${skipped}</span><span class="sl">Skipped</span></div>
+    <div class="stat-item"><span class="sv sv-${pct===100?'green':pct>50?'yellow':'red'}">${pct}%</span><span class="sl">Mapping Progress</span></div>
+    <div class="stat-item"><span class="sv">${fmt(b.total_debits)}</span><span class="sl">Total Debits</span></div>
+    <div class="stat-item"><span class="sv">${fmt(b.total_credits)}</span><span class="sl">Total Credits</span></div>
+    ${b.journals_created ? `<div class="stat-item"><span class="sv sv-green">${b.journals_created}</span><span class="sl">Journals Created</span></div>` : ''}
+  `;
+
+  // Set validation summary if available
+  if (b.validation_summary) {
+    const vs = typeof b.validation_summary === 'string' ? JSON.parse(b.validation_summary) : b.validation_summary;
+    renderValidationResults(vs);
+  }
+
+  renderActionBar();
+  loadLines(1);
+  loadMappingPanel();
+}
+
+function renderActionBar() {
+  const b   = currentBatch;
+  const bar = document.getElementById('actionBar');
+  const st  = b.status;
+
+  let html = '';
+
+  if (['staged','validation_failed','ready_for_approval'].includes(st)) {
+    html += `<button class="btn btn-ghost" onclick="doValidate()">&#x2713; Run Validation</button>`;
+  }
+  if (st === 'ready_for_approval') {
+    html += `<button class="btn btn-green" onclick="doApprove()">&#x2714; Approve for Import</button>`;
+  }
+  if (st === 'approved') {
+    html += `<button class="btn btn-primary" onclick="doImport()">&#x21E9; Execute Import</button>`;
+  }
+  if (!['imported','cancelled'].includes(st)) {
+    html += `<button class="btn btn-red" onclick="doCancel()">&#x2715; Cancel Batch</button>`;
+  }
+  if (st === 'imported') {
+    html += `<span style="color:var(--green);font-size:13px">&#x2714; Import complete — ${b.journals_created} journals created and locked in the GL.</span>`;
+  }
+
+  bar.innerHTML = html;
+}
+
+// ─── Tab switching ─────────────────────────────────────────────────────────
+let activeTab = 'preview';
+function switchTab(tab) {
+  activeTab = tab;
+  ['preview','mapping','validation'].forEach(t => {
+    document.getElementById('tc' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('active', t === tab);
+    document.getElementById('tab'  + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('active', t === tab);
+  });
+  if (tab === 'mapping')    loadMappingPanel();
+  if (tab === 'validation') { /* already rendered if validation_summary exists */ }
+}
+
+// ─── Preview lines ─────────────────────────────────────────────────────────
+async function loadLines(page) {
+  if (!currentBatch) return;
+  currentPage = page;
+  const filter = document.getElementById('previewFilter').value;
+  const url    = `/api/accounting/legacy-gl/batches/${currentBatch.id}/lines?page=${page}&limit=100${filter ? '&mapping_status='+filter : ''}`;
+
+  const r    = await fetch(url, { headers: authHeaders() });
+  const data = await r.json();
+  const lines = data.lines || [];
+  const pg    = data.pagination || {};
+
+  totalPages = Math.ceil((pg.total || 0) / (pg.limit || 100)) || 1;
+
+  document.getElementById('previewCount').textContent =
+    `${pg.total || 0} line(s)`;
+
+  const tbody = document.getElementById('linesTbody');
+  if (!lines.length) {
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text-dim)">No lines to display.</td></tr>`;
+  } else {
+    tbody.innerHTML = lines.map(l => `
+      <tr>
+        <td style="color:var(--text-dim)">${l.source_row_number}</td>
+        <td>${fmtDate(l.transaction_date)}</td>
+        <td>${l.source_account_code || ''}</td>
+        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.source_account_name||''}">${l.source_account_name || ''}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.source_description||''}">${l.source_description || ''}</td>
+        <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.source_reference || ''}</td>
+        <td style="text-align:right">${l.debit > 0 ? fmt(l.debit) : ''}</td>
+        <td style="text-align:right">${l.credit > 0 ? fmt(l.credit) : ''}</td>
+        <td>${mappingBadge(l.mapping_status)}</td>
+        <td style="font-size:11px;color:var(--text-dim)">${l.mapped_account ? `${l.mapped_account.code} ${l.mapped_account.name}` : '—'}</td>
+        <td>${validBadge(l.validation_status)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // Pagination controls
+  document.getElementById('pagInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+  document.getElementById('pagPrev').disabled = currentPage <= 1;
+  document.getElementById('pagNext').disabled = currentPage >= totalPages;
+}
+
+// ─── Mapping panel ─────────────────────────────────────────────────────────
+async function loadMappingPanel() {
+  if (!currentBatch) return;
+  const panel = document.getElementById('mappingPanel');
+
+  if (['imported','cancelled'].includes(currentBatch.status)) {
+    panel.innerHTML = `<div class="mapping-all-clear"><div style="font-size:28px">🔒</div><p>This batch is ${currentBatch.status} — no further mapping changes allowed.</p></div>`;
+    return;
+  }
+
+  panel.innerHTML = '<p style="color:var(--text-dim)">Loading unmapped accounts&hellip;</p>';
+
+  const r    = await fetch(`/api/accounting/legacy-gl/batches/${currentBatch.id}/unmapped`, { headers: authHeaders() });
+  const data = await r.json();
+  const accts = data.unmappedAccounts || [];
+
+  if (!accts.length) {
+    panel.innerHTML = `<div class="mapping-all-clear">
+      <div style="font-size:28px">✅</div>
+      <p style="font-weight:600;font-size:15px;margin-top:8px">All accounts mapped</p>
+      <p>Every line has been mapped or skipped. You can now run validation.</p>
+    </div>`;
+    return;
+  }
+
+  panel.innerHTML = `<p style="color:var(--text-dim);font-size:12px;margin-bottom:14px">${accts.length} source account(s) need mapping to a Lorenco GL account.</p>` +
+    accts.map((a, i) => `
+      <div class="mapping-item">
+        <div class="mi-source">${a.source_account_code ? a.source_account_code + ' — ' : ''}${a.source_account_name || '(no name)'}</div>
+        <div class="mi-stats">${a.line_count} line(s) &nbsp;|&nbsp; Debit: ${fmt(a.total_debit)} &nbsp;|&nbsp; Credit: ${fmt(a.total_credit)}</div>
+        <div class="mapping-row">
+          ${buildAccountSelect('acctSel_'+i, null)}
+          <button class="btn btn-primary btn-sm" onclick="saveMapping(${i},'${escAttr(a.source_account_code)}','${escAttr(a.source_account_name)}')">Map</button>
+          <button class="btn btn-ghost btn-sm" onclick="skipMapping('${escAttr(a.source_account_code)}','${escAttr(a.source_account_name)}')">Skip</button>
+        </div>
+      </div>
+    `).join('');
+}
+
+function escAttr(s) { return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+async function saveMapping(idx, code, name) {
+  const sel = document.getElementById('acctSel_' + idx);
+  if (!sel || !sel.value) { toast('Select a target account first', 'err'); return; }
+
+  await postMapping({
+    source_account_code: code || '',
+    source_account_name: name || '',
+    mapped_account_id:   parseInt(sel.value),
+  });
+}
+
+async function skipMapping(code, name) {
+  if (!confirm(`Skip all lines for "${code} ${name}"? They will not be imported.`)) return;
+  await postMapping({ source_account_code: code, source_account_name: name, skip: true });
+}
+
+async function postMapping(payload) {
+  const r = await fetch(`/api/accounting/legacy-gl/batches/${currentBatch.id}/map-account`, {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify(payload),
+  });
+  const data = await r.json();
+  if (!r.ok) { toast(data.error || 'Mapping failed', 'err'); return; }
+
+  toast('Mapping saved', 'ok');
+  currentBatch = { ...currentBatch, ...data.batch };
+  renderDetail();
+  document.getElementById('detailStats').textContent; // force re-render
+  renderDetail();
+  loadMappingPanel();
+  if (activeTab === 'preview') loadLines(1);
+}
+
+// ─── Validate ──────────────────────────────────────────────────────────────
+async function doValidate() {
+  const btn = [...document.getElementById('actionBar').querySelectorAll('button')].find(b => b.textContent.includes('Validation'));
+  if (btn) btn.disabled = true;
+  toast('Running validation…', 'inf');
+
+  try {
+    const r    = await fetch(`/api/accounting/legacy-gl/batches/${currentBatch.id}/validate`, { method:'POST', headers:authHeaders() });
+    const data = await r.json();
+    if (!r.ok) { toast(data.error || 'Validation failed', 'err'); return; }
+
+    currentBatch.status           = data.status;
+    currentBatch.validation_summary = data;
+    renderValidationResults(data);
+    renderActionBar();
+    loadBatches();
+    switchTab('validation');
+    toast(data.hasFail ? 'Validation failed — fix errors before approving' : 'Validation complete', data.hasFail ? 'err' : 'ok');
+  } catch (err) {
+    toast('Error: ' + err.message, 'err');
+  }
+}
+
+function renderValidationResults(vs) {
+  if (!vs || !vs.checks) return;
+  const panel = document.getElementById('validationPanel');
+
+  const summary = vs.summary || {};
+  const diffAmt = summary.difference != null ? parseFloat(summary.difference) : Math.abs((vs.totalDebit||0)-(vs.totalCredit||0));
+
+  panel.innerHTML = `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="stat-item"><span class="sv">${fmt(vs.totalDebit || summary.totalDebit)}</span><span class="sl">Total Debit</span></div>
+        <div class="stat-item"><span class="sv">${fmt(vs.totalCredit || summary.totalCredit)}</span><span class="sl">Total Credit</span></div>
+        <div class="stat-item"><span class="sv sv-${diffAmt<0.01?'green':'yellow'}">${fmt(diffAmt)}</span><span class="sl">Difference</span></div>
+      </div>
+    </div>
+    ${(vs.checks || []).map(c => `
+      <div class="check-item">
+        <div class="check-icon status-${c.status}">${checkIcon(c.status)}</div>
+        <div>
+          <div class="check-label status-${c.status}">${c.label}</div>
+          <div class="check-detail">${c.detail}</div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+// ─── Approve ───────────────────────────────────────────────────────────────
+async function doApprove() {
+  if (!confirm('Approve this batch for import? After approval, click "Execute Import" to create locked GL journals.')) return;
+
+  const r    = await fetch(`/api/accounting/legacy-gl/batches/${currentBatch.id}/approve`, { method:'POST', headers:authHeaders() });
+  const data = await r.json();
+  if (!r.ok) { toast(data.error || data.hint || 'Approval failed', 'err'); return; }
+
+  currentBatch.status = 'approved';
+  renderActionBar();
+  loadBatches();
+  toast('Batch approved — ready for import', 'ok');
+}
+
+// ─── Import ────────────────────────────────────────────────────────────────
+async function doImport() {
+  if (!confirm(
+    'CONFIRM: This will create locked GL journal entries for all mapped lines.\n\n' +
+    'Imported journals cannot be edited through normal workflows.\n\n' +
+    'Proceed?'
+  )) return;
+
+  const bar = document.getElementById('actionBar');
+  bar.innerHTML = '<span style="color:var(--text-dim);font-size:13px">&#x23F3; Importing — please wait…</span>';
+
+  try {
+    const r    = await fetch(`/api/accounting/legacy-gl/batches/${currentBatch.id}/import`, { method:'POST', headers:authHeaders() });
+    const data = await r.json();
+    if (!r.ok) { toast(data.error || 'Import failed', 'err'); renderActionBar(); return; }
+
+    currentBatch.status           = 'imported';
+    currentBatch.journals_created = data.journalsCreated;
+    renderDetail();
+    loadBatches();
+    toast(data.message || `Import complete — ${data.journalsCreated} journals created`, 'ok');
+  } catch (err) {
+    toast('Error: ' + err.message, 'err');
+    renderActionBar();
+  }
+}
+
+// ─── Cancel ────────────────────────────────────────────────────────────────
+async function doCancel() {
+  if (!confirm('Cancel this batch? The staged lines will be kept for reference but the batch cannot be resumed.')) return;
+
+  const r    = await fetch(`/api/accounting/legacy-gl/batches/${currentBatch.id}/cancel`, { method:'POST', headers:authHeaders() });
+  const data = await r.json();
+  if (!r.ok) { toast(data.error || 'Cancel failed', 'err'); return; }
+
+  currentBatch.status = 'cancelled';
+  renderActionBar();
+  loadBatches();
+  toast('Batch cancelled', 'inf');
+}
+</script>
+</body>
+</html>

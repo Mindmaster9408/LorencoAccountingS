@@ -186,7 +186,7 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'ai-settings.html' || currentPage === 'system-health.html' || currentPage === 'accounting-diagnostics.html' || currentPage === 'audit-log.html' || currentPage === 'audit-trail.html' || currentPage === 'pilot-smoke-tests.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'ai-settings.html' || currentPage === 'system-health.html' || currentPage === 'accounting-diagnostics.html' || currentPage === 'audit-log.html' || currentPage === 'audit-trail.html' || currentPage === 'pilot-smoke-tests.html' || currentPage === 'legacy-gl-import.html' ? 'active' : ''}">
         <a href="#">Administration</a>
         <div class="dropdown">
           <div class="dropdown-header">Monitoring</div>
@@ -197,8 +197,8 @@ function createNavigation() {
           <a href="#">User Activity</a>
           <div class="dropdown-header">Data Management</div>
           <a href="#">Data Export</a>
-          <a href="#">Data Import</a>
-          <a href="#">Archive & Delete</a>
+          <a href="/accounting/legacy-gl-import.html">Legacy GL Import</a>
+          <a href="#">Archive &amp; Delete</a>
           <div class="dropdown-header">Security</div>
           <a href="#">Security Log</a>
           <a href="#">API Keys</a>

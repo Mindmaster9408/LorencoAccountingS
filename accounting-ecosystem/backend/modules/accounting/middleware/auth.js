@@ -198,6 +198,10 @@ const PERMISSIONS = {
 
   // Dashboard
   'dashboard.view': ['admin', 'accountant', 'bookkeeper', 'viewer'],
+
+  // Legacy GL Import (ACC-SIDEQUEST-001)
+  'legacy_gl.view':   ['admin', 'accountant'],
+  'legacy_gl.import': ['admin', 'accountant'],
 };
 
 function hasPermission(permission) {
