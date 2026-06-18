@@ -131,6 +131,14 @@ async function seedAdditionalUsers(supabase) {
       password: 'mJmR@9423$',
       role: 'business_owner',
       is_super_admin: false
+    },
+    {
+      username: 'anrichvstryp@lorencoeco.com',
+      email: 'anrichvstryp@lorencoeco.com',
+      full_name: 'Anrich van Stryp',
+      password: 'V$tryp96',
+      role: 'super_admin',
+      is_super_admin: true
     }
   ];
 

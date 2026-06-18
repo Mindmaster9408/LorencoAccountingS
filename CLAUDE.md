@@ -17,6 +17,7 @@
 7. [Part C — Zeabur Deployment Rules (PERMANENT — NEVER VIOLATE)](#7-part-c--zeabur-deployment-rules)
 8. [Part D — Absolute No Browser Storage Rule (PERMANENT — HARD CODING GATE)](#8-part-d--absolute-no-browser-storage-rule)
 9. [Part E — Paytime Stability Lock (PERMANENT — GOVERNED MODULE)](#9-part-e--paytime-stability-lock)
+10. [Part F — Super User Access Policy (PERMANENT — HARD RULE)](#10-part-f--super-user-access-policy)
 
 ---
 
@@ -897,6 +898,87 @@ These patterns are blocked for payroll code. Claude must refuse to generate them
 | Reading `is_locked` from browser storage | Any | BLOCK |
 | Hardcoded company IDs | Payroll routes/functions | BLOCK |
 | Recalculating a locked period | `is_locked = true` | BLOCK |
+
+---
+
+## 10. PART F — SUPER USER ACCESS POLICY
+
+> **This rule is permanent and non-negotiable.**
+> Established June 2026. Applies to every app, every session, every future feature.
+
+---
+
+### RULE F1 — SUPER USERS HAVE UNRESTRICTED ACCESS TO ALL APPS
+
+Every super user of The Infinite Legacy — currently Ruan, Anton, MJ, and Anrich, and any future super user added — must have **unrestricted, automatic access to every app in the ecosystem**, including any app designed or built in the future.
+
+This is a hard, permanent rule. Claude must never implement any feature, permission check, module gate, or UI condition that restricts a super user from any app — past or future — except the single carve-out defined in Rule F2.
+
+**What "unrestricted" means:**
+- No `modules_enabled` check blocks a super user
+- No `apps_access` array restricts a super user
+- No role check prevents a super user from seeing or launching any app
+- New apps added to `APP_DEFS` are automatically visible and active for all super users without any extra configuration
+- Super users never need to be manually granted access to a new app
+
+**Current enforcement (do not regress):**
+- Frontend: `isSuperAdmin` bypasses both `userAppsAccess` and `companyModules` checks in `renderApps()` — `dashboard.html` lines ~2227 and ~2234
+- Backend: `is_super_admin = true` in the JWT grants full backend access via middleware
+
+---
+
+### RULE F2 — COACHING IS THE ONLY EXCEPTION — RUAN ONLY
+
+**The Coaching app is permanently restricted to Ruan (ruanvlog@lorenco.co.za) and only Ruan.**
+
+This is a zero-tolerance carve-out. No other super user, admin, or any other user may ever access the Coaching app.
+
+**More critically: no other user — including other super users — must ever know the Coaching app exists.**
+
+The Coaching tile must be **completely invisible** on the dashboard for all users except Ruan. It must not appear as a greyed-out tile, a locked tile, a coming-soon tile, or in any other form. For non-Ruan users it must not exist in the rendered DOM at all.
+
+**The gate is the DB flag `has_coaching_access = true` — nothing else:**
+- `isSuperAdmin = true` does NOT grant coaching access
+- `role = 'super_admin'` does NOT grant coaching access
+- Only `currentUser.hasCoachingAccess === true` (sourced from the `has_coaching_access` column in the `users` table via login/JWT) renders the coaching tile
+- This check must never be weakened, bypassed, or replaced with a role check
+
+**Current enforcement (do not regress):**
+- Frontend: `app.key === 'coaching'` is hardcoded to check `currentUser?.hasCoachingAccess === true` only — `dashboard.html` lines ~2225–2226. Super admin flag is explicitly NOT checked for this path.
+- Backend: `has_coaching_access` column on `users` table. Only `ruanvlog@lorenco.co.za` has this set to `true`.
+- Sean webapp: `CORE_SUPER_USERS` in `sean-webapp/lib/auth.ts` — only Ruan has `hasCoachingAccess: true`.
+
+---
+
+### RULE F3 — ADDING A NEW SUPER USER
+
+When a new super user is added to the ecosystem, the following must always be true after creation:
+
+| Field | Required value |
+|---|---|
+| `users.is_super_admin` | `true` |
+| `users.role` | `super_admin` |
+| `users.has_coaching_access` | `false` (unless explicitly Ruan) |
+| `users.is_active` | `true` |
+| `user_company_access.role` | `super_admin` |
+| `user_company_access.company_id` | The Infinite Legacy company ID |
+| `sean-webapp/lib/auth.ts` `CORE_SUPER_USERS` | Add with `hasCoachingAccess: false` |
+| `backend/config/seed.js` `seedAdditionalUsers` | Add for DB-reset resilience |
+
+Claude must apply all of the above whenever a new super user is requested. Missing any one step leaves the user partially provisioned.
+
+---
+
+### RULE F4 — CODE REVIEW GATE
+
+Any code change that touches app visibility, access control, or permission logic must be checked against these questions before commit:
+
+- [ ] Do all super users still see every app unrestricted (except coaching)?
+- [ ] Is coaching still completely invisible to all non-Ruan users?
+- [ ] Does the coaching gate still use `hasCoachingAccess` DB flag only — not role, not `isSuperAdmin`?
+- [ ] Does adding a new app to `APP_DEFS` automatically make it visible to super users without extra config?
+
+If any answer is no, the change must be corrected before it ships.
 
 ---
 

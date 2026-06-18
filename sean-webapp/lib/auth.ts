@@ -14,6 +14,7 @@ const CORE_SUPER_USERS = [
   { email: "ruanvlog@lorenco.co.za", hasCoachingAccess: true },
   { email: "antonjvr@lorenco.co.za", hasCoachingAccess: false },
   { email: "mj@lorenco.co.za", hasCoachingAccess: false },
+  { email: "anrichvstryp@lorencoeco.com", hasCoachingAccess: false },
 ];
 
 // Additional super admin placeholders
