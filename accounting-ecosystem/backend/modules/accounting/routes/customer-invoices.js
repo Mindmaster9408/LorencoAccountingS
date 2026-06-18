@@ -75,7 +75,7 @@ async function validateCustomerId(companyId, customerId) {
   const parsed = parseInt(customerId);
   if (!Number.isFinite(parsed) || parsed <= 0) return false;
   const { data } = await supabase
-    .from('pos_customers')
+    .from('customers')
     .select('id')
     .eq('id', parsed)
     .eq('company_id', companyId)
@@ -112,7 +112,7 @@ router.get('/customers', authenticate, hasPermission('ar.invoice.view'), async (
     // Return distinct customer names from POS customers + existing invoices
     const [posResult, invResult] = await Promise.all([
       supabase
-        .from('pos_customers')
+        .from('customers')
         .select('id, name, email, phone')
         .eq('company_id', companyId)
         .order('name')
@@ -140,6 +140,56 @@ router.get('/customers', authenticate, hasPermission('ar.invoice.view'), async (
     res.json({ customers });
   } catch (err) {
     console.error('GET /customer-invoices/customers error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Create Customer (inline add from invoice form) ──────────────────────────
+// Creates in customers so the new record immediately appears in the
+// GET /customers dropdown. Rejects cross-company mutation and blank names.
+
+router.post('/customers', authenticate, hasPermission('ar.invoice.create'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const { name, email, phone, vatNumber } = req.body;
+
+  if (!name?.trim()) return res.status(400).json({ error: 'Customer name is required' });
+
+  // Exact-match duplicate guard (case-insensitive)
+  const { data: existing } = await supabase
+    .from('customers')
+    .select('id, name')
+    .eq('company_id', companyId)
+    .ilike('name', name.trim())
+    .maybeSingle();
+
+  if (existing) {
+    return res.status(409).json({
+      error: `Customer "${existing.name}" already exists`,
+      customer: existing,
+    });
+  }
+
+  try {
+    const insertPayload = {
+      company_id: companyId,
+      name:       name.trim(),
+      email:      email?.trim() || null,
+      phone:      phone?.trim() || null,
+    };
+    // vat_number column added by migration 029; insert only when provided
+    if (vatNumber?.trim()) insertPayload.vat_number = vatNumber.trim();
+
+    const { data: created, error } = await supabase
+      .from('customers')
+      .insert(insertPayload)
+      .select('id, name, email, phone')
+      .single();
+
+    if (error) throw new Error(error.message);
+    res.status(201).json({ customer: created });
+  } catch (err) {
+    console.error('POST /customer-invoices/customers error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -292,6 +342,8 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
       return {
         description: l.description || '',
         accountId:   l.accountId ? parseInt(l.accountId) : null,
+        lineType:    l.lineType === 'item' ? 'item' : 'account',
+        itemId:      l.itemId   ? parseInt(l.itemId)   : null,
         quantity:    parseFloat(l.quantity) || 1,
         unitPrice:   parseFloat(l.unitPrice) || 0,
         vatRate:     l.vatRate != null ? parseFloat(l.vatRate) : 15,
@@ -357,15 +409,15 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
       const lineParams = [];
       let p = 1;
       for (const l of processedLines) {
-        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
         lineParams.push(
-          invoice.id, l.description, l.accountId || null, l.quantity, l.unitPrice,
-          l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder
+          invoice.id, l.description, l.accountId || null, l.lineType, l.itemId || null,
+          l.quantity, l.unitPrice, l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder
         );
       }
       await dbClient.query(
         `INSERT INTO customer_invoice_lines
-           (invoice_id, description, account_id, quantity, unit_price,
+           (invoice_id, description, account_id, line_type, item_id, quantity, unit_price,
             vat_rate, subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
          VALUES ${lineVals.join(',')}`,
         lineParams
@@ -451,6 +503,8 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
       return {
         description: l.description || '',
         accountId:   l.accountId ? parseInt(l.accountId) : null,
+        lineType:    l.lineType === 'item' ? 'item' : 'account',
+        itemId:      l.itemId   ? parseInt(l.itemId)   : null,
         quantity:    parseFloat(l.quantity) || 1,
         unitPrice:   parseFloat(l.unitPrice) || 0,
         vatRate:     l.vatRate != null ? parseFloat(l.vatRate) : 15,
@@ -532,15 +586,15 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
           const lineParams = [];
           let p = 1;
           for (const l of processedLines) {
-            lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+            lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
             lineParams.push(
-              invoiceId, l.description, l.accountId || null, l.quantity, l.unitPrice,
-              l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder
+              invoiceId, l.description, l.accountId || null, l.lineType, l.itemId || null,
+              l.quantity, l.unitPrice, l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder
             );
           }
           await dbClient.query(
             `INSERT INTO customer_invoice_lines
-               (invoice_id, description, account_id, quantity, unit_price,
+               (invoice_id, description, account_id, line_type, item_id, quantity, unit_price,
                 vat_rate, subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
              VALUES ${lineVals.join(',')}`,
             lineParams

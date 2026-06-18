@@ -110,10 +110,18 @@
     .lines-table th.right { text-align: right; }
     .lines-table td  { padding: 3px 4px; vertical-align: middle; }
     .lines-table input, .lines-table select { width: 100%; padding: 5px 7px; font-size: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: inherit; }
+    .line-type-col   { width: 72px; }
+    .line-type-col select { font-size: 11px; padding: 4px 5px; }
     .line-num-col    { width: 75px; }
     .line-vat-col    { width: 60px; }
     .line-amt-col    { width: 90px; font-family: monospace; text-align: right; padding-right: 8px !important; }
     .line-del-col    { width: 28px; text-align: center; }
+    .line-acct-wrap, .line-item-wrap { margin: 0; }
+
+    /* ── Add-customer option in typeahead ────────────────────────────────── */
+    .cust-add-option           { color: #60a5fa !important; font-style: italic; }
+    .cust-add-option:hover,
+    .cust-add-option.focused   { background: rgba(96,165,250,0.12) !important; color: #93c5fd !important; }
 
     /* ── Totals ───────────────────────────────────────────────────────── */
     .totals-panel    { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 14px 18px; margin-top: 10px; }
@@ -305,10 +313,11 @@
       <table class="lines-table" id="invLinesTable">
         <thead>
           <tr>
+            <th class="line-type-col">Type</th>
             <th>Description</th>
-            <th>Revenue Account</th>
+            <th>Account / Item</th>
             <th class="line-num-col right">Qty</th>
-            <th class="line-num-col right">Unit Price</th>
+            <th class="line-num-col right">Price</th>
             <th class="line-vat-col right">VAT %</th>
             <th class="line-amt-col right">Amount</th>
             <th class="line-amt-col right">VAT</th>
@@ -497,6 +506,41 @@
   </div>
 </div>
 
+<!-- ══ Add Customer Modal (ACC-CORE-033) ═══════════════════════════════════ -->
+<div class="modal" id="modalAddCustomer">
+  <div class="modal-dialog narrow" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Add New Customer</h3>
+      <button class="modal-close" onclick="closeAddCustomer()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="addCustError" class="rev-error"></div>
+      <div class="form-group">
+        <label>Name *</label>
+        <input type="text" id="newCustName" placeholder="Customer name">
+      </div>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="newCustEmail" placeholder="optional">
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="text" id="newCustPhone" placeholder="optional">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>VAT Number</label>
+        <input type="text" id="newCustVat" placeholder="optional">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAddCustomer()">Cancel</button>
+      <button class="btn btn-primary" id="addCustBtn" onclick="submitAddCustomer()">Add Customer</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════════════════
 //  CONFIG & AUTH
@@ -506,6 +550,7 @@ const BASE = '/api/accounting/customer-invoices';
 let allInvoices     = [];
 let cachedAccounts  = [];
 let cachedCustomers = [];
+let cachedItems     = [];
 let openInvCache    = [];
 
 // ── Customer typeahead state ────────────────────────────────────────────────
@@ -556,7 +601,7 @@ async function init() {
   const today = new Date().toISOString().split('T')[0];
   ['invDate','invDueDate'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = today; });
   document.getElementById('payDate').value = today;
-  await Promise.all([loadInvoices(), loadCustomers(), loadAccounts(), loadBankAccounts()]);
+  await Promise.all([loadInvoices(), loadCustomers(), loadAccounts(), loadBankAccounts(), loadItems()]);
   initCustTypeahead();
   addInvLine();
 }
@@ -632,18 +677,32 @@ function renderCustDrop(query) {
     ? cachedCustomers.slice(0, 8)
     : cachedCustomers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 10);
 
-  if (!matches.length) {
-    drop.innerHTML = '<div class="cust-no-results">No customers found</div>';
+  let html = matches.map(c => {
+    const badge = c.source === 'pos'
+      ? `<span style="font-size:10px;opacity:0.4;margin-left:6px;">POS</span>`
+      : '';
+    return `<div class="cust-item"
+                 data-id="${c.id != null ? c.id : ''}"
+                 data-name="${esc(c.name)}"
+                 onmousedown="selectCustEl(this)">${esc(c.name)}${badge}</div>`;
+  }).join('');
+
+  // Show "Add Customer" when user has typed something and no exact match exists
+  const typedTrimmed = (query || '').trim();
+  if (typedTrimmed.length > 0) {
+    const exactMatch = cachedCustomers.some(c => c.name.toLowerCase() === typedTrimmed.toLowerCase());
+    if (!exactMatch) {
+      html += `<div class="cust-item cust-add-option"
+                    onmousedown="openAddCustomer('${esc(typedTrimmed).replace(/'/g,'&#39;')}')">
+                 + Add customer: <strong>${esc(typedTrimmed)}</strong>
+               </div>`;
+    }
+  }
+
+  if (!html) {
+    drop.innerHTML = '<div class="cust-no-results">Type to search or add a customer</div>';
   } else {
-    drop.innerHTML = matches.map(c => {
-      const badge = c.source === 'pos'
-        ? `<span style="font-size:10px;opacity:0.4;margin-left:6px;">POS</span>`
-        : '';
-      return `<div class="cust-item"
-                   data-id="${c.id != null ? c.id : ''}"
-                   data-name="${esc(c.name)}"
-                   onmousedown="selectCustEl(this)">${esc(c.name)}${badge}</div>`;
-    }).join('');
+    drop.innerHTML = html;
   }
 
   // Position flush below the input using viewport-relative coords
@@ -716,6 +775,84 @@ async function loadBankAccounts() {
   const accounts = ((data && (data.accounts || data.bankAccounts || data)) || []).filter(a => a.ledger_account_id);
   sel.innerHTML = '<option value="">— Select bank account —</option>' +
     accounts.map(a => `<option value="${a.ledger_account_id}">${esc(a.name)}${a.bank_name ? ' (' + esc(a.bank_name) + ')' : ''}</option>`).join('');
+}
+
+async function loadItems() {
+  const data = await apiGet('/api/accounting/items');
+  cachedItems = (data && data.items) ? data.items : [];
+}
+
+// ── Add Customer modal (ACC-CORE-033) ────────────────────────────────────────
+
+function openAddCustomer(prefill) {
+  closeCustDrop();
+  document.getElementById('newCustName').value  = prefill || '';
+  document.getElementById('newCustEmail').value = '';
+  document.getElementById('newCustPhone').value = '';
+  document.getElementById('newCustVat').value   = '';
+  const errEl = document.getElementById('addCustError');
+  if (errEl) errEl.style.display = 'none';
+  document.getElementById('modalAddCustomer').classList.add('show');
+}
+
+function closeAddCustomer() {
+  document.getElementById('modalAddCustomer').classList.remove('show');
+}
+
+async function submitAddCustomer() {
+  const name  = document.getElementById('newCustName').value.trim();
+  const email = document.getElementById('newCustEmail').value.trim();
+  const phone = document.getElementById('newCustPhone').value.trim();
+  const vat   = document.getElementById('newCustVat').value.trim();
+  const errEl = document.getElementById('addCustError');
+
+  if (!name) { alert('Customer name is required'); return; }
+  if (errEl) errEl.style.display = 'none';
+
+  const btn = document.getElementById('addCustBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    const r = await apiPost(`${BASE}/customers`, {
+      name, email: email || null, phone: phone || null, vatNumber: vat || null,
+    });
+
+    if (!r.ok) {
+      // 409 = duplicate — reuse the existing customer record
+      if (r.status === 409 && r.data.customer) {
+        const c = r.data.customer;
+        closeAddCustomer();
+        await loadCustomers();
+        selectCustomerDirectly(c.id, c.name);
+        return;
+      }
+      if (errEl) { errEl.textContent = r.data.error || 'Failed to add customer'; errEl.style.display = 'block'; }
+      else alert(r.data.error || 'Failed to add customer');
+      return;
+    }
+
+    const c = r.data.customer;
+    await loadCustomers();   // refresh dropdown cache with new customer
+    closeAddCustomer();
+    selectCustomerDirectly(c.id, c.name);
+  } catch (err) {
+    if (errEl) { errEl.textContent = 'Network error: ' + err.message; errEl.style.display = 'block'; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add Customer';
+  }
+}
+
+function selectCustomerDirectly(id, name) {
+  const inp  = document.getElementById('invCustomerName');
+  const warn = document.getElementById('invCustWarn');
+  inp.value  = name;
+  document.getElementById('invCustomerId').value = id ? String(id) : '';
+  _invCustomerSelected = true;
+  inp.classList.remove('cust-invalid');
+  if (warn) warn.style.display = 'none';
+  closeCustDrop();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -864,20 +1001,49 @@ async function editInvoice(id) {
 }
 
 function addInvLine(line) {
-  const tbody = document.getElementById('invLinesTbody');
-  const idx   = tbody.children.length;
+  const tbody    = document.getElementById('invLinesTbody');
+  const lineType = line?.line_type === 'item' ? 'item' : 'account';
 
   const accountOpts = cachedAccounts.map(a =>
-    `<option value="${a.id}"${line && parseInt(line.account_id) === a.id ? ' selected' : ''}>${esc(a.code)} — ${esc(a.name)}</option>`
+    `<option value="${a.id}"${lineType === 'account' && line && parseInt(line.account_id) === a.id ? ' selected' : ''}>${esc(a.code)} — ${esc(a.name)}</option>`
   ).join('');
+
+  const itemOpts = cachedItems.map(i =>
+    `<option value="${i.id}"
+       data-name="${esc(i.item_name)}"
+       data-price="${i.selling_price != null ? i.selling_price : ''}"
+       data-acct="${i.income_account_id || ''}"
+       data-tax="${i.tax_type || 'standard'}"
+       ${lineType === 'item' && line && parseInt(line.item_id) === i.id ? ' selected' : ''}
+     >${esc(i.item_name)}${i.item_code ? ' [' + esc(i.item_code) + ']' : ''}</option>`
+  ).join('');
+
+  // For item lines loaded from DB: account_id holds the resolved income account
+  const resolvedItemAcct = lineType === 'item' ? (line?.account_id || '') : '';
+  const resolvedItemId   = lineType === 'item' ? (line?.item_id   || '') : '';
 
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="text" placeholder="Description" value="${esc(line?.description || '')}" oninput="updateInvTotals()"></td>
-    <td><select class="line-acct" onchange="updateInvTotals()"><option value="">— Select —</option>${accountOpts}</select></td>
-    <td class="line-num-col"><input type="number" class="line-qty" value="${line?.quantity || 1}" step="0.01" min="0" oninput="updateInvTotals()"></td>
+    <td class="line-type-col">
+      <select class="line-type" onchange="onLineTypeChange(this)">
+        <option value="account"${lineType === 'account' ? ' selected' : ''}>Account</option>
+        <option value="item"${lineType === 'item' ? ' selected' : ''}>Item</option>
+      </select>
+    </td>
+    <td><input type="text" class="line-desc" placeholder="Description" value="${esc(line?.description || '')}" oninput="updateInvTotals()"></td>
+    <td>
+      <div class="line-acct-wrap"${lineType === 'item' ? ' style="display:none"' : ''}>
+        <select class="line-acct" onchange="updateInvTotals()"><option value="">— Select account —</option>${accountOpts}</select>
+      </div>
+      <div class="line-item-wrap"${lineType === 'account' ? ' style="display:none"' : ''}>
+        <select class="line-item" onchange="onItemSelect(this)"><option value="">— Select item —</option>${itemOpts}</select>
+        <input type="hidden" class="line-item-acct" value="${resolvedItemAcct}">
+        <input type="hidden" class="line-item-id"   value="${resolvedItemId}">
+      </div>
+    </td>
+    <td class="line-num-col"><input type="number" class="line-qty"   value="${line?.quantity  || 1}"  step="0.01" min="0" oninput="updateInvTotals()"></td>
     <td class="line-num-col"><input type="number" class="line-price" value="${line?.unit_price || ''}" step="0.01" min="0" placeholder="0.00" oninput="updateInvTotals()"></td>
-    <td class="line-vat-col"><input type="number" class="line-vat" value="${line?.vat_rate != null ? line.vat_rate : 15}" step="0.01" min="0" max="100" oninput="updateInvTotals()"></td>
+    <td class="line-vat-col"><input type="number" class="line-vat"   value="${line?.vat_rate != null ? line.vat_rate : 15}" step="0.01" min="0" max="100" oninput="updateInvTotals()"></td>
     <td class="line-amt-col" data-subex>—</td>
     <td class="line-amt-col" data-vat>—</td>
     <td class="line-amt-col" data-total>—</td>
@@ -887,19 +1053,57 @@ function addInvLine(line) {
   updateInvTotals();
 }
 
+function onLineTypeChange(sel) {
+  const tr       = sel.closest('tr');
+  const isItem   = sel.value === 'item';
+  const acctWrap = tr.querySelector('.line-acct-wrap');
+  const itemWrap = tr.querySelector('.line-item-wrap');
+  if (acctWrap) acctWrap.style.display = isItem ? 'none' : '';
+  if (itemWrap) itemWrap.style.display = isItem ? '' : 'none';
+  updateInvTotals();
+}
+
+function onItemSelect(sel) {
+  const tr    = sel.closest('tr');
+  const opt   = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+
+  const descInput  = tr.querySelector('.line-desc');
+  const priceInput = tr.querySelector('.line-price');
+  const vatInput   = tr.querySelector('.line-vat');
+  const acctHidden = tr.querySelector('.line-item-acct');
+  const idHidden   = tr.querySelector('.line-item-id');
+
+  if (descInput && !descInput.value.trim()) descInput.value = opt.dataset.name || '';
+  if (priceInput && opt.dataset.price)      priceInput.value = opt.dataset.price;
+  if (vatInput) vatInput.value = (opt.dataset.tax === 'zero_rated' || opt.dataset.tax === 'exempt') ? '0' : '15';
+  if (acctHidden) acctHidden.value = opt.dataset.acct || '';
+  if (idHidden)   idHidden.value   = opt.value;
+
+  updateInvTotals();
+}
+
 function recalcLines() { updateInvTotals(); }
 
 function collectLines() {
   const rows = document.querySelectorAll('#invLinesTbody tr');
   return Array.from(rows).map(tr => {
-    const inputs  = tr.querySelectorAll('input');
-    const acctSel = tr.querySelector('select.line-acct');
+    const lineType  = tr.querySelector('.line-type')?.value || 'account';
+    const isItem    = lineType === 'item';
+    const acctSel   = tr.querySelector('.line-acct');
+    const itemAcctH = tr.querySelector('.line-item-acct');
+    const itemIdH   = tr.querySelector('.line-item-id');
+    const vatRaw    = parseFloat(tr.querySelector('.line-vat')?.value);
     return {
-      description: inputs[0]?.value || '',
-      accountId:   acctSel?.value ? parseInt(acctSel.value) : null,
-      quantity:    parseFloat(inputs[1]?.value) || 1,
-      unitPrice:   parseFloat(inputs[2]?.value) || 0,
-      vatRate:     parseFloat(inputs[3]?.value) != null ? parseFloat(inputs[3]?.value) : 15,
+      lineType,
+      description: tr.querySelector('.line-desc')?.value || '',
+      accountId:   isItem
+                     ? (itemAcctH?.value ? parseInt(itemAcctH.value) : null)
+                     : (acctSel?.value   ? parseInt(acctSel.value)   : null),
+      itemId:      isItem && itemIdH?.value ? parseInt(itemIdH.value) : null,
+      quantity:    parseFloat(tr.querySelector('.line-qty')?.value)   || 1,
+      unitPrice:   parseFloat(tr.querySelector('.line-price')?.value) || 0,
+      vatRate:     isNaN(vatRaw) ? 15 : vatRaw,
     };
   }).filter(l => l.description || l.unitPrice);
 }
@@ -909,10 +1113,9 @@ function updateInvTotals() {
   let subEx = 0, vatSum = 0, incVat = 0;
 
   document.querySelectorAll('#invLinesTbody tr').forEach(tr => {
-    const inputs = tr.querySelectorAll('input');
-    const qty    = parseFloat(inputs[1]?.value) || 1;
-    const price  = parseFloat(inputs[2]?.value) || 0;
-    const rate   = parseFloat(inputs[3]?.value);
+    const qty        = parseFloat(tr.querySelector('.line-qty')?.value)   || 1;
+    const price      = parseFloat(tr.querySelector('.line-price')?.value) || 0;
+    const rate       = parseFloat(tr.querySelector('.line-vat')?.value);
     const parsedRate = isNaN(rate) ? 15 : rate;
     const entered = Math.round(qty * price * 10000) / 10000;
 

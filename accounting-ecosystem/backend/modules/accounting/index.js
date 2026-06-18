@@ -73,6 +73,7 @@ router.use('/reports', require('./routes/reports'));
 router.use('/suppliers/invoice-ocr-drafts', require('./routes/supplierOcrDrafts'));
 router.use('/suppliers', require('./routes/suppliers'));
 router.use('/customer-invoices', require('./routes/customer-invoices'));
+router.use('/items',            require('./routes/accounting-items'));
 router.use('/segments', require('./routes/segments'));
 
 // Tax & compliance
