@@ -1989,7 +1989,7 @@ async function switchTab(name) {
     if (name === 'movements')  await loadMovements();
     if (name === 'warehouses') {} // already loaded
     if (name === 'suppliers')  await loadSuppliers();
-    if (name === 'orders')     await loadOrders();
+    if (name === 'orders')     { const tasks = [loadOrders()]; if (!_suppliersCache.length) tasks.push(loadSuppliers()); await Promise.all(tasks); }
     if (name === 'boms')       await loadBoms();
     if (name === 'workorders') await loadWorkOrders();
     if (name === 'reports')    { onReportTypeChange(); loadSelectedReport(); populateReportWarehouseFilter(); }
@@ -2689,7 +2689,8 @@ function openItemModal() {
   openModal('itemModal');
 }
 
-function openQuickReceiveModal() {
+async function openQuickReceiveModal() {
+  if (!_suppliersCache.length) await loadSuppliers();
   const supplierSel = document.getElementById('quickReceiveSupplier');
   const itemSel = document.getElementById('quickReceiveItem');
   supplierSel.innerHTML = '<option value="">— Select Supplier —</option>';
@@ -3353,7 +3354,8 @@ async function _buildReceiptHistoryHtml(poId) {
 // ────────────────────────────────────────────────────────────────────────────
 let _poLineCount = 0;
 
-function openCreatePoModal(prefill) {
+async function openCreatePoModal(prefill) {
+  if (!_suppliersCache.length) await loadSuppliers();
   _poLineCount = 0;
   // Populate supplier dropdown
   const sel = document.getElementById('poSupplier');
