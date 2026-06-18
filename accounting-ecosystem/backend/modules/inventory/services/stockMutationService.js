@@ -35,6 +35,8 @@
  *
  * @returns {Promise<{
  *   success: boolean,
+ *   movement_id?: number,  // stock_movements.id — null when sourceType/sourceId not provided
+ *   old_stock?: number,
  *   new_stock?: number,
  *   new_avg_cost?: number,
  *   error?: string,
@@ -100,10 +102,41 @@ async function adjustStockTx(supabase, {
     };
   }
 
+  // ── Resolve movement_id ─────────────────────────────────────────────────────
+  // The RPC writes v_movement_id to stock_movements and stock_valuation_movements
+  // but the current RETURN jsonb_build_object does not include it.
+  // Primary path: data.movement_id is used directly when the RPC is updated.
+  // Fallback path: query stock_valuation_movements via the source composite key —
+  //   that table already holds movement_id and previous_stock, both populated by the RPC.
+  let resolvedMovementId = data.movement_id != null ? Number(data.movement_id) : null;
+  let resolvedOldStock   = data.old_stock   != null ? Number(data.old_stock)   : undefined;
+
+  if (resolvedMovementId === null && sourceType && sourceId != null) {
+    const { data: svmRow } = await supabase
+      .from('stock_valuation_movements')
+      .select('movement_id, previous_stock')
+      .eq('company_id', companyId)
+      .eq('item_id', itemId)
+      .eq('source_type', sourceType)
+      .eq('source_id', String(sourceId))
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (svmRow) {
+      resolvedMovementId = svmRow.movement_id ?? null;
+      if (resolvedOldStock === undefined && svmRow.previous_stock != null) {
+        resolvedOldStock = Number(svmRow.previous_stock);
+      }
+    }
+  }
+
   return {
     success:      true,
+    movement_id:  resolvedMovementId,
+    old_stock:    resolvedOldStock,
     new_stock:    data.new_stock    != null ? Number(data.new_stock)    : undefined,
-    new_avg_cost: data.new_avg_cost != null ? Number(data.new_avg_cost) : undefined
+    new_avg_cost: data.new_avg_cost != null ? Number(data.new_avg_cost) : undefined,
   };
 }
 
