@@ -487,9 +487,10 @@ async function doUpload() {
     const data = await r.json();
 
     if (!r.ok) {
-      // Column detection failure — show friendly hint
-      if (r.status === 422 && data.headers) {
-        toast(`Column detection failed: ${data.missingFields.join(', ')}. Rename your headers.`, 'err');
+      if (r.status === 422) {
+        // Column detection failure — show structured hint
+        const missing = (data.missingFields || []).join('; ');
+        toast(`Column detection failed: ${missing || 'required columns not found'}`, 'err');
         showColumnHint(data);
       } else if (r.status === 409) {
         toast(data.message || data.error, 'inf');
@@ -500,6 +501,7 @@ async function doUpload() {
       }
     } else {
       toast(data.message || 'Staged successfully', 'ok');
+      if (data.detectionSummary) showDetectionSummary(data.detectionSummary);
       loadBatches();
       if (data.batch) loadDetail(data.batch.id);
       // Reset form
@@ -518,14 +520,49 @@ async function doUpload() {
 
 function showColumnHint(data) {
   const div = document.createElement('div');
-  div.style.cssText = 'background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:14px;margin-top:12px;font-size:12px;';
-  div.innerHTML = `<strong style="color:#f87171">Columns not detected</strong><br>
-    Missing: ${data.missingFields.map(f => `<code style="color:#fca5a5">${f}</code>`).join(', ')}<br><br>
-    <strong>Detected headers:</strong><br>
-    ${(data.headers || []).map(h => `Row ${h.index+1}: <code style="color:#94a3b8">${h.name}</code>`).join(' &nbsp;|&nbsp; ')}<br><br>
-    Rename your spreadsheet headers to: <code>Date</code>, <code>Account Code</code>, <code>Account Name</code>, <code>Debit</code>, <code>Credit</code>, <code>Description</code>, <code>Reference</code>`;
+  div.style.cssText = 'background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:14px;margin-top:12px;font-size:12px;line-height:1.7';
+
+  const headerCells = (data.headerCells || data.headers || []);
+  const headerRow   = data.headerRowFound ? `(detected at file row ${data.headerRowFound})` : '';
+  const rawPrev     = (data.rawPreview || []).slice(0, 5).map(r =>
+    `<div style="opacity:0.65;font-family:monospace;font-size:11px">Row ${r.rowIndex}: ${r.cells.slice(0,6).join(' | ')}</div>`
+  ).join('');
+
+  div.innerHTML = `
+    <strong style="color:#f87171">Column detection failed</strong>
+    <div style="margin-top:6px"><strong>Missing:</strong> ${(data.missingFields || []).map(f => `<code style="color:#fca5a5">${f}</code>`).join(', ')}</div>
+    ${headerCells.length ? `<div style="margin-top:6px"><strong>Headers found ${headerRow}:</strong><br>
+      ${headerCells.map(h => `<code style="color:#94a3b8;margin-right:6px">${h.name || '—'}</code>`).join('')}
+    </div>` : ''}
+    ${rawPrev ? `<div style="margin-top:8px"><strong>First rows in file:</strong>${rawPrev}</div>` : ''}
+    <div style="margin-top:8px;color:#94a3b8">${data.hint || 'Supported column names: Date / Account Date / Transaction Date; Account Code / Account Name / Account Description; Debit + Credit (or Amount)'}</div>`;
+
   document.querySelector('.card-body').appendChild(div);
-  setTimeout(() => div.remove(), 15000);
+  setTimeout(() => div.remove(), 20000);
+}
+
+function showDetectionSummary(ds) {
+  const existing = document.getElementById('detectionSummaryBar');
+  if (existing) existing.remove();
+
+  const cols = Object.entries(ds.detectedColumns || {})
+    .filter(([, v]) => v)
+    .map(([k, v]) => `<span style="opacity:0.8">${k}:</span> <code style="color:#a78bfa">${v}</code>`)
+    .join(' &nbsp;·&nbsp; ');
+
+  const div = document.createElement('div');
+  div.id = 'detectionSummaryBar';
+  div.style.cssText = 'background:rgba(124,106,247,.1);border:1px solid rgba(124,106,247,.25);border-radius:8px;padding:12px 14px;margin-top:10px;font-size:12px;line-height:1.8';
+  div.innerHTML = `
+    <strong style="color:#a78bfa">Format detected: ${ds.formatHint || 'GL Export'}</strong>
+    <div style="margin-top:4px">${cols || 'Columns detected'}</div>
+    <div style="margin-top:4px;opacity:0.65">
+      Header at file row ${ds.headerRowInFile || 1} &nbsp;·&nbsp;
+      ${ds.skippedLeadingRows || 0} metadata row(s) skipped &nbsp;·&nbsp;
+      ${ds.skippedSummaryRows || 0} summary row(s) excluded
+    </div>`;
+  document.querySelector('.card-body').appendChild(div);
+  setTimeout(() => div.remove(), 12000);
 }
 
 // ─── Load batches ──────────────────────────────────────────────────────────

@@ -68,16 +68,35 @@ function companyId(req) {
 }
 
 // Column name patterns for auto-detection (order matters — first match wins)
+// ACC-SIDEQUEST-001.1: expanded to cover Account Transactions Report and Sage/Pastel formats
 const COL_PATTERNS = {
-  transaction_date:    /^(date|transaction[\s_-]?date|trans[\s_-]?date|posting[\s_-]?date|txn[\s_-]?date|value[\s_-]?date|doc[\s_-]?date|period)$/i,
+  transaction_date:    /^(date|transaction[\s_-]?date|trans[\s_-]?date|posting[\s_-]?date|txn[\s_-]?date|value[\s_-]?date|doc[\s_-]?date|period|account[\s_-]?date|entry[\s_-]?date|journal[\s_-]?date)$/i,
   source_account_code: /^(account[\s_-]?code|acc[\s_-]?code|account[\s_-]?no\.?|gl[\s_-]?code|account[\s_-]?number|a\/?c[\s_-]?no\.?|ledger[\s_-]?code|code|acct[\s_-]?code|acct[\s_-]?no)$/i,
-  source_account_name: /^(account[\s_-]?name|acc[\s_-]?name|gl[\s_-]?account|account[\s_-]?description|ledger[\s_-]?name|ledger|account)$/i,
-  source_description:  /^(description|narrative|details?|memo|particulars|posting[\s_-]?text|narration|detail|notes?)$/i,
-  source_reference:    /^(reference|ref\.?|document[\s_-]?no\.?|doc[\s_-]?no\.?|cheque[\s_-]?no\.?|invoice[\s_-]?no\.?|inv[\s_-]?no\.?|voucher[\s_-]?no\.?|trans[\s_-]?ref|source[\s_-]?ref|batch|order[\s_-]?no\.?|transaction[\s_-]?id|txn[\s_-]?id)$/i,
+  source_account_name: /^(account[\s_-]?name|acc[\s_-]?name|gl[\s_-]?account|account[\s_-]?description|ledger[\s_-]?name|ledger[\s_-]?account|nominal[\s_-]?account|ledger|account)$/i,
+  source_description:  /^(description|narrative|details?|memo|particulars|posting[\s_-]?text|narration|detail|notes?|transaction[\s_-]?description)$/i,
+  source_reference:    /^(reference|ref\.?|document[\s_-]?no\.?|document[\s_-]?number|doc[\s_-]?no\.?|cheque[\s_-]?no\.?|invoice[\s_-]?no\.?|invoice[\s_-]?number|inv[\s_-]?no\.?|voucher[\s_-]?no\.?|trans[\s_-]?ref|source[\s_-]?ref|batch|order[\s_-]?no\.?|transaction[\s_-]?id|txn[\s_-]?id|source)$/i,
   debit:               /^(debit|dr\.?|debit[\s_-]?amount|debit[\s_-]?value|debits?)$/i,
   credit:              /^(credit|cr\.?|credit[\s_-]?amount|credit[\s_-]?value|credits?)$/i,
-  amount:              /^(amount|net[\s_-]?amount|value|total[\s_-]?amount|net|balance|signed[\s_-]?amount)$/i,
+  // 'balance' removed — it's a running balance column in Account Transactions Reports, not an amount field
+  amount:              /^(amount|net[\s_-]?amount|value|total[\s_-]?amount|net|signed[\s_-]?amount)$/i,
+  // Additional columns detected for context but not required for staging
+  counterparty:        /^(bank\s*[\/|]\s*customer\s*[\/|]\s*supplier|counterparty|payee|payer)$/i,
+  transaction_type:    /^(transaction[\s_-]?type|txn[\s_-]?type|trans[\s_-]?type|entry[\s_-]?type|type)$/i,
+  source_balance:      /^(balance|running[\s_-]?balance|closing[\s_-]?balance)$/i,
 };
+
+// Summary/control rows that must not be staged as transactions
+const SUMMARY_ROW_PATTERNS = [
+  /opening[\s_-]?balance/i,
+  /closing[\s_-]?balance/i,
+  /balance[\s_-]?brought[\s_-]?forward/i,
+  /balance[\s_-]?carried[\s_-]?forward/i,
+  /movement[\s_-]?for[\s_-]?the[\s_-]?period/i,
+  /^totals?$/i,
+  /^subtotals?$/i,
+  /report[\s_-]?total/i,
+  /^total[\s_-]?(debits?|credits?|movements?|for[\s_-]?period)$/i,
+];
 
 function detectColumns(headerRow) {
   const mapping = {};
@@ -98,15 +117,102 @@ function detectColumns(headerRow) {
   const hasAccount = mapping.source_account_code !== undefined || mapping.source_account_name !== undefined;
   const hasAmounts = (mapping.debit !== undefined && mapping.credit !== undefined) || mapping.amount !== undefined;
 
+  // Build human-readable column label for what was detected
+  const detectedLabels = {};
+  headers.forEach(h => {
+    for (const [field, pattern] of Object.entries(COL_PATTERNS)) {
+      if (pattern.test(h.key) && detectedLabels[field] === undefined) {
+        detectedLabels[field] = h.key;
+      }
+    }
+  });
+
   return {
     mapping,
-    isValid:       hasDate && hasAccount && hasAmounts,
+    isValid:        hasDate && hasAccount && hasAmounts,
+    detectedLabels, // original header text that matched each field
     missingFields: [
-      !hasDate    && 'date column (Date / Transaction Date / Posting Date)',
-      !hasAccount && 'account column (Account Code / Account Name / GL Code)',
+      !hasDate    && 'date column (Date / Account Date / Transaction Date / Posting Date / Entry Date)',
+      !hasAccount && 'account column (Account Code / Account Name / Account Description / GL Account)',
       !hasAmounts && 'amount column(s) (Debit + Credit, or Amount)',
     ].filter(Boolean),
   };
+}
+
+// Score a candidate header row by counting cells that match known column patterns.
+// Used by preprocessRows to find the real header row when metadata rows appear first.
+function scoreHeaderRow(row) {
+  let score = 0;
+  for (const cell of row) {
+    const s = String(cell || '').trim();
+    if (!s) continue;
+    for (const pattern of Object.values(COL_PATTERNS)) {
+      if (pattern.test(s)) { score++; break; }
+    }
+  }
+  return score;
+}
+
+// Scan up to the first 20 rows to find the true header row.
+// Skips: empty rows, sep=, rows, and rows with fewer than 3 non-empty cells (likely title/company rows).
+// Returns the row with the highest column-pattern match score.
+function preprocessRows(allRows) {
+  const maxScan = Math.min(20, allRows.length);
+  let bestScore = -1;
+  let bestIdx   = 0;
+  const skippedTypes = [];
+
+  for (let i = 0; i < maxScan; i++) {
+    const row = allRows[i];
+    if (!row || row.length === 0) { skippedTypes.push('empty'); continue; }
+
+    const cells    = row.map(c => String(c || '').trim()).filter(Boolean);
+    const firstCell = cells[0] || '';
+
+    // sep=, / sep=; Excel hint rows
+    if (/^sep=/i.test(firstCell) && cells.length <= 2) {
+      skippedTypes.push('sep-hint');
+      continue;
+    }
+
+    // Rows with fewer than 3 non-empty cells are likely title/company/date rows
+    if (cells.length < 3) {
+      skippedTypes.push('metadata');
+      continue;
+    }
+
+    const score = scoreHeaderRow(row);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx   = i;
+    }
+  }
+
+  return {
+    headerRowIdx:       bestIdx,
+    headerRow:          allRows[bestIdx] || [],
+    dataRows:           allRows.slice(bestIdx + 1),
+    skippedLeadingRows: bestIdx,
+    skippedTypes,
+    headerScore:        bestScore,
+  };
+}
+
+// Returns true if a staged line looks like a summary/control row that should be skipped.
+function isSummaryRow(line) {
+  const candidates = [
+    line.source_description,
+    line.source_account_name,
+    line.source_account_code,
+    line.source_reference,
+  ].filter(Boolean);
+
+  for (const s of candidates) {
+    for (const pat of SUMMARY_ROW_PATTERNS) {
+      if (pat.test(String(s).trim())) return true;
+    }
+  }
+  return false;
 }
 
 function normalizeDate(rawDate) {
@@ -147,19 +253,35 @@ function normalizeDate(rawDate) {
 
 function cleanAmount(raw) {
   if (raw == null || raw === '') return 0;
-  const s = String(raw).trim().replace(/[^0-9.\-]/g, '');
+  let s = String(raw).trim();
+
+  // Parentheses negative: (1,234.56) or (1 234.56) → treat as positive absolute value
+  // (sign is irrelevant here — caller owns debit vs credit semantics)
+  const isParenWrapped = s.startsWith('(') && s.endsWith(')');
+  if (isParenWrapped) s = s.slice(1, -1);
+
+  // Strip currency symbols, spaces, commas (thousand separators)
+  s = s.replace(/[^\d.\-]/g, '');
+
+  // Trailing minus: 1234.56- (some European export formats)
+  if (s.endsWith('-')) s = s.slice(0, -1);
+
   const n = parseFloat(s);
   return isNaN(n) ? 0 : Math.abs(n); // always return positive; sign handled by caller
 }
 
-function parseRows(dataRows, colMap) {
+// headerOffset: the 0-based index of the header row in the original file,
+// used to report accurate source_row_number values for audit purposes.
+function parseRows(dataRows, colMap, headerOffset = 0) {
   const m = colMap.mapping;
   const get = (row, field) => {
     const idx = m[field];
     return idx !== undefined ? String(row[idx] ?? '').trim() : '';
   };
 
-  const lines = [];
+  const lines    = [];
+  let skippedSummary = 0;
+
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
     if (!row || row.every(cell => cell === '' || cell == null)) continue;
@@ -174,21 +296,27 @@ function parseRows(dataRows, colMap) {
       debit  = cleanAmount(row[m.debit]);
       credit = cleanAmount(row[m.credit]);
     } else if (m.amount !== undefined) {
-      const raw = String(row[m.amount] ?? '').trim();
-      // Strip currency symbols but preserve sign
-      const s = raw.replace(/[^0-9.\-]/g, '');
+      const rawAmt = String(row[m.amount] ?? '').trim();
+      // Preserve sign for amount columns: positive → debit, negative → credit
+      let s = rawAmt;
+      const isParenNeg = s.startsWith('(') && s.endsWith(')');
+      if (isParenNeg) s = s.slice(1, -1);
+      s = s.replace(/[^\d.\-]/g, '');
+      const isTrailingMinus = s.endsWith('-');
+      if (isTrailingMinus) s = s.slice(0, -1);
       const n = parseFloat(s);
       if (!isNaN(n)) {
-        if (n >= 0) debit  = n;
-        else        credit = Math.abs(n);
+        const signed = (isParenNeg || isTrailingMinus) ? -Math.abs(n) : n;
+        if (signed >= 0) debit  = signed;
+        else             credit = Math.abs(signed);
       }
     }
 
     // Skip rows that are purely zero (likely blank filler rows)
     if (debit === 0 && credit === 0) continue;
 
-    lines.push({
-      source_row_number:   i + 2, // +2: 1-indexed + header row
+    const candidate = {
+      source_row_number:   headerOffset + i + 2, // header offset + 1-indexed + skip header row itself
       transaction_date:    txDate,
       source_account_code: get(row, 'source_account_code') || null,
       source_account_name: get(row, 'source_account_name') || null,
@@ -196,12 +324,21 @@ function parseRows(dataRows, colMap) {
       source_reference:    get(row, 'source_reference')     || null,
       debit,
       credit,
-      source_currency: 'ZAR',
-      mapping_status:  'unmapped',
+      source_currency:   'ZAR',
+      mapping_status:    'unmapped',
       validation_status: 'pending',
-    });
+    };
+
+    // Phase 4: filter summary/balance control rows before staging
+    if (isSummaryRow(candidate)) {
+      skippedSummary++;
+      continue;
+    }
+
+    lines.push(candidate);
   }
-  return lines;
+
+  return { lines, skippedSummary };
 }
 
 // Bulk-insert lines in chunks to avoid parametre limits
@@ -333,24 +470,39 @@ router.post('/import', authenticate, hasPermission('legacy_gl.import'),
       return res.status(400).json({ error: 'File must have at least one header row and one data row' });
     }
 
-    const [headerRow, ...dataRows] = allRows;
+    // Phase 1: preprocess — find true header row, skip sep=, and metadata rows
+    const preprocessed = preprocessRows(allRows);
+    const { headerRow, dataRows, headerRowIdx, skippedLeadingRows, skippedTypes } = preprocessed;
 
-    // Auto-detect column mapping
+    // Auto-detect column mapping from the real header row
     const colDetection = detectColumns(headerRow);
     if (!colDetection.isValid) {
+      // Phase 7: structured failure message with raw preview
+      const rawPreview = allRows.slice(0, Math.min(10, allRows.length)).map((row, i) => ({
+        rowIndex: i + 1,
+        cells:    row.map(c => String(c || '')),
+      }));
       return res.status(422).json({
-        error:         'Could not auto-detect required columns',
-        missingFields: colDetection.missingFields,
+        error:           'Could not auto-detect required columns from this file',
+        missingFields:   colDetection.missingFields,
         detectedColumns: colDetection.mapping,
-        headers:       headerRow.map((h, i) => ({ index: i, name: String(h || '') })),
-        hint:          'Rename your spreadsheet headers to match: Date, Account Code (or Account Name), Debit, Credit (or Amount), Description, Reference',
+        detectedLabels:  colDetection.detectedLabels,
+        headerRowFound:  headerRowIdx + 1,
+        headerCells:     headerRow.map((h, i) => ({ index: i, name: String(h || '') })),
+        rawPreview,
+        hint:            'Supported column names: Date / Account Date / Transaction Date / Posting Date; Account Code / Account Name / Account Description; Debit + Credit (or Amount)',
       });
     }
 
-    // Parse rows into normalized line objects
-    const lines = parseRows(dataRows, colDetection);
+    // Phase 3/4/5: parse rows with summary filtering and numeric hardening
+    const { lines, skippedSummary } = parseRows(dataRows, colDetection, headerRowIdx);
     if (lines.length === 0) {
-      return res.status(400).json({ error: 'No data rows could be parsed from the file (all rows may be blank or have no valid date)' });
+      return res.status(400).json({
+        error:          'No transaction rows could be staged from this file',
+        detail:         'All rows were blank, had no parseable date, had zero debit and credit, or were summary/balance rows that are excluded from import',
+        skippedSummary,
+        headerRowFound: headerRowIdx + 1,
+      });
     }
 
     // Persist in a transaction: create batch → bulk insert lines → apply saved mappings → refresh counts
@@ -394,9 +546,28 @@ router.post('/import', authenticate, hasPermission('legacy_gl.import'),
       .eq('id', batchId)
       .single();
 
+    // Phase 6: build human-readable detection summary
+    const detectionSummary = {
+      formatHint:     colDetection.detectedLabels.transaction_type ? 'Account Transactions Report' : 'General Ledger Export',
+      headerRowInFile: headerRowIdx + 1,
+      skippedLeadingRows,
+      skippedSummaryRows: skippedSummary,
+      detectedColumns: {
+        date:        colDetection.detectedLabels.transaction_date    || null,
+        account:     colDetection.detectedLabels.source_account_name || colDetection.detectedLabels.source_account_code || null,
+        description: colDetection.detectedLabels.source_description  || null,
+        reference:   colDetection.detectedLabels.source_reference    || null,
+        debit:       colDetection.detectedLabels.debit               || null,
+        credit:      colDetection.detectedLabels.credit              || null,
+        amount:      colDetection.detectedLabels.amount              || null,
+        counterparty:colDetection.detectedLabels.counterparty        || null,
+      },
+    };
+
     res.status(201).json({
-      batch:   result,
-      message: `Staged ${result.total_lines} lines. ${result.mapped_lines} auto-mapped using saved mappings. ${result.unmapped_lines} accounts need mapping.`,
+      batch:           result,
+      detectionSummary,
+      message: `Staged ${result.total_lines} lines. ${result.mapped_lines} auto-mapped using saved mappings. ${result.unmapped_lines} account(s) need mapping. ${skippedSummary} summary row(s) skipped.`,
     });
   }
 );
