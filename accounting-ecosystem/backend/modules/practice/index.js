@@ -1225,52 +1225,303 @@ router.put('/tasks/:id/qa-unlock', async (req, res) => {
 
 // ═══ TIME ENTRIES ═════════════════════════════════════════════════════════════
 
-router.get('/time-entries', async (req, res) => {
-  const { client_id, task_id, user_id, date_from, date_to } = req.query;
+const TIME_TYPES      = ['billable', 'non_billable', 'internal', 'admin'];
+const BILLING_STATUSES = ['unbilled', 'pending_review', 'approved', 'rejected', 'billed', 'written_off'];
+
+// Compute effective_rate and recoverable_value from rate inputs.
+// Priority: override_rate > legacy_rate (old 'rate' field) > standard_rate
+function computeTimeRates(hours, standardRate, overrideRate, legacyRate) {
+  const std = standardRate != null ? parseFloat(standardRate) : null;
+  const ovr = overrideRate != null ? parseFloat(overrideRate)
+    : (legacyRate != null ? parseFloat(legacyRate) : null);
+  const effective = ovr != null ? ovr : std;
+  const recoverable = (effective != null && hours != null)
+    ? Math.round(parseFloat(hours) * effective * 100) / 100
+    : null;
+  return { effectiveRate: effective, recoverableValue: recoverable, resolvedOverrideRate: ovr };
+}
+
+// Derive time_type from the old billable boolean when time_type is not explicitly sent.
+function deriveTimeType(timeType, billable) {
+  if (timeType && TIME_TYPES.includes(timeType)) return timeType;
+  return (billable === false || billable === 'false') ? 'non_billable' : 'billable';
+}
+
+// Verify a client belongs to this company.
+async function verifyClientBelongsToCompany(companyId, clientId) {
+  if (!clientId) return true;
+  const { data } = await supabase
+    .from('practice_clients')
+    .select('id').eq('id', parseInt(clientId)).eq('company_id', companyId).single();
+  return !!data;
+}
+
+// Verify a task belongs to this company.
+async function verifyTaskBelongsToCompany(companyId, taskId) {
+  if (!taskId) return true;
+  const { data } = await supabase
+    .from('practice_tasks')
+    .select('id').eq('id', parseInt(taskId)).eq('company_id', companyId).single();
+  return !!data;
+}
+
+// Verify a workflow run belongs to this company.
+async function verifyWorkflowRunBelongsToCompany(companyId, runId) {
+  if (!runId) return true;
+  const { data } = await supabase
+    .from('practice_workflow_runs')
+    .select('id').eq('id', parseInt(runId)).eq('company_id', companyId).single();
+  return !!data;
+}
+
+// ── WIP Report ────────────────────────────────────────────────────────────────
+// Must be defined before :id routes to prevent 'wip'/'summary' matching as :id
+
+router.get('/time-entries/wip', async (req, res) => {
+  const { client_id, user_id, workflow_run_id, date_from, date_to } = req.query;
+
   let q = supabase
     .from('practice_time_entries')
-    .select('*, practice_clients:client_id(name), practice_tasks:task_id(title)')
+    .select('hours, billing_status, time_type, recoverable_value, billed_value, writeoff_value')
     .eq('company_id', req.companyId)
-    .order('date', { ascending: false });
+    .in('time_type', ['billable']);
 
-  if (client_id) q = q.eq('client_id', parseInt(client_id));
-  if (task_id) q = q.eq('task_id', parseInt(task_id));
-  if (user_id) q = q.eq('user_id', parseInt(user_id));
-  if (date_from) q = q.gte('date', date_from);
-  if (date_to) q = q.lte('date', date_to);
+  if (client_id)      q = q.eq('client_id',      parseInt(client_id));
+  if (user_id)        q = q.eq('user_id',         parseInt(user_id));
+  if (workflow_run_id) q = q.eq('workflow_run_id', parseInt(workflow_run_id));
+  if (date_from)      q = q.gte('date', date_from);
+  if (date_to)        q = q.lte('date', date_to);
 
   const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
 
-  const totalHours = (data || []).reduce((s, r) => s + (r.hours || 0), 0);
-  res.json({ time_entries: data || [], total_hours: Math.round(totalHours * 100) / 100 });
+  const rows = data || [];
+  const summary = {
+    unbilled:        { hours: 0, recoverable_value: 0 },
+    pending_review:  { hours: 0, recoverable_value: 0 },
+    approved:        { hours: 0, recoverable_value: 0 },
+    rejected:        { hours: 0, recoverable_value: 0 },
+    billed:          { hours: 0, billed_value: 0 },
+    written_off:     { hours: 0, writeoff_value: 0 }
+  };
+
+  rows.forEach(r => {
+    const h  = parseFloat(r.hours || 0);
+    const rv = parseFloat(r.recoverable_value || 0);
+    const bv = parseFloat(r.billed_value     || 0);
+    const wv = parseFloat(r.writeoff_value   || 0);
+    const s  = r.billing_status || 'unbilled';
+    if (summary[s]) {
+      summary[s].hours = Math.round((summary[s].hours + h) * 100) / 100;
+      if (s === 'billed')      summary[s].billed_value   = Math.round((summary[s].billed_value   + bv) * 100) / 100;
+      else if (s === 'written_off') summary[s].writeoff_value = Math.round((summary[s].writeoff_value + wv) * 100) / 100;
+      else                     summary[s].recoverable_value = Math.round((summary[s].recoverable_value + rv) * 100) / 100;
+    }
+  });
+
+  const totalUnbilledHours    = summary.unbilled.hours + summary.pending_review.hours + summary.rejected.hours;
+  const totalRecoverable      = summary.unbilled.recoverable_value + summary.pending_review.recoverable_value + summary.approved.recoverable_value;
+
+  res.json({
+    by_status: summary,
+    total_unbilled_hours: Math.round(totalUnbilledHours * 100) / 100,
+    total_recoverable:    Math.round(totalRecoverable   * 100) / 100
+  });
 });
 
+// ── Time Summary (utilization reporting) ─────────────────────────────────────
+
+router.get('/time-entries/summary', async (req, res) => {
+  const { client_id, user_id, date_from, date_to } = req.query;
+
+  let q = supabase
+    .from('practice_time_entries')
+    .select('hours, time_type, billable, recoverable_value')
+    .eq('company_id', req.companyId);
+
+  if (client_id) q = q.eq('client_id', parseInt(client_id));
+  if (user_id)   q = q.eq('user_id',   parseInt(user_id));
+  if (date_from) q = q.gte('date', date_from);
+  if (date_to)   q = q.lte('date', date_to);
+
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ error: error.message });
+
+  const rows = data || [];
+  let billable_hours = 0, non_billable_hours = 0, internal_hours = 0, admin_hours = 0, recoverable = 0;
+
+  rows.forEach(r => {
+    const h = parseFloat(r.hours || 0);
+    const t = r.time_type || (r.billable ? 'billable' : 'non_billable');
+    if (t === 'billable')      { billable_hours     += h; recoverable += parseFloat(r.recoverable_value || 0); }
+    else if (t === 'non_billable') non_billable_hours += h;
+    else if (t === 'internal')     internal_hours     += h;
+    else if (t === 'admin')        admin_hours         += h;
+  });
+
+  const total_hours     = billable_hours + non_billable_hours + internal_hours + admin_hours;
+  const utilization_pct = total_hours > 0
+    ? Math.round((billable_hours / total_hours) * 1000) / 10
+    : 0;
+
+  res.json({
+    billable_hours:     Math.round(billable_hours     * 100) / 100,
+    non_billable_hours: Math.round(non_billable_hours * 100) / 100,
+    internal_hours:     Math.round(internal_hours     * 100) / 100,
+    admin_hours:        Math.round(admin_hours        * 100) / 100,
+    total_hours:        Math.round(total_hours        * 100) / 100,
+    utilization_pct,
+    recoverable_value:  Math.round(recoverable        * 100) / 100
+  });
+});
+
+// ── List time entries ─────────────────────────────────────────────────────────
+
+router.get('/time-entries', async (req, res) => {
+  const { client_id, task_id, user_id, date_from, date_to, billing_status, time_type, workflow_run_id } = req.query;
+
+  const page  = Math.max(1, parseInt(req.query.page  || 1));
+  const limit = Math.min(500, Math.max(1, parseInt(req.query.limit || 50)));
+  const from  = (page - 1) * limit;
+  const to    = from + limit - 1;
+
+  let q = supabase
+    .from('practice_time_entries')
+    .select(`*, practice_clients:client_id(name), practice_tasks:task_id(title)`, { count: 'exact' })
+    .eq('company_id', req.companyId)
+    .order('date', { ascending: false })
+    .range(from, to);
+
+  if (client_id)      q = q.eq('client_id',      parseInt(client_id));
+  if (task_id)        q = q.eq('task_id',         parseInt(task_id));
+  if (user_id)        q = q.eq('user_id',         parseInt(user_id));
+  if (date_from)      q = q.gte('date', date_from);
+  if (date_to)        q = q.lte('date', date_to);
+  if (billing_status) q = q.eq('billing_status',  billing_status);
+  if (time_type)      q = q.eq('time_type',        time_type);
+  if (workflow_run_id) q = q.eq('workflow_run_id', parseInt(workflow_run_id));
+
+  const { data, error, count } = await q;
+  if (error) return res.status(500).json({ error: error.message });
+
+  const totalHours = (data || []).reduce((s, r) => s + (r.hours || 0), 0);
+  res.json({
+    time_entries: data || [],
+    total_hours:  Math.round(totalHours * 100) / 100,
+    total:        count || 0
+  });
+});
+
+// ── Create time entry ─────────────────────────────────────────────────────────
+
 router.post('/time-entries', async (req, res) => {
-  const { client_id, task_id, hours, description, date, billable, rate } = req.body;
-  if (!hours || !date) return res.status(400).json({ error: 'hours and date are required' });
+  const {
+    client_id, task_id, workflow_run_id,
+    hours, description, date, billable,
+    time_type: rawTimeType,
+    standard_rate, override_rate, rate,
+    billing_notes, internal_notes
+  } = req.body;
+
+  if (!hours || hours <= 0) return res.status(400).json({ error: 'hours must be a positive number' });
+  if (!date)                return res.status(400).json({ error: 'date is required' });
+
+  // Validate ownership
+  const [clientOk, taskOk, runOk] = await Promise.all([
+    verifyClientBelongsToCompany(req.companyId, client_id),
+    verifyTaskBelongsToCompany(req.companyId, task_id),
+    verifyWorkflowRunBelongsToCompany(req.companyId, workflow_run_id)
+  ]);
+  if (!clientOk)  return res.status(400).json({ error: 'client_id not found in this company' });
+  if (!taskOk)    return res.status(400).json({ error: 'task_id not found in this company' });
+  if (!runOk)     return res.status(400).json({ error: 'workflow_run_id not found in this company' });
+
+  const resolvedTimeType = deriveTimeType(rawTimeType, billable);
+  const parsedHours      = parseFloat(hours);
+  const { effectiveRate, recoverableValue, resolvedOverrideRate } =
+    computeTimeRates(parsedHours, standard_rate, override_rate, rate);
+
+  const isBillable = resolvedTimeType === 'billable';
+
   const { data, error } = await supabase
     .from('practice_time_entries')
     .insert({
-      company_id: req.companyId,
-      user_id: req.user.userId,
-      client_id: client_id ? parseInt(client_id) : null,
-      task_id: task_id ? parseInt(task_id) : null,
-      hours: parseFloat(hours),
-      description: description || null,
+      company_id:        req.companyId,
+      user_id:           req.user.userId,
+      client_id:         client_id       ? parseInt(client_id)       : null,
+      task_id:           task_id         ? parseInt(task_id)         : null,
+      workflow_run_id:   workflow_run_id ? parseInt(workflow_run_id) : null,
+      hours:             parsedHours,
+      description:       description     || null,
       date,
-      billable: billable !== false,
-      rate: rate ? parseFloat(rate) : null
+      billable:          isBillable,
+      time_type:         resolvedTimeType,
+      rate:              effectiveRate,              // backward compat
+      standard_rate:     standard_rate ? parseFloat(standard_rate) : null,
+      override_rate:     resolvedOverrideRate,
+      effective_rate:    effectiveRate,
+      recoverable_value: isBillable ? recoverableValue : null,
+      billing_status:    'unbilled',
+      billing_notes:     billing_notes  || null,
+      internal_notes:    internal_notes || null
     })
     .select().single();
+
   if (error) return res.status(500).json({ error: error.message });
+
+  await auditFromReq(req, 'CREATE', 'practice_time_entry', data.id, {
+    module: 'practice',
+    client_id: data.client_id,
+    workflow_run_id: data.workflow_run_id
+  });
+
   res.status(201).json({ time_entry: data });
 });
 
+// ── Update time entry ─────────────────────────────────────────────────────────
+
 router.put('/time-entries/:id', async (req, res) => {
-  const allowed = ['hours', 'description', 'date', 'billable', 'rate', 'client_id', 'task_id'];
+  // Fetch current entry first to check company and billing_status
+  const { data: existing, error: fetchErr } = await supabase
+    .from('practice_time_entries')
+    .select('id, company_id, billing_status, hours, standard_rate, override_rate, effective_rate, time_type, billable')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+  if (fetchErr || !existing) return res.status(404).json({ error: 'Time entry not found' });
+
+  // Block edits on finalized entries
+  if (['billed', 'written_off'].includes(existing.billing_status)) {
+    return res.status(400).json({ error: `Cannot edit a time entry with status '${existing.billing_status}'` });
+  }
+
+  const ALLOWED = [
+    'client_id', 'task_id', 'workflow_run_id', 'hours', 'description', 'date', 'billable',
+    'time_type', 'standard_rate', 'override_rate', 'rate',
+    'billing_notes', 'internal_notes'
+  ];
   const updates = { updated_at: new Date().toISOString() };
-  allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+  ALLOWED.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+
+  // Validate time_type if supplied
+  if (updates.time_type && !TIME_TYPES.includes(updates.time_type)) {
+    return res.status(400).json({ error: `Invalid time_type. Must be one of: ${TIME_TYPES.join(', ')}` });
+  }
+
+  // Recompute effective_rate and recoverable_value whenever any rate or hours changes
+  const newHours    = updates.hours         != null ? parseFloat(updates.hours)         : parseFloat(existing.hours);
+  const newStdRate  = updates.standard_rate != null ? parseFloat(updates.standard_rate) : existing.standard_rate;
+  const newOvrRate  = updates.override_rate != null ? parseFloat(updates.override_rate)
+    : (updates.rate != null ? parseFloat(updates.rate) : existing.override_rate);
+  const newTimeType = updates.time_type || existing.time_type || (existing.billable ? 'billable' : 'non_billable');
+  const isBillable  = newTimeType === 'billable';
+
+  const { effectiveRate, recoverableValue } = computeTimeRates(newHours, newStdRate, newOvrRate, null);
+  updates.effective_rate    = effectiveRate;
+  updates.recoverable_value = isBillable ? recoverableValue : null;
+  updates.billable          = isBillable;
+  if (updates.rate == null && effectiveRate != null) updates.rate = effectiveRate; // keep legacy field in sync
+
   const { data, error } = await supabase
     .from('practice_time_entries')
     .update(updates)
@@ -1278,10 +1529,27 @@ router.put('/time-entries/:id', async (req, res) => {
     .eq('company_id', req.companyId)
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
+
+  await auditFromReq(req, 'UPDATE', 'practice_time_entry', data.id, { module: 'practice' });
+
   res.json({ time_entry: data });
 });
 
+// ── Delete time entry ─────────────────────────────────────────────────────────
+
 router.delete('/time-entries/:id', async (req, res) => {
+  // Fetch to check status before deleting
+  const { data: existing } = await supabase
+    .from('practice_time_entries')
+    .select('billing_status')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+
+  if (existing && ['billed', 'written_off'].includes(existing.billing_status)) {
+    return res.status(400).json({ error: `Cannot delete a time entry with status '${existing.billing_status}'` });
+  }
+
   const { error } = await supabase
     .from('practice_time_entries')
     .delete()
@@ -1289,6 +1557,106 @@ router.delete('/time-entries/:id', async (req, res) => {
     .eq('company_id', req.companyId);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
+});
+
+// ── Submit for billing review ─────────────────────────────────────────────────
+
+router.put('/time-entries/:id/submit-review', async (req, res) => {
+  const { data: existing, error: fetchErr } = await supabase
+    .from('practice_time_entries')
+    .select('id, billing_status')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+  if (fetchErr || !existing) return res.status(404).json({ error: 'Time entry not found' });
+
+  if (!['unbilled', 'rejected'].includes(existing.billing_status)) {
+    return res.status(400).json({ error: `Cannot submit entry with status '${existing.billing_status}' for review` });
+  }
+
+  const { data, error } = await supabase
+    .from('practice_time_entries')
+    .update({
+      billing_status:          'pending_review',
+      submitted_for_review_at: new Date().toISOString(),
+      updated_at:              new Date().toISOString()
+    })
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  await auditFromReq(req, 'time_submitted_review', 'practice_time_entry', data.id, { module: 'practice' });
+  res.json({ time_entry: data });
+});
+
+// ── Approve time entry for billing ───────────────────────────────────────────
+
+router.put('/time-entries/:id/approve', async (req, res) => {
+  const { data: existing, error: fetchErr } = await supabase
+    .from('practice_time_entries')
+    .select('id, billing_status')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+  if (fetchErr || !existing) return res.status(404).json({ error: 'Time entry not found' });
+
+  if (existing.billing_status !== 'pending_review') {
+    return res.status(400).json({ error: `Entry must be in 'pending_review' status to approve (current: '${existing.billing_status}')` });
+  }
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('practice_time_entries')
+    .update({
+      billing_status: 'approved',
+      approved_at:    now,
+      approved_by:    req.user.userId,
+      updated_at:     now
+    })
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  await auditFromReq(req, 'time_approved', 'practice_time_entry', data.id, { module: 'practice' });
+  res.json({ time_entry: data });
+});
+
+// ── Reject time entry ─────────────────────────────────────────────────────────
+
+router.put('/time-entries/:id/reject', async (req, res) => {
+  const { reason } = req.body;
+  if (!reason || !reason.trim()) {
+    return res.status(400).json({ error: 'rejection reason is required' });
+  }
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('practice_time_entries')
+    .select('id, billing_status, billing_notes')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+  if (fetchErr || !existing) return res.status(404).json({ error: 'Time entry not found' });
+
+  if (!['pending_review', 'approved'].includes(existing.billing_status)) {
+    return res.status(400).json({ error: `Cannot reject entry with status '${existing.billing_status}'` });
+  }
+
+  const { data, error } = await supabase
+    .from('practice_time_entries')
+    .update({
+      billing_status: 'rejected',
+      billing_notes:  reason.trim(),
+      updated_at:     new Date().toISOString()
+    })
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  await auditFromReq(req, 'time_rejected', 'practice_time_entry', data.id, { module: 'practice' });
+  res.json({ time_entry: data });
 });
 
 // ═══ DEADLINES ═══════════════════════════════════════════════════════════════

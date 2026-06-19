@@ -451,6 +451,7 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .form-full  { grid-column: 1 / -1; }
 .modal-sm   { max-width: 460px; }
 .modal-md   { max-width: 480px; }
+.modal-lg   { max-width: 620px; }
 
 /* ── Task card — extended helpers (used by tasks.js) ── */
 .task-grid              { display: flex; flex-direction: column; }
@@ -462,6 +463,23 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 
 /* ── Empty state ── */
 .empty-state            { text-align: center; padding: 48px 20px; color: var(--text-muted); font-size: 0.88rem; }
+
+/* ── Billing status badges ── */
+.badge-billing-unbilled       { background: rgba(100,116,139,0.15); color: #94a3b8; }
+.badge-billing-pending_review { background: rgba(96,165,250,0.15);  color: #93c5fd; }
+.badge-billing-approved       { background: rgba(16,185,129,0.15);  color: #6ee7b7; }
+.badge-billing-rejected       { background: rgba(244,63,94,0.15);   color: #fda4af; }
+.badge-billing-billed         { background: rgba(167,139,250,0.2);  color: var(--accent); }
+.badge-billing-written_off    { background: rgba(100,116,139,0.1);  color: #64748b; }
+
+/* ── Time type badges ── */
+.badge-time-billable          { background: rgba(167,139,250,0.15); color: var(--accent); }
+.badge-time-non_billable      { background: rgba(100,116,139,0.12); color: #94a3b8; }
+.badge-time-internal          { background: rgba(245,158,11,0.12);  color: #fbbf24; }
+.badge-time-admin             { background: rgba(96,165,250,0.12);  color: #93c5fd; }
+
+/* ── Time entry action buttons row ── */
+.time-entry-actions           { display: flex; gap: 4px; flex-wrap: nowrap; align-items: center; }
 
 /* ── Time log footer ── */
 .log-time-footer { margin-top: 12px; display: flex; gap: 12px; align-items: center; }

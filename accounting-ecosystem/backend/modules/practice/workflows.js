@@ -164,11 +164,20 @@ router.post('/generate', async (req, res) => {
 
 router.get('/runs', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { client_id, status } = req.query;
+    const limit = Math.min(500, parseInt(req.query.limit || 200));
+
+    let q = supabase
       .from('practice_workflow_runs')
       .select('*')
       .eq('company_id', req.companyId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (client_id) q = q.eq('client_id', parseInt(client_id));
+    if (status)    q = q.eq('status', status);
+
+    const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
     res.json({ runs: data || [] });
   } catch (err) {
