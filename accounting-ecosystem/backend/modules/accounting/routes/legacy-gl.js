@@ -746,14 +746,29 @@ router.post('/batches/:id/map-account', authenticate, hasPermission('legacy_gl.i
   }
 
   // Verify target account belongs to this company (tenant safety)
+  // Uses direct pg (not Supabase) — consistent with all other queries in this route.
   if (mapped_account_id) {
-    const { data: acct } = await supabase
-      .from('accounts')
-      .select('id, code, name, account_type, is_postable')
-      .eq('id', parseInt(mapped_account_id))
-      .eq('company_id', cid)
-      .maybeSingle();
-    if (!acct) return res.status(404).json({ error: 'Target account not found in this company' });
+    const validationClient = await db.getClient();
+    let acct;
+    try {
+      const { rows } = await validationClient.query(
+        `SELECT id, code, name, account_type, is_postable, company_id
+         FROM accounts
+         WHERE id = $1`,
+        [parseInt(mapped_account_id)]
+      );
+      acct = rows[0] || null;
+    } finally {
+      validationClient.release();
+    }
+    if (!acct) {
+      return res.status(404).json({ error: `Account ID ${mapped_account_id} does not exist` });
+    }
+    if (acct.company_id !== cid) {
+      return res.status(403).json({
+        error: `Account "${acct.code} — ${acct.name}" belongs to company ${acct.company_id}, but your session is for company ${cid}. Please reload the page to refresh your account list.`,
+      });
+    }
     if (!acct.is_postable) {
       return res.status(422).json({ error: `Account "${acct.code} ${acct.name}" is a header/group account and cannot receive postings` });
     }

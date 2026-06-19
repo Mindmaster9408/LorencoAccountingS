@@ -14,6 +14,10 @@ router.get('/', authenticate, hasPermission('account.view'), async (req, res) =>
     const { type, isActive, includeInactive } = req.query;
     const companyId = req.user.companyId;
 
+    if (!companyId) {
+      return res.status(400).json({ error: 'No company context — please select a company and try again', accounts: [] });
+    }
+
     let q = supabase.from('accounts').select('*').eq('company_id', companyId);
 
     if (type) q = q.eq('type', type);
