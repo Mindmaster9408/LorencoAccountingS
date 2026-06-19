@@ -481,6 +481,23 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 /* ── Time entry action buttons row ── */
 .time-entry-actions           { display: flex; gap: 4px; flex-wrap: nowrap; align-items: center; }
 
+/* ── Billing pack status badges ── */
+.badge-pack-draft      { background: rgba(100,116,139,0.15); color: #94a3b8; }
+.badge-pack-reviewed   { background: rgba(96,165,250,0.15);  color: #93c5fd; }
+.badge-pack-approved   { background: rgba(16,185,129,0.15);  color: #6ee7b7; }
+.badge-pack-locked     { background: rgba(167,139,250,0.2);  color: var(--accent); }
+.badge-pack-cancelled  { background: rgba(100,116,139,0.1);  color: #64748b; }
+
+/* ── Billing line status badges ── */
+.badge-line-included    { background: rgba(16,185,129,0.15);  color: #6ee7b7; }
+.badge-line-written_off { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+.badge-line-excluded    { background: rgba(100,116,139,0.12); color: #94a3b8; }
+
+/* ── Realization percentage display ── */
+.realization-good { color: #6ee7b7; font-weight: 700; }
+.realization-ok   { color: #fbbf24; font-weight: 700; }
+.realization-low  { color: #fda4af; font-weight: 700; }
+
 /* ── Time log footer ── */
 .log-time-footer { margin-top: 12px; display: flex; gap: 12px; align-items: center; }
 .billable-check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text); }

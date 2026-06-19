@@ -12,6 +12,7 @@ const express = require('express');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
 const workflowsRouter = require('./workflows');
+const billingRouter   = require('./billing');
 
 const router = express.Router();
 
@@ -2328,5 +2329,8 @@ router.get('/deadlines/:id/events', async (req, res) => {
 
 // Workflows: templates, runs, and generation
 router.use('/workflows', workflowsRouter);
+
+// Billing: WIP management and billing pack preparation
+router.use('/billing', billingRouter);
 
 module.exports = router;

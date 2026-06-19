@@ -13,6 +13,7 @@
         { key: 'compliance',  label: 'Compliance',  href: '/practice/compliance.html' },
         { key: 'tasks',       label: 'Tasks',       href: '/practice/tasks.html' },
         { key: 'time',        label: 'Time',        href: '/practice/time.html' },
+        { key: 'billing',     label: 'Billing',     href: '/practice/billing.html' },
         { key: 'deadlines',   label: 'Deadlines',   href: '/practice/deadlines.html' }
     ];
 

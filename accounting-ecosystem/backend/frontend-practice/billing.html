@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Billing</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── WIP stat grid ── */
+        .billing-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .billing-stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .billing-stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .billing-stat-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .billing-stat-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .billing-stat-card.accent-wip      { border-left: 3px solid var(--accent); }
+        .billing-stat-card.accent-pack     { border-left: 3px solid #93c5fd; }
+        .billing-stat-card.accent-approved { border-left: 3px solid #6ee7b7; }
+        .billing-stat-card.accent-writeoff { border-left: 3px solid #fbbf24; }
+
+        /* ── Two-panel layout ── */
+        .billing-panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+        @media (max-width: 900px) {
+            .billing-panels { grid-template-columns: 1fr; }
+        }
+
+        /* ── WIP client rows ── */
+        .wip-client-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        .wip-client-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            cursor: pointer;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .wip-client-name  { font-weight: 600; font-size: 0.9rem; }
+        .wip-client-meta  { font-size: 11px; color: var(--text-muted); }
+        .wip-client-stats { display: flex; gap: 16px; align-items: center; flex-shrink: 0; }
+        .wip-client-stat  { text-align: right; }
+        .wip-client-stat-val  { font-weight: 700; font-size: 0.85rem; }
+        .wip-client-stat-lbl  { font-size: 10px; color: var(--text-muted); }
+        .wip-entry-table  { border-top: 1px solid var(--border); overflow-x: auto; }
+        .wip-entry-table table { width: 100%; min-width: 520px; }
+        .wip-entry-table td, .wip-entry-table th { padding: 6px 14px; }
+
+        /* ── Pack row checkboxes ── */
+        .wip-checkbox-col { width: 32px; padding-right: 0 !important; }
+        .wip-select-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 14px;
+            background: rgba(167,139,250,0.06);
+            border-top: 1px solid rgba(167,139,250,0.15);
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+        }
+        .selected-count { font-size: 12px; color: var(--text-muted); }
+
+        /* ── Create pack form ── */
+        .create-pack-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px 20px;
+        }
+        .create-pack-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 14px;
+            color: var(--accent);
+        }
+
+        /* ── Pack list table ── */
+        .packs-table-wrap { overflow-x: auto; }
+        .packs-table-wrap table { min-width: 720px; }
+
+        /* ── Pack detail modal ── */
+        .pack-lines-wrap { overflow-x: auto; }
+        .pack-lines-wrap table { min-width: 700px; }
+        .pack-detail-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .pack-detail-stat { text-align: center; }
+        .pack-detail-stat-val { font-size: 1.2rem; font-weight: 700; }
+        .pack-detail-stat-lbl { font-size: 10px; color: var(--text-muted); }
+
+        /* ── Write-off modal ── */
+        .writeoff-reason-req { color: #ef4444; }
+        .writeoff-note       { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px; }
+
+        /* ── Structural helpers specific to billing page ── */
+        .section-header-billing { margin-bottom: 12px; }
+        .create-pack-footer     { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .selected-count-msg     { margin-bottom: 8px; }
+        .modal-xl               { max-width: 860px; width: 96vw; }
+        .pack-detail-subtitle   { font-size: 12px; color: var(--text-muted); }
+        .pd-edit-fields         { margin-bottom: 16px; }
+        .pack-detail-actions    { margin-top: 20px; }
+        .writeoff-reason-wrap   { margin-bottom: 16px; }
+
+        /* ── Realization stat display in pack detail ── */
+        .realization-good   { color: #6ee7b7; font-weight: 700; }
+        .realization-ok     { color: #fbbf24; font-weight: 700; }
+        .realization-low    { color: #fda4af; font-weight: 700; }
+        .report-action-row  { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; padding: 10px 14px; background: rgba(167,139,250,0.06); border: 1px solid rgba(167,139,250,0.15); border-radius: 8px; }
+        .report-action-label { font-size: 12px; color: var(--text-muted); flex: 1; }
+    </style>
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+<div class="toast" id="toast"></div>
+
+<div class="main">
+
+    <!-- ── Billing WIP Dashboard ── -->
+    <div class="billing-stat-grid hidden" id="wipStatGrid">
+        <div class="billing-stat-card accent-wip">
+            <div class="billing-stat-label">WIP Recoverable</div>
+            <div class="billing-stat-value" id="statWipRecoverable">–</div>
+            <div class="billing-stat-sub" id="statWipHours">Approved, ready to pack</div>
+        </div>
+        <div class="billing-stat-card accent-pack">
+            <div class="billing-stat-label">Open Packs Value</div>
+            <div class="billing-stat-value" id="statOpenPacks">–</div>
+            <div class="billing-stat-sub" id="statOpenPackCount">Draft + reviewed + approved</div>
+        </div>
+        <div class="billing-stat-card accent-approved">
+            <div class="billing-stat-label">Billed This Month</div>
+            <div class="billing-stat-value" id="statBilledMonth">–</div>
+            <div class="billing-stat-sub">Locked packs</div>
+        </div>
+        <div class="billing-stat-card accent-writeoff">
+            <div class="billing-stat-label">Written Off</div>
+            <div class="billing-stat-value" id="statWrittenOff">–</div>
+            <div class="billing-stat-sub">Irrecoverable time</div>
+        </div>
+    </div>
+
+    <!-- ── Two-panel: WIP List + Create Pack ── -->
+    <div class="billing-panels">
+
+        <!-- Panel 1: WIP entries (approved, not yet packed) -->
+        <div>
+            <div class="section-header section-header-billing">
+                <div class="section-title">Approved Time — Ready to Pack</div>
+                <div class="controls">
+                    <select class="filter-select" id="wipClientFilter" aria-label="Filter WIP by client" onchange="loadWip()">
+                        <option value="">All Clients</option>
+                    </select>
+                </div>
+            </div>
+            <div id="wipList">
+                <div class="loading"><div class="loading-spinner"></div><p>Loading WIP…</p></div>
+            </div>
+        </div>
+
+        <!-- Panel 2: Create billing pack -->
+        <div>
+            <div class="create-pack-panel">
+                <div class="create-pack-title">+ Create Billing Pack</div>
+                <div class="form-grid">
+                    <div class="form-field form-full">
+                        <label for="cpClient">Client *</label>
+                        <select id="cpClient" onchange="filterWipByCreateClient()">
+                            <option value="">Select client…</option>
+                        </select>
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="cpName">Pack Name *</label>
+                        <input type="text" id="cpName" placeholder="e.g. Pennygrow May 2026 Billing">
+                    </div>
+                    <div class="form-field">
+                        <label for="cpStart">Period Start</label>
+                        <input type="date" id="cpStart">
+                    </div>
+                    <div class="form-field">
+                        <label for="cpEnd">Period End</label>
+                        <input type="date" id="cpEnd">
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="cpNotes">Notes</label>
+                        <input type="text" id="cpNotes" placeholder="Optional notes for this billing pack…">
+                    </div>
+                </div>
+                <div class="create-pack-footer">
+                    <div class="selected-count selected-count-msg" id="selectedCountMsg">
+                        Select entries from the left panel to include in this pack.
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="createPackBtn"
+                            onclick="createPack()" disabled>
+                        Create Pack
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Billing Packs List ── -->
+    <div class="section-header">
+        <div class="section-title">Billing Packs</div>
+        <div class="controls">
+            <select class="filter-select" id="packClientFilter" aria-label="Filter packs by client" onchange="loadPacks()">
+                <option value="">All Clients</option>
+            </select>
+            <select class="filter-select" id="packStatusFilter" aria-label="Filter packs by status" onchange="loadPacks()">
+                <option value="">All Statuses</option>
+                <option value="draft">Draft</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="approved">Approved</option>
+                <option value="locked">Locked</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="packsWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading packs…</p></div>
+    </div>
+
+</div>
+
+<!-- ═══ PACK DETAIL MODAL ═════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="packDetailModal">
+    <div class="modal modal-xl">
+        <div class="modal-header">
+            <div>
+                <h3 id="packDetailTitle">Billing Pack</h3>
+                <div class="pack-detail-subtitle" id="packDetailSubtitle"></div>
+            </div>
+            <button type="button" class="modal-close" onclick="closeModal('packDetailModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <!-- Pack summary stats (includes realization % injected by JS) -->
+            <div class="pack-detail-summary" id="packDetailSummary"></div>
+
+            <!-- Report actions -->
+            <div class="report-action-row" id="packReportRow">
+                <span class="report-action-label">Billing Pack Report</span>
+                <button type="button" class="btn btn-secondary btn-sm" id="pdViewReportBtn"
+                        onclick="viewReport()">View Report</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="pdDownloadPdfBtn"
+                        onclick="downloadPdf()">Download PDF</button>
+            </div>
+
+            <!-- Partner: proposed invoice value + notes -->
+            <div class="form-grid pd-edit-fields" id="pdEditFields">
+                <div class="form-field">
+                    <label for="pdProposedValue">Proposed Invoice Value (R)</label>
+                    <input type="number" id="pdProposedValue" step="0.01" min="0"
+                           placeholder="Leave blank to use billable value">
+                </div>
+                <div class="form-field form-full">
+                    <label for="pdNotes">Notes</label>
+                    <input type="text" id="pdNotes" placeholder="Pack notes…">
+                </div>
+            </div>
+
+            <!-- Lines table -->
+            <div class="pack-lines-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Hrs</th>
+                            <th>Rate</th>
+                            <th>Recoverable</th>
+                            <th>Billable</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="packLinesBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Pack actions -->
+            <div class="form-actions pack-detail-actions" id="packDetailActions">
+                <button type="button" class="btn btn-danger btn-sm mr-auto" id="pdCancelBtn"
+                        onclick="cancelPack()">Cancel Pack</button>
+                <button type="button" class="btn btn-ghost" onclick="closeModal('packDetailModal')">Close</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="pdSaveBtn"
+                        onclick="savePackNotes()">Save Notes</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="pdRecalcBtn"
+                        onclick="recalculatePack()">Recalculate</button>
+                <button type="button" class="btn btn-primary btn-sm" id="pdApproveBtn"
+                        onclick="approvePack()">Approve</button>
+                <button type="button" class="btn btn-primary btn-sm hidden" id="pdLockBtn"
+                        onclick="lockPack()">Lock &amp; Bill</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ WRITE-OFF MODAL ════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="writeoffModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Write Off Time Entry</h3>
+            <button type="button" class="modal-close" onclick="closeModal('writeoffModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="writeoff-note">
+                Writing off marks this time as irrecoverable. The value will not be billed to the client.
+            </p>
+            <div class="form-field writeoff-reason-wrap">
+                <label for="writeoffReason">Reason <span class="writeoff-reason-req">*</span></label>
+                <textarea id="writeoffReason" rows="3" placeholder="Explain why this time is being written off…"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('writeoffModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitWriteoff()">Write Off</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/billing.js"></script>
+</body>
+</html>
