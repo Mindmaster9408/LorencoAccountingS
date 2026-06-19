@@ -776,7 +776,7 @@ router.post('/batches/:id/map-account', authenticate, hasPermission('legacy_gl.i
       // Mark matching lines as skipped
       await pgClient.query(`
         UPDATE legacy_gl_import_lines
-        SET mapping_status = 'skipped', mapping_source = 'manual', updated_at = NOW()
+        SET mapping_status = 'skipped', mapping_source = 'manual'
         WHERE batch_id = $1
           AND mapping_status = 'unmapped'
           AND COALESCE(source_account_code, '') = $2
@@ -798,8 +798,7 @@ router.post('/batches/:id/map-account', authenticate, hasPermission('legacy_gl.i
         SET
           mapped_account_id = $1,
           mapping_source    = 'manual',
-          mapping_status    = 'mapped',
-          updated_at        = NOW()
+          mapping_status    = 'mapped'
         WHERE batch_id = $2
           AND mapping_status = 'unmapped'
           AND COALESCE(source_account_code, '') = $3
