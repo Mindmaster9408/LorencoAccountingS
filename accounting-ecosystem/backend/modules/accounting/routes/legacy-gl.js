@@ -746,27 +746,22 @@ router.post('/batches/:id/map-account', authenticate, hasPermission('legacy_gl.i
   }
 
   // Verify target account belongs to this company (tenant safety).
-  // Uses direct pg — consistent with all other queries in this route.
-  // pg accounts schema: column is 'type' (not 'account_type'), no 'is_postable'.
+  // Uses Supabase (same source as the accounts dropdown) with the correct column
+  // name 'type' (the pg schema does NOT have 'account_type' or 'is_postable').
   if (mapped_account_id) {
-    const validationClient = await db.getClient();
-    let acct;
-    try {
-      const { rows } = await validationClient.query(
-        `SELECT id, code, name, type, company_id FROM accounts WHERE id = $1`,
-        [parseInt(mapped_account_id)]
-      );
-      acct = rows[0] || null;
-    } catch (pgErr) {
-      console.error('[map-account] account validation query failed:', pgErr.message);
-      return res.status(500).json({ error: 'Database error during account validation', detail: pgErr.message });
-    } finally {
-      validationClient.release();
+    const { data: acct, error: acctErr } = await supabase
+      .from('accounts')
+      .select('id, code, name, type, company_id')
+      .eq('id', parseInt(mapped_account_id))
+      .maybeSingle();
+    if (acctErr) {
+      console.error('[map-account] account lookup error:', acctErr.message);
+      return res.status(500).json({ error: 'Database error looking up account', detail: acctErr.message });
     }
     if (!acct) {
       return res.status(404).json({ error: `Account ID ${mapped_account_id} does not exist. Please reload the page to refresh the account list.` });
     }
-    if (acct.company_id !== cid) {
+    if (String(acct.company_id) !== String(cid)) {
       return res.status(403).json({
         error: `Account "${acct.code} — ${acct.name}" belongs to company ${acct.company_id} but your session is for company ${cid}. Please log out and back in, then try again.`,
       });
