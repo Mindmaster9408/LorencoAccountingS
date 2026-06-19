@@ -745,32 +745,31 @@ router.post('/batches/:id/map-account', authenticate, hasPermission('legacy_gl.i
     return res.status(409).json({ error: `Cannot map accounts on a ${batch.status} batch` });
   }
 
-  // Verify target account belongs to this company (tenant safety)
-  // Uses direct pg (not Supabase) — consistent with all other queries in this route.
+  // Verify target account belongs to this company (tenant safety).
+  // Uses direct pg — consistent with all other queries in this route.
+  // pg accounts schema: column is 'type' (not 'account_type'), no 'is_postable'.
   if (mapped_account_id) {
     const validationClient = await db.getClient();
     let acct;
     try {
       const { rows } = await validationClient.query(
-        `SELECT id, code, name, account_type, is_postable, company_id
-         FROM accounts
-         WHERE id = $1`,
+        `SELECT id, code, name, type, company_id FROM accounts WHERE id = $1`,
         [parseInt(mapped_account_id)]
       );
       acct = rows[0] || null;
+    } catch (pgErr) {
+      console.error('[map-account] account validation query failed:', pgErr.message);
+      return res.status(500).json({ error: 'Database error during account validation', detail: pgErr.message });
     } finally {
       validationClient.release();
     }
     if (!acct) {
-      return res.status(404).json({ error: `Account ID ${mapped_account_id} does not exist` });
+      return res.status(404).json({ error: `Account ID ${mapped_account_id} does not exist. Please reload the page to refresh the account list.` });
     }
     if (acct.company_id !== cid) {
       return res.status(403).json({
-        error: `Account "${acct.code} — ${acct.name}" belongs to company ${acct.company_id}, but your session is for company ${cid}. Please reload the page to refresh your account list.`,
+        error: `Account "${acct.code} — ${acct.name}" belongs to company ${acct.company_id} but your session is for company ${cid}. Please log out and back in, then try again.`,
       });
-    }
-    if (!acct.is_postable) {
-      return res.status(422).json({ error: `Account "${acct.code} ${acct.name}" is a header/group account and cannot receive postings` });
     }
   }
 
