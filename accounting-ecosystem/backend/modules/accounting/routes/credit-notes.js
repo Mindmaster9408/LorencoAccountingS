@@ -33,7 +33,8 @@
 
 const express        = require('express');
 const router         = express.Router();
-const { supabase, db } = require('../../../config/database');
+const { supabase } = require('../../../config/database');
+const db           = require('../config/database'); // accounting pg pool (has getClient)
 const JournalService = require('../services/journalService');
 const AuditLogger    = require('../services/auditLogger');
 const { authenticate, hasPermission } = require('../middleware/auth');

@@ -43,7 +43,8 @@ const multer    = require('multer');
 const XLSX      = require('xlsx');
 const crypto    = require('crypto');
 
-const { supabase, db } = require('../../../config/database');
+const { supabase } = require('../../../config/database');
+const db           = require('../config/database'); // accounting pg pool (has getClient)
 const { authenticate, hasPermission } = require('../middleware/auth');
 
 // ─── Multer: memory storage, 50 MB limit, Excel/CSV only ────────────────────
