@@ -5,6 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lorenco Practice — Client Profile</title>
     <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        .suggestion-card {
+            background: var(--surface);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-left: 3px solid var(--accent);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.6rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+        .suggestion-body { flex: 1; min-width: 0; }
+        .suggestion-title { font-weight: 600; font-size: 0.9rem; color: rgba(255,255,255,0.9); }
+        .suggestion-reason { font-size: 0.78rem; color: rgba(255,255,255,0.45); margin-top: 2px; }
+        .suggestion-note { font-size: 0.75rem; color: rgba(255,255,255,0.35); margin-top: 4px; font-style: italic; }
+        .suggestion-meta { display: flex; gap: 0.4rem; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+    </style>
 </head>
 <body>
 
@@ -395,6 +413,76 @@
         </div>
     </div>
 
+    <!-- ── 12. Compliance Suggestions (outside form — loaded on demand) ── -->
+    <div id="complianceSuggestionsSection" class="hidden" style="margin-top:2rem;">
+        <div class="section-header" style="margin-top:0;">
+            <div class="section-title" style="font-size:1rem;">Compliance Suggestions</div>
+            <button type="button" class="btn btn-ghost btn-sm" id="loadSuggestionsBtn" onclick="loadComplianceSuggestions()">Load Suggestions</button>
+        </div>
+        <p class="col-muted" style="font-size:0.8rem;margin-bottom:1rem;">
+            Based on this client's registration flags. Click a suggestion to create a deadline — nothing is created automatically.
+        </p>
+        <div id="suggestionsWrap"></div>
+    </div>
+
+</div>
+
+<!-- CREATE DEADLINE FROM SUGGESTION MODAL -->
+<div class="modal-overlay" id="suggestionDeadlineModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <h3>Create Deadline from Suggestion</h3>
+            <button type="button" class="modal-close" onclick="closeSuggestionModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form id="suggestionDeadlineForm" onsubmit="saveSuggestionDeadline(event)">
+                <div class="form-grid">
+                    <div class="form-field form-full">
+                        <label>Title <span style="color:var(--danger)">*</span></label>
+                        <input type="text" id="sdTitle" required>
+                    </div>
+                    <div class="form-field">
+                        <label>Due Date <span style="color:var(--danger)">*</span></label>
+                        <input type="date" id="sdDueDate" required>
+                    </div>
+                    <div class="form-field">
+                        <label>Period Start</label>
+                        <input type="date" id="sdPeriodStart">
+                    </div>
+                    <div class="form-field">
+                        <label>Period End</label>
+                        <input type="date" id="sdPeriodEnd">
+                    </div>
+                    <div class="form-field">
+                        <label>Responsible</label>
+                        <select id="sdResponsible">
+                            <option value="">Not assigned</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Priority</label>
+                        <select id="sdPriority">
+                            <option value="normal">Normal</option>
+                            <option value="low">Low</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="form-field form-full">
+                        <label>Notes</label>
+                        <textarea id="sdNotes" rows="2"></textarea>
+                    </div>
+                </div>
+                <input type="hidden" id="sdArea">
+                <input type="hidden" id="sdDeadlineType">
+                <input type="hidden" id="sdType">
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeSuggestionModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="sdSaveBtn">Create Deadline</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- CONTACT MODAL -->

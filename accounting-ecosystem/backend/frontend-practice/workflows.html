@@ -1,58 +1,243 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Workflows — Lorenco Practice</title>
-  <link rel="stylesheet" href="/practice/css/practice.css">
- </head>
- <body>
-  <div class="topbar" id="app-topbar"></div>
-  <nav class="nav-tabs" id="app-nav"></nav>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Workflows</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        .template-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px 20px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+        .template-card-body { flex: 1; min-width: 0; }
+        .template-card-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+        .template-card-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .template-card-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+        .badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+        .badge-purple { background: rgba(167,139,250,0.15); color: #a78bfa; }
+        .badge-blue   { background: rgba(96,165,250,0.15);  color: #60a5fa; }
+        .badge-green  { background: rgba(52,211,153,0.15);  color: #34d399; }
+        .template-card-actions { display: flex; gap: 8px; flex-shrink: 0; }
+        .deadline-gen-section {
+            display: none;
+            border-top: 1px solid var(--border);
+            padding-top: 16px;
+            margin-top: 4px;
+        }
+        .deadline-gen-section.visible { display: block; }
+        .form-grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .form-grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .gen-toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 12px 0 8px;
+        }
+        .gen-toggle-row label {
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .deadline-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin: 0 0 12px 0;
+        }
+        .template-defaults-note {
+            background: rgba(167,139,250,0.08);
+            border: 1px solid rgba(167,139,250,0.2);
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            display: none;
+        }
+        .template-defaults-note.visible { display: block; }
+    </style>
+</head>
+<body>
 
-  <div class="main">
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+<div id="toast"></div>
+
+<div class="main">
+
     <div class="section-header">
-      <div class="section-title">Workflow Templates</div>
-      <div class="controls">
-        <button class="btn btn-primary" onclick="openNewTemplate()">+ New Template</button>
-      </div>
+        <div class="section-title">Workflow Templates</div>
+        <div class="controls">
+            <button type="button" class="btn btn-primary" onclick="openNewTemplate()">+ New Template</button>
+        </div>
     </div>
 
-    <div id="workflowsWrap"><div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div></div>
+    <div id="workflowsWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>
+    </div>
 
-    <!-- GENERATE MODAL -->
-    <div class="modal-overlay" id="generateModal">
-      <div class="modal">
+</div>
+
+<!-- GENERATE MODAL -->
+<div class="modal-overlay" id="generateModal">
+    <div class="modal" style="max-width:560px;">
         <div class="modal-header">
-          <h3 id="generateTitle">Generate Workflow</h3>
-          <button type="button" class="modal-close" onclick="closeModal('generateModal')">✕</button>
+            <h3 id="generateTitle">Generate Workflow</h3>
+            <button type="button" class="modal-close" onclick="closeGenerateModal()">&times;</button>
         </div>
         <div class="modal-body">
-          <form onsubmit="return submitGenerate(event)">
-            <div class="form-grid">
-              <div class="form-field">
-                <label for="gClient">Client</label>
-                <select id="gClient"><option value="">None</option></select>
-              </div>
-              <div class="form-field">
-                <label for="gStart">Start Date</label>
-                <input type="date" id="gStart" value="">
-              </div>
-            </div>
-            <div class="form-actions">
-              <button type="button" class="btn btn-ghost" onclick="closeModal('generateModal')">Cancel</button>
-              <button type="submit" class="btn btn-primary">Generate</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
+            <!-- Template defaults info banner (shown when template has compliance defaults) -->
+            <div class="template-defaults-note" id="tplDefaultsNote"></div>
 
-  <script src="/practice/js/polyfills.js"></script>
-  <script src="/practice/js/auth.js"></script>
-  <script src="/practice/js/api.js"></script>
-  <script src="/practice/js/layout.js"></script>
-  <script src="/practice/js/workflows.js"></script>
- </body>
+            <form id="generateForm" onsubmit="return submitGenerate(event)">
+                <div class="form-grid-2">
+                    <div class="form-field">
+                        <label for="gClient">Client</label>
+                        <select id="gClient">
+                            <option value="">No client</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="gStart">Start Date</label>
+                        <input type="date" id="gStart" />
+                    </div>
+                </div>
+
+                <!-- Deadline creation toggle -->
+                <div class="gen-toggle-row">
+                    <input type="checkbox" id="gCreateDeadline" onchange="toggleDeadlineSection()" />
+                    <label for="gCreateDeadline">Create a compliance deadline for this workflow</label>
+                </div>
+
+                <!-- Deadline fields (revealed by checkbox) -->
+                <div class="deadline-gen-section" id="deadlineGenSection">
+                    <p class="deadline-hint">All fields below are optional — defaults from the template will be used where not set.</p>
+
+                    <div class="form-field" style="margin-bottom:12px;">
+                        <label for="gDeadlineTitle">Deadline Title</label>
+                        <input type="text" id="gDeadlineTitle" placeholder="e.g. VAT201 — March 2026" />
+                    </div>
+
+                    <div class="form-grid-2">
+                        <div class="form-field">
+                            <label for="gComplianceArea">Compliance Area</label>
+                            <select id="gComplianceArea">
+                                <option value="">Select area…</option>
+                                <option value="vat">VAT</option>
+                                <option value="paye">PAYE</option>
+                                <option value="emp501">EMP501</option>
+                                <option value="provisional_tax">Provisional Tax</option>
+                                <option value="income_tax">Income Tax</option>
+                                <option value="cipc">CIPC</option>
+                                <option value="bo">Beneficial Ownership</option>
+                                <option value="annual_financials">Annual Financials</option>
+                                <option value="bookkeeping">Bookkeeping</option>
+                                <option value="payroll">Payroll</option>
+                                <option value="internal">Internal</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="gDeadlineType">Deadline Type</label>
+                            <select id="gDeadlineType">
+                                <option value="">Select type…</option>
+                                <option value="vat201">VAT201</option>
+                                <option value="emp201">EMP201</option>
+                                <option value="emp501">EMP501</option>
+                                <option value="irp6">IRP6 (Provisional)</option>
+                                <option value="itr12">ITR12 (Individual)</option>
+                                <option value="itr14">ITR14 (Company)</option>
+                                <option value="cipc_annual_return">CIPC Annual Return</option>
+                                <option value="beneficial_ownership">Beneficial Ownership</option>
+                                <option value="annual_financial_statements">Annual Financial Statements</option>
+                                <option value="management_accounts">Management Accounts</option>
+                                <option value="monthly_bookkeeping">Monthly Bookkeeping</option>
+                                <option value="payroll_month_end">Payroll Month End</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-grid-3">
+                        <div class="form-field">
+                            <label for="gPeriodStart">Period Start</label>
+                            <input type="date" id="gPeriodStart" />
+                        </div>
+                        <div class="form-field">
+                            <label for="gPeriodEnd">Period End</label>
+                            <input type="date" id="gPeriodEnd" />
+                        </div>
+                        <div class="form-field">
+                            <label for="gDueDate">Due Date <span id="gDueDateRequired" style="color:#ef4444;display:none;">*</span></label>
+                            <input type="date" id="gDueDate" />
+                        </div>
+                    </div>
+
+                    <div class="form-grid-2">
+                        <div class="form-field">
+                            <label for="gPriority">Priority</label>
+                            <select id="gPriority">
+                                <option value="low">Low</option>
+                                <option value="normal" selected>Normal</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="gResponsible">Responsible Team Member</label>
+                            <select id="gResponsible">
+                                <option value="">Unassigned</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="margin-top:16px;">
+                    <button type="button" class="btn btn-ghost" onclick="closeGenerateModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="generateSubmitBtn">Generate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/workflows.js"></script>
+</body>
 </html>

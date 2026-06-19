@@ -1,18 +1,393 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Workflow Template Editor</title>
-  <link rel="stylesheet" href="/css/site.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Workflow Template Editor</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        .editor-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .editor-section h3 {
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0 0 18px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .form-row.triple {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+        .form-row.full {
+            grid-template-columns: 1fr;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .form-group label {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 8px 10px;
+            font-size: 13px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 72px;
+        }
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .toggle-row label {
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .toggle-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .deadline-defaults-body {
+            display: none;
+        }
+        .deadline-defaults-body.visible {
+            display: block;
+        }
+        .step-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .step-card-drag {
+            color: var(--text-muted);
+            cursor: grab;
+            font-size: 16px;
+            padding-top: 2px;
+            flex-shrink: 0;
+        }
+        .step-card-body {
+            flex: 1;
+            min-width: 0;
+        }
+        .step-card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .step-card-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .step-card-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .step-form {
+            background: var(--surface);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 10px;
+        }
+        .step-form .form-row {
+            margin-bottom: 12px;
+        }
+        .btn-ghost-sm {
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px 8px;
+        }
+        .btn-ghost-sm:hover { color: var(--text); border-color: var(--text-muted); }
+        .btn-danger-sm {
+            background: transparent;
+            border: 1px solid #ef4444;
+            border-radius: 4px;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px 8px;
+        }
+        .btn-danger-sm:hover { background: #ef444420; }
+        .steps-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .steps-count {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .empty-steps {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        .page-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+        .reorder-locked .step-card-drag { cursor: not-allowed; opacity: 0.4; }
+    </style>
 </head>
 <body>
-  <div id="app">
-    <h1 id="pageTitle">Workflow Template</h1>
-    <div id="editorWrap"><div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div></div>
-  </div>
-  <script src="/js/auth.js"></script>
-  <script src="/js/layout.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/workflow-editor.js"></script>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+<div id="toast"></div>
+
+<div class="main">
+
+    <!-- Page header -->
+    <div class="section-header">
+        <div class="section-title" id="pageTitle">Workflow Template</div>
+        <div class="controls">
+            <a href="/practice/workflows.html" class="btn btn-ghost">← Back to Workflows</a>
+        </div>
+    </div>
+
+    <!-- BASIC INFO -->
+    <div class="editor-section" id="basicSection">
+        <h3>Template Details</h3>
+        <div class="form-row full form-group" style="margin-bottom:16px;">
+            <label for="tName">Template Name <span style="color:#ef4444">*</span></label>
+            <input type="text" id="tName" placeholder="e.g. Monthly VAT Return Workflow" />
+        </div>
+        <div class="form-row form-group" style="margin-bottom:16px;">
+            <div class="form-group">
+                <label for="tCategory">Category</label>
+                <select id="tCategory">
+                    <option value="">Select category…</option>
+                    <option value="vat">VAT</option>
+                    <option value="paye">PAYE</option>
+                    <option value="income_tax">Income Tax</option>
+                    <option value="annual_financials">Annual Financials</option>
+                    <option value="bookkeeping">Bookkeeping</option>
+                    <option value="payroll">Payroll</option>
+                    <option value="secretarial">Secretarial</option>
+                    <option value="internal">Internal</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="tPriority">Default Priority</label>
+                <select id="tPriority">
+                    <option value="low">Low</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row full form-group">
+            <label for="tDesc">Description</label>
+            <textarea id="tDesc" placeholder="Briefly describe when and why this workflow is used…"></textarea>
+        </div>
+    </div>
+
+    <!-- COMPLIANCE DEADLINE DEFAULTS -->
+    <div class="editor-section" id="deadlineSection">
+        <h3>Compliance Deadline Defaults</h3>
+        <div class="toggle-row">
+            <input type="checkbox" id="tCreatesDeadline" onchange="toggleDeadlineDefaults()" />
+            <label for="tCreatesDeadline">Automatically create a compliance deadline when generating this workflow</label>
+        </div>
+        <div class="deadline-defaults-body" id="deadlineDefaultsBody">
+            <div class="form-row" style="margin-bottom:14px;">
+                <div class="form-group">
+                    <label for="tDefaultComplianceArea">Compliance Area</label>
+                    <select id="tDefaultComplianceArea">
+                        <option value="">Select area…</option>
+                        <option value="vat">VAT</option>
+                        <option value="paye">PAYE</option>
+                        <option value="emp501">EMP501</option>
+                        <option value="provisional_tax">Provisional Tax</option>
+                        <option value="income_tax">Income Tax</option>
+                        <option value="cipc">CIPC</option>
+                        <option value="bo">Beneficial Ownership</option>
+                        <option value="annual_financials">Annual Financials</option>
+                        <option value="bookkeeping">Bookkeeping</option>
+                        <option value="payroll">Payroll</option>
+                        <option value="internal">Internal</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="tDefaultDeadlineType">Deadline Type</label>
+                    <select id="tDefaultDeadlineType">
+                        <option value="">Select type…</option>
+                        <option value="vat201">VAT201</option>
+                        <option value="emp201">EMP201</option>
+                        <option value="emp501">EMP501</option>
+                        <option value="irp6">IRP6 (Provisional)</option>
+                        <option value="itr12">ITR12 (Individual)</option>
+                        <option value="itr14">ITR14 (Company)</option>
+                        <option value="cipc_annual_return">CIPC Annual Return</option>
+                        <option value="beneficial_ownership">Beneficial Ownership</option>
+                        <option value="annual_financial_statements">Annual Financial Statements</option>
+                        <option value="management_accounts">Management Accounts</option>
+                        <option value="monthly_bookkeeping">Monthly Bookkeeping</option>
+                        <option value="payroll_month_end">Payroll Month End</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row full form-group" style="margin-bottom:14px;">
+                <label for="tDefaultDeadlineTitle">Default Deadline Title <span style="color:var(--text-muted);font-weight:400;">(falls back to template name)</span></label>
+                <input type="text" id="tDefaultDeadlineTitle" placeholder="e.g. VAT201 — {client name}" />
+            </div>
+            <div class="form-row triple" style="margin-bottom:14px;">
+                <div class="form-group">
+                    <label for="tDefaultPriority">Default Priority</label>
+                    <select id="tDefaultPriority">
+                        <option value="low">Low</option>
+                        <option value="normal" selected>Normal</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="tDefaultOffsetDays">Due Date Offset (days from anchor)</label>
+                    <input type="number" id="tDefaultOffsetDays" min="0" max="999" placeholder="e.g. 25" />
+                </div>
+                <div class="form-group">
+                    <label for="tDefaultOffsetBasis">Offset Basis</label>
+                    <select id="tDefaultOffsetBasis">
+                        <option value="anchor_date">Anchor Date (generate date)</option>
+                        <option value="period_start">Period Start</option>
+                        <option value="period_end">Period End</option>
+                        <option value="financial_year_end">Financial Year End</option>
+                        <option value="tax_year_end">Tax Year End</option>
+                    </select>
+                </div>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin:0;">
+                When a workflow is generated for a client, a compliance deadline will be created using these defaults.
+                All values can be overridden in the generate modal.
+            </p>
+        </div>
+    </div>
+
+    <!-- STEPS -->
+    <div class="editor-section" id="stepsSection" style="display:none;">
+        <div class="steps-header">
+            <h3 style="margin:0;border:none;padding:0;">Workflow Steps</h3>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span class="steps-count" id="stepsCount"></span>
+                <button type="button" class="btn btn-primary" onclick="openAddStep()">+ Add Step</button>
+            </div>
+        </div>
+        <div id="stepsList">
+            <div class="empty-steps">No steps yet — add the first step above.</div>
+        </div>
+    </div>
+
+    <!-- SAVE ACTIONS -->
+    <div class="page-actions">
+        <a href="/practice/workflows.html" class="btn btn-ghost">Cancel</a>
+        <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveTemplate()">Create Template</button>
+    </div>
+
+</div>
+
+<!-- ADD / EDIT STEP MODAL -->
+<div class="modal-overlay" id="stepModal" style="display:none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="stepModalTitle">Add Step</h3>
+            <button class="modal-close" onclick="closeStepModal()">&times;</button>
+        </div>
+        <form id="stepForm" onsubmit="submitStepForm(event)">
+            <div class="form-group" style="margin-bottom:14px;">
+                <label for="sTitle">Step Title <span style="color:#ef4444">*</span></label>
+                <input type="text" id="sTitle" required placeholder="e.g. Collect source documents" />
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label for="sDesc">Description</label>
+                <textarea id="sDesc" placeholder="Optional instructions for this step…"></textarea>
+            </div>
+            <div class="form-row" style="margin-bottom:14px;">
+                <div class="form-group">
+                    <label for="sOffset">Due Offset Days</label>
+                    <input type="number" id="sOffset" value="0" min="0" placeholder="0" />
+                </div>
+                <div class="form-group">
+                    <label for="sPriority">Priority</label>
+                    <select id="sPriority">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:flex;gap:16px;margin-bottom:14px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);cursor:pointer;">
+                    <input type="checkbox" id="sRequiresReview" />
+                    Requires Review
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);cursor:pointer;">
+                    <input type="checkbox" id="sRequiresApproval" />
+                    Requires Final Approval
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeStepModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="stepSubmitBtn">Add Step</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/workflow-editor.js"></script>
 </body>
 </html>

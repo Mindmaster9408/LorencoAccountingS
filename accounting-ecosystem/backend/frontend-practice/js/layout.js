@@ -5,13 +5,15 @@
    ============================================================ */
 (function () {
     var PAGES = [
-        { key: 'dashboard', label: 'Dashboard',  href: '/practice' },
-        { key: 'profile',   label: 'Profile',    href: '/practice/profile.html' },
-        { key: 'team',      label: 'Team',       href: '/practice/team.html' },
-        { key: 'clients',   label: 'Clients',    href: '/practice/clients.html' },
-        { key: 'tasks',     label: 'Tasks',      href: '/practice/tasks.html' },
-        { key: 'time',      label: 'Time',       href: '/practice/time.html' },
-        { key: 'deadlines', label: 'Deadlines',  href: '/practice/deadlines.html' }
+        { key: 'dashboard',   label: 'Dashboard',   href: '/practice' },
+        { key: 'profile',     label: 'Profile',     href: '/practice/profile.html' },
+        { key: 'team',        label: 'Team',        href: '/practice/team.html' },
+        { key: 'clients',     label: 'Clients',     href: '/practice/clients.html' },
+        { key: 'workflows',   label: 'Workflows',   href: '/practice/workflows.html' },
+        { key: 'compliance',  label: 'Compliance',  href: '/practice/compliance.html' },
+        { key: 'tasks',       label: 'Tasks',       href: '/practice/tasks.html' },
+        { key: 'time',        label: 'Time',        href: '/practice/time.html' },
+        { key: 'deadlines',   label: 'Deadlines',   href: '/practice/deadlines.html' }
     ];
 
     function escHtml(str) {

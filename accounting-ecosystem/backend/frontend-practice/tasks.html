@@ -5,11 +5,102 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lorenco Practice — Tasks</title>
     <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Review/QA badges ── */
+        .badge-qa-required    { background: rgba(245,158,11,0.12); color: #fbbf24; }
+        .badge-qa-pending     { background: rgba(96,165,250,0.15); color: #93c5fd; }
+        .badge-qa-approved    { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .badge-qa-rejected    { background: rgba(244,63,94,0.15);  color: #fda4af; }
+        .badge-qa-locked      { background: rgba(167,139,250,0.2); color: var(--accent); }
+        .badge-review-pending { background: rgba(245,158,11,0.12); color: #fbbf24; }
+        .badge-review-inrev   { background: rgba(96,165,250,0.15); color: #93c5fd; }
+        .badge-review-approved{ background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .badge-review-rejected{ background: rgba(244,63,94,0.15);  color: #fda4af; }
+
+        /* ── Review section in task form ── */
+        .form-section-divider {
+            grid-column: 1 / -1;
+            border-top: 1px solid var(--border);
+            padding-top: 14px;
+            margin-top: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+        }
+        .review-flags-row {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .review-flags-row label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .review-flags-row input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; }
+
+        /* ── Review history timeline ── */
+        .review-timeline { display: flex; flex-direction: column; gap: 10px; }
+        .review-event {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 12px;
+        }
+        .review-event-type {
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 4px;
+        }
+        .review-event-type.ready_for_review  { color: #93c5fd; }
+        .review-event-type.review_started    { color: var(--accent); }
+        .review-event-type.review_approved   { color: #6ee7b7; }
+        .review-event-type.review_rejected   { color: #fda4af; }
+        .review-event-type.approval_approved { color: #6ee7b7; }
+        .review-event-type.approval_rejected { color: #fda4af; }
+        .review-event-type.qa_locked         { color: var(--accent); }
+        .review-event-type.qa_unlocked       { color: var(--text-muted); }
+        .review-event-meta { color: var(--text-muted); margin-top: 3px; }
+        .review-event-notes {
+            margin-top: 5px;
+            padding: 6px 8px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 5px;
+            color: var(--text);
+            font-style: italic;
+        }
+
+        /* ── QA status bar on task card ── */
+        .task-qa-bar {
+            margin-top: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .task-qa-bar.qa-required  { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); }
+        .task-qa-bar.qa-pending   { background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.2); }
+        .task-qa-bar.qa-approved  { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); }
+        .task-qa-bar.qa-rejected  { background: rgba(244,63,94,0.08);  border: 1px solid rgba(244,63,94,0.2); }
+        .task-qa-bar.qa-locked    { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); }
+    </style>
 </head>
 <body>
 
 <div class="topbar" id="app-topbar"></div>
 <nav class="nav-tabs" id="app-nav"></nav>
+<div class="toast" id="toast"></div>
 
 <div class="main">
 
@@ -23,6 +114,14 @@
                 <option value="review">In Review</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
+            </select>
+            <select class="filter-select" id="fQaStatus" aria-label="Filter by QA status" onchange="loadTasks()">
+                <option value="">All QA</option>
+                <option value="required">QA Required</option>
+                <option value="pending_review">Pending Review</option>
+                <option value="rejected">Rejected</option>
+                <option value="approved">Approved</option>
+                <option value="locked">Locked</option>
             </select>
             <select class="filter-select" id="fClient" aria-label="Filter by client" onchange="loadTasks()">
                 <option value="">All Clients</option>
@@ -53,9 +152,9 @@
 
 </div>
 
-<!-- TASK MODAL -->
+<!-- ═══ TASK CREATE / EDIT MODAL ═══════════════════════════════════════════ -->
 <div class="modal-overlay" id="taskModal">
-    <div class="modal">
+    <div class="modal" style="max-width:600px;">
         <div class="modal-header">
             <h3 id="taskModalTitle">Add Task</h3>
             <button type="button" class="modal-close" onclick="closeModal('taskModal')">✕</button>
@@ -93,10 +192,10 @@
                     <div class="form-field">
                         <label for="tPriority">Priority</label>
                         <select id="tPriority" aria-label="Priority">
-                            <option value="urgent">🚨 Urgent</option>
-                            <option value="high">🔴 High</option>
-                            <option value="medium" selected>🟡 Medium</option>
-                            <option value="low">🟢 Low</option>
+                            <option value="urgent">Urgent</option>
+                            <option value="high">High</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="low">Low</option>
                         </select>
                     </div>
                     <div class="form-field">
@@ -115,11 +214,42 @@
                     </div>
                     <div class="form-field form-full">
                         <label for="tDesc">Description</label>
-                        <textarea id="tDesc" rows="3" placeholder="What needs to be done…"></textarea>
+                        <textarea id="tDesc" rows="2" placeholder="What needs to be done…"></textarea>
                     </div>
                     <div class="form-field form-full">
                         <label for="tNotes">Notes</label>
                         <textarea id="tNotes" rows="2" placeholder="Internal notes…"></textarea>
+                    </div>
+
+                    <!-- ── Review & Approval Section ── -->
+                    <div class="form-section-divider">Review &amp; Approval</div>
+
+                    <div class="review-flags-row">
+                        <label>
+                            <input type="checkbox" id="tReviewRequired" onchange="updateReviewSectionVisibility()" />
+                            Requires Reviewer Sign-Off
+                        </label>
+                        <label>
+                            <input type="checkbox" id="tApprovalRequired" />
+                            Requires Final Approval
+                        </label>
+                    </div>
+
+                    <div class="form-field" id="tPreparerWrap">
+                        <label for="tPreparer">Preparer</label>
+                        <select id="tPreparer" aria-label="Preparer"><option value="">Unassigned</option></select>
+                    </div>
+                    <div class="form-field" id="tReviewerWrap">
+                        <label for="tReviewer">Reviewer</label>
+                        <select id="tReviewer" aria-label="Reviewer"><option value="">Unassigned</option></select>
+                    </div>
+                    <div class="form-field" id="tApproverWrap">
+                        <label for="tApprover">Approver</label>
+                        <select id="tApprover" aria-label="Approver"><option value="">Unassigned</option></select>
+                    </div>
+                    <div class="form-field form-full" id="tReviewNotesWrap" style="display:none;">
+                        <label for="tReviewNotes">Review Notes</label>
+                        <textarea id="tReviewNotes" rows="2" placeholder="Notes for the reviewer…"></textarea>
                     </div>
                 </div>
                 <div class="form-actions">
@@ -132,268 +262,105 @@
     </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<!-- ═══ APPROVE REVIEW MODAL ════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="approveReviewModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Approve Review</h3>
+            <button type="button" class="modal-close" onclick="closeModal('approveReviewModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="approveReviewNotes">Review Notes <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+                <textarea id="approveReviewNotes" rows="3" placeholder="Add review comments…"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('approveReviewModal')">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="submitReviewAction('approve-review')">Approve Review</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ REJECT REVIEW MODAL ═════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="rejectReviewModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Reject Review</h3>
+            <button type="button" class="modal-close" onclick="closeModal('rejectReviewModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="rejectReviewReason">Rejection Reason <span style="color:#ef4444;">*</span></label>
+                <textarea id="rejectReviewReason" rows="3" placeholder="Explain what needs to be fixed…" required></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('rejectReviewModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitReviewAction('reject-review')">Reject Review</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ FINAL APPROVE MODAL ═════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="approveFinalModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Final Approval</h3>
+            <button type="button" class="modal-close" onclick="closeModal('approveFinalModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="approveFinalNotes">Approval Notes <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+                <textarea id="approveFinalNotes" rows="3" placeholder="Add approval comments…"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('approveFinalModal')">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="submitReviewAction('approve-final')">Final Approve</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ FINAL REJECT MODAL ══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="rejectFinalModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Final Rejection</h3>
+            <button type="button" class="modal-close" onclick="closeModal('rejectFinalModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="rejectFinalReason">Rejection Reason <span style="color:#ef4444;">*</span></label>
+                <textarea id="rejectFinalReason" rows="3" placeholder="Explain why final approval was rejected…" required></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('rejectFinalModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitReviewAction('reject-final')">Final Reject</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ REVIEW HISTORY MODAL ════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="reviewHistoryModal">
+    <div class="modal" style="max-width:560px;">
+        <div class="modal-header">
+            <h3 id="reviewHistoryTitle">Review History</h3>
+            <button type="button" class="modal-close" onclick="closeModal('reviewHistoryModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="reviewHistoryContent">
+                <div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script src="/practice/js/polyfills.js"></script>
 <script src="/practice/js/auth.js"></script>
 <script src="/practice/js/api.js"></script>
 <script src="/practice/js/layout.js"></script>
-<script>
-var esc = PracticeAPI.escHtml;
-var allTasks = [], allClients = [], allUsers = [];
-var editingId = null;
-var PAGE_SIZE = 20;
-var currentPage = 1;
-
-var TYPE_LABEL = {
-    general: 'General', vat_return: 'VAT Return', tax_return: 'Tax Return',
-    annual_financial: 'Annual Financial', management_accounts: 'Mgmt Accounts',
-    payroll: 'Payroll', audit: 'Audit', bookkeeping: 'Bookkeeping',
-    secretarial: 'Secretarial', other: 'Other'
-};
-var STATUS_BADGE = {
-    open: 'badge-open', in_progress: 'badge-in-progress',
-    review: 'badge-review', completed: 'badge-completed', cancelled: 'badge-cancelled'
-};
-var STATUS_LABEL = {
-    open: 'Open', in_progress: 'In Progress',
-    review: 'In Review', completed: 'Completed', cancelled: 'Cancelled'
-};
-var PRI_BADGE = { urgent: 'badge-urgent', high: 'badge-high', medium: 'badge-medium', low: 'badge-low' };
-
-async function init() {
-    var token = localStorage.getItem('token') || localStorage.getItem('practice_token');
-    if (!token) { window.location.href = '/'; return; }
-    try {
-        var res = await PracticeAPI.fetch('/api/auth/me');
-        if (!res.ok) { window.location.href = '/'; return; }
-    } catch(e) { window.location.href = '/'; return; }
-
-    LAYOUT.init('tasks');
-
-    var params = new URLSearchParams(window.location.search);
-    var preClient = params.get('client');
-
-    await Promise.all([loadClients(), loadUsers()]);
-    if (preClient) document.getElementById('fClient').value = preClient;
-    loadTasks();
-}
-
-async function loadClients() {
-    try {
-        var res = await PracticeAPI.fetch('/api/practice/clients?is_active=true');
-        if (!res.ok) return;
-        var d = await res.json();
-        allClients = d.clients || [];
-        var opts = allClients.map(function(c) {
-            return '<option value="' + c.id + '">' + esc(c.name) + '</option>';
-        }).join('');
-        document.getElementById('fClient').innerHTML = '<option value="">All Clients</option>' + opts;
-        document.getElementById('tClient').innerHTML = '<option value="">None</option>' + opts;
-    } catch(e) {}
-}
-
-async function loadUsers() {
-    try {
-        // Use team members with can_receive_tasks=true + linked user account.
-        // Option value = user_id (not team member id) so assigned_to field is unchanged.
-        var res = await PracticeAPI.fetch('/api/practice/team?active=true');
-        if (!res.ok) return;
-        var d = await res.json();
-        // Only team members with a linked user account can be assigned tasks
-        allUsers = (d.members || []).filter(function(m) { return m.user_id && m.can_receive_tasks !== false; });
-        var opts = allUsers.map(function(m) {
-            var label = esc(m.display_name) + (m.job_title ? ' — ' + esc(m.job_title) : '');
-            return '<option value="' + m.user_id + '">' + label + '</option>';
-        }).join('');
-        document.getElementById('fAssigned').innerHTML = '<option value="">All Assignees</option>' + opts;
-        document.getElementById('tAssigned').innerHTML = '<option value="">Unassigned</option>' + opts;
-    } catch(e) {}
-}
-
-async function loadTasks() {
-    document.getElementById('tasksWrap').innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading tasks…</p></div>';
-    var status   = document.getElementById('fStatus').value;
-    var clientId = document.getElementById('fClient').value;
-    var type     = document.getElementById('fType').value;
-    var assigned = document.getElementById('fAssigned').value;
-    var qParams  = [];
-    if (status)   qParams.push('status='      + status);
-    if (clientId) qParams.push('client_id='   + clientId);
-    if (type)     qParams.push('type='        + type);
-    if (assigned) qParams.push('assigned_to=' + assigned);
-    var url = '/api/practice/tasks' + (qParams.length ? '?' + qParams.join('&') : '');
-    try {
-        var res = await PracticeAPI.fetch(url);
-        if (!res.ok) throw new Error('Load failed');
-        var d = await res.json();
-        allTasks = d.tasks || [];
-        currentPage = 1;
-        renderTasks();
-    } catch(e) {
-        document.getElementById('tasksWrap').innerHTML = '<div class="error-banner">⚠️ Failed to load tasks. Please refresh.</div>';
-    }
-}
-
-function getUserName(userId) {
-    if (!userId) return null;
-    // allUsers now holds team members; match on user_id (not team member id)
-    var m = allUsers.find(function(x) { return x.user_id === userId; });
-    if (!m) return 'User #' + userId;
-    return m.display_name || m.email || 'User #' + userId;
-}
-
-function renderTasks() {
-    var today = new Date().toISOString().split('T')[0];
-    var totalPages = Math.max(1, Math.ceil(allTasks.length / PAGE_SIZE));
-    if (currentPage > totalPages) currentPage = totalPages;
-    var start = (currentPage - 1) * PAGE_SIZE;
-    var page  = allTasks.slice(start, start + PAGE_SIZE);
-    var wrap  = document.getElementById('tasksWrap');
-
-    if (!allTasks.length) {
-        wrap.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><h3>No tasks found</h3><p>Try different filters or add a new task.</p></div>';
-        return;
-    }
-
-    var cards = page.map(function(t) {
-        var isOverdue  = t.due_date && t.due_date < today && t.status !== 'completed' && t.status !== 'cancelled';
-        var clientName = t.practice_clients && t.practice_clients.name ? t.practice_clients.name : '';
-        var assignee   = getUserName(t.assigned_to);
-        var badges = '<span class="badge ' + (STATUS_BADGE[t.status] || 'badge-open') + '">' + (STATUS_LABEL[t.status] || t.status) + '</span>' +
-                     '<span class="badge ' + (PRI_BADGE[t.priority] || 'badge-medium') + '">' + (t.priority || 'medium') + '</span>' +
-                     (isOverdue ? '<span class="badge badge-overdue">OVERDUE</span>' : '');
-        var meta = (t.type      ? '<span>📁 ' + (TYPE_LABEL[t.type] || t.type) + '</span>' : '') +
-                   (t.due_date  ? '<span>📅 Due: ' + t.due_date + '</span>' : '') +
-                   (assignee    ? '<span>👤 ' + esc(assignee) + '</span>' : '') +
-                   (t.description ? '<span>' + esc(t.description.slice(0, 80)) + (t.description.length > 80 ? '…' : '') + '</span>' : '');
-        var startBtn = (t.status !== 'in_progress' && t.status !== 'completed' && t.status !== 'cancelled')
-            ? '<button type="button" class="btn btn-ghost btn-sm" onclick="quickStatus(' + t.id + ',\'in_progress\')">▶ Start</button>' : '';
-        var doneBtn = (t.status !== 'completed' && t.status !== 'cancelled')
-            ? '<button type="button" class="btn btn-success btn-sm" onclick="quickStatus(' + t.id + ',\'completed\')">✓ Done</button>' : '';
-        return '<div class="task-card' + (isOverdue ? ' task-overdue' : '') + '">' +
-            '<div class="task-card-top">' +
-                '<div><div class="task-title">' + esc(t.title) + '</div>' +
-                (clientName ? '<div class="task-client-label">👤 ' + esc(clientName) + '</div>' : '') + '</div>' +
-                '<div class="task-badges">' + badges + '</div>' +
-            '</div>' +
-            '<div class="task-meta">' + meta + '</div>' +
-            '<div class="task-actions">' + startBtn + doneBtn +
-                '<button type="button" class="btn btn-ghost btn-sm" onclick="openTaskModal(' + t.id + ')">Edit</button>' +
-            '</div>' +
-        '</div>';
-    }).join('');
-
-    var pag = '';
-    if (totalPages > 1) {
-        var s  = (currentPage - 1) * PAGE_SIZE + 1;
-        var en = Math.min(currentPage * PAGE_SIZE, allTasks.length);
-        var pages = '';
-        for (var i = 1; i <= totalPages; i++) {
-            pages += '<button type="button" class="page-btn' + (i === currentPage ? ' active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
-        }
-        pag = '<div class="pagination task-pagination">' +
-            '<span>Showing ' + s + '–' + en + ' of ' + allTasks.length + ' tasks</span>' +
-            '<div class="pagination-pages">' +
-                '<button type="button" class="page-btn" onclick="goPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>‹</button>' +
-                pages +
-                '<button type="button" class="page-btn" onclick="goPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>›</button>' +
-            '</div>' +
-        '</div>';
-    }
-
-    wrap.innerHTML = cards + pag;
-}
-
-function goPage(p) {
-    var totalPages = Math.ceil(allTasks.length / PAGE_SIZE);
-    if (p < 1 || p > totalPages) return;
-    currentPage = p;
-    renderTasks();
-}
-
-async function quickStatus(id, status) {
-    try {
-        var res = await PracticeAPI.fetch('/api/practice/tasks/' + id, {
-            method: 'PUT', body: JSON.stringify({ status: status })
-        });
-        if (!res.ok) throw new Error('Update failed');
-        PracticeAPI.showToast('Task marked as ' + STATUS_LABEL[status] + '!');
-        loadTasks();
-    } catch(e) {
-        PracticeAPI.showToast('❌ ' + e.message, true);
-    }
-}
-
-function openTaskModal(id) {
-    editingId = id || null;
-    var t = id ? allTasks.find(function(x) { return x.id === id; }) : null;
-    document.getElementById('taskModalTitle').textContent = id ? 'Edit Task' : 'Add Task';
-    document.getElementById('tTitle').value    = t ? t.title       || '' : '';
-    document.getElementById('tClient').value   = t ? t.client_id   || '' : '';
-    document.getElementById('tAssigned').value = t ? t.assigned_to || '' : '';
-    document.getElementById('tType').value     = t ? t.type        || 'general' : 'general';
-    document.getElementById('tPriority').value = t ? t.priority    || 'medium'  : 'medium';
-    document.getElementById('tStatus').value   = t ? t.status      || 'open'    : 'open';
-    document.getElementById('tDueDate').value  = t ? t.due_date    || '' : '';
-    document.getElementById('tDesc').value     = t ? t.description || '' : '';
-    document.getElementById('tNotes').value    = t ? t.notes       || '' : '';
-    var delBtn = document.getElementById('tDeleteBtn');
-    if (id) { delBtn.classList.remove('hidden'); } else { delBtn.classList.add('hidden'); }
-    document.getElementById('taskModal').classList.add('show');
-}
-
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-
-async function saveTask(e) {
-    e.preventDefault();
-    var btn = document.getElementById('taskSaveBtn');
-    btn.disabled = true;
-    var clientVal   = document.getElementById('tClient').value;
-    var assignedVal = document.getElementById('tAssigned').value;
-    var body = {
-        title:       document.getElementById('tTitle').value.trim(),
-        client_id:   clientVal   ? parseInt(clientVal)   : null,
-        assigned_to: assignedVal ? parseInt(assignedVal) : null,
-        type:        document.getElementById('tType').value,
-        priority:    document.getElementById('tPriority').value,
-        status:      document.getElementById('tStatus').value,
-        due_date:    document.getElementById('tDueDate').value || null,
-        description: document.getElementById('tDesc').value.trim() || null,
-        notes:       document.getElementById('tNotes').value.trim() || null
-    };
-    try {
-        var url = editingId ? '/api/practice/tasks/' + editingId : '/api/practice/tasks';
-        var res = await PracticeAPI.fetch(url, { method: editingId ? 'PUT' : 'POST', body: JSON.stringify(body) });
-        var d = await res.json();
-        if (!res.ok) throw new Error(d.error || 'Save failed');
-        closeModal('taskModal');
-        PracticeAPI.showToast(editingId ? 'Task updated!' : 'Task created!');
-        loadTasks();
-    } catch(err) {
-        PracticeAPI.showToast('❌ ' + err.message, true);
-    } finally {
-        btn.disabled = false;
-    }
-    return false;
-}
-
-async function deleteCurrentTask() {
-    if (!editingId) return;
-    var t = allTasks.find(function(x) { return x.id === editingId; });
-    if (!confirm('Delete task "' + (t ? t.title : editingId) + '"?')) return;
-    try {
-        var res = await PracticeAPI.fetch('/api/practice/tasks/' + editingId, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Delete failed');
-        closeModal('taskModal');
-        PracticeAPI.showToast('Task deleted.');
-        loadTasks();
-    } catch(e) {
-        PracticeAPI.showToast('❌ ' + e.message, true);
-    }
-}
-
-init();
-</script>
+<script src="/practice/js/tasks.js"></script>
 </body>
 </html>

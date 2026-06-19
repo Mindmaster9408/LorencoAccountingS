@@ -452,6 +452,17 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .modal-sm   { max-width: 460px; }
 .modal-md   { max-width: 480px; }
 
+/* ── Task card — extended helpers (used by tasks.js) ── */
+.task-grid              { display: flex; flex-direction: column; }
+.task-card-header       { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.task-card-title        { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; }
+.task-card-meta         { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+.task-card-desc         { font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; opacity: 0.8; }
+.task-review-actions    { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
+/* ── Empty state ── */
+.empty-state            { text-align: center; padding: 48px 20px; color: var(--text-muted); font-size: 0.88rem; }
+
 /* ── Time log footer ── */
 .log-time-footer { margin-top: 12px; display: flex; gap: 12px; align-items: center; }
 .billable-check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text); }

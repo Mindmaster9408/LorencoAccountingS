@@ -59,6 +59,7 @@
             document.getElementById('pageLoading').classList.add('hidden');
             document.getElementById('clientForm').classList.remove('hidden');
             document.getElementById('contactsSection').classList.remove('hidden');
+            document.getElementById('complianceSuggestionsSection').classList.remove('hidden');
             document.getElementById('archiveBtn').classList.remove('hidden');
             loadContacts();
         } catch(e) {
@@ -422,17 +423,156 @@
         if (el) el.value = (value != null ? value : '');
     }
 
+    // ── Compliance Suggestions ─────────────────────────────────────────────────
+
+    var _suggestionData = null;  // last loaded suggestion for modal pre-fill
+    var _sdTeamLoaded   = false;
+
+    async function loadComplianceSuggestions() {
+        if (!clientId) return;
+        var btn  = document.getElementById('loadSuggestionsBtn');
+        var wrap = document.getElementById('suggestionsWrap');
+        if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+        wrap.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Fetching suggestions…</p></div>';
+
+        try {
+            var r = await PracticeAPI.fetch('/api/practice/compliance/suggestions/client/' + clientId);
+            if (!r.ok) throw new Error('Request failed');
+            var d = await r.json();
+            var suggestions = d.suggestions || [];
+
+            if (!suggestions.length) {
+                wrap.innerHTML = '<div class="empty"><h3>No suggestions available</h3><p>Set compliance flags on this client to generate suggestions.</p></div>';
+                return;
+            }
+
+            var areaColours = {
+                vat: '#38bdf8', paye: '#f59e0b', emp501: '#a78bfa',
+                provisional_tax: '#f43f5e', income_tax: '#10b981',
+                cipc: '#fb923c', bo: '#e879f9', annual_financials: '#34d399',
+                payroll: '#60a5fa', bookkeeping: '#a3e635', other: '#94a3b8'
+            };
+
+            wrap.innerHTML = suggestions.map(function(s, i) {
+                var colour = areaColours[s.compliance_area] || '#94a3b8';
+                return '<div class="suggestion-card" style="border-left-color:' + colour + '">' +
+                    '<div class="suggestion-body">' +
+                        '<div class="suggestion-title">' + esc(s.title) + '</div>' +
+                        '<div class="suggestion-reason">' + esc(s.reason) + '</div>' +
+                        (s.note ? '<div class="suggestion-note">' + esc(s.note) + '</div>' : '') +
+                        '<div class="suggestion-meta">' +
+                            '<span class="badge badge-info" style="font-size:0.7rem">' + esc(s.compliance_area || '') + '</span>' +
+                            '<span class="badge" style="font-size:0.7rem;background:rgba(255,255,255,0.06)">' + esc(s.deadline_type || '') + '</span>' +
+                            (s.suggested_recurrence ? '<span class="col-muted" style="font-size:0.72rem">↻ ' + esc(s.suggested_recurrence) + '</span>' : '') +
+                        '</div>' +
+                    '</div>' +
+                    '<button type="button" class="btn btn-ghost btn-sm" onclick="openSuggestionDeadlineModal(' + i + ')" style="flex-shrink:0">+ Create Deadline</button>' +
+                '</div>';
+            }).join('');
+
+            // Store for modal access by index
+            window._complianceSuggestions = suggestions;
+
+        } catch(e) {
+            wrap.innerHTML = '<div class="error-banner">Failed to load suggestions: ' + esc(e.message) + '</div>';
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Refresh Suggestions'; }
+        }
+    }
+
+    async function openSuggestionDeadlineModal(idx) {
+        var suggestions = window._complianceSuggestions || [];
+        var s = suggestions[idx];
+        if (!s) return;
+        _suggestionData = s;
+
+        document.getElementById('sdTitle').value        = s.title || '';
+        document.getElementById('sdDueDate').value      = '';
+        document.getElementById('sdPeriodStart').value  = '';
+        document.getElementById('sdPeriodEnd').value    = '';
+        document.getElementById('sdPriority').value     = s.priority || 'normal';
+        document.getElementById('sdNotes').value        = s.note || '';
+        document.getElementById('sdArea').value         = s.compliance_area || '';
+        document.getElementById('sdDeadlineType').value = s.deadline_type || '';
+        document.getElementById('sdType').value         = s.type || 'general';
+
+        // Populate team members if not done yet
+        if (!_sdTeamLoaded) {
+            try {
+                var tr = await PracticeAPI.fetch('/api/practice/team?active=true');
+                if (tr.ok) {
+                    var td = await tr.json();
+                    var opts = (td.members || []).map(function(m) {
+                        return '<option value="' + m.id + '">' + esc(m.display_name) + '</option>';
+                    }).join('');
+                    var el = document.getElementById('sdResponsible');
+                    if (el) el.innerHTML = '<option value="">Not assigned</option>' + opts;
+                    _sdTeamLoaded = true;
+                }
+            } catch(e) {}
+        }
+
+        document.getElementById('suggestionDeadlineModal').classList.add('show');
+    }
+
+    async function saveSuggestionDeadline(e) {
+        e.preventDefault();
+        var s = _suggestionData || {};
+        var btn = document.getElementById('sdSaveBtn');
+        btn.disabled = true; btn.textContent = 'Creating…';
+
+        var payload = {
+            title:                    document.getElementById('sdTitle').value.trim(),
+            client_id:                clientId,
+            compliance_area:          document.getElementById('sdArea').value || null,
+            deadline_type:            document.getElementById('sdDeadlineType').value || null,
+            type:                     document.getElementById('sdType').value || 'general',
+            due_date:                 document.getElementById('sdDueDate').value,
+            period_start:             document.getElementById('sdPeriodStart').value || null,
+            period_end:               document.getElementById('sdPeriodEnd').value || null,
+            responsible_team_member_id: document.getElementById('sdResponsible').value || null,
+            priority:                 document.getElementById('sdPriority').value || 'normal',
+            notes:                    document.getElementById('sdNotes').value.trim() || null,
+            status:                   'open'
+        };
+
+        try {
+            var r = await PracticeAPI.fetch('/api/practice/deadlines', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            var d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Save failed');
+
+            PracticeAPI.showToast('Deadline created');
+            closeSuggestionModal();
+        } catch(err) {
+            PracticeAPI.showToast('Error: ' + err.message, true);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Create Deadline';
+        }
+        return false;
+    }
+
+    function closeSuggestionModal() {
+        document.getElementById('suggestionDeadlineModal').classList.remove('show');
+    }
+
     // ── Expose globals ─────────────────────────────────────────────────────────
 
-    window.saveClientDetail     = saveClientDetail;
-    window.archiveClient        = archiveClient;
-    window.toggleIndividualFields = toggleIndividualFields;
-    window.togglePostalAddress  = togglePostalAddress;
-    window.openContactModal     = openContactModal;
-    window.closeContactModal    = closeContactModal;
-    window.saveContact          = saveContact;
-    window.deactivateContact    = deactivateContact;
-    window._openContactModal    = _openContactModal;
+    window.saveClientDetail            = saveClientDetail;
+    window.archiveClient               = archiveClient;
+    window.toggleIndividualFields      = toggleIndividualFields;
+    window.togglePostalAddress         = togglePostalAddress;
+    window.openContactModal            = openContactModal;
+    window.closeContactModal           = closeContactModal;
+    window.saveContact                 = saveContact;
+    window.deactivateContact           = deactivateContact;
+    window._openContactModal           = _openContactModal;
+    window.loadComplianceSuggestions   = loadComplianceSuggestions;
+    window.openSuggestionDeadlineModal = openSuggestionDeadlineModal;
+    window.saveSuggestionDeadline      = saveSuggestionDeadline;
+    window.closeSuggestionModal        = closeSuggestionModal;
 
     init();
 })();

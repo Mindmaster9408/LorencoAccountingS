@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Compliance Calendar</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Calendar grid ───────────────────────────────────────────────── */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+        .cal-header-cell {
+            background: rgba(167,139,250,0.15);
+            color: var(--accent);
+            text-align: center;
+            padding: 0.4rem 0;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .cal-day {
+            background: var(--surface);
+            min-height: 90px;
+            padding: 4px;
+            position: relative;
+        }
+        .cal-day.other-month { opacity: 0.35; }
+        .cal-day.today { background: rgba(167,139,250,0.08); outline: 1px solid var(--accent); }
+        .cal-day-num {
+            font-size: 0.72rem;
+            color: rgba(255,255,255,0.45);
+            margin-bottom: 3px;
+        }
+        .cal-day.today .cal-day-num { color: var(--accent); font-weight: 700; }
+        .cal-event {
+            font-size: 0.68rem;
+            padding: 2px 4px;
+            border-radius: 3px;
+            margin-bottom: 2px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.3;
+        }
+        .cal-event.overdue  { background: rgba(244,63,94,0.25); color: #fca5b6; border-left: 2px solid #f43f5e; }
+        .cal-event.high     { background: rgba(245,158,11,0.2); color: #fcd34d; border-left: 2px solid #f59e0b; }
+        .cal-event.normal   { background: rgba(56,189,248,0.15); color: #7dd3fc; border-left: 2px solid #38bdf8; }
+        .cal-event.completed{ background: rgba(16,185,129,0.15); color: #6ee7b7; border-left: 2px solid #10b981; }
+        .cal-event.submitted{ background: rgba(167,139,250,0.2); color: #c4b5fd; border-left: 2px solid var(--accent); }
+        .cal-more { font-size: 0.65rem; color: rgba(255,255,255,0.4); padding: 1px 4px; }
+
+        /* ── Calendar nav ────────────────────────────────────────────────── */
+        .cal-nav {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .cal-nav-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9);
+            min-width: 160px;
+            text-align: center;
+        }
+        .btn-cal-nav {
+            background: var(--surface);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.7);
+            border-radius: 6px;
+            padding: 0.3rem 0.65rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .btn-cal-nav:hover { background: rgba(255,255,255,0.08); color: #fff; }
+
+        /* ── View toggle ─────────────────────────────────────────────────── */
+        .view-toggle {
+            display: flex;
+            gap: 0;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .view-toggle button {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.5);
+            padding: 0.35rem 0.8rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background 0.15s, color 0.15s;
+        }
+        .view-toggle button.active {
+            background: rgba(167,139,250,0.25);
+            color: var(--accent);
+        }
+
+        /* ── Suggestions panel ───────────────────────────────────────────── */
+        .suggestion-card {
+            background: var(--surface);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-left: 3px solid var(--accent);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.6rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+        .suggestion-body { flex: 1; min-width: 0; }
+        .suggestion-title { font-weight: 600; font-size: 0.9rem; color: rgba(255,255,255,0.9); }
+        .suggestion-reason { font-size: 0.78rem; color: rgba(255,255,255,0.45); margin-top: 2px; }
+        .suggestion-note  { font-size: 0.75rem; color: rgba(255,255,255,0.35); margin-top: 4px; font-style: italic; }
+        .suggestion-badges { display: flex; gap: 0.4rem; margin-top: 6px; flex-wrap: wrap; }
+
+        /* ── Rules table ─────────────────────────────────────────────────── */
+        .rules-section { margin-top: 2.5rem; }
+        .rules-section .section-label { margin-bottom: 0.75rem; }
+    </style>
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <!-- ── Page header ── -->
+    <div class="section-header">
+        <div class="section-title">Compliance Calendar</div>
+        <div class="controls">
+            <div class="view-toggle">
+                <button type="button" id="btnCalView" class="active" onclick="setView('calendar')">📅 Calendar</button>
+                <button type="button" id="btnListView" onclick="setView('list')">☰ List</button>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="openDeadlineModal()">+ New Deadline</button>
+        </div>
+    </div>
+
+    <!-- ── Summary bar ── -->
+    <div class="summary-bar" id="summaryBar" style="margin-bottom:1.25rem">
+        <div class="summary-item"><div class="summary-value" id="sumOpen">—</div><div class="summary-label">Open</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumOverdue" style="color:var(--danger)">—</div><div class="summary-label">Overdue</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumDueSoon" style="color:var(--warning)">—</div><div class="summary-label">Due in 30 days</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumCompleted" style="color:var(--success)">—</div><div class="summary-label">Completed</div></div>
+    </div>
+
+    <!-- ── Filters ── -->
+    <div class="controls" style="margin-bottom:1.25rem;flex-wrap:wrap">
+        <select class="filter-select" id="fClient" aria-label="Client" onchange="refresh()">
+            <option value="">All Clients</option>
+        </select>
+        <select class="filter-select" id="fArea" aria-label="Compliance area" onchange="refresh()">
+            <option value="">All Areas</option>
+            <option value="vat">VAT</option>
+            <option value="paye">PAYE</option>
+            <option value="emp501">EMP501</option>
+            <option value="provisional_tax">Provisional Tax</option>
+            <option value="income_tax">Income Tax</option>
+            <option value="cipc">CIPC</option>
+            <option value="bo">Beneficial Ownership</option>
+            <option value="annual_financials">Annual Financials</option>
+            <option value="bookkeeping">Bookkeeping</option>
+            <option value="payroll">Payroll</option>
+            <option value="internal">Internal</option>
+            <option value="other">Other</option>
+        </select>
+        <select class="filter-select" id="fStatus" aria-label="Status" onchange="refresh()">
+            <option value="">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="waiting_client">Waiting Client</option>
+            <option value="waiting_review">Waiting Review</option>
+            <option value="submitted">Submitted</option>
+            <option value="completed">Completed</option>
+            <option value="overdue">Overdue</option>
+        </select>
+        <select class="filter-select" id="fMember" aria-label="Responsible" onchange="refresh()">
+            <option value="">All Assignees</option>
+        </select>
+    </div>
+
+    <!-- ── Calendar view ── -->
+    <div id="calendarSection">
+        <div class="cal-nav">
+            <button type="button" class="btn-cal-nav" onclick="prevMonth()">&#8249;</button>
+            <div class="cal-nav-title" id="calTitle">—</div>
+            <button type="button" class="btn-cal-nav" onclick="nextMonth()">&#8250;</button>
+            <button type="button" class="btn-cal-nav" onclick="goToday()" style="margin-left:auto">Today</button>
+        </div>
+        <div class="calendar-grid" id="calGrid">
+            <div style="grid-column:1/-1;padding:2rem;text-align:center;color:rgba(255,255,255,0.3)">Loading…</div>
+        </div>
+    </div>
+
+    <!-- ── List view ── -->
+    <div id="listSection" style="display:none">
+        <div id="deadlineListWrap">
+            <div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>
+        </div>
+        <div id="deadlinePagination"></div>
+    </div>
+
+    <!-- ── Compliance rules section ── -->
+    <div class="rules-section">
+        <div class="section-header" style="margin-top:0">
+            <div class="section-label">Compliance Rules</div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="openRuleModal()">+ Add Rule</button>
+        </div>
+        <div id="rulesWrap">
+            <div class="loading"><div class="loading-spinner"></div><p>Loading rules…</p></div>
+        </div>
+    </div>
+
+</div><!-- /main -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     DEADLINE MODAL
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="deadlineModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <span id="dlModalTitle">New Deadline</span>
+            <button type="button" class="modal-close" onclick="closeModal('deadlineModal')">×</button>
+        </div>
+        <div class="modal-body">
+            <form id="deadlineForm" onsubmit="saveDeadline(event)">
+                <div class="form-grid">
+
+                    <div class="form-field form-full">
+                        <label>Title <span style="color:var(--danger)">*</span></label>
+                        <input type="text" id="dlTitle" required placeholder="e.g. VAT201 — August 2026">
+                    </div>
+
+                    <div class="form-field">
+                        <label>Client</label>
+                        <select id="dlClient">
+                            <option value="">No specific client</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Compliance Area</label>
+                        <select id="dlArea">
+                            <option value="">— Select —</option>
+                            <option value="vat">VAT</option>
+                            <option value="paye">PAYE</option>
+                            <option value="emp501">EMP501</option>
+                            <option value="provisional_tax">Provisional Tax</option>
+                            <option value="income_tax">Income Tax</option>
+                            <option value="cipc">CIPC</option>
+                            <option value="bo">Beneficial Ownership</option>
+                            <option value="annual_financials">Annual Financials</option>
+                            <option value="bookkeeping">Bookkeeping</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="internal">Internal</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Deadline Type</label>
+                        <select id="dlDeadlineType">
+                            <option value="">— Select —</option>
+                            <option value="vat201">VAT201</option>
+                            <option value="emp201">EMP201</option>
+                            <option value="emp501">EMP501</option>
+                            <option value="irp6">IRP6</option>
+                            <option value="itr12">ITR12</option>
+                            <option value="itr14">ITR14</option>
+                            <option value="cipc_annual_return">CIPC Annual Return</option>
+                            <option value="beneficial_ownership">Beneficial Ownership</option>
+                            <option value="annual_financial_statements">Annual Financial Statements</option>
+                            <option value="management_accounts">Management Accounts</option>
+                            <option value="monthly_bookkeeping">Monthly Bookkeeping</option>
+                            <option value="payroll_month_end">Payroll Month End</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Due Date <span style="color:var(--danger)">*</span></label>
+                        <input type="date" id="dlDueDate" required>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Reminder Date</label>
+                        <input type="date" id="dlReminderDate">
+                    </div>
+
+                    <div class="form-field">
+                        <label>Period Start</label>
+                        <input type="date" id="dlPeriodStart">
+                    </div>
+
+                    <div class="form-field">
+                        <label>Period End</label>
+                        <input type="date" id="dlPeriodEnd">
+                    </div>
+
+                    <div class="form-field">
+                        <label>Responsible</label>
+                        <select id="dlResponsible">
+                            <option value="">Not assigned</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Reviewer</label>
+                        <select id="dlReviewer">
+                            <option value="">None</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Priority</label>
+                        <select id="dlPriority">
+                            <option value="normal">Normal</option>
+                            <option value="low">Low</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Status</label>
+                        <select id="dlStatus">
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="waiting_client">Waiting Client</option>
+                            <option value="waiting_review">Waiting Review</option>
+                            <option value="submitted">Submitted</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Submission Reference</label>
+                        <input type="text" id="dlSubmissionRef" placeholder="e.g. SARS case number">
+                    </div>
+
+                    <div class="form-field form-full">
+                        <label>Notes</label>
+                        <textarea id="dlNotes" rows="2" placeholder="Client-facing notes"></textarea>
+                    </div>
+
+                    <div class="form-field form-full">
+                        <label>Internal Notes</label>
+                        <textarea id="dlInternalNotes" rows="2" placeholder="Practice-internal notes (not visible to client)"></textarea>
+                    </div>
+
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm" id="dlDeleteBtn" style="display:none;margin-right:auto" onclick="cancelDeadline()">Cancel Deadline</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('deadlineModal')">Discard</button>
+                    <button type="submit" class="btn btn-primary" id="dlSaveBtn">Save Deadline</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     RULE MODAL
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="ruleModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <span id="ruleModalTitle">New Compliance Rule</span>
+            <button type="button" class="modal-close" onclick="closeModal('ruleModal')">×</button>
+        </div>
+        <div class="modal-body">
+            <form id="ruleForm" onsubmit="saveRule(event)">
+                <div class="form-grid">
+
+                    <div class="form-field form-full">
+                        <label>Rule Name <span style="color:var(--danger)">*</span></label>
+                        <input type="text" id="rlName" required placeholder="e.g. Monthly VAT201 Return">
+                    </div>
+
+                    <div class="form-field">
+                        <label>Compliance Area <span style="color:var(--danger)">*</span></label>
+                        <select id="rlArea" required>
+                            <option value="">— Select —</option>
+                            <option value="vat">VAT</option>
+                            <option value="paye">PAYE</option>
+                            <option value="emp501">EMP501</option>
+                            <option value="provisional_tax">Provisional Tax</option>
+                            <option value="income_tax">Income Tax</option>
+                            <option value="cipc">CIPC</option>
+                            <option value="bo">Beneficial Ownership</option>
+                            <option value="annual_financials">Annual Financials</option>
+                            <option value="bookkeeping">Bookkeeping</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="internal">Internal</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Deadline Type <span style="color:var(--danger)">*</span></label>
+                        <select id="rlDeadlineType" required>
+                            <option value="">— Select —</option>
+                            <option value="vat201">VAT201</option>
+                            <option value="emp201">EMP201</option>
+                            <option value="emp501">EMP501</option>
+                            <option value="irp6">IRP6</option>
+                            <option value="itr12">ITR12</option>
+                            <option value="itr14">ITR14</option>
+                            <option value="cipc_annual_return">CIPC Annual Return</option>
+                            <option value="beneficial_ownership">Beneficial Ownership</option>
+                            <option value="annual_financial_statements">Annual Financial Statements</option>
+                            <option value="management_accounts">Management Accounts</option>
+                            <option value="monthly_bookkeeping">Monthly Bookkeeping</option>
+                            <option value="payroll_month_end">Payroll Month End</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Applies To (Client Type)</label>
+                        <select id="rlClientType">
+                            <option value="">All client types</option>
+                            <option value="company">Company</option>
+                            <option value="cc">Close Corporation</option>
+                            <option value="trust">Trust</option>
+                            <option value="partnership">Partnership</option>
+                            <option value="sole_proprietor">Sole Proprietor</option>
+                            <option value="individual">Individual</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Recurrence</label>
+                        <select id="rlRecurrence">
+                            <option value="">None / once-off</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="bi_monthly">Bi-Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="biannual">Biannual</option>
+                            <option value="annual">Annual</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Due Day of Month</label>
+                        <input type="number" id="rlDueDay" min="1" max="31" placeholder="e.g. 25">
+                    </div>
+
+                    <div class="form-field">
+                        <label>Due Month (annual items)</label>
+                        <input type="number" id="rlDueMonth" min="1" max="12" placeholder="e.g. 6 for June">
+                    </div>
+
+                    <div class="form-field">
+                        <label>Due Offset Basis</label>
+                        <select id="rlOffsetBasis">
+                            <option value="">None</option>
+                            <option value="period_end">Period End</option>
+                            <option value="period_start">Period Start</option>
+                            <option value="financial_year_end">Financial Year End</option>
+                            <option value="tax_year_end">Tax Year End</option>
+                            <option value="custom_anchor">Custom Anchor</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field">
+                        <label>Due Offset Days</label>
+                        <input type="number" id="rlOffsetDays" placeholder="e.g. 25">
+                    </div>
+
+                    <div class="form-field form-full">
+                        <label>Notes</label>
+                        <textarea id="rlNotes" rows="2"></textarea>
+                    </div>
+
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm" id="rlDeactivateBtn" style="display:none;margin-right:auto" onclick="deactivateRule()">Deactivate</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('ruleModal')">Discard</button>
+                    <button type="submit" class="btn btn-primary">Save Rule</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     STATUS QUICK-CHANGE MODAL
+══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="statusModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <span>Update Status</span>
+            <button type="button" class="modal-close" onclick="closeModal('statusModal')">×</button>
+        </div>
+        <div class="modal-body">
+            <form id="statusForm" onsubmit="saveStatus(event)">
+                <div class="form-field" style="margin-bottom:1rem">
+                    <label>New Status</label>
+                    <select id="stStatus">
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="waiting_client">Waiting Client</option>
+                        <option value="waiting_review">Waiting Review</option>
+                        <option value="submitted">Submitted</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                </div>
+                <div class="form-field" id="stRefWrap" style="margin-bottom:1rem;display:none">
+                    <label>Submission Reference</label>
+                    <input type="text" id="stRef" placeholder="e.g. SARS case number">
+                </div>
+                <div class="form-field" style="margin-bottom:1rem">
+                    <label>Note (optional)</label>
+                    <input type="text" id="stNote" placeholder="What changed?">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('statusModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/compliance.js"></script>
+</body>
+</html>
