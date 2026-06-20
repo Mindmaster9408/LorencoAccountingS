@@ -22,6 +22,18 @@ var LINE_STATUS_LABELS = {
   excluded:    'Excluded'
 };
 
+var EVENT_TYPE_LABELS = {
+  pack_created:          'Pack Created',
+  pack_updated:          'Pack Updated',
+  pack_recalculated:     'Totals Recalculated',
+  pack_approved:         'Pack Approved',
+  pack_locked:           'Pack Locked',
+  pack_cancelled:        'Pack Cancelled',
+  pack_number_assigned:  'Pack Number Assigned',
+  pack_line_written_off: 'Entry Written Off',
+  pack_line_excluded:    'Entry Excluded'
+};
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -359,7 +371,7 @@ function renderPacks(packs) {
   }
 
   var html = '<div class="packs-table-wrap"><table class="data-table">';
-  html += '<thead><tr><th>Pack Name</th><th>Client</th><th>Period</th>';
+  html += '<thead><tr><th>Ref</th><th>Pack Name</th><th>Client</th><th>Period</th>';
   html += '<th>Hrs</th><th>Recoverable</th><th>Write-Off</th><th>Billable</th>';
   html += '<th>Status</th><th></th></tr></thead><tbody>';
 
@@ -371,6 +383,7 @@ function renderPacks(packs) {
     }
 
     html += '<tr>';
+    html += '<td style="font-size:11px;white-space:nowrap;color:var(--text-muted);">' + esc(p.pack_number || '–') + '</td>';
     html += '<td><strong>' + esc(p.pack_name) + '</strong></td>';
     html += '<td>' + esc(clientName) + '</td>';
     html += '<td style="font-size:11px;">' + esc(period) + '</td>';
@@ -423,7 +436,26 @@ function renderPackDetail(pack, lines) {
 
   var clientName = pack.practice_clients ? pack.practice_clients.name : '–';
   titleEl.textContent    = pack.pack_name;
-  subtitleEl.textContent = clientName + ' • ' + (PACK_STATUS_LABELS[pack.status] || pack.status);
+  subtitleEl.textContent = [
+    pack.pack_number  || null,
+    clientName,
+    PACK_STATUS_LABELS[pack.status] || pack.status
+  ].filter(Boolean).join(' · ');
+
+  // Status banner
+  var bannerEl = document.getElementById('packStatusBanner');
+  if (bannerEl) {
+    var fmtDate = function(dt) { return dt ? new Date(dt).toLocaleDateString('en-ZA') : ''; };
+    var bannerMessages = {
+      draft:     '● Draft — this pack is editable',
+      reviewed:  '● Reviewed — this pack is editable',
+      approved:  '✓ Approved' + (pack.approved_at ? ' ' + fmtDate(pack.approved_at) : '') + ' — ready to lock',
+      locked:    '🔒 Locked' + (pack.locked_at ? ' ' + fmtDate(pack.locked_at) : '') + ' — time entries marked as billed',
+      cancelled: '✕ Cancelled' + (pack.cancelled_at ? ' ' + fmtDate(pack.cancelled_at) : '')
+    };
+    bannerEl.className   = 'pack-status-banner banner-' + pack.status;
+    bannerEl.textContent = bannerMessages[pack.status] || pack.status;
+  }
 
   // Summary stats
   var rv = parseFloat(pack.recoverable_value || 0);
@@ -642,6 +674,48 @@ async function excludeLine(lineId) {
   } catch (e) {
     showToast(e.message || 'Exclude failed', 'error');
   }
+}
+
+// ── History modal ─────────────────────────────────────────────────────────────
+
+async function openHistoryModal() {
+  if (!_currentPackId) return;
+  var listEl = document.getElementById('historyList');
+  listEl.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading history…</p></div>';
+  document.getElementById('historyModal').classList.add('show');
+
+  try {
+    var res = await PracticeAPI.fetch('/api/practice/billing/packs/' + _currentPackId + '/history');
+    renderPackHistory(res.events || []);
+  } catch (e) {
+    listEl.innerHTML = '<div class="error-banner">Failed to load history: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderPackHistory(events) {
+  var listEl = document.getElementById('historyList');
+  if (!events.length) {
+    listEl.innerHTML = '<div class="empty-state">No history events recorded yet.</div>';
+    return;
+  }
+
+  var html = '';
+  events.forEach(function(ev) {
+    var label      = EVENT_TYPE_LABELS[ev.event_type] || ev.event_type;
+    var ts         = new Date(ev.created_at).toLocaleString('en-ZA');
+    var statusChg  = ev.old_status && ev.new_status ? ev.old_status + ' → ' + ev.new_status : (ev.new_status || '');
+
+    html += '<div class="history-event">';
+    html += '<div class="history-event-type">' + esc(label) + '</div>';
+    if (statusChg)  html += '<div class="history-event-status">' + esc(statusChg) + '</div>';
+    if (ev.notes)   html += '<div class="history-event-meta">' + esc(ev.notes) + '</div>';
+    html += '<div class="history-event-meta">' + esc(ts);
+    if (ev.actor_user_id) html += ' · User ' + esc(String(ev.actor_user_id));
+    html += '</div>';
+    html += '</div>';
+  });
+
+  listEl.innerHTML = html;
 }
 
 // ── Report actions ────────────────────────────────────────────────────────────

@@ -189,6 +189,10 @@ async function createRunAndGenerateTasks(req, {
   client_id = null,
   start_date = null,
   source_type = 'manual',
+  // Traceability — set when generating from an engagement (Codebox 15)
+  engagement_id     = null,
+  service_id        = null,
+  generation_source = null,
   // Deadline-linking params (all optional)
   create_deadline,
   deadline_title,
@@ -274,7 +278,10 @@ async function createRunAndGenerateTasks(req, {
     compliance_area: resolvedComplianceArea,
     deadline_type:   resolvedDeadlineType,
     period_start:    period_start || null,
-    period_end:      period_end   || null
+    period_end:      period_end   || null,
+    ...(engagement_id     != null ? { engagement_id:     parseInt(engagement_id) } : {}),
+    ...(service_id        != null ? { service_id:        parseInt(service_id) }    : {}),
+    ...(generation_source         ? { generation_source }                          : {})
   };
 
   const { data: run, error: rErr } = await supabase
@@ -336,8 +343,10 @@ async function createRunAndGenerateTasks(req, {
       approval_required: needsApproval,
       review_status:     'not_required',
       approval_status:   'not_required',
-      qa_status:         needsReview ? 'required' : 'none'
+      qa_status:         needsReview ? 'required' : 'none',
       // deadline_id will be set in a batch update after deadline creation
+      ...(engagement_id != null ? { engagement_id: parseInt(engagement_id) } : {}),
+      ...(service_id    != null ? { service_id:    parseInt(service_id) }    : {})
     };
   });
 
@@ -375,7 +384,9 @@ async function createRunAndGenerateTasks(req, {
         workflow_run_id:            run.id,
         responsible_team_member_id: responsible_team_member_id ? parseInt(responsible_team_member_id) : null,
         reviewer_team_member_id:    reviewer_team_member_id    ? parseInt(reviewer_team_member_id)    : null,
-        created_by:                 req.user ? req.user.userId : null
+        created_by:                 req.user ? req.user.userId : null,
+        ...(engagement_id != null ? { engagement_id: parseInt(engagement_id) } : {}),
+        ...(service_id    != null ? { service_id:    parseInt(service_id) }    : {})
       };
 
       const { data: dl, error: dlErr } = await supabase

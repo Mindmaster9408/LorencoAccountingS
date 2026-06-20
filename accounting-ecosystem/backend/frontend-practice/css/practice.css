@@ -498,10 +498,65 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .realization-ok   { color: #fbbf24; font-weight: 700; }
 .realization-low  { color: #fda4af; font-weight: 700; }
 
+/* ── Pack status banners (shared — used in billing.html <style> and here for any future page) ── */
+.pack-status-banner             { padding: 8px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.pack-status-banner.banner-draft     { background: rgba(100,116,139,0.12); color: #94a3b8; }
+.pack-status-banner.banner-reviewed  { background: rgba(96,165,250,0.12);  color: #93c5fd; }
+.pack-status-banner.banner-approved  { background: rgba(16,185,129,0.12);  color: #6ee7b7; }
+.pack-status-banner.banner-locked    { background: rgba(167,139,250,0.15); color: #a78bfa; }
+.pack-status-banner.banner-cancelled { background: rgba(244,63,94,0.10);   color: #fda4af; }
+
+/* ── Pack history events (used in history modal) ── */
+.history-event            { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.history-event:last-child { border-bottom: none; }
+.history-event-type       { font-size: 12px; font-weight: 600; color: var(--text); }
+.history-event-status     { font-size: 11px; color: #a78bfa; margin-top: 2px; }
+.history-event-meta       { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
 /* ── Time log footer ── */
 .log-time-footer { margin-top: 12px; display: flex; gap: 12px; align-items: center; }
 .billable-check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text); }
 .billable-check input { width: auto; }
+
+/* ── Engagement cards (client-detail.html engagements section) ── */
+.engagement-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 14px; }
+.engagement-card:hover { border-color: rgba(167,139,250,0.25); }
+.engagement-card-body { flex: 1; min-width: 0; }
+.engagement-card-name { font-weight: 600; font-size: 0.9rem; color: var(--text); }
+.engagement-card-meta { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; }
+.engagement-card-fee  { font-size: 0.82rem; color: var(--accent); margin-top: 4px; font-weight: 500; }
+.engagement-card-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }
+
+/* ── Engagement status badges ── */
+.badge-eng-active    { background: rgba(16,185,129,0.15);  color: #6ee7b7; }
+.badge-eng-paused    { background: rgba(245,158,11,0.15);  color: #fcd34d; }
+.badge-eng-ended     { background: rgba(100,116,139,0.15); color: #94a3b8; }
+.badge-eng-cancelled { background: rgba(244,63,94,0.12);   color: #fda4af; }
+
+/* ── Service category dots ── */
+.cat-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.cat-vat            { background: #38bdf8; }
+.cat-paye           { background: #f59e0b; }
+.cat-emp501         { background: #a78bfa; }
+.cat-income_tax     { background: #10b981; }
+.cat-annual_financials { background: #34d399; }
+.cat-bookkeeping    { background: #a3e635; }
+.cat-payroll        { background: #60a5fa; }
+.cat-secretarial    { background: #fb923c; }
+.cat-consulting     { background: #e879f9; }
+.cat-cipc           { background: #f43f5e; }
+.cat-other          { background: #94a3b8; }
+
+/* ── Service catalog table ── */
+.service-active   { color: #6ee7b7; font-size: 0.78rem; }
+.service-inactive { color: var(--text-muted); font-size: 0.78rem; }
+
+/* ── Engagement history events ── */
+.eng-event            { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.eng-event:last-child { border-bottom: none; }
+.eng-event-type       { font-size: 12px; font-weight: 600; color: var(--text); }
+.eng-event-status     { font-size: 11px; color: var(--accent); margin-top: 2px; }
+.eng-event-meta       { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
 @media(max-width: 768px) {
     .form-grid { grid-template-columns: 1fr; }

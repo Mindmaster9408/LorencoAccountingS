@@ -11,8 +11,9 @@
 const express = require('express');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
-const workflowsRouter = require('./workflows');
-const billingRouter   = require('./billing');
+const workflowsRouter   = require('./workflows');
+const billingRouter     = require('./billing');
+const engagementsRouter = require('./engagements');
 
 const router = express.Router();
 
@@ -2332,5 +2333,8 @@ router.use('/workflows', workflowsRouter);
 
 // Billing: WIP management and billing pack preparation
 router.use('/billing', billingRouter);
+
+// Service Catalog + Client Engagements
+router.use('/', engagementsRouter);
 
 module.exports = router;

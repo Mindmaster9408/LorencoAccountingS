@@ -425,6 +425,139 @@
         <div id="suggestionsWrap"></div>
     </div>
 
+    <!-- ── 13. Client Engagements (outside form — loaded after client loads) ── -->
+    <div id="engagementsSection" class="hidden" style="margin-top:2rem;">
+        <div class="section-header" style="margin-top:0;">
+            <div class="section-title" style="font-size:1rem;">Services &amp; Engagements</div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openEngagementModal()">+ Add Engagement</button>
+        </div>
+        <div id="engagementsWrap">
+            <div class="loading"><div class="loading-spinner"></div><p>Loading engagements…</p></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ENGAGEMENT MODAL (create / edit) -->
+<div class="modal-overlay" id="engagementModal">
+    <div class="modal" style="max-width:660px;">
+        <div class="modal-header">
+            <h3 id="engModalTitle">Add Engagement</h3>
+            <button type="button" class="modal-close" onclick="closeEngagementModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form id="engagementForm" onsubmit="return saveEngagement(event)">
+                <div class="form-grid">
+                    <div class="form-field form-full">
+                        <label for="eeName">Engagement Name <span style="color:var(--danger)">*</span></label>
+                        <input type="text" id="eeName" required placeholder="e.g. VAT Returns — Monthly">
+                    </div>
+                    <div class="form-field">
+                        <label for="eeCategory">Service Category <span style="color:var(--danger)">*</span></label>
+                        <select id="eeCategory" required>
+                            <option value="">Select category…</option>
+                            <option value="vat">VAT</option>
+                            <option value="paye">PAYE</option>
+                            <option value="emp501">EMP501 / Annual Recon</option>
+                            <option value="income_tax">Income Tax</option>
+                            <option value="annual_financials">Annual Financials</option>
+                            <option value="bookkeeping">Bookkeeping</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="secretarial">Secretarial</option>
+                            <option value="consulting">Consulting</option>
+                            <option value="cipc">CIPC</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eeBillingType">Billing Type</label>
+                        <select id="eeBillingType">
+                            <option value="fixed">Fixed Fee</option>
+                            <option value="hourly">Hourly</option>
+                            <option value="retainer">Retainer</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eeFeeAmount">Fee Amount (R)</label>
+                        <input type="number" id="eeFeeAmount" min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-field">
+                        <label for="eeFeeFreq">Fee Frequency</label>
+                        <select id="eeFeeFreq">
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="biannual">Biannual</option>
+                            <option value="annual">Annual</option>
+                            <option value="once_off">Once-off</option>
+                            <option value="per_hour">Per Hour</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eeStartDate">Start Date</label>
+                        <input type="date" id="eeStartDate">
+                    </div>
+                    <div class="form-field">
+                        <label for="eeEndDate">Planned End Date</label>
+                        <input type="date" id="eeEndDate">
+                    </div>
+                    <div class="form-field">
+                        <label for="eeResponsible">Responsible</label>
+                        <select id="eeResponsible">
+                            <option value="">Not assigned</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eeReviewer">Reviewer</label>
+                        <select id="eeReviewer">
+                            <option value="">Not assigned</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eePartner">Partner</label>
+                        <select id="eePartner">
+                            <option value="">Not assigned</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eeCurrency">Currency</label>
+                        <select id="eeCurrency">
+                            <option value="ZAR">ZAR</option>
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                        </select>
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="eeDesc">Description</label>
+                        <textarea id="eeDesc" rows="2" placeholder="Service scope or agreement summary…"></textarea>
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="eeNotes">Notes</label>
+                        <textarea id="eeNotes" rows="2" placeholder="Internal notes…"></textarea>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" class="btn btn-ghost" onclick="closeEngagementModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="eeSaveBtn">Save Engagement</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ENGAGEMENT HISTORY MODAL -->
+<div class="modal-overlay" id="engHistoryModal">
+    <div class="modal" style="max-width:520px;">
+        <div class="modal-header">
+            <h3 id="engHistoryTitle">Engagement History</h3>
+            <button type="button" class="modal-close" onclick="closeEngHistoryModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="engHistoryList"></div>
+        </div>
+    </div>
 </div>
 
 <!-- CREATE DEADLINE FROM SUGGESTION MODAL -->
@@ -558,6 +691,84 @@
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- GENERATE WORKFLOW MODAL -->
+<div class="modal-overlay" id="generateWorkflowModal">
+    <div class="modal" style="max-width:600px;">
+        <div class="modal-header">
+            <h3 id="genModalTitle">Generate Workflow</h3>
+            <button type="button" class="modal-close" onclick="closeGenerateModal()">✕</button>
+        </div>
+        <div class="modal-body">
+
+            <!-- Loading state -->
+            <div id="genPreviewLoading" class="loading">
+                <div class="loading-spinner"></div>
+                <p>Loading preview…</p>
+            </div>
+
+            <!-- Preview load error -->
+            <div id="genPreviewError" class="error-banner hidden">
+                ⚠️ Failed to load generation preview. Please close and try again.
+            </div>
+
+            <!-- Preview info + form (shown after preview loads) -->
+            <div id="genPreviewContent" class="hidden">
+
+                <!-- Info panel -->
+                <div id="genPreviewPanel" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:18px;">
+                    <div id="genPreviewInfo"></div>
+                </div>
+
+                <!-- Generation form -->
+                <form id="generateWorkflowForm" onsubmit="return submitGenerateWorkflow(event)">
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label for="genAnchorDate">Anchor Date</label>
+                            <input type="date" id="genAnchorDate">
+                            <small class="col-muted" style="font-size:0.72rem">Used to calculate task due dates from template offsets.</small>
+                        </div>
+                        <div class="form-field">
+                            <label for="genDueDate">Deadline Due Date</label>
+                            <input type="date" id="genDueDate">
+                            <small class="col-muted" style="font-size:0.72rem">Required if creating a deadline with no template offset.</small>
+                        </div>
+                        <div class="form-field">
+                            <label for="genPeriodStart">Period Start</label>
+                            <input type="date" id="genPeriodStart">
+                        </div>
+                        <div class="form-field">
+                            <label for="genPeriodEnd">Period End</label>
+                            <input type="date" id="genPeriodEnd">
+                        </div>
+                        <div class="form-field form-full" style="margin-top:4px;">
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:400;">
+                                <input type="checkbox" id="genCreateDeadline" onchange="toggleGenDeadlineTitle()">
+                                <span>Create Compliance Deadline</span>
+                            </label>
+                        </div>
+                        <div class="form-field form-full hidden" id="genDeadlineTitleWrap">
+                            <label for="genDeadlineTitle">Deadline Title</label>
+                            <input type="text" id="genDeadlineTitle" placeholder="Leave blank to use template default title">
+                        </div>
+                        <div class="form-field form-full">
+                            <label for="genNotes">Notes</label>
+                            <textarea id="genNotes" rows="2" placeholder="Optional — recorded in the engagement history"></textarea>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-ghost" onclick="closeGenerateModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="genSubmitBtn" disabled>Generate Workflow</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Result panel (replaces form on success) -->
+            <div id="genResultPanel" class="hidden"></div>
+
         </div>
     </div>
 </div>

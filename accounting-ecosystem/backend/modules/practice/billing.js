@@ -101,6 +101,57 @@ async function verifyClient(companyId, clientId) {
   return !!data;
 }
 
+// ─── Helper: generate next sequential pack number for company ─────────────────
+// Format: BP-YYYY-NNNNNN  (e.g. BP-2026-000001)
+// App-level sequencing — safe for practice management concurrency levels.
+// Existing pack_number values (from before this codebox) are preserved as-is.
+
+async function generatePackNumber(companyId) {
+  const year   = new Date().getFullYear();
+  const prefix = `BP-${year}-`;
+
+  const { data } = await supabase
+    .from('practice_billing_packs')
+    .select('pack_number')
+    .eq('company_id', companyId)
+    .like('pack_number', prefix + '%')
+    .order('pack_number', { ascending: false })
+    .limit(1);
+
+  let seq = 1;
+  if (data && data.length > 0 && data[0].pack_number) {
+    const n = parseInt(data[0].pack_number.slice(prefix.length), 10);
+    if (!isNaN(n)) seq = n + 1;
+  }
+  return prefix + String(seq).padStart(6, '0');
+}
+
+// ─── Helper: build billing_period_key for duplicate-pack detection ────────────
+// Returns null when either period date is absent (no duplicate check possible).
+
+function buildPeriodKey(clientId, periodStart, periodEnd) {
+  if (!clientId || !periodStart || !periodEnd) return null;
+  return `${clientId}_${periodStart}_${periodEnd}`;
+}
+
+// ─── Helper: log a billing pack lifecycle event ───────────────────────────────
+// Non-fatal — a logging failure must never abort a billing operation.
+
+async function logPackEvent(companyId, packId, eventType, opts = {}) {
+  try {
+    await supabase.from('practice_billing_pack_events').insert({
+      company_id:      companyId,
+      billing_pack_id: parseInt(packId),
+      event_type:      eventType,
+      old_status:      opts.oldStatus   || null,
+      new_status:      opts.newStatus   || null,
+      actor_user_id:   opts.actorUserId || null,
+      notes:           opts.notes       || null,
+      metadata:        opts.metadata    || {}
+    });
+  } catch (_) { /* non-fatal */ }
+}
+
 // ═══ WIP REPORT ══════════════════════════════════════════════════════════════
 // Approved time entries not yet in a billing pack, grouped by client.
 // Filters: client_id, user_id, date_from, date_to
@@ -185,6 +236,29 @@ router.post('/packs', async (req, res) => {
     return res.status(400).json({ error: 'time_entry_ids must be a non-empty array' });
   }
 
+  // Period validation
+  if (period_start && period_end && period_end < period_start) {
+    return res.status(400).json({ error: 'period_end cannot be before period_start' });
+  }
+
+  // Duplicate active-pack detection: same client + same period = likely user error
+  const periodKey = buildPeriodKey(client_id, period_start, period_end);
+  if (periodKey) {
+    const { data: dupCheck } = await supabase
+      .from('practice_billing_packs')
+      .select('id, pack_name, pack_number')
+      .eq('company_id', req.companyId)
+      .eq('billing_period_key', periodKey)
+      .neq('status', 'cancelled')
+      .limit(1);
+    if (dupCheck && dupCheck.length > 0) {
+      const dup = dupCheck[0];
+      return res.status(409).json({
+        error: `An active billing pack already exists for this client and period (${dup.pack_number || dup.pack_name}). Cancel it first or choose a different period.`
+      });
+    }
+  }
+
   // Verify client belongs to company
   if (!await verifyClient(req.companyId, client_id)) {
     return res.status(400).json({ error: 'client_id not found in this company' });
@@ -231,21 +305,24 @@ router.post('/packs', async (req, res) => {
     });
   }
 
-  // Create the billing pack
-  const now = new Date().toISOString();
+  // Create the billing pack — generate sequential number server-side (frontend cannot supply pack_number)
+  const now        = new Date().toISOString();
+  const packNumber = await generatePackNumber(req.companyId);
 
   const { data: pack, error: packErr } = await supabase
     .from('practice_billing_packs')
     .insert({
-      company_id:   req.companyId,
-      client_id:    parsedClientId,
-      pack_name:    pack_name.trim(),
-      period_start: period_start || null,
-      period_end:   period_end   || null,
-      status:       'draft',
-      notes:        notes        || null,
-      created_by:   req.user?.userId || null,
-      updated_at:   now
+      company_id:         req.companyId,
+      client_id:          parsedClientId,
+      pack_name:          pack_name.trim(),
+      pack_number:        packNumber,
+      billing_period_key: periodKey || null,
+      period_start:       period_start || null,
+      period_end:         period_end   || null,
+      status:             'draft',
+      notes:              notes        || null,
+      created_by:         req.user?.userId || null,
+      updated_at:         now
     })
     .select()
     .single();
@@ -296,10 +373,22 @@ router.post('/packs', async (req, res) => {
     .eq('id', pack.id)
     .single();
 
+  const actor = req.user?.userId || null;
+  await logPackEvent(req.companyId, pack.id, 'pack_created', {
+    newStatus:   'draft',
+    actorUserId: actor,
+    metadata:    { pack_number: packNumber, client_id: parsedClientId, line_count: lines.length }
+  });
+  await logPackEvent(req.companyId, pack.id, 'pack_number_assigned', {
+    actorUserId: actor,
+    notes:       packNumber,
+    metadata:    { pack_number: packNumber }
+  });
   await auditFromReq(req, 'billing_pack_created', 'practice_billing_pack', pack.id, {
-    module:   'practice',
-    client_id: parsedClientId,
-    line_count: lines.length
+    module:      'practice',
+    client_id:   parsedClientId,
+    line_count:  lines.length,
+    pack_number: packNumber
   });
 
   res.status(201).json({ pack: finalPack });
@@ -445,10 +534,15 @@ router.put('/packs/:id/lines/:lineId/writeoff', async (req, res) => {
 
   await recalculatePack(req.companyId, pack.id);
 
+  await logPackEvent(req.companyId, pack.id, 'pack_line_written_off', {
+    actorUserId: req.user?.userId || null,
+    notes:       reason.trim(),
+    metadata:    { line_id: line.id, writeoff_value: writeoffValue }
+  });
   await auditFromReq(req, 'billing_line_written_off', 'practice_billing_pack_line', parseInt(req.params.lineId), {
-    module:   'practice',
-    pack_id:  pack.id,
-    reason:   reason.trim(),
+    module:         'practice',
+    pack_id:        pack.id,
+    reason:         reason.trim(),
     writeoff_value: writeoffValue
   });
 
@@ -507,6 +601,10 @@ router.put('/packs/:id/lines/:lineId/exclude', async (req, res) => {
 
   await recalculatePack(req.companyId, pack.id);
 
+  await logPackEvent(req.companyId, pack.id, 'pack_line_excluded', {
+    actorUserId: req.user?.userId || null,
+    metadata:    { line_id: line.id }
+  });
   await auditFromReq(req, 'billing_line_excluded', 'practice_billing_pack_line', parseInt(req.params.lineId), {
     module:  'practice',
     pack_id: pack.id
@@ -528,6 +626,9 @@ router.put('/packs/:id/recalculate', async (req, res) => {
 
   await recalculatePack(req.companyId, pack.id);
 
+  await logPackEvent(req.companyId, pack.id, 'pack_recalculated', {
+    actorUserId: req.user?.userId || null
+  });
   await auditFromReq(req, 'billing_pack_recalculated', 'practice_billing_pack', pack.id, { module: 'practice' });
 
   const { data: updatedPack } = await supabase
@@ -545,19 +646,42 @@ router.put('/packs/:id/approve', async (req, res) => {
     return res.status(400).json({ error: `Pack must be in draft or reviewed status to approve (current: '${pack.status}')` });
   }
 
-  const now = new Date().toISOString();
+  // Verify pack has at least one included line before approving
+  const { data: lineCheck } = await supabase
+    .from('practice_billing_pack_lines')
+    .select('id')
+    .eq('billing_pack_id', pack.id)
+    .eq('company_id', req.companyId)
+    .eq('line_status', 'included')
+    .limit(1);
+  if (!lineCheck || lineCheck.length === 0) {
+    return res.status(400).json({ error: 'Pack has no included lines and cannot be approved. Review entries or check that none have been written off or excluded.' });
+  }
+
+  // Auto-recalculate before approving to ensure totals match current line state
+  await recalculatePack(req.companyId, pack.id);
+
+  const now   = new Date().toISOString();
+  const actor = req.user?.userId || null;
   const { data, error } = await supabase
     .from('practice_billing_packs')
     .update({
-      status:     'approved',
-      updated_at: now,
-      updated_by: req.user?.userId || null
+      status:      'approved',
+      approved_at: now,
+      approved_by: actor,
+      updated_at:  now,
+      updated_by:  actor
     })
     .eq('id', pack.id)
     .eq('company_id', req.companyId)
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
 
+  await logPackEvent(req.companyId, pack.id, 'pack_approved', {
+    oldStatus:   pack.status,
+    newStatus:   'approved',
+    actorUserId: actor
+  });
   await auditFromReq(req, 'billing_pack_approved', 'practice_billing_pack', pack.id, { module: 'practice' });
   res.json({ pack: data });
 });
@@ -617,6 +741,8 @@ router.put('/packs/:id/lock', async (req, res) => {
     .from('practice_billing_packs')
     .update({
       status:     'locked',
+      locked_at:  now,
+      locked_by:  actorId,
       updated_at: now,
       updated_by: actorId
     })
@@ -625,8 +751,14 @@ router.put('/packs/:id/lock', async (req, res) => {
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
 
+  await logPackEvent(req.companyId, pack.id, 'pack_locked', {
+    oldStatus:   'approved',
+    newStatus:   'locked',
+    actorUserId: actorId,
+    metadata:    { locked_entries: includedIds.length }
+  });
   await auditFromReq(req, 'billing_pack_locked', 'practice_billing_pack', pack.id, {
-    module:      'practice',
+    module:         'practice',
     locked_entries: includedIds.length
   });
   res.json({ pack: data });
@@ -687,23 +819,51 @@ router.delete('/packs/:id', async (req, res) => {
   }
 
   // Cancel the pack (soft delete — pack and lines remain for audit trail)
+  const cancelActor = req.user?.userId || null;
   const { data, error } = await supabase
     .from('practice_billing_packs')
     .update({
-      status:     'cancelled',
-      updated_at: now,
-      updated_by: req.user?.userId || null
+      status:       'cancelled',
+      cancelled_at: now,
+      cancelled_by: cancelActor,
+      updated_at:   now,
+      updated_by:   cancelActor
     })
     .eq('id', pack.id)
     .eq('company_id', req.companyId)
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
 
+  await logPackEvent(req.companyId, pack.id, 'pack_cancelled', {
+    oldStatus:   pack.status,
+    newStatus:   'cancelled',
+    actorUserId: cancelActor,
+    metadata:    { returned_entries: includedEntryIds.length }
+  });
   await auditFromReq(req, 'billing_pack_cancelled', 'practice_billing_pack', pack.id, {
-    module: 'practice',
+    module:           'practice',
     returned_entries: includedEntryIds.length
   });
   res.json({ success: true, pack: data });
+});
+
+// ── Pack event history ────────────────────────────────────────────────────────
+// Returns full lifecycle event log for a billing pack (most recent first).
+// Multi-tenant: verifies pack belongs to req.companyId before querying events.
+
+router.get('/packs/:id/history', async (req, res) => {
+  const pack = await fetchPack(req.companyId, req.params.id);
+  if (!pack) return res.status(404).json({ error: 'Billing pack not found' });
+
+  const { data, error } = await supabase
+    .from('practice_billing_pack_events')
+    .select('*')
+    .eq('billing_pack_id', pack.id)
+    .eq('company_id', req.companyId)
+    .order('created_at', { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ events: data || [], pack_id: pack.id, pack_number: pack.pack_number });
 });
 
 // ═══ BILLING PACK REPORTS ════════════════════════════════════════════════════

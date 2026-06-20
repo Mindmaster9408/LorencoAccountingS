@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Services</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        .modal-lg { max-width: 680px; }
+        .service-code-badge {
+            display: inline-block;
+            background: rgba(167,139,250,0.12);
+            color: var(--accent);
+            border-radius: 4px;
+            padding: 1px 7px;
+            font-size: 0.73rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            margin-left: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div>
+            <div class="section-title">Service Catalog</div>
+            <div class="col-muted" style="font-size:0.82rem;margin-top:2px;">Services your practice offers to clients</div>
+        </div>
+        <div class="controls">
+            <select id="filterCategory" onchange="loadServices()" style="height:36px;padding:0 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+                <option value="">All Categories</option>
+                <option value="vat">VAT</option>
+                <option value="paye">PAYE</option>
+                <option value="emp501">EMP501</option>
+                <option value="income_tax">Income Tax</option>
+                <option value="annual_financials">Annual Financials</option>
+                <option value="bookkeeping">Bookkeeping</option>
+                <option value="payroll">Payroll</option>
+                <option value="secretarial">Secretarial</option>
+                <option value="consulting">Consulting</option>
+                <option value="cipc">CIPC</option>
+                <option value="other">Other</option>
+            </select>
+            <select id="filterActive" onchange="loadServices()" style="height:36px;padding:0 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+                <option value="true">Active only</option>
+                <option value="all">All</option>
+                <option value="false">Inactive only</option>
+            </select>
+            <button type="button" class="btn btn-primary" onclick="openServiceModal()">+ Add Service</button>
+        </div>
+    </div>
+
+    <div class="loading" id="pageLoading">
+        <div class="loading-spinner"></div>
+        <p>Loading services…</p>
+    </div>
+
+    <div class="error-banner hidden" id="pageError">⚠️ Failed to load services. Please refresh.</div>
+
+    <div class="hidden" id="servicesWrap"></div>
+
+</div>
+
+<!-- ═══ SERVICE MODAL ═══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="serviceModal">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3 id="serviceModalTitle">Add Service</h3>
+            <button type="button" class="modal-close" onclick="closeServiceModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form id="serviceForm" onsubmit="return saveService(event)">
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="sCode">Service Code</label>
+                        <input type="text" id="sCode" placeholder="e.g. VAT201, AFS, PAYROLL" maxlength="30">
+                    </div>
+                    <div class="form-field">
+                        <label for="sName">Service Name <span style="color:var(--danger)">*</span></label>
+                        <input type="text" id="sName" required placeholder="e.g. VAT Returns">
+                    </div>
+                    <div class="form-field">
+                        <label for="sCategory">Category <span style="color:var(--danger)">*</span></label>
+                        <select id="sCategory" required>
+                            <option value="">Select category…</option>
+                            <option value="vat">VAT</option>
+                            <option value="paye">PAYE</option>
+                            <option value="emp501">EMP501 / Annual Recon</option>
+                            <option value="income_tax">Income Tax</option>
+                            <option value="annual_financials">Annual Financials</option>
+                            <option value="bookkeeping">Bookkeeping</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="secretarial">Secretarial</option>
+                            <option value="consulting">Consulting</option>
+                            <option value="cipc">CIPC</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="sBillingType">Billing Type</label>
+                        <select id="sBillingType">
+                            <option value="fixed">Fixed Fee</option>
+                            <option value="hourly">Hourly</option>
+                            <option value="retainer">Retainer</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="sFeeAmount">Default Fee (R)</label>
+                        <input type="number" id="sFeeAmount" min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-field">
+                        <label for="sFeeFreq">Fee Frequency</label>
+                        <select id="sFeeFreq">
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="biannual">Biannual</option>
+                            <option value="annual">Annual</option>
+                            <option value="once_off">Once-off</option>
+                            <option value="per_hour">Per Hour</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="sHourlyRate">Default Hourly Rate (R)</label>
+                        <input type="number" id="sHourlyRate" min="0" step="0.01" placeholder="Leave blank to use practice rate">
+                    </div>
+                    <div class="form-field">
+                        <label for="sEstHours">Estimated Hours / Period</label>
+                        <input type="number" id="sEstHours" min="0" step="0.5" placeholder="e.g. 2.5">
+                    </div>
+                    <div class="form-field">
+                        <label for="sOrder">Display Order</label>
+                        <input type="number" id="sOrder" min="0" step="1" value="0">
+                    </div>
+                    <div class="form-field" style="display:flex;align-items:center;padding-top:22px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="sActive" checked>
+                            Active
+                        </label>
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="sDesc">Description</label>
+                        <textarea id="sDesc" rows="2" placeholder="Service description visible to practice staff…"></textarea>
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="sNotes">Notes</label>
+                        <textarea id="sNotes" rows="2" placeholder="Internal notes…"></textarea>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" id="sDeactivateBtn" class="btn btn-danger hidden" onclick="deactivateService()">Deactivate</button>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" class="btn btn-ghost" onclick="closeServiceModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="sSaveBtn">Save Service</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/services.js"></script>
+</body>
+</html>

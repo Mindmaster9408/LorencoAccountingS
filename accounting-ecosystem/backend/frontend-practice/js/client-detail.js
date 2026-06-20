@@ -60,8 +60,10 @@
             document.getElementById('clientForm').classList.remove('hidden');
             document.getElementById('contactsSection').classList.remove('hidden');
             document.getElementById('complianceSuggestionsSection').classList.remove('hidden');
+            document.getElementById('engagementsSection').classList.remove('hidden');
             document.getElementById('archiveBtn').classList.remove('hidden');
             loadContacts();
+            loadEngagements();
         } catch(e) {
             document.getElementById('pageLoading').classList.add('hidden');
             document.getElementById('pageError').classList.remove('hidden');
@@ -558,6 +560,426 @@
         document.getElementById('suggestionDeadlineModal').classList.remove('show');
     }
 
+    // ── Client Engagements ─────────────────────────────────────────────────────
+
+    var _editingEngagementId = null;
+    var _engTeamLoaded       = false;
+
+    var ENG_CATEGORY_LABELS = {
+        vat: 'VAT', paye: 'PAYE', emp501: 'EMP501', income_tax: 'Income Tax',
+        annual_financials: 'Annual Financials', bookkeeping: 'Bookkeeping',
+        payroll: 'Payroll', secretarial: 'Secretarial', consulting: 'Consulting',
+        cipc: 'CIPC', other: 'Other'
+    };
+
+    var ENG_FREQ_LABELS = {
+        monthly: 'Monthly', quarterly: 'Quarterly', biannual: 'Biannual',
+        annual: 'Annual', once_off: 'Once-off', per_hour: 'Per Hour'
+    };
+
+    var ENG_EVENT_LABELS = {
+        engagement_created:                 'Engagement Created',
+        engagement_updated:                 'Engagement Updated',
+        engagement_paused:                  'Paused',
+        engagement_reactivated:             'Reactivated',
+        engagement_ended:                   'Ended',
+        engagement_cancelled:               'Cancelled',
+        status_changed:                     'Status Changed',
+        workflow_generated_from_engagement: 'Workflow Generated',
+        workflow_generation_failed:         'Workflow Generation Failed'
+    };
+
+    async function loadEngagements() {
+        document.getElementById('engagementsWrap').innerHTML =
+            '<div class="loading"><div class="loading-spinner"></div><p>Loading engagements…</p></div>';
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/clients/' + clientId + '/engagements');
+            if (!res.ok) throw new Error('Load failed');
+            var d = await res.json();
+            renderEngagements(d.engagements || []);
+        } catch(e) {
+            document.getElementById('engagementsWrap').innerHTML =
+                '<div class="error-banner">⚠️ Failed to load engagements.</div>';
+        }
+    }
+
+    function renderEngagements(engagements) {
+        var wrap = document.getElementById('engagementsWrap');
+        if (!engagements.length) {
+            wrap.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><h3>No engagements</h3><p>Add service engagements to track what this client is signed up for.</p></div>';
+            return;
+        }
+
+        var cards = engagements.map(function(e) {
+            var catLabel  = ENG_CATEGORY_LABELS[e.service_category] || e.service_category;
+            var catClass  = 'cat-' + (e.service_category || 'other');
+            var feeStr    = '';
+            if (e.fee_amount != null) {
+                feeStr = 'R ' + Number(e.fee_amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                if (e.fee_frequency) feeStr += ' / ' + (ENG_FREQ_LABELS[e.fee_frequency] || e.fee_frequency);
+            }
+            var statusClass  = 'badge-eng-' + (e.status || 'active');
+            var statusLabel  = (e.status || 'active').charAt(0).toUpperCase() + (e.status || 'active').slice(1);
+            var dateStr      = e.start_date ? 'From ' + new Date(e.start_date).toLocaleDateString('en-ZA') : '';
+            if (e.end_date) dateStr += (dateStr ? ' to ' : 'Until ') + new Date(e.end_date).toLocaleDateString('en-ZA');
+
+            return '<div class="engagement-card">' +
+                '<div class="engagement-card-body">' +
+                    '<div class="engagement-card-name">' +
+                        esc(e.engagement_name) +
+                        ' <span class="badge ' + statusClass + '" style="font-size:0.72rem;margin-left:6px">' + esc(statusLabel) + '</span>' +
+                    '</div>' +
+                    '<div class="engagement-card-meta">' +
+                        '<span class="cat-dot ' + catClass + '"></span>' + esc(catLabel) +
+                        (dateStr ? ' · <span class="col-muted">' + esc(dateStr) + '</span>' : '') +
+                    '</div>' +
+                    (feeStr ? '<div class="engagement-card-fee">' + esc(feeStr) + '</div>' : '') +
+                '</div>' +
+                '<div class="engagement-card-actions">' +
+                    (e.status === 'active' && e.workflow_template_id ? '<button type="button" class="btn btn-primary btn-sm" onclick="openGenerateModal(' + e.id + ')">⚡ Generate</button>' : '') +
+                    (e.status === 'active' ? '<button type="button" class="btn btn-ghost btn-sm" onclick="engagementAction(' + e.id + ',\'pause\')">Pause</button>' : '') +
+                    (e.status === 'paused' ? '<button type="button" class="btn btn-ghost btn-sm" onclick="engagementAction(' + e.id + ',\'reactivate\')">Reactivate</button>' : '') +
+                    (e.status !== 'cancelled' && e.status !== 'ended' ? '<button type="button" class="btn btn-ghost btn-sm" onclick="openEngHistoryModal(' + e.id + ')">History</button>' : '') +
+                    '<button type="button" class="btn btn-ghost btn-sm" onclick="window._openEngagementModal(' + e.id + ')">Edit</button>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+
+        wrap.innerHTML = cards;
+    }
+
+    async function _populateEngTeam() {
+        if (_engTeamLoaded) return;
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/team?active=true');
+            if (!res.ok) return;
+            var d = await res.json();
+            var opts = (d.members || []).map(function(m) {
+                return '<option value="' + m.id + '">' + esc(m.display_name) +
+                    (m.job_title ? ' — ' + esc(m.job_title) : '') + '</option>';
+            }).join('');
+            var stub = '<option value="">Not assigned</option>' + opts;
+            ['eeResponsible', 'eeReviewer', 'eePartner'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.innerHTML = stub;
+            });
+            _engTeamLoaded = true;
+        } catch(e) {}
+    }
+
+    async function _openEngagementModal(id) {
+        _editingEngagementId = id || null;
+        var eng = null;
+
+        if (id) {
+            try {
+                var res = await PracticeAPI.fetch('/api/practice/engagements/' + id);
+                if (res.ok) { var d = await res.json(); eng = d.engagement || null; }
+            } catch(e) {}
+        }
+
+        document.getElementById('engModalTitle').textContent = id ? 'Edit Engagement' : 'Add Engagement';
+        document.getElementById('eeName').value       = eng ? (eng.engagement_name   || '') : '';
+        document.getElementById('eeCategory').value   = eng ? (eng.service_category  || '') : '';
+        document.getElementById('eeBillingType').value = eng ? (eng.billing_type     || 'fixed') : 'fixed';
+        document.getElementById('eeFeeAmount').value  = eng && eng.fee_amount != null ? eng.fee_amount : '';
+        document.getElementById('eeFeeFreq').value    = eng ? (eng.fee_frequency     || 'monthly') : 'monthly';
+        document.getElementById('eeStartDate').value  = eng ? (eng.start_date || '') : '';
+        document.getElementById('eeEndDate').value    = eng ? (eng.end_date   || '') : '';
+        document.getElementById('eeCurrency').value   = eng ? (eng.currency   || 'ZAR') : 'ZAR';
+        document.getElementById('eeDesc').value       = eng ? (eng.description || '') : '';
+        document.getElementById('eeNotes').value      = eng ? (eng.notes || '') : '';
+
+        await _populateEngTeam();
+
+        var setTeamSel = function(elId, val) {
+            var el = document.getElementById(elId);
+            if (el && val) el.value = val;
+        };
+        if (eng) {
+            setTeamSel('eeResponsible', eng.responsible_team_member_id);
+            setTeamSel('eeReviewer',    eng.reviewer_team_member_id);
+            setTeamSel('eePartner',     eng.partner_team_member_id);
+        } else {
+            ['eeResponsible', 'eeReviewer', 'eePartner'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+        }
+
+        document.getElementById('engagementModal').classList.add('show');
+    }
+
+    function openEngagementModal() { _openEngagementModal(null); }
+
+    function closeEngagementModal() {
+        document.getElementById('engagementModal').classList.remove('show');
+    }
+
+    async function saveEngagement(e) {
+        e.preventDefault();
+        var btn = document.getElementById('eeSaveBtn');
+        btn.disabled = true; btn.textContent = 'Saving…';
+
+        var feeRaw = document.getElementById('eeFeeAmount').value.trim();
+        var body = {
+            engagement_name:            document.getElementById('eeName').value.trim(),
+            service_category:           document.getElementById('eeCategory').value,
+            billing_type:               document.getElementById('eeBillingType').value,
+            fee_amount:                 feeRaw ? parseFloat(feeRaw) : null,
+            fee_frequency:              document.getElementById('eeFeeFreq').value,
+            start_date:                 document.getElementById('eeStartDate').value  || null,
+            end_date:                   document.getElementById('eeEndDate').value    || null,
+            currency:                   document.getElementById('eeCurrency').value,
+            description:                document.getElementById('eeDesc').value.trim()  || null,
+            notes:                      document.getElementById('eeNotes').value.trim() || null,
+            responsible_team_member_id: document.getElementById('eeResponsible').value || null,
+            reviewer_team_member_id:    document.getElementById('eeReviewer').value    || null,
+            partner_team_member_id:     document.getElementById('eePartner').value      || null
+        };
+
+        try {
+            var url, method;
+            if (_editingEngagementId) {
+                url    = '/api/practice/engagements/' + _editingEngagementId;
+                method = 'PUT';
+            } else {
+                url    = '/api/practice/clients/' + clientId + '/engagements';
+                method = 'POST';
+            }
+            var res = await PracticeAPI.fetch(url, { method: method, body: JSON.stringify(body) });
+            var d   = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Save failed');
+            closeEngagementModal();
+            PracticeAPI.showToast(_editingEngagementId ? 'Engagement updated!' : 'Engagement added!');
+            loadEngagements();
+        } catch(err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Save Engagement';
+        }
+        return false;
+    }
+
+    async function engagementAction(id, action) {
+        var labels = { pause: 'Pause', reactivate: 'Reactivate', end: 'End', cancel: 'Cancel' };
+        if (!confirm(labels[action] + ' this engagement?')) return;
+        try {
+            var res;
+            if (action === 'cancel') {
+                res = await PracticeAPI.fetch('/api/practice/engagements/' + id, { method: 'DELETE' });
+            } else {
+                res = await PracticeAPI.fetch('/api/practice/engagements/' + id + '/' + action, { method: 'PUT', body: '{}' });
+            }
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || action + ' failed');
+            PracticeAPI.showToast('Engagement ' + action + 'd.');
+            loadEngagements();
+        } catch(err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+        }
+    }
+
+    async function openEngHistoryModal(id) {
+        document.getElementById('engHistoryTitle').textContent = 'Engagement History';
+        document.getElementById('engHistoryList').innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>';
+        document.getElementById('engHistoryModal').classList.add('show');
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/engagements/' + id + '/history');
+            if (!res.ok) throw new Error('Load failed');
+            var d = await res.json();
+            if (d.engagement_name) document.getElementById('engHistoryTitle').textContent = d.engagement_name + ' — History';
+            renderEngHistory(d.events || []);
+        } catch(err) {
+            document.getElementById('engHistoryList').innerHTML = '<div class="error-banner">⚠️ Failed to load history.</div>';
+        }
+    }
+
+    function renderEngHistory(events) {
+        var el = document.getElementById('engHistoryList');
+        if (!events.length) {
+            el.innerHTML = '<div class="empty"><p>No history events yet.</p></div>';
+            return;
+        }
+        el.innerHTML = events.map(function(ev) {
+            var typeLabel   = ENG_EVENT_LABELS[ev.event_type] || ev.event_type;
+            var statusPart  = (ev.old_status && ev.new_status)
+                ? ev.old_status + ' → ' + ev.new_status
+                : (ev.new_status || '');
+            var ts = ev.created_at ? new Date(ev.created_at).toLocaleString('en-ZA') : '';
+            var actor = ev.actor_user_id ? 'User ' + ev.actor_user_id : '';
+            return '<div class="eng-event">' +
+                '<div class="eng-event-type">' + esc(typeLabel) + '</div>' +
+                (statusPart ? '<div class="eng-event-status">' + esc(statusPart) + '</div>' : '') +
+                (ev.notes   ? '<div class="eng-event-meta" style="color:var(--text);margin-top:2px;">' + esc(ev.notes) + '</div>' : '') +
+                '<div class="eng-event-meta">' + [ts, actor].filter(Boolean).join(' · ') + '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function closeEngHistoryModal() {
+        document.getElementById('engHistoryModal').classList.remove('show');
+    }
+
+    // ── Generate workflow from engagement ──────────────────────────────────────
+
+    var _generateEngagementId = null;
+    var _generatePreviewData  = null;
+
+    async function openGenerateModal(engId) {
+        _generateEngagementId = engId;
+        _generatePreviewData  = null;
+
+        // Reset state
+        document.getElementById('genModalTitle').textContent = 'Generate Workflow';
+        document.getElementById('genPreviewLoading').classList.remove('hidden');
+        document.getElementById('genPreviewError').classList.add('hidden');
+        document.getElementById('genPreviewContent').classList.add('hidden');
+        document.getElementById('genResultPanel').classList.add('hidden');
+        document.getElementById('genResultPanel').innerHTML = '';
+        document.getElementById('generateWorkflowForm').classList.remove('hidden');
+        document.getElementById('genSubmitBtn').disabled = true;
+        document.getElementById('genSubmitBtn').textContent = 'Generate Workflow';
+
+        // Reset form fields
+        ['genAnchorDate','genDueDate','genPeriodStart','genPeriodEnd','genDeadlineTitle','genNotes'].forEach(function(id) {
+            document.getElementById(id).value = '';
+        });
+        document.getElementById('genCreateDeadline').checked = false;
+        document.getElementById('genDeadlineTitleWrap').classList.add('hidden');
+
+        document.getElementById('generateWorkflowModal').classList.add('show');
+
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/engagements/' + engId + '/generation-preview');
+            if (!res.ok) throw new Error('Preview failed');
+            var d = await res.json();
+            _generatePreviewData = d;
+            _renderGeneratePreview(d);
+            document.getElementById('genPreviewLoading').classList.add('hidden');
+            document.getElementById('genPreviewContent').classList.remove('hidden');
+            if (d.can_generate) document.getElementById('genSubmitBtn').disabled = false;
+        } catch (e) {
+            document.getElementById('genPreviewLoading').classList.add('hidden');
+            document.getElementById('genPreviewError').classList.remove('hidden');
+        }
+    }
+
+    function _renderGeneratePreview(d) {
+        var eng      = d.engagement || {};
+        var template = d.template   || null;
+        var client   = d.client     || null;
+
+        var lastGenText = eng.last_generated_at
+            ? 'Last generated: ' + new Date(eng.last_generated_at).toLocaleDateString('en-ZA') +
+              (eng.generation_count > 1 ? ' (' + eng.generation_count + ' runs total)' : '')
+            : 'Never generated from this engagement';
+
+        var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;">';
+        html += '<div><div class="col-muted" style="font-size:0.72rem;margin-bottom:2px">Engagement</div>' +
+                '<div style="font-size:0.85rem">' + esc(eng.engagement_name || '') + '</div></div>';
+        html += '<div><div class="col-muted" style="font-size:0.72rem;margin-bottom:2px">Client</div>' +
+                '<div style="font-size:0.85rem">' + esc((client && client.name) || '—') + '</div></div>';
+        html += '<div><div class="col-muted" style="font-size:0.72rem;margin-bottom:2px">Workflow Template</div>' +
+                '<div style="font-size:0.85rem">' +
+                (template ? esc(template.name) : '<span class="col-muted">None linked</span>') +
+                '</div></div>';
+        html += '<div><div class="col-muted" style="font-size:0.72rem;margin-bottom:2px">Expected Tasks</div>' +
+                '<div style="font-size:0.85rem;font-weight:600">' + (d.expected_task_count || 0) + '</div></div>';
+        if (d.compliance_area || d.deadline_type) {
+            html += '<div><div class="col-muted" style="font-size:0.72rem;margin-bottom:2px">Compliance Area</div>' +
+                    '<div style="font-size:0.85rem">' + esc(d.compliance_area || '—') + '</div></div>';
+            html += '<div><div class="col-muted" style="font-size:0.72rem;margin-bottom:2px">Deadline Type</div>' +
+                    '<div style="font-size:0.85rem">' + esc(d.deadline_type || '—') + '</div></div>';
+        }
+        html += '<div style="grid-column:1/-1"><div class="col-muted" style="font-size:0.72rem">' + esc(lastGenText) + '</div></div>';
+        html += '</div>';
+
+        if (d.will_create_deadline) {
+            html += '<div style="margin-top:10px;padding:8px 12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:6px;font-size:0.78rem;color:var(--success,#6ee7b7)">' +
+                    'Template is configured to also create a compliance deadline.' +
+                    '</div>';
+            document.getElementById('genCreateDeadline').checked = true;
+            document.getElementById('genDeadlineTitleWrap').classList.remove('hidden');
+        }
+
+        if (!d.can_generate) {
+            var why = !eng.workflow_template_id ? 'No workflow template is linked to this engagement.'
+                    : eng.status !== 'active'   ? 'Engagement is not active (' + eng.status + ').'
+                    : !template                 ? 'Linked workflow template not found or access denied.'
+                    : 'Cannot generate.';
+            html += '<div class="error-banner" style="margin-top:10px">⚠️ ' + esc(why) + '</div>';
+        }
+
+        document.getElementById('genPreviewInfo').innerHTML = html;
+    }
+
+    function toggleGenDeadlineTitle() {
+        var wrap = document.getElementById('genDeadlineTitleWrap');
+        if (document.getElementById('genCreateDeadline').checked) wrap.classList.remove('hidden');
+        else wrap.classList.add('hidden');
+    }
+
+    function closeGenerateModal() {
+        document.getElementById('generateWorkflowModal').classList.remove('show');
+    }
+
+    async function submitGenerateWorkflow(e) {
+        e.preventDefault();
+        if (!_generateEngagementId) return false;
+
+        var btn = document.getElementById('genSubmitBtn');
+        btn.disabled = true;
+        btn.textContent = 'Generating…';
+
+        var body = {
+            anchor_date:     document.getElementById('genAnchorDate').value   || null,
+            due_date:        document.getElementById('genDueDate').value       || null,
+            period_start:    document.getElementById('genPeriodStart').value   || null,
+            period_end:      document.getElementById('genPeriodEnd').value     || null,
+            create_deadline: document.getElementById('genCreateDeadline').checked,
+            deadline_title:  document.getElementById('genDeadlineTitle').value.trim() || null,
+            notes:           document.getElementById('genNotes').value.trim()  || null
+        };
+
+        try {
+            var res = await PracticeAPI.fetch(
+                '/api/practice/engagements/' + _generateEngagementId + '/generate-workflow',
+                { method: 'POST', body: JSON.stringify(body) }
+            );
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Generation failed');
+
+            // Hide form, show result panel
+            document.getElementById('generateWorkflowForm').classList.add('hidden');
+            var panel = document.getElementById('genResultPanel');
+            panel.classList.remove('hidden');
+            panel.innerHTML =
+                '<div style="text-align:center;padding:24px 16px;">' +
+                    '<div style="font-size:2rem;margin-bottom:10px">✅</div>' +
+                    '<div style="font-weight:600;font-size:1rem;margin-bottom:6px">Workflow Generated</div>' +
+                    '<div class="col-muted" style="font-size:0.84rem;margin-bottom:4px">' +
+                        d.task_count + ' task' + (d.task_count !== 1 ? 's' : '') + ' created' +
+                        (d.deadline_id ? ' · Compliance deadline #' + d.deadline_id + ' created' : '') +
+                    '</div>' +
+                    '<div class="col-muted" style="font-size:0.78rem">Workflow Run #' + d.workflow_run_id + ' · Generation #' + d.generation_count + '</div>' +
+                    (d.warning ? '<div class="error-banner" style="margin-top:14px;text-align:left">⚠️ Partial success: ' + esc(d.warning) + '</div>' : '') +
+                '</div>' +
+                '<div style="text-align:center;margin-top:6px;">' +
+                    '<button type="button" class="btn btn-ghost" onclick="closeGenerateModal()">Close</button>' +
+                '</div>';
+
+            PracticeAPI.showToast('✅ Workflow generated — ' + d.task_count + ' tasks created!');
+            loadEngagements();
+
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Generate Workflow';
+            PracticeAPI.showToast('❌ ' + err.message, true);
+        }
+        return false;
+    }
+
     // ── Expose globals ─────────────────────────────────────────────────────────
 
     window.saveClientDetail            = saveClientDetail;
@@ -573,6 +995,19 @@
     window.openSuggestionDeadlineModal = openSuggestionDeadlineModal;
     window.saveSuggestionDeadline      = saveSuggestionDeadline;
     window.closeSuggestionModal        = closeSuggestionModal;
+
+    window.openEngagementModal    = openEngagementModal;
+    window.closeEngagementModal   = closeEngagementModal;
+    window.saveEngagement         = saveEngagement;
+    window.engagementAction       = engagementAction;
+    window.openEngHistoryModal    = openEngHistoryModal;
+    window.closeEngHistoryModal   = closeEngHistoryModal;
+    window._openEngagementModal   = _openEngagementModal;
+
+    window.openGenerateModal      = openGenerateModal;
+    window.closeGenerateModal     = closeGenerateModal;
+    window.submitGenerateWorkflow = submitGenerateWorkflow;
+    window.toggleGenDeadlineTitle = toggleGenDeadlineTitle;
 
     init();
 })();
