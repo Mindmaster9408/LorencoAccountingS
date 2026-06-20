@@ -11,9 +11,12 @@
 const express = require('express');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
-const workflowsRouter   = require('./workflows');
-const billingRouter     = require('./billing');
-const engagementsRouter = require('./engagements');
+const workflowsRouter        = require('./workflows');
+const billingRouter          = require('./billing');
+const engagementsRouter      = require('./engagements');
+const engagementPeriodsRouter = require('./engagement-periods');
+const dashboardRouter        = require('./dashboard');
+const capacityRouter         = require('./capacity');
 
 const router = express.Router();
 
@@ -333,6 +336,55 @@ router.put('/team/:id/reactivate', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   await auditFromReq(req, 'REACTIVATE', 'practice_team_member', parseInt(req.params.id), { module: 'practice' });
   res.json({ success: true });
+});
+
+// ── Update team member capacity settings ──────────────────────────────────────
+// Separate endpoint (not part of PUT /team/:id) so capacity fields are always
+// explicitly set through a dedicated workflow and don't get clobbered by
+// general profile edits or vice-versa.
+
+router.put('/team/:id/capacity', async (req, res) => {
+  const { weekly_capacity_hours, daily_capacity_hours, capacity_notes, capacity_is_active } = req.body;
+
+  // Verify member belongs to this company
+  const { data: existing, error: fetchErr } = await supabase
+    .from('practice_team_members')
+    .select('id, company_id')
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .single();
+  if (fetchErr || !existing) return res.status(404).json({ error: 'Team member not found' });
+
+  // Validate hours
+  if (weekly_capacity_hours !== undefined && weekly_capacity_hours !== null) {
+    const wh = parseFloat(weekly_capacity_hours);
+    if (isNaN(wh) || wh < 0) return res.status(400).json({ error: 'weekly_capacity_hours must be a positive number' });
+  }
+  if (daily_capacity_hours !== undefined && daily_capacity_hours !== null) {
+    const dh = parseFloat(daily_capacity_hours);
+    if (isNaN(dh) || dh < 0) return res.status(400).json({ error: 'daily_capacity_hours must be a positive number' });
+  }
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (weekly_capacity_hours !== undefined) updates.weekly_capacity_hours = weekly_capacity_hours != null ? parseFloat(weekly_capacity_hours) : null;
+  if (daily_capacity_hours  !== undefined) updates.daily_capacity_hours  = daily_capacity_hours  != null ? parseFloat(daily_capacity_hours)  : null;
+  if (capacity_notes        !== undefined) updates.capacity_notes        = capacity_notes || null;
+  if (capacity_is_active    !== undefined) updates.capacity_is_active    = capacity_is_active === true || capacity_is_active === 'true';
+
+  const { data, error } = await supabase
+    .from('practice_team_members')
+    .update(updates)
+    .eq('id', req.params.id)
+    .eq('company_id', req.companyId)
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  await auditFromReq(req, 'UPDATE', 'practice_team_member', parseInt(req.params.id), {
+    module: 'practice',
+    action: 'team_capacity_updated',
+    changed_fields: Object.keys(updates).filter(k => k !== 'updated_at')
+  });
+  res.json({ member: data });
 });
 
 // ═══ PRACTICE CLIENTS ════════════════════════════════════════════════════════
@@ -722,7 +774,7 @@ router.post('/tasks', async (req, res) => {
   const {
     client_id, title, description, type, priority, due_date, assigned_to, notes,
     preparer_team_member_id, reviewer_team_member_id, approver_team_member_id,
-    review_required, approval_required
+    review_required, approval_required, estimated_hours
   } = req.body;
 
   if (!title) return res.status(400).json({ error: 'Task title is required' });
@@ -762,6 +814,8 @@ router.post('/tasks', async (req, res) => {
       preparer_team_member_id:    preparer_team_member_id  ? parseInt(preparer_team_member_id)  : null,
       reviewer_team_member_id:    reviewer_team_member_id  ? parseInt(reviewer_team_member_id)  : null,
       approver_team_member_id:    approver_team_member_id  ? parseInt(approver_team_member_id)  : null,
+      // Optional capacity field
+      estimated_hours:            estimated_hours != null ? parseFloat(estimated_hours) : null,
       // Control flags
       review_required:            needsReview,
       approval_required:          needsApproval,
@@ -817,7 +871,8 @@ router.put('/tasks/:id', async (req, res) => {
   const allowed = [
     'title', 'description', 'type', 'priority', 'status', 'due_date', 'assigned_to', 'notes', 'client_id',
     'preparer_team_member_id', 'reviewer_team_member_id', 'approver_team_member_id',
-    'review_required', 'approval_required', 'review_notes', 'approval_notes'
+    'review_required', 'approval_required', 'review_notes', 'approval_notes',
+    'estimated_hours'
   ];
   const updates = { updated_at: new Date().toISOString() };
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
@@ -2328,13 +2383,25 @@ router.get('/deadlines/:id/events', async (req, res) => {
   res.json({ events: data || [] });
 });
 
+// Capacity Planning (Codebox 18)
+router.use('/capacity', capacityRouter);
+
+// Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
+// Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
+router.use('/dashboard', dashboardRouter);
+
 // Workflows: templates, runs, and generation
 router.use('/workflows', workflowsRouter);
 
 // Billing: WIP management and billing pack preparation
 router.use('/billing', billingRouter);
 
+// Engagement period queue (Codebox 16)
+router.use('/', engagementPeriodsRouter);
+
 // Service Catalog + Client Engagements
+// Must be mounted after engagementPeriodsRouter so the period sub-routes on
+// /engagements/:id/periods/* are matched by engagementPeriodsRouter first.
 router.use('/', engagementsRouter);
 
 module.exports = router;

@@ -536,6 +536,45 @@
                         <textarea id="eeNotes" rows="2" placeholder="Internal notes…"></textarea>
                     </div>
                 </div>
+
+                <!-- ── Recurrence Settings ── -->
+                <div style="margin:16px 0 4px;padding-top:12px;border-top:1px solid var(--border);">
+                    <div class="section-label" style="margin-bottom:10px;">Recurrence Settings</div>
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label for="eeRecurrenceType">Recurrence Type</label>
+                            <select id="eeRecurrenceType" onchange="toggleRecurrenceFields()">
+                                <option value="">None / Not set</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="quarterly">Quarterly</option>
+                                <option value="annual">Annual</option>
+                                <option value="once_off">Once-off</option>
+                                <option value="ad_hoc">Ad-hoc</option>
+                            </select>
+                        </div>
+                        <div class="form-field" id="eeRecurrenceDayWrap">
+                            <label for="eeRecurrenceDay">Start Day of Month (1–28)</label>
+                            <input type="number" id="eeRecurrenceDay" min="1" max="28" placeholder="e.g. 1">
+                        </div>
+                        <div class="form-field">
+                            <label for="eeRecurrenceStartDate">Recurrence Start Date</label>
+                            <input type="date" id="eeRecurrenceStartDate">
+                        </div>
+                        <div class="form-field">
+                            <label for="eeRecurrenceEndDate">Recurrence End Date</label>
+                            <input type="date" id="eeRecurrenceEndDate">
+                        </div>
+                        <div class="form-field hidden" id="eeRecurrenceMonthWrap">
+                            <label for="eeRecurrenceMonth">Fiscal Year Start Month (1–12)</label>
+                            <input type="number" id="eeRecurrenceMonth" min="1" max="12" placeholder="e.g. 3 for March">
+                        </div>
+                        <div class="form-field form-full">
+                            <label for="eeRecurrenceNotes">Recurrence Notes</label>
+                            <textarea id="eeRecurrenceNotes" rows="2" placeholder="e.g. Due 25th of the following month…"></textarea>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-actions">
                     <div style="display:flex;gap:8px;">
                         <button type="button" class="btn btn-ghost" onclick="closeEngagementModal()">Cancel</button>
@@ -769,6 +808,43 @@
             <!-- Result panel (replaces form on success) -->
             <div id="genResultPanel" class="hidden"></div>
 
+        </div>
+    </div>
+</div>
+
+<!-- ── Generate Periods Modal (Codebox 16) ── -->
+<div class="modal-overlay" id="periodQueueModal">
+    <div class="modal" style="max-width:560px;">
+        <div class="modal-header">
+            <h3>Generate Period Queue</h3>
+            <button type="button" class="modal-close" onclick="closePeriodQueueModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="col-muted" style="font-size:0.82rem;margin-bottom:16px;">
+                Preview and queue recurring periods for this engagement. No workflows are generated here — you generate each period's workflow manually from the Period Queue page.
+            </p>
+            <div class="form-grid" style="margin-bottom:14px;">
+                <div class="form-field">
+                    <label for="pqFromDate">From Date *</label>
+                    <input type="date" id="pqFromDate">
+                </div>
+                <div class="form-field">
+                    <label for="pqToDate">To Date *</label>
+                    <input type="date" id="pqToDate">
+                </div>
+                <div class="form-field">
+                    <label for="pqMaxPeriods">Max Periods (1–36)</label>
+                    <input type="number" id="pqMaxPeriods" value="12" min="1" max="36">
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <button type="button" class="btn btn-ghost" id="pqPreviewBtn" onclick="previewPeriods()">Preview Periods</button>
+            </div>
+            <div id="pqPreviewWrap"></div>
+            <div class="form-actions" style="margin-top:16px;">
+                <button type="button" class="btn btn-ghost" onclick="closePeriodQueueModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="pqCreateBtn" disabled onclick="createPeriodQueue()">Create Queue</button>
+            </div>
         </div>
     </div>
 </div>

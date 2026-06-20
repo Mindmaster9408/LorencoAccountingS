@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Period Queue</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Period Queue specific ── */
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 18px;
+        }
+        .filter-bar .filter-field { display: flex; flex-direction: column; gap: 4px; }
+        .filter-bar label         { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .filter-bar input,
+        .filter-bar select        { font-size: 0.82rem; min-width: 120px; }
+
+        /* ── Period table ── */
+        .period-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .period-table th {
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+        }
+        .period-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            vertical-align: middle;
+        }
+        .period-table tr:hover td { background: var(--surface-hover); }
+        .period-table .actions    { display: flex; gap: 6px; flex-wrap: wrap; }
+
+        /* ── Status badges ── */
+        .status-queued    { background: rgba(56,189,248,0.12); color: #38bdf8; }
+        .status-ready     { background: rgba(167,139,250,0.12); color: #a78bfa; }
+        .status-generated { background: rgba(16,185,129,0.12); color: #10b981; }
+        .status-skipped   { background: rgba(245,158,11,0.12); color: #f59e0b; }
+        .status-cancelled { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.35); }
+
+        /* ── Pagination ── */
+        .pagination { display: flex; gap: 8px; justify-content: center; margin-top: 18px; }
+        .pagination button { min-width: 36px; }
+
+        /* ── Generate modal form ── */
+        .gen-period-info {
+            background: rgba(167,139,250,0.06);
+            border: 1px solid rgba(167,139,250,0.18);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+            font-size: 0.82rem;
+        }
+        .gen-period-info dt { color: var(--text-muted); font-size: 0.72rem; margin-bottom: 1px; }
+        .gen-period-info dd { color: var(--text); font-weight: 600; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div>
+            <div class="section-title">Period Queue</div>
+            <div class="col-muted" style="font-size:0.82rem;margin-top:2px;">Manually queued service periods for recurring engagements</div>
+        </div>
+        <div class="controls">
+            <button type="button" class="btn btn-ghost" onclick="resetFilters()">Reset Filters</button>
+            <button type="button" class="btn btn-primary" onclick="loadPeriods()">Refresh</button>
+        </div>
+    </div>
+
+    <!-- ── Filters ── -->
+    <div class="filter-bar">
+        <div class="filter-field">
+            <label>Client</label>
+            <select id="fClient" onchange="loadPeriods()">
+                <option value="">All Clients</option>
+            </select>
+        </div>
+        <div class="filter-field">
+            <label>Engagement</label>
+            <select id="fEngagement" onchange="loadPeriods()">
+                <option value="">All Engagements</option>
+            </select>
+        </div>
+        <div class="filter-field">
+            <label>Status</label>
+            <select id="fStatus" onchange="loadPeriods()">
+                <option value="">All Statuses</option>
+                <option value="queued">Queued</option>
+                <option value="ready">Ready</option>
+                <option value="generated">Generated</option>
+                <option value="skipped">Skipped</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+        <div class="filter-field">
+            <label>Due From</label>
+            <input type="date" id="fDueFrom" onchange="loadPeriods()">
+        </div>
+        <div class="filter-field">
+            <label>Due To</label>
+            <input type="date" id="fDueTo" onchange="loadPeriods()">
+        </div>
+    </div>
+
+    <!-- ── Loading / Error / Empty ── -->
+    <div class="loading" id="periodsLoading" style="display:none;">
+        <div class="loading-spinner"></div>
+        <p>Loading period queue…</p>
+    </div>
+    <div class="error-banner hidden" id="periodsError">⚠️ Failed to load periods. Please refresh.</div>
+
+    <!-- ── Table ── -->
+    <div id="periodsTableWrap" class="hidden">
+        <div style="overflow-x:auto;">
+            <table class="period-table">
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Engagement</th>
+                        <th>Period</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Due Date</th>
+                        <th>Status</th>
+                        <th>Workflow</th>
+                        <th>Deadline</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="periodsTableBody"></tbody>
+            </table>
+        </div>
+        <div class="pagination" id="periodsPagination"></div>
+    </div>
+
+    <!-- ── Empty ── -->
+    <div class="empty hidden" id="periodsEmpty">
+        <div class="empty-icon">📅</div>
+        <h3>No periods in queue</h3>
+        <p>Open a client engagement and click "📅 Periods" to generate a period queue for a recurring service.</p>
+    </div>
+
+</div>
+
+<!-- ── Generate Workflow from Period Modal ── -->
+<div class="modal-overlay" id="genFromPeriodModal">
+    <div class="modal" style="max-width:580px;">
+        <div class="modal-header">
+            <h3>Generate Workflow from Period</h3>
+            <button type="button" class="modal-close" onclick="closeGenFromPeriodModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="gen-period-info" id="gfpPeriodInfo"></div>
+
+            <form id="genFromPeriodForm" onsubmit="return submitGenFromPeriod(event)">
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="gfpAnchorDate">Anchor Date</label>
+                        <input type="date" id="gfpAnchorDate">
+                        <div class="field-hint">Task due-date offsets are calculated from this date. Defaults to period start.</div>
+                    </div>
+                    <div class="form-field">
+                        <label for="gfpDueDate">Compliance Due Date</label>
+                        <input type="date" id="gfpDueDate">
+                        <div class="field-hint">Required if template creates a deadline without an offset.</div>
+                    </div>
+                </div>
+                <div class="form-field" style="margin-bottom:10px;">
+                    <label>
+                        <input type="checkbox" id="gfpCreateDeadline" onchange="toggleGfpDeadlineTitle()">
+                        Create compliance deadline
+                    </label>
+                </div>
+                <div class="form-field hidden" id="gfpDeadlineTitleWrap" style="margin-bottom:10px;">
+                    <label for="gfpDeadlineTitle">Deadline Title (optional override)</label>
+                    <input type="text" id="gfpDeadlineTitle" placeholder="Uses template default if empty">
+                </div>
+                <div class="form-field" style="margin-bottom:16px;">
+                    <label for="gfpNotes">Notes (optional)</label>
+                    <textarea id="gfpNotes" rows="2" placeholder="Internal note about this generation run"></textarea>
+                </div>
+
+                <div id="gfpResultPanel" class="hidden"></div>
+
+                <div class="form-actions" id="gfpFormActions">
+                    <button type="button" class="btn btn-ghost" onclick="closeGenFromPeriodModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="gfpSubmitBtn">⚡ Generate Workflow</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ── Skip Period Modal ── -->
+<div class="modal-overlay" id="skipPeriodModal">
+    <div class="modal" style="max-width:440px;">
+        <div class="modal-header">
+            <h3>Skip Period</h3>
+            <button type="button" class="modal-close" onclick="closeSkipModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="col-muted" style="margin-bottom:14px;font-size:0.84rem;">
+                A reason is required to skip a period. The period will remain visible in the queue as skipped.
+            </p>
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="skipReason">Reason *</label>
+                <input type="text" id="skipReason" placeholder="e.g. Client on hold for this period">
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeSkipModal()">Cancel</button>
+                <button type="button" class="btn btn-warning" id="skipSubmitBtn" onclick="submitSkipPeriod()">Skip Period</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/engagement-periods.js"></script>
+</body>
+</html>

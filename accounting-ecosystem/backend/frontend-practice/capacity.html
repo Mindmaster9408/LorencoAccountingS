@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capacity Planning — Lorenco Practice</title>
+  <link rel="stylesheet" href="/practice/css/practice.css">
+  <style>
+    /* ── Page-level layout ─────────────────────────────────── */
+    .page-header { margin-bottom: 20px; }
+    .page-header h1 { font-size: 1.4rem; font-weight: 600; color: var(--text); margin: 0 0 4px; }
+    .page-header p  { font-size: 0.85rem; color: var(--muted); margin: 0; }
+
+    /* ── Capacity summary KPIs ─────────────────────────────── */
+    .cap-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    /* ── Utilization bar ───────────────────────────────────── */
+    .util-bar-wrap { margin-top: 6px; }
+    .util-bar-track {
+      height: 6px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .util-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .util-bar-fill.s-unknown       { background: var(--muted); width: 0%; }
+    .util-bar-fill.s-underutilized { background: var(--info); }
+    .util-bar-fill.s-normal        { background: var(--success); }
+    .util-bar-fill.s-high          { background: var(--warning); }
+    .util-bar-fill.s-overloaded    { background: var(--danger); }
+    .util-pct {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    /* ── Capacity status badge ─────────────────────────────── */
+    .cap-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .cap-badge.s-unknown       { background: rgba(255,255,255,0.08); color: var(--muted); }
+    .cap-badge.s-underutilized { background: rgba(99,179,237,0.15);  color: var(--info); }
+    .cap-badge.s-normal        { background: rgba(16,185,129,0.15);  color: var(--success); }
+    .cap-badge.s-high          { background: rgba(245,158,11,0.18);  color: var(--warning); }
+    .cap-badge.s-overloaded    { background: rgba(244,63,94,0.18);   color: var(--danger); }
+
+    /* ── Section headers ───────────────────────────────────── */
+    .cap-section {
+      margin-bottom: 28px;
+    }
+    .cap-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .cap-section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .cap-section-sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-left: 8px;
+    }
+
+    /* ── Team capacity table ───────────────────────────────── */
+    .cap-table-wrap { overflow-x: auto; }
+    .cap-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .cap-table th {
+      text-align: left;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid var(--border);
+    }
+    .cap-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    .cap-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .cap-table .td-name { font-weight: 500; }
+    .cap-table .td-role { color: var(--muted); font-size: 0.8rem; }
+    .cap-table .td-num  { text-align: right; font-variant-numeric: tabular-nums; }
+    .cap-table .td-util { min-width: 120px; }
+
+    /* ── Risk panels ───────────────────────────────────────── */
+    .risk-panels {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 14px;
+    }
+    .risk-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .risk-panel-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .risk-panel-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .risk-count {
+      font-size: 0.78rem;
+      padding: 1px 6px;
+      border-radius: 8px;
+      font-weight: 700;
+    }
+    .risk-count.rc-danger  { background: rgba(244,63,94,0.15);  color: var(--danger); }
+    .risk-count.rc-warning { background: rgba(245,158,11,0.15); color: var(--warning); }
+    .risk-count.rc-ok      { background: rgba(16,185,129,0.12); color: var(--success); }
+    .risk-count.rc-muted   { background: rgba(255,255,255,0.06); color: var(--muted); }
+
+    .risk-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      gap: 8px;
+    }
+    .risk-item:last-child { border-bottom: none; }
+    .risk-item-main { flex: 1; min-width: 0; }
+    .risk-item-name {
+      font-size: 0.82rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .risk-item-meta { font-size: 0.75rem; color: var(--muted); margin-top: 1px; }
+
+    /* ── Client workload table ─────────────────────────────── */
+    .cap-empty {
+      color: var(--muted);
+      font-size: 0.83rem;
+      padding: 20px 0;
+      text-align: center;
+    }
+
+    /* ── Capacity Settings Modal ───────────────────────────── */
+    .cap-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .cap-modal-overlay.hidden { display: none; }
+    .cap-modal {
+      background: var(--bg-card, #1a1230);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 440px;
+      padding: 24px;
+    }
+    .cap-modal h3 {
+      margin: 0 0 4px;
+      font-size: 1rem;
+      color: var(--text);
+    }
+    .cap-modal .modal-sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+    .cap-modal .form-field { margin-bottom: 16px; }
+    .cap-modal label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .cap-modal input[type="number"],
+    .cap-modal textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 0.85rem;
+      font-family: inherit;
+    }
+    .cap-modal textarea { resize: vertical; min-height: 60px; }
+    .cap-modal .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .cap-modal .toggle-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    .cap-modal .toggle-label { font-size: 0.85rem; color: var(--text); cursor: pointer; }
+    .cap-modal .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+<div id="app-topbar"></div>
+<div id="app-nav"></div>
+
+<div class="page-wrap">
+  <div class="page-header">
+    <h1>Capacity Planning</h1>
+    <p>Practice-wide workload visibility — no AI, transparent hour-based utilisation.</p>
+  </div>
+
+  <!-- ── Summary KPIs ── -->
+  <div id="cap-summary-wrap">
+    <div class="cap-kpi-grid" id="cap-kpi-grid">
+      <div class="kpi-card" id="kpi-total-cap"><div class="kpi-value" id="kv-total-cap">…</div><div class="kpi-label">Total Weekly Capacity</div></div>
+      <div class="kpi-card" id="kpi-allocated"><div class="kpi-value" id="kv-allocated">…</div><div class="kpi-label">Allocated Task Hours</div></div>
+      <div class="kpi-card" id="kpi-util"><div class="kpi-value" id="kv-util">…</div><div class="kpi-label">Practice Utilisation</div></div>
+      <div class="kpi-card" id="kpi-overloaded"><div class="kpi-value" id="kv-overloaded">…</div><div class="kpi-label">Overloaded Staff</div></div>
+      <div class="kpi-card" id="kpi-underutil"><div class="kpi-value" id="kv-underutil">…</div><div class="kpi-label">Underutilised Staff</div></div>
+      <div class="kpi-card" id="kpi-reviews"><div class="kpi-value" id="kv-reviews">…</div><div class="kpi-label">Reviews Pending</div></div>
+      <div class="kpi-card" id="kpi-overdue"><div class="kpi-value" id="kv-overdue">…</div><div class="kpi-label">Overdue Deadlines</div></div>
+      <div class="kpi-card" id="kpi-periods"><div class="kpi-value" id="kv-periods">…</div><div class="kpi-label">Queued Periods</div></div>
+    </div>
+    <div id="cap-summary-error" class="error-banner hidden"></div>
+  </div>
+
+  <!-- ── Team Capacity Table ── -->
+  <div class="cap-section">
+    <div class="cap-section-header">
+      <div>
+        <span class="cap-section-title">Team Workload</span>
+        <span class="cap-section-sub" id="team-sub"></span>
+      </div>
+    </div>
+    <div id="cap-team-loading" class="loading-state">Loading team capacity…</div>
+    <div id="cap-team-error" class="error-banner hidden"></div>
+    <div class="cap-table-wrap" id="cap-team-table-wrap" style="display:none">
+      <table class="cap-table">
+        <thead>
+          <tr>
+            <th>Team Member</th>
+            <th>Role</th>
+            <th class="td-num">Weekly Cap.</th>
+            <th class="td-util">Utilisation</th>
+            <th class="td-num">Tasks</th>
+            <th class="td-num">Reviews</th>
+            <th class="td-num">Deadlines</th>
+            <th class="td-num">Periods</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cap-team-tbody"></tbody>
+      </table>
+    </div>
+    <div id="cap-team-empty" class="cap-empty hidden">No active team members found.</div>
+  </div>
+
+  <!-- ── Client Workload Table ── -->
+  <div class="cap-section">
+    <div class="cap-section-header">
+      <span class="cap-section-title">Client Workload</span>
+    </div>
+    <div id="cap-clients-loading" class="loading-state">Loading client workload…</div>
+    <div id="cap-clients-error" class="error-banner hidden"></div>
+    <div class="cap-table-wrap" id="cap-clients-table-wrap" style="display:none">
+      <table class="cap-table">
+        <thead>
+          <tr>
+            <th>Client</th>
+            <th class="td-num">Active Tasks</th>
+            <th class="td-num">Est. Hours</th>
+            <th class="td-num">Workflows</th>
+            <th class="td-num">Overdue Deadlines</th>
+            <th class="td-num">Queued Periods</th>
+            <th class="td-num">Engagements</th>
+          </tr>
+        </thead>
+        <tbody id="cap-clients-tbody"></tbody>
+      </table>
+    </div>
+    <div id="cap-clients-empty" class="cap-empty hidden">No active clients found.</div>
+  </div>
+
+  <!-- ── Risk Panels ── -->
+  <div class="cap-section">
+    <div class="cap-section-header">
+      <span class="cap-section-title">Capacity Risks</span>
+    </div>
+    <div id="cap-risks-loading" class="loading-state">Loading risk signals…</div>
+    <div id="cap-risks-error" class="error-banner hidden"></div>
+    <div class="risk-panels" id="cap-risk-panels" style="display:none"></div>
+  </div>
+</div><!-- /page-wrap -->
+
+<!-- ── Capacity Settings Modal ── -->
+<div id="capModal" class="cap-modal-overlay hidden" onclick="if(event.target===this)closeCapModal()">
+  <div class="cap-modal">
+    <h3 id="capModalTitle">Set Capacity</h3>
+    <div class="modal-sub" id="capModalSub"></div>
+    <input type="hidden" id="capModalMemberId">
+
+    <div class="form-field">
+      <label for="capWeeklyHours">Weekly Capacity (hours)</label>
+      <input type="number" id="capWeeklyHours" min="0" max="168" step="0.5" placeholder="e.g. 40">
+    </div>
+    <div class="form-field">
+      <label for="capDailyHours">Daily Capacity (hours, optional)</label>
+      <input type="number" id="capDailyHours" min="0" max="24" step="0.5" placeholder="e.g. 8">
+    </div>
+    <div class="form-field">
+      <label for="capNotes">Capacity Notes (optional)</label>
+      <textarea id="capNotes" rows="2" placeholder="e.g. Part-time Mon–Wed only"></textarea>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="capIsActive" checked>
+      <label class="toggle-label" for="capIsActive">Include in capacity calculations</label>
+    </div>
+    <div id="capModalError" class="error-banner hidden"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeCapModal()">Cancel</button>
+      <button class="btn btn-primary" id="capSaveBtn" onclick="saveCapacity()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/capacity.js"></script>
+</body>
+</html>

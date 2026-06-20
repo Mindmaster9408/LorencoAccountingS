@@ -118,6 +118,12 @@
             var rateStr = m.default_hourly_rate != null ? 'R ' + parseFloat(m.default_hourly_rate).toFixed(2) : '–';
             var subtitle = [m.job_title, m.department].filter(Boolean).join(' · ');
 
+            // Capacity column
+            var capHours = m.weekly_capacity_hours != null ? parseFloat(m.weekly_capacity_hours) + ' hrs/wk' : null;
+            var capCell  = capHours
+                ? '<span style="font-size:0.82rem;color:var(--text)">' + capHours + '</span>'
+                : '<span style="font-size:0.78rem;color:var(--muted)">Not set</span>';
+
             return '<tr>' +
                 '<td>' +
                     '<strong>' + esc(m.display_name) + '</strong>' +
@@ -132,15 +138,17 @@
                 '<td class="col-muted col-small">' + esc(permStr) + '</td>' +
                 '<td>' + linkedBadge + '</td>' +
                 '<td>' + statusBadge + '</td>' +
+                '<td>' + capCell + '</td>' +
                 '<td><div class="td-actions">' +
                     '<button type="button" class="btn btn-ghost btn-sm" onclick="openModal(' + m.id + ')">Edit</button>' +
+                    '<a href="/practice/capacity.html" class="btn btn-ghost btn-sm" style="text-decoration:none" title="Manage capacity for this member">Capacity</a>' +
                 '</div></td>' +
             '</tr>';
         }).join('');
 
         var tableHtml =
             '<div class="table-wrap"><table><thead><tr>' +
-                '<th>Name</th><th>Role</th><th>Contact</th><th>Rate/hr</th><th>Permissions</th><th>Login</th><th>Status</th><th>Actions</th>' +
+                '<th>Name</th><th>Role</th><th>Contact</th><th>Rate/hr</th><th>Permissions</th><th>Login</th><th>Status</th><th>Capacity</th><th>Actions</th>' +
             '</tr></thead><tbody>' + rows + '</tbody></table>' +
             renderPagination(totalPages) +
             '</div>';

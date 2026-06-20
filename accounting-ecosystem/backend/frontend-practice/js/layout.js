@@ -15,7 +15,9 @@
         { key: 'tasks',       label: 'Tasks',       href: '/practice/tasks.html' },
         { key: 'time',        label: 'Time',        href: '/practice/time.html' },
         { key: 'billing',     label: 'Billing',     href: '/practice/billing.html' },
-        { key: 'deadlines',   label: 'Deadlines',   href: '/practice/deadlines.html' }
+        { key: 'deadlines',   label: 'Deadlines',   href: '/practice/deadlines.html' },
+        { key: 'period-queue', label: 'Period Queue', href: '/practice/engagement-periods.html' },
+        { key: 'capacity',    label: 'Capacity',     href: '/practice/capacity.html' }
     ];
 
     function escHtml(str) {

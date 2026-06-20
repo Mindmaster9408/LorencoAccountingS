@@ -86,7 +86,9 @@ function sanitizeEngagementBody(body) {
     'estimated_hours_per_period', 'currency',
     'workflow_template_id',
     'auto_create_workflow', 'auto_create_deadline',
-    'notes', 'internal_notes', 'settings'
+    'notes', 'internal_notes', 'settings',
+    'recurrence_type', 'recurrence_start_date', 'recurrence_end_date',
+    'recurrence_day', 'recurrence_month', 'recurrence_notes'
   ];
   const out = {};
   for (const k of allowed) {

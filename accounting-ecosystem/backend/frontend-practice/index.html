@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lorenco Practice — Dashboard</title>
+    <title>Lorenco Practice — Command Centre</title>
     <link rel="stylesheet" href="/practice/css/practice.css">
 </head>
 <body>
@@ -13,38 +13,155 @@
 
 <div class="main">
 
-    <!-- Stats -->
-    <div class="stats-grid" id="statsGrid">
-        <div class="stat-card"><div class="stat-value" id="statClients">–</div><div class="stat-label">Active Clients</div></div>
-        <div class="stat-card info"><div class="stat-value" id="statOpenTasks">–</div><div class="stat-label">Open Tasks</div></div>
-        <div class="stat-card danger"><div class="stat-value" id="statOverdue">–</div><div class="stat-label">Overdue Tasks</div></div>
-        <div class="stat-card warning"><div class="stat-value" id="statUpcoming">–</div><div class="stat-label">Due in 30 Days</div></div>
-        <div class="stat-card success"><div class="stat-value" id="statHours">–</div><div class="stat-label">Hours This Month</div></div>
+    <!-- ── Page header ── -->
+    <div class="section-header" style="margin-bottom:20px;">
+        <div>
+            <div class="section-title" style="font-size:1.25rem;">Practice Command Centre</div>
+            <div class="col-muted" style="font-size:0.8rem;margin-top:2px;">Live operational overview — all clients, all work streams</div>
+        </div>
+        <div class="controls">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        </div>
     </div>
 
-    <!-- Quick Navigation -->
-    <div class="section-label">Quick Access</div>
-    <div class="quick-nav">
-        <a href="/practice/clients.html" class="quick-card">
-            <div class="quick-card-icon">👤</div>
-            <div class="quick-card-title">Clients</div>
-            <div class="quick-card-desc">Manage client files, contact details and billing info</div>
-        </a>
-        <a href="/practice/tasks.html" class="quick-card">
-            <div class="quick-card-icon">📋</div>
-            <div class="quick-card-title">Tasks</div>
-            <div class="quick-card-desc">Track VAT returns, tax filings, and work items</div>
-        </a>
-        <a href="/practice/time.html" class="quick-card">
-            <div class="quick-card-icon">⏱</div>
-            <div class="quick-card-title">Time Tracking</div>
-            <div class="quick-card-desc">Log billable hours per client and task</div>
-        </a>
-        <a href="/practice/deadlines.html" class="quick-card">
-            <div class="quick-card-icon">📅</div>
-            <div class="quick-card-title">Deadlines</div>
-            <div class="quick-card-desc">SARS, CIPC and compliance deadlines</div>
-        </a>
+    <!-- ── Quick action buttons ── -->
+    <div class="quick-actions">
+        <a href="/practice/clients.html"            class="btn btn-ghost btn-sm">👤 Clients</a>
+        <a href="/practice/tasks.html"              class="btn btn-ghost btn-sm">📋 Tasks</a>
+        <a href="/practice/deadlines.html"          class="btn btn-ghost btn-sm">📅 Deadlines</a>
+        <a href="/practice/engagement-periods.html" class="btn btn-ghost btn-sm">🔁 Period Queue</a>
+        <a href="/practice/capacity.html"           class="btn btn-ghost btn-sm">📊 Capacity</a>
+        <a href="/practice/billing.html"            class="btn btn-ghost btn-sm">💰 Billing</a>
+        <a href="/practice/time.html"               class="btn btn-ghost btn-sm">⏱ Time</a>
+        <a href="/practice/workflows.html"          class="btn btn-ghost btn-sm">⚡ Workflows</a>
+    </div>
+
+    <!-- ── KPI cards ── -->
+    <div class="kpi-grid">
+        <div class="kpi-card kpi-accent">
+            <div class="kpi-value" id="kpiClients">–</div>
+            <div class="kpi-label">Active Clients</div>
+        </div>
+        <div class="kpi-card kpi-accent">
+            <div class="kpi-value" id="kpiEngagements">–</div>
+            <div class="kpi-label">Active Engagements</div>
+        </div>
+        <div class="kpi-card kpi-danger">
+            <div class="kpi-value v-danger" id="kpiOverdue">–</div>
+            <div class="kpi-label">Overdue Deadlines</div>
+        </div>
+        <div class="kpi-card kpi-warning">
+            <div class="kpi-value v-warning" id="kpiDueWeek">–</div>
+            <div class="kpi-label">Due This Week</div>
+        </div>
+        <div class="kpi-card kpi-warning">
+            <div class="kpi-value" id="kpiReview">–</div>
+            <div class="kpi-label">In Review Queue</div>
+        </div>
+        <div class="kpi-card kpi-warning">
+            <div class="kpi-value" id="kpiApproval">–</div>
+            <div class="kpi-label">Pending Approval</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-value" id="kpiWorkflows">–</div>
+            <div class="kpi-label">Active Workflows</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-value" id="kpiBilling">–</div>
+            <div class="kpi-label">Billing Packs WIP</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-value" id="kpiPeriods">–</div>
+            <div class="kpi-label">Periods Pending</div>
+        </div>
+    </div>
+
+    <!-- ── Risk panels row 1: Overdue + Due This Week ── -->
+    <div class="dash-panels">
+
+        <div class="dash-panel">
+            <div class="dash-panel-header">
+                🔴 Overdue Deadlines
+                <span class="panel-count panel-count-muted" id="panelOverdueCount">–</span>
+            </div>
+            <div class="dash-panel-body" id="panelOverdueBody">
+                <div class="loading"><div class="loading-spinner"></div></div>
+            </div>
+        </div>
+
+        <div class="dash-panel">
+            <div class="dash-panel-header">
+                🟡 Due This Week
+                <span class="panel-count panel-count-muted" id="panelDueCount">–</span>
+            </div>
+            <div class="dash-panel-body" id="panelDueBody">
+                <div class="loading"><div class="loading-spinner"></div></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Risk panels row 2: Review / Approval + Billing / Periods ── -->
+    <div class="dash-panels">
+
+        <div class="dash-panel">
+            <div class="dash-panel-header">
+                🔵 Review &amp; Approval Queue
+                <span class="panel-count panel-count-muted" id="panelReviewCount">–</span>
+            </div>
+            <div class="dash-panel-body" id="panelReviewBody">
+                <div class="loading"><div class="loading-spinner"></div></div>
+            </div>
+        </div>
+
+        <div class="dash-panel">
+            <div class="dash-panel-header">
+                💰 Billing &amp; Periods WIP
+                <span class="panel-count panel-count-muted" id="panelBillingCount">–</span>
+            </div>
+            <div class="dash-panel-body" id="panelBillingBody">
+                <div class="loading"><div class="loading-spinner"></div></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Team Workload ── -->
+    <div style="margin-bottom:28px;">
+        <div class="section-header" style="margin-bottom:12px;">
+            <div class="section-title">Team Workload</div>
+        </div>
+        <div class="table-wrap">
+            <table class="workload-table">
+                <thead>
+                    <tr>
+                        <th>Team Member</th>
+                        <th>Active Tasks</th>
+                        <th>Review Queue</th>
+                        <th>Deadlines Owned</th>
+                        <th>Engagements</th>
+                    </tr>
+                </thead>
+                <tbody id="workloadBody">
+                    <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.82rem;">
+                        <div class="loading-spinner" style="margin:0 auto 8px;"></div>Loading…
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Recent Activity ── -->
+    <div>
+        <div class="section-header" style="margin-bottom:12px;">
+            <div class="section-title">Recent Activity</div>
+            <div class="col-muted" style="font-size:0.78rem;">Last 50 events</div>
+        </div>
+        <div class="table-wrap">
+            <div class="activity-feed" id="activityBody">
+                <div class="loading"><div class="loading-spinner"></div><p>Loading activity…</p></div>
+            </div>
+        </div>
     </div>
 
 </div>
@@ -55,33 +172,6 @@
 <script src="/practice/js/auth.js"></script>
 <script src="/practice/js/api.js"></script>
 <script src="/practice/js/layout.js"></script>
-<script>
-async function init() {
-    const token = localStorage.getItem('token') || localStorage.getItem('practice_token');
-    if (!token) { window.location.href = '/'; return; }
-    try {
-        const res = await PracticeAPI.fetch('/api/auth/me');
-        if (!res.ok) { window.location.href = '/'; return; }
-    } catch(e) { window.location.href = '/'; return; }
-
-    LAYOUT.init('dashboard');
-    loadDashboard();
-}
-
-async function loadDashboard() {
-    try {
-        const res = await PracticeAPI.fetch('/api/practice/dashboard');
-        if (!res.ok) return;
-        const d = await res.json();
-        document.getElementById('statClients').textContent    = d.total_clients    ?? '–';
-        document.getElementById('statOpenTasks').textContent  = d.open_tasks       ?? '–';
-        document.getElementById('statOverdue').textContent    = d.overdue_tasks    ?? '–';
-        document.getElementById('statUpcoming').textContent   = d.upcoming_deadlines ?? '–';
-        document.getElementById('statHours').textContent      = d.hours_this_month ?? '–';
-    } catch(e) {}
-}
-
-init();
-</script>
+<script src="/practice/js/dashboard.js"></script>
 </body>
 </html>

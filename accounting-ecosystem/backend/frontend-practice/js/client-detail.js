@@ -637,6 +637,8 @@
                 '</div>' +
                 '<div class="engagement-card-actions">' +
                     (e.status === 'active' && e.workflow_template_id ? '<button type="button" class="btn btn-primary btn-sm" onclick="openGenerateModal(' + e.id + ')">⚡ Generate</button>' : '') +
+                    (e.status === 'active' ? '<button type="button" class="btn btn-ghost btn-sm" onclick="openPeriodQueueModal(' + e.id + ')">📅 Periods</button>' : '') +
+                    '<a href="/practice/engagement-periods.html?engagement_id=' + e.id + '&client_id=' + e.client_id + '" class="btn btn-ghost btn-sm">Queue</a>' +
                     (e.status === 'active' ? '<button type="button" class="btn btn-ghost btn-sm" onclick="engagementAction(' + e.id + ',\'pause\')">Pause</button>' : '') +
                     (e.status === 'paused' ? '<button type="button" class="btn btn-ghost btn-sm" onclick="engagementAction(' + e.id + ',\'reactivate\')">Reactivate</button>' : '') +
                     (e.status !== 'cancelled' && e.status !== 'ended' ? '<button type="button" class="btn btn-ghost btn-sm" onclick="openEngHistoryModal(' + e.id + ')">History</button>' : '') +
@@ -690,6 +692,14 @@
         document.getElementById('eeDesc').value       = eng ? (eng.description || '') : '';
         document.getElementById('eeNotes').value      = eng ? (eng.notes || '') : '';
 
+        document.getElementById('eeRecurrenceType').value      = eng ? (eng.recurrence_type       || '') : '';
+        document.getElementById('eeRecurrenceStartDate').value = eng ? (eng.recurrence_start_date || '') : '';
+        document.getElementById('eeRecurrenceEndDate').value   = eng ? (eng.recurrence_end_date   || '') : '';
+        document.getElementById('eeRecurrenceDay').value       = eng && eng.recurrence_day   != null ? eng.recurrence_day   : '';
+        document.getElementById('eeRecurrenceMonth').value     = eng && eng.recurrence_month != null ? eng.recurrence_month : '';
+        document.getElementById('eeRecurrenceNotes').value     = eng ? (eng.recurrence_notes || '') : '';
+        toggleRecurrenceFields();
+
         await _populateEngTeam();
 
         var setTeamSel = function(elId, val) {
@@ -716,6 +726,14 @@
         document.getElementById('engagementModal').classList.remove('show');
     }
 
+    function toggleRecurrenceFields() {
+        var type = document.getElementById('eeRecurrenceType').value;
+        var showDay   = (type === 'monthly' || type === 'annual');
+        var showMonth = (type === 'annual');
+        document.getElementById('eeRecurrenceDayWrap').classList.toggle('hidden', !showDay);
+        document.getElementById('eeRecurrenceMonthWrap').classList.toggle('hidden', !showMonth);
+    }
+
     async function saveEngagement(e) {
         e.preventDefault();
         var btn = document.getElementById('eeSaveBtn');
@@ -735,7 +753,13 @@
             notes:                      document.getElementById('eeNotes').value.trim() || null,
             responsible_team_member_id: document.getElementById('eeResponsible').value || null,
             reviewer_team_member_id:    document.getElementById('eeReviewer').value    || null,
-            partner_team_member_id:     document.getElementById('eePartner').value      || null
+            partner_team_member_id:     document.getElementById('eePartner').value      || null,
+            recurrence_type:            document.getElementById('eeRecurrenceType').value      || null,
+            recurrence_start_date:      document.getElementById('eeRecurrenceStartDate').value || null,
+            recurrence_end_date:        document.getElementById('eeRecurrenceEndDate').value   || null,
+            recurrence_day:             document.getElementById('eeRecurrenceDay').value   ? parseInt(document.getElementById('eeRecurrenceDay').value)   : null,
+            recurrence_month:           document.getElementById('eeRecurrenceMonth').value ? parseInt(document.getElementById('eeRecurrenceMonth').value) : null,
+            recurrence_notes:           document.getElementById('eeRecurrenceNotes').value.trim() || null
         };
 
         try {
@@ -980,6 +1004,136 @@
         return false;
     }
 
+    // ── Generate Periods Modal (Codebox 16 — Period Queue) ────────────────────
+
+    var _periodQueueEngId    = null;
+    var _periodQueuePreview  = null;
+    var _periodQueueSubmitting = false;
+
+    async function openPeriodQueueModal(engId) {
+        _periodQueueEngId   = engId;
+        _periodQueuePreview = null;
+        _periodQueueSubmitting = false;
+
+        var modal = document.getElementById('periodQueueModal');
+        if (!modal) return;
+
+        document.getElementById('pqFromDate').value   = '';
+        document.getElementById('pqToDate').value     = '';
+        document.getElementById('pqMaxPeriods').value = '12';
+        document.getElementById('pqPreviewWrap').innerHTML = '';
+        document.getElementById('pqCreateBtn').disabled    = true;
+        document.getElementById('pqPreviewBtn').disabled   = false;
+
+        modal.classList.add('show');
+    }
+
+    function closePeriodQueueModal() {
+        var modal = document.getElementById('periodQueueModal');
+        if (modal) modal.classList.remove('show');
+    }
+
+    async function previewPeriods() {
+        if (!_periodQueueEngId) return;
+        var fromDate = document.getElementById('pqFromDate').value;
+        var toDate   = document.getElementById('pqToDate').value;
+        var maxP     = parseInt(document.getElementById('pqMaxPeriods').value) || 12;
+
+        if (!fromDate || !toDate) {
+            PracticeAPI.showToast('❌ Please enter both From Date and To Date', true);
+            return;
+        }
+
+        document.getElementById('pqPreviewWrap').innerHTML =
+            '<div class="loading"><div class="loading-spinner"></div><p>Previewing periods…</p></div>';
+        document.getElementById('pqCreateBtn').disabled  = true;
+        document.getElementById('pqPreviewBtn').disabled = true;
+
+        try {
+            var res = await PracticeAPI.fetch(
+                '/api/practice/engagements/' + _periodQueueEngId + '/periods/generate-preview',
+                { method: 'POST', body: JSON.stringify({ from_date: fromDate, to_date: toDate, max_periods: maxP }) }
+            );
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Preview failed');
+
+            _periodQueuePreview = d;
+            renderPeriodPreview(d);
+            document.getElementById('pqCreateBtn').disabled  = !d.can_create;
+        } catch(err) {
+            document.getElementById('pqPreviewWrap').innerHTML =
+                '<div class="error-banner">⚠️ ' + esc(err.message) + '</div>';
+        } finally {
+            document.getElementById('pqPreviewBtn').disabled = false;
+        }
+    }
+
+    function renderPeriodPreview(d) {
+        var wrap = document.getElementById('pqPreviewWrap');
+        var html = '';
+
+        if (d.warnings && d.warnings.length) {
+            html += '<div style="padding:8px 12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:6px;font-size:0.78rem;color:var(--warning);margin-bottom:10px">' +
+                d.warnings.map(function(w) { return esc(w); }).join('<br>') + '</div>';
+        }
+
+        if (d.duplicates && d.duplicates.length) {
+            html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:6px">' +
+                d.duplicates.length + ' period(s) already exist and will be skipped:</div>';
+            html += '<div style="font-size:0.77rem;color:var(--text-muted);margin-bottom:10px;padding-left:8px;">' +
+                d.duplicates.map(function(p) { return '· ' + esc(p.period_label); }).join('<br>') +
+                '</div>';
+        }
+
+        if (!d.periods || !d.periods.length) {
+            html += '<div class="empty"><p>No new periods to create for the selected range.</p></div>';
+        } else {
+            html += '<div style="font-size:0.82rem;font-weight:600;margin-bottom:8px;color:rgba(255,255,255,0.7)">' +
+                d.periods.length + ' period(s) will be queued:</div>';
+            html += '<div style="display:flex;flex-direction:column;gap:4px;">';
+            d.periods.forEach(function(p) {
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;' +
+                    'background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:0.8rem;">' +
+                    '<span style="font-weight:600">' + esc(p.period_label) + '</span>' +
+                    '<span class="col-muted">' + esc(p.period_start) + ' – ' + esc(p.period_end) + '</span>' +
+                    '</div>';
+            });
+            html += '</div>';
+        }
+
+        wrap.innerHTML = html;
+    }
+
+    async function createPeriodQueue() {
+        if (!_periodQueueEngId || !_periodQueuePreview || _periodQueueSubmitting) return;
+        if (!_periodQueuePreview.can_create) return;
+
+        _periodQueueSubmitting = true;
+        var btn = document.getElementById('pqCreateBtn');
+        btn.disabled = true; btn.textContent = 'Creating…';
+
+        var fromDate = document.getElementById('pqFromDate').value;
+        var toDate   = document.getElementById('pqToDate').value;
+        var maxP     = parseInt(document.getElementById('pqMaxPeriods').value) || 12;
+
+        try {
+            var res = await PracticeAPI.fetch(
+                '/api/practice/engagements/' + _periodQueueEngId + '/periods/generate',
+                { method: 'POST', body: JSON.stringify({ from_date: fromDate, to_date: toDate, max_periods: maxP }) }
+            );
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Create failed');
+
+            closePeriodQueueModal();
+            PracticeAPI.showToast('✅ ' + d.created + ' period(s) queued!');
+        } catch(err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+            btn.disabled = false; btn.textContent = 'Create Queue';
+        } finally {
+            _periodQueueSubmitting = false;
+        }
+    }
+
     // ── Expose globals ─────────────────────────────────────────────────────────
 
     window.saveClientDetail            = saveClientDetail;
@@ -998,6 +1152,7 @@
 
     window.openEngagementModal    = openEngagementModal;
     window.closeEngagementModal   = closeEngagementModal;
+    window.toggleRecurrenceFields = toggleRecurrenceFields;
     window.saveEngagement         = saveEngagement;
     window.engagementAction       = engagementAction;
     window.openEngHistoryModal    = openEngHistoryModal;
@@ -1008,6 +1163,11 @@
     window.closeGenerateModal     = closeGenerateModal;
     window.submitGenerateWorkflow = submitGenerateWorkflow;
     window.toggleGenDeadlineTitle = toggleGenDeadlineTitle;
+
+    window.openPeriodQueueModal  = openPeriodQueueModal;
+    window.closePeriodQueueModal = closePeriodQueueModal;
+    window.previewPeriods        = previewPeriods;
+    window.createPeriodQueue     = createPeriodQueue;
 
     init();
 })();
