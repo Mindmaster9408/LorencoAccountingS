@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reminders — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <div id="app-nav"></div>
+
+    <div class="page-wrap">
+
+        <!-- ── Summary cards ─────────────────────────────────── -->
+        <div class="rem-summary" id="remSummary">
+            <div class="rem-card">
+                <div class="rem-card-value" id="sumOpen">—</div>
+                <div class="rem-card-label">Open</div>
+            </div>
+            <div class="rem-card rem-card--urgent">
+                <div class="rem-card-value" id="sumOverdue">—</div>
+                <div class="rem-card-label">Overdue</div>
+            </div>
+            <div class="rem-card rem-card--high">
+                <div class="rem-card-value" id="sumToday">—</div>
+                <div class="rem-card-label">Due Today</div>
+            </div>
+            <div class="rem-card rem-card--normal">
+                <div class="rem-card-value" id="sumWeek">—</div>
+                <div class="rem-card-label">Due This Week</div>
+            </div>
+            <div class="rem-card rem-card--warn">
+                <div class="rem-card-value" id="sumUrgent">—</div>
+                <div class="rem-card-label">Urgent</div>
+            </div>
+            <div class="rem-card rem-card--muted">
+                <div class="rem-card-value" id="sumSnoozed">—</div>
+                <div class="rem-card-label">Snoozed</div>
+            </div>
+        </div>
+
+        <!-- ── Toolbar ──────────────────────────────────────── -->
+        <div class="rem-toolbar">
+            <select id="filterStatus" onchange="applyFilters()">
+                <option value="active">Open &amp; Snoozed</option>
+                <option value="open">Open only</option>
+                <option value="snoozed">Snoozed only</option>
+                <option value="completed">Completed</option>
+                <option value="dismissed">Dismissed</option>
+                <option value="all">All (non-cancelled)</option>
+            </select>
+            <select id="filterType" onchange="applyFilters()">
+                <option value="">All Types</option>
+                <option value="deadline_overdue">Deadline Overdue</option>
+                <option value="deadline_due">Deadline Due</option>
+                <option value="review_waiting">Review Waiting</option>
+                <option value="approval_waiting">Approval Waiting</option>
+                <option value="billing_waiting">Billing Waiting</option>
+                <option value="health_action">Health Action</option>
+                <option value="period_waiting">Period Waiting</option>
+                <option value="engagement_setup">Engagement Setup</option>
+                <option value="capacity_warning">Capacity Warning</option>
+                <option value="general">General</option>
+            </select>
+            <select id="filterSeverity" onchange="applyFilters()">
+                <option value="">All Severities</option>
+                <option value="urgent">Urgent</option>
+                <option value="high">High</option>
+                <option value="normal">Normal</option>
+                <option value="low">Low</option>
+            </select>
+            <input type="text" id="filterSearch" class="rem-search" placeholder="Search title…" oninput="applyFilters()">
+            <div class="rem-toolbar-spacer"></div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleSuggestions()">💡 Suggestions</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openCreateModal()">+ Reminder</button>
+        </div>
+
+        <!-- ── Reminder list ─────────────────────────────────── -->
+        <div id="listLoading" class="cap-loading">Loading reminders…</div>
+
+        <div id="listWrap" class="hidden">
+            <table class="cap-table rem-table">
+                <thead>
+                    <tr>
+                        <th class="col-sev"></th>
+                        <th>Title</th>
+                        <th>Type</th>
+                        <th>Client</th>
+                        <th>Assigned To</th>
+                        <th>Due</th>
+                        <th>Status</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="listBody"></tbody>
+            </table>
+        </div>
+
+        <div id="listEmpty" class="cap-empty hidden">
+            <div class="cap-empty-icon">🔔</div>
+            <div class="cap-empty-text">No reminders match the current filter</div>
+        </div>
+
+        <div id="listError" class="error-banner hidden"></div>
+
+        <!-- ── Suggestions panel ─────────────────────────────── -->
+        <div id="suggestionsPanel" class="rem-suggestions hidden">
+            <div class="rem-suggestions-header">
+                <div class="rem-suggestions-title">💡 Suggested Reminders</div>
+                <div class="rem-suggestions-sub">Items without an existing open reminder, pulled from live data.</div>
+                <button type="button" class="btn btn-ghost btn-xs rem-suggest-close" onclick="toggleSuggestions()">✕ Close</button>
+            </div>
+            <div id="suggestLoading" class="rem-suggest-loading hidden">Scanning operational data…</div>
+            <div id="suggestEmpty"   class="rem-suggest-empty  hidden">No suggestions — everything has a reminder or is on track.</div>
+            <div id="suggestList"    class="rem-suggest-list   hidden"></div>
+        </div>
+
+    </div><!-- /page-wrap -->
+
+    <!-- ── Create reminder modal ─────────────────────────────── -->
+    <div id="createModal" class="modal-overlay hidden" onclick="closeCreateModal()">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">New Reminder</div>
+                <button type="button" class="modal-close" onclick="closeCreateModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label class="form-label">Title <span class="req">*</span></label>
+                    <input type="text" id="cTitle" class="form-input" placeholder="Reminder title">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Type <span class="req">*</span></label>
+                    <select id="cType" class="form-input">
+                        <option value="general">General</option>
+                        <option value="deadline_due">Deadline Due</option>
+                        <option value="deadline_overdue">Deadline Overdue</option>
+                        <option value="review_waiting">Review Waiting</option>
+                        <option value="approval_waiting">Approval Waiting</option>
+                        <option value="billing_waiting">Billing Waiting</option>
+                        <option value="health_action">Health Action</option>
+                        <option value="period_waiting">Period Waiting</option>
+                        <option value="engagement_setup">Engagement Setup</option>
+                        <option value="capacity_warning">Capacity Warning</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Severity</label>
+                    <select id="cSeverity" class="form-input">
+                        <option value="normal" selected>Normal</option>
+                        <option value="low">Low</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Client</label>
+                    <select id="cClient" class="form-input">
+                        <option value="">No client</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Assign to</label>
+                    <select id="cAssignee" class="form-input">
+                        <option value="">Unassigned</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Due Date</label>
+                    <input type="date" id="cDue" class="form-input">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Message / Notes</label>
+                    <textarea id="cMessage" class="form-input" rows="2" placeholder="Optional context…"></textarea>
+                </div>
+                <div id="createError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="createSubmitBtn" onclick="submitCreate()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Snooze modal ──────────────────────────────────────── -->
+    <div id="snoozeModal" class="modal-overlay hidden" onclick="closeSnoozeModal()">
+        <div class="modal-box modal-box--sm" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">Snooze Reminder</div>
+                <button type="button" class="modal-close" onclick="closeSnoozeModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="snooze-quick">
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="setSnoozeQuick(1)">Tomorrow</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="setSnoozeQuick(3)">In 3 days</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="setSnoozeQuick(7)">Next week</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="setSnoozeQuick(14)">2 weeks</button>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Or pick a specific date &amp; time</label>
+                    <input type="datetime-local" id="snoozeUntil" class="form-input">
+                </div>
+                <div id="snoozeError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeSnoozeModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="snoozeSubmitBtn" onclick="submitSnooze()">Snooze</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/reminders.js"></script>
+</body>
+</html>

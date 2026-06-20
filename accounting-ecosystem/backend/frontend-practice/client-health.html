@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Client Health — Lorenco Practice</title>
+  <link rel="stylesheet" href="/practice/css/practice.css">
+  <style>
+    /* ── Summary stat cards ─────────────────────────────── */
+    .health-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .health-stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .health-stat:hover { border-color: var(--accent); }
+    .health-stat.active-filter { border-color: var(--accent); background: rgba(167,139,250,0.08); }
+    .health-stat-value { font-size: 1.8rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+    .health-stat-label { font-size: 0.74rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .hs-total    .health-stat-value { color: var(--text); }
+    .hs-good     .health-stat-value { color: var(--success, #10b981); }
+    .hs-watch    .health-stat-value { color: var(--warning, #f59e0b); }
+    .hs-at_risk  .health-stat-value { color: #f97316; }
+    .hs-critical .health-stat-value { color: var(--danger, #f43f5e); }
+    .hs-unknown  .health-stat-value { color: var(--muted); }
+
+    /* ── Toolbar ─────────────────────────────────────────── */
+    .health-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .health-toolbar select,
+    .health-toolbar input[type="text"] {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 0.83rem;
+      font-family: inherit;
+    }
+    .health-toolbar .spacer { flex: 1; }
+
+    /* ── Health table ─────────────────────────────────────── */
+    .health-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .health-table th {
+      text-align: left;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-size: 0.73rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .health-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    .health-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .health-table .td-num { text-align: right; font-variant-numeric: tabular-nums; }
+    .health-table .td-actions { white-space: nowrap; }
+
+    /* ── Health badge ─────────────────────────────────────── */
+    .health-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 10px;
+      font-size: 0.71rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .hb-good     { background: rgba(16,185,129,0.13); color: var(--success, #10b981); }
+    .hb-watch    { background: rgba(245,158,11,0.15); color: var(--warning, #f59e0b); }
+    .hb-at_risk  { background: rgba(249,115,22,0.15); color: #f97316; }
+    .hb-critical { background: rgba(244,63,94,0.15);  color: var(--danger, #f43f5e); }
+    .hb-unknown  { background: rgba(255,255,255,0.07); color: var(--muted); }
+
+    /* ── Score circle ─────────────────────────────────────── */
+    .score-circle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      font-size: 0.9rem;
+      font-weight: 700;
+      border: 2px solid;
+    }
+    .sc-good     { border-color: var(--success, #10b981); color: var(--success, #10b981); background: rgba(16,185,129,0.08); }
+    .sc-watch    { border-color: var(--warning, #f59e0b); color: var(--warning, #f59e0b); background: rgba(245,158,11,0.08); }
+    .sc-at_risk  { border-color: #f97316; color: #f97316; background: rgba(249,115,22,0.08); }
+    .sc-critical { border-color: var(--danger, #f43f5e);  color: var(--danger, #f43f5e);  background: rgba(244,63,94,0.08); }
+    .sc-unknown  { border-color: var(--muted); color: var(--muted); background: rgba(255,255,255,0.04); }
+
+    /* ── Top risks inline ─────────────────────────────────── */
+    .risk-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .risk-chip {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.69rem;
+      color: var(--muted);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.07);
+      white-space: nowrap;
+    }
+
+    /* ── Detail modal ─────────────────────────────────────── */
+    .hd-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      z-index: 1000;
+      padding: 24px 16px;
+      overflow-y: auto;
+    }
+    .hd-modal-overlay.hidden { display: none; }
+    .hd-modal {
+      background: var(--bg-card, #1a1230);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 680px;
+      padding: 24px;
+    }
+    .hd-modal-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      gap: 12px;
+    }
+    .hd-modal-title { font-size: 1.1rem; font-weight: 600; color: var(--text); margin: 0 0 4px; }
+    .hd-modal-sub   { font-size: 0.8rem; color: var(--muted); margin: 0; }
+
+    .hd-score-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .hd-score-big { font-size: 2.8rem; font-weight: 800; line-height: 1; }
+    .hd-score-big.c-good     { color: var(--success, #10b981); }
+    .hd-score-big.c-watch    { color: var(--warning, #f59e0b); }
+    .hd-score-big.c-at_risk  { color: #f97316; }
+    .hd-score-big.c-critical { color: var(--danger, #f43f5e); }
+    .hd-score-big.c-unknown  { color: var(--muted); }
+    .hd-score-label { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
+
+    .hd-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .hd-metric {
+      background: rgba(255,255,255,0.04);
+      border-radius: 6px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .hd-metric-value { font-size: 1.4rem; font-weight: 700; color: var(--text); }
+    .hd-metric-value.v-danger  { color: var(--danger, #f43f5e); }
+    .hd-metric-value.v-warning { color: var(--warning, #f59e0b); }
+    .hd-metric-label { font-size: 0.73rem; color: var(--muted); margin-top: 3px; }
+
+    .hd-section-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 16px 0 8px;
+    }
+    .hd-risk-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .hd-risk-item:last-child { border-bottom: none; }
+    .hd-risk-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+    }
+    .dot-critical { background: var(--danger, #f43f5e); }
+    .dot-warning  { background: var(--warning, #f59e0b); }
+    .dot-info     { background: var(--info, #63b3ed); }
+    .hd-risk-label { font-size: 0.84rem; color: var(--text); }
+    .hd-risk-meta  { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .hd-modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+    .no-risk-msg { color: var(--muted); font-size: 0.83rem; padding: 8px 0; }
+  </style>
+</head>
+<body>
+
+<div id="app-topbar"></div>
+<div id="app-nav"></div>
+
+<div class="page-wrap">
+  <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+    <div>
+      <h1 style="font-size:1.35rem;font-weight:600;color:var(--text);margin:0 0 4px;">Client Health</h1>
+      <p style="font-size:0.83rem;color:var(--muted);margin:0;">Transparent rule-based risk scoring — no AI, no automation.</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-ghost btn-sm" id="refreshBtn" onclick="loadAll()">↻ Refresh</button>
+      <button class="btn btn-primary btn-sm" id="recalcAllBtn" onclick="recalcAll()">Recalculate All</button>
+    </div>
+  </div>
+
+  <!-- ── Summary stats ── -->
+  <div class="health-summary" id="healthSummary">
+    <div class="health-stat hs-total" onclick="filterByStatus('')"   title="All clients">
+      <div class="health-stat-value" id="hsTotalVal">—</div>
+      <div class="health-stat-label">Total</div>
+    </div>
+    <div class="health-stat hs-good" onclick="filterByStatus('good')" title="Filter: Good">
+      <div class="health-stat-value" id="hsGoodVal">—</div>
+      <div class="health-stat-label">Good</div>
+    </div>
+    <div class="health-stat hs-watch" onclick="filterByStatus('watch')" title="Filter: Watch">
+      <div class="health-stat-value" id="hsWatchVal">—</div>
+      <div class="health-stat-label">Watch</div>
+    </div>
+    <div class="health-stat hs-at_risk" onclick="filterByStatus('at_risk')" title="Filter: At Risk">
+      <div class="health-stat-value" id="hsAtRiskVal">—</div>
+      <div class="health-stat-label">At Risk</div>
+    </div>
+    <div class="health-stat hs-critical" onclick="filterByStatus('critical')" title="Filter: Critical">
+      <div class="health-stat-value" id="hsCriticalVal">—</div>
+      <div class="health-stat-label">Critical</div>
+    </div>
+    <div class="health-stat hs-unknown" onclick="filterByStatus('unknown')" title="Filter: Unknown">
+      <div class="health-stat-value" id="hsUnknownVal">—</div>
+      <div class="health-stat-label">Unknown</div>
+    </div>
+  </div>
+
+  <div id="summaryError" class="error-banner hidden"></div>
+
+  <!-- ── Toolbar ── -->
+  <div class="health-toolbar">
+    <select id="filterStatus" onchange="applyFilters()">
+      <option value="">All statuses</option>
+      <option value="critical">Critical</option>
+      <option value="at_risk">At Risk</option>
+      <option value="watch">Watch</option>
+      <option value="good">Good</option>
+      <option value="unknown">Unknown</option>
+    </select>
+    <input type="text" id="filterSearch" placeholder="Search client…" oninput="applyFilters()" style="min-width:200px;">
+    <div class="spacer"></div>
+    <span id="listCount" style="font-size:0.8rem;color:var(--muted);"></span>
+  </div>
+
+  <!-- ── Client health table ── -->
+  <div id="listLoading" class="loading-state">Loading client health data…</div>
+  <div id="listError" class="error-banner hidden"></div>
+  <div id="listWrap" style="display:none;overflow-x:auto;">
+    <table class="health-table">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Responsible</th>
+          <th style="text-align:center;">Score</th>
+          <th>Status</th>
+          <th>Top Risks</th>
+          <th class="td-num">Overdue</th>
+          <th class="td-num">Reviews</th>
+          <th class="td-num">WIP</th>
+          <th class="td-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="listBody"></tbody>
+    </table>
+  </div>
+  <div id="listEmpty" class="cap-empty hidden">No clients match the current filters.</div>
+</div><!-- /page-wrap -->
+
+<!-- ── Client health detail modal ── -->
+<div id="hdModal" class="hd-modal-overlay hidden" onclick="if(event.target===this)closeHdModal()">
+  <div class="hd-modal">
+    <div class="hd-modal-header">
+      <div>
+        <h2 class="hd-modal-title" id="hdTitle">Client Health</h2>
+        <p class="hd-modal-sub" id="hdSub"></p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="closeHdModal()">✕</button>
+    </div>
+
+    <!-- Score + badge row -->
+    <div class="hd-score-row" id="hdScoreRow">
+      <div>
+        <div class="hd-score-big" id="hdScoreVal">—</div>
+        <div class="hd-score-label">Health Score</div>
+      </div>
+      <div>
+        <span class="health-badge" id="hdStatusBadge">—</span>
+        <div class="hd-score-label" id="hdCalcAt" style="margin-top:6px;"></div>
+      </div>
+    </div>
+
+    <!-- Metric grid -->
+    <div class="hd-metrics-grid" id="hdMetrics"></div>
+
+    <!-- Risk factors -->
+    <div class="hd-section-title">Risk Factors</div>
+    <div id="hdRisks"></div>
+
+    <!-- Action quick-form (appears when "+ Action" is clicked on a risk) -->
+    <div id="hdActionForm" class="action-quick-form hidden">
+      <div class="hd-section-title action-form-title">New Follow-up Action</div>
+      <input type="hidden" id="hdActionRiskCode">
+      <input type="hidden" id="hdActionRiskLabel">
+      <div class="action-form-row">
+        <div class="action-form-field">
+          <label class="form-label">Title</label>
+          <input type="text" id="hdActionTitle" class="form-input" placeholder="Action title…">
+        </div>
+      </div>
+      <div class="action-form-row action-form-2col">
+        <div class="action-form-field">
+          <label class="form-label">Type</label>
+          <select id="hdActionType" class="form-input">
+            <option value="create_task">Create Task</option>
+            <option value="assign_owner">Assign Owner</option>
+            <option value="open_deadline">Open Deadline</option>
+            <option value="generate_period">Generate Period</option>
+            <option value="review_wip">Review WIP</option>
+            <option value="fix_recurrence">Fix Recurrence</option>
+            <option value="fix_missing_owner">Fix Missing Owner</option>
+            <option value="general_followup">General Follow-up</option>
+          </select>
+        </div>
+        <div class="action-form-field">
+          <label class="form-label">Assign to</label>
+          <select id="hdActionAssignee" class="form-input">
+            <option value="">Unassigned</option>
+          </select>
+        </div>
+      </div>
+      <div class="action-form-row action-form-2col">
+        <div class="action-form-field">
+          <label class="form-label">Due date</label>
+          <input type="date" id="hdActionDue" class="form-input">
+        </div>
+        <div class="action-form-field">
+          <label class="form-label">Notes</label>
+          <input type="text" id="hdActionNotes" class="form-input" placeholder="Optional…">
+        </div>
+      </div>
+      <div class="action-form-btns">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="cancelActionForm()">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="hdActionSubmitBtn" onclick="submitActionForm()">Create Action</button>
+      </div>
+      <div id="hdActionFormError" class="error-banner hidden action-form-error"></div>
+    </div>
+
+    <!-- Follow-up actions list -->
+    <div class="hd-actions-section" id="hdActionsSection">
+      <div class="hd-actions-header">
+        <div class="hd-section-title hd-section-title--flush">Follow-up Actions</div>
+        <button type="button" class="btn btn-xs btn-ghost" onclick="openManualActionForm()">+ Add Action</button>
+      </div>
+      <div id="hdActionsList">
+        <div class="action-list-loading">Loading actions…</div>
+      </div>
+    </div>
+
+    <!-- Scoring rule legend -->
+    <div class="hd-section-title" style="margin-top:20px;">Scoring Rules</div>
+    <div style="font-size:0.76rem;color:var(--muted);line-height:1.8;">
+      Start 100 · −25 any overdue deadline · −15 &gt;3 overdue · −15 review backlog &gt;5 · −10 unassigned tasks · −15 queued periods overdue
+      · −10 engagement no owner · −10 recurring engagement no recurrence config · −15 WIP &gt;30 days old · −10 write-off &gt;20% · −10 no client owner
+    </div>
+
+    <div class="hd-modal-actions">
+      <button class="btn btn-ghost" onclick="closeHdModal()">Close</button>
+      <button class="btn btn-primary" id="hdRecalcBtn" onclick="recalcSingle()">Recalculate</button>
+    </div>
+  </div>
+</div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/client-health.js"></script>
+</body>
+</html>

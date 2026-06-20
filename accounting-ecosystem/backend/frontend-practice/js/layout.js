@@ -17,7 +17,10 @@
         { key: 'billing',     label: 'Billing',     href: '/practice/billing.html' },
         { key: 'deadlines',   label: 'Deadlines',   href: '/practice/deadlines.html' },
         { key: 'period-queue', label: 'Period Queue', href: '/practice/engagement-periods.html' },
-        { key: 'capacity',    label: 'Capacity',     href: '/practice/capacity.html' }
+        { key: 'capacity',      label: 'Capacity',      href: '/practice/capacity.html' },
+        { key: 'client-health', label: 'Client Health', href: '/practice/client-health.html' },
+        { key: 'reminders',       label: 'Reminders',       href: '/practice/reminders.html' },
+        { key: 'communications',  label: 'Communications',  href: '/practice/communications.html' }
     ];
 
     function escHtml(str) {

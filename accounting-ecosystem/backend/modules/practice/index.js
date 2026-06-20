@@ -17,6 +17,9 @@ const engagementsRouter      = require('./engagements');
 const engagementPeriodsRouter = require('./engagement-periods');
 const dashboardRouter        = require('./dashboard');
 const capacityRouter         = require('./capacity');
+const clientHealthRouter     = require('./client-health');
+const remindersRouter        = require('./reminders');
+const communicationsRouter   = require('./communications');
 
 const router = express.Router();
 
@@ -2385,6 +2388,18 @@ router.get('/deadlines/:id/events', async (req, res) => {
 
 // Capacity Planning (Codebox 18)
 router.use('/capacity', capacityRouter);
+
+// Client Health Scoring (Codebox 19)
+// Must mount BEFORE the generic /clients routes so /client-health/* is never
+// ambiguously matched. (They are different path prefixes so there is no conflict,
+// but mounting early is good hygiene.)
+router.use('/client-health', clientHealthRouter);
+
+// Reminder Center (Codebox 21)
+router.use('/reminders', remindersRouter);
+
+// Client Communication Log (Codebox 22)
+router.use('/communications', communicationsRouter);
 
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.

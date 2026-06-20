@@ -436,6 +436,104 @@
         </div>
     </div>
 
+    <!-- ── 14. Client Health (outside form — loaded after client loads) ── -->
+    <div id="healthSection" class="hidden" style="margin-top:2rem;">
+        <div class="section-header" style="margin-top:0;">
+            <div class="section-title" style="font-size:1rem;">Client Health</div>
+            <div class="section-header-actions">
+                <a href="/practice/client-health.html" class="btn btn-ghost btn-sm btn-link-plain">All Clients →</a>
+                <button type="button" class="btn btn-ghost btn-sm" id="healthRecalcBtn" onclick="recalcClientHealth()">Recalculate</button>
+            </div>
+        </div>
+        <div id="healthWrap">
+            <div class="loading"><div class="loading-spinner"></div><p>Loading health data…</p></div>
+        </div>
+    </div>
+
+    <!-- ── 15. Communication History (outside form — loaded after client loads) ── -->
+    <div id="communicationsSection" class="hidden cd-comms-section">
+        <div class="section-header cd-comms-header">
+            <div class="section-title cd-section-title-sm">Communication History</div>
+            <div class="section-header-actions">
+                <a href="" id="commViewAllLink" class="btn btn-ghost btn-sm btn-link-plain">View All →</a>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openAddCommModal()">+ Log Communication</button>
+            </div>
+        </div>
+        <div id="commHistoryLoading" class="cd-comms-loading">Loading…</div>
+        <div id="commHistoryWrap" class="hidden"></div>
+        <div id="commHistoryEmpty" class="cd-comms-empty hidden">No communications logged yet.</div>
+    </div>
+
+</div>
+
+<!-- ADD COMMUNICATION MODAL (lightweight quick-log from client detail) -->
+<div class="modal-overlay hidden" id="addCommModal" onclick="closeAddCommModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">Log Communication</div>
+            <button type="button" class="modal-close" onclick="closeAddCommModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="addCommType">Type <span class="req">*</span></label>
+                    <select id="addCommType" title="Communication type">
+                        <option value="call">📞 Call</option>
+                        <option value="email_note">📧 Email Note</option>
+                        <option value="whatsapp_note">💬 WhatsApp Note</option>
+                        <option value="meeting">🤝 Meeting</option>
+                        <option value="document_request">📄 Document Request</option>
+                        <option value="sars_followup">🏛 SARS Follow-up</option>
+                        <option value="cipc_followup">🏢 CIPC Follow-up</option>
+                        <option value="billing_followup">💰 Billing Follow-up</option>
+                        <option value="general_note">📝 General Note</option>
+                        <option value="internal_note">🔒 Internal Note</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="addCommDirection">Direction</label>
+                    <select id="addCommDirection" title="Communication direction">
+                        <option value="outbound">Outbound (we contacted them)</option>
+                        <option value="inbound">Inbound (they contacted us)</option>
+                        <option value="internal">Internal (note only)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="addCommSubject">Subject <span class="req">*</span></label>
+                <input type="text" id="addCommSubject" placeholder="Brief subject or purpose" title="Communication subject">
+            </div>
+            <div class="form-field">
+                <label for="addCommBody">Notes</label>
+                <textarea id="addCommBody" rows="2" placeholder="What was discussed, agreed, or noted…" title="Communication notes"></textarea>
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="addCommContact">Contact Name</label>
+                    <input type="text" id="addCommContact" placeholder="Person you spoke with" title="Contact name">
+                </div>
+                <div class="form-field">
+                    <label for="addCommAssignee">Assigned To</label>
+                    <select id="addCommAssignee" title="Team member responsible"></select>
+                </div>
+            </div>
+            <div class="add-comm-response-row">
+                <label class="comm-checkbox-label">
+                    <input type="checkbox" id="addCommRespReq" onchange="toggleAddCommResponseDate()">
+                    Response required from client
+                </label>
+                <div id="addCommRespDueRow" class="form-field hidden">
+                    <label for="addCommRespDue">Response Due Date</label>
+                    <input type="date" id="addCommRespDue" title="Response due date">
+                </div>
+            </div>
+            <div id="addCommError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeAddCommModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="addCommSubmitBtn" onclick="submitAddComm()">Log Communication</button>
+        </div>
+    </div>
 </div>
 
 <!-- ENGAGEMENT MODAL (create / edit) -->

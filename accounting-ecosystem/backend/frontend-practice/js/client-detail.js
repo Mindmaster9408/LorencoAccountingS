@@ -61,9 +61,15 @@
             document.getElementById('contactsSection').classList.remove('hidden');
             document.getElementById('complianceSuggestionsSection').classList.remove('hidden');
             document.getElementById('engagementsSection').classList.remove('hidden');
+            document.getElementById('healthSection').classList.remove('hidden');
+            document.getElementById('communicationsSection').classList.remove('hidden');
             document.getElementById('archiveBtn').classList.remove('hidden');
+            var commLink = document.getElementById('commViewAllLink');
+            if (commLink) commLink.href = '/practice/communications.html?client_id=' + clientId;
             loadContacts();
             loadEngagements();
+            loadClientHealth();
+            loadClientCommunications();
         } catch(e) {
             document.getElementById('pageLoading').classList.add('hidden');
             document.getElementById('pageError').classList.remove('hidden');
@@ -1134,6 +1140,256 @@
         }
     }
 
+    // ── Client Health ──────────────────────────────────────────────────────────
+
+    async function loadClientHealth() {
+        var wrap = document.getElementById('healthWrap');
+        if (!wrap) return;
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/client-health/' + clientId);
+            if (!res.ok) throw new Error('Health data unavailable');
+            var d = await res.json();
+            renderHealthCard(d);
+        } catch(e) {
+            wrap.innerHTML = '<p style="color:var(--muted);font-size:0.83rem;">' +
+                esc(e.message || 'Health data unavailable') + ' — ' +
+                '<button class="btn btn-xs btn-ghost" onclick="recalcClientHealth()">Recalculate now</button></p>';
+        }
+    }
+
+    function renderHealthCard(d) {
+        var wrap = document.getElementById('healthWrap');
+        if (!wrap) return;
+        var st    = d.health_status || 'unknown';
+        var score = d.health_score != null ? d.health_score : '—';
+        var stLabel = { good:'Good', watch:'Watch', at_risk:'At Risk', critical:'Critical', unknown:'Unknown' }[st] || st;
+        var risks = (d.top_risks || []).slice(0, 3);
+        var snap  = d.last_snapshot;
+        var calcAt = snap ? 'Last calculated: ' + fmtDate(snap.calculated_at) : 'Not yet calculated — click Recalculate';
+
+        var riskHtml = risks.length
+            ? risks.map(function(r) {
+                return '<div class="health-card-risk-item">' +
+                    '<div class="health-dot d-critical"></div>' +
+                    '<span>' + esc(r) + '</span>' +
+                '</div>';
+              }).join('')
+            : '<span style="color:var(--muted);font-size:0.82rem;">No risk factors identified</span>';
+
+        wrap.innerHTML =
+            '<div class="health-card">' +
+                '<div class="health-card-score">' +
+                    '<div class="health-card-score-num c-' + st + '">' + score + '</div>' +
+                    '<span class="health-badge hb-' + st + '">' + esc(stLabel) + '</span>' +
+                '</div>' +
+                '<div class="health-card-risks">' + riskHtml + '</div>' +
+            '</div>' +
+            '<div class="health-card-calc">' + esc(calcAt) + '</div>';
+    }
+
+    async function recalcClientHealth() {
+        var btn = document.getElementById('healthRecalcBtn');
+        if (btn) { btn.textContent = 'Recalculating…'; btn.disabled = true; }
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/client-health/recalculate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: clientId }),
+            });
+            if (!res.ok) throw new Error('Recalculation failed');
+            await loadClientHealth();
+        } catch(e) {
+            alert(e.message || 'Recalculation failed');
+        } finally {
+            if (btn) { btn.textContent = 'Recalculate'; btn.disabled = false; }
+        }
+    }
+
+    // ── Communication History (Section 15) ────────────────────────────────────
+
+    var _cdCommSubmitting = false;
+
+    var _commTypeIcon = {
+        call: '📞', email_note: '📧', whatsapp_note: '💬', meeting: '🤝',
+        document_request: '📄', sars_followup: '🏛', cipc_followup: '🏢',
+        billing_followup: '💰', general_note: '📝', internal_note: '🔒',
+    };
+    var _commRespClass = {
+        not_required: 'crsp-none', waiting: 'crsp-waiting',
+        received: 'crsp-received', overdue: 'crsp-overdue', cancelled: 'crsp-cancelled',
+    };
+
+    async function loadClientCommunications() {
+        var loading = document.getElementById('commHistoryLoading');
+        var wrap    = document.getElementById('commHistoryWrap');
+        var empty   = document.getElementById('commHistoryEmpty');
+        if (loading) loading.classList.remove('hidden');
+        if (wrap)    wrap.classList.add('hidden');
+        if (empty)   empty.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/communications?client_id=' + clientId + '&limit=10');
+            if (!res.ok) throw new Error('Load failed');
+            var d = await res.json();
+            var comms = d.communications || [];
+            if (loading) loading.classList.add('hidden');
+            if (comms.length === 0) {
+                if (empty) empty.classList.remove('hidden');
+            } else {
+                renderCommHistory(comms);
+                if (wrap) wrap.classList.remove('hidden');
+            }
+        } catch(e) {
+            if (loading) loading.classList.add('hidden');
+            if (wrap) { wrap.innerHTML = '<div class="error-banner">Could not load communication history.</div>'; wrap.classList.remove('hidden'); }
+        }
+    }
+
+    function renderCommHistory(comms) {
+        var wrap = document.getElementById('commHistoryWrap');
+        if (!wrap) return;
+        var today = new Date().toISOString().split('T')[0];
+
+        var rows = comms.map(function(c) {
+            var icon     = _commTypeIcon[c.communication_type] || '📋';
+            var eff      = (c.effective_response_status || c.response_status || 'not_required');
+            var isOverdue = eff === 'overdue' || (c.response_status === 'waiting' && c.response_due_date && c.response_due_date < today);
+            if (isOverdue) eff = 'overdue';
+            var respCls  = _commRespClass[eff] || '';
+            var rowCls   = isOverdue ? 'comm-hist-row comm-row--overdue' : 'comm-hist-row';
+            var dateStr  = c.communication_date ? c.communication_date.slice(0, 10) : '';
+
+            var respHtml = '';
+            if (c.response_required) {
+                var respLabel = eff === 'waiting' ? 'Waiting' : eff === 'overdue' ? 'Overdue' : eff === 'received' ? 'Received' : eff;
+                respHtml = '<span class="comm-resp-badge ' + respCls + '">' + esc(respLabel) + '</span>';
+                if (eff === 'waiting' || eff === 'overdue') {
+                    respHtml += ' <button type="button" class="btn btn-xs btn-ghost" onclick="markCommResponded(' + c.id + ')">✓</button>';
+                }
+            }
+
+            return '<div class="' + rowCls + '">' +
+                '<div class="comm-hist-icon">' + icon + '</div>' +
+                '<div class="comm-hist-body">' +
+                    '<div class="comm-hist-subject">' + esc(c.subject) + '</div>' +
+                    (c.contact_name ? '<div class="comm-hist-contact">' + esc(c.contact_name) + '</div>' : '') +
+                '</div>' +
+                '<div class="comm-hist-meta">' +
+                    '<div class="comm-hist-date">' + esc(dateStr) + '</div>' +
+                    respHtml +
+                '</div>' +
+            '</div>';
+        });
+
+        wrap.innerHTML = rows.join('');
+    }
+
+    async function openAddCommModal() {
+        document.getElementById('addCommType').value      = 'call';
+        document.getElementById('addCommDirection').value = 'outbound';
+        document.getElementById('addCommSubject').value   = '';
+        document.getElementById('addCommBody').value      = '';
+        document.getElementById('addCommContact').value   = '';
+        document.getElementById('addCommRespReq').checked = false;
+        document.getElementById('addCommRespDue').value   = '';
+        document.getElementById('addCommRespDueRow').classList.add('hidden');
+        document.getElementById('addCommError').classList.add('hidden');
+        _cdCommSubmitting = false;
+        document.getElementById('addCommSubmitBtn').disabled = false;
+
+        // Populate assignee picker
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/team?active=true');
+            var members = [];
+            if (res.ok) { var td = await res.json(); members = td.members || []; }
+            var opts = '<option value="">Unassigned</option>';
+            members.forEach(function(m) {
+                opts += '<option value="' + m.id + '">' + esc(m.display_name) + '</option>';
+            });
+            document.getElementById('addCommAssignee').innerHTML = opts;
+        } catch(e) {
+            document.getElementById('addCommAssignee').innerHTML = '<option value="">Unassigned</option>';
+        }
+
+        document.getElementById('addCommModal').classList.remove('hidden');
+    }
+
+    function closeAddCommModal() {
+        document.getElementById('addCommModal').classList.add('hidden');
+    }
+
+    function toggleAddCommResponseDate() {
+        var checked = document.getElementById('addCommRespReq') && document.getElementById('addCommRespReq').checked;
+        var row     = document.getElementById('addCommRespDueRow');
+        if (row) {
+            if (checked) row.classList.remove('hidden');
+            else         row.classList.add('hidden');
+        }
+    }
+
+    async function submitAddComm() {
+        if (_cdCommSubmitting) return;
+        var subject = document.getElementById('addCommSubject').value.trim();
+        if (!subject) {
+            document.getElementById('addCommError').textContent = 'Subject is required.';
+            document.getElementById('addCommError').classList.remove('hidden');
+            return;
+        }
+        _cdCommSubmitting = true;
+        document.getElementById('addCommSubmitBtn').disabled = true;
+        document.getElementById('addCommError').classList.add('hidden');
+
+        var assigneeEl = document.getElementById('addCommAssignee');
+        var respDueEl  = document.getElementById('addCommRespDue');
+        var payload    = {
+            client_id:               clientId,
+            communication_type:      document.getElementById('addCommType').value,
+            direction:               document.getElementById('addCommDirection').value,
+            subject:                 subject,
+            body:                    document.getElementById('addCommBody').value.trim() || null,
+            contact_name:            document.getElementById('addCommContact').value.trim() || null,
+            assigned_team_member_id: assigneeEl && assigneeEl.value ? parseInt(assigneeEl.value, 10) : null,
+            response_required:       document.getElementById('addCommRespReq').checked,
+            response_due_date:       respDueEl && respDueEl.value ? respDueEl.value : null,
+        };
+
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/communications', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify(payload),
+            });
+            if (!res.ok) {
+                var err = await res.json();
+                throw new Error(err.error || 'Failed to log communication');
+            }
+            _cdCommSubmitting = false;
+            closeAddCommModal();
+            loadClientCommunications();
+        } catch(e) {
+            _cdCommSubmitting = false;
+            document.getElementById('addCommSubmitBtn').disabled = false;
+            document.getElementById('addCommError').textContent = e.message || 'Failed to log communication.';
+            document.getElementById('addCommError').classList.remove('hidden');
+        }
+    }
+
+    async function markCommResponded(commId) {
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/communications/' + commId + '/mark-responded', { method: 'PUT' });
+            if (!res.ok) { var err = await res.json(); throw new Error(err.error || 'Failed'); }
+            loadClientCommunications();
+        } catch(e) {
+            alert('Could not mark as received: ' + (e.message || 'Server error'));
+        }
+    }
+
+    function fmtDate(iso) {
+        if (!iso) return '';
+        try { return new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }); }
+        catch(e) { return iso; }
+    }
+
     // ── Expose globals ─────────────────────────────────────────────────────────
 
     window.saveClientDetail            = saveClientDetail;
@@ -1168,6 +1424,15 @@
     window.closePeriodQueueModal = closePeriodQueueModal;
     window.previewPeriods        = previewPeriods;
     window.createPeriodQueue     = createPeriodQueue;
+
+    window.loadClientHealth   = loadClientHealth;
+    window.recalcClientHealth = recalcClientHealth;
+
+    window.openAddCommModal         = openAddCommModal;
+    window.closeAddCommModal        = closeAddCommModal;
+    window.toggleAddCommResponseDate = toggleAddCommResponseDate;
+    window.submitAddComm            = submitAddComm;
+    window.markCommResponded        = markCommResponded;
 
     init();
 })();

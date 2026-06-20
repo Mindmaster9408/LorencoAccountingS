@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Communications — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <div id="app-nav"></div>
+
+    <div class="page-wrap">
+
+        <!-- ── Summary cards ─────────────────────────────────── -->
+        <div class="comm-summary" id="commSummary">
+            <div class="comm-card">
+                <div class="comm-card-value" id="sumTotal">—</div>
+                <div class="comm-card-label">Total Logged</div>
+            </div>
+            <div class="comm-card comm-card--warn">
+                <div class="comm-card-value" id="sumWaiting">—</div>
+                <div class="comm-card-label">Waiting Response</div>
+            </div>
+            <div class="comm-card comm-card--urgent">
+                <div class="comm-card-value" id="sumOverdue">—</div>
+                <div class="comm-card-label">Overdue Response</div>
+            </div>
+            <div class="comm-card comm-card--accent">
+                <div class="comm-card-value" id="sumDocReq">—</div>
+                <div class="comm-card-label">Doc Requests Open</div>
+            </div>
+            <div class="comm-card comm-card--muted">
+                <div class="comm-card-value" id="sumWeek">—</div>
+                <div class="comm-card-label">This Week</div>
+            </div>
+        </div>
+
+        <!-- ── Toolbar ──────────────────────────────────────── -->
+        <div class="comm-toolbar">
+            <select id="filterType" onchange="applyFilters()">
+                <option value="">All Types</option>
+                <option value="call">Call</option>
+                <option value="email_note">Email Note</option>
+                <option value="whatsapp_note">WhatsApp Note</option>
+                <option value="meeting">Meeting</option>
+                <option value="document_request">Document Request</option>
+                <option value="sars_followup">SARS Follow-up</option>
+                <option value="cipc_followup">CIPC Follow-up</option>
+                <option value="billing_followup">Billing Follow-up</option>
+                <option value="general_note">General Note</option>
+                <option value="internal_note">Internal Note</option>
+            </select>
+            <select id="filterDirection" onchange="applyFilters()">
+                <option value="">All Directions</option>
+                <option value="outbound">Outbound</option>
+                <option value="inbound">Inbound</option>
+                <option value="internal">Internal</option>
+            </select>
+            <select id="filterResponse" onchange="applyFilters()">
+                <option value="">All Responses</option>
+                <option value="waiting">Waiting</option>
+                <option value="overdue">Overdue</option>
+                <option value="received">Received</option>
+                <option value="not_required">Not Required</option>
+            </select>
+            <input type="text" id="filterSearch" class="comm-search" placeholder="Search subject, body, contact…" oninput="applyFilters()">
+            <div class="comm-toolbar-spacer"></div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openCreateModal()">+ Log Communication</button>
+        </div>
+
+        <!-- ── List ─────────────────────────────────────────── -->
+        <div id="listLoading" class="cap-loading">Loading communications…</div>
+
+        <div id="listWrap" class="hidden">
+            <table class="cap-table comm-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">Type</th>
+                        <th>Subject</th>
+                        <th>Client</th>
+                        <th class="col-dir">Dir</th>
+                        <th class="col-date">Date</th>
+                        <th class="col-resp">Response</th>
+                        <th class="col-actions-comm">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="listBody"></tbody>
+            </table>
+        </div>
+
+        <div id="listEmpty" class="cap-empty hidden">
+            <div class="cap-empty-icon">💬</div>
+            <div class="cap-empty-text">No communications match the current filter</div>
+        </div>
+
+        <div id="listError" class="error-banner hidden"></div>
+
+    </div><!-- /page-wrap -->
+
+    <!-- ── Log communication modal ───────────────────────────── -->
+    <div id="createModal" class="modal-overlay hidden" onclick="closeCreateModal()">
+        <div class="modal-box modal-box--lg" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">Log Communication</div>
+                <button type="button" class="modal-close" onclick="closeCreateModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="comm-form-grid">
+                    <div class="form-row">
+                        <label class="form-label">Client <span class="req">*</span></label>
+                        <select id="cClient" class="form-input"></select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Type <span class="req">*</span></label>
+                        <select id="cType" class="form-input">
+                            <option value="call">📞 Call</option>
+                            <option value="email_note">📧 Email Note</option>
+                            <option value="whatsapp_note">💬 WhatsApp Note</option>
+                            <option value="meeting">🤝 Meeting</option>
+                            <option value="document_request">📄 Document Request</option>
+                            <option value="sars_followup">🏛 SARS Follow-up</option>
+                            <option value="cipc_followup">🏢 CIPC Follow-up</option>
+                            <option value="billing_followup">💰 Billing Follow-up</option>
+                            <option value="general_note">📝 General Note</option>
+                            <option value="internal_note">🔒 Internal Note</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Direction</label>
+                        <select id="cDirection" class="form-input">
+                            <option value="outbound">Outbound (we contacted them)</option>
+                            <option value="inbound">Inbound (they contacted us)</option>
+                            <option value="internal">Internal (note only)</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Assigned Team Member</label>
+                        <select id="cAssignee" class="form-input"></select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label class="form-label">Subject <span class="req">*</span></label>
+                    <input type="text" id="cSubject" class="form-input" placeholder="Brief subject or purpose">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Notes / Body</label>
+                    <textarea id="cBody" class="form-input" rows="3" placeholder="What was discussed, agreed, or noted…"></textarea>
+                </div>
+
+                <div class="comm-form-grid">
+                    <div class="form-row">
+                        <label class="form-label">Contact Name</label>
+                        <input type="text" id="cContactName" class="form-input" placeholder="Person you spoke with">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Contact Email</label>
+                        <input type="text" id="cContactEmail" class="form-input" placeholder="Optional">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Contact Phone</label>
+                        <input type="text" id="cContactPhone" class="form-input" placeholder="Optional">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Communication Date</label>
+                        <input type="datetime-local" id="cCommDate" class="form-input">
+                    </div>
+                </div>
+
+                <div class="comm-response-block">
+                    <label class="comm-checkbox-label">
+                        <input type="checkbox" id="cResponseRequired" onchange="toggleResponseDate()">
+                        Response required from client
+                    </label>
+                    <div id="cResponseDateRow" class="form-row hidden">
+                        <label class="form-label">Response Due Date</label>
+                        <input type="date" id="cResponseDue" class="form-input">
+                    </div>
+                </div>
+
+                <div class="comm-form-grid">
+                    <div class="form-row">
+                        <label class="form-label">Visibility</label>
+                        <select id="cVisibility" class="form-input">
+                            <option value="practice">Whole Practice</option>
+                            <option value="manager_only">Manager Only</option>
+                            <option value="partner_only">Partner Only</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Attachments Note</label>
+                        <input type="text" id="cAttachNote" class="form-input" placeholder="e.g. 3 docs emailed">
+                    </div>
+                </div>
+
+                <label class="comm-checkbox-label">
+                    <input type="checkbox" id="cIsInternal">
+                    Mark as internal note (not client-facing)
+                </label>
+
+                <div id="createError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="createSubmitBtn" onclick="submitCreate()">Log Communication</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── View communication modal ──────────────────────────── -->
+    <div id="viewModal" class="modal-overlay hidden" onclick="closeViewModal()">
+        <div class="modal-box modal-box--lg" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="viewTitle">Communication</div>
+                <button type="button" class="modal-close" onclick="closeViewModal()">✕</button>
+            </div>
+            <div class="modal-body" id="viewBody"></div>
+            <div class="modal-footer" id="viewFooter"></div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/communications.js"></script>
+</body>
+</html>
